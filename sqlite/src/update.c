@@ -244,7 +244,6 @@ void sqlite3Update(
   if( !pParse->ast ) pParse->ast = ast_init();
   ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){
     pWhere = sqlite3LimitWhere(
@@ -405,7 +404,6 @@ void sqlite3Update(
   /* Begin generating code. */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto update_cleanup;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* create our updCols array. */
   if( isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
@@ -415,7 +413,6 @@ void sqlite3Update(
     sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pTrigger || hasFK, iDb);
 

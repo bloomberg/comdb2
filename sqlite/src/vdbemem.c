@@ -1754,7 +1754,6 @@ static int valueFromExpr(
   /* first in list, we dont support more than one vdbe on a db */
   Vdbe *p = db->pVdbe;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pExpr!=0 );
   while( (op = pExpr->op)==TK_UPLUS || op==TK_SPAN ) pExpr = pExpr->pLeft;
 #if defined(SQLITE_ENABLE_STAT3_OR_STAT4)

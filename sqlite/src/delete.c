@@ -881,7 +881,6 @@ void sqlite3GenerateRowIndexDelete(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if ( !has_comdb2_index_for_sqlite(pTab) ) return;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   v = pParse->pVdbe;
   pPk = HasRowid(pTab) ? 0 : sqlite3PrimaryKeyIndex(pTab);
   for(i=0, pIdx=pTab->pIndex; pIdx; i++, pIdx=pIdx->pNext){

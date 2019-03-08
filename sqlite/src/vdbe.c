@@ -1043,7 +1043,6 @@ int sqlite3VdbeExec(
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     /* Sanity checking on other operands */
 #ifdef SQLITE_DEBUG
     {
@@ -1081,7 +1080,6 @@ int sqlite3VdbeExec(
       }
     }
 #endif
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* TODO: Why are we clearing the error message here? */
     if( p->zErrMsg ){
@@ -1089,7 +1087,6 @@ int sqlite3VdbeExec(
       p->zErrMsg = NULL;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #if defined(SQLITE_DEBUG) || defined(VDBE_PROFILE)
     pOrigOp = pOp;
 #endif
@@ -1592,7 +1589,6 @@ case OP_Variable: {            /* out2 */
   pOut = &aMem[pOp->p2];
   sqlite3VdbeMemShallowCopy(pOut, pVar, MEM_Static);
   UPDATE_MAX_BLOBSIZE(pOut);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_debug_sql_opcodes ){
     char *s = (char*) sqlite3_bind_parameter_name((sqlite3_stmt*) p, pOp->p1);
@@ -1600,7 +1596,6 @@ case OP_Variable: {            /* out2 */
     dump_vdbe_mem(stdout, pOut);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   break;
 }
 
@@ -1911,9 +1906,8 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   type2 = numericType(pIn2);
   pOut = &aMem[pOp->p3];
   flags = pIn1->flags | pIn2->flags;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert (pOut->db );
+  assert( pOut->db );
 
   if( (pIn1->flags & MEM_Interval) && pIn1->du.tv.type == INTV_DECIMAL_TYPE)
   {
@@ -2256,14 +2250,12 @@ case OP_Cast: {                  /* in1 */
   testcase( pOp->p2==SQLITE_AFF_INTEGER );
   testcase( pOp->p2==SQLITE_AFF_REAL );
   pIn1 = &aMem[pOp->p1];
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if(pOp->p2 == SQLITE_AFF_DATETIME) {
     pIn1->tz = &p->tzname[0];
     pIn1->dtprec = p->dtprec;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   memAboutToChange(p, pIn1);
   rc = ExpandBlob(pIn1);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -3039,7 +3031,6 @@ cooked_access:
   print_cooked_access(pCrsr, p2);
   #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( pC->cacheStatus!=p->cacheCtr ){                /*OPTIMIZATION-IF-FALSE*/
     if( pC->nullRow ){
       if( pC->eCurType==CURTYPE_PSEUDO ){
@@ -3276,7 +3267,6 @@ cooked_access:
       if( rc!=SQLITE_OK ) goto abort_due_to_error;
       sqlite3VdbeSerialGet((const u8*)pDest->z, t, pDest);
       pDest->flags &= ~MEM_Ephem;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
      /* we need to update the field in case this is a decimal */
      if( pC->isTable == 0 ){
@@ -3291,7 +3281,6 @@ op_column_out:
   pDest->tz = p->tzname;
   pDest->dtprec = p->dtprec;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   UPDATE_MAX_BLOBSIZE(pDest);
   REGISTER_TRACE(pOp->p3, pDest);
   break;
@@ -3418,7 +3407,6 @@ case OP_MakeRecord: {
         exit(0);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       applyAffinity(pRec++, *(zAffinity++), encoding);
       assert( zAffinity[0]==0 || pRec<=pLast );
     }while( zAffinity[0] );
@@ -4108,7 +4096,6 @@ case OP_ReopenIdx: {
   }
   /* If the cursor is not currently open or is open on a different
   ** index, then fall through into OP_OpenRead to force a reopen */
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 case OP_OpenRead_Record:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -4196,11 +4183,9 @@ case OP_OpenWrite:
   rc = sqlite3BtreeCursor(pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pCur->pKeyInfo = pKeyInfo;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( rc ) goto abort_due_to_error;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Set the VdbeCursor.isTable variable. Previous versions of
   ** SQLite used to check if the root-page flags were sane at this point
   ** and report database corruption if they were not, but this check has
@@ -4213,7 +4198,6 @@ case OP_OpenWrite:
      sqlite3BtreeSetRecording(pCur->uc.pCursor, 1);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 open_cursor_set_hints:
   assert( OPFLAG_BULKCSR==BTREE_BULKLOAD );
   assert( OPFLAG_SEEKEQ==BTREE_SEEK_EQ );
@@ -4487,12 +4471,10 @@ case OP_ColumnsUsed: {
   pC = p->apCsr[pOp->p1];
   assert( pC->eCurType==CURTYPE_BTREE );
   pC->maskUsed = *(u64*)pOp->p4.pI64;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
   sqlite3BtreeCursorSetFieldUsed(pC->uc.pCursor, pC->maskUsed);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   break;
 }
 #endif
@@ -4700,7 +4682,6 @@ case OP_SeekGT: {       /* jump, in3, group */
      * optimization for 'or' clause would have left us with */
     setCookCol(pC, -1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     /* The next line of code computes as follows, only faster:
     **   if( oc==OP_SeekGT || oc==OP_SeekLE ){
     **     r.default_rc = -1;
@@ -5468,7 +5449,6 @@ case OP_Delete: {
     if( rc ) goto abort_due_to_error;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pC->deferredMoveto==0 );
   sqlite3VdbeIncrWriteCounter(p, pC);
 
@@ -5477,7 +5457,6 @@ case OP_Delete: {
     pC->movetoTarget = sqlite3BtreeIntegerKey(pC->uc.pCursor);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_DEBUG
   if( pOp->p4type==P4_TABLE && HasRowid(pOp->p4.pTab) && pOp->p5==0 ){
     /* If p5 is zero, the seek operation that positioned the cursor prior to
@@ -5706,7 +5685,6 @@ case OP_RowData: {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   testcase( n==0 );
   rc = sqlite3VdbeMemFromBtree(pCrsr, 0, n, pOut);
   if( rc ) goto abort_due_to_error;
@@ -6037,11 +6015,9 @@ case OP_Next:          /* jump */
   assert( pOp->p5<ArraySize(p->aCounter) );
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pC->nullRow ) break;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pC->deferredMoveto==0 );
   assert( pC->eCurType==CURTYPE_BTREE );
   assert( pOp->opcode!=OP_Next || pOp->p4.xAdvance==sqlite3BtreeNext );
@@ -6122,7 +6098,6 @@ case OP_IdxInsert: {        /* in2 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   memset(&x, 0, sizeof(BtreePayload));
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
   pC = p->apCsr[pOp->p1];
   sqlite3VdbeIncrWriteCounter(p, pC);
@@ -7740,13 +7715,11 @@ case OP_VOpen: {
     goto abort_due_to_error;
   }
   pModule = pVtab->pModule;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
   rc = comdb2_check_vtab_access(db, (sqlite3_module*)pModule);
   if( rc ) goto abort_due_to_error;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   rc = pModule->xOpen(pVtab, &pVCur);
   sqlite3VtabImportErrmsg(p, pVtab);
   if( rc ) goto abort_due_to_error;
@@ -8222,10 +8195,8 @@ case OP_Function: {            /* group */
     pCtx->pOut->db = db;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   REGISTER_TRACE(pOp->p3, pOut);
   UPDATE_MAX_BLOBSIZE(pOut);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* the stack contains a synthetic Mem which could be needing a tzname
    * the argument-less functions (as now()) are unable to receive a tzname
@@ -8234,7 +8205,6 @@ case OP_Function: {            /* group */
   pCtx->pOut->tz = p->tzname;
   pCtx->pOut->dtprec = p->dtprec;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   break;
 }
 

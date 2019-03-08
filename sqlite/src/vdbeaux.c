@@ -49,7 +49,6 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
   }
   p->pNext = db->pVdbe;
   p->pPrev = 0;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   p->updCols = 0;
   p->tbls = NULL;
@@ -59,7 +58,6 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
   extern void  comdb2_set_sqlite_vdbe_time_info( Vdbe *p);
   comdb2_set_sqlite_vdbe_time_info(p);  
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   db->pVdbe = p;
   p->magic = VDBE_MAGIC_INIT;
   p->pParse = pParse;
@@ -142,7 +140,6 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pA->db==pB->db );
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   tmp = *pA;
   *pA = *pB;
   *pB = tmp;
@@ -160,7 +157,6 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
   pA->zNormSql = pB->zNormSql;
   pB->zNormSql = zTmp;
 #endif
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
     int *iTmp = pA->updCols;
@@ -168,7 +164,6 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
     pB->updCols = iTmp;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   pB->expmask = pA->expmask;
   pB->prepFlags = pA->prepFlags;
   memcpy(pB->aCounter, pA->aCounter, sizeof(pB->aCounter));
@@ -3091,12 +3086,10 @@ int sqlite3VdbeHalt(Vdbe *p){
         }
         if( rc==SQLITE_BUSY && p->readOnly ){
           sqlite3VdbeLeave(p);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
           logmsg(LOGMSG_ERROR, "%s:%d SQLITE_BUSY\n", __FILE__, __LINE__);
           cheap_stack_trace();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
           return SQLITE_BUSY;
         }else if( rc!=SQLITE_OK ){
           p->rc = rc;
@@ -3360,7 +3353,6 @@ int sqlite3VdbeReset(Vdbe *p){
 int sqlite3VdbeFinalize(Vdbe *p){
   int rc = SQLITE_OK;
   if( p->magic==VDBE_MAGIC_RUN || p->magic==VDBE_MAGIC_HALT ){
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* this needs to called when we finalize, not on reset */
     if( p->updCols){
@@ -3368,7 +3360,6 @@ int sqlite3VdbeFinalize(Vdbe *p){
       p->updCols = 0;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     rc = sqlite3VdbeReset(p);
     assert( (rc & p->db->errMask)==rc );
   }
@@ -3512,7 +3503,6 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
   assert( p->deferredMoveto );
   assert( p->isTable );
   assert( p->eCurType==CURTYPE_BTREE );
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* NOTE: this will only be used for table direct lookup, which is not
      happening for remote cursors */
@@ -3902,7 +3892,6 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
     return sizeof(long long);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Integer and Real */
   if( serial_type<=7 && serial_type>0 ){
     u64 v;
@@ -4048,7 +4037,6 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
     return sizeof(dttz_t);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* String or blob */
   if( serial_type>=12 ){
     assert( pMem->n + ((pMem->flags & MEM_Zero)?pMem->u.nZero:0)
@@ -4987,7 +4975,6 @@ int sqlite3VdbeRecordCompareWithSkip(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   memset(&mem1, 0, sizeof(Mem));
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* If bSkip is true, then the caller has already determined that the first
   ** two elements in the keys are equal. Fix the various stack variables so
   ** that this routine begins comparing at the second field. */

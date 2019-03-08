@@ -1294,7 +1294,6 @@ void sqlite3VdbeSorterClose(sqlite3 *db, VdbeCursor *pCsr){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     addVdbeSorterCost(pSorter);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     sqlite3VdbeSorterReset(db, pSorter);
     sqlite3_free(pSorter->list.aMemory);
     sqlite3DbFree(db, pSorter);
@@ -1610,7 +1609,6 @@ static int vdbeSorterListToPMA(SortSubtask *pTask, SorterList *pList){
   if(nByte > lmt && comdb2_tmpdir_space_low())
      rc = SQLITE_TOOBIG;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Try to get the file to memory map */
   if( rc==SQLITE_OK ){
     vdbeSorterExtendFile(db, pTask->file.pFd, pTask->file.iEof+pList->szPMA+9);
@@ -2635,7 +2633,6 @@ int sqlite3VdbeSorterRewind(const VdbeCursor *pCsr, int *pbEof){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   pSorter->nfind++;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* If no data has been written to disk, then do not do so now. Instead,
   ** sort the VdbeSorter.pRecord list. The vdbe layer will read data directly
   ** from the in-memory list.  */
@@ -2686,12 +2683,10 @@ int sqlite3VdbeSorterNext(sqlite3 *db, const VdbeCursor *pCsr){
 
   assert( pCsr->eCurType==CURTYPE_SORTER );
   pSorter = pCsr->uc.pSorter;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   addVdbeToThdCost(VDBESORTER_MOVE);
   pSorter->nmove++;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pSorter->bUsePMA || (pSorter->pReader==0 && pSorter->pMerger==0) );
   if( pSorter->bUsePMA ){
     assert( pSorter->pReader==0 || pSorter->pMerger==0 );

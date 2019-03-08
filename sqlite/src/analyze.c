@@ -2212,7 +2212,6 @@ static int loadStatTbl(
   return rc;
 }
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <vdbecompare.c>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

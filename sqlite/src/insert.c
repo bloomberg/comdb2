@@ -14,9 +14,7 @@
 */
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-
 #include "cdb2_constants.h"
-
 int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int noConflict);
 int is_comdb2_index_unique(const char *tbl, char *idx);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -634,12 +632,10 @@ void sqlite3Insert(
   */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto insert_cleanup;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( onError==OE_Ignore ) comdb2SetIgnore(v);
   else if( onError==OE_Replace ) comdb2SetReplace(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pSelect || pTrigger, iDb);
 
@@ -1377,7 +1373,6 @@ void sqlite3GenerateConstraintChecks(
     return;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   isUpdate = regOldData!=0;
   db = pParse->db;
   v = sqlite3GetVdbe(pParse);

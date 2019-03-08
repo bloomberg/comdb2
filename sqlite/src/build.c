@@ -372,7 +372,6 @@ retry_alias:
 
 retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* All mutexes are required for schema access.  Make sure we hold them. */
   assert( zDatabase!=0 || sqlite3BtreeHoldsAllMutexes(db) );
 #if SQLITE_USER_AUTHENTICATION
@@ -2418,7 +2417,6 @@ void sqlite3EndTable(
   */
   p->iDb = iDb;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifndef SQLITE_OMIT_CHECK
   /* Resolve names in all CHECK constraint expressions.
   */
@@ -3109,7 +3107,6 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
 
   comdb2WriteTransaction(pParse);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( db->mallocFailed ){
     goto exit_drop_table;
   }
@@ -3515,7 +3512,6 @@ Index *sqlite3AllocateIndexObject(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int is_comdb2_index_expression(const char *dbname);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** Create a new index for an SQL table.  pName1.pName2 is the name of the index 
 ** and pTblList is the name of the table that is to be indexed.  Both will 
@@ -3860,7 +3856,6 @@ void sqlite3CreateIndex(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if (is_comdb2_index_expression(pTab->zName)) pTab->hasExprIdx = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Append the table key to the end of the index.  For WITHOUT ROWID
   ** tables (when pPk!=0) this will be the declared PRIMARY KEY.  For
   ** normal tables (when pPk==0) this will be the rowid.
@@ -4189,7 +4184,6 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   comdb2WriteTransaction(pParse);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pParse->nErr==0 );   /* Never called with prior errors */
   if( db->mallocFailed ){
     goto exit_drop_index;

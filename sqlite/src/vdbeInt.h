@@ -650,13 +650,11 @@ void sqlite3VdbeMemMove(Mem*, Mem*);
 int sqlite3VdbeMemNulTerminate(Mem*);
 int sqlite3VdbeMemSetStr(Mem*, const char*, int, u8, void(*)(void*));
 void sqlite3VdbeMemSetInt64(Mem*, i64);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemSetDatetime(Mem*, dttz_t*, const char *tz);
 int sqlite3VdbeMemSetInterval(Mem *pMem, intv_t *tv);
 int sqlite3VdbeMemSetDecimal(Mem*, decQuad*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_OMIT_FLOATING_POINT
 # define sqlite3VdbeMemSetDouble sqlite3VdbeMemSetInt64
 #else
@@ -685,7 +683,6 @@ int sqlite3VdbeMemCast(Vdbe *, Mem*,u8,u8);
 void sqlite3VdbeMemCast(Mem*,u8,u8);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeMemFromBtree(BtCursor*,u32,u32,Mem*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemDatetimefy(Mem*);
 int sqlite3VdbeMemDatetimefyTz(Mem*, const char*);
@@ -698,7 +695,6 @@ int sqlite3VdbeMemDatetimeAndDatetime(const Mem *first, const Mem *secnd, int op
 int sqlite3VdbeMemDatetimeAndInterval(const Mem *a, const Mem *b, int op, Mem * res);
 int sqlite3VdbeMemIntervalAndDatetime(const Mem *a, const Mem *b, int op, Mem * res);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 void sqlite3VdbeMemRelease(Mem *p);
 int sqlite3VdbeMemFinalize(Mem*, FuncDef*);
 #ifndef SQLITE_OMIT_WINDOWFUNC
@@ -795,5 +791,4 @@ Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
 #define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)==SQLITE_MAX_U32 || (t)==(SQLITE_MAX_U32-1) )
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #endif /* !defined(SQLITE_VDBEINT_H) */

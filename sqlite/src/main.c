@@ -3232,7 +3232,6 @@ static int openDatabase(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   createCollation(db, "DATACOPY", SQLITE_UTF8, 0, datacopyCollatingFunc, 0);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Parse the filename/URI argument
   **
   ** Only allow sensible combinations of bits in the flags argument.  
@@ -3378,7 +3377,6 @@ static int openDatabase(
   }
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_ENABLE_JSON1
   if( !db->mallocFailed && rc==SQLITE_OK){
     rc = sqlite3Json1Init(db);
@@ -3442,7 +3440,6 @@ opendb_out:
   db->should_fingerprint = 0;
   pthread_mutex_unlock(&mutex);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ) sqlite3CodecQueryParameters(db, 0, zOpen);
 #endif
