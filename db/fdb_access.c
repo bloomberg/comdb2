@@ -19,7 +19,8 @@
  *
  */
 
-#include <plhash.h>
+#include "plhash.h"
+#include "util.h"
 #include "list.h"
 
 #include "comdb2.h"
@@ -33,6 +34,8 @@
 #include "fdb_util.h"
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
+#include "fdb_whitelist.h"
+#include "intern_strings.h"
 #include "logmsg.h"
 
 /**
@@ -55,6 +58,9 @@ struct fdb_access {
     hash_t *wlst_byfullname; /* presence in this list give per table access */
     listc_t lst;
 };
+
+
+static hash_t *fdb_dbname_hash;
 
 static int access_violations;
 static int _access_control_add(fdb_access_t *acc, enum fdb_access_type type,
@@ -309,5 +315,27 @@ static int _access_control_clear(fdb_access_t *acc)
     }
 
     return 0;
+}
+
+int fdb_add_dbname_to_whitelist(const char *dbname)
+{
+    logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
+
+    if (fdb_dbname_hash == NULL)
+        fdb_dbname_hash = hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc, 0, 0);
+    assert(fdb_dbname_hash != NULL);
+    char *ptr = intern(dbname);
+    return hash_add(fdb_dbname_hash, &ptr);
+}
+
+int fdb_is_dbname_in_whitelist(const char *dbname)
+{
+    logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
+    if (fdb_dbname_hash == NULL)
+        return 1;
+
+    char *iname = intern(dbname);
+    const char *strptr = hash_find_readonly(fdb_dbname_hash, &iname);
+    return strptr != NULL;
 }
 

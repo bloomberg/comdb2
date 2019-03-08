@@ -22,6 +22,7 @@ typedef struct VdbeSorter VdbeSorter;
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
+#include "fdb_whitelist.h"
 #include "poll.h"
 #include "flibc.h"
 #include "logmsg.h"
@@ -1004,16 +1005,19 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         msg->co.srcnamelen = ntohl(msg->co.srcnamelen);
 
         if (msg->co.srcnamelen > 0) {
-            msg->co.srcname = (char *)malloc(msg->co.srcnamelen);
+            msg->co.srcname = (char *)malloc(msg->co.srcnamelen + 1);
             if (!msg->co.srcname)
                 return -1;
 
             rc = sbuf2fread(msg->co.srcname, 1, msg->co.srcnamelen, sb);
             if (rc != msg->co.srcnamelen)
                 return -1;
+            msg->co.srcname[msg->co.srcnamelen] = '\0';
         } else {
             msg->co.srcname = NULL;
         }
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcname))
+            return -1;
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);

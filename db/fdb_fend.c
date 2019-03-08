@@ -4927,8 +4927,11 @@ int fdb_get_remote_version(const char *dbname, const char *table,
         flags = 0;
     }
 
-    snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    int tot = snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    if (tot >= sizeof(sql))
+        return FDB_ERR_GENERIC;
 
+    //TODO: rc = cdb2_open_fdb(&db, dbname, location, flags);
     rc = cdb2_open(&db, dbname, location, flags);
     if (rc)
         return FDB_ERR_GENERIC;
