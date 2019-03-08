@@ -585,7 +585,7 @@ int do_schema_change_tran(sc_arg_t *arg)
                s->tablename, rc);
         iq->sc_should_abort = 1;
     }
-    if (detached)
+    if (detached || rc == SC_PREEMPTED)
         s->sc_rc = SC_DETACHED;
     else
         s->sc_rc = rc;
