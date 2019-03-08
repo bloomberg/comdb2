@@ -321,21 +321,61 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
 {
     logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
 
+    /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
-        fdb_dbname_hash = hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc, 0, 0);
+        fdb_dbname_hash = hash_init_user((hashfunc_t *)strhashfunc,
+                                         (cmpfunc_t *)memcmp, 0, 0);
     assert(fdb_dbname_hash != NULL);
     char *ptr = intern(dbname);
     return hash_add(fdb_dbname_hash, &ptr);
 }
 
-int fdb_is_dbname_in_whitelist(const char *dbname)
+int fdb_del_dbname_to_whitelist(const char *dbname)
 {
     logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
+
+    /* hash will contain pointers to strings, it just needs to memcmp ptrs */
+    if (fdb_dbname_hash == NULL)
+        return 0;
+
+    char *ptr = intern(dbname);
+    return hash_del(fdb_dbname_hash, &ptr);
+}
+
+void dump_whitelist(void *obj, void *dum)
+{
+    const char *str = (const char *)obj;
+    logmsg(LOGMSG_USER, "%s\n", str);
+}
+
+void fdb_dump_whitelist()
+{
+    if (fdb_dbname_hash == NULL) {
+        logmsg(LOGMSG_USER, "%s: EMPTY\n", __func__);
+        return;
+    }
+
+    hash_for(fdb_dbname_hash, (hashforfunc_t *)dump_whitelist, NULL);
+}
+
+/* Check if parameter dbname is in whitelist
+ * Note that dbname can be dbname or uri (dbname@hostname) 
+ */
+int fdb_is_dbname_in_whitelist(const char *name)
+{
+    logmsg(LOGMSG_ERROR, "%s: name=%s\n", __func__, name);
     if (fdb_dbname_hash == NULL)
         return 1;
 
-    char *iname = intern(dbname);
-    const char *strptr = hash_find_readonly(fdb_dbname_hash, &iname);
+    char dbname[MAX_DBNAME_LENGTH];
+    int i;
+    while(*name && *name != '@' && i < MAX_DBNAME_LENGTH)
+        dbname[i++] = *(name++);
+    dbname[i] = '\0';
+    char *nptr = intern(dbname);
+    logmsg(LOGMSG_ERROR, "%s: nptr=%s\n", __func__, nptr);
+
+    const char *strptr = hash_find_readonly(fdb_dbname_hash, &nptr);
     return strptr != NULL;
 }
 

@@ -38,7 +38,7 @@ extern int gbl_time_fdb;
 extern int gbl_notimeouts;
 extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
-extern char gbl_dbname[MAX_DBNAME_LENGTH];
+extern char *gbl_myuri;
 
 /* matches fdb_svc_callback_t callbacks */
 enum {
@@ -395,8 +395,8 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.version = version;
     msg->co.seq = (trans) ? trans->seq : 0;
     msg->co.srcpid = gbl_mypid;
-    msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
-    msg->co.srcname = gbl_myhostname;
+    msg->co.srcnamelen = strlen(gbl_myuri) + 1;
+    msg->co.srcname = gbl_myuri;
     msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
@@ -690,7 +690,7 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
-        if (msg->co.srcname != gbl_myhostname) {
+        if (msg->co.srcname != gbl_myhostname && msg->co.srcname != gbl_myuri) {
             free(msg->co.srcname);
             msg->co.srcname = NULL;
             msg->co.srcnamelen = 0;
@@ -1017,7 +1017,7 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             msg->co.srcname = NULL;
         }
 
-        if (!fdb_is_dbname_in_whitelist(msg->co.srcdbname))
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcname))
             return -1;
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {

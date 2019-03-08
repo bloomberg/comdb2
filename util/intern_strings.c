@@ -75,11 +75,15 @@ char *internn(const char *str, int len)
 {
     char *s;
     char *out;
-    s = malloc(len + 1);
+    if (len > 1024)
+        s = malloc(len + 1);
+    else
+        s = alloca(len + 1);
     memcpy(s, str, len);
     s[len] = 0;
     out = intern(s);
-    free(s);
+    if (len > 1024)
+        free(s);
     return out;
 }
 

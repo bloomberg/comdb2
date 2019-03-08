@@ -15,7 +15,7 @@
  */
 
 /**
- * Access control for remote access
+ * Access control for remote access to a DB via a whitelist
  *
  */
 
@@ -34,5 +34,7 @@ int fdb_add_dbname_to_whitelist(const char *dbname);
  */
 int fdb_is_dbname_in_whitelist(const char *dbname);
 
+int fdb_del_dbname_to_whitelist(const char *dbname);
+void fdb_dump_whitelist();
 
 #endif
