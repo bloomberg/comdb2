@@ -93,11 +93,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
-    rc = mark_schemachange_over_tran(db->tablename, tran);
-    if (rc) {
-        sc_errf(s, "Failed to mark schema change over for %s\n", db->tablename);
-        goto tran_error;
-    }
     /* fragile, handle with care */
     oldname = db->tablename;
     rc = rename_db(db, newname);
