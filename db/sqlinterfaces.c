@@ -4258,7 +4258,8 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     sqlite3_stmt *stmt;
     const char *tail;
-    rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt, &tail);
+    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
+                                            &tail);
     if (rc != SQLITE_OK) {
         return rc;
     }
