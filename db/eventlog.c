@@ -43,7 +43,7 @@
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;                 // keep last 10 event log files
+static int eventlog_nkeep = 2; // keep only last 2 event log files
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
