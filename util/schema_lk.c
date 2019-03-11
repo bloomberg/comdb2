@@ -35,7 +35,7 @@ struct pthread_t_link {
 static LISTC_T(struct pthread_t_link) schema_rd_thds =
     LISTC_T_INITIALIZER(offsetof(struct pthread_t_link, lnk));
 
-static pthread_t schema_wr_thd = NULL;
+static pthread_t schema_wr_thd;
 #endif
 
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
