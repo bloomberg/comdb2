@@ -31,9 +31,6 @@
 
 #include <uuid/uuid.h>
 
-int gbl_osql_sess_max_retries =
-    10; /* set how many times we are willing to retry a session */
-
 static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
 static int clear_messages(osql_sess_t *sess);
@@ -682,8 +679,6 @@ int osql_session_testterminate(void *obj, void *arg)
 
 static int osql_poke_replicant(osql_sess_t *sess)
 {
-
-    int rc = 0;
     uuidstr_t us;
 
     ctrace("Poking %s from %s for rqid %llx %s\n", sess->offhost, gbl_mynode,
@@ -691,39 +686,25 @@ static int osql_poke_replicant(osql_sess_t *sess)
 
     if (sess->offhost) {
 
-        rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
-                                 NET_OSQL_POKE);
-
+        int rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
+                                     NET_OSQL_POKE);
         return rc;
     }
 
     /* checkup local listings */
-    if ((rc = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1)) ==
-        0) {
+    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
 
-        if (!sess->xerr.errval) {
-            /* ideally this should never happen, i.e.
-               a local request should be either dispatch
-               successfully or reported as failure, not disappear
-               JIC, here we mark it MIA
-             */
-            uuidstr_t us;
-            sess->xerr.errval = OSQL_NOOSQLTHR;
-            snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
-                     "Missing sql session %llx %s in local mode", sess->rqid,
-                     comdb2uuidstr(sess->uuid, us));
-            rc = -1;
-        }
+    if (found || sess->xerr.errval)
+        return 0;
 
-        /* TODO: clean this up -- this does nothing */
-        /* Decrement throttle for retry */
-        osql_bplog_session_is_done(sess->iq);
-
-    } else if (rc == 1) {
-        rc = 0; /* session exists */
-    }
-
-    return rc;
+    /* ideally this should never happen, i.e.  a local request should be
+     * either dispatch successfully or reported as failure, not disappear
+     * JIC, here we mark it MIA */
+    sess->xerr.errval = OSQL_NOOSQLTHR;
+    snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
+             "Missing sql session %llx %s in local mode", sess->rqid,
+             comdb2uuidstr(sess->uuid, us));
+    return -1;
 }
 
 /**

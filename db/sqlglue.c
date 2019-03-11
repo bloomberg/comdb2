@@ -4556,17 +4556,13 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
          * block processor on the master */
         clnt->dbtran.shadow_tran =
             trans_start_socksql(&iq, clnt->bdb_osql_trak);
-
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_socksql error\n", __func__);
            return SQLITE_INTERNAL;
         }
 
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
-        if (clnt->client_understands_query_stats)
-            osql_query_dbglog(thd, clnt->queryid);
-        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
-                       rc);
+        clnt->osql.sock_started = 0;
+
         break;
     }
 
@@ -7646,10 +7642,10 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
 
             if (short_version != clnt->fdb_state.version) {
-                clnt->fdb_state.err.errval = SQLITE_SCHEMA;
+                clnt->fdb_state.xerr.errval = SQLITE_SCHEMA;
                 /* NOTE: first word of the error string is the actual version,
                    expected on the other side; please do not change */
-                errstat_set_strf(&clnt->fdb_state.err,
+                errstat_set_strf(&clnt->fdb_state.xerr,
                                  "%llu Stale version local %u != received %u",
                                  version, short_version,
                                  clnt->fdb_state.version);
@@ -7901,6 +7897,15 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 
     cur->cursor_class = CURSORCLASS_REMOTE;
     cur->cursor_move = cursor_move_remote;
+
+    if (clnt->intrans) {
+        int rc = osql_sock_start_deferred(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to start sosql, rc=%d\n", __func__,
+                   rc);
+            return rc;
+        }
+    }
 
     /* set a transaction id if none is set yet */
     if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(fdb, cur->rootpage)) {
@@ -12553,7 +12558,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
                          mod->zName, thd->clnt->user, bdberr);
-                logmsg(LOGMSG_WARN, "%s\n", msg);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
                 errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
                 errstat_set_str(&thd->clnt->osql.xerr, msg);
                 return SQLITE_AUTH;

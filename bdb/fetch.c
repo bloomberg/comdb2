@@ -655,27 +655,24 @@ static int bdb_fetch_int_ll(
             return -1;
         }
 
-        if (return_dta)
-            *reqdtalen = 0;
-
         ixlen_full = sizeof(unsigned long long); /* len of a gmonid */
         keycontainsgenid = 0;
         ixrecnum = 0;
         lookahead = 0;
         dbp = NULL; /* will be set later */
-    } else          /* we are using an actual index */
-    {
+    } else {
+        /* we are using an actual index */
         if ((bdb_state->ixdta[ixnum]) && (return_dta == 1))
             havedta = 1;
-
-        if (return_dta)
-            *reqdtalen = 0;
 
         ixlen_full = bdb_state->ixlen[ixnum];
         keycontainsgenid = bdb_keycontainsgenid(bdb_state, ixnum);
         ixrecnum = bdb_state->ixrecnum[ixnum];
         dbp = bdb_state->dbp_ix[ixnum];
     }
+
+    if (return_dta)
+        *reqdtalen = 0;
 
     if (ixlen == -1)
         ixlen = ixlen_full;

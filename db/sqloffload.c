@@ -39,6 +39,7 @@
 #include "sqlinterfaces.h"
 #include "block_internal.h"
 #include "comdb2.h"
+#include "comdb2uuid.h"
 
 #include "osqlrepository.h"
 #include "osqlcheckboard.h"
@@ -667,8 +668,10 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
-        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %lu\n", clnt,
-               clnt->osql.rqid, pthread_self());
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
+               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+               pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();
@@ -718,7 +721,7 @@ extern int gbl_readonly_sc;
 
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
-    int bdberr;
+    int bdberr = 0;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;

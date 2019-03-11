@@ -2103,7 +2103,7 @@ extern int gbl_rowlocks;
 extern int comdb2_is_standalone(DB_ENV *dbenv);
 extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn);
 extern int comdb2_replicated_truncate(DB_ENV *dbenv, DB_LSN *lsn,
-                                      int is_master);
+                                      uint32_t flags);
 extern int comdb2_recovery_cleanup(DB_ENV *dbenv, DB_LSN *lsn, int is_master);
 
 int bdb_is_standalone(void *dbenv, void *in_bdb_state)
@@ -4828,22 +4828,15 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
                                                bdb_state->repinfo->master_host);
 }
 
-static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
-                             int *downgraded)
+static inline void bdb_set_read_only(bdb_state_type *bdb_state)
 {
-    int rc;
-    int outrc;
     bdb_state_type *child;
     int i;
 
-    outrc = 0;
-    if (downgraded)
-        *downgraded = 0;
-
     if (!bdb_state->repinfo->upgrade_allowed) {
-        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                             "completed yet)\n");
-        return 0;
+        logmsg(LOGMSG_DEBUG,
+               "%s: not allowed (bdb_open has not completed yet)\n", __func__);
+        return;
     }
 
     /* if we were passed a child, find his parent */
@@ -4860,6 +4853,29 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         }
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
+}
+
+static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
+                             int *downgraded)
+{
+    int rc;
+    int outrc;
+
+    outrc = 0;
+    if (downgraded)
+        *downgraded = 0;
+
+    if (!bdb_state->repinfo->upgrade_allowed) {
+        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
+                             "completed yet)\n");
+        return 0;
+    }
+
+    /* if we were passed a child, find his parent */
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    bdb_set_read_only(bdb_state);
 
     /* now become a client of the replication group */
     logmsg(LOGMSG_USER, "%s line %d calling rep_start as client with egen 0\n",
@@ -5037,6 +5053,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     if (op != UPGRADE) {
         wait_for_sc_to_stop("downgrade");
+        bdb_set_read_only(bdb_state);
     }
 
     watchdog_set_alarm(timeout);

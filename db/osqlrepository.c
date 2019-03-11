@@ -335,6 +335,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid,
         osql_sess_addclient(sess);
     }
 
+    /* NB: if session was not found we unlock */
     if (!(sess && keep_repository_lock)) {
         Pthread_rwlock_unlock(&theosql->hshlck);
     }
@@ -522,7 +523,7 @@ int osql_repository_cancelled(void)
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
+bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 {
     osql_repository_t *theosql = get_theosql();
     if (theosql == NULL) {

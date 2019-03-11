@@ -280,6 +280,8 @@ int comdb2SystblInit(
       rc = systblBlkseqInit(db);
   if (rc == SQLITE_OK)
       rc = systblFingerprintsInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblScStatusInit(db);
 #endif
   return rc;
 }

@@ -4,6 +4,10 @@ bash -n "$0" | exit 1
 set -e
 set -x
 
+if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
+    CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 
+fi
+
 # Debug variable
 debug=0
 
@@ -18,13 +22,13 @@ fi
 nins=0
 
 
-if echo $DBNAME | grep "snapshotgenerated" ; then
+if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
        echo "FAILURE: DB is not running in snapshot isolation mode"
        exit 1
     fi
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
 
 
@@ -208,7 +212,7 @@ delete_records()
 assertres ()
 {
     if [ $# != 2 ] ; then 
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2
@@ -303,8 +307,8 @@ if ! diff badsel.out badsel.exp ; then
     failexit "Expected failure when selecting nonexistent table"
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins.txt
 echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins.exp
 if ! diff  dupins.txt dupins.exp; then
@@ -373,44 +377,44 @@ set -e
 
 
 # https://github.com/bloomberg/comdb2/issues/1080
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t3"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3 (i int unique, j int)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1, 1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table if exists t3"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table t3 (i int unique, j int)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1, 1)"
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i'`" "1	1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set j = j+1 where i = 1"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update t3 set j = j+1 where i = 1"
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i'`" "1	2"
 echo "begin 
 insert into t3 values(2, 1)
 insert into t3 values(3, 1)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i' | xargs echo `" "1 2 2 1 3 1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t3"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table t3"
 
 
 #make sure insert with blob works
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t4"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t4 (i int unique, j blob(2))"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t4 values(1, x'aabbccdd')"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table if exists t4"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table t4 (i int unique, j blob(2))"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into t4 values(1, x'aabbccdd')"
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i'`" "1	x'aabbccdd'"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t4 set j = x'aabbccee' where i = 1"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update t4 set j = x'aabbccee' where i = 1"
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i'`" "1	x'aabbccee'"
 echo "begin
 insert into t4 values(2, x'aaaaaaaa')
 insert into t4 values(3, x'bbbbbbbb')
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
 assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i' | xargs echo `" "1 xaabbccee 2 xaaaaaaaa 3 xbbbbbbbb"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t4"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table t4"
 
 
 # make sure inplace update works
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t5"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t5 (i int unique)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t5 values(1)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "drop table if exists t5"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table t5 (i int unique)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into t5 values(1)"
 out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
 if [[ "$out" != "0" ]]; then
     failexit "Insert should have update id 0"
 fi
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t5 set i = 1"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update t5 set i = 1"
 out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
 if [[ "$out" == "0" ]]; then
     failexit "Inplace update should update updateid to nonzero"
@@ -441,15 +445,35 @@ test_t1() {
 
 
 	echo "Now call task that uses cdb2api to ins/upd/del"
-	${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
+	CDB2API_CALLER=${TESTSBUILDDIR}/cdb2api_caller 
+    if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
+        CDB2API_CALLER="${DEBUGGER} ${CDB2API_CALLER}"
+    fi
+    $CDB2API_CALLER $dbnm > cdb2api_caller.out
     do_verify
 
-	cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+	$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" &> select_all.out
+}
+
+
+test_bulk() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
+    CNT=5000
+    echo -n "insert into t6 values(1,1,1)" > gg.in
+    for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
+
+    for j in `seq 1 2` ; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default -f gg.in
+        assertcnt t6 $CNT
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
+    done
 }
 
 test_t1
+test_bulk
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
+
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1

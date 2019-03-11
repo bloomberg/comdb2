@@ -129,6 +129,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_atomic.h"
 #include "cron.h"
 #include "metrics.h"
+#include <build/db.h>
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -748,6 +749,7 @@ int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
 int64_t gbl_temptable_spills = 0;
+int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -5031,6 +5033,9 @@ static void register_all_int_switches()
         "logical_live_sc",
         "Enables online schema change with logical redo. (Default: OFF)",
         &gbl_logical_live_sc);
+    register_int_switch("osql_odh_blob",
+                        "Send ODH'd blobs to master. (Default: ON)",
+                        &gbl_osql_odh_blob);
 }
 
 static void getmyid(void)
@@ -5565,10 +5570,12 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     return rc;
 }
 
-int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
+int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)
 {
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
+    int is_master = (flags & DB_REP_TRUNCATE_MASTER);
+    int wait_seqnum = (flags & DB_REP_TRUNCATE_ONLINE);
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
@@ -5577,7 +5584,7 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
          * incremented it's generation number before truncating.  The newmaster
          * message with the higher generation forces the replicants into
          * REP_VERIFY_MATCH */
-        send_newmaster(thedb->bdb_env);
+        send_newmaster(thedb->bdb_env, wait_seqnum);
     }
 
     /* Run logical recovery */
