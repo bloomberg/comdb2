@@ -2148,7 +2148,7 @@ Table *sqlite3ResultSetOfSelect(Parse *pParse, Select *pSelect){
 
   savedFlags = db->flags;
   if( (db->flags & SQLITE_FullColNames)!=0 ){
-    db->flags &= ~SQLITE_FullColNames;
+    db->flags &= ~(u64)SQLITE_FullColNames;
     db->flags |= SQLITE_ShortColNames;
   }
   sqlite3SelectPrep(pParse, pSelect, 0);
