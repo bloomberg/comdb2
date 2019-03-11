@@ -49,8 +49,6 @@ typedef struct {
         int count;                                                             \
     }
 
-#define LINKC_T_INITIALIZER {0,0}
-
 #define LINKC_T(type)                                                          \
     struct {                                                                   \
         type *next;                                                            \
@@ -78,9 +76,6 @@ extern void listc_free(listc_t *l);
 /* initialize listc_t struct.  using offsetof(), specify offset of linkc_t
  * struct */
 extern void listc_init(void *list, int offset);
-
-/* find in list. returns item found*/
-extern int listc_is_present(void *list, void *inobj);
 
 /* remove from list. returns item removed*/
 extern void *listc_rfl(void *list, void *obj);
