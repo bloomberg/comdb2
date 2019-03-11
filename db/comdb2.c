@@ -4623,8 +4623,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
-                                struct errstat *err)
+static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -4645,8 +4644,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     return NULL;
 }
 
-static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
-                                  void *arg4, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
 
     int tm;

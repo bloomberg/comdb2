@@ -44,4 +44,11 @@ int logical_cron_init(const char *name, struct errstat *err);
 char* logical_cron_update_sql(const char *name,
         long long value, bool increment);
 
+/**
+ * Retrieve the persistent value of a cron counter 
+ *
+ */
+unsigned long long logical_cron_read_persistent(const char *name,
+        struct errstat *err);
+
 #endif

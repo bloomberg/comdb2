@@ -9303,15 +9303,13 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     return p_buf_end;
 }
 
-static void *uprec_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                                struct errstat *err)
+static void *uprec_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
     logmsg(LOGMSG_INFO, "Starting upgrade record cron job\n");
     return NULL;
 }
 
-static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                              struct errstat *err)
+static void *uprec_cron_event(struct cron_event *_, struct errstat *err)
 {
     int rc, nwakeups;
     struct buf_lock_t *p_slock;

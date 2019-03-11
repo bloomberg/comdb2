@@ -955,6 +955,7 @@ struct sql_thread {
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
+    int selective_rootpages;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 
@@ -1122,5 +1123,9 @@ struct query_stats {
 };
 int get_query_stats(struct query_stats *stats);
 void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *, struct reqlogger *);
+
+long long run_sql_return_ll(const char *query, struct errstat *err);
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
+        struct errstat *err);
 
 #endif

@@ -16,10 +16,12 @@
 
 #include "sql.h"
 #include "views.h"
+#include "locks.h"
 #include "logical_cron.h"
+#include "thread_malloc.h"
 
 typedef struct logical_state {
-    unsigned long long clock;
+    long long clock;
 } logical_state_t;
 
 /* this should be called under sched->mtx */
@@ -37,21 +39,33 @@ static int logical_is_exec_time(sched_if_t *impl, cron_event_t *event)
 
 static int logical_wait_next_event(sched_if_t *impl, cron_event_t *event)
 {
+    logical_state_t *state = (logical_state_t *)impl->state;
+    struct errstat err = {0};
     cron_sched_t *sched = impl->sched;
     struct timespec ts;
+    int rc;
 
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += impl->default_sleep_idle;
     ts.tv_nsec = 0;
 
-    return cron_timedwait(sched, &ts);
+    rc = cron_timedwait(sched, &ts);
+
+    /* refresh the counter here */
+    state->clock = logical_cron_read_persistent(impl->name, &err);
+    if (errstat_get_rc(&err) != VIEW_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s error rc %d \"%s\"\n", __func__, errstat_get_rc(&err),
+            errstat_get_str(&err));
+    }
+
+    return rc;
 }
 
 /* assert: read lock on crons.rwlock */
 void logical_cron_incr(sched_if_t *impl)
 {
     cron_sched_t *sched = impl->sched;
-    logical_state_t *state = (logical_state_t *)&impl->state;
+    logical_state_t *state = (logical_state_t *)impl->state;
     cron_lock(sched);
     state->clock++;
     cron_unlock(sched);
@@ -61,7 +75,7 @@ void logical_cron_incr(sched_if_t *impl)
 void logical_cron_set(sched_if_t *impl, unsigned long long val)
 {
     cron_sched_t *sched = impl->sched;
-    logical_state_t *state = (logical_state_t *)&impl->state;
+    logical_state_t *state = (logical_state_t *)impl->state;
     cron_lock(sched);
     state->clock = val;
     cron_unlock(sched);
@@ -86,14 +100,42 @@ logical_cron_create(sched_if_t *intf, char *(*describe)(sched_if_t *),
 static char* logical_cron_describe(sched_if_t *impl)
 {
     char msg[256];
-    snprintf(msg, sizeof(msg), "Logical cron %s", impl->name);
+    snprintf(msg, sizeof(msg), "Logical cron %s clock %lld", impl->name,
+            ((logical_state_t*)impl->state)->clock);
     return strdup(msg);
 }
 
-static void *logical_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
-                                   void *arg3, struct errstat *err)
+#define LOGICAL_CRON_SYSTABLE "comdb2_logical_cron"
+#define LOGICAL_CRON_THREAD_MEMORY 1048576
+
+static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)
 {
-    logmsg(LOGMSG_INFO, "Starting logical cron %s\n", (char*)arg1);
+    sched_if_t *schedif = event->schedif;
+    logical_state_t *state = schedif->state;
+    struct sql_thread *thd;
+    const char *tablename = LOGICAL_CRON_SYSTABLE;
+
+    logmsg(LOGMSG_INFO, "Starting logical cron %s\n", (char*)event->arg1);
+
+    sql_mem_init(NULL);
+    thread_memcreate(LOGICAL_CRON_THREAD_MEMORY);
+
+    /* logical cron runs sql against cron_logical_cron */
+    thd = start_sql_thread();
+    if (!thd) {
+        return NULL;
+    }
+
+    /* construct rootpage cache that includes only logical_cron_systable */
+    get_copy_rootpages_selectfire(thd, 1, &tablename, NULL, NULL, 1);
+
+    /* check to see if there is a persistent value for this scheduler */
+    state->clock = logical_cron_read_persistent(schedif->name, err);
+    if (errstat_get_rc(err) != VIEW_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s error rc %d \"%s\"\n", __func__, errstat_get_rc(err),
+            errstat_get_str(err));
+    }
+
     return NULL;
 }
 
@@ -119,12 +161,12 @@ int logical_cron_init(const char *sched_name, struct errstat *err)
         return VIEW_ERR_GENERIC;
     }
     intf.name = strdup(sched_name);
-
+    
     comdb2uuid(source_id);
+    name = strdup(sched_name);
 
     /* create a logical schedule */
-    name = strdup(sched_name);
-    sched = cron_add_event(NULL, sched_name, 0, logical_cron_kickoff, 
+    sched = cron_add_event(NULL, sched_name, INT_MIN, logical_cron_kickoff, 
                 name, NULL,  NULL, &source_id, err, &intf);
     if (!sched) {
         logmsg(LOGMSG_USER, "failed to create logical scheduler %s!\n", sched_name);
@@ -136,34 +178,66 @@ int logical_cron_init(const char *sched_name, struct errstat *err)
     return VIEW_NOERR;
 }
 
-#define LOGICAL_CRON_SYSTABLE "comdb2_logical_cron"
 #define LOGICAL_CRON_SYSTABLE_SCHEMA  \
-    "create table comdb2_logical_cron (name cstring(128) primary key, value int, pad cstring(376) null) "
+    "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
 
-static int _check_systable(tran_type *tran, struct errstat *err)
+unsigned long long logical_cron_read_persistent(const char *name, struct errstat *err)
 {
-    struct dbtable *db = get_dbtable_by_name_locked(tran, LOGICAL_CRON_SYSTABLE);
-    if (!db) { 
+    struct dbtable *db;
+    long long counter = 0LL;
+    char *query;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
+    if (!thd)   
+        return counter;
+
+    db = get_dbtable_by_name(LOGICAL_CRON_SYSTABLE);
+    /* if table doesn't exist, return */
+    if(!db) {
         errstat_set_rcstrf(err, VIEW_ERR_GENERIC, "Table missing \"%s\"",
                 LOGICAL_CRON_SYSTABLE);
         logmsg(LOGMSG_ERROR, "Table missing \"%s\"\n", LOGICAL_CRON_SYSTABLE);
         logmsg(LOGMSG_ERROR, "Create it using \"%s\"\n", LOGICAL_CRON_SYSTABLE_SCHEMA);
-        return VIEW_ERR_GENERIC;
+        goto done;
     }
 
-    return VIEW_NOERR;
-}
+    query = sqlite3_mprintf("sElEct value frOm %s where name=\'%s\'",
+            LOGICAL_CRON_SYSTABLE, name);
+    if (!query) {
+        errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "%s malloc error\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s malloc error\n", __func__);
+        goto done;
+    }
 
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    counter = run_sql_thd_return_ll(query, thd, err);
+    if (counter == LLONG_MIN)
+        counter = 0;
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+
+    sqlite3_free(query);
+
+done:
+    return counter; 
+}
 
 char* logical_cron_update_sql(const char *name, long long value, bool increment)
 {
     char *query;
 
     if (increment)
-        query = sqlite3_mprintf("UPDATE %s SET vAlUE = vAlUE+1 where name = '%s'",
-                LOGICAL_CRON_SYSTABLE, name);
-    else
-        query = sqlite3_mprintf("UPDATE %s SET vAlUE = %lld  where name = '%s'",
-                LOGICAL_CRON_SYSTABLE, value, name);
+        query = sqlite3_mprintf(
+           "INSERT INTO %s (name, value) values ('%s', %lld) ON CONFLICT (name) DO "
+           "UPDATE SET value="
+           "coalesce((select value from %s where name='%s'), 0)"
+           "+1 where name = '%s'",
+           LOGICAL_CRON_SYSTABLE, name, value,
+           LOGICAL_CRON_SYSTABLE, name, name);
+    else 
+        query = sqlite3_mprintf(
+           "INSERT INTO %s (name, value) values ('%s', %lld) ON CONFLICT (name) DO "
+           "UPDATE SET value=%lld where name = '%s'",
+           LOGICAL_CRON_SYSTABLE, name, value,
+           value, name);
     return query;
 }

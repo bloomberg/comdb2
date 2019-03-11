@@ -92,25 +92,20 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
 static int _extract_shardname_index(const char *tblName,
                                     const char *originalName, int *span,
                                     int testing);
-static int _convert_time(char *sql);
 static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
                                   struct errstat *),
                         struct errstat *err);
 static char *_describe_row(const char *tblname, const char *prefix,
                            enum views_trigger_op op_type, struct errstat *err);
-static void *timepart_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
-                                   void *arg3, struct errstat *err);
+static void *timepart_cron_kickoff(struct cron_event *_, struct errstat *err);
 static int _next_shard_exists(timepart_view_t *view, char *newShardName,
                               int newShardNameLen);
 static void _remove_view_entry(timepart_views_t *views, int i);
 
-void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3, 
-                        struct errstat *err);
-void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                        struct errstat *err);
-void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                        struct errstat *err);
+void *_view_cron_phase1(struct cron_event *event, struct errstat *err);
+void *_view_cron_phase2(struct cron_event *event, struct errstat *err);
+void *_view_cron_phase3(struct cron_event *event, struct errstat *err);
 static int _views_rollout_phase1(timepart_view_t *view, char **newShardName,
                                  struct errstat *err);
 static int _views_rollout_phase2(timepart_view_t *view,
@@ -263,6 +258,26 @@ int timepart_is_timepart(const char *name, int lock)
    return rc;
 }
 
+static int _get_preemptive_rolltime(timepart_view_t *view)
+{
+    if (IS_TIMEPARTITION(view->period)) {
+        if (unlikely(view->period == VIEW_PARTITION_TEST2MIN))
+            return 30;
+        return thedb->timepart_views->preemptive_rolltime;
+    }
+    return 0;
+}
+
+static int _get_delete_lag(timepart_view_t *view)
+{
+    if (IS_TIMEPARTITION(view->period)) {
+        if (unlikely(view->period == VIEW_PARTITION_TEST2MIN))
+            return 5;
+        return thedb->timepart_views->rollout_delete_lag;
+    }
+    return 0;
+}
+
 /**
  * Add timepart view, this is a schema change driven event
  *
@@ -271,7 +286,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
                       timepart_view_t *view, struct errstat *err)
 {
     char next_existing_shard[MAXTABLELEN + 1];
-    int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
+    int preemptive_rolltime = _get_preemptive_rolltime(view);
     timepart_view_t *oldview;
     char *tmp_str;
     int rc;
@@ -283,11 +298,6 @@ int timepart_add_view(void *tran, timepart_views_t *views,
             errstat_set_rc(err, rc = VIEW_ERR_GENERIC);
             goto done;
         }
-    }
-
-
-    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
-        preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
     Pthread_rwlock_wrlock(&views_lk);
@@ -838,73 +848,6 @@ static int _view_check_sharding(timepart_view_t *view, struct errstat *err)
     return VIEW_NOERR;
 }
 
-int _some_callback(void *theresult, int ncols, char **vals, char **cols)
-{
-    *(int *)theresult = atoi(vals[0]);
-
-    return SQLITE_OK;
-}
-
-/* some ripoff from sqlanalyze.c */
-static int _convert_time(char *sql)
-{
-    sqlite3 *sqldb;
-    int rc;
-    int crc;
-    int got_curtran = 0;
-    char *msg;
-    struct sql_thread *thd;
-    int ret = INT_MAX;
-    ;
-
-    struct sqlclntstate client;
-    reset_clnt(&client, NULL, 1);
-    strncpy(client.tzname, "UTC", sizeof(client.tzname));
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.sql = sql;
-
-    start_sql_thread();
-
-    thd = pthread_getspecific(query_info_key);
-    sql_get_query_id(thd);
-    client.debug_sqlclntstate = pthread_self();
-    thd->clnt = &client;
-
-    if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to open a new curtran, rc=%d\n", __func__, rc);
-        goto cleanup;
-    }
-    got_curtran = 1;
-
-    if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial rc %d\n", __func__, rc);
-        goto cleanup;
-    }
-
-    if ((rc = sqlite3_exec(sqldb, sql, _some_callback, &ret, &msg)) != 0) {
-        logmsg(LOGMSG_ERROR, "query:%s failed rc %d: %s\n", sql, rc,
-               msg ? msg : "<unknown error>");
-        goto cleanup;
-    }
-    thd->clnt = NULL;
-
-    if ((crc = sqlite3_close(sqldb)) != 0)
-        logmsg(LOGMSG_ERROR, "close rc %d\n", crc);
-
-cleanup:
-    if (got_curtran) {
-        crc = put_curtran(thedb->bdb_env, &client);
-        if (crc)
-            logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
-    }
-
-    thd->clnt = NULL;
-    done_sql_thread();
-    return ret;
-}
-
-
 static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
                                   struct errstat *),
@@ -966,12 +909,14 @@ done:
  * Phase 1 of the rollout, create the next table
  *
  */
-void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                        struct errstat *err)
+void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     timepart_view_t *view;
-    char *name = (char *)arg1;
+    char *arg1 = (char*)event->arg1;
+    char *arg2 = (char*)event->arg2;
+    char *arg3 = (char*)event->arg3;
+    char *name = arg1;
     char *pShardName = NULL;
     int rc = 0;
     char *tmp_str;
@@ -1013,7 +958,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
-        if(unlikely(_validate_view_id(view, source_id, "phase 1", err))) {
+        if(unlikely(_validate_view_id(view, event->source_id, "phase 1", err))) {
             /*TODO*/
             goto done;
         }
@@ -1057,7 +1002,7 @@ done:
                     free(pShardName);
             }
         } else {
-            _handle_view_event_error(view, source_id, err);
+            _handle_view_event_error(view, event->source_id, err);
             if (pShardName)
                 free(pShardName);
         }
@@ -1071,15 +1016,10 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
                                  int timeNextRollout, char *removeShardName,
                                  const char *name, struct errstat *err)
 {
-    int delete_lag = thedb->timepart_views->rollout_delete_lag;
-    int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
+    int delete_lag = _get_delete_lag(view);
+    int preemptive_rolltime = _get_preemptive_rolltime(view);
     char *tmp_str;
     int tm;
-
-    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
-        preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
-        delete_lag = 5;
-    }
 
     if (removeShardName) {
         /* we need to schedule a purge */
@@ -1121,12 +1061,14 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
  * Phase 2 of the rollout, add the table to the view
  *
  */
-void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3, 
-                        struct errstat *err)
+void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     timepart_view_t *view;
-    char *name = (char *)arg1;
+    char *arg1 = (char*)event->arg1;
+    char *arg2 = (char*)event->arg2;
+    char *arg3 = (char*)event->arg3;
+    char *name = arg1;
     char *pShardName = (char *)arg2;
     int run = 0;
     int timeNextRollout = 0;
@@ -1169,7 +1111,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
-        if(unlikely(_validate_view_id(view, source_id, "phase 2", err))) {
+        if(unlikely(_validate_view_id(view, event->source_id, "phase 2", err))) {
             rc = VIEW_ERR_BUG;
             goto done;
         }
@@ -1224,7 +1166,7 @@ done:
                                                   removeShardName, name, err);
             return NULL;
         } else {
-            _handle_view_event_error(view, source_id, err);
+            _handle_view_event_error(view, event->source_id, err);
         }
     }
 
@@ -1235,11 +1177,13 @@ done:
  * Phase 3 of the rollout, add the table to the view
  *
  */
-void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                        struct errstat *err)
+void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
-    char *pShardName = (char *)arg1;
+    char *arg1 = (char*)event->arg1;
+    char *arg2 = (char*)event->arg2;
+    char *arg3 = (char*)event->arg3;
+    char *pShardName = arg1;
     int run = 0;
     int rc;
 
@@ -1552,8 +1496,7 @@ malloc:
     return NULL;
 }
 
-static void *timepart_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
-                                   void *arg3, struct errstat *err)
+static void *timepart_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
     logmsg(LOGMSG_INFO, "Starting views cron job\n");
     return NULL;
@@ -1774,7 +1717,7 @@ static int _get_biggest_shard_number(timepart_view_t *view, int *oldest,
 /* done under mutex */
 static int _view_restart(timepart_view_t *view, struct errstat *err)
 {
-    int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
+    int preemptive_rolltime = _get_preemptive_rolltime(view);
     char next_existing_shard[MAXTABLELEN + 1];
     char evicted_shard[MAXTABLELEN + 1];
     struct dbtable *evicted_db;
@@ -1788,10 +1731,6 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
 
     if (view->period == VIEW_PARTITION_MANUAL) {
         logical_cron_init(view->name, err);
-    }
-
-    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
-        preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
     evicted_shard0 = 0;
@@ -2142,6 +2081,7 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
     char *fmt;
     char *cast_str = NULL;
     int cast_val = 0;
+    struct errstat err = {0};
 
     fmt = (back_in_time) ? fmt_backward : fmt_forward;
 
@@ -2192,7 +2132,11 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
 
     /* note: this is run when a new rollout is decided.  It doesn't have
     to be fast, or highly optimized (like running directly datetime functions */
-    timeNextRollout = _convert_time(query);
+    timeNextRollout = run_sql_return_ll(query, &err);
+    if (errstat_get_rc(&err) != VIEW_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s error rc %d \"%s\"\n", __func__, errstat_get_rc(&err),
+            errstat_get_str(&err));
+    }
 
     return timeNextRollout;
 }

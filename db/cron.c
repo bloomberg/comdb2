@@ -138,13 +138,14 @@ oom:
 }
 
 static void _set_event(cron_event_t *event, int epoch, FCRON func, void *arg1,
-                       void *arg2, void *arg3)
+                       void *arg2, void *arg3, cron_sched_t *sched)
 {
     event->epoch = epoch;
     event->func = func;
     event->arg1 = arg1;
     event->arg2 = arg2;
     event->arg3 = arg3;
+    event->schedif = &sched->impl;
 }
 
 static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
@@ -205,7 +206,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     }
 
     /* A new event is born */
-    _set_event(event, epoch, func, arg1, arg2, arg3);
+    _set_event(event, epoch, func, arg1, arg2, arg3, sched);
 
     if (source_id) {
         comdb2uuidcpy(event->source_id, *source_id);
@@ -272,8 +273,7 @@ static void *_cron_runner(void *arg)
                    */
                 sched->running = 1;
                 Pthread_mutex_unlock(&sched->mtx);
-                event->func(event->source_id, event->arg1, event->arg2,
-                            event->arg3, &xerr);
+                event->func(event, &xerr);
                 Pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;
 
@@ -344,7 +344,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
         if (comdb2uuidcmp(event->source_id, source_id) == 0) {
 
             /* we can process this */
-            _set_event(event, epoch, func, arg1, arg2, arg3);
+            _set_event(event, epoch, func, arg1, arg2, arg3, sched);
 
             /* remote the event, and reinsert it in the new position */
             listc_rfl(&sched->events, event);

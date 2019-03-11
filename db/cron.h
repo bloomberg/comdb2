@@ -46,8 +46,9 @@ typedef struct cron_sched cron_sched_t;
 enum cron_type { CRON_TIMEPART = 0, CRON_LOGICAL = 1 };
 
 /* this is the callback prototype for each event */
-typedef void *(*FCRON)(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                       struct errstat *err);
+struct cron_event;
+struct sched_if;
+typedef void *(*FCRON)(struct cron_event *event, struct errstat *err); 
 
 struct cron_event {
     int epoch;  /* when this event should run */
@@ -57,6 +58,7 @@ struct cron_event {
     void *arg2;
     void *arg3;
     uuid_t source_id; /* source id, if any, used to map events to sources */
+    struct sched_if *schedif; /* implicit scheduler */
     LINKC_T(struct cron_event) lnk;
 };
 typedef struct cron_event cron_event_t;

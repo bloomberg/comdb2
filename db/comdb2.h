@@ -2504,6 +2504,9 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
                               int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
+int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames, const char **names,
+        struct master_entry **oldentries, int *oldnentries, int lock);
+void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents, int nents);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();
