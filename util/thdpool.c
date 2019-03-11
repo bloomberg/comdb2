@@ -615,6 +615,7 @@ static inline void free_work_persistent_info(struct thd *thd,
 
 static void *thdpool_thd(void *voidarg)
 {
+    int check_exit = 0;
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
     void *thddata = NULL;
@@ -650,6 +651,11 @@ static void *thdpool_thd(void *voidarg)
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
+
+            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > pool->maxnthd)
+                check_exit = 1;
+            else
+                check_exit = 0;
 
             if (pool->wait && pool->waiting_for_thread)
                 Pthread_cond_signal(&pool->wait_for_thread);
@@ -725,6 +731,21 @@ static void *thdpool_thd(void *voidarg)
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
+        if (check_exit) {
+            LOCK(&pool->mutex)
+            {
+                if (pool->maxnthd > 0 &&
+                    listc_size(&pool->thdlist) > pool->maxnthd) {
+                    listc_rfl(&pool->thdlist, thd);
+                    if (thd->on_freelist)
+                        abort();
+                    pool->num_exits++;
+                    errUNLOCK(&pool->mutex);
+                    goto thread_exit;
+                }
+            }
+            UNLOCK(&pool->mutex);
+        }
 
         // before acquiring next request, yield
         comdb2bma_yield_all();

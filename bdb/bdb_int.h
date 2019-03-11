@@ -382,6 +382,8 @@ struct tran_tag {
      */
     unsigned long long startgenid;
 
+    unsigned int trigger_epoch;
+
     /* For logical transactions: a logical transaction may have a (one and
        only one) physical transaction in flight.  Latch it here for debugging
        and sanity checking */
@@ -437,6 +439,8 @@ struct tran_tag {
 
     /* Set to 1 if this txn touches a logical live sc table */
     int force_logical_commit;
+    /* Tables that this tran touches (for logical redo sc) */
+    hash_t *dirty_table_hash;
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;
@@ -785,6 +789,12 @@ struct seen_blkseq {
 
 struct temp_table;
 
+struct sc_redo_lsn {
+    DB_LSN lsn;
+    u_int32_t txnid;
+    LINKC_T(struct sc_redo_lsn) lnk;
+};
+
 struct bdb_state_tag {
     pthread_attr_t pthread_attr_detach;
     seqnum_info_type *seqnum_info;
@@ -1022,6 +1032,9 @@ struct bdb_state_tag {
     int hellofd;
 
     int logical_live_sc;
+    pthread_mutex_t sc_redo_lk;
+    pthread_cond_t sc_redo_wait;
+    LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
 /* define our net user types */
@@ -1223,7 +1236,7 @@ int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
 int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
                    DBT *data, uint8_t *ver, u_int32_t flags);
 int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
-                 DBT *key, DBT *data, u_int32_t flags);
+                 DBT *key, DBT *data, u_int32_t flags, int odhready);
 
 int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
                   DBT *data, u_int32_t flags);
@@ -1249,6 +1262,11 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
+
+/* This is used by */
+int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
+                         size_t fromlen, void *to, size_t tolen,
+                         struct odh *odh, void **freeptr);
 
 int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
                           size_t fromlen);
@@ -1305,17 +1323,19 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long genid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data);
 int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                tran_type *tran, int dtafile, int dtastripe, DBT *dbt_key,
-               DBT *dbt_data, int flags);
+               DBT *dbt_data, int flags, int odhready);
 
 int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                unsigned long long *newgenid, DB *dbp, tran_type *tran,
                int dtafile, int dtastripe, int participantstripid,
-               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out);
+               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out,
+               int odhready);
 
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
                     unsigned long long oldgenid, unsigned long long newgenid,
                     DB *dbp, tran_type *tran, int dtafile,
-                    int participantstripid, int use_new_genid, DBT *dta);
+                    int participantstripid, int use_new_genid, DBT *dta,
+                    int odhready);
 
 int ll_dta_upd_blob_w_opt(bdb_state_type *bdb_state, int rrn,
                           unsigned long long oldgenid,
@@ -1345,14 +1365,14 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *tran,
                  DBT *dbt_data);
 int phys_dta_add(bdb_state_type *bdb_state, tran_type *tran,
                  unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
-                 DBT *dbt_key, DBT *dbt_data);
+                 DBT *dbt_key, DBT *dbt_data, int odhready);
 
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
                              tran_type **outtran, int force_commit);
 int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  unsigned long long oldgenid, unsigned long long *newgenid,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
-                 DBT *verify_dta, DBT *dta);
+                 DBT *verify_dta, DBT *dta, int odhready);
 
 int phys_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                  unsigned long long oldgenid, unsigned long long genid,
@@ -1818,6 +1838,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
 
 void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 struct ack_info_t;
@@ -1868,4 +1889,7 @@ void osql_cleanup_netinfo(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
+int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
+                                  DBT *data, DBT *data2, int updateid,
+                                  void **freeptr, void *stackbuf, int odhready);
 #endif /* __bdb_int_h__ */

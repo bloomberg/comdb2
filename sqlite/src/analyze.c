@@ -1112,7 +1112,7 @@ static void statGet(
       scale = (int)((p->nActualRow / (double)p->nRow) + 0.5);
     }
     if( eCall!=STAT_GET_ROW ){
-      char *zRet = sqlite3MallocZero( p->nCol*25 );
+      char *zRet = sqlite3MallocZero(p->nCol * 25);
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1164,7 +1164,7 @@ static void statGet(
     if( IsStat3 ){
       sqlite3_result_int64(context, (i64)aCnt[0]);
     }else{
-      char *zRet = sqlite3MallocZero( p->nCol*25 );
+      char *zRet = sqlite3MallocZero(p->nCol * 25);
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1308,7 +1308,6 @@ static void analyzeOneTable(
     int addrRewind;               /* Address of "OP_Rewind iIdxCur" */
     int addrNextRow;              /* Address of "next_row:" */
     const char *zIdxName;         /* Name of the index */
-    int *aGotoChng;               /* Array of jump instruction addresses */
     int nColTest;                 /* Number of columns to test for changes */
 
     if( pOnlyIdx && pOnlyIdx!=pIdx ) continue;
@@ -1322,8 +1321,6 @@ static void analyzeOneTable(
       }
     }
     nColTest = nCol;
-    aGotoChng = sqlite3DbMallocRaw(db, sizeof(int)*(nCol+1));
-    if( aGotoChng==0 ) continue;
     if( !HasRowid(pTab) && IsPrimaryKeyIndex(pIdx) ){
       zIdxName = pTab->zName;
     }else{

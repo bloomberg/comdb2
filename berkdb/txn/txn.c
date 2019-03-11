@@ -789,13 +789,15 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 {
 	int ret, idx, count;
 	LTDESC *lt, *lttemp;
-	DB_LTRAN *list;
+	DB_LTRAN *list = NULL;
 
 	ret = idx = 0;
-	*rlist = NULL;
 
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	count = listc_size(&dbenv->active_ltrans);
+	if (count == 0)
+		goto done;
+
 	if ((ret = __os_malloc(dbenv, count * sizeof(DB_LTRAN), &list)) != 0)
 		goto err;
 
@@ -806,6 +808,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 		idx++;
 	}
 
+done:
 	*rlist = list;
 	*rcount = count;
 

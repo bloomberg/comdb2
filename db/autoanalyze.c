@@ -262,6 +262,8 @@ void stat_auto_analyze(void)
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME));
     logmsg(LOGMSG_USER, "SAVE COUNTERS FREQ: %d \n",
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ));
+    logmsg(LOGMSG_USER, "REQUEST MODE: %s\n",
+           YESNO(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_REQUEST_MODE)));
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
@@ -401,17 +403,34 @@ void *auto_analyze_main(void *unused)
                        "> min_percent %d\n",
                        new_aa_percnt, min_percent);
 
-            ctrace("AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
-                   "run time %s\n",
-                   tbl->tablename, tbl->aa_saved_counter, delta,
-                   ctime(&tbl->aa_lastepoch));
-            auto_analyze_running = true; // will be reset by
-                                         // auto_analyze_table()
-            pthread_t analyze;
-            // will be freed in auto_analyze_table()
-            char *tblname = strdup(tbl->tablename);
-            pthread_create(&analyze, &gbl_pthread_attr_detached,
-                           auto_analyze_table, tblname);
+            // In AA_REQUEST_MODE, a message is printed to stdout that another
+            // task can watch for and schedule analyze at a time of its own
+            // choosing
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_REQUEST_MODE)) {
+                ctrace("AUTOANALYZE: Requesting analyze be run for Table %s, "
+                       "counters (%d, %d); last "
+                       "run time %s\n",
+                       tbl->tablename, tbl->aa_saved_counter, delta,
+                       ctime(&tbl->aa_lastepoch));
+
+                logmsg(LOGMSG_USER,
+                       "AUTOANALYZE: Requesting analyze "
+                       "be run for table: %s\n",
+                       tbl->tablename);
+            } else {
+                ctrace(
+                    "AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
+                    "run time %s\n",
+                    tbl->tablename, tbl->aa_saved_counter, delta,
+                    ctime(&tbl->aa_lastepoch));
+                auto_analyze_running = true; // will be reset by
+                                             // auto_analyze_table()
+                pthread_t analyze;
+                // will be freed in auto_analyze_table()
+                char *tblname = strdup(tbl->tablename);
+                pthread_create(&analyze, &gbl_pthread_attr_detached,
+                               auto_analyze_table, tblname);
+            }
         } else if (delta > 0 && save_freq > 0 &&
                    (call_counter % save_freq) ==
                        0) { // save updated autoanalyze counter

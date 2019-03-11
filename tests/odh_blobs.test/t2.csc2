@@ -1,0 +1,3 @@
+schema {
+    vutf8 txt[16]
+}

@@ -540,12 +540,17 @@ static void *apply_thread(void *arg)
 			rec.size = q->size;
 
 			if (rep->gen == q->gen) {
-				static int last_print = 0;
+				static int last_print = 0, last_applying_print = 0;
 				static unsigned long long count = 0;
 				int now;
 
-				logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, q->rp->lsn.file,
-						q->rp->lsn.offset);
+				if (gbl_verbose_fills && ((now = time(NULL)) -
+							last_applying_print)) {
+					logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__,
+							q->rp->lsn.file, q->rp->lsn.offset);
+					last_applying_print = now;
+				}
+
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
@@ -6608,8 +6613,14 @@ restart:
 		dbenv->truncate_sc_callback(dbenv, trunclsnp);
 
 	/* Tell replicants to truncate */
-	if (dbenv->rep_truncate_callback)
-		dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
+	if (dbenv->rep_truncate_callback) {
+		uint32_t rep_truncate_flags = 0;
+		if (i_am_master)
+			rep_truncate_flags |= DB_REP_TRUNCATE_MASTER;
+		if (online)
+			rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
+		dbenv->rep_truncate_callback(dbenv, trunclsnp, rep_truncate_flags);
+	}
 
 err:
 	if (i_am_master) {

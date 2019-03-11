@@ -160,8 +160,8 @@ void cdb2sql_usage(int exit_val)
     exit(exit_val);
 }
 
-
-const char *words[] = {
+const char *level_one_words[] = {
+  "@",
   "ALTER", "ANALYZE",
   "BEGIN",
   "COMMIT",
@@ -175,12 +175,32 @@ const char *words[] = {
   "SELECT", "SELECTV", "SET",
   "TRUNCATE",
   "UPDATE",
-  "WITH", NULL, }; // must be terminated by NULL
+  "WITH", NULL,  // must be terminated by NULL
+};
 
+const char *char_atglyph_words[] = {
+    "desc", "ls", "send", NULL, // must be terminated by NULL
+};
 
+static char *char_atglyph_generator(const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { // if state is 0 get the length of text
+        list_index = 0;
+        len = strlen(text);
+    }
+    while ((name = char_atglyph_words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
+    }
+    return (NULL); // If no names matched, then return NULL.
+}
 
 // Generator function for word completion.
-char *level_one_generator (const char *text, int state)
+static char *level_one_generator(const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -188,16 +208,16 @@ char *level_one_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-    while ((name = words[list_index]) != NULL) {
+    while ((name = level_one_words[list_index]) != NULL) {
         list_index++;
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
         }
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
-char *db_generator (int state, const char *sql)
+static char *db_generator(int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -275,72 +295,107 @@ char *db_generator (int state, const char *sql)
         list_index++;
         return strdup(name);
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
-
-char *tunables_generator (const char *text, int state)
+static char *tunables_generator(const char *text, int state)
 {
     char sql[256];
     if (*text)
         //TODO: escape text
         snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+                "SELECT DISTINCT name FROM comdb2_tunables "
+                "WHERE name LIKE '%s%%'",
+                text);
     else
         snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables");
     return db_generator(state, sql);
 }
 
-char *generic_generator(const char *text, int state)
+static char *generic_generator_no_systables(const char *text, int state)
 {
     char sql[256];
-    //TODO: escape text
-    snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT candidate "
-            "FROM comdb2_completion('%s')", text);
+    snprintf(sql, sizeof(sql),
+             "SELECT DISTINCT candidate as c FROM comdb2_completion('%s') "
+             "where c not in (select name from comdb2_systables)",
+             text);
 
     return db_generator(state, sql);
 }
 
+static char *generic_generator(const char *text, int state)
+{
+    char sql[256];
+    //TODO: escape text
+    snprintf(sql, sizeof(sql),
+             "SELECT DISTINCT candidate FROM comdb2_completion('%s')", text);
 
+    return db_generator(state, sql);
+}
 
 // Custom completion function
+//
+// text is the last word entered or space,
+// start and end are the offsets of that last word in the rl_line_buffer
+// So if we are trying to complete in the middle of a word
+// text is the [partial] word, example:
+//  > select intcol^I
+//   rl_line_buffer='select intcol' text='intcol' start=8 end=13
+//
+// If we are completing after a space, word will be '' and start and end
+// will be the position of the [last] space in rl_line_buffer:
+// > select intcol  ^I
+// 'select intcol  ' text='' start=15 end=15
+//
 static char **my_completion (const char *text, int start, int end)
 {
     rl_attempted_completion_over = 1; // skip directory listing
+
+    if (start == 0) // input is blank
+        return rl_completion_matches(text, &level_one_generator);
+
     char *bgn = rl_line_buffer;
-    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+    while (*bgn && *bgn == ' ')
+        bgn++; // skip beginning spaces
+    // bgn now points to \0 or to the beginning of first word
 
     char *endptr = bgn;
-    while(*endptr) endptr++; //go to end
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    if (*bgn) { // we definitely have a word, find the end of the line
+        while (*endptr)
+            endptr++; // go to end, will point to \0
+        endptr--; // now point to the last character (can be space) in the line
 
-    endptr--;
-    // find last space (or will hit bgn)
-    while(endptr != bgn && *endptr != ' ') 
-        endptr--; 
+        // find last space (or will hit bgn)
+        while (endptr != bgn && *endptr != ' ')
+            endptr--;
+    }
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    // TODO: Detect if we are in multiline
+    if (endptr == bgn) { // we were in the middle of the first word
+        if (*bgn == '@')
+            return rl_completion_matches(text, &char_atglyph_generator);
+        else
+            return rl_completion_matches(text, &level_one_generator);
+    }
 
-    // find end of previous word
-    while(endptr != bgn && *endptr == ' ') 
+    // endptr points to a space, find end of previous word
+    while (*endptr == ' ')
         endptr--;
 
     char *lastw = endptr;
     // find begining of previous word
-    while(lastw != bgn && *lastw != ' ') 
+    while (lastw != bgn && *lastw != ' ')
         lastw--;
     lastw++;
 
-    int l = sizeof("TUNABLE") - 1;
-    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
-        return rl_completion_matches ((char *) text, &tunables_generator);
+    if (strncasecmp(lastw, "TUNABLE", sizeof("TUNABLE") - 1) == 0)
+        return rl_completion_matches(text, &tunables_generator);
+    else if (strncasecmp(lastw, "FROM", sizeof("FROM") - 1) == 0)
+        return rl_completion_matches(text, &generic_generator);
     else
-        return rl_completion_matches ((char *) text, &generic_generator);
+        return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
 
@@ -1125,8 +1180,15 @@ static int run_statement(const char *sql, int ntypes, int *types,
             int length;
             void *value = get_val(&sql, type, &length);
 
-            rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-            /* we have to leak parameter here -- freeing breaks the bind */
+            if (isdigit(parameter[0])) {
+                int index = atoi(parameter);
+                if (index <= 0)
+                    return -1;
+                rc = cdb2_bind_index(cdb2h, index, type, value, length);
+            } else {
+                rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+                /* we have to leak parameter here -- freeing breaks the bind */
+            }
         } else
             rc = process_escape(sql);
         return rc;
@@ -1260,10 +1322,12 @@ static void process_line(char *sql, int ntypes, int *types)
     int len;
 
     verbose_print("processing line sql '%.30s...'\n", sql);
-    /* Trim whitespace and then ignore comments */
+    /* Trim whitespace and then ignore comments and empty lines. */
     while (isspace(*sqlstr))
         sqlstr++;
-    if (sqlstr[0] == '#' || sqlstr[0] == '\0')
+
+    if (sqlstr[0] == '#' || sqlstr[0] == '\0' ||
+        (sqlstr[0] == '-' && sqlstr[1] == '-'))
         return;
 
     /* Lame hack - strip trailing ; so that we can understand the
@@ -1577,6 +1641,10 @@ int main(int argc, char *argv[])
         setvbuf(stderr, 0, _IOLBF, 0);
     }
 
+    if (getenv("CDB2_DISABLE_SOCKPOOL")) {
+        cdb2_disable_sockpool();
+    }
+
     if (getenv("COMDB2_SQL_COST"))
         docost = 1;
 
@@ -1653,8 +1721,7 @@ int main(int argc, char *argv[])
     if (istty) {
         rl_attempted_completion_function = my_completion;
         load_readline_history();
-        struct sigaction sact;
-        sact.sa_handler = int_handler;
+        struct sigaction sact = {sact.sa_handler = int_handler};
         sigaction(SIGINT, &sact, NULL);
     }
     char *line;

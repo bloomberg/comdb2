@@ -459,7 +459,7 @@ do_execsql_test index6-10.3 {
 do_execsql_test index6-10.3eqp {
   EXPLAIN QUERY PLAN
   SELECT e FROM t10 WHERE a=1 AND b=2 ORDER BY d DESC;
-} {4 0 0 {SCAN TABLE t10 (~1 row)} 15 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {4 0 0 {SCAN TABLE t10 (~1 row)} 16 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{~/USING INDEX t10x/}
 
 finish_test

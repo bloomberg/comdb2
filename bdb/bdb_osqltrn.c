@@ -279,6 +279,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         if (epoch || file)
             backfill_required = 1;
 
+        if (gbl_rowlocks)
+            backfill_required = 1;
+
         /* Request our startpoint from the master */
         if (durable_lsns || file) {
             DB_LSN my_lsn, arg_lsn;

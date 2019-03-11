@@ -157,8 +157,6 @@ static void *watchdog_thread(void *arg)
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
     int sockpool_timeout;
 
-    Pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
-
     Pthread_attr_init(&gbl_pthread_joinable_attr);
     Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,

@@ -32,6 +32,7 @@
 #include "bdb_int.h"
 #include <list.h>
 #include <plhash.h>
+#include <sys/time.h>
 
 #ifdef _LINUX_SOURCE
 #include <execinfo.h>
@@ -1938,7 +1939,7 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
         parent = bdb_state;
 
     //create
-    int bdberr;
+    int bdberr = 0;
     struct temp_table *db = bdb_temp_table_create(parent, &bdberr);
     if (!db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
@@ -1947,7 +1948,10 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     }
 
     if (recsz < 8) recsz = 8; //force it to be min 8 bytes
-    if (recsz * maxins > 10000000) return -1; //limit the temptbl size
+    if (maxins > 10000000 || recsz * maxins > 100000000) {
+        logmsg(LOGMSG_USER, "Too much data to write %d records\n", maxins);
+        return -1; // limit the temptbl size
+    }
 
     //read one random string into key, note that reading from urandom is
     //slow so we get one full record from urandom, then override the first 
@@ -1965,10 +1969,13 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     }
     fclose(urandom);
 
+    struct timeval t1;
+    gettimeofday(&t1, NULL);
+
     //insert: replace first 4 bytes with a new random value, payload is same val
     for (int cnt = 0; cnt < maxins; cnt++) {
         int x = rand();
-        *((int*)rkey) = x;
+        ((int *)rkey)[0] = x;
         rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
                               &x, sizeof(x), NULL, &bdberr);
         if (rc) {
@@ -1978,6 +1985,14 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
             break; 
         }
     }
+
+    struct timeval t2;
+    gettimeofday(&t2, NULL);
+
+    int sec = (t2.tv_sec - t1.tv_sec) * 1000000;
+    int msec = (t2.tv_usec - t1.tv_usec);
+    logmsg(LOGMSG_USER, "Wrote %d records in %f sec\n", maxins,
+           (float)(sec + msec) / 1000000);
 
     //cleanup
     rc = bdb_temp_table_close(parent, db, &bdberr);

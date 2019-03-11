@@ -389,6 +389,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_DOESNOT_EXIST;
     }
 
+    if (s->resume == SC_PREEMPT_RESUME) {
+        newdb = db->sc_to;
+        changed = s->schema_change;
+        goto convert_records;
+    }
+
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
@@ -533,7 +539,13 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
+    db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+
+convert_records:
+    assert(db->sc_from == db && s->db == db);
+    assert(db->sc_to == newdb && s->newdb == newdb);
+    assert(db->doing_conversion == 1);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
@@ -545,6 +557,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     MEMORY_SYNC;
 
+    /* give a chance for sc to stop */
+    if (stopsc) {
+        sc_errf(s, "master downgrading\n");
+        change_schemas_recover(s->tablename);
+        return SC_MASTER_DOWNGRADE;
+    }
     reset_sc_stat();
     rc = wait_to_resume(s);
     if (rc || stopsc) {
@@ -552,20 +570,37 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return SC_MASTER_DOWNGRADE;
     }
 
+    int prev_preempted = s->preempted;
+
+    if (s->preempted == SC_ACTION_PAUSE) {
+        sc_errf(s, "SCHEMACHANGE PAUSED\n");
+        add_ongoing_alter(s);
+        return SC_PAUSED;
+    } else if (s->preempted == SC_ACTION_ABORT) {
+        sc_errf(s, "SCHEMACHANGE ABORTED\n");
+        rc = SC_ABORTED;
+        goto errout;
+    }
+
+    add_ongoing_alter(s);
+
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
     if ((!newdb->plan || newdb->plan->plan_convert) ||
         changed == SC_CONSTRAINT_CHANGE) {
-        db->doing_conversion = 1;
         if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, newdb->sc_genids, s);
         if (rc == 1) rc = 0;
-        db->doing_conversion = 0;
     } else
         rc = 0;
 
-    if (stopsc || rc == SC_MASTER_DOWNGRADE)
+    remove_ongoing_alter(s);
+
+    if (s->preempted != prev_preempted || rc == SC_PREEMPTED) {
+        sc_errf(s, "SCHEMACHANGE PREEMPTED\n");
+        return SC_PREEMPTED;
+    } else if (stopsc || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc)
         rc = SC_CONVERSION_FAILED;
@@ -585,10 +620,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
 
+errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
         /* For live schema change, MUST do this before trying to remove
          * the .new tables or you get crashes */
-        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
+            rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
         } else {
             sc_errf(s, "convert_all_records failed\n");
@@ -603,6 +640,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
         while (s->logical_livesc) {
             usleep(200);
+        }
+
+        if (db->sc_live_logical) {
+            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+            db->sc_live_logical = 0;
         }
 
         backout_constraint_pointers(newdb, db);
@@ -640,6 +682,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         olddb_bthashsz = 0;
 
     bdb_lock_table_write(db->handle, transac);
+    sc_printf(s, "[%s] Got table write lock OK\n", s->tablename);
 
     s->got_tablelock = 1;
 
@@ -651,7 +694,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_to = newdb;
 
     if (db->sc_live_logical)
-        bdb_clear_logical_live_sc(db->handle);
+        bdb_clear_logical_live_sc(db->handle, 0 /* already locked */);
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);
@@ -662,7 +705,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
      * not, the db is readonly at this point so we can reset the live
      * schema change flag. */
 
-    sc_printf(s, "---- All records copied --- \n");
+    sc_printf(s, "[%s] --- All records copied --- \n", s->tablename);
 
     /* Before this handle is closed, lets wait for all the db reads to
      * finish*/
@@ -724,10 +767,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
-        goto backout;
-    }
-
-    if ((rc = mark_schemachange_over_tran(db->tablename, transac))) {
         goto backout;
     }
 

@@ -262,7 +262,7 @@ static inline void deadlock_trace(const char *func, tran_type *tran, int rc)
 
 int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
-                 DBT *dbt_key, DBT *dbt_data)
+                 DBT *dbt_key, DBT *dbt_data, int odhready)
 {
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
@@ -329,7 +329,7 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
 
         /* Insert row */
         rc = ll_dta_add(bdb_state, genid, dbp, physical_tran, dtafile,
-                        dtastripe, dbt_key, dbt_data, DB_NOOVERWRITE);
+                        dtastripe, dbt_key, dbt_data, DB_NOOVERWRITE, odhready);
 
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {
@@ -488,7 +488,7 @@ done:
 int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  unsigned long long oldgenid, unsigned long long *newgenid,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
-                 DBT *verify_dta, DBT *dta)
+                 DBT *verify_dta, DBT *dta, int odhready)
 {
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
@@ -572,7 +572,8 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
         /* Returns wall genid, wall rowlock, new genid & new rowlock */
         rc = ll_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, physical_tran,
                         dtafile, dtastripe, 0 /*participantstripid*/,
-                        0 /*use_new_genid*/, verify_dta, dta, &old_dta);
+                        0 /*use_new_genid*/, verify_dta, dta, &old_dta,
+                        odhready);
 
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {

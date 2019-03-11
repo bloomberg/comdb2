@@ -1,0 +1,1 @@
+exec_sql_on_new_connect CREATE TEMP TABLE tmp1(x INT); INSERT INTO tmp1 VALUES(1);

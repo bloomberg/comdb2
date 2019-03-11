@@ -76,6 +76,7 @@ void comdb2DropForeignKey(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
 void comdb2DropIndex(Parse *, Token *, Token *, int);
 void comdb2AlterDropIndex(Parse *, Token *);
+void comdb2AlterCommitPending(Parse *);
 
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);
@@ -96,19 +97,18 @@ void comdb2RebuildData(Parse*, Token*, Token*,int opt);
 void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);
 void comdb2Truncate(Parse*, Token*, Token*);
 
+void comdb2SchemachangeControl(Parse*, int, Token*, Token *);
+
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);
 
 void comdb2CreateProcedure(Parse*, Token*, Token*, Token*);
 void comdb2DefaultProcedure(Parse*, Token*, Token*, int);
 void comdb2DropProcedure(Parse*, Token*, Token*, int);
 
-void comdb2CreateTimePartition(Parse* p, Token* table, Token* name, 
-                           Token* period,Token* retention, Token* start);
 
-void comdb2DropTimePartition(Parse* p, Token* name);
-
-void comdb2CreateTimePartition(Parse* p, Token* table, Token* name, 
+void comdb2CreatePartition(Parse* p, Token* table, Token* name, 
                                Token* period, Token* retention, Token* start);
+void comdb2DropPartition(Parse* p, Token* name);
 
 void comdb2analyze(Parse*, int opt, Token*, Token*, int);
 
