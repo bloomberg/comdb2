@@ -14,7 +14,7 @@ struct master_entry {
     char *tblname;
     int isstrdup; /* True if tblname is obtained from strdup(). */
     int ixnum;
-    int rootpage; 
+    int rootpage;
     int entry_size;
     void *entry;
 };
@@ -77,7 +77,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
         ent->tblname = strdup(tbl->tablename);
         ent->isstrdup = 1;
         ent->ixnum = -1;
-        ent->rootpage = i+RTPAGE_START;
+        ent->rootpage = i + RTPAGE_START;
         ent->entry =
             create_master_row(dbs, num_dbs, ent->rootpage, tbl->csc2_schema,
                               tblnum, -1, &ent->entry_size);
@@ -93,7 +93,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
             assert(ent->tblname == NULL);
             ent->tblname = new_arr[tbl_idx].tblname;
             ent->ixnum = ixnum; /* comdb2 index number */
-            ent->rootpage = i+RTPAGE_START;
+            ent->rootpage = i + RTPAGE_START;
             ent->entry = create_master_row(dbs, num_dbs, ent->rootpage, NULL,
                                            tblnum, ixnum, &ent->entry_size);
             i++;
@@ -252,19 +252,20 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 
     if (!thd->selective_rootpages) {
         if (iTable < RTPAGE_START ||
-                iTable >= (thd->rootpage_nentries + RTPAGE_START) ||
-                ((tblname = thd->rootpages[iTable - RTPAGE_START].tblname) == NULL)) {
+            iTable >= (thd->rootpage_nentries + RTPAGE_START) ||
+            ((tblname = thd->rootpages[iTable - RTPAGE_START].tblname) ==
+             NULL)) {
             return NULL;
         }
         idx = iTable - RTPAGE_START;
     } else {
-        for(idx=0;idx<thd->rootpage_nentries;idx++) {
+        for (idx = 0; idx < thd->rootpage_nentries; idx++) {
             if (thd->rootpages[idx].rootpage == iTable) {
                 tblname = thd->rootpages[idx].tblname;
                 break;
             }
         }
-        if(!tblname)
+        if (!tblname)
             return NULL;
     }
 
@@ -326,13 +327,15 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
  * In case the caller needs to restore the previous rootpage cache,
  * if oldentries is provided, it is used to save the existing cache,
  * which becomes the responsibility of the caller to free; if no oldentries
- * is provided, the function destroys existing cache 
+ * is provided, the function destroys existing cache
  *
  */
-int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames, const char **names,
-        master_entry_t **oldentries, int *oldnentries, int lock)
+int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
+                                  const char **names,
+                                  master_entry_t **oldentries, int *oldnentries,
+                                  int lock)
 {
-    int i,j;
+    int i, j;
     int rc = 0;
     master_entry_t *ent, *newent = NULL;
     int *entry_idxs;
@@ -342,10 +345,10 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames, const char
 
     if (thd->rootpage_nentries) {
         if (oldentries && oldnentries) {
-           *oldentries = thd->rootpages;
-           thd->rootpages = NULL;
-           *oldnentries = thd->rootpage_nentries;
-           thd->rootpage_nentries = 0;
+            *oldentries = thd->rootpages;
+            thd->rootpages = NULL;
+            *oldnentries = thd->rootpage_nentries;
+            thd->rootpage_nentries = 0;
         } else {
             destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         }
@@ -354,15 +357,15 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames, const char
     if (nnames == 0)
         goto done;
 
-    thd->rootpages = calloc(nnames, sizeof(master_entry_t)); 
+    thd->rootpages = calloc(nnames, sizeof(master_entry_t));
     if (!thd->rootpages) {
-oom:
+    oom:
         logmsg(LOGMSG_ERROR, "%s: MALLOC OOM\n", __func__);
         return -1;
     }
     thd->selective_rootpages = 1;
 
-    entry_idxs = calloc(2*nnames, sizeof(int));
+    entry_idxs = calloc(2 * nnames, sizeof(int));
     if (!entry_idxs) {
         goto oom;
     }
@@ -370,35 +373,36 @@ oom:
     if (lock)
         rdlock_schema_lk();
 
-    for(i=0; i<sqlmaster_nentries;i++) {
+    for (i = 0; i < sqlmaster_nentries; i++) {
         ent = &sqlmaster[i];
-        if (ent->ixnum >=0 ) {
-            if (found) totalentries++;
-            continue;  /* skip indexes */
+        if (ent->ixnum >= 0) {
+            if (found)
+                totalentries++;
+            continue; /* skip indexes */
         } else {
             if (found) {
-                entry_idxs[2*totaltables-1] = i;
+                entry_idxs[2 * totaltables - 1] = i;
                 found = 0;
             }
         }
         /* found a table, check if this is in the list */
-        for (j=0;j<nnames;j++) { 
+        for (j = 0; j < nnames; j++) {
             if (strcasecmp(names[j], ent->tblname) == 0)
                 break;
         }
-        if (j<nnames) {
+        if (j < nnames) {
             totalentries++;
             found = 1;
-            entry_idxs[2*totaltables] = i;
+            entry_idxs[2 * totaltables] = i;
             totaltables++;
             continue;
-        } 
+        }
     }
     if (found) {
-        entry_idxs[2*totaltables-1] = sqlmaster_nentries;
+        entry_idxs[2 * totaltables - 1] = sqlmaster_nentries;
         found = 0;
     }
-    if (totalentries==0)
+    if (totalentries == 0)
         goto unlock;
 
     newent = calloc(totalentries, sizeof(master_entry_t));
@@ -408,14 +412,15 @@ oom:
         goto unlock;
     }
     found = 0;
-    for(i=0;i<totaltables;i++) {
-        int start = entry_idxs[2*i];
-        int end = entry_idxs[2*i+1];
-        for (j=start;j<end; j++) {
-            newent[found] = sqlmaster[j];    
+    for (i = 0; i < totaltables; i++) {
+        int start = entry_idxs[2 * i];
+        int end = entry_idxs[2 * i + 1];
+        for (j = start; j < end; j++) {
+            newent[found] = sqlmaster[j];
             newent[found].tblname = strdup(newent[found].tblname);
             newent[found].entry = malloc(newent[found].entry_size);
-            memcpy(newent[found].entry, sqlmaster[j].entry, newent[found].entry_size);
+            memcpy(newent[found].entry, sqlmaster[j].entry,
+                   newent[found].entry_size);
             found++;
         }
     }
@@ -435,7 +440,8 @@ done:
     return rc;
 }
 
-void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents, int nents)
+void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
+                           int nents)
 {
     if (thd->rootpages)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);

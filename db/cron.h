@@ -48,7 +48,7 @@ enum cron_type { CRON_TIMEPART = 0, CRON_LOGICAL = 1 };
 /* this is the callback prototype for each event */
 struct cron_event;
 struct sched_if;
-typedef void *(*FCRON)(struct cron_event *event, struct errstat *err); 
+typedef void *(*FCRON)(struct cron_event *event, struct errstat *err);
 
 struct cron_event {
     int epoch;  /* when this event should run */
@@ -140,13 +140,13 @@ void time_cron_create(sched_if_t *impl, char *(*describe)(sched_if_t *),
  */
 sched_if_t *cron_impl(cron_sched_t *sched);
 
- /**
+/**
  * Signal all linked schedulers
  */
 void cron_signal_all(void);
 
 /**
- * Clear all the queues events 
+ * Clear all the queues events
  *
  */
 void cron_clear_queue_all(void);
@@ -156,6 +156,6 @@ void cron_clear_queue_all(void);
  * NOTE: scheduler is not locked
  *
  */
-cron_sched_t* cron_sched_byname(const char *name);
+cron_sched_t *cron_sched_byname(const char *name);
 
 #endif

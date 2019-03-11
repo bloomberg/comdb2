@@ -31,24 +31,24 @@ void logical_cron_incr(sched_if_t *impl);
  */
 void logical_cron_set(sched_if_t *impl, unsigned long long val);
 
-/** 
- * Restart a logical scheduler 
+/**
+ * Restart a logical scheduler
  *
  */
 int logical_cron_init(const char *name, struct errstat *err);
 
-/** 
- * Return a statement to update a cron 
+/**
+ * Return a statement to update a cron
  *
  */
-char* logical_cron_update_sql(const char *name,
-        long long value, bool increment);
+char *logical_cron_update_sql(const char *name, long long value,
+                              bool increment);
 
 /**
- * Retrieve the persistent value of a cron counter 
+ * Retrieve the persistent value of a cron counter
  *
  */
 unsigned long long logical_cron_read_persistent(const char *name,
-        struct errstat *err);
+                                                struct errstat *err);
 
 #endif

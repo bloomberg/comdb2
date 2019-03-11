@@ -25,14 +25,20 @@ static int exec_grant(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_password(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_alias(void *tran, bpfunc_t *func, struct errstat *err);
-static int exec_analyze_threshold(void *tran, bpfunc_t *func, struct errstat *err);
-static int exec_analyze_coverage(void *tran, bpfunc_t *func, struct errstat *err);
-static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err);
+static int exec_analyze_threshold(void *tran, bpfunc_t *func,
+                                  struct errstat *err);
+static int exec_analyze_coverage(void *tran, bpfunc_t *func,
+                                 struct errstat *err);
+static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
+                                struct errstat *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 /********************      UTILITIES     ***********************/
 
-static int empty(void *tran, bpfunc_t *func, struct errstat *err) { return 0; }
+static int empty(void *tran, bpfunc_t *func, struct errstat *err)
+{
+    return 0;
+}
 
 void free_bpfunc(bpfunc_t *func)
 {
@@ -158,9 +164,8 @@ int exec_create_timepart(void *tran, bpfunc_t *func, struct errstat *err)
         func->arg->crt_tp->tablename, func->arg->crt_tp->period,
         func->arg->crt_tp->retention, func->arg->crt_tp->start);
     assert(json_cmd);
-    rc =
-        views_do_partition(tran, thedb->timepart_views,
-                           func->arg->crt_tp->partition_name, json_cmd, err);
+    rc = views_do_partition(tran, thedb->timepart_views,
+                            func->arg->crt_tp->partition_name, json_cmd, err);
 
     free(json_cmd);
 
@@ -175,7 +180,8 @@ int success_create_timepart(void *tran, bpfunc_t *func, struct errstat *err)
     rc = bdb_llog_views(thedb->bdb_env, func->arg->crt_tp->partition_name, 1,
                         &bdberr);
     if (rc)
-        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d", __func__, rc);
+        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d",
+                           __func__, rc);
     return rc;
 }
 
@@ -201,8 +207,7 @@ int exec_drop_timepart(void *tran, bpfunc_t *func, struct errstat *err)
     assert(json_cmd);
 
     rc = views_do_partition(tran, thedb->timepart_views,
-                            func->arg->drop_tp->partition_name, json_cmd,
-                            err);
+                            func->arg->drop_tp->partition_name, json_cmd, err);
 
     free(json_cmd);
 
@@ -217,8 +222,8 @@ int success_drop_timepart(void *tran, bpfunc_t *func, struct errstat *err)
     rc = bdb_llog_views(thedb->bdb_env, func->arg->drop_tp->partition_name, 1,
                         &bdberr);
     if (rc)
-        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d", __func__,
-                rc, bdberr);
+        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d",
+                           __func__, rc, bdberr);
     return rc;
 }
 
@@ -379,7 +384,8 @@ static int exec_alias(void *tran, bpfunc_t *func, struct errstat *err)
 
 /******************************* ANALYZE *****************************/
 
-static int exec_analyze_threshold(void *tran, bpfunc_t *func, struct errstat *err)
+static int exec_analyze_threshold(void *tran, bpfunc_t *func,
+                                  struct errstat *err)
 {
 
     BpfuncAnalyzeThreshold *thr_f = func->arg->an_thr;
@@ -396,8 +402,8 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, struct errstat *er
     return rc;
 }
 
-
-static int exec_analyze_coverage(void *tran, bpfunc_t *func, struct errstat *err)
+static int exec_analyze_coverage(void *tran, bpfunc_t *func,
+                                 struct errstat *err)
 {
 
     BpfuncAnalyzeCoverage *cov_f = func->arg->an_cov;
@@ -414,11 +420,13 @@ static int exec_analyze_coverage(void *tran, bpfunc_t *func, struct errstat *err
     return rc;
 }
 
-static int exec_timepart_retention(void *tran, bpfunc_t *func, struct errstat *err)
+static int exec_timepart_retention(void *tran, bpfunc_t *func,
+                                   struct errstat *err)
 {
     BpfuncTimepartRetention *ret_f = func->arg->tp_ret;
 
-    return timepart_update_retention( tran, ret_f->timepartname, ret_f->newvalue, err);
+    return timepart_update_retention(tran, ret_f->timepartname, ret_f->newvalue,
+                                     err);
 }
 
 int success_timepart_retention(void *tran, bpfunc_t *func, struct errstat *err)
@@ -429,7 +437,7 @@ int success_timepart_retention(void *tran, bpfunc_t *func, struct errstat *err)
      rc = bdb_llog_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1, &bdberr);
      if(rc)
          errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d",
-                 __func__, rc, bdberr);
+                            __func__, rc, bdberr);
      return rc;
 }
 
@@ -466,12 +474,14 @@ static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err)
     int format = bdb_genid_format(thedb->bdb_env);
 
     if (gn->enable && format == LLMETA_GENID_48BIT) {
-        errstat_set_rcstrf(err, -1, "%s -- genid48 is already enabled", __func__);
+        errstat_set_rcstrf(err, -1, "%s -- genid48 is already enabled",
+                           __func__);
         return -1;
     }
 
     if (!gn->enable && format != LLMETA_GENID_48BIT) {
-        errstat_set_rcstrf(err, -1, "%s -- genid48 is already disabled", __func__);
+        errstat_set_rcstrf(err, -1, "%s -- genid48 is already disabled",
+                           __func__);
         return -1;
     }
 
@@ -488,12 +498,14 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err)
     int rc;
 
     if (rl->enable && gbl_rowlocks) {
-        errstat_set_rcstrf(err, -1, "%s -- rowlocks is already enabled", __func__);
+        errstat_set_rcstrf(err, -1, "%s -- rowlocks is already enabled",
+                           __func__);
         return -1;
     }
 
     if (!rl->enable && !gbl_rowlocks) {
-        errstat_set_rcstrf(err, -1, "%s -- rowlocks is already disabled", __func__);
+        errstat_set_rcstrf(err, -1, "%s -- rowlocks is already disabled",
+                           __func__);
         return -1;
     }
 
@@ -503,7 +515,8 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err)
         iq->osql_rowlocks_enable = rl->enable;
         iq->osql_flags |= OSQL_FLAGS_ROWLOCKS;
     } else
-        errstat_set_rcstrf(err, rc, "%s -- set_rowlocks failed rc %d", __func__, rc);
+        errstat_set_rcstrf(err, rc, "%s -- set_rowlocks failed rc %d", __func__,
+                           rc);
     return rc;
 }
 

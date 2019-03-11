@@ -12574,11 +12574,11 @@ int _some_callback(void *theresult, int ncols, char **vals, char **cols)
 {
     if ((ncols < 1) || (!vals[0])) {
         logmsg(LOGMSG_ERROR, "%s query failed to retrieve a proper row!\n",
-                __func__);
+               __func__);
         return SQLITE_ABORT;
     }
 
-    *(long long*)theresult = atoll(vals[0]);
+    *(long long *)theresult = atoll(vals[0]);
 
     return SQLITE_OK;
 }
@@ -12596,7 +12596,7 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
 }
 
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
-        struct errstat *err)
+                                struct errstat *err)
 {
     struct sqlclntstate client;
     sqlite3 *sqldb;
@@ -12609,30 +12609,32 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     strncpy(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.sql = (char*)query;
+    client.sql = (char *)query;
     client.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
     thd->clnt = &client;
 
     if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
-        errstat_set_rcstrf(err, -1, "%s: failed to open a new curtran, rc=%d", __func__, rc);
+        errstat_set_rcstrf(err, -1, "%s: failed to open a new curtran, rc=%d",
+                           __func__, rc);
         goto done;
     }
 
     if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
-        errstat_set_rcstrf(err, -1, "%s:sqlite3_open_serial rc %d", __func__, rc);
+        errstat_set_rcstrf(err, -1, "%s:sqlite3_open_serial rc %d", __func__,
+                           rc);
         goto cleanup;
     }
 
     if ((rc = sqlite3_exec(sqldb, query, _some_callback, &ret, &msg)) != 0) {
-        errstat_set_rcstrf(err, -1, "q:\"%.100s\" failed rc %d: \"%.50s\"", query, rc,
-               msg ? msg : "<unknown error>");
+        errstat_set_rcstrf(err, -1, "q:\"%.100s\" failed rc %d: \"%.50s\"",
+                           query, rc, msg ? msg : "<unknown error>");
         goto cleanup;
     }
     thd->clnt = NULL;
 
-    if ((crc = sqlite3_close(sqldb)) != 0) 
+    if ((crc = sqlite3_close(sqldb)) != 0)
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:

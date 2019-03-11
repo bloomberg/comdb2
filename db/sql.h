@@ -1126,6 +1126,6 @@ void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *, struct reqlog
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
-        struct errstat *err);
+                                struct errstat *err);
 
 #endif

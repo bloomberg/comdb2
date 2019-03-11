@@ -1930,7 +1930,7 @@ struct dbtable *get_dbtable_by_name(const char *name);
    NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
 struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *name);
 /*look up managed queue db's by name*/
-struct dbtable * getqueuebyname(const char *name);
+struct dbtable *getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
 
 int get_elect_time_microsecs(void); /* get election time in seconds */
@@ -2504,9 +2504,12 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
                               int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
-int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames, const char **names,
-        struct master_entry **oldentries, int *oldnentries, int lock);
-void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents, int nents);
+int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
+                                  const char **names,
+                                  struct master_entry **oldentries,
+                                  int *oldnentries, int lock);
+void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
+                           int nents);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();

@@ -836,7 +836,7 @@ struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
 {
     struct dbtable *p_db = NULL;
     int rc = 0;
-    
+
     if (!tran)
         return get_dbtable_by_name(p_name);
 
@@ -847,19 +847,18 @@ struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
     if (!p_db) {
         rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
     } else {
-       rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
     }
     Pthread_rwlock_unlock(&thedb_lock);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
-                __func__, rc);
-        return NULL;        
+               __func__, rc);
+        return NULL;
     }
 
     return p_db;
 }
-
 
 struct dbtable *getqueuebyname(const char *name)
 {
