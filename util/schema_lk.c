@@ -35,7 +35,7 @@ struct pthread_t_link {
 static LISTC_T(struct pthread_t_link) schema_rd_thds =
     LISTC_T_INITIALIZER(offsetof(struct pthread_t_link, lnk));
 
-static pthread_t schema_wr_thd;
+static pthread_t schema_wr_thd = (pthread_t)NULL;
 #endif
 
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
@@ -127,7 +127,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 #endif
 #ifndef NDEBUG
     pthread_t self = pthread_self();
-    pthread_t nullt = NULL;
+    pthread_t nullt = (pthread_t)NULL;
     CAS64(schema_wr_thd, self, nullt);
     Pthread_mutex_lock(&schema_rd_thds_lk);
     struct pthread_t_link *current, *temp;
