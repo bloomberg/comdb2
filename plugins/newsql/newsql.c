@@ -1054,7 +1054,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     int rc, r, w, timeout = 0;
     sbuf2gettimeout(clnt->sb, &r, &w);
     sbuf2settimeout(clnt->sb, 1000, w);
@@ -1068,7 +1068,7 @@ static int newsql_ping_pong(struct sqlclntstate *clnt)
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
         return -1;
     }
@@ -1536,6 +1536,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
+                        /* Re-authenticate the new user. */
+                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                            clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
@@ -1557,6 +1560,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
+                        /* Re-authenticate the new password. */
+                        if (clnt->authgen &&
+                            strcmp(clnt->password, sqlstr) != 0)
+                            clnt->authgen = 0;
                         strcpy(clnt->password, sqlstr);
                     }
                 }
@@ -1821,7 +1828,7 @@ int gbl_send_failed_dispatch_message = 0;
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;
@@ -2176,6 +2183,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
+#if 0
+    else
+        logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
+#endif
     assert(query->sqlquery);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
@@ -2217,6 +2228,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
+#if 0
+        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;

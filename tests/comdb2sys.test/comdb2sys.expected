@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=201)
+(KEYWORDS_COUNT=204)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=201)
+(RESERVED_KW=204)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=0)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -217,6 +217,8 @@
 (name='PAGEORDER', reserved='Y')
 (name='PARTITION', reserved='Y')
 (name='PASSWORD', reserved='Y')
+(name='PAUSE', reserved='Y')
+(name='PENDING', reserved='Y')
 (name='PERIOD', reserved='Y')
 (name='PLAN', reserved='Y')
 (name='PRAGMA', reserved='Y')
@@ -240,6 +242,7 @@
 (name='REPLACE', reserved='Y')
 (name='RESERVED', reserved='Y')
 (name='RESTRICT', reserved='Y')
+(name='RESUME', reserved='Y')
 (name='RETENTION', reserved='Y')
 (name='REVOKE', reserved='Y')
 (name='RIGHT', reserved='Y')
@@ -340,6 +343,8 @@
 (name='comdb2_columns')
 (name='comdb2_completion')
 (name='comdb2_constraints')
+(name='comdb2_cron_events')
+(name='comdb2_cron_schedulers')
 (name='comdb2_fingerprints')
 (name='comdb2_keycomponents')
 (name='comdb2_keys')
@@ -355,6 +360,7 @@
 (name='comdb2_queues')
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
+(name='comdb2_sc_status')
 (name='comdb2_sqlpool_queue')
 (name='comdb2_systables')
 (name='comdb2_tablepermissions')

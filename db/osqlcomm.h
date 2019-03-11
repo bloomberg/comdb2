@@ -25,6 +25,8 @@
 #include "comdb2uuid.h"
 #include "schemachange.h"
 
+#define OSQL_BLOB_ODH_BIT (1 << 31)
+#define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 /**
  * Initializes this node for osql communication
@@ -220,7 +222,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
  *
  */
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                        void *trans, char *msg, int msglen, int *flags,
+                        void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
@@ -229,7 +231,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,

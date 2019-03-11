@@ -78,5 +78,12 @@ int replicant_reload_analyze_stats();
 
 void sc_set_logical_redo_lwm(char *table, unsigned int file);
 unsigned int sc_get_logical_redo_lwm();
+unsigned int sc_get_logical_redo_lwm_table(char *table);
+
+void add_ongoing_alter(struct schema_change_type *sc);
+void remove_ongoing_alter(struct schema_change_type *sc);
+struct schema_change_type *find_ongoing_alter(char *table);
+struct schema_change_type *preempt_ongoing_alter(char *table, int action);
+void clear_ongoing_alter();
 
 #endif

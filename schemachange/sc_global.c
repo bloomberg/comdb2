@@ -38,6 +38,9 @@ int gbl_default_plannedsc = 1;
 int gbl_default_sc_scanmode = SCAN_PARALLEL;
 hash_t *sc_tables = NULL;
 
+pthread_mutex_t ongoing_alter_mtx = PTHREAD_MUTEX_INITIALIZER;
+hash_t *ongoing_alters = NULL;
+
 pthread_mutex_t sc_resuming_mtx = PTHREAD_MUTEX_INITIALIZER;
 struct schema_change_type *sc_resuming = NULL;
 
@@ -193,10 +196,15 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         if (running && table &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
             sctbl->seed != seed) {
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            logmsg(LOGMSG_INFO,
-                   "schema change for table %s already in progress\n", table);
-            return -1;
+            if (running > 1) /* preempted mode */
+                sctbl->seed = seed;
+            else {
+                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+                logmsg(LOGMSG_INFO,
+                       "schema change for table %s already in progress\n",
+                       table);
+                return -1;
+            }
         } else if (!running && table &&
                    (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
                    seed && sctbl->seed != seed) {
@@ -317,10 +325,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    if (db->sc_live_logical) {
-        bdb_clear_logical_live_sc(db->handle);
-        db->sc_live_logical = 0;
-    }
+    db->doing_conversion = 0;
     Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
@@ -345,10 +350,17 @@ void sc_set_downgrading(struct schema_change_type *s)
     s->db->sc_to = NULL;
     s->db->sc_from = NULL;
     s->db->sc_abort = 0;
+    s->db->doing_conversion = 0;
     Pthread_rwlock_unlock(&s->db->sc_live_lk);
 
-    if (s->db->sc_live_logical)
-        bdb_clear_logical_live_sc(s->db->handle);
+    if (s->db->sc_live_logical) {
+        int rc =
+            bdb_clear_logical_live_sc(s->db->handle, 0 /* already locked */);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to clear logical live sc\n",
+                   __func__);
+        }
+    }
 
     trans_abort(&iq, tran);
 }
@@ -427,5 +439,110 @@ unsigned int sc_get_logical_redo_lwm()
         sctbl = hash_next(sc_tables, &ent, &bkt);
     }
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return lwm - 1;
+}
+
+unsigned int sc_get_logical_redo_lwm_table(char *table)
+{
+    sc_table_t *sctbl = NULL;
+    unsigned int lwm = 0;
+    if (!gbl_logical_live_sc)
+        return 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    if (sctbl)
+        lwm = sctbl->logical_lwm;
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return lwm;
+}
+
+void add_ongoing_alter(struct schema_change_type *sc)
+{
+    assert(sc->alteronly);
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters == NULL) {
+        ongoing_alters =
+            hash_init_strcase(offsetof(struct schema_change_type, tablename));
+    }
+    hash_add(ongoing_alters, sc);
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
+}
+
+void remove_ongoing_alter(struct schema_change_type *sc)
+{
+    assert(sc->alteronly);
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters != NULL) {
+        hash_del(ongoing_alters, sc);
+    }
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
+}
+
+struct schema_change_type *find_ongoing_alter(char *table)
+{
+    struct schema_change_type *s = NULL;
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters != NULL) {
+        s = hash_find_readonly(ongoing_alters, table);
+    }
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
+    return s;
+}
+
+struct schema_change_type *preempt_ongoing_alter(char *table, int action)
+{
+    struct schema_change_type *s = NULL;
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters != NULL) {
+        s = hash_find_readonly(ongoing_alters, table);
+        if (s) {
+            int ok = 0;
+            switch (action) {
+            default:
+                break;
+            case SC_ACTION_PAUSE:
+                if (s->preempted != SC_ACTION_PAUSE)
+                    ok = 1;
+                if (s->alteronly == SC_ALTER_PENDING)
+                    s->alteronly = SC_ALTER_ONLY;
+                break;
+            case SC_ACTION_RESUME:
+                if (s->preempted == SC_ACTION_PAUSE)
+                    ok = 1;
+                break;
+            case SC_ACTION_COMMIT:
+                if (s->preempted == SC_ACTION_PAUSE ||
+                    s->preempted == SC_ACTION_RESUME)
+                    ok = 1;
+                else if (s->alteronly == SC_ALTER_PENDING) {
+                    s->alteronly = SC_ALTER_ONLY;
+                    ok = 1;
+                }
+                break;
+            case SC_ACTION_ABORT:
+                ok = 1;
+                if (s->alteronly == SC_ALTER_PENDING)
+                    s->alteronly = SC_ALTER_ONLY;
+                break;
+            }
+            if (ok) {
+                s->preempted = action;
+                hash_del(ongoing_alters, s);
+            } else {
+                s = NULL;
+            }
+        }
+    }
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
+    return s;
+}
+
+void clear_ongoing_alter()
+{
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters != NULL) {
+        hash_clear(ongoing_alters);
+    }
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
 }

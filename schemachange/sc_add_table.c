@@ -295,9 +295,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
-        return rc;
-
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;

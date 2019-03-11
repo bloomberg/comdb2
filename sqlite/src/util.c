@@ -1658,3 +1658,44 @@ int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
   }while( i<mx );
   return 0;
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Create a copy of the VList 
+*/
+VList *sqlite3VListClone(
+  const VList *pIn,      /* The input VList.  Might be NULL */
+  void *(*alloc)(size_t size)
+){
+  VList *pOut;
+  if (!pIn) 
+    return NULL;
+
+  pOut = alloc(pIn[0]);
+  if (!pOut)
+    return NULL;
+
+  memcpy(pOut, pIn, pIn[0]);
+  return pOut;
+}
+
+#include "logmsg.h"
+void sqlite3VListPrint(loglvl lvl, const VList *pIn)
+{
+  int i, mx;
+
+  if (!pIn)
+    return;
+
+  mx = pIn[1];
+  i = 2;
+  logmsg(lvl, "%lx VList info start:\n", pthread_self());
+  do{
+    const char *z = (const char*)&pIn[i+2];
+    logmsg(lvl, "%lx %s %d\n", pthread_self(), z, pIn[i]);
+    i += pIn[i+1];
+  }while( i<mx );
+  logmsg(lvl, "%lx VList info done.\n", pthread_self());
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
