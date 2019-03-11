@@ -109,7 +109,7 @@ void thrman_init(void)
     Pthread_key_create(&thrman_key, thrman_destructor);
     Pthread_cond_init(&cond, NULL);
     Pthread_attr_init(&gbl_pthread_attr_detached);
-    pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
+    Pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
                                 PTHREAD_CREATE_DETACHED);
     /* 4 meg stack - there should be a better solution for this..
        some huge sql queries (it's happened) blow out stack during the parsing

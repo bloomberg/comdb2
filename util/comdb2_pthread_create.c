@@ -165,12 +165,7 @@ static void init_memptr_key(void)
     Pthread_attr_setstacksize(&free_thr_attrs, (PTHREAD_STACK_MIN + 0x4000));
 #endif
 
-    if (pthread_attr_setdetachstate(&free_thr_attrs, PTHREAD_CREATE_DETACHED) !=
-        0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to set detach state.\n", __func__,
-                __LINE__);
-        abort();
-    }
+    Pthread_attr_setdetachstate(&free_thr_attrs, PTHREAD_CREATE_DETACHED);
 
     if (pthread_create(&free_thr, &free_thr_attrs, free_stack_thr, NULL) != 0) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to create stack free thread.\n", __func__,

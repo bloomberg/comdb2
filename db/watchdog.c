@@ -159,7 +159,7 @@ static void *watchdog_thread(void *arg)
 
     Pthread_attr_init(&gbl_pthread_joinable_attr);
     Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
-    pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
+    Pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
 
     while (!gbl_ready)
@@ -451,7 +451,7 @@ void create_watchdog_thread(struct dbenv *dbenv)
     pthread_attr_t attr;
 
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     /* HP needs more stack space to call AttachCurrentThread:
        http://docs.hp.com/en/JDKJRE60RN/jdk_rnotes_6.0.01.html#CreateJavaVM

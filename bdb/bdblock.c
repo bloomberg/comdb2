@@ -415,7 +415,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
             lk->loweredpri = 1;
 #endif
 
-        rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
+        rc = Pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
             logmsg(LOGMSG_ERROR,
                    "trying writelock (%s %lu), last writelock is %s %lu\n",

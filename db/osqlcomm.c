@@ -3120,7 +3120,7 @@ int osql_comm_init(struct dbenv *dbenv)
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
 
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_attr_setstacksize(&attr, 100 * 1024);
 
     rc = pthread_create(&stat_hbeat_tid, &attr, osql_heartbeat_thread, NULL);
@@ -9479,7 +9479,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
     }
 
     if (db == uprec->owner) {
-        rc = pthread_mutex_trylock(uprec->lk);
+        rc = Pthread_mutex_trylock(uprec->lk);
         if (rc == 0) {
             if (db == uprec->owner) {
                 // can't pass db and genid to cron scheduler because

@@ -39,7 +39,7 @@
 
 #include "bdb_int.h"
 #include <locks.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #include "compress.h"
 #include <zlib.h>

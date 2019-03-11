@@ -1399,7 +1399,7 @@ void *read_client_socket(void *in)
     int rc;
     struct client_info *info = in;
     struct sqlclntstate *clnt = info->clnt;
-    rc = pthread_mutex_trylock(&lua_debug_mutex);
+    rc = Pthread_mutex_trylock(&lua_debug_mutex);
     if (rc) {
         free(info);
         return NULL;

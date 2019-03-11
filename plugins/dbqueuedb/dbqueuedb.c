@@ -653,7 +653,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
     if (blocking) {
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
 
     rc = pthread_create(&tid, blocking ? &attr : &gbl_pthread_attr_detached,

@@ -1915,7 +1915,7 @@ void server_accept_hndl(int fd, void *userdata)
 static void server(char *server_name, int pure_one_port_mode)
 {
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     char *app = server_name;
     char *service = server_name;
@@ -1948,7 +1948,7 @@ static void server(char *server_name, int pure_one_port_mode)
 static void server_no_callback(char *server_name, int pure_one_port_mode)
 {
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     char *app = server_name;
     char *service = server_name;
@@ -2134,7 +2134,7 @@ int server_accept_hndl_v(int which, int fd, void *userdata)
 static void server_v(char *server_name, int timeoutms, int pure_one_port_mode)
 {
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     uint32_t options;
 
     options = pure_one_port_mode ? PORTMUX_PORT_SUPPRESS : 0;

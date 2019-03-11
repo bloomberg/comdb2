@@ -1455,7 +1455,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
@@ -1903,7 +1903,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         // init pthread attributes
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         for (idx = 0; idx != gbl_dtastripe; ++idx) {
             thread_data[idx] = data;

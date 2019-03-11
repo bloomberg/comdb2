@@ -289,7 +289,7 @@ static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
         clnt->emitting_flag = 1;
 again:
     if (try) {
-        if ((rc = pthread_mutex_trylock(&clnt->write_lock))) {
+        if ((rc = Pthread_mutex_trylock(&clnt->write_lock))) {
             if (thd && clnt)
                 clnt->emitting_flag = 0;
             return rc;

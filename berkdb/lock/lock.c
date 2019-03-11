@@ -1105,7 +1105,7 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 	idx = latchhash(dbenv, obj);
 	latch = &region->latches[idx];
 
-	if (((ret = pthread_mutex_trylock(&latch->lock)) != 0) &&
+	if (((ret = Pthread_mutex_trylock(&latch->lock)) != 0) &&
 	    latch->lockerid != locker) {
 		if (region->blocking_latches || LF_ISSET(DB_LOCK_ONELOCK)) {
 			Pthread_mutex_lock(&latch->lock);
@@ -1126,16 +1126,16 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 				timeout.tv_nsec = 1000 * now.tv_usec;
 				ret =
 #ifdef __APPLE__
-				    pthread_mutex_trylock(&latch->lock);
+				    Pthread_mutex_trylock(&latch->lock);
 #else
-				    pthread_mutex_timedlock(&latch->lock,
+				    Pthread_mutex_timedlock(&latch->lock,
 				    &timeout);
 #endif
 			} else {
 				int latch_max_poll = dbenv->attr.latch_max_poll;
 				int latch_poll_us = dbenv->attr.latch_poll_us;
 				while (pollcnt++ < latch_max_poll &&
-				    ((ret = pthread_mutex_trylock(&latch->
+				    ((ret = Pthread_mutex_trylock(&latch->
 						lock)) != 0))
 					usleep(latch_poll_us);
 			}

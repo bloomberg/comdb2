@@ -1943,7 +1943,7 @@ int views_cron_restart(timepart_views_t *views)
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
        if this is the case, abort the schema change */
-    rc = pthread_rwlock_trywrlock(&views_lk);
+    rc = Pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
         if (gbl_schema_change_in_progress) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "

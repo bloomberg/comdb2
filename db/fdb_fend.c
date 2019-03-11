@@ -3360,7 +3360,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
      */
     do {
 #       ifdef __APPLE__
-        rc = pthread_mutex_trylock(&fdb->sqlstats_mtx);
+        rc = Pthread_mutex_trylock(&fdb->sqlstats_mtx);
         if (rc == EBUSY) {
             poll(NULL, 0, 10);
             rc = ETIMEDOUT;
@@ -3372,7 +3372,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
             ++ts.tv_sec;
             ts.tv_nsec -= 1000000000;
         }
-        rc = pthread_mutex_timedlock(&fdb->sqlstats_mtx, &ts);
+        rc = Pthread_mutex_timedlock(&fdb->sqlstats_mtx, &ts);
 #       endif
         if (rc) {
             if (rc == ETIMEDOUT) {

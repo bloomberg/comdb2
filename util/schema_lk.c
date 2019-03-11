@@ -32,7 +32,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 
 inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
-    int rc = pthread_rwlock_tryrdlock(&schema_lk);
+    int rc = Pthread_rwlock_tryrdlock(&schema_lk);
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:TRYRDLOCK RC:%d %s:%d\n", (void *)pthread_self(),
            rc, func, line);
