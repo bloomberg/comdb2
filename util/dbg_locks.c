@@ -310,7 +310,7 @@ int dbg_pthread_mutex_trylock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_mutex_trylock(mutex);
+  rc = wrap_pthread_mutex_trylock(mutex, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(mutex, DBG_LOCK_PTHREAD_MUTEX, file, func, line);
@@ -328,7 +328,7 @@ int dbg_pthread_mutex_timedlock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_mutex_timedlock(mutex, abs_timeout);
+  rc = wrap_pthread_mutex_timedlock(mutex, abs_timeout, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(mutex, DBG_LOCK_PTHREAD_MUTEX, file, func, line);
@@ -395,7 +395,7 @@ int dbg_pthread_rwlock_tryrdlock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_rwlock_tryrdlock(rwlock);
+  rc = wrap_pthread_rwlock_tryrdlock(rwlock, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(rwlock, DBG_LOCK_PTHREAD_RDLOCK, file, func, line);
@@ -412,7 +412,7 @@ int dbg_pthread_rwlock_trywrlock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_rwlock_trywrlock(rwlock);
+  rc = wrap_pthread_rwlock_trywrlock(rwlock, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(rwlock, DBG_LOCK_PTHREAD_WRLOCK, file, func, line);
@@ -430,7 +430,7 @@ int dbg_pthread_rwlock_timedrdlock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_rwlock_timedrdlock(rwlock, abs_timeout);
+  rc = wrap_pthread_rwlock_timedrdlock(rwlock, abs_timeout, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(rwlock, DBG_LOCK_PTHREAD_RDLOCK, file, func, line);
@@ -448,7 +448,7 @@ int dbg_pthread_rwlock_timedwrlock(
   int line
 ){
   int rc;
-  rc = wrap_pthread_rwlock_timedwrlock(rwlock, abs_timeout);
+  rc = wrap_pthread_rwlock_timedwrlock(rwlock, abs_timeout, file, func, line);
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(rwlock, DBG_LOCK_PTHREAD_WRLOCK, file, func, line);

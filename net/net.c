@@ -3214,7 +3214,6 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     netinfo_node_t *netinfo_node;
-    int rc;
 
     netinfo_ptr = calloc(1, sizeof(netinfo_type));
     if (!netinfo_ptr) {
