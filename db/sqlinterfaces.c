@@ -421,8 +421,7 @@ int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
-    clnt->step_rc = sqlite3_maybe_step(clnt, stmt);
-    return clnt->step_rc;
+    return sqlite3_maybe_step(clnt, stmt);
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -766,7 +765,8 @@ int sqlite3_maybe_step(
       return SQLITE_DONE;
     }
   }
-  return sqlite3_step(stmt);
+  clnt->step_rc = sqlite3_step(stmt);
+  return clnt->step_rc;
 }
 
 int sqlite3_can_get_column_type_and_data(
