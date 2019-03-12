@@ -440,6 +440,10 @@ silently removed from the referring keys and constraints definitions. ```RENAME 
 option renames a table.  This option cannot be combined with other ```ALTER TABLE```
 options.
 
+```SET COMMIT PENDING``` detaches the schema change from the current transaction
+and schema changes that use this option will keep running until an explicit
+commit/abort command is issued. Also see [```SCHEMACHANGE```](#schemachange).
+
 See also:
 
 [column-constraint](#column-constraint)
@@ -576,6 +580,17 @@ ever run ```REBUILD```:
 The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
 Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
 rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
+
+### SCHEMACHANGE
+
+![SCHEMACHANGE](images/schemachange.gif)
+
+```SCHEMACHANGE``` is an operational command to preempt ongoing schema changes:
+
+  * ```PAUSE``` ongoing schema changes.
+  * ```RESUME``` already paused schema changes. NOTE: Resumed schema changes will not commit until an explicit commit is issued.
+  * ```COMMIT``` ongoing schema changes. This command also resumes paused schema changes and commits after all records are converted.
+  * ```ABORT``` ongoing schema changes.
 
 ## Built-in functions
 

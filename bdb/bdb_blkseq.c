@@ -353,6 +353,9 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     int rc;
     uint8_t stripe;
 
+    if (!bdb_state->attr->private_blkseq_enabled)
+        return 0;
+
     ddata.flags = DB_DBT_REALLOC;
 
     // k = (int*) key;

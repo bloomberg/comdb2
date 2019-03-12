@@ -735,6 +735,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     else
         sc->live = 1;
 
+    sc->alteronly = 1;
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
@@ -2115,6 +2116,7 @@ struct comdb2_schema {
 enum {
     DDL_NOOP = 1 << 0,
     DDL_DRYRUN = 1 << 1,
+    DDL_PENDING = 1 << 2,
 };
 
 /* DDL context for CREATE/ALTER command */
@@ -3633,7 +3635,8 @@ void comdb2AlterTableEnd(Parse *pParse)
 
     memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
-    sc->alteronly = 1;
+    sc->alteronly =
+        ((ctx->flags & DDL_PENDING) != 0) ? SC_ALTER_PENDING : SC_ALTER_ONLY;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -3664,6 +3667,22 @@ cleanup:
     free_schema_change_type(sc);
     free_ddl_context(pParse);
     return;
+}
+
+void comdb2AlterCommitPending(Parse *pParse /* Parsing context */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    ctx->flags |= DDL_PENDING;
 }
 
 void comdb2CreateTableStart(
@@ -5557,4 +5576,40 @@ void comdb2AlterColumnDropNotNull(Parse *pParse /* Parser context */)
 
     assert(ctx->alter_column);
     comdb2ColumnSetNull(pParse, ctx->alter_column);
+}
+
+void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
+{
+    Vdbe *v = sqlite3GetVdbe(pParse);
+    char *t_action = NULL;
+
+    struct schema_change_type *sc = new_schemachange_type();
+
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    sc->preempted = action;
+
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
+        goto out;
+
+    if (authenticateSC(sc->tablename, pParse))
+        goto out;
+
+    if (get_csc2_file(sc->tablename, -1, &sc->newcsc2, NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc->tablename);
+        setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
+        goto out;
+    }
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    if (t_action)
+        free(t_action);
+    free_schema_change_type(sc);
 }
