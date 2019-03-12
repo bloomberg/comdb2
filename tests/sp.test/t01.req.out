@@ -1839,16 +1839,9 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (thd='tmp499', i=49900)
 (thd='tmp500', i=1)
 (thd='tmp500', i=50000)
-[-- No support for user-defined views...] failed with rc -3 no statement
-[-- This will cause DROP VIEW to have an rc of 1 instead of 23 (below)] failed with rc -3 no statement
-[-- create view no_ddl_v1 as select 1;$$] failed with rc -3 no statement
 (version='sp_no_ddl_proc1')
 (version='sp_no_ddl_proc2')
 (version='sp_no_ddl_test1')
-[-- WARNING: Creating a time partition is fundamnetally an asynchronous operation that may] failed with rc -3 no statement
-[--          cause subsequent 'database schema has changed' style errors in the subsequent] failed with rc -3 no statement
-[--          stored procedure execution.  The sleep below is designed to work around this] failed with rc -3 no statement
-[--          issue; however, the timing may need to be adjusted in the future.] failed with rc -3 no statement
 (sleep(20)=20)
 ($0='CREATE TEMP TABLE WITH DDL PASS')
 ($0='CREATE TEMP INDEX WITH DDL PASS')
