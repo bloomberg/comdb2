@@ -2563,16 +2563,14 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "add: expected db name\n");
                 return -1;
             }
-            char *host = internn(tok, ltok); 
-            fdb_add_dbname_to_whitelist(host);
+            fdb_add_dbname_to_whitelist(tok);
         } else if (tokcmp(tok, ltok, "del") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "del: expected db name\n");
                 return -1;
             }
-            char *host = internn(tok, ltok); 
-            fdb_del_dbname_to_whitelist(host);
+            fdb_del_dbname_to_whitelist(tok);
         } else if (tokcmp(tok, ltok, "dump") == 0) {
             fdb_dump_whitelist();
         }
