@@ -388,7 +388,7 @@ int fdb_is_dbname_in_whitelist(const char *name)
         return 1;
 
     char dbname[MAX_DBNAME_LENGTH];
-    int i;
+    int i = 0;
     while(*name && *name != '@' && i < MAX_DBNAME_LENGTH)
         dbname[i++] = *(name++);
     dbname[i] = '\0';
