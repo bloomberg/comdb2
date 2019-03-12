@@ -330,9 +330,7 @@ const u_int ptrhashfunc(u_char *keyp, int len)
 
 int fdb_add_dbname_to_whitelist(const char *dbname)
 {
-    //logmsg(LOGMSG_DEBUG, "%s: dbname=%s\n", __func__, dbname);
-
-    /* hash will contain pointers to strings, it just needs to memcmp ptrs */
+    /* hash will contain pointers to strings, it needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
         fdb_dbname_hash = hash_init_user((hashfunc_t *)ptrhashfunc,
                                          (cmpfunc_t *)memcmp, 0, 0);
@@ -355,8 +353,6 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
 
 int fdb_del_dbname_to_whitelist(const char *dbname)
 {
-    //logmsg(LOGMSG_DEBUG, "%s: dbname=%s\n", __func__, dbname);
-
     /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
         return 0;
