@@ -946,6 +946,7 @@ static unsigned int hash_fnv_strlen(const unsigned char *key,
 static int hash_default_strptrcmp(const char **a, const char **b,
                                   int len __attribute_unused__)
 {
+    logmsg(LOGMSG_USER, "cmp %s vs %s (%p vs %p (%p vs %p)))\n", *a, *b, a, b, *a, *b);
     return strcmp(*a, *b);
 }
 

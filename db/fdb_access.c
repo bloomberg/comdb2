@@ -319,20 +319,27 @@ static int _access_control_clear(fdb_access_t *acc)
 
 int fdb_add_dbname_to_whitelist(const char *dbname)
 {
-    logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
+    logmsg(LOGMSG_USER, "%s: dbname=%s\n", __func__, dbname);
 
     /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
-        fdb_dbname_hash = hash_init_user((hashfunc_t *)strhashfunc,
-                                         (cmpfunc_t *)memcmp, 0, 0);
+        fdb_dbname_hash = hash_init_strptr(0);
     assert(fdb_dbname_hash != NULL);
-    char *ptr = intern(dbname);
-    return hash_add(fdb_dbname_hash, &ptr);
+    const char *nptr = intern(dbname);
+    void dump_interned_strings();
+    dump_interned_strings();
+    if (hash_find_readonly(fdb_dbname_hash, &nptr) != NULL) {
+        logmsg(LOGMSG_USER, "%s: dbname=%s already in hash\n", __func__, nptr);
+        return 0;
+    }
+
+    hash_add(fdb_dbname_hash, &nptr);
+    return 0;
 }
 
 int fdb_del_dbname_to_whitelist(const char *dbname)
 {
-    logmsg(LOGMSG_ERROR, "%s: dbname=%s\n", __func__, dbname);
+    logmsg(LOGMSG_USER, "%s: dbname=%s\n", __func__, dbname);
 
     /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
@@ -342,10 +349,12 @@ int fdb_del_dbname_to_whitelist(const char *dbname)
     return hash_del(fdb_dbname_hash, &ptr);
 }
 
-void dump_whitelist(void *obj, void *dum)
+int dump_whitelist(void *obj, void *dum)
 {
-    const char *str = (const char *)obj;
-    logmsg(LOGMSG_USER, "%s\n", str);
+    const char **a = obj;
+    static int cnt = 0;
+    logmsg(LOGMSG_USER, "%d: %s, %p, (obj %a %p)\n", cnt++, (char*) *a, *a, a, a);
+    return 0;
 }
 
 void fdb_dump_whitelist()
@@ -355,7 +364,7 @@ void fdb_dump_whitelist()
         return;
     }
 
-    hash_for(fdb_dbname_hash, (hashforfunc_t *)dump_whitelist, NULL);
+    hash_for(fdb_dbname_hash, dump_whitelist, NULL);
 }
 
 /* Check if parameter dbname is in whitelist
@@ -363,7 +372,7 @@ void fdb_dump_whitelist()
  */
 int fdb_is_dbname_in_whitelist(const char *name)
 {
-    logmsg(LOGMSG_ERROR, "%s: name=%s\n", __func__, name);
+    logmsg(LOGMSG_USER, "%s: name=%s\n", __func__, name);
     if (fdb_dbname_hash == NULL)
         return 1;
 
@@ -373,7 +382,7 @@ int fdb_is_dbname_in_whitelist(const char *name)
         dbname[i++] = *(name++);
     dbname[i] = '\0';
     char *nptr = intern(dbname);
-    logmsg(LOGMSG_ERROR, "%s: nptr=%s\n", __func__, nptr);
+    logmsg(LOGMSG_USER, "%s: nptr=%s\n", __func__, nptr);
 
     const char *strptr = hash_find_readonly(fdb_dbname_hash, &nptr);
     return strptr != NULL;

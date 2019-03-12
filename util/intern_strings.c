@@ -118,3 +118,15 @@ void cleanup_interned_strings()
     interned_strings = NULL;
     Pthread_mutex_destroy(&intern_lk);
 }
+
+static int intern_dump(void *ptr, void *unused)
+{
+    struct interned_string *obj = ptr;
+    logmsg(LOGMSG_USER, "%s: str=%s %p (obj %p)\n", __func__, obj->str, obj->str, obj);
+    return 0;
+}
+
+void dump_interned_strings()
+{
+    hash_for(interned_strings, intern_dump, NULL);
+}

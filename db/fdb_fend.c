@@ -703,11 +703,7 @@ int fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
     listc_rfl(&stat_ent->tbl->ents, stat_ent);
     stat_ent->tbl = stat_tbl;
     stat_ent->tbl->version = stat_ent->_version;
-    listc_abl(&stat_tbl->ents, stat_ent);
-    assert(stat_ent->ixnum == -1);
-
-    if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "Linking %s to %s\n", stat_tbl->name, fdb->dbname);
+    listc_abl(&stat_tbl->name, fdb->dbname);
     hash_add(fdb->h_tbls_name, stat_tbl);
 
     return 0;
