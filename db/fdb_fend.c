@@ -702,8 +702,12 @@ int fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
     /* we need to move this from ent->tbl->ents to tbl_stat->ents */
     listc_rfl(&stat_ent->tbl->ents, stat_ent);
     stat_ent->tbl = stat_tbl;
-    stat_ent->tbl->version = stat_ent->_version;
-    listc_abl(&stat_tbl->name, fdb->dbname);
+   stat_ent->tbl->version = stat_ent->_version;
+    listc_abl(&stat_tbl->ents, stat_ent);
+    assert(stat_ent->ixnum == -1);
+
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "Linking %s to %s\n", stat_tbl->name, fdb->dbname);
     hash_add(fdb->h_tbls_name, stat_tbl);
 
     return 0;
@@ -2177,15 +2181,6 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         }
 
         if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
-
-            /*
-            if (fdb_send_allowed_to_connect() != FDB_NOERR) {
-                snprintf(clnt->fdb_state.xerr.errstr,
-                         sizeof(clnt->fdb_state.xerr.errstr),
-                         "Not allowed to connect do DB %s (not in whitelist)", host);
-                return FDB_ERR_NOTALLOWED;
-            } */
-
             if (fdbc) {
                 fdbc->streaming = FDB_CUR_IDLE;
 
@@ -4936,7 +4931,6 @@ int fdb_get_remote_version(const char *dbname, const char *table,
     if (tot >= sizeof(sql))
         return FDB_ERR_GENERIC;
 
-    //TODO: rc = cdb2_open_fdb(&db, dbname, location, flags);
     rc = cdb2_open(&db, dbname, location, flags);
     if (rc)
         return FDB_ERR_GENERIC;

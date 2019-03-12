@@ -691,30 +691,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
         }
-    } else if (tokcmp(tok, ltok, "fdb_whitelist") == 0) {
-        /* expected parse line: 
-         * fdb_whitelist nodes node1 node2 ... databases db1 db2 ...
-         */
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist db1 db2 ...  */
         tok = segtok(line, len, &st, &ltok);
-#if 0
-        if (tokcmp(tok, ltok, "nodes") == 0) {
+        while(ltok) {
+            int lrc = fdb_add_dbname_to_whitelist(tok);
+            if (lrc)
+                return -1;
             tok = segtok(line, len, &st, &ltok);
-            while(ltok) {
-                int lrc = add_fdb_node_to_whitelist(tok, ltok);
-                if (lrc)
-                    return -1;
-                tok = segtok(line, len, &st, &ltok);
-            }
-        } else 
-#endif
-        if (tokcmp(tok, ltok, "databases") == 0) {
-            tok = segtok(line, len, &st, &ltok);
-            while(ltok) {
-                int lrc = fdb_add_dbname_to_whitelist(tok);
-                if (lrc)
-                    return -1;
-                tok = segtok(line, len, &st, &ltok);
-            }
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/

@@ -2551,7 +2551,8 @@ clipper_usage:
         dbgflag = toknum(tok, ltok);
         gbl_time_osql = dbgflag;
         logmsg(LOGMSG_USER, "sqllogtime %s\n", (gbl_time_osql) ? "enabled" : "disabled");
-    } else if (tokcmp(tok, ltok, "fdb_whitelist") == 0) {
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist add db1 */
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected action\n");

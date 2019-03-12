@@ -23,11 +23,6 @@ dbdir=$DBDIR
 testdir=$TESTDIR
 cdb2config=$CDB2_CONFIG
 
-cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('fdb_whitelist add $srcdbname')"
-cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('fdb_whitelist dump')"
-cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('fdb_whitelist del nonexistent')"
-cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('fdb_whitelist dump')"
-
 DBNAME=$srcdbname
 DBDIR=$TESTDIR/$DBNAME
 #effectively srcdb config -- needed to setup srcdb
