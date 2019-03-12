@@ -58,6 +58,10 @@ $SECONDARY_DBNAME" > white3.exp
     fi
 fi
 
+for node in $CLUSTER; do
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist add $SECONDARY_DBNAME')"
+done
+
 
 #run tests
 echo "Starting tests"
