@@ -317,23 +317,32 @@ static int _access_control_clear(fdb_access_t *acc)
     return 0;
 }
 
+u_int ptrhashfunc(u_char **keyp, int len)
+{
+    unsigned hash = ((int*)keyp)[0] + ((int*)keyp)[1];
+    return hash;
+}
+
 int fdb_add_dbname_to_whitelist(const char *dbname)
 {
     logmsg(LOGMSG_USER, "%s: dbname=%s\n", __func__, dbname);
 
     /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
-        fdb_dbname_hash = hash_init_strptr(0);
+        fdb_dbname_hash = hash_init_user((hashfunc_t *)ptrhashfunc,
+                                         (cmpfunc_t *)memcmp, 0, 0);
+
     assert(fdb_dbname_hash != NULL);
-    const char *nptr = intern(dbname);
+    char *nptr = intern(dbname);
+
     void dump_interned_strings();
     dump_interned_strings();
-    if (hash_find_readonly(fdb_dbname_hash, &nptr) != NULL) {
+    if (hash_find_readonly(fdb_dbname_hash, nptr) != NULL) {
         logmsg(LOGMSG_USER, "%s: dbname=%s already in hash\n", __func__, nptr);
         return 0;
     }
 
-    hash_add(fdb_dbname_hash, &nptr);
+    hash_add(fdb_dbname_hash, nptr);
     return 0;
 }
 
@@ -346,14 +355,15 @@ int fdb_del_dbname_to_whitelist(const char *dbname)
         return 0;
 
     char *ptr = intern(dbname);
-    return hash_del(fdb_dbname_hash, &ptr);
+    return hash_del(fdb_dbname_hash, ptr);
 }
 
 int dump_whitelist(void *obj, void *dum)
 {
-    const char **a = obj;
-    static int cnt = 0;
-    logmsg(LOGMSG_USER, "%d: %s, %p, (obj %a %p)\n", cnt++, (char*) *a, *a, a, a);
+    const char *str = obj;
+    logmsg(LOGMSG_USER, "%s\n", str);
+    //static int cnt = 0;
+    //logmsg(LOGMSG_USER, "%d: %s, %p, (obj %p %p)\n", cnt++, (char*) a, *a, a, a);
     return 0;
 }
 
@@ -384,7 +394,7 @@ int fdb_is_dbname_in_whitelist(const char *name)
     char *nptr = intern(dbname);
     logmsg(LOGMSG_USER, "%s: nptr=%s\n", __func__, nptr);
 
-    const char *strptr = hash_find_readonly(fdb_dbname_hash, &nptr);
+    const char *strptr = hash_find_readonly(fdb_dbname_hash, nptr);
     return strptr != NULL;
 }
 
