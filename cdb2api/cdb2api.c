@@ -990,6 +990,7 @@ struct cdb2_hndl {
     int last_active;
     int copyhosts;
     int num_children;
+    int timeout_override;
 };
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
@@ -2073,7 +2074,10 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
         sbuf2flush(sb);
     }
 
-    sbuf2settimeout(sb, 5000, 5000);
+    if (hndl->timeout_override)
+        sbuf2settimeout(sb, hndl->timeout_override, hndl->timeout_override);
+    else
+        sbuf2settimeout(sb, 5000, 5000);
 
 #if WITH_SSL
     if (try_ssl(hndl, sb, node_indx) != 0) {
@@ -3717,6 +3721,15 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         return;
     }
 
+    if (strncasecmp(p, "timeout", 10) == 0) {
+        p += sizeof("TIMEOUT");
+        p = cdb2_skipws(p);
+        hndl->timeout_override = atoi(p);
+        for (int i = 0; i < hndl->num_children; i++) {
+            cdb2_hndl_tp *c_hndl = hndl->children[i];
+            c_hndl->timeout_override = hndl->timeout_override;
+        }
+    }
     if (strncasecmp(p, "concurrent", 10) == 0 && !hndl->parent) {
         int children, i;
         p += sizeof("CONCURRENT");
@@ -5411,7 +5424,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
 
         return -1;
     }
-    sbuf2settimeout(ss, 5000, 5000);
+    if (hndl->timeout_override)
+        sbuf2settimeout(ss, hndl->timeout_override, hndl->timeout_override);
+    else 
+        sbuf2settimeout(ss, 5000, 5000);
     if (is_sockfd == 0) {
         if (hndl->is_admin)
             sbuf2printf(ss, "@");
