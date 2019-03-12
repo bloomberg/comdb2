@@ -3721,7 +3721,7 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         return;
     }
 
-    if (strncasecmp(p, "timeout", 10) == 0) {
+    if (strncasecmp(p, "timeout", 7) == 0) {
         p += sizeof("TIMEOUT");
         p = cdb2_skipws(p);
         hndl->timeout_override = atoi(p);
