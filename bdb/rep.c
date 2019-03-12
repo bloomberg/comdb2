@@ -5432,7 +5432,6 @@ void *watcher_thread(void *arg)
 
 #ifndef NDEBUG
                 dump_schema_lk(stdout);
-                abort();
 #endif
             }
         }
