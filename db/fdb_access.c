@@ -317,10 +317,14 @@ static int _access_control_clear(fdb_access_t *acc)
     return 0;
 }
 
+// simple hash for a ptr address
+// for 4 bytes ptr (32bit arch), it's just the first 4 bytes
+// for 8 bytes ptr, sum the first 4 bytes with the second 4 bytes
 const u_int ptrhashfunc(u_char *keyp, int len)
 {
-    // sum the first 4 bytes with the second 4 bytes
-    unsigned hash = ((int*)&keyp)[0] + ((int*)&keyp)[1];
+    unsigned hash = 0;
+    for (int i = 0; i < sizeof(u_char *)/sizeof(int); i++)
+        hash += ((int*)&keyp)[i];
     return hash;
 }
 
