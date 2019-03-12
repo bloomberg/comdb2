@@ -297,12 +297,13 @@ void sqlite3FinishCoding(Parse *pParse){
 static void sqlite3NestedParse_int(
   Parse *pParse,
   char **pzErrMsg,
-  const char *zFormat, ...
+  const char *zFormat,
+  va_list ap
 ) {
 #else
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   va_list ap;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   char *zSql;
   char *zErrMsg = 0;
   sqlite3 *db = pParse->db;
@@ -310,9 +311,13 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
 
   if( pParse->nErr ) return;
   assert( pParse->nested<10 );  /* Nesting should only be of limited depth */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_start(ap, zFormat);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   zSql = sqlite3VMPrintf(db, zFormat, ap);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_end(ap);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( zSql==0 ){
     return;   /* A malloc must have failed */
   }
