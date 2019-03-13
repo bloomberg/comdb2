@@ -23,7 +23,6 @@
 #include <stddef.h>
 #include <ctype.h>
 
-#include <lockmacro.h>
 #include <list.h>
 #include <segstr.h>
 

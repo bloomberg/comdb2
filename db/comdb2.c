@@ -58,7 +58,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 #include <mem.h>
