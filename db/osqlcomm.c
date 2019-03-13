@@ -4814,9 +4814,11 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             sbuf2flush(logsb);
         }
 
+#if 0
         DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc,
                  nops);
+#endif
 
         if (!(p_buf = osqlcomm_done_uuid_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
