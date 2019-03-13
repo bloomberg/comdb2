@@ -245,7 +245,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 {
     struct dbtable *tbl;
-    char *tblname;
+    char *tblname = NULL;
     int idx;
 
     assert(thd->rootpages);
