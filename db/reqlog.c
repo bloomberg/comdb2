@@ -50,7 +50,6 @@
 #include <list.h>
 #include <segstr.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 
 #include <epochlib.h>
