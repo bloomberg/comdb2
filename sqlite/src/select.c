@@ -1918,9 +1918,6 @@ static void generateColumnNames(
   sqlite3VdbeSetNumCols(v, pEList->nExpr);
   for(i=0; i<pEList->nExpr; i++){
     Expr *p = pEList->a[i].pExpr;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    char *zSpan;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     assert( p!=0 );
     assert( p->op!=TK_AGG_COLUMN );  /* Agg processing has not run yet */
@@ -1929,11 +1926,6 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( (zSpan=pEList->a[i].zSpan) && strchr(zSpan, '.') ){
-      /* A qualified column name was used, keep it verbatim. */
-      sqlite3VdbeSetColName(v, i, COLNAME_NAME, zSpan, SQLITE_TRANSIENT);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( srcName && p->op==TK_COLUMN ){
       char *zCol;
       int iCol = p->iColumn;
