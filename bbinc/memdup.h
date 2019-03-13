@@ -15,6 +15,6 @@
 */
 
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-char *memdup_readonly(const char *, size_t);
+void *memdup_readonly(const void *, size_t);
 void memdup_free(char *, size_t);
 #endif /* !defined(NDEBUG) && defined(_LINUX_SOURCE) */
