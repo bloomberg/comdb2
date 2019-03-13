@@ -42,7 +42,6 @@
 
 #include <plhash.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 

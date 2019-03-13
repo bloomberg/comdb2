@@ -30,6 +30,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "locks_wrap.h"
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE
@@ -847,7 +848,7 @@ void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
 }
 
 #if SBUF2_SERVER
-#include <lockmacro.h> /* LOCK & UNLOCK */
+#include <lockmacros.h> /* LOCK & UNLOCK */
 #include <plhash.h>    /* hash_t */
 #include <logmsg.h>    /* logmsg */
 #define logi(...) logmsg(LOGMSG_INFO, ##__VA_ARGS__)
