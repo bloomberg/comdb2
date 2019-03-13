@@ -939,6 +939,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     free(indexname);
 
+    sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
