@@ -67,7 +67,7 @@
  */
 
 #define LOCK(lk)                                                               \
-    Pthread_mutex_lock(lk);                                             \
+    Pthread_mutex_lock(lk);                                                    \
     do
 #define UNLOCK(lk)                                                             \
     while (0)                                                                  \
@@ -88,7 +88,7 @@
 
 #define LOCKIFNZ(lk, a)                                                        \
     if (a)                                                                     \
-        Pthread_mutex_lock(lk);                                         \
+        Pthread_mutex_lock(lk);                                                \
     do
 #define UNLOCKIFNZ(lk, a)                                                      \
     while (0)                                                                  \
@@ -103,7 +103,7 @@
  */
 
 #define xUNLOCK(lk)                                                            \
-    Pthread_mutex_unlock(lk);                                           \
+    Pthread_mutex_unlock(lk);                                                  \
     do
 #define xLOCK(lk)                                                              \
     while (0)                                                                  \
@@ -116,7 +116,7 @@
 
 #define xUNLOCKIFNZ(lk, a)                                                     \
     if (a)                                                                     \
-        Pthread_mutex_unlock(lk);                                       \
+        Pthread_mutex_unlock(lk);                                              \
     do
 #define xLOCKIFNZ(lk, a)                                                       \
     while (0)                                                                  \
