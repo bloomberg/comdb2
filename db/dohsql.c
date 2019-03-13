@@ -227,11 +227,16 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
-static int inner_type(sqlite3_stmt *stmt, int col)
+static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
-    int type = sqlite3_column_type(stmt, col);
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+    int type;
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+        type = sqlite3_column_type(stmt, col);
+        if (type == SQLITE_NULL) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
+    } else {
+        type = SQLITE_NULL;
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -254,7 +259,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = inner_type(stmt, i);
+        conn->cols[i].type = inner_type(clnt, stmt, i);
     }
     return 0;
 }
@@ -586,10 +591,10 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = sqlite3_step(stmt);
+    rc = sqlite3_maybe_step(clnt, stmt);
 
     if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
+        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
             logmsg(LOGMSG_DEBUG,
@@ -703,7 +708,7 @@ wait_for_others:
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
-        rc = sqlite3_step(stmt);
+        rc = sqlite3_maybe_step(clnt, stmt);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);

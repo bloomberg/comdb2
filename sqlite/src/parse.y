@@ -603,9 +603,6 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintSelect(pParse->db, X);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Select(pParse, X, &dest);
   sqlite3SelectDelete(pParse->db, X);
 }
@@ -1019,18 +1016,12 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,O,L);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
 %endif
@@ -1048,9 +1039,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 }
 %endif
@@ -1059,9 +1047,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 }
 %endif
@@ -1088,16 +1073,10 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, S, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, S, F, R, U);
 }
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, 0, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
 
@@ -1543,6 +1522,7 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
 
+
 // The eidlist non-terminal (Expression Id List) generates an ExprList
 // from a list of identifiers.  The identifier names are in ExprList.a[].zName.
 // This list is stored in an ExprList rather than an IdList so that it
@@ -1780,6 +1760,7 @@ raisetype(A) ::= ABORT.     {A = OE_Abort;}
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
+
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
 %ifndef SQLITE_OMIT_TRIGGER
 cmd ::= DROP TRIGGER ifexists(NOERR) fullname(X). {
@@ -1910,7 +1891,7 @@ alter_table_drop_index ::= DROP INDEX nm(I). {
   comdb2AlterDropIndex(pParse, &I);
 }
 alter_table_commit_pending ::= SET COMMIT PENDING. {
-    comdb2AlterCommitPending(pParse);
+  comdb2AlterCommitPending(pParse);
 }
 
 alter_table_action ::= alter_table_add_column.
@@ -2143,7 +2124,7 @@ rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
     comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 
-///////////////////// COMDB2 SCHEMACHANGE CONTROL STATEMENTS ///////////////////
+//////////////////////////// SCHEMA CHANGE CONTROL ////////////////////////////
 
 cmd ::= scctrl.
 
@@ -2153,12 +2134,11 @@ scaction(A) ::= RESUME. { A = SC_ACTION_RESUME; }
 scaction(A) ::= COMMIT. { A = SC_ACTION_COMMIT; }
 scaction(A) ::= ABORT. { A = SC_ACTION_ABORT; }
 
-scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X).
-{
+scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X). {
     comdb2SchemachangeControl(pParse,A,&T,&X);
 }
 
-/////////////////////COMDB2 GRANT STATEMENT //////////////////////////////////
+/////////////////////////////////// GRANT /////////////////////////////////////
 
 %type sql_permission {int}
 sql_permission(A) ::= READ. { A = AUTH_READ; }

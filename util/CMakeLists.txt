@@ -20,6 +20,7 @@ set(src
   intern_strings.c
   list.c
   logmsg.c
+  memdup.c
   misc.c
   nodemap.c
   object_pool.c

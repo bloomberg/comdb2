@@ -740,13 +740,6 @@ static void re_sql_func(
   }
 }
 
-int sqlite3RegexpInit(sqlite3 *db) {
-  int rc = SQLITE_OK;
-  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0,
-                                 re_sql_func, 0, 0);
-  return rc;
-}
-
 /*
 ** Invoke this routine to register the regexp() function with the
 ** SQLite database connection.
@@ -765,3 +758,16 @@ int sqlite3_regexp_init(
                                  re_sql_func, 0, 0);
   return rc;
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_REGEXP)
+/*
+** Comdb2 does not allow run-time linking for sqlite3 modules, so we must
+** link this staticaly as we do with system tables.
+*/
+int sqlite3RegexpInit(sqlite3 *db) {
+  int rc;
+  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0, re_sql_func,
+                               0, 0);
+  return rc;
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_REGEXP) */

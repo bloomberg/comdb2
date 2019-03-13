@@ -71,12 +71,10 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
 #define SQLITE_CORE 1
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE) */
-
 #include "sqlite3ext.h"
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
 SQLITE_EXTENSION_INIT1
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #include <assert.h>
 #include <string.h>
 

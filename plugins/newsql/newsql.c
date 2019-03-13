@@ -432,10 +432,14 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = column_type(clnt, stmt, col);
-    }
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+            type = column_type(clnt, stmt, col);
+            if (type == SQLITE_NULL) {
+                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            }
+        } else {
+            type = SQLITE_NULL;
+        }
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -742,7 +746,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
+                column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
@@ -1599,6 +1604,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->spversion.version_num = ver;
                 } else {
                     rc = ii + 1;
+                }
+            } else if (strncasecmp(sqlstr, "prepare_only", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->prepare_only = 0;
+                } else {
+                    clnt->prepare_only = 1;
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
