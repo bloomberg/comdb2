@@ -60,11 +60,20 @@ enum transaction_level {
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
+struct fingerprint_track {
+    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    int64_t count;   /* Cumulative number of times executed */
+    int64_t cost;    /* Cumulative cost */
+    int64_t time;    /* Cumulative execution time */
+    int64_t rows;    /* Cumulative number of rows selected */
+    char *zNormSql;  /* The normalized SQL query */
+    size_t nNormSql; /* Length of normalized SQL query */
+};
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    char fingerprint[FINGERPRINTSZ];
     //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
@@ -576,6 +585,7 @@ struct sqlclntstate {
 
     struct query_effects effects;
     struct query_effects log_effects;
+    int64_t nsteps;
 
     int have_user;
     char user[MAX_USERNAME_LEN];
@@ -606,9 +616,12 @@ struct sqlclntstate {
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
+    int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
+    int step_rc;    /* last value returned from sqlite3_step() */
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
+    int prepare_only;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;
@@ -682,7 +695,6 @@ struct sqlclntstate {
     uint8_t queue_me;
     uint8_t fail_dispatch;
 
-    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 
@@ -1090,6 +1102,10 @@ int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
+int sqlite3_is_success(int);
+int sqlite3_is_prepare_only(struct sqlclntstate *);
+int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
+int sqlite3_can_get_column_type_and_data(struct sqlclntstate *, sqlite3_stmt *);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
     ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -1117,5 +1133,6 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *, struct reqlogger *);
 
 #endif

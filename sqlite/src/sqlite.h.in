@@ -3696,6 +3696,9 @@ int sqlite3_limit(sqlite3*, int id, int newVal);
 */
 #define SQLITE_PREPARE_PERSISTENT              0x01
 #define SQLITE_PREPARE_NORMALIZE               0x02
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_ONLY                    0x08
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Compiling An SQL Statement
@@ -4715,6 +4718,7 @@ int sqlite3_column_type(sqlite3_stmt*, int iCol);
 const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
 const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
 
+int sqlite3_hasResultSet(sqlite3_stmt*);
 int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
 int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -6353,11 +6357,6 @@ void sqlite3_reset_auto_extension(void);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3_stmt_has_remotes(sqlite3_stmt *stmt);
-
-const char *sqlite3_fingerprint(sqlite3*);
-int sqlite3_fingerprint_size(sqlite3*);
-int sqlite3_fingerprint_enable(sqlite3*);
-int sqlite3_fingerprint_disable(sqlite3*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
