@@ -88,7 +88,7 @@ echo "XXXXX we should see 5 rows in two shards in part1" >> $output
 gorun "select * from testpart1 order by a"
 timepart_stats
 
-#gorun "delete from comdb2_logical_cron where name = 'testpart1'"
+gorun "delete from comdb2_logical_cron where name = 'testpart1'"
 
 echo "XXXXX we should see the counter for part1 reset" >> $output
 gorun "select * from testpart1 order by a"

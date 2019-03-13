@@ -204,6 +204,7 @@ XXXXX we should see 5 rows in two shards in part1
 (name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
 (name='testpart1', value=1)
 (name='testpart2', value=0)
+(rows deleted=1)
 XXXXX we should see the counter for part1 reset
 (a=1, alltypes_vutf8='hi')
 (a=2, alltypes_vutf8='ho')
@@ -255,11 +256,10 @@ XXXXX we should see the counter for part1 reset
 (name='testpart2', shardname='t2')
 (name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
 (name='Global Job Scheduler', type='WALLTIME', running=0, nevents=0, description='Default cron scheduler')
-(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 1')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
 (name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
 (name='AddShard', type='testpart1', epoch=2, arg1='testpart1', arg2=NULL, arg3=NULL)
 (name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
-(name='testpart1', value=1)
 (name='testpart2', value=0)
 sleeping
 XXXXX we should see the counter back to next value, and first 2 rows gone
