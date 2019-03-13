@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+set -e
+
+dbnm=$1
+output=run.log
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+function gorun
+{
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default "$1"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "$1" >> $output 2>&1
+}
+
+function timepart_stats
+{
+    # check the current partitions 
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('partitions')" | 
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID"
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('partitions')" |
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $output
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions "
+    cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $output
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    gorun "select name, shardname from comdb2_timepartshards"
+
+    #randomly we catch a drop event here; sleep to skip the deterministically
+    sleep 6
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, arg1, arg2, arg3 from comdb2_timepartevents"
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $output
+
+    gorun "select * from comdb2_cron_schedulers"
+    gorun "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events"
+    gorun "select * from comdb2_logical_cron"
+}
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+echo "Creating comdb2_logical_cron table"
+echo "Creating comdb2_logical_cron table" > $output
+gorun "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
+gorun "select * from comdb2_logical_cron"
+
+echo "Creating partition 1 and 2"
+echo "Creating partition 1 and 2" >> $output
+gorun "create partition on t1 as testpart1 period 'manual' retention 2 start '1'"
+gorun "create partition on t2 as testpart2 period 'manual' retention 2 start '10'"
+
+timepart_stats
+
+gorun "put counter testpart1 increment"
+
+timepart_stats
+
+# verify 
+testcase_output=$(cat $output)
+expected_output=$(cat $output.exp)
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+    echo "  ^^^^^^^^^^^^"
+    echo "The testcase has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{$output.exp,$output}"
+    echo " "
+    diff $output.exp $output
+    echo " "
+    exit 1
+
+fi
+
+echo "Testcase passed."
