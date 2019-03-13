@@ -147,6 +147,9 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
                          Cdb2TrigTables *tbl)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
@@ -158,9 +161,11 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
     }
 #endif
 
-    char spname[MAX_SPNAME];
     if (comdb2AuthenticateUserOp(parse))
         return;
+
+    char spname[MAX_SPNAME];
+
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
         sqlite3ErrorMsg(parse, "Procedure name is too long");
         return;
@@ -232,6 +237,9 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 
 void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_DROP_LUA_CONSUMER :
@@ -243,9 +251,11 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
     }
 #endif
 
-    char spname[MAX_SPNAME];
     if (comdb2AuthenticateUserOp(parse))
         return;
+
+    char spname[MAX_SPNAME];
+
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
         sqlite3ErrorMsg(parse, "Procedure name is too long");
         return;
@@ -270,8 +280,6 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
-        if (comdb2AuthenticateUserOp(parse))                                   \
-            return;                                                            \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
@@ -295,6 +303,9 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 
 void comdb2CreateScalarFunc(Parse *parse, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
@@ -304,12 +315,18 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc)
         }
     }
 #endif
+
+    if (comdb2AuthenticateUserOp(parse))
+        return;
 
     comdb2CreateFunc(parse, proc, s, scalar);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
@@ -319,6 +336,9 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
         }
     }
 #endif
+
+    if (comdb2AuthenticateUserOp(parse))
+        return;
 
     comdb2CreateFunc(parse, proc, a, aggregate);
 }
@@ -326,8 +346,6 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
-        if (comdb2AuthenticateUserOp(parse))                                   \
-            return;                                                            \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
@@ -347,6 +365,9 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 void comdb2DropScalarFunc(Parse *parse, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
@@ -356,12 +377,18 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
         }
     }
 #endif
+
+    if (comdb2AuthenticateUserOp(parse))
+        return;
 
     comdb2DropFunc(parse, proc, s, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
@@ -371,6 +398,9 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
         }
     }
 #endif
+
+    if (comdb2AuthenticateUserOp(parse))
+        return;
 
     comdb2DropFunc(parse, proc, a, aggregate);
 }

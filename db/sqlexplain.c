@@ -1241,7 +1241,9 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     sqlite3_stmt *stmt = NULL;
     char *eos;
     char *newSql = sqlite3_mprintf("EXPLAIN QUERY PLAN %s", sql);
-    int rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt, (const char **)&eos);
+    int rc;
+    clnt->prep_rc = rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt,
+                                            (const char **)&eos);
     if( newSql ) sqlite3_free(newSql);
     sqlite3WhereTrace = 0;
     if (f) 

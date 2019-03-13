@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_fingerprint.c
   db_metrics.c
   db_tunables.c
   db_util.c

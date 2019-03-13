@@ -22,7 +22,6 @@
 #include <time.h>
 
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include "net.h"
 #include "bdb_int.h"

@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=908)
+(TUNABLES_COUNT=909)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -887,6 +887,7 @@
 (name='verbose_deadlocks_log', description='verbose_deadlocks_log', type='BOOLEAN', value='OFF', read_only='N')
 (name='verbose_fix_pinref', description='verbose_fix_pinref', type='BOOLEAN', value='ON', read_only='N')
 (name='verbose_net', description='Net prints lots of messages', type='BOOLEAN', value='OFF', read_only='N')
+(name='verbose_normalized_queries', description='For new fingerprints, show normalized queries.', type='BOOLEAN', value='OFF', read_only='N')
 (name='verbose_sbuf', description='verbose_sbuf', type='BOOLEAN', value='ON', read_only='N')
 (name='verbose_toblock_backouts', description='print verbose toblock backout trace', type='BOOLEAN', value='OFF', read_only='N')
 (name='verbose_waiter_flag', description='Print trace setting the waiter flag in lock code', type='BOOLEAN', value='OFF', read_only='N')

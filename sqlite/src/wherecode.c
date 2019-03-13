@@ -955,9 +955,7 @@ static void codeCursorHint(
   Bitmask msk;
   WhereLoop *pWLoop;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( OptimizationDisabled(db, SQLITE_CursorHints) ) return;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* Really need to run this only for remote cursors */
   /* hack, at this point only remcurs have it */
@@ -1442,7 +1440,6 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       pStart = pEnd;
       pEnd = pTerm;
     }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     codeCursorHint(pTabItem, pWInfo, pLevel, pEnd, iLevel);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
