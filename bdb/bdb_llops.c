@@ -122,7 +122,7 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
     } else {
         if (ix == -1)
             rc = bdb_put_pack(bdb_state, dtafile > 0 ? 1 : 0, db, txn, &dkey,
-                              &ddata, 0);
+                              &ddata, 0, 0);
         else {
             int bdberr;
 

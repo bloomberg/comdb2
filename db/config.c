@@ -341,7 +341,9 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "reorder_socksql_no_deadlock off",
                                  "disable_tpsc_tblvers",
                                  "on disable_etc_services_lookup",
-                                 "legacy_schema on"};
+                                 "off osql_odh_blob",
+                                 "legacy_schema on",
+                                 "online_recovery off"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {

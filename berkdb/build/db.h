@@ -1104,6 +1104,10 @@ extern char *db_eid_invalid;
 #define	DB_REP_LOGSONLY		0x002
 #define	DB_REP_MASTER		0x004
 
+/* rep truncate flags */
+#define DB_REP_TRUNCATE_MASTER 0x001
+#define DB_REP_TRUNCATE_ONLINE 0x002
+
 /* Replication statistics. */
 struct __db_rep_stat {
 	/* !!!
@@ -2540,8 +2544,8 @@ struct __db_env {
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
-	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
-	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, int is_master);
+	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, uint32_t flags)));
+	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, uint32_t flags);
 	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
 	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
 	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);

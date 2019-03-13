@@ -306,10 +306,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
                 reqprintf(iq, "%s: ix %d write disabled", __func__, ixnum);
             return 0;
         }
-        const uint8_t *p_buf_req_start = NULL;
-        const uint8_t *p_buf_req_end = NULL;
-        rc = insert_add_op(iq, p_buf_req_start, p_buf_req_end, opcode, rrn,
-                           ixnum, genid, ins_keys, blkpos, 0);
+        rc = insert_add_op(iq, opcode, rrn, ixnum, genid, ins_keys, blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {

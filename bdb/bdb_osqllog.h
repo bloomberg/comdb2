@@ -37,6 +37,7 @@ struct bdb_osql_trn;
 struct bdb_osql_log_impl;
 
 typedef struct bdb_osql_log {
+    u_int32_t txnid;
     struct bdb_osql_log_impl *impl;
     LINKC_T(struct bdb_osql_log) lnk;
 } bdb_osql_log_t;
@@ -282,5 +283,6 @@ int bdb_llog_cursor_open(bdb_llog_cursor *pCur);
 void bdb_llog_cursor_close(bdb_llog_cursor *pCur);
 int bdb_llog_cursor_first(bdb_llog_cursor *pCur);
 int bdb_llog_cursor_next(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn);
 void bdb_llog_cursor_cleanup(bdb_llog_cursor *pCur);
 #endif

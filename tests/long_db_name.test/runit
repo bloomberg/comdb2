@@ -199,7 +199,7 @@ delete_records()
 assertres ()
 {
     if [ $# != 2 ] ; then 
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2

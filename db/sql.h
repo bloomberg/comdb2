@@ -175,6 +175,9 @@ typedef struct osqlstate {
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
     bool is_reorder_on : 1;
+
+    /* set to 1 if we have already called osql_sock_start in socksql mode */
+    bool sock_started : 1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -231,7 +234,6 @@ typedef struct sqlclntstate_fdb {
     int trim_keylen; /* lenght of the trim key */
     fdb_access_t *access; /* access control */
     int version;          /* version of the remote-cached object */
-    errstat_t err;        /* remote execution specific error */
     char *dbname;  /* if err is set, this indicate which fdb is responsible, if
                       any */
     char *tblname; /* if err is set, this indicate which tablename is
@@ -583,6 +585,8 @@ struct sqlclntstate {
     int have_password;
     char password[MAX_PASSWORD_LEN];
 
+    int authgen;
+
     int no_transaction;
 
     int have_extended_tm;
@@ -715,6 +719,7 @@ struct sqlclntstate {
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
     struct sqlthdstate *thd;
+    int had_lease_at_begin;
 };
 
 /* Query stats. */

@@ -73,12 +73,6 @@ if [ $? != 0 ]; then
   exit 1
 fi
 
-cnt=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('memstat ssl')" | wc -l`
-if [ $cnt = 0 ]; then
-  echo "SSL memory not present" >&2
-  exit 1
-fi
-
 host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 if [ "$host" != "" ]; then
     cdb2sql -v ${CDB2_OPTIONS} $dbnm --host $host 'select 1' >conn.out 2>&1

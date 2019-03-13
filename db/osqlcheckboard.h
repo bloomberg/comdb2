@@ -81,8 +81,8 @@ void osql_checkboard_destroy(void);
  * - <0 if error
  *
  */
-int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                    int lock);
+bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
+                                     bool lock);
 
 /**
  * Register an osql thread with the checkboard

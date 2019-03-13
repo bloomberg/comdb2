@@ -706,7 +706,8 @@ int bdb_prim_allocdta_genid(bdb_state_type *bdb_handle, tran_type *tran,
                             int updateid, int *bdberr);
 int bdb_prim_adddta_n_genid(bdb_state_type *bdb_state, tran_type *tran,
                             int dtanum, void *dtaptr, size_t dtalen, int rrn,
-                            unsigned long long genid, int *bdberr);
+                            unsigned long long genid, int *bdberr,
+                            int odhready);
 
 int bdb_prim_deallocdta_genid(bdb_state_type *bdb_handle, tran_type *tran,
                               int rrn, unsigned long long genid, int *bdberr);
@@ -725,7 +726,7 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
                            int dtanum, void *newdta, int newdtaln, int rrn,
                            unsigned long long oldgenid,
                            unsigned long long newgenid, int participantstripeid,
-                           int *bdberr);
+                           int *bdberr, int odhready);
 
 int bdb_prim_no_upd(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                     unsigned long long oldgenid, unsigned long long newgenid,
@@ -1485,6 +1486,34 @@ int bdb_get_in_schema_change(tran_type *input_trans, const char *db_name,
                              void **schema_change_data,
                              size_t *schema_change_data_len, int *bdberr);
 
+enum {
+    BDB_SC_RUNNING,
+    BDB_SC_PAUSED,
+    BDB_SC_COMMITTED,
+    BDB_SC_ABORTED,
+    BDB_SC_COMMIT_PENDING
+};
+enum {
+    LLMETA_SCERR_LEN =
+        128 /* maximum error string len for schema change status */
+};
+
+typedef struct {
+    unsigned long long start;
+    int status;
+    unsigned long long last;
+    char errstr[LLMETA_SCERR_LEN];
+    int sc_data_len;
+} llmeta_sc_status_data;
+
+int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
+                                 void *schema_change_data,
+                                 size_t schema_change_data_len, int status,
+                                 const char *errstr, int *bdberr);
+
+int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
+                                 void ***sc_data_out, int *num, int *bdberr);
+
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
                        unsigned long long genid, int *bdberr);
 int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
@@ -2041,7 +2070,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
-void send_newmaster(bdb_state_type *bdb_state);
+void send_newmaster(bdb_state_type *bdb_state, int online);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
@@ -2121,7 +2150,14 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset);
 
-void bdb_set_logical_live_sc(bdb_state_type *bdb_state);
-void bdb_clear_logical_live_sc(bdb_state_type *bdb_state);
+int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);
+int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock);
 
+/* Pack the payload into heap memory */
+int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
+                  size_t *outlen, void **freeptr);
+/* If the payload is uncompressed, point `out' to where the record starts;
+ * Otherwise unpack the payload into heap memory. */
+int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
+                    void **out, size_t *outlen, void **freeptr);
 #endif

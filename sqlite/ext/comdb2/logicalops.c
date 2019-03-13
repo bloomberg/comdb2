@@ -729,7 +729,7 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     /* Reconstruct record from berkley */
     if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, 
-                    NULL, 0, packedbuf, dtalen, &dtalen, &ixlen)) != 0) {
+                    NULL, sizeof(genid_t), packedbuf, dtalen, &dtalen, &ixlen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing insert for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);
@@ -836,7 +836,7 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 
     /* Reconstruct record from berkley */
     if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page,
-                    &index, NULL, 0, packedprevbuf, dtalen, &dtalen)) != 0) {
+                    &index, NULL, sizeof(genid_t), packedprevbuf, dtalen, &dtalen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing delete for "
                 "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
                 rec->lsn.offset);

@@ -280,7 +280,7 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
     dbp = bdb_state->dbp_data[0][dtafile];
 
     rc = ll_dta_add(bdb_state, *genid, dbp, tran, 0, dtafile /* stripe! */,
-                    &dbt_key, &dbt_data, DB_NOOVERWRITE);
+                    &dbt_key, &dbt_data, DB_NOOVERWRITE, 0);
 
     if (genid_dta)
         free(genid_dta);
@@ -333,7 +333,8 @@ int bdb_prim_allocdta_genid(bdb_state_type *bdb_state, tran_type *tran,
 static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
                                        tran_type *tran, int dtanum,
                                        void *dtaptr, size_t dtalen, int rrn,
-                                       unsigned long long genid, int *bdberr)
+                                       unsigned long long genid, int *bdberr,
+                                       int odhready)
 {
     BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
 
@@ -400,7 +401,7 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
     dbp = get_dbp_from_genid(bdb_state, dtanum, genid, &stripe);
 
     rc = ll_dta_add(bdb_state, genid, dbp, tran, dtanum, stripe, &dbt_key,
-                    &dbt_data, DB_NOOVERWRITE);
+                    &dbt_data, DB_NOOVERWRITE, odhready);
 
     if (genid_dta)
         free(genid_dta);
@@ -425,14 +426,10 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
 
 int bdb_prim_adddta_n_genid(bdb_state_type *bdb_state, tran_type *tran,
                             int dtanum, void *dtaptr, size_t dtalen, int rrn,
-                            unsigned long long genid, int *bdberr)
+                            unsigned long long genid, int *bdberr, int odhready)
 {
     BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
 
-    int rc;
-
-    rc = bdb_prim_adddta_n_genid_int(bdb_state, tran, dtanum, dtaptr, dtalen,
-                                     rrn, genid, bdberr);
-
-    return rc;
+    return bdb_prim_adddta_n_genid_int(bdb_state, tran, dtanum, dtaptr, dtalen,
+                                       rrn, genid, bdberr, odhready);
 }

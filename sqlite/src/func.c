@@ -829,7 +829,6 @@ static void partitionInfoFunc(
     }
   }
 }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Implementation of the comdb2_starttime() SQL function.
@@ -844,6 +843,7 @@ static void comdb2StartTimeFunc(
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
 }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Implementation of the last_insert_rowid() SQL function.  The return
@@ -2398,7 +2398,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION2(length,            1, 0, 0, lengthFunc,  SQLITE_FUNC_LENGTH),
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    FUNCTION(sleep,              1, 0, 0, sleepFunc        ),
+    VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(printf,            -1, 0, 0, printfFunc       ),
     FUNCTION(unicode,            1, 0, 0, unicodeFunc      ),
