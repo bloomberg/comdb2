@@ -4434,7 +4434,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
-                                 flags);
+                                 flags | THDPOOL_FORCE_QUEUE);
         }
 
         if (rc) {
