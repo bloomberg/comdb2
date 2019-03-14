@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
+#include <alloca.h>
 
 #include "plhash.h"
 #include "intern_strings.h"
