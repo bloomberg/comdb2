@@ -805,9 +805,6 @@ Expr *sqlite3ExprAlloc(
     pNew->nHeight = 1;
 #endif  
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pNew->visited = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return pNew;
 }
 

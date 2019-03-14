@@ -20,9 +20,7 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <unistd.h>
 #include <uuid/uuid.h>
-
 #include <memcompare.c>
-
 extern const char *const gbl_db_build_name;
 extern const char * const gbl_db_release_name;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -344,11 +342,9 @@ static void substrFunc(
   }
   p0type = sqlite3_value_type(argv[0]);
   p1 = sqlite3_value_int(argv[1]);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if (p1 == 0) p1 = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( p0type==SQLITE_BLOB ){
     len = sqlite3_value_bytes(argv[0]);
     z = sqlite3_value_blob(argv[0]);

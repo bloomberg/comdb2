@@ -378,6 +378,15 @@ int sqlite3_value_nochange(sqlite3_value *pVal){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+inline int sqlite3_hasResultSet(
+  sqlite3_stmt *pStmt
+){
+  Vdbe *pVm = (Vdbe *)pStmt;
+  if( pVm && pVm->pResultSet!=0 ){
+    return 1;
+  }
+  return 0;
+}
 inline int sqlite3_hasNColumns(
   sqlite3_stmt *pStmt,
   int n
@@ -769,7 +778,6 @@ static int sqlite3Step(Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( rc==SQLITE_COMDB2SCHEMA ) return rc;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifndef SQLITE_OMIT_TRACE
   /* If the statement completed successfully, invoke the profile callback */
   if( rc!=SQLITE_ROW ) checkProfileCallback(db, p);

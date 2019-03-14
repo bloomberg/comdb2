@@ -38,10 +38,10 @@
 #include <time.h>
 
 #include <list.h>
-#include <lockmacro.h>
 #include <epochlib.h>
 #include <memory_sync.h>
 
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "util.h"
 #include "thrman.h"
