@@ -135,7 +135,7 @@ static void *test_lockmgr(void *_arg)
     int i, j;
     u_int32_t locker;
     DB_LOCK lock[DBTs];
-    ssize_t rc, rc1;
+    ssize_t rc, rc1 = 0;
     DB_LOCKREQ put_all = {0};
 
     start = gettimeofday_ms();

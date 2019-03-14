@@ -18,8 +18,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "comdb2_plugin.h"
 #include "pb_alloc.h"
 #include "sp.h"
@@ -260,7 +258,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0;                                              \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \

@@ -16,8 +16,6 @@
 
 #include <gettimeofday_ms.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "sql.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
