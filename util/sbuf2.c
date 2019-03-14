@@ -907,7 +907,7 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     }
 
 #if SBUF2_SERVER
-    struct peer_info key = { .family = peeraddr.sin_family };
+    struct peer_info key = {.family = peeraddr.sin_family};
     memcpy(&key.addr, &peeraddr.sin_addr, sizeof(key.addr));
 #endif
 

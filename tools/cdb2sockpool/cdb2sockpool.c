@@ -395,11 +395,7 @@ void *client_thd(void *voidarg)
         return NULL;
     }
 
-    struct client clnt = {
-        .fd = fd,
-        .pid = hello.pid,
-        .slot = hello.slot
-    };
+    struct client clnt = {.fd = fd, .pid = hello.pid, .slot = hello.slot};
     bzero(&clnt.stats, sizeof(clnt.stats));
 
     rc = cdb2_get_progname_by_pid(clnt.pid, clnt.progname,
@@ -1116,7 +1112,7 @@ int main(int argc, char *argv[])
 
     int c;
     int listenfd;
-    struct sockaddr_un serv_addr = { .sun_family = AF_UNIX };
+    struct sockaddr_un serv_addr = {.sun_family = AF_UNIX};
 
     sigignore(SIGPIPE);
 #ifndef LOG_PERROR

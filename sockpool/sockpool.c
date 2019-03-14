@@ -244,7 +244,7 @@ static int open_sockpool_ll(void)
         return -1;
     }
 
-    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    struct sockaddr_un addr = {.sun_family = AF_UNIX};
     strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path));
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
@@ -256,10 +256,7 @@ static int open_sockpool_ll(void)
 
     /* Connected - write hello message */
     struct sockpool_hello hello = {
-        .protocol_version = 0,
-        .pid = getpid(),
-        .slot = 0
-    };
+        .protocol_version = 0, .pid = getpid(), .slot = 0};
     memcpy(hello.magic, "SQLP", 4);
 
     ptr = (const char *)&hello;
@@ -308,10 +305,7 @@ static void default_destructor(enum socket_pool_event event,
             if (sockpool_fd != -1) {
                 int rc;
                 struct sockpool_msg_vers0 msg = {
-                    .request = SOCKPOOL_DONATE,
-                    .dbnum = dbnum,
-                    .timeout = ttl
-                };
+                    .request = SOCKPOOL_DONATE, .dbnum = dbnum, .timeout = ttl};
                 strncpy(msg.typestr, typestr, sizeof(msg.typestr));
                 msg.typestr[sizeof(msg.typestr) - 1] = 0;
 
@@ -613,10 +607,8 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
         }
         if (sockpool_fd != -1) {
             int rc;
-            struct sockpool_msg_vers0 msg = {
-                .request = SOCKPOOL_REQUEST,
-                .dbnum = dbnum
-            };
+            struct sockpool_msg_vers0 msg = {.request = SOCKPOOL_REQUEST,
+                                             .dbnum = dbnum};
 
             strncpy(msg.typestr, typestr, sizeof(msg.typestr));
             msg.typestr[sizeof(msg.typestr) - 1] = 0;

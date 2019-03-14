@@ -50,8 +50,9 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
 
 struct schema_change_type *new_schemachange_type()
 {
-    struct schema_change_type *sc = calloc(1, sizeof(struct schema_change_type));
-    if (sc != NULL) 
+    struct schema_change_type *sc =
+        calloc(1, sizeof(struct schema_change_type));
+    if (sc != NULL)
         sc = init_schemachange_type(sc);
 
     return sc;

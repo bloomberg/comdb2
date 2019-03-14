@@ -368,11 +368,11 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
             return -1;
         }
 
-        struct sockaddr_in my_addr = {      /* my Internet address */
-            .sin_family = AF_INET,
-            .sin_addr.s_addr = INADDR_ANY,
-            .sin_port = htons((unsigned short)myport)
-        };
+        struct sockaddr_in my_addr = {/* my Internet address */
+                                      .sin_family = AF_INET,
+                                      .sin_addr.s_addr = INADDR_ANY,
+                                      .sin_port =
+                                          htons((unsigned short)myport)};
         if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
             logmsg(LOGMSG_ERROR, "do_tcpconnect: bind failed on local port %d: %s",
                     myport, strerror(errno));
@@ -381,10 +381,9 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
         }
     }
 
-    struct sockaddr_in tcp_srv_addr = { /* server's Internet socket addr */
-        .sin_family = AF_INET,
-        .sin_port = htons(port)
-    };
+    struct sockaddr_in tcp_srv_addr = {/* server's Internet socket addr */
+                                       .sin_family = AF_INET,
+                                       .sin_port = htons(port)};
     memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
     /* Connect to the server.  */
     if (nb)
