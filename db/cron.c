@@ -428,7 +428,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
     cron_sched_t *sched;
     int narr = 0;
     int nsize = 0;
-    int rc;
+    int rc = 0;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
     LISTC_FOR_EACH(&crons.scheds, sched, lnk)
