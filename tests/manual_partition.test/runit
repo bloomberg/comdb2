@@ -18,30 +18,34 @@ function gorun
     cdb2sql ${CDB2_OPTIONS} $dbnm default "$1" >> $output 2>&1
 }
 
+function gorun_master
+{
+    echo cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1"
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1" >> $output 2>&1
+}
+
+function gorun_filter
+{
+    filter=$2
+    echo cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" | egrep -v "$filter"
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" |egrep -v "$filter" >> $output 2>&1
+}
+
 function timepart_stats
 {
     # check the current partitions 
-    echo cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('partitions')" | 
-        egrep -v "SOURCE_ID"
-    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('partitions')" |
-        egrep -v "SOURCE_ID" >> $output
+    gorun_filter "exec procedure sys.cmd.send('partitions')" "SOURCE_ID"
 
-    echo cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions "
-    cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $output
-    if (( $? != 0 )) ; then
-        echo "FAILURE"
-        exit 1
-    fi
+    gorun "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions "
 
     gorun "select name, shardname from comdb2_timepartshards"
 
     #randomly we catch a drop event here; sleep to skip the deterministically
     sleep 6
-    echo cdb2sql ${CDB2_OPTIONS} $dbnm default  "select name, arg1, arg2, arg3 from comdb2_timepartevents"
-    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $output
+    gorun_master "select name, arg1, arg2, arg3 from comdb2_timepartevents"
 
-    gorun "select * from comdb2_cron_schedulers"
-    gorun "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events"
+    gorun_master "select * from comdb2_cron_schedulers"
+    gorun_master "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events"
     gorun "select * from comdb2_logical_cron"
 }
 
