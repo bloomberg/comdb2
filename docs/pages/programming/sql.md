@@ -539,6 +539,7 @@ The settings currently available to ```PUT``` are:
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
   * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; only increasing retention is supported currently
+  * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
 

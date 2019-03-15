@@ -25,6 +25,11 @@ enum view_partition_period {
     VIEW_PARTITION_MANUAL
 };
 
+#define IS_TIMEPARTITION(p)                                                    \
+    ((p) == VIEW_PARTITION_DAILY || (p) == VIEW_PARTITION_WEEKLY ||            \
+     (p) == VIEW_PARTITION_MONTHLY || (p) == VIEW_PARTITION_YEARLY ||          \
+     (p) == VIEW_PARTITION_TEST2MIN)
+
 enum view_partition_errors {
     VIEW_NOERR = 0 /* no error */
     ,

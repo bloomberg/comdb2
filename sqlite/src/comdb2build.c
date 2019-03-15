@@ -23,6 +23,7 @@
 #include <str0.h>
 #include <zlib.h>
 #include <shard_range.h>
+#include <logical_cron.h>
 #include "cdb2_constants.h"
 
 extern pthread_key_t query_info_key;
@@ -262,14 +263,10 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
     int rc;
 
     if (t1 == NULL)
-    {
         return SQLITE_OK;
-    }
 
-    /* Check for remote request only if both the tokens are set. */
-    if (t2 && (rc = isRemote(pParse, &t1, &t2))) {
+    if (t2 && (rc = isRemote(pParse, &t1, &t2)))
         return rc;
-    }
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
                               table_exists))) {
@@ -277,6 +274,38 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
     }
 
     return SQLITE_OK;
+}
+
+static inline int chkAndCopyPartitionTokens(Parse *pParse, char *dst, Token *t1,
+                                            Token *t2)
+{
+    char *table_name;
+    int rc = SQLITE_OK;
+
+    if (t1 == NULL)
+        return SQLITE_OK;
+
+    if (t2 && t2->n>0)
+        return setError(pParse, SQLITE_MISUSE, "Local counters only");
+
+    table_name = strndup(t1->z, t1->n);
+    if (table_name == NULL) {
+        return setError(pParse, SQLITE_NOMEM, "System out of memory");
+    }
+
+    sqlite3Dequote(table_name);
+
+    if (strlen(table_name) >= MAXTABLELEN) {
+        rc = setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        goto cleanup;
+    }
+
+    strncpy(dst, table_name, MAXTABLELEN);
+
+cleanup:
+    free(table_name);
+
+    return rc;
 }
 
 static void fillTableOption(struct schema_change_type* sc, int opt)
@@ -1071,7 +1100,7 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     memset(tp->tablename, '\0', MAXTABLELEN);
     if (table &&
         chkAndCopyTableTokens(pParse, tp->tablename, table, NULL, 1, 1, 0))
-        goto err;
+        goto clean_arg;
 
     tp->partition_name = (char*) malloc(MAXTABLELEN);
     if (!tp->partition_name) {
@@ -1132,8 +1161,6 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
                         (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
-err:
-    setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
         free_bpfunc_arg(arg);
@@ -2025,6 +2052,37 @@ clean_arg:
         free_bpfunc_arg(arg);
 }
 
+static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
+        int isset, long long value)
+{
+    char name[MAXTABLELEN];
+    char *query;
+
+    if (comdb2AuthenticateUserOp(pParse))
+        goto err;       
+
+    if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
+        goto err;
+
+    query = logical_cron_update_sql(name, value, isset==0);
+
+    sqlite3NestedParsePreserveFlags(pParse, query);
+
+    sqlite3_free(query);
+    return;
+err:
+    logmsg(LOGMSG_ERROR, "%s: failed to parse generated query!\n", __func__);
+}
+
+void comdb2CounterIncr(Parse *pParse, Token *nm, Token *lnm)
+{
+    comdb2CounterInt(pParse, nm, lnm, 0, 0);
+}
+
+void comdb2CounterSet(Parse *pParse, Token *nm, Token *lnm, long long value)
+{
+    comdb2CounterInt(pParse, nm, lnm, 1, value);
+}
 
 void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         int dryrun)

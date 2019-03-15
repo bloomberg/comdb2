@@ -832,6 +832,34 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     return p_db;
 }
 
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
+{
+    struct dbtable *p_db = NULL;
+    int rc = 0;
+
+    if (!tran)
+        return get_dbtable_by_name(p_name);
+
+    Pthread_rwlock_rdlock(&thedb_lock);
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
+        p_db = &thedb->static_table;
+    if (!p_db) {
+        rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
+    } else {
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+    }
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
+               __func__, rc);
+        return NULL;
+    }
+
+    return p_db;
+}
+
 struct dbtable *getqueuebyname(const char *name)
 {
     return hash_find_readonly(thedb->qdb_hash, &name);
@@ -4594,8 +4622,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
-                                struct errstat *err)
+static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -4616,8 +4643,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     return NULL;
 }
 
-static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
-                                  void *arg4, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
 
     int tm;

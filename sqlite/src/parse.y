@@ -2085,6 +2085,18 @@ putcmd ::= TIME PARTITION nm(Y) dbnm(Z) RETENTION  INTEGER(R). {
     comdb2timepartRetention(pParse, &Y, &Z, tmp);
 }
 
+putcmd ::= COUNTER nm(Y) dbnm(Z) INCREMENT. {
+    comdb2CounterIncr(pParse, &Y, &Z);
+}
+
+putcmd ::= COUNTER nm(Y) dbnm(Z) SET INTEGER(R). {
+    int tmp;
+    if (!readIntFromToken(&R, &tmp))
+        tmp = INT_MAX;
+    comdb2CounterSet(pParse, &Y, &Z, tmp);
+}
+
+
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;
     if (!readIntFromToken(&F, &tmp))
@@ -2202,10 +2214,13 @@ cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) 
     comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
-cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+cmd ::= createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);
     comdb2CreatePartition(pParse, &A, &P, &D, &R, &S);
 }
+
+partition_type ::= .
+partition_type ::= TIME.
 
 /////////////////////////////// DROP PARTITION ////////////////////////////////
 
