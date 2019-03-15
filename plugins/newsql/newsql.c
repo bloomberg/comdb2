@@ -432,10 +432,14 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = column_type(clnt, stmt, col);
-    }
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+            type = column_type(clnt, stmt, col);
+            if (type == SQLITE_NULL) {
+                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            }
+        } else {
+            type = SQLITE_NULL;
+        }
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -742,7 +746,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
+                column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
@@ -1054,7 +1059,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     int rc, r, w, timeout = 0;
     sbuf2gettimeout(clnt->sb, &r, &w);
     sbuf2settimeout(clnt->sb, 1000, w);
@@ -1068,7 +1073,7 @@ static int newsql_ping_pong(struct sqlclntstate *clnt)
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
         return -1;
     }
@@ -1536,6 +1541,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
+                        /* Re-authenticate the new user. */
+                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                            clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
@@ -1557,6 +1565,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
+                        /* Re-authenticate the new password. */
+                        if (clnt->authgen &&
+                            strcmp(clnt->password, sqlstr) != 0)
+                            clnt->authgen = 0;
                         strcpy(clnt->password, sqlstr);
                     }
                 }
@@ -1592,6 +1604,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->spversion.version_num = ver;
                 } else {
                     rc = ii + 1;
+                }
+            } else if (strncasecmp(sqlstr, "prepare_only", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->prepare_only = 0;
+                } else {
+                    clnt->prepare_only = 1;
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
@@ -1821,7 +1841,7 @@ int gbl_send_failed_dispatch_message = 0;
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;

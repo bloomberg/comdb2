@@ -51,6 +51,45 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         return SC_NOT_MASTER;
     }
 
+    if (!s->resume && s->preempted) {
+        sc_errf(s, "Preempt table %s option %d\n", s->tablename, s->preempted);
+        int nwait = 0;
+        struct schema_change_type *alter =
+            preempt_ongoing_alter(s->tablename, s->preempted);
+        if (!alter) {
+            errstat_set_strf(&iq->errstat, "Invalid option");
+            free_schema_change_type(s);
+            return SC_INVALID_OPTIONS;
+        }
+        free_schema_change_type(s);
+        iq->sc = s = alter;
+        /* wait for previous schemachange thread to exit */
+        while (1) {
+            Pthread_mutex_lock(&s->mtx);
+            if (s->sc_rc == SC_DETACHED)
+                break;
+            Pthread_mutex_unlock(&s->mtx);
+            sleep(1);
+            nwait++;
+            if (nwait > 30) {
+                /* BUG */
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d failed to wait for schemachange thread to exit\n",
+                       __func__, __LINE__);
+                abort();
+            }
+        }
+        s->sc_rc = 0;
+        s->resume = SC_PREEMPT_RESUME;
+        s->nothrevent = 0;
+        s->finalize = 0;
+        Pthread_mutex_unlock(&s->mtx);
+    }
+    if (s->alteronly == SC_ALTER_PENDING) {
+        s->nothrevent = 0;
+        s->finalize = 0;
+    }
+
     if (!s->resume &&
         (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
         struct schema_change_type *last_sc = NULL;
@@ -102,7 +141,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             Pthread_mutex_lock(&s->mtx);
             s->finalize_only = 1;
             s->nothrevent = 1;
-            s->resume = SC_RESUME;
+            s->resume = SC_OSQL_RESUME;
             Pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
@@ -198,7 +237,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    rc = sc_set_running(s->tablename, 1, seed, node, time(NULL));
+    rc = sc_set_running(s->tablename, s->preempted ? 2 : 1, seed, node,
+                        time(NULL));
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
@@ -286,9 +326,18 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        Pthread_mutex_lock(&s->mtx);
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                            (void *(*)(void *))do_schema_change_tran, arg);
+
+        if (s->alteronly == SC_ALTER_PENDING ||
+            s->preempted == SC_ACTION_RESUME) {
+            free(arg);
+            arg = NULL;
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_locked, s);
+        } else {
+            Pthread_mutex_lock(&s->mtx);
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_tran, arg);
+        }
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
@@ -298,7 +347,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             sc_async_threads--;
             Pthread_mutex_unlock(&sc_async_mtx);
 
-            free(arg);
+            if (arg)
+                free(arg);
             sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
                            time(NULL));
             free_schema_change_type(s);
@@ -400,14 +450,11 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
 int change_schema(char *table, char *fname, int odh, int compress,
                   int compress_blobs)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_TAGGED_TABLE;
     strncpy0(s->tablename, table, sizeof(s->tablename));
     strncpy0(s->fname, fname, sizeof(s->fname));
@@ -421,14 +468,11 @@ int change_schema(char *table, char *fname, int odh, int compress,
 
 int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_MORESTRIPE;
     s->newdtastripe = newstripe;
     s->blobstripe = blobstripe;
@@ -439,14 +483,11 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
                  int pagesize, int isqueuedb)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;
@@ -615,11 +656,37 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
     return rc;
 }
 
+static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
+                                int maxblobs)
+{
+    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
+
+    for (i = 0, rc = 0; i != maxblobs; ++i) {
+        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
+                            &oldcompr);
+        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
+                            &newcompr);
+        (void)reccompr;
+
+        /* If we're removing the ODH, or changing the compression algorithm,
+           unpack the blobs. */
+        if ((oldodh && !newodh) || oldcompr != newcompr) {
+            rc = unodhfy_blob_buffer(iq->usedb->sc_to, blobs + i, i);
+            if (rc != 0)
+                break;
+        }
+    }
+
+    return rc;
+}
+
 int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          uint8_t *od_dta, unsigned long long ins_keys,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
+    int rc;
+
     if (iq->usedb->sc_downgrading)
         return ERR_NOMASTER;
 
@@ -636,6 +703,9 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 0;
     }
 
+    if ((rc = unodhfy_if_necessary(iq, blobs, maxblobs)) != 0)
+        return rc;
+
     return live_sc_post_add_record(iq, trans, genid, od_dta, ins_keys, blobs,
                                    maxblobs, origflags, rrn);
 }
@@ -645,7 +715,7 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                      blob_buffer_t *blobs, size_t maxblobs, int origflags,
                      int *rrn)
 {
-    int rc = 0;
+    int rc;
 
     if (gbl_test_scindex_deadlock) {
         logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
@@ -755,8 +825,10 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                 iq, "C3: newgenid 0x%llx ...scptr 0x%llx ... oldgenid 0x%llx ",
                 newgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
                 oldgenid);
-        rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
-                                     blobs, maxblobs, origflags, &rrn);
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
+                                         blobs, maxblobs, origflags, &rrn);
     } else if (!is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 4) newgenid and oldgenid  ...^..
     {
@@ -765,9 +837,12 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                       "C4: oldgenid 0x%llx newgenid 0x%llx ... scptr 0x%llx",
                       oldgenid, newgenid,
                       get_genid_stripe_pointer(oldgenid, sc_genids));
-        rc = live_sc_post_upd_record(
-            iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
-            od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_upd_record(iq, trans, oldgenid, old_dta, newgenid,
+                                         new_dta, ins_keys, del_keys, od_len,
+                                         updCols, blobs, deferredAdd, oldblobs,
+                                         newblobs);
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);
@@ -784,7 +859,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         int rrn, int deferredAdd, blob_buffer_t *oldblobs,
                         blob_buffer_t *newblobs)
 {
-    int rc = 0;
+    int rc;
+
     Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
     rc = live_sc_post_update_int(iq, trans, oldgenid, old_dta, newgenid,

@@ -280,7 +280,7 @@ int bdb_lite_fetch_partial_tran(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
     // dbt_key.data = key_in;
-    dbt_key.data = fullkey = malloc(ixlen);
+    dbt_key.data = fullkey = calloc(1, ixlen);
     memcpy(dbt_key.data, key_in, klen_in);
     dbt_key.size = klen_in;
 

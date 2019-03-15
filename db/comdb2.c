@@ -58,7 +58,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 #include <mem.h>
@@ -127,7 +126,9 @@ void berk_memp_sync_alarm_ms(int);
 #include <bb_oscompat.h>
 #include <schemachange.h>
 #include "comdb2_atomic.h"
+#include "cron.h"
 #include "metrics.h"
+#include <build/db.h>
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -709,6 +710,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
@@ -747,6 +749,7 @@ int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
 int64_t gbl_temptable_spills = 0;
+int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -825,6 +828,34 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
+
+    return p_db;
+}
+
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
+{
+    struct dbtable *p_db = NULL;
+    int rc = 0;
+
+    if (!tran)
+        return get_dbtable_by_name(p_name);
+
+    Pthread_rwlock_rdlock(&thedb_lock);
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
+        p_db = &thedb->static_table;
+    if (!p_db) {
+        rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
+    } else {
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+    }
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
+               __func__, rc);
+        return NULL;
+    }
 
     return p_db;
 }
@@ -4591,8 +4622,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
-                                struct errstat *err)
+static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -4603,7 +4633,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
         rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                            NULL, NULL, NULL, err);
+                            NULL, NULL, NULL, err, NULL);
 
         if (rc == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -4613,9 +4643,9 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     return NULL;
 }
 
-static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
-                                  void *arg4, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
+
     int tm;
     void *rc;
 
@@ -4625,7 +4655,7 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                        NULL, NULL, NULL, err);
+                        NULL, NULL, NULL, err, NULL);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
                         "rc = %d, errstr = %s\n",
@@ -4634,15 +4664,41 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
     return NULL;
 }
 
+static char *gbl_cron_describe(sched_if_t *impl)
+{
+    return strdup("Default cron scheduler");
+}
+
+static char *gbl_cron_event_describe(sched_if_t *impl, cron_event_t *event)
+{
+    const char *name;
+    if (event->func == (FCRON)memstat_cron_event)
+        name = "Module memory stats update";
+    else if (event->func == (FCRON)memstat_cron_kickoff)
+        name = "Module memory stats kickoff";
+    else
+        name = "Unknown";
+
+    return strdup(name);
+}
+
 static int comdb2ma_stats_cron(void)
 {
     struct errstat xerr = {0};
 
     if (gbl_memstat_freq > 0) {
-        gbl_cron = cron_add_event(
-            gbl_cron, gbl_cron == NULL ? "Global Job Scheduler" : NULL, INT_MIN,
-            (FCRON)memstat_cron_kickoff, NULL, NULL, NULL, NULL, &xerr);
+        if (!gbl_cron) {
+            sched_if_t impl = {0};
+            time_cron_create(&impl, gbl_cron_describe, gbl_cron_event_describe);
+            gbl_cron = cron_add_event(NULL, "Global Job Scheduler", INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, &impl);
 
+        } else {
+            gbl_cron = cron_add_event(gbl_cron, NULL, INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, NULL);
+        }
         if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "
                             "rc = %d, errstr = %s\n",
@@ -4958,6 +5014,9 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("verbose_normalized_queries",
+                        "For new fingerprints, show normalized queries.",
+                        &gbl_verbose_normalized_queries);
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
@@ -5003,6 +5062,9 @@ static void register_all_int_switches()
         "logical_live_sc",
         "Enables online schema change with logical redo. (Default: OFF)",
         &gbl_logical_live_sc);
+    register_int_switch("osql_odh_blob",
+                        "Send ODH'd blobs to master. (Default: ON)",
+                        &gbl_osql_odh_blob);
 }
 
 static void getmyid(void)
@@ -5194,6 +5256,8 @@ int main(int argc, char **argv)
 
     gbl_argc = argc;
     gbl_argv = argv;
+
+    init_cron();
 
     if (init(argc, argv) == -1) {
         logmsg(LOGMSG_FATAL, "failed to start\n");
@@ -5535,10 +5599,12 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     return rc;
 }
 
-int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
+int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)
 {
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
+    int is_master = (flags & DB_REP_TRUNCATE_MASTER);
+    int wait_seqnum = (flags & DB_REP_TRUNCATE_ONLINE);
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
@@ -5547,7 +5613,7 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
          * incremented it's generation number before truncating.  The newmaster
          * message with the higher generation forces the replicants into
          * REP_VERIFY_MATCH */
-        send_newmaster(thedb->bdb_env);
+        send_newmaster(thedb->bdb_env, wait_seqnum);
     }
 
     /* Run logical recovery */

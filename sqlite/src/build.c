@@ -293,8 +293,17 @@ void sqlite3FinishCoding(Parse *pParse){
 ** INSERT, UPDATE, and DELETE operations against SQLITE_MASTER.  Use
 ** care if you decide to try to use this routine for some other purposes.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static void sqlite3NestedParse_int(
+  Parse *pParse,
+  char **pzErrMsg,
+  const char *zFormat,
+  va_list ap
+) {
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_list ap;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   char *zSql;
   char *zErrMsg = 0;
   sqlite3 *db = pParse->db;
@@ -302,9 +311,13 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
 
   if( pParse->nErr ) return;
   assert( pParse->nested<10 );  /* Nesting should only be of limited depth */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_start(ap, zFormat);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   zSql = sqlite3VMPrintf(db, zFormat, ap);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_end(ap);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( zSql==0 ){
     return;   /* A malloc must have failed */
   }
@@ -312,11 +325,39 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   memcpy(saveBuf, PARSE_TAIL(pParse), PARSE_TAIL_SZ);
   memset(PARSE_TAIL(pParse), 0, PARSE_TAIL_SZ);
   sqlite3RunParser(pParse, zSql, &zErrMsg);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pzErrMsg ){ *pzErrMsg = zErrMsg; }
+  else /* sqlite3DbFree(db, zErrMsg); */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, zErrMsg);
   sqlite3DbFree(db, zSql);
   memcpy(PARSE_TAIL(pParse), saveBuf, PARSE_TAIL_SZ);
   pParse->nested--;
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
+  va_list ap;
+
+  va_start(ap, zFormat);
+  sqlite3NestedParse_int(pParse, NULL, zFormat, ap);
+  va_end(ap);
+}
+
+void sqlite3NestedParsePreserveFlags(Parse *pParse, const char *zFormat, ...){
+  va_list ap;
+  char *zErrMsg = NULL;
+
+  pParse->preserve_update = 1;
+  va_start(ap, zFormat);
+  sqlite3NestedParse_int(pParse, &zErrMsg, zFormat, ap);
+  va_end(ap);
+  if (zErrMsg) {
+    assert(pParse->zErrMsg == 0);
+    pParse->zErrMsg = zErrMsg;
+  }
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if SQLITE_USER_AUTHENTICATION
 /*
@@ -372,7 +413,6 @@ retry_alias:
 
 retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* All mutexes are required for schema access.  Make sure we hold them. */
   assert( zDatabase!=0 || sqlite3BtreeHoldsAllMutexes(db) );
 #if SQLITE_USER_AUTHENTICATION
@@ -405,7 +445,6 @@ retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zName = TEMP_MASTER_NAME;
   }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /*
   ** if we did not find the table and there is a foreign database,
@@ -459,7 +498,7 @@ retry_after_fdb_creation:
   ** database name and a table name and we are trying to find them
   ** remotely
   */
-  if( !already_searched_fdb ){
+  if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
     int        version = 0;
     char       *zErrDyn = NULL;
 
@@ -2419,7 +2458,6 @@ void sqlite3EndTable(
   */
   p->iDb = iDb;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifndef SQLITE_OMIT_CHECK
   /* Resolve names in all CHECK constraint expressions.
   */
@@ -2584,7 +2622,6 @@ void sqlite3EndTable(
       pParse->regRowid
     );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     sqlite3DbFree(db, zStmt);
     sqlite3ChangeCookie(pParse, iDb);
 
@@ -3107,9 +3144,9 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   int iDb;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int bDropTable = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   comdb2WriteTransaction(pParse);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( db->mallocFailed ){
     goto exit_drop_table;
   }
@@ -3515,7 +3552,6 @@ Index *sqlite3AllocateIndexObject(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int is_comdb2_index_expression(const char *dbname);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** Create a new index for an SQL table.  pName1.pName2 is the name of the index 
 ** and pTblList is the name of the table that is to be indexed.  Both will 
@@ -3860,7 +3896,6 @@ void sqlite3CreateIndex(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if (is_comdb2_index_expression(pTab->zName)) pTab->hasExprIdx = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Append the table key to the end of the index.  For WITHOUT ROWID
   ** tables (when pPk!=0) this will be the declared PRIMARY KEY.  For
   ** normal tables (when pPk==0) this will be the rowid.
@@ -3973,7 +4008,6 @@ void sqlite3CreateIndex(
       Index *p;
       assert( !IN_SPECIAL_PARSE );
       assert( sqlite3SchemaMutexHeld(db, 0, pIndex->pSchema) );
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       /* remote indexes don't use skip-scan indexes */
       if( db->init.iDb>1 ){
@@ -3986,7 +4020,6 @@ void sqlite3CreateIndex(
         pIndex->noSkipScan = 0;
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       p = sqlite3HashInsert(&pIndex->pSchema->idxHash, 
           pIndex->zName, pIndex);
       if( p ){
@@ -4178,7 +4211,9 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   sqlite3 *db = pParse->db;
   int iDb;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   comdb2WriteTransaction(pParse);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pParse->nErr==0 );   /* Never called with prior errors */
   if( db->mallocFailed ){
     goto exit_drop_index;
@@ -5235,7 +5270,7 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
   }else if( flgs == MEM_Real ){
     value = sqlite3_mprintf("%lf", m->u.r);
   }else if( flgs & MEM_Str ){
-    value = sqlite3_mprintf("\'%.*s\'", m->n, m->z);
+    value = sqlite3_mprintf("\'%.*q\'", m->n, m->z);
   }else if( flgs & MEM_Blob ){
     char * key = alloca(2*m->n+1);
     int  i;

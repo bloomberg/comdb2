@@ -48,7 +48,8 @@
 int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                unsigned long long *newgenid, DB *dbp, tran_type *tran,
                int dtafile, int dtastripe, int participantstripeid,
-               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out);
+               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out,
+               int odhready);
 
 static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
                                           tran_type *tran, int dtanum,
@@ -83,7 +84,7 @@ static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
                                    NULL, NULL);
     else
         rc = ll_dta_upd(bdb_state, 2, oldgenid, &newgenid, dbp, tran, dtanum,
-                        dtastripe, 0, use_new_genid, NULL, NULL, NULL);
+                        dtastripe, 0, use_new_genid, NULL, NULL, NULL, 0);
 
     /* if a blob is null, we won't find it, and don't need to update it */
     if (rc && dtanum > 0 && rc == DB_NOTFOUND)
@@ -112,7 +113,8 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
                                 int dtanum, void *newdta, int newdtaln, int rrn,
                                 unsigned long long oldgenid,
                                 unsigned long long newgenid,
-                                int participantstripid, int *bdberr)
+                                int participantstripid, int *bdberr,
+                                int odhready)
 {
 
     int rc;
@@ -154,7 +156,7 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
     dbt_newdta.size = newdtaln;
 
     rc = ll_dta_upd_blob(bdb_state, rrn, oldgenid, newgenid, dbp, tran, dtanum,
-                         stripe, participantstripid, &dbt_newdta);
+                         stripe, participantstripid, &dbt_newdta, odhready);
 
     if (rc) {
         *bdberr = rc;
@@ -238,7 +240,7 @@ static int bdb_prim_updvrfy_int(bdb_state_type *bdb_state, tran_type *tran,
     } else {
         rc = ll_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, tran, 0,
                         stripe, participantstripid, use_new_genid,
-                        verifydta ? &dbt_olddta : NULL, &dbt_newdta, NULL);
+                        verifydta ? &dbt_olddta : NULL, &dbt_newdta, NULL, 0);
     }
 
     if (rc) {
@@ -317,14 +319,11 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
                            int dtanum, void *newdta, int newdtaln, int rrn,
                            unsigned long long oldgenid,
                            unsigned long long newgenid, int participantstripeid,
-                           int *bdberr)
+                           int *bdberr, int odhready)
 {
-    int rc;
-
-    rc = bdb_prim_add_upd_int(bdb_state, tran, dtanum, newdta, newdtaln, rrn,
-                              oldgenid, newgenid, participantstripeid, bdberr);
-
-    return rc;
+    return bdb_prim_add_upd_int(bdb_state, tran, dtanum, newdta, newdtaln, rrn,
+                                oldgenid, newgenid, participantstripeid, bdberr,
+                                odhready);
 }
 
 int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,

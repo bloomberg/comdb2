@@ -1415,8 +1415,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -1504,8 +1503,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -3838,8 +3836,15 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         host_node_ptr->running_user_func = 0;
         Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
     } else {
-        host_node_printf(LOGMSG_INFO, host_node_ptr,
-                         "%s: unexpected usertype:%d\n", __func__, usertype);
+        static int lastpr = 0, count = 0;
+        int now;
+        count++;
+        if ((now = comdb2_time_epoch()) - lastpr) {
+            host_node_printf(LOGMSG_INFO, host_node_ptr,
+                             "%s: unexpected usertype:%d, count=%d\n", __func__,
+                             usertype, count);
+            lastpr = now;
+        }
     }
 
     if (ack_state)
@@ -5620,6 +5625,7 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
+int gbl_forbid_remote_admin = 1;
 
 static void *accept_thread(void *arg)
 {
@@ -5871,8 +5877,17 @@ static void *accept_thread(void *arg)
 
             if (firstbyte == '@') {
                 findpeer(new_fd, paddr, sizeof(paddr));
-                logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
-                admin = 1;
+                if (!gbl_forbid_remote_admin ||
+                    (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+                    logmsg(LOGMSG_INFO, "Accepting admin user from %s\n",
+                           paddr);
+                    admin = 1;
+                } else {
+                    logmsg(LOGMSG_INFO,
+                           "Rejecting non-local admin user from %s\n", paddr);
+                    sbuf2close(sb);
+                    continue;
+                }
             } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
                 logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
                         __LINE__);
@@ -6343,9 +6358,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = malloc(sizeof(sanc_node_type));
-    bzero(ptr, sizeof(sanc_node_type));
-
+    ptr = calloc(1, sizeof(sanc_node_type));
     ptr->next = netinfo_ptr->sanctioned_list;
     ptr->host = hostname;
     ptr->port = portnum;

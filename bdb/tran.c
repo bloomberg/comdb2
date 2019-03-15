@@ -39,7 +39,7 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 
 #include <ctrace.h>
 
@@ -2084,7 +2084,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 
@@ -2403,7 +2403,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 
