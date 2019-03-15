@@ -23,6 +23,7 @@
 #include "dohsql.h"
 #include "sqlinterfaces.h"
 #include "memcompare.c"
+#include "tohex.h"
 
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
@@ -436,7 +437,8 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
         } else if (strcmp((zFmt), "datetime") == 0) {                          \
             char zDate[256] = {0};                                             \
             int nOut = 0;                                                      \
-            if (dttz_to_str(vVal, zDate, sizeof(zDate), &nOut, "UTC") == 0) {  \
+            if (dttz_to_str((const dttz_t *)vVal, zDate, sizeof(zDate), &nOut, \
+                            "UTC") == 0) {                                     \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d datetime %s (%d)\n",  \
                        pthread_self(), __func__, iCol, zDate, nOut);           \
             } else {                                                           \
@@ -482,7 +484,7 @@ FUNC_COLUMN_TYPE(sqlite_int64, int64, "%lld")
 FUNC_COLUMN_TYPE(double, double, "%!.15g")
 FUNC_COLUMN_TYPE(int, bytes, "%d")
 FUNC_COLUMN_TYPE(const unsigned char *, text, "%s")
-FUNC_COLUMN_TYPE(const void *, blob, 0)
+FUNC_COLUMN_TYPE(const void *, blob, "blob")
 FUNC_COLUMN_TYPE(const dttz_t *, datetime, "datetime")
 
 static const intv_t *dohsql_dist_column_interval(struct sqlclntstate *clnt,
