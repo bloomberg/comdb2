@@ -118,6 +118,7 @@ int thdpool_get_exits(struct thdpool *pool);
 int thdpool_get_passed(struct thdpool *pool);
 int thdpool_get_enqueued(struct thdpool *pool);
 int thdpool_get_dequeued(struct thdpool *pool);
+int thdpool_get_completed(struct thdpool *pool);
 int thdpool_get_timeouts(struct thdpool *pool);
 int thdpool_get_failed_dispatches(struct thdpool *pool);
 int thdpool_get_minnthd(struct thdpool *pool);

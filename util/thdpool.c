@@ -113,6 +113,7 @@ struct thdpool {
     unsigned num_passed;
     unsigned num_enqueued;
     unsigned num_dequeued;
+    unsigned num_completed;
     unsigned num_timeout;
     unsigned num_creates;
     unsigned num_exits;
@@ -377,6 +378,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Work items done immediate : %u\n", pool->num_passed);
         logmsgf(LOGMSG_USER, fh, "  Num work items enqueued   : %u\n", pool->num_enqueued);
         logmsgf(LOGMSG_USER, fh, "  Num work items dequeued   : %u\n", pool->num_dequeued);
+        logmsgf(LOGMSG_USER, fh, "  Num work items completed  : %u\n", pool->num_completed);
         logmsgf(LOGMSG_USER, fh, "  Num work items timeout    : %u\n", pool->num_timeout);
         logmsgf(LOGMSG_USER, fh, "  Num failed dispatches     : %u\n",
                 pool->num_failed_dispatches);
@@ -728,6 +730,7 @@ static void *thdpool_thd(void *voidarg)
         }
 
         work.work_fn(pool, work.work, thddata, THD_RUN);
+        pool->num_completed++;
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
@@ -1051,6 +1054,11 @@ int thdpool_get_enqueued(struct thdpool *pool)
 int thdpool_get_dequeued(struct thdpool *pool)
 {
     return pool->num_dequeued;
+}
+
+int thdpool_get_completed(struct thdpool *pool)
+{
+    return pool->num_completed;
 }
 
 int thdpool_get_timeouts(struct thdpool *pool)
