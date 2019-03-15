@@ -319,16 +319,10 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
 {
     int sockfd, rc;
     int sendbuff, sndrcvbufsize;
-    struct sockaddr_in tcp_srv_addr; /* server's Internet socket addr */
-    struct sockaddr_in my_addr;      /* my Internet address */
-    bzero((char *)&tcp_srv_addr, sizeof tcp_srv_addr);
-    tcp_srv_addr.sin_family = AF_INET;
     if (port <= 0) {
         logmsg(LOGMSG_ERROR, "do_tcpconnect: must specify remote port\n");
         return -1;
     }
-    tcp_srv_addr.sin_port = htons(port);
-    memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         logmsgperror("do_tcpconnect: can't create TCP socket");
         return -1;
@@ -374,10 +368,11 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
             return -1;
         }
 
-        bzero((char *)&my_addr, sizeof my_addr);
-        my_addr.sin_family = AF_INET;
-        my_addr.sin_addr.s_addr = INADDR_ANY;
-        my_addr.sin_port = htons((unsigned short)myport);
+        struct sockaddr_in my_addr = {/* my Internet address */
+                                      .sin_family = AF_INET,
+                                      .sin_addr.s_addr = INADDR_ANY,
+                                      .sin_port =
+                                          htons((unsigned short)myport)};
         if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
             logmsg(LOGMSG_ERROR, "do_tcpconnect: bind failed on local port %d: %s",
                     myport, strerror(errno));
@@ -385,6 +380,11 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
             return -1;
         }
     }
+
+    struct sockaddr_in tcp_srv_addr = {/* server's Internet socket addr */
+                                       .sin_family = AF_INET,
+                                       .sin_port = htons(port)};
+    memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
     /* Connect to the server.  */
     if (nb)
         rc = lclconn_nb(sockfd, (struct sockaddr *)&tcp_srv_addr,

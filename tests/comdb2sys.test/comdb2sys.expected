@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=204)
+(KEYWORDS_COUNT=206)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=204)
+(RESERVED_KW=206)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=0)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -121,6 +121,7 @@
 (name='CONSTRAINT', reserved='Y')
 (name='CONSUMER', reserved='Y')
 (name='CONVERTSLEEP', reserved='Y')
+(name='COUNTER', reserved='Y')
 (name='COVERAGE', reserved='Y')
 (name='CREATE', reserved='Y')
 (name='CRLE', reserved='Y')
@@ -174,6 +175,7 @@
 (name='IGNORE', reserved='Y')
 (name='IMMEDIATE', reserved='Y')
 (name='IN', reserved='Y')
+(name='INCREMENT', reserved='Y')
 (name='INDEX', reserved='Y')
 (name='INDEXED', reserved='Y')
 (name='INITIALLY', reserved='Y')
