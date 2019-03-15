@@ -15,7 +15,6 @@
 #include "sqliteInt.h"
 
 #ifndef SQLITE_OMIT_UPSERT
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int is_comdb2_index_unique(const char *tbl, char *idx);
 int comdb2_get_index(const char *dbname, char *idx);
@@ -190,12 +189,10 @@ int sqlite3UpsertAnalyzeTarget(
       continue;
     }
     pUpsert->pUpsertIdx = pIdx;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     int idx = comdb2_get_index(pIdx->pTable->zName, pIdx->zName);
     comdb2SetUpsertIdx(pParse->pVdbe, idx);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     return SQLITE_OK;
   }
   sqlite3ErrorMsg(pParse, "ON CONFLICT clause does not match any "
@@ -262,7 +259,7 @@ void sqlite3UpsertDoUpdate(
   pSrc = sqlite3SrcListDup(db, pUpsert->pUpsertSrc, 0);
   sqlite3Update(pParse, pSrc, pUpsert->pUpsertSet,
       pUpsert->pUpsertWhere, OE_Abort, 0, 0, pUpsert);
-  pUpsert->pUpsertSet = 0;  /* Will have been deleted by sqlite3Update() */
+  pUpsert->pUpsertSet = 0;    /* Will have been deleted by sqlite3Update() */
   pUpsert->pUpsertWhere = 0;  /* Will have been deleted by sqlite3Update() */
   VdbeNoopComment((v, "End DO UPDATE of UPSERT"));
 }

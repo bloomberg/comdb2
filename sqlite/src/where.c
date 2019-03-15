@@ -2984,7 +2984,6 @@ static int whereLoopAddBtree(
       testcase( pNew->iTab!=pSrc->iCursor );  /* See ticket [98d973b8f5] */
       continue;  /* Partial index inappropriate for this query */
     }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* if index looks like COMDB2_DISABLED_xxx then skip */
     if( pProbe->zName && strncmp(pProbe->zName, "$COMDB2_DISABLED_", 17)==0 ){
@@ -2997,7 +2996,6 @@ static int whereLoopAddBtree(
       continue;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     if( pProbe->bNoQuery ) continue;
     rSize = pProbe->aiRowLogEst[0];
     pNew->u.btree.nEq = 0;
@@ -3999,12 +3997,10 @@ static LogEst whereSortingCost(
   ** The (Y/X) term is implemented using stack variable rScale
   ** below.  */
   LogEst rScale, rSortCost;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern int gbl_sqlite_sortermult;
   nRow *= gbl_sqlite_sortermult;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( nOrderBy>0 && 66==sqlite3LogEst(100) );
   rScale = sqlite3LogEst((nOrderBy-nSorted)*100/nOrderBy) - 66;
   rSortCost = nRow + rScale + 16;
@@ -4059,7 +4055,6 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
   ** For 2-way joins, the 5 best paths are followed.
   ** For joins of 3 or more tables, track the 10 best paths */
   mxChoice = (nLoop<=1) ? 1 : (nLoop==2 ? 5 : 10);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
     int planner_effort = comdb2_get_planner_effort();
@@ -4081,7 +4076,6 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
     }
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( nLoop<=pWInfo->pTabList->nSrc );
   WHERETRACE(0x002, ("---- begin solver.  (nRowEst=%d)\n", nRowEst));
 
@@ -4665,7 +4659,6 @@ WhereInfo *sqlite3WhereBegin(
     pWhere = pNewExpr;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( (wctrlFlags & WHERE_ONEPASS_MULTIROW)==0 || (
         (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 
      && (wctrlFlags & WHERE_OR_SUBCLAUSE)==0 
@@ -5105,13 +5098,11 @@ WhereInfo *sqlite3WhereBegin(
       pLevel->iIdxCur = iIndexCur;
       assert( pIx->pSchema==pTab->pSchema );
       assert( iIndexCur>=0 );
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       if( op!=OP_ReopenIdx && GET_CURSOR_RECORDING(pParse, pLevel->iTabCur) ){
         op = OP_OpenRead_Record;
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       if( op ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3VdbeAddTable(v, pTab);
@@ -5123,7 +5114,6 @@ WhereInfo *sqlite3WhereBegin(
           goto whereBeginError;
         }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
         sqlite3VdbeAddOp3(v, op, iIndexCur, pIx->tnum, iDb);
         sqlite3VdbeSetP4KeyInfo(pParse, pIx);
         if( (pLoop->wsFlags & WHERE_CONSTRAINT)!=0
@@ -5360,6 +5350,29 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
                             pTabItem->regResult, 0);
       continue;
     }
+
+#ifdef SQLITE_ENABLE_EARLY_CURSOR_CLOSE
+    /* Close all of the cursors that were opened by sqlite3WhereBegin.
+    ** Except, do not close cursors that will be reused by the OR optimization
+    ** (WHERE_OR_SUBCLAUSE).  And do not close the OP_OpenWrite cursors
+    ** created for the ONEPASS optimization.
+    */
+    if( (pTab->tabFlags & TF_Ephemeral)==0
+     && pTab->pSelect==0
+     && (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0
+    ){
+      int ws = pLoop->wsFlags;
+      if( pWInfo->eOnePass==ONEPASS_OFF && (ws & WHERE_IDX_ONLY)==0 ){
+        sqlite3VdbeAddOp1(v, OP_Close, pTabItem->iCursor);
+      }
+      if( (ws & WHERE_INDEXED)!=0
+       && (ws & (WHERE_IPK|WHERE_AUTO_INDEX))==0 
+       && pLevel->iIdxCur!=pWInfo->aiCurOnePass[1]
+      ){
+        sqlite3VdbeAddOp1(v, OP_Close, pLevel->iIdxCur);
+      }
+    }
+#endif
 
     /* If this scan uses an index, make VDBE code substitutions to read data
     ** from the index instead of from the table where possible.  In some cases

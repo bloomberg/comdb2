@@ -23,7 +23,6 @@
 #include "translistener.h"
 #include "sltpck.h"
 #include <poll.h>
-#include <lockmacro.h>
 
 #include "socket_interfaces.h"
 #include "sqloffload.h"

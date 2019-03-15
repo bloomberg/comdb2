@@ -35,6 +35,7 @@ set all_graphs {
          analyze
          grant-revoke
          rebuild
+         schemachange
          get
          put
          set-stmt
@@ -152,7 +153,7 @@ set all_graphs {
 
   upsert-clause {
       stack
-      {line ON CONFLICT {opt (index-column-list) WHERE expr }
+      {line ON CONFLICT {opt ( index-column-list ) WHERE expr }
       }
       {line DO
           {or
@@ -410,7 +411,7 @@ set all_graphs {
         } TO /user-name}
   }
   rebuild {
-      stack
+stack
           {line REBUILD
               {or
                   {line
@@ -439,6 +440,9 @@ set all_graphs {
               }
           }
       }
+  schemachange {stack
+      {line SCHEMACHANGE {or PAUSE RESUME COMMIT ABORT } /table-name}
+  }
   get {
     line GET {or
       {line ALIAS /table-name}
@@ -459,6 +463,8 @@ set all_graphs {
       {line SKIPSCAN {or ENABLE DISABLE}}
       {line TIME PARTITION /partition-name RETENTION /numeric-literal}
       {line TUNABLE /string-literal {or /string-literal /numeric-literal}}
+      {line COUNTER /counter-name SET /numeric-literal}
+      {line COUNTER /counter-name INCREMENT}
     }
   }
   set-stmt {
@@ -764,6 +770,7 @@ set all_graphs {
                               {line FOREIGN KEY constraint-name }
                           }
                       }
+                      {line SET COMMIT PENDING }
                   }
               }
               {line DO NOTHING }

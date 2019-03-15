@@ -269,56 +269,12 @@ int ssl_process_lrl(char *line, size_t len)
     return 0;
 }
 
-#ifndef USE_SYS_ALLOC
-#include <mem.h>
-static comdb2ma sslm;
-#  include <openssl/opensslv.h>
-#  if OPENSSL_VERSION_NUMBER >= 0x10100000L
-static void *ssl_malloc(size_t sz, const char *file, int line)
-{
-    return comdb2_malloc(sslm, sz);
-}
-
-static void *ssl_realloc(void *p, size_t sz, const char *file, int line)
-{
-    return comdb2_realloc(sslm, p, sz);
-}
-
-static void ssl_free(void *p, const char *file, int line)
-{
-    comdb2_free(p);
-}
-#  else
-static void *ssl_malloc(size_t sz)
-{
-    return comdb2_malloc(sslm, sz);
-}
-
-static void *ssl_realloc(void *p, size_t sz)
-{
-    return comdb2_realloc(sslm, p, sz);
-}
-
-static void ssl_free(void *p)
-{
-    comdb2_free(p);
-}
-#  endif
-#endif
-
 int ssl_bend_init(const char *default_certdir)
 {
     const char *ks;
     int rc;
     char errmsg[512];
     ks = (gbl_cert_dir == NULL) ? default_certdir : gbl_cert_dir;
-
-#ifndef USE_SYS_ALLOC
-    sslm = comdb2ma_create(0, 0, "ssl", 1);
-    if (sslm == NULL)
-        return ENOMEM;
-    CRYPTO_set_mem_functions(ssl_malloc, ssl_realloc, ssl_free);
-#endif
 
     rc = ssl_init(1, 1, 1, NULL, 0);
     if (rc != 0)

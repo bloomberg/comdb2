@@ -341,9 +341,10 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
                 __func__, clnt->osql.rqid);
     }
 
-    rc = initialize_shadow_trans(clnt, thd);
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+        return rc;
 
-    return rc;
+    return osql_sock_start_deferred(clnt);
 }
 
 /**

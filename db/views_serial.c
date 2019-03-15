@@ -15,9 +15,9 @@
  *  data =
  *       {
  *          "NAME": "aname",
- *          "PERIOD": "daily"|"weekly"|"monthly"|"yearly",
+ *          "PERIOD": "daily"|"weekly"|"monthly"|"yearly|manual",
  *          "RETENTION" : n,  #here n is 4
- *          "SOURCE_ID" : "uuid string", 
+ *          "SOURCE_ID" : "uuid string",
  *          "TABLES":
  *             [
  *                {
@@ -59,10 +59,9 @@ static char *_concat(char *str, int *len, const char *fmt, ...);
 
 static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
                                      struct errstat *err);
-static int timepart_deserialize_cson_value(cson_value *cson_view,
-                                           timepart_view_t *view,
-                                           struct errstat *err);
-static void _view_adjust_start_time(timepart_view_t *view, int now);
+static int partition_deserialize_cson_value(cson_value *cson_view,
+                                            timepart_view_t *view,
+                                            struct errstat *err);
 static timepart_views_t *_create_all_views(const char *views_str);
 
 char *build_createcmd_json(char **out, int *len, const char *name,
@@ -71,17 +70,20 @@ char *build_createcmd_json(char **out, int *len, const char *name,
 {
     char time[256];
     const char *period_str = period_to_name(period);
-    convert_epoch_to_time_string(starttime, time, sizeof(time));
-    *out = _concat(NULL, len, " {\n"
-                              "  \"COMMAND\"       : \"CREATE\",\n"
-                              "  \"TYPE\"      : \"TIME BASED\",\n"
-                              "  \"NAME\"  : \"%s\",\n"
-                              "  \"SHARD0NAME\"    : \"%s\",\n"
-                              "  \"PERIOD\"    : \"%s\",\n"
-                              "  \"RETENTION\" : %d,\n"
-                              "  \"STARTTIME\" : \"%s\"\n"
-                              "}",
-                   name, tablename, period_str, retention, time);
+    convert_to_start_string(period, starttime, time, sizeof(time));
+    *out = _concat(NULL, len,
+                   " {\n"
+                   "  \"COMMAND\"       : \"CREATE\",\n"
+                   "  \"TYPE\"      : \"TIME BASED\",\n"
+                   "  \"NAME\"  : \"%s\",\n"
+                   "  \"SHARD0NAME\"    : \"%s\",\n"
+                   "  \"PERIOD\"    : \"%s\",\n"
+                   "  \"RETENTION\" : %d,\n"
+                   "  \"%s : \"%s\"\n"
+                   "}",
+                   name, tablename, period_str, retention,
+                   (IS_TIMEPARTITION(period)) ? "STARTTIME\"" : "START\"    ",
+                   time);
     return *out;
 }
 
@@ -122,19 +124,22 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
     str = *out;
     len = *plen;
 
-    str =
-        _concat(str, &len, " {\n"
-                           "  \"NAME\"      : \"%s\",\n"
-                           "  \"PERIOD\"    : \"%s\",\n"
-                           "  \"RETENTION\" : %d,\n"
-                           "  \"STARTTIME\" : \"%s\",\n"
-                           "  \"SHARD0NAME\": \"%s\",\n"
-                           "  \"SOURCE_ID\" : \"%s\",\n"
-                           "  \"TABLES\"    :\n"
-                           "  [\n",
-                view->name, period_to_name(view->period), view->retention,
-                convert_epoch_to_time_string(view->starttime, now, sizeof(now)),
-                view->shard0name, comdb2uuidstr(view->source_id, us));
+    str = _concat(str, &len,
+                  " {\n"
+                  "  \"NAME\"      : \"%s\",\n"
+                  "  \"PERIOD\"    : \"%s\",\n"
+                  "  \"RETENTION\" : %d,\n"
+                  "  \"%s : \"%s\",\n"
+                  "  \"SHARD0NAME\": \"%s\",\n"
+                  "  \"SOURCE_ID\" : \"%s\",\n"
+                  "  \"TABLES\"    :\n"
+                  "  [\n",
+                  view->name, period_to_name(view->period), view->retention,
+                  (IS_TIMEPARTITION(view->period)) ? "STARTTIME\""
+                                                   : "START\"    ",
+                  convert_to_start_string(view->period, view->starttime, now,
+                                          sizeof(now)),
+                  view->shard0name, comdb2uuidstr(view->source_id, us));
     if (!str)
         return VIEW_ERR_MALLOC;
 
@@ -148,8 +153,10 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
             snprintf(lowstr, sizeof(lowstr), "%d", shard->low);
             snprintf(highstr, sizeof(highstr), "%d", shard->high);
         } else {
-            convert_epoch_to_time_string(shard->low, lowstr, sizeof(lowstr));
-            convert_epoch_to_time_string(shard->high, highstr, sizeof(highstr));
+            convert_to_start_string(view->period, shard->low, lowstr,
+                                    sizeof(lowstr));
+            convert_to_start_string(view->period, shard->high, highstr,
+                                    sizeof(highstr));
         }
 
         str = _concat(str, &len, "  {\n"
@@ -261,7 +268,7 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
         goto done;
     }
 
-    rc = timepart_deserialize_cson_value(cson_view, view, err);
+    rc = partition_deserialize_cson_value(cson_view, view, err);
     if (rc != VIEW_NOERR) {
         if (view) {
             timepart_free_view(view);
@@ -344,7 +351,7 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
             goto error;
         }
 
-        rc = timepart_deserialize_cson_value(cson_view, views->views[i], err);
+        rc = partition_deserialize_cson_value(cson_view, views->views[i], err);
         if (rc != VIEW_NOERR) {
             goto error;
         }
@@ -426,7 +433,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
     }
 
     /* extract the time partition schedule */
-    rc = timepart_deserialize_cson_value(cson, view, err);
+    rc = partition_deserialize_cson_value(cson, view, err);
     if (rc != VIEW_NOERR) {
         goto error;
     }
@@ -579,7 +586,7 @@ error:
  *    "COMMAND"   : "CREATE|DESTROY|DISPLAY",
  *    "VIEWNAME"  : "a_name",
  *    "TYPE"      : "TIME BASED",
- *    "PERIOD     : "DAILY|WEEKLY|MONTHLY|YEARLY",
+ *    "PERIOD     : "DAILY|WEEKLY|MONTHLY|YEARLY|MANUAL",
  *    "RETENTION" : n,
  *    "TABLE0"    : "an_existing_table_name" // THIS IS SHARD0NAME
  * }
@@ -718,41 +725,46 @@ const char WEEKLY_STR[] = "weekly";
 const char MONTHLY_STR[] = "monthly";
 const char YEARLY_STR[] = "yearly";
 const char TEST2MIN_STR[] = "test2min";
+const char MANUAL_STR[] = "manual";
 const char INVALID_STR[] = "";
 
-const char *period_to_name(enum view_timepart_period period)
+const char *period_to_name(enum view_partition_period period)
 {
     switch (period) {
-    case VIEW_TIMEPART_DAILY:
+    case VIEW_PARTITION_DAILY:
         return DAILY_STR;
-    case VIEW_TIMEPART_WEEKLY:
+    case VIEW_PARTITION_WEEKLY:
         return WEEKLY_STR;
-    case VIEW_TIMEPART_MONTHLY:
+    case VIEW_PARTITION_MONTHLY:
         return MONTHLY_STR;
-    case VIEW_TIMEPART_YEARLY:
+    case VIEW_PARTITION_YEARLY:
         return YEARLY_STR;
-    case VIEW_TIMEPART_TEST2MIN:
+    case VIEW_PARTITION_TEST2MIN:
         return TEST2MIN_STR;
+    case VIEW_PARTITION_MANUAL:
+        return MANUAL_STR;
     default:
         break;
     }
     return INVALID_STR;
 }
 
-enum view_timepart_period name_to_period(const char *str)
+enum view_partition_period name_to_period(const char *str)
 {
     if (!strcasecmp(str, DAILY_STR))
-        return VIEW_TIMEPART_DAILY;
+        return VIEW_PARTITION_DAILY;
     if (!strcasecmp(str, WEEKLY_STR))
-        return VIEW_TIMEPART_WEEKLY;
+        return VIEW_PARTITION_WEEKLY;
     if (!strcasecmp(str, MONTHLY_STR))
-        return VIEW_TIMEPART_MONTHLY;
+        return VIEW_PARTITION_MONTHLY;
     if (!strcasecmp(str, YEARLY_STR))
-        return VIEW_TIMEPART_YEARLY;
+        return VIEW_PARTITION_YEARLY;
     if (!strcasecmp(str, TEST2MIN_STR))
-        return VIEW_TIMEPART_TEST2MIN;
+        return VIEW_PARTITION_TEST2MIN;
+    if (!strcasecmp(str, MANUAL_STR))
+        return VIEW_PARTITION_MANUAL;
 
-    return VIEW_TIMEPART_INVALID;
+    return VIEW_PARTITION_INVALID;
 }
 
 static cson_value *_cson_it_get_value(cson_object_iterator *it,
@@ -936,8 +948,9 @@ static cson_array *_cson_extract_array(cson_object *cson_obj, const char *param,
     return cson_value_get_array(param_val);
 }
 
-static int _cson_extract_datetime_string(cson_object *cson_obj,
-                                         const char *param, struct errstat *err)
+static int _cson_extract_start_string(cson_object *cson_obj, const char *param,
+                                      enum view_partition_period period,
+                                      struct errstat *err)
 {
     cson_value *param_val;
     int ret_int = -1;
@@ -965,8 +978,8 @@ static int _cson_extract_datetime_string(cson_object *cson_obj,
     }
     /* Olson time */
     else if (cson_value_is_string(param_val)) {
-        ret_int = convert_time_string_to_epoch(
-            cson_string_cstr(cson_value_get_string(param_val)));
+        ret_int = convert_from_start_string(
+            period, cson_string_cstr(cson_value_get_string(param_val)));
     } else {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr),
@@ -978,9 +991,9 @@ static int _cson_extract_datetime_string(cson_object *cson_obj,
 }
 
 /* this will extract all the fields and populate a provided view */
-static int timepart_deserialize_cson_value(cson_value *cson_view,
-                                           timepart_view_t *view,
-                                           struct errstat *err)
+static int partition_deserialize_cson_value(cson_value *cson_view,
+                                            timepart_view_t *view,
+                                            struct errstat *err)
 {
     cson_object *obj;
     cson_value *val;
@@ -1017,7 +1030,7 @@ static int timepart_deserialize_cson_value(cson_value *cson_view,
         goto error;
     }
     view->period = name_to_period(tmp_str);
-    if (view->period == VIEW_TIMEPART_INVALID) {
+    if (view->period == VIEW_PARTITION_INVALID) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Wrong JSON format, PERIOD value invalid");
         rc = err->errval = VIEW_ERR_PARAM;
@@ -1031,9 +1044,10 @@ static int timepart_deserialize_cson_value(cson_value *cson_view,
         goto error;
     }
 
+    tmp_str = (IS_TIMEPARTITION(view->period)) ? "STARTTIME" : "START";
     /* check for starttime */
-    view->starttime = _cson_extract_datetime_string(obj, "STARTTIME", err);
-    _view_adjust_start_time(view, comdb2_time_epoch());
+    view->starttime =
+        _cson_extract_start_string(obj, tmp_str, view->period, err);
 
     tmp_str = _cson_extract_str(obj, "SOURCE_ID", err);
     if(!tmp_str)
@@ -1163,45 +1177,6 @@ oom:
     return VIEW_ERR_MALLOC;
 }
 
-static void _view_adjust_start_time(timepart_view_t *view, int now)
-{
-#if 0
-   Current generic cron handles past times as well, no need to adjust
-#define MIN_PREAMBLE_TIME_SECS 600
-
-   if(view->starttime < now)
-   {
-      if(view->starttime < 0)
-      {
-         fprintf(stderr, "Warning: creating view has no start time, starting from now=%d\n",
-               now);
-      }
-      else
-      {
-         fprintf(stderr, "Warning: starttime before \"now\", starting from now=%d\n",
-               now);
-      }
-      view->starttime = now;
-   }
-   else
-   {
-      if(view->starttime < now+MIN_PREAMBLE_TIME_SECS)
-      {
-         if(view->period == VIEW_TIMEPART_TEST2MIN)
-         {
-            /* try to run the rollout phase-1 60 seconds before startime */
-            view->starttime = now + view->period/2;
-         }
-         else
-         {
-            fprintf(stderr, 
-                  "Warning: starttime too early, needs 10 min prep time, setting startime to now + 10min\n");
-            view->starttime = now+MIN_PREAMBLE_TIME_SECS;
-         }
-      }
-   }
-#endif
-}
 
 char *convert_epoch_to_time_string(int epoch, char *buf, int buflen)
 {
@@ -1272,6 +1247,29 @@ int convert_time_string_to_epoch(const char *time_str)
     }
 
     return ret;
+}
+
+char *convert_to_start_string(enum view_partition_period period, int value,
+                              char *buf, int buflen)
+{
+    if (IS_TIMEPARTITION(period))
+        return convert_epoch_to_time_string(value, buf, buflen);
+    if (period == VIEW_PARTITION_MANUAL) {
+        snprintf(buf, buflen, "%d", value);
+        return buf;
+    }
+    abort();
+}
+
+int convert_from_start_string(enum view_partition_period period,
+                              const char *str)
+{
+    if (IS_TIMEPARTITION(period))
+        return convert_time_string_to_epoch(str);
+    if (period == VIEW_PARTITION_MANUAL)
+        return atoi(str);
+
+    abort();
 }
 
 /* convert a views configuration string in a timepart_views_t struct */

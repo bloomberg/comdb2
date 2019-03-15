@@ -295,3 +295,12 @@ ALTER TABLE t2 DROP INDEX '$KEY_A44A20B', ADD FOREIGN KEY (i) REFERENCES t1(i)$$
 SELECT csc2 FROM sqlite_master WHERE name LIKE 't2';
 DROP TABLE t2;
 DROP TABLE t1;
+
+# A test that plays with index on expressions and quotes.
+CREATE TABLE t1(json vutf8(128), UNIQUE (CAST(json_extract(json, '$.a') AS int)), UNIQUE (CAST(json_extract(json, '$.b') AS cstring(10))))$$
+ALTER TABLE t1 ADD COLUMN v CSTRING(10)$$
+ALTER TABLE t1 ADD UNIQUE INDEX idx1 (CAST(v || 'aaa' AS CSTRING(10)))$$
+CREATE INDEX idx2 ON t1(CAST(v || 'aaa' AS CSTRING(10)));
+CREATE INDEX idx3 ON t1(CAST(v || '"aaa"' AS CSTRING(10)));
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;

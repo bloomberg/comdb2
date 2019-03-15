@@ -140,7 +140,6 @@
 ** integer in the equivalent columns in sqlite_stat4.
 */
 #ifndef SQLITE_OMIT_ANALYZE
-
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1073,7 +1072,6 @@ static void statGet(
       assert( p->current.anEq[i] );
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     assert( z[0]=='\0' && z>zRet );
 
     sqlite3_result_text(context, zRet, -1, sqlite3_free);
@@ -1164,7 +1162,7 @@ static void statGet(
     if( IsStat3 ){
       sqlite3_result_int64(context, (i64)aCnt[0]);
     }else{
-      char *zRet = sqlite3MallocZero( p->nCol*25 );
+      char *zRet = sqlite3MallocZero(p->nCol * 25);
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1308,7 +1306,6 @@ static void analyzeOneTable(
     int addrRewind;               /* Address of "OP_Rewind iIdxCur" */
     int addrNextRow;              /* Address of "next_row:" */
     const char *zIdxName;         /* Name of the index */
-    int *aGotoChng;               /* Array of jump instruction addresses */
     int nColTest;                 /* Number of columns to test for changes */
 
     if( pOnlyIdx && pOnlyIdx!=pIdx ) continue;
@@ -1322,8 +1319,6 @@ static void analyzeOneTable(
       }
     }
     nColTest = nCol;
-    aGotoChng = sqlite3DbMallocRaw(db, sizeof(int)*(nCol+1));
-    if( aGotoChng==0 ) continue;
     if( !HasRowid(pTab) && IsPrimaryKeyIndex(pIdx) ){
       zIdxName = pTab->zName;
     }else{
@@ -1575,7 +1570,6 @@ static void analyzeOneTable(
         VdbeCoverage(v);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       addrNext = sqlite3VdbeCurrentAddr(v);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);
@@ -1928,7 +1922,6 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
       pTable->nRowLogEst = pIndex->aiRowLogEst[0];
       pTable->tabFlags |= TF_HasStat1;
     }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /*
    * stale entries in sqlite_stat1 will have pIndex null
@@ -2219,7 +2212,6 @@ static int loadStatTbl(
   return rc;
 }
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <vdbecompare.c>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2445,7 +2437,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   void get_disable_skipscan_all();
   get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
   for(i=sqliteHashFirst(&pSchema->tblHash); i; i=sqliteHashNext(i)){

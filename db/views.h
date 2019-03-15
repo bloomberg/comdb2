@@ -11,32 +11,49 @@
 #include "comdb2.h"
 #include <sqlite3.h>
 #include "errstat.h"
-#include "views_cron.h"
+#include "cron.h"
 
 enum view_type { VIEW_TIME_PARTITION };
 
-enum view_timepart_period {
-    VIEW_TIMEPART_INVALID = 0,
-    VIEW_TIMEPART_DAILY,
-    VIEW_TIMEPART_WEEKLY,
-    VIEW_TIMEPART_MONTHLY,
-    VIEW_TIMEPART_YEARLY,
-    VIEW_TIMEPART_TEST2MIN
+enum view_partition_period {
+    VIEW_PARTITION_INVALID = 0,
+    VIEW_PARTITION_DAILY,
+    VIEW_PARTITION_WEEKLY,
+    VIEW_PARTITION_MONTHLY,
+    VIEW_PARTITION_YEARLY,
+    VIEW_PARTITION_TEST2MIN,
+    VIEW_PARTITION_MANUAL
 };
 
-enum view_timepart_errors {
-    VIEW_NOERR = 0,        /* no error */
-    VIEW_ERR_GENERIC = -1, /* generic error, please avoid */
-    VIEW_ERR_MALLOC = -2,  /* malloc error */
-    VIEW_ERR_EXIST = -3,   /* exist when insert new, not exist when update */
-    VIEW_ERR_UNIMPLEMENTED = -4, /* functionality not implemented */
-    VIEW_ERR_PARAM = -5,         /* setting wrong parameter */
-    VIEW_ERR_BUG = -6,           /* bug in code */
-    VIEW_ERR_LLMETA = -7,        /* error in I/O with llmeta backend */
-    VIEW_ERR_SQLITE = -8,  /* error in sqlite module while processing views */
-    VIEW_ERR_PURGE = -9,   /* error with removing oldest shards */
-    VIEW_ERR_SC = -10,     /* error with schema change */
-    VIEW_ERR_CREATE = -11, /* error with pthread create */
+#define IS_TIMEPARTITION(p)                                                    \
+    ((p) == VIEW_PARTITION_DAILY || (p) == VIEW_PARTITION_WEEKLY ||            \
+     (p) == VIEW_PARTITION_MONTHLY || (p) == VIEW_PARTITION_YEARLY ||          \
+     (p) == VIEW_PARTITION_TEST2MIN)
+
+enum view_partition_errors {
+    VIEW_NOERR = 0 /* no error */
+    ,
+    VIEW_ERR_GENERIC = -1 /* generic error, please avoid */
+    ,
+    VIEW_ERR_MALLOC = -2 /* malloc error */
+    ,
+    VIEW_ERR_EXIST = -3 /* exist when insert new, not exist when update */
+    ,
+    VIEW_ERR_UNIMPLEMENTED = -4 /* functionality not implemented */
+    ,
+    VIEW_ERR_PARAM = -5 /* setting wrong parameter */
+    ,
+    VIEW_ERR_BUG = -6 /* bug in code */
+    ,
+    VIEW_ERR_LLMETA = -7 /* error in I/O with llmeta backend */
+    ,
+    VIEW_ERR_SQLITE = -8 /* error in sqlite module while processing views */
+    ,
+    VIEW_ERR_PURGE = -9 /* error with removing oldest shards */
+    ,
+    VIEW_ERR_SC = -10 /* error with schema change */
+    ,
+    VIEW_ERR_CREATE = -11 /* error with pthread create */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -59,35 +76,6 @@ typedef struct timepart_sc_arg {
     void *tran; /*remove?*/
 } timepart_sc_arg_t;
 
-enum systable_columns {
-    VIEWS_NAME,
-    VIEWS_PERIOD,
-    VIEWS_RETENTION,
-    VIEWS_NSHARDS,
-    VIEWS_VERSION,
-    VIEWS_SHARD0NAME,
-    VIEWS_STARTTIME,
-    VIEWS_SOURCEID,
-    VIEWS_MAXCOLUMN
-};
-
-enum systable_shard_columns {
-    VIEWS_SHARD_VIEWNAME,
-    VIEWS_SHARD_NAME,
-    VIEWS_SHARD_START,
-    VIEWS_SHARD_END,
-    VIEWS_SHARD_MAXCOLUMN
-};
-
-enum systable_events_columns {
-    VIEWS_EVENT_NAME,
-    VIEWS_EVENT_WHEN,
-    VIEWS_EVENT_SOURCEID,
-    VIEWS_EVENT_ARG1,
-    VIEWS_EVENT_ARG2,
-    VIEWS_EVENT_ARG3,
-    VIEWS_EVENT_MAXCOLUMN
-};
 
 /**
  * Initialize the views
@@ -254,13 +242,15 @@ void views_signal(timepart_views_t *views);
  */
 char *comdb2_partition_info(const char *partition_name, const char *option);
 
-enum view_timepart_period name_to_period(const char *str);
+enum view_partition_period name_to_period(const char *str);
 
-const char *period_to_name(enum view_timepart_period period);
+const char *period_to_name(enum view_partition_period period);
 
-int convert_time_string_to_epoch(const char *time_str);
+int convert_from_start_string(enum view_partition_period period,
+                              const char *str);
 
-char *convert_epoch_to_time_string(int epoch, char *buf, int buflen);
+char *convert_to_start_string(enum view_partition_period period, int value,
+                              char *buf, int buflen);
 
 char *build_createcmd_json(char **out, int *len, const char *name,
                            const char *tablename, uint32_t period,
@@ -372,49 +362,22 @@ int timepart_dump_timepartitions(FILE *dest);
 int timepart_apply_file(const char *filename);
 
 /**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid,
-                              enum systable_columns iCol);
-
-/**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of
- * timepart iTimepartId
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
-                                    int iRowid,
-                                    enum systable_shard_columns iCol);
-
-/**
- *  Move iRowid to point to the next shard, switching shards in the process
- *  NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
-
-/**
- * Get number of views
- *
- */
-int timepart_get_num_views(void);
-
-/**
  * Get number of shards
  *
  */
 int timepart_get_num_shards(const char *view_name);
 
 /**
- * Open/close the event queue
+ * Return a description of the timepart scheduler
+ *
  */
-int timepart_events_open(int *num);
-int timepart_events_close(void);
+char *timepart_describe(sched_if_t *impl);
 
 /**
- * Get event data
+ * Timepart event description
+ *
  */
-void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol);
+char *timepart_event_describe(sched_if_t *impl, cron_event_t *event);
 
 #endif
 

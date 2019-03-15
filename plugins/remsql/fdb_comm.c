@@ -688,6 +688,11 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
+        if (msg->co.srcname != gbl_myhostname) {
+            free(msg->co.srcname);
+            msg->co.srcname = NULL;
+            msg->co.srcnamelen = 0;
+        }
         break;
 
     case FDB_MSG_CURSOR_CLOSE:
@@ -2745,13 +2750,13 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
 
     /* was there any error processing? */
-    if (clnt->fdb_state.err.errval != 0) {
+    int irc;
+    if ((irc = errstat_get_rc(&clnt->fdb_state.xerr)) != 0) {
         /* we need to send back a rc code */
-        rc = fdb_svc_sql_row(
-            clnt->fdb_state.remote_sql_sb, cid,
-            clnt->fdb_state.err.errstr, /* the actual row is the errstr */
-            strlen(clnt->fdb_state.err.errstr) + 1, clnt->fdb_state.err.errval,
-            arg->isuuid);
+        const char *tmp = errstat_get_str(&clnt->fdb_state.xerr);
+        rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                             (char *)tmp, /* the actual row is the errstr */
+                             strlen(tmp) + 1, irc, arg->isuuid);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fdb_send_rc failed rc=%d\n", __func__,
                    rc);

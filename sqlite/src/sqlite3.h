@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.26.0"
-#define SQLITE_VERSION_NUMBER 3026000
-#define SQLITE_SOURCE_ID      "2018-12-03 14:53:55 7cccccfc946a5af08c1250b9271b920841f4f1bd5338c4b35aee0211261falt1"
+#define SQLITE_VERSION        "3.26.1"
+#define SQLITE_VERSION_NUMBER 3026001
+#define SQLITE_SOURCE_ID      "2019-01-22 18:41:57 3ec6da5079862a35c0f69d21abaffe77e80f1aa7824a68bdb344a68f6c129931"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -3675,6 +3675,9 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 */
 #define SQLITE_PREPARE_PERSISTENT              0x01
 #define SQLITE_PREPARE_NORMALIZE               0x02
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_ONLY                    0x08
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Compiling An SQL Statement
@@ -4694,6 +4697,7 @@ SQLITE_API int sqlite3_column_type(sqlite3_stmt*, int iCol);
 SQLITE_API const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
 SQLITE_API const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
 
+SQLITE_API int sqlite3_hasResultSet(sqlite3_stmt*);
 SQLITE_API int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -6332,11 +6336,6 @@ SQLITE_API void sqlite3_reset_auto_extension(void);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 SQLITE_API int sqlite3_stmt_has_remotes(sqlite3_stmt *stmt);
-
-SQLITE_API const char *sqlite3_fingerprint(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_size(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_enable(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_disable(sqlite3*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

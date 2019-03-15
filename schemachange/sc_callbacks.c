@@ -163,9 +163,33 @@ static int reload_rowlocks(bdb_state_type *bdb_state, scdone_t type)
  * that point */
 int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long genid,
-                                     unsigned long long stripe_ptr)
+                                     unsigned long long *sc_genids)
 {
-    return bdb_inplace_cmp_genids(bdb_state, genid, stripe_ptr) > 0;
+    int stripe = get_dtafile_from_genid(genid);
+    if (stripe < 0 || stripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
+               __func__, genid, stripe);
+        abort();
+    }
+    if (!sc_genids[stripe]) {
+        /* A genid of zero is invalid.  So, if the schema change cursor is at
+         * genid zero it means pretty conclusively that it hasn't done anything
+         * yet so we cannot possibly be behind the cursor. */
+        return 1;
+    }
+    return bdb_inplace_cmp_genids(bdb_state, genid, sc_genids[stripe]) > 0;
+}
+
+unsigned long long get_genid_stripe_pointer(unsigned long long genid,
+                                            unsigned long long *sc_genids)
+{
+    int stripe = get_dtafile_from_genid(genid);
+    if (stripe < 0 || stripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
+               __func__, genid, stripe);
+        abort();
+    }
+    return sc_genids[stripe];
 }
 
 /* delete from new btree when genid is older than schemachange position
@@ -263,8 +287,6 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              int od_len)
 {
     struct dbtable *usedb = iq->usedb;
-    blob_status_t oldblobs[MAXBLOBS];
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
@@ -285,17 +307,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
 #endif
     /* need to check where the cursor is, even tho that check was done once in
      * post_update */
-    int stripe = get_dtafile_from_genid(newgenid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update_delayed_key_adds_int: newgenid 0x%llx "
-               "stripe %d out of range!\n",
-               newgenid, stripe);
-        return 0;
-    }
-
     int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, newgenid, usedb->sc_to->sc_genids[stripe]);
+        iq->usedb->handle, newgenid, usedb->sc_to->sc_genids);
     if (is_gen_gt_scptr) {
         if (iq->debug) {
             reqprintf(iq, "live_sc_post_update_delayed_key_adds_int: skip "
@@ -305,8 +318,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
     if (iq->usedb->sc_to->ix_blob) {
         rc =
             save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);

@@ -1114,7 +1114,8 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
 
 int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    unsigned long long oldgenid, void *newdta, int newlen,
-                   int blobno, int rrn, unsigned long long newgenid)
+                   int blobno, int rrn, unsigned long long newgenid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -1126,7 +1127,7 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return -2; /*only support offset 0 for now */
     iq->gluewhere = "bdb_prim_add_upd_genid";
     rc = bdb_prim_add_upd_genid(bdb_handle, trans, blobno + 1, newdta, newlen,
-                                rrn, oldgenid, newgenid, 0, &bdberr);
+                                rrn, oldgenid, newgenid, 0, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_add_upd_genid done";
     if (rc == 0)
         return 0;
@@ -1148,10 +1149,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
 
 int blob_upv(struct ireq *iq, void *trans, int vptr,
              unsigned long long oldgenid, void *newdta, int newlen, int blobno,
-             int rrn, unsigned long long newgenid)
+             int rrn, unsigned long long newgenid, int odhready)
 {
     return blob_upv_auxdb(AUXDB_NONE, iq, trans, vptr, oldgenid, newdta, newlen,
-                          blobno, rrn, newgenid);
+                          blobno, rrn, newgenid, odhready);
 }
 
 int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
@@ -1247,7 +1248,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, 0 /*blobno*/, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, 0);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)
@@ -1263,14 +1264,15 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
 }
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
-             size_t length, int rrn, unsigned long long genid)
+             size_t length, int rrn, unsigned long long genid, int odhready)
 {
     return blob_add_auxdb(AUXDB_NONE, iq, trans, blobno, data, length, rrn,
-                          genid);
+                          genid, odhready);
 }
 
 int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid)
+                   void *data, size_t length, int rrn, unsigned long long genid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int bdberr;
@@ -1280,7 +1282,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, blobno + 1, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)
@@ -3577,6 +3579,7 @@ static void net_authentication_check(void *hndl, void *uptr, char *fromhost,
                              uint8_t is_tcp)
 {
     gbl_check_access_controls = 1;
+    ++gbl_bpfunc_auth_gen;
 }
 
 
@@ -4490,84 +4493,6 @@ void backend_thread_event(struct dbenv *dbenv, int event)
     bdb_thread_event(dbenv->bdb_env, event);
 }
 
-/* Form all keys, add a record.  buf is assumed to be
-   in ondisk format */
-int load_record(struct dbtable *db, void *buf)
-{
-#if 0
-    int i;
-    char key[MAXKEYLEN];
-    char tag[MAXTAGLEN];
-    int rc;
-    unsigned long long genid;
-    struct ireq iq = {0};
-    void *trans;
-    int rrn;
-    int bdberr;
-    int need_to_retry = 0;
-    int nretries = 0;
-
-    init_fake_ireq(db->dbenv, &iq);
-    iq.usedb = db;
-
-retry:
-    nretries++;
-    if (nretries == gbl_maxretries)
-        return -1;
-
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        fprintf(stderr, "add_record:bdb_tran_begin rc %d bdberr %d\n", rc, bdberr);
-        return -1;
-    }
-    
-    /* add data */
-    rc = dat_add(&iq, trans, buf, db->lrl, &genid, &rrn);
-    if (rc) {
-        if (rc == RC_INTERNAL_RETRY)
-            need_to_retry = 1;
-        else
-            fprintf(stderr, "add_record:dat_add rc %d\n", rc);
-        goto backout;
-    }
-
-    for (i = 0; i < db->nix; i++) {
-        snprintf(tag, MAXTAGLEN, ".ONDISK_ix_%d", i);
-        rc = stag_to_stag_buf(db->tablename, ".ONDISK", buf, tag, key, NULL);
-        if (rc) {
-            if (rc == RC_INTERNAL_RETRY)
-                need_to_retry = 1;
-            else
-                fprintf(stderr, "add_record:stag_to_stag_buf ix %d rc %d\n", i, rc);
-            goto backout;
-        }
-
-        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl, ix_isnullk(iq.usedb, key, i));
-        if (rc) {
-            if (rc == RC_INTERNAL_RETRY)
-                need_to_retry = 1;
-            else
-                fprintf(stderr, "add_record:ix_addk rrn %d genid %016llx rc %d\n", rrn, genid, rc);
-            goto backout;
-        }
-    }
-
-    /* commit */
-    rc = trans_commit(&iq, trans, gbl_mynode);
-    if (rc)
-        fprintf(stderr, "add_record:trans_commit rc %d\n", rc);
-    return 0;
-
-backout:
-    rc = trans_abort(&iq, trans);
-    if (rc)
-        fprintf(stderr, "add_record:trans_abort rc %d\n", rc);
-    if (need_to_retry)
-        goto retry;
-    return -1;
-#endif
-    return -1;
-}
 
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,

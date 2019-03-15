@@ -39,7 +39,7 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 
 #include <ctrace.h>
 
@@ -1464,6 +1464,38 @@ void abort_at_exit(void)
     abort();
 }
 
+static int update_logical_redo_lsn(void *obj, void *arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)obj;
+    tran_type *tran = (tran_type *)arg;
+    if (bdb_state->logical_live_sc == 0)
+        return 0;
+    struct sc_redo_lsn *last = NULL;
+    struct sc_redo_lsn *redo = malloc(sizeof(struct sc_redo_lsn));
+    if (redo == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to malloc sc redo\n", __func__);
+        abort();
+    }
+    redo->lsn = tran->last_logical_lsn;
+    redo->txnid = tran->tid->txnid;
+    /* We must have table lock here and so the list will not go away */
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+
+    last = LISTC_BOT(&bdb_state->sc_redo_list);
+    /* Add in order */
+    if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
+        listc_abl(&bdb_state->sc_redo_list, redo);
+    else {
+        logmsg(LOGMSG_FATAL, "%s: logical commit lsn should be in order\n",
+               __func__);
+        abort();
+    }
+
+    Pthread_cond_signal(&bdb_state->sc_redo_wait);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+    return 0;
+}
+
 static int bdb_tran_commit_with_seqnum_int_int(
     bdb_state_type *bdb_state, tran_type *tran, seqnum_type *seqnum,
     int *bdberr, int getseqnum, uint64_t *out_txnsize, void *blkseq, int blklen,
@@ -1591,6 +1623,14 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 return -1;
+            }
+
+            if (!isabort && tran->committed_child &&
+                tran->force_logical_commit && tran->dirty_table_hash) {
+                hash_for(tran->dirty_table_hash, update_logical_redo_lsn, tran);
+                hash_clear(tran->dirty_table_hash);
+                hash_free(tran->dirty_table_hash);
+                tran->dirty_table_hash = NULL;
             }
         }
 
@@ -2044,7 +2084,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 
@@ -2363,7 +2403,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 

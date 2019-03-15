@@ -312,7 +312,7 @@ int net_register_name(netinfo_type *netinfo_ptr, char name[]);
 int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func);
 
 /* For berkdb_rep.c */
-int connect_to_all(netinfo_type *netinfo_ptr);
+void connect_to_all(netinfo_type *netinfo_ptr);
 
 /* This appears to be unused -- Sam J 03/24/05 */
 void print_netinfo(netinfo_type *netinfo_ptr);

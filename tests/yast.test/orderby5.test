@@ -37,12 +37,12 @@ do_execsql_test 1.2.1 {
 do_execsql_test 1.2.2 {
   EXPLAIN QUERY PLAN
   SELECT DISTINCT a, c, b FROM t1 WHERE a='xyz' COLLATE nocase;
-} {4 0 0 {SCAN TABLE t1 (~262144 rows)} 16 0 0 {USE TEMP B-TREE FOR DISTINCT}}
+} {4 0 0 {SCAN TABLE t1 (~262144 rows)} 17 0 0 {USE TEMP B-TREE FOR DISTINCT}}
 #{/B-TREE/}
 do_execsql_test 1.2.3 {
   EXPLAIN QUERY PLAN
   SELECT DISTINCT a COLLATE nocase, c, b FROM t1 WHERE a='xyz';
-} {4 0 0 {SCAN TABLE t1 (~262144 rows)} 16 0 0 {USE TEMP B-TREE FOR DISTINCT}}
+} {4 0 0 {SCAN TABLE t1 (~262144 rows)} 17 0 0 {USE TEMP B-TREE FOR DISTINCT}}
 #{/B-TREE/}
 do_execsql_test 1.2.4 {
   EXPLAIN QUERY PLAN
@@ -72,7 +72,7 @@ do_execsql_test 1.6 {
 do_execsql_test 1.7 {
   EXPLAIN QUERY PLAN
   SELECT DISTINCT c, b, a FROM t1 WHERE +a=0;
-} {6 0 0 {SCAN TABLE t1 USING INDEX $T1BC_F401E920 (~983040 rows)} 19 0 0 {USE TEMP B-TREE FOR DISTINCT}}
+} {6 0 0 {SCAN TABLE t1 USING INDEX $T1BC_F401E920 (~983040 rows)} 21 0 0 {USE TEMP B-TREE FOR DISTINCT}}
 #{/B-TREE/}
 
 # In some cases, it is faster to do repeated index lookups than it is to
@@ -101,7 +101,7 @@ do_execsql_test 2.1b {
 do_execsql_test 2.2 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t1 WHERE +a=0 ORDER BY a, b, c;
-} {4 0 0 {SCAN TABLE t1 (~983040 rows)} 14 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {4 0 0 {SCAN TABLE t1 (~983040 rows)} 15 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/B-TREE/}
 do_execsql_test 2.3 {
   EXPLAIN QUERY PLAN
@@ -116,17 +116,17 @@ do_execsql_test 2.4 {
 do_execsql_test 2.5 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t1 WHERE a=0 ORDER BY a, c, b;
-} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 21 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}}
+} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 22 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}}
 #{/B-TREE/}
 do_execsql_test 2.6 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t1 WHERE a=0 ORDER BY c, a, b;
-} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 14 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 15 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/B-TREE/}
 do_execsql_test 2.7 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t1 WHERE a=0 ORDER BY c, b, a;
-} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 14 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {4 0 0 {SCAN TABLE t1 (~524288 rows)} 15 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/B-TREE/}
 
 
