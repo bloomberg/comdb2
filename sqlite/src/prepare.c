@@ -962,7 +962,7 @@ static int estimateNormalizedSize(
   int nSql,         /* Length of original SQL string */
   u8 prepFlags      /* The flags passed to sqlite3_prepare_v3() */
 ){
-  int nOut = nSql + 4;
+  int nOut = nSql + 5;
   const char *z = zSql;
   while( nOut<nSql*5 ){
     while( z[0]!=0 && z[0]!='I' && z[0]!='i' ){ z++; }
