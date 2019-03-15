@@ -426,7 +426,7 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
         if (strcmp((zFmt), "blob") == 0) {                                     \
             char *zBlob = sqlite3_malloc64(((nVal * 2) + 1) * sizeof(char));   \
             if (zBlob) {                                                       \
-                util_tohex(zBlob, (const char *)(vVal), nVal);                 \
+                util_tohex(zBlob, (const char *)(void *)(vVal), nVal);         \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d blob %s\n",           \
                        pthread_self(), __func__, iCol, zBlob);                 \
                 sqlite3_free(zBlob);                                           \
@@ -437,8 +437,8 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
         } else if (strcmp((zFmt), "datetime") == 0) {                          \
             char zDate[256] = {0};                                             \
             int nOut = 0;                                                      \
-            if (dttz_to_str((const dttz_t *)(vVal), zDate, sizeof(zDate),      \
-                            &nOut, "UTC") == 0) {                              \
+            if (dttz_to_str((const dttz_t *)(void *)(vVal), zDate,             \
+                            sizeof(zDate), &nOut, "UTC") == 0) {               \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d datetime %s (%d)\n",  \
                        pthread_self(), __func__, iCol, zDate, nOut);           \
             } else {                                                           \
