@@ -2096,7 +2096,6 @@ putcmd ::= COUNTER nm(Y) dbnm(Z) SET INTEGER(R). {
     comdb2CounterSet(pParse, &Y, &Z, tmp);
 }
 
-
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;
     if (!readIntFromToken(&F, &tmp))
