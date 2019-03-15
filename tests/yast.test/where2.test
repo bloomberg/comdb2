@@ -137,7 +137,6 @@ ifcapable subquery {
         ORDER BY w
       }
     } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=10, parent=0, notused=0, detail='LIST SUBQUERY 2') (id=11, parent=10, notused=0, detail='COMPOUND QUERY') (id=12, parent=11, notused=0, detail='LEFT-MOST SUBQUERY') (id=14, parent=12, notused=0, detail='SCAN CONSTANT ROW') (id=18, parent=11, notused=0, detail='UNION USING TEMP B-TREE') (id=19, parent=18, notused=0, detail='SCAN CONSTANT ROW')}
-
     do_test where2-4.5 {
       queryplan {
         SELECT * FROM t1 WHERE z IN (SELECT 10207 UNION SELECT 10006)
