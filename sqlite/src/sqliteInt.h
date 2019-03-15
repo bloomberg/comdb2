@@ -3258,6 +3258,9 @@ struct Parse {
 
   int aTempReg[8];        /* Holding area for temporary registers */
   Token sNameToken;       /* Token with unqualified schema object name */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int preserve_update;      /* statement replacement, preserve flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /************************************************************************
   ** Above is constant between recursions.  Below is reset before and after
@@ -3265,10 +3268,6 @@ struct Parse {
   ** using offsetof(Parse,sLastToken) so the sLastToken field must be the
   ** first field in the recursive region.
   ************************************************************************/
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int preserve_update;      /* statement replacement, preserve flags */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   Token sLastToken;       /* The last token parsed */
   ynVar nVar;               /* Number of '?' variables seen in the SQL so far */

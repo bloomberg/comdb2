@@ -300,7 +300,7 @@ static void sqlite3NestedParse_int(
   const char *zFormat,
   va_list ap
 ) {
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_list ap;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -326,9 +326,8 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   memset(PARSE_TAIL(pParse), 0, PARSE_TAIL_SZ);
   sqlite3RunParser(pParse, zSql, &zErrMsg);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if (pzErrMsg)
-    *pzErrMsg = zErrMsg;
-  else
+  if( pzErrMsg ){ *pzErrMsg = zErrMsg; }
+  else /* sqlite3DbFree(db, zErrMsg); */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, zErrMsg);
   sqlite3DbFree(db, zSql);
@@ -345,10 +344,7 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_end(ap);
 }
 
-void sqlite3NestedParsePreserveFlags(
-  Parse *pParse,
-  const char *zFormat, ...
-){
+void sqlite3NestedParsePreserveFlags(Parse *pParse, const char *zFormat, ...){
   va_list ap;
   char *zErrMsg = NULL;
 

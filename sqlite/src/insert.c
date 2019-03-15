@@ -2036,11 +2036,11 @@ void sqlite3CompleteInsertion(
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pParse->nested && !pParse->preserve_update ){
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pParse->nested ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pik_flags = 0;
-  } else {
+  }else{
     pik_flags = OPFLAG_NCHANGE;
     pik_flags |= (update_flags?update_flags:OPFLAG_LASTROWID);
   }

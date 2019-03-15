@@ -22,8 +22,6 @@
 #include <stdlib.h>
 #include "logmsg.h"
 
-//#define LOCK_DEBUG 1
-
 #ifdef LOCK_DEBUG
 #  define LKDBG_TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(0x%"PRIxPTR") thd:%p\n", __func__, __LINE__, (uintptr_t)OBJ, (void *)pthread_self())
 #else
