@@ -424,7 +424,7 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
     do {                                                                       \
         if (strcmp((zFmt), "blob") == 0) {                                     \
             char *zBlob = sqlite3_malloc64(((nVal * 2) + 1) * sizeof(char));   \
-            if (hexBlobStr) {                                                  \
+            if (zBlob) {                                                       \
                 util_tohex(zBlob, vVal, nVal);                                 \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d blob %s\n",           \
                        pthread_self(), __func__, iCol, zBlob);                 \
@@ -444,19 +444,19 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
                        pthread_self(), __func__, iCol);                        \
             }                                                                  \
         } else {                                                               \
-            char *zStr = sqlite3_mprintf((fmt), vVal);                         \
+            char *zStr = sqlite3_mprintf((zFmt), vVal);                        \
             if (zStr) {                                                        \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d %s fmt \"%s\"\n",     \
-                       pthread_self(), __func__, iCol, (fmt), zStr);           \
+                       pthread_self(), __func__, iCol, (zFmt), zStr);          \
                 sqlite3_free(zStr);                                            \
             } else {                                                           \
                 logmsg(LOGMSG_DEBUG, "%lx %s DBG: col %d fmt \"%s\" OOM %d\n", \
-                       pthread_self(), __func__, iCol, (fmt), nVal);           \
+                       pthread_self(), __func__, iCol, (zFmt), nVal);          \
             }                                                                  \
         }                                                                      \
     } while (0);
 
-#define FUNC_COLUMN_TYPE(ret, type, fmt)                                       \
+#define FUNC_COLUMN_TYPE(ret, type, zFmt)                                      \
     static ret dohsql_dist_column_##type(struct sqlclntstate *clnt,            \
                                          sqlite3_stmt *stmt, int iCol)         \
     {                                                                          \
@@ -465,14 +465,14 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
             ret val1 = sqlite3_column_##type(stmt, iCol);                      \
             if (gbl_dohsql_verbose) {                                          \
                 int nVal1 = sqlite3_column_bytes(stmt, iCol);                  \
-                DBG_COLUMN_VALUE(iCol, val1, nVal1, fmt);                      \
+                DBG_COLUMN_VALUE(iCol, val1, nVal1, zFmt);                     \
             }                                                                  \
             return val1;                                                       \
         }                                                                      \
         ret val2 = sqlite3_value_##type(&conns->row[iCol]);                    \
         if (gbl_dohsql_verbose) {                                              \
             int nVal2 = sqlite3_value_bytes(&conns->row[iCol]);                \
-            DBG_COLUMN_VALUE(iCol, val2, nVal2, fmt);                          \
+            DBG_COLUMN_VALUE(iCol, val2, nVal2, zFmt);                         \
         }                                                                      \
         return val2;                                                           \
     }
