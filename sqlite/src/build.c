@@ -293,8 +293,17 @@ void sqlite3FinishCoding(Parse *pParse){
 ** INSERT, UPDATE, and DELETE operations against SQLITE_MASTER.  Use
 ** care if you decide to try to use this routine for some other purposes.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static void sqlite3NestedParse_int(
+  Parse *pParse,
+  char **pzErrMsg,
+  const char *zFormat,
+  va_list ap
+) {
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_list ap;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   char *zSql;
   char *zErrMsg = 0;
   sqlite3 *db = pParse->db;
@@ -302,9 +311,13 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
 
   if( pParse->nErr ) return;
   assert( pParse->nested<10 );  /* Nesting should only be of limited depth */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_start(ap, zFormat);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   zSql = sqlite3VMPrintf(db, zFormat, ap);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_end(ap);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( zSql==0 ){
     return;   /* A malloc must have failed */
   }
@@ -312,11 +325,39 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   memcpy(saveBuf, PARSE_TAIL(pParse), PARSE_TAIL_SZ);
   memset(PARSE_TAIL(pParse), 0, PARSE_TAIL_SZ);
   sqlite3RunParser(pParse, zSql, &zErrMsg);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pzErrMsg ){ *pzErrMsg = zErrMsg; }
+  else /* sqlite3DbFree(db, zErrMsg); */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, zErrMsg);
   sqlite3DbFree(db, zSql);
   memcpy(PARSE_TAIL(pParse), saveBuf, PARSE_TAIL_SZ);
   pParse->nested--;
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
+  va_list ap;
+
+  va_start(ap, zFormat);
+  sqlite3NestedParse_int(pParse, NULL, zFormat, ap);
+  va_end(ap);
+}
+
+void sqlite3NestedParsePreserveFlags(Parse *pParse, const char *zFormat, ...){
+  va_list ap;
+  char *zErrMsg = NULL;
+
+  pParse->preserve_update = 1;
+  va_start(ap, zFormat);
+  sqlite3NestedParse_int(pParse, &zErrMsg, zFormat, ap);
+  va_end(ap);
+  if (zErrMsg) {
+    assert(pParse->zErrMsg == 0);
+    pParse->zErrMsg = zErrMsg;
+  }
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if SQLITE_USER_AUTHENTICATION
 /*

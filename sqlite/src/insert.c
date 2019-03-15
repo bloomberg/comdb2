@@ -2051,7 +2051,11 @@ void sqlite3CompleteInsertion(
   if( !bAffinityDone ){
     sqlite3TableAffinity(v, pTab, 0);
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pParse->nested && !pParse->preserve_update ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pParse->nested ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pik_flags = 0;
   }else{
     pik_flags = OPFLAG_NCHANGE;
