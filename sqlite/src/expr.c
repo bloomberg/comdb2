@@ -805,9 +805,6 @@ Expr *sqlite3ExprAlloc(
     pNew->nHeight = 1;
 #endif  
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pNew->visited = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return pNew;
 }
 
@@ -5725,7 +5722,8 @@ static char* sqlite3ExprDescribe_inner(
   int atRuntime,
   struct params_info **pParamsOut
 ){
-  switch( pExpr->op ){
+  int op = pExpr->op;
+  switch( op ){
     case TK_SEMI:
     case TK_EXPLAIN:
     case TK_QUERY:

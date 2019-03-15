@@ -298,7 +298,6 @@ void sqlite3VdbeSetVarmask(Vdbe*, int);
 #ifndef SQLITE_OMIT_TRACE
   char *sqlite3VdbeExpandSql(Vdbe*, const char*);
 #endif
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -309,12 +308,10 @@ static inline
 int sqlite3BlobCompare(const Mem*, const Mem*);
 
 void sqlite3VdbeRecordUnpack(KeyInfo*,int,const void*,UnpackedRecord*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeRecordCompare(int,const void*,UnpackedRecord*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
