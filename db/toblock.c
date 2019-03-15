@@ -43,7 +43,6 @@
 #include <f2cstr.h>
 #include <list.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
 #include <unistd.h>

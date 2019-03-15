@@ -457,7 +457,7 @@ retry_after_fdb_creation:
   ** database name and a table name and we are trying to find them
   ** remotely
   */
-  if( !already_searched_fdb ){
+  if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
     int        version = 0;
     char       *zErrDyn = NULL;
 
@@ -5267,7 +5267,7 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
   }else if( flgs == MEM_Real ){
     value = sqlite3_mprintf("%lf", m->u.r);
   }else if( flgs & MEM_Str ){
-    value = sqlite3_mprintf("\'%.*s\'", m->n, m->z);
+    value = sqlite3_mprintf("\'%.*q\'", m->n, m->z);
   }else if( flgs & MEM_Blob ){
     char * key = alloca(2*m->n+1);
     int  i;

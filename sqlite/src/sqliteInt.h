@@ -1570,8 +1570,6 @@ struct sqlite3 {
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
-  u8 should_fingerprint;                /* Non-zero fingerprinting enabled */
-  char fingerprint[16];                 /* Figerprint of the last query prep  */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -1632,6 +1630,10 @@ struct sqlite3 {
 #define SQLITE_VdbeEQP        HI(0x0010)  /* Debug EXPLAIN QUERY PLAN */
 #define SQLITE_ParserTrace    HI(0x0020)  /* PRAGMA parser_trace=ON */
 #endif
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PrepareOnly    HI(0x1000)  /* Pending flag for prepare_v3() */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Allowed values for sqlite3.mDbFlags
@@ -2627,9 +2629,6 @@ struct Expr {
       int regReturn;         /* Register used to hold return address */
     } sub;
   } y;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  u8 visited;            /* Set if visited by fingerprinter. */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /*
@@ -3319,6 +3318,11 @@ struct Parse {
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
   ast_t *ast;
+  int prepare_only;         /* Prepare-only mode, skip schema changes that
+                             * originate from DDL, etc.  This is primarily
+                             * of interest to the DDL integration code in
+                             * the "comdb2build.c" and "comdb2lua.c" files.
+                             */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4972,10 +4976,6 @@ void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
 
-void sqlite3FingerprintSelect(sqlite3 *db, Select *p);
-void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
-void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
-void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);

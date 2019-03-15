@@ -316,22 +316,6 @@ char * sqltypetxt(int t, int size)
 }
 #endif
 
-char *opertxt(int t)
-{
-    switch (t) {
-    case T_GT:
-        return " > ";
-    case T_LT:
-        return " < ";
-    case '(':
-        return "(";
-    case ')':
-        return ")";
-    default:
-        return ".?UNKNOWN OPERATOR?.";
-    }
-}
-
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
     int ii, jj = 0;

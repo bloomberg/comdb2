@@ -285,8 +285,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
-  PAGEORDER PASSWORD PERIOD PROCEDURE PUT
-  REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE ROWLOCKS
+  PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
+  REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
@@ -603,9 +603,6 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintSelect(pParse->db, X);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Select(pParse, X, &dest);
   sqlite3SelectDelete(pParse->db, X);
 }
@@ -1025,9 +1022,6 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   sqlite3ExprListDelete(pParse->db, O); O = 0;
   sqlite3ExprDelete(pParse->db, L); L = 0;
@@ -1038,9 +1032,6 @@ cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W)
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
 %endif
@@ -1058,9 +1049,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 }
 %endif
@@ -1069,9 +1057,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 }
 %endif
@@ -1098,16 +1083,10 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, S, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, S, F, R, U);
 }
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, 0, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
 
@@ -1926,6 +1905,9 @@ alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
 alter_table_drop_index ::= DROP INDEX nm(I). {
   comdb2AlterDropIndex(pParse, &I);
 }
+alter_table_commit_pending ::= SET COMMIT PENDING. {
+  comdb2AlterCommitPending(pParse);
+}
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
@@ -1936,6 +1918,7 @@ alter_table_action ::= alter_table_add_fk.
 alter_table_action ::= alter_table_drop_fk.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
+alter_table_action ::= alter_table_commit_pending.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
@@ -2156,7 +2139,21 @@ rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
     comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 
-//////////////////////////////////// GRANT ////////////////////////////////////
+//////////////////////////// SCHEMA CHANGE CONTROL ////////////////////////////
+
+cmd ::= scctrl.
+
+%type scaction {int}
+scaction(A) ::= PAUSE. { A = SC_ACTION_PAUSE; }
+scaction(A) ::= RESUME. { A = SC_ACTION_RESUME; }
+scaction(A) ::= COMMIT. { A = SC_ACTION_COMMIT; }
+scaction(A) ::= ABORT. { A = SC_ACTION_ABORT; }
+
+scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X). {
+    comdb2SchemachangeControl(pParse,A,&T,&X);
+}
+
+/////////////////////////////////// GRANT /////////////////////////////////////
 
 %type sql_permission {int}
 sql_permission(A) ::= READ. { A = AUTH_READ; }

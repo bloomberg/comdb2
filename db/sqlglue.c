@@ -7653,10 +7653,10 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
 
             if (short_version != clnt->fdb_state.version) {
-                clnt->fdb_state.err.errval = SQLITE_SCHEMA;
+                clnt->fdb_state.xerr.errval = SQLITE_SCHEMA;
                 /* NOTE: first word of the error string is the actual version,
                    expected on the other side; please do not change */
-                errstat_set_strf(&clnt->fdb_state.err,
+                errstat_set_strf(&clnt->fdb_state.xerr,
                                  "%llu Stale version local %u != received %u",
                                  version, short_version,
                                  clnt->fdb_state.version);
@@ -12572,7 +12572,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
                          mod->zName, thd->clnt->user, bdberr);
-                logmsg(LOGMSG_WARN, "%s\n", msg);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
                 errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
                 errstat_set_str(&thd->clnt->osql.xerr, msg);
                 return SQLITE_AUTH;

@@ -34,8 +34,8 @@ sleep 1 # give time for .db file to flush
 echo including $logfile
 cat $logfile
 
-grep 'ad69399b065510fec51aa4e5f74a0e2f' $logfile # SELECT 1
-grep 'b878c30d70b41ad83244a8831d066e55' $logfile # SELECT 1+1
+grep '4f16a8ec9db90f803e406659938b2602' $logfile # SELECT 1
+grep 'a8aba85dbb41e02489b5aa47de3b8a0a' $logfile # SELECT 1+1
 
 # Compare results with pre-calculated hashes
 echo "Passed."

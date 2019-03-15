@@ -3647,6 +3647,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete ix\n", __FILE__,
                     __LINE__);
             free(keybuf);
+            free(dtabuf);
             if (free_ptr)
                 free(free_ptr);
             goto done;
@@ -3662,6 +3663,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         if (free_ptr)
             free(free_ptr);
         free(keybuf);
+        free(dtabuf);
     } break;
 
     case DB_llog_undo_add_dta:

@@ -31,12 +31,11 @@
 
 #include <epochlib.h>
 #include <list.h>
-#include <lockmacro.h>
 #include <pool.h>
 #include <time.h>
 
 #include "debug_switches.h"
-
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "block_internal.h"
 #include "util.h"

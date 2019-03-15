@@ -1025,7 +1025,6 @@ extern struct dbenv *thedb;
 extern comdb2_tunables *gbl_tunables;
 
 extern pthread_key_t unique_tag_key;
-extern pthread_key_t sqlite3VDBEkey;
 extern pthread_key_t query_info_key;
 
 struct req_hdr {
@@ -2850,6 +2849,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
+void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);

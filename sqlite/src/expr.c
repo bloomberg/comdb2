@@ -807,9 +807,6 @@ Expr *sqlite3ExprAlloc(
     pNew->nHeight = 1;
 #endif  
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pNew->visited = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return pNew;
 }
 
@@ -5545,7 +5542,7 @@ static char *print_mem(Mem *m){
     case MEM_Null:
       return sqlite3_mprintf("null");
     case MEM_Str: 
-      return sqlite3_mprintf("'%.*s'", m->n, m->z);
+      return sqlite3_mprintf("'%.*q'", m->n, m->z);
     case MEM_Int:
       return  sqlite3_mprintf("%lld", m->u.i);
     case MEM_Real:
@@ -6335,10 +6332,27 @@ default_prec:
       }
     }
     case TK_COLUMN: {
+      char *name;
+      assert(pExpr->y.pTab &&
+        (pExpr->iColumn >= -3 && pExpr->y.pTab->nCol > pExpr->iColumn));
+      switch(pExpr->iColumn) {
+      case -3:
+        name = "comdb2_rowtimestamp";
+        break;
+      case -2:
+        name = "comdb2_rowid";
+        break;
+      case -1:
+        name = "rowid";
+        break;
+      default:
+        name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
+        break;
+      }
       if( atRuntime ){
-        return sqlite3_mprintf("\"%s\"",  pExpr->u.zToken);
+        return sqlite3_mprintf("\"%q\"", name);
       }else{
-        return sqlite3_mprintf("%s",  pExpr->u.zToken);
+        return sqlite3_mprintf("%q", name);
       }
     }
     case TK_AGG_FUNCTION:

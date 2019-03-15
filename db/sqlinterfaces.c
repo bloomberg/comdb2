@@ -42,7 +42,6 @@
 
 #include <plhash.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 
@@ -421,8 +420,7 @@ int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
-
-    return sqlite3_step(stmt);
+    return sqlite3_maybe_step(clnt, stmt);
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -739,6 +737,66 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
+int sqlite3_is_success(int rc){
+  return (rc==SQLITE_OK) || (rc==SQLITE_ROW) || (rc==SQLITE_DONE);
+}
+
+int sqlite3_is_prepare_only(
+  struct sqlclntstate *clnt
+){
+  if( clnt!=NULL && clnt->prepare_only ){
+    return 1;
+  }
+  return 0;
+}
+
+int sqlite3_maybe_step(
+  struct sqlclntstate *clnt,
+  sqlite3_stmt *stmt
+){
+  assert( clnt );
+  assert( stmt );
+  int steps = clnt->nsteps++;
+  if( unlikely(sqlite3_is_prepare_only(clnt)) ){
+    if( sqlite3_column_count(stmt)>0 ){
+      return steps==0 ? SQLITE_ROW : SQLITE_DONE;
+    }else{
+      return SQLITE_DONE;
+    }
+  }
+  clnt->step_rc = sqlite3_step(stmt);
+  return clnt->step_rc;
+}
+
+int sqlite3_can_get_column_type_and_data(
+  struct sqlclntstate *clnt,
+  sqlite3_stmt *stmt
+){
+  if( !sqlite3_is_prepare_only(clnt) ){
+    /*
+    ** When the client is not in 'prepare only' mode, the result set
+    ** should always be available (i.e. anytime after sqlite3_step()
+    ** is called).  The column type / data should be available -IF-
+    ** this is not a write transaction.  An assert is used here to
+    ** verify this invariant.
+    */
+    assert( clnt->step_rc!=SQLITE_ROW || sqlite3_hasResultSet(stmt) );
+    return 1;
+  }
+  if( sqlite3_hasResultSet(stmt) ){
+    /*
+    ** If the result set is available for the prepared statement, e.g.
+    ** due to sqlite3_step() having been called, it can always be used
+    ** to query the column type and data.  It shouldn't be possible to
+    ** reach this point in 'prepare only' mode; therefore, assert this
+    ** invariant here.
+    */
+    assert( !sqlite3_is_prepare_only(clnt) );
+    return 1;
+  }
+  return 0;
+}
+
 static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
@@ -913,6 +971,15 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_cost(logger, h->cost);
     if (rqid) {
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
+    }
+
+    if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
+        if ((clnt->thd->sqldb != NULL) && sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows,
+                            h->sql, logger);
+        } else {
+            reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
+        }
     }
 
     if (clnt->query_stats == NULL) {
@@ -1996,14 +2063,6 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
 
-    if (gbl_fingerprint_queries) {
-        size_t fsz = sqlite3_fingerprint_size(thd->sqldb);
-        size_t min_fsz = (sizeof(entry->fingerprint) < fsz)
-                             ? sizeof(entry->fingerprint)
-                             : fsz;
-        memcpy(entry->fingerprint, sqlite3_fingerprint(thd->sqldb), min_fsz);
-    }
-
     if (actual_sql && gbl_debug_temptables)
         entry->query = strdup(actual_sql);
     else
@@ -2638,14 +2697,6 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* reqlog */
     setup_reqlog(thd, clnt);
 
-    if (thd->sqldb != NULL) {
-        /* fingerprint info */
-        if (gbl_fingerprint_queries)
-            sqlite3_fingerprint_enable(thd->sqldb);
-        else
-            sqlite3_fingerprint_disable(thd->sqldb);
-    }
-
     /* using case sensitive like? enable */
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 1);
@@ -2955,12 +3006,18 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
+    int sqlPrepFlags = 0;
+
+    if (sqlite3_is_prepare_only(clnt))
+        sqlPrepFlags |= SQLITE_PREPARE_ONLY;
+
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
+        clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
+                                                sqlPrepFlags, &rec->stmt, &tail);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
@@ -3358,6 +3415,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     clnt->has_recording |= v->recording;
+    clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
 
@@ -3537,7 +3595,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
+        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) ||
+            ((Vdbe *)stmt)->explain) {
             postponed_write = 0;
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
@@ -3661,14 +3720,6 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
     log_queue_time(thd->logger, clnt);
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
-    if (gbl_fingerprint_queries) {
-        if (rec->stmt_entry)
-            reqlog_set_fingerprint(thd->logger, rec->stmt_entry->fingerprint,
-                                   sizeof(rec->stmt_entry->fingerprint));
-        else
-            reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
-                                   sqlite3_fingerprint_size(thd->sqldb));
-    }
 }
 
 int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
@@ -4206,13 +4257,14 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     sqlite3_stmt *stmt;
     const char *tail;
-    rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt, &tail);
+    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
+                                            &tail);
     if (rc != SQLITE_OK) {
         return rc;
     }
     bind_verify_indexes_query(stmt, clnt->schema_mems);
     run_stmt_setup(clnt, stmt);
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
         sqlite3_finalize(stmt);
@@ -4300,10 +4352,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
-        /* execute sql query might have generated an overriding fdb error;
-           reset it here before returning */
-        bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
-        clnt->fdb_state.preserve_err = 0;
     } else if (clnt->verify_indexes) {
         clnt->query_rc = execute_verify_indexes(thd, clnt);
     } else {
@@ -4437,7 +4485,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
-                                 flags);
+                                 flags | THDPOOL_FORCE_QUEUE);
         }
 
         if (rc) {
@@ -4748,6 +4796,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->have_extended_tm = 0;
     clnt->extended_tm = 0;
 
+    clnt->prepare_only = 0;
     clnt->is_readonly = 0;
     clnt->ignore_coherency = 0;
     clnt->admin = 0;
@@ -5432,10 +5481,16 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
 {
     int ret = 0;
     struct sql_thread *thd = poolthd->sqlthd;
+    char *cid;
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s: no sql_thread\n", __func__);
         return SQLITE_INTERNAL;
     }
+    if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
+        cid = (char *)&clnt->osql.uuid;
+    else
+        cid = (char *)&clnt->osql.rqid;
+
     reqlog_new_sql_request(poolthd->logger, clnt->sql);
     log_queue_time(poolthd->logger, clnt);
     bzero(&clnt->fail_reason, sizeof(clnt->fail_reason));
@@ -5489,6 +5544,20 @@ done:
             logmsg(LOGMSG_ERROR, 
                     "%s: sqloff_block_send_done failed to write reply\n",
                     __func__);
+    } else {
+        if (ret) {
+            const char *tmp = errstat_get_str(&clnt->osql.xerr);
+            tmp = tmp ? tmp : "error string not set";
+            rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                                 (char *)tmp, strlen(tmp) + 1,
+                                 errstat_get_rc(&clnt->osql.xerr),
+                                 clnt->osql.rqid == OSQL_RQID_USE_UUID);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s failed to send back error rc=%d errstr=%s\n",
+                       __func__, errstat_get_rc(&clnt->osql.xerr), tmp);
+            }
+        }
     }
 
     sqlite_done(poolthd, clnt, &rec, ret);
@@ -5534,8 +5603,16 @@ void sql_reset_sqlthread(struct sql_thread *thd)
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr)
 {
-    int rc = sqlite3_reset(stmt);
+    int rc, fdb_rc;
 
+    rc = sqlite3_reset(stmt);
+
+    if (clnt->fdb_state.preserve_err &&
+        (fdb_rc = errstat_get_rc(&clnt->fdb_state.xerr))) {
+        rc = fdb_rc;
+        *errstr = errstat_get_str(&clnt->fdb_state.xerr);
+        goto done;
+    }
     switch (rc) {
     case 0:
         rc = sqlite3_errcode(sqldb);
@@ -5629,6 +5706,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
     }
 
+done:
     if (rc == 0 && unlikely(clnt->conns)) {
         return dohsql_error(clnt, errstr);
     }
