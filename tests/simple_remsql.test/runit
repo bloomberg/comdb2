@@ -39,7 +39,7 @@ if [[ $DBNAME == *"whitelistgenerated"* ]] ; then
         echo "white2.out content not what expected, rather: `cat white2.out`"
         exit 1
     fi
-    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist dump')" > white3.out
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist dump')" | sort > white3.out
     echo "nonexistent
 $SECONDARY_DBNAME" > white3.exp
     if ! diff white3.out white3.exp ; then
