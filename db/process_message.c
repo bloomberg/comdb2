@@ -2571,7 +2571,7 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "del: expected db name\n");
                 return -1;
             }
-            fdb_del_dbname_to_whitelist(tok);
+            fdb_del_dbname_from_whitelist(tok);
         } else if (tokcmp(tok, ltok, "dump") == 0) {
             fdb_dump_whitelist();
         }

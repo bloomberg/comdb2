@@ -351,7 +351,7 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
     return 0;
 }
 
-int fdb_del_dbname_to_whitelist(const char *dbname)
+int fdb_del_dbname_from_whitelist(const char *dbname)
 {
     /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
