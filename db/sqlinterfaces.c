@@ -123,6 +123,7 @@ extern int g_osql_max_trans;
 extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
+extern int gbl_verbose_normalized_queries;
 
 extern int gbl_expressions_indexes;
 
