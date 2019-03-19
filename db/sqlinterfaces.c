@@ -3031,6 +3031,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                 const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
                 if (zNormSql) {
                     clnt->zNormSql = strdup(zNormSql);
+                } else if (gbl_verbose_normalized_queries) {
+                    logmsg(LOGMSG_USER,
+                           "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
                 }
             }
             rc = sqlite3LockStmtTables(rec->stmt);
