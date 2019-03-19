@@ -973,10 +973,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
-        if ((clnt->thd->sqldb != NULL) && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows,
-                            h->sql, logger);
+    if (gbl_fingerprint_queries) {
+        if (clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(clnt->zNormSql, h->cost, h->time, clnt->nrows,
+                            logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3006,7 +3006,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
-    int sqlPrepFlags = 0;
+    int sqlPrepFlags = SQLITE_PREPARE_NORMALIZE;
 
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
@@ -3020,6 +3020,16 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                                 sqlPrepFlags, &rec->stmt, &tail);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
+            if (clnt->zNormSql) {
+                free(clnt->zNormSql);
+                clnt->zNormSql = 0;
+            }
+            if (gbl_fingerprint_queries) {
+                const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
+                if (zNormSql) {
+                    clnt->zNormSql = strdup(zNormSql);
+                }
+            }
             rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
@@ -4855,6 +4865,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
+    free(clnt->sql);
+    free(clnt->zNormSql);
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
     clnt->file = 0;
