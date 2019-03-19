@@ -925,9 +925,6 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
     }
 #ifndef SQLITE_OMIT_SUBQUERY
     case TK_SELECT:
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    case TK_SELECTV:
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case TK_EXISTS:  testcase( pExpr->op==TK_EXISTS );
 #endif
     case TK_IN: {

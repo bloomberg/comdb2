@@ -4542,7 +4542,6 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3SrcListAssignCursors(pParse, pItem->pSelect->pSrc,
             is_recording ||
-            pItem->pSelect->op == TK_SELECTV ||
             pItem->pSelect->recording);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3SrcListAssignCursors(pParse, pItem->pSelect->pSrc);
