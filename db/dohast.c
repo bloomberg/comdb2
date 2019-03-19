@@ -495,7 +495,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         crt->selFlags |= SF_ASTIncluded;
         span++;
         /* only handle union all */
-        if (crt->op != TK_SELECT && crt->op != TK_ALL)
+        if ((crt->op != TK_SELECT && crt->op != TK_ALL) || crt->recording)
             not_recognized = 1;
 
         /* skip certain tables */
