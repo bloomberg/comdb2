@@ -2158,6 +2158,9 @@ void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 
 void comdb2WriteTransaction(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     pParse->write = 1;
 }
 
