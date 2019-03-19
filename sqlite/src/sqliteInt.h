@@ -362,7 +362,6 @@
 ** it.
 */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
-/* Not compiling on sun with the following */
 #if !defined(_XOPEN_SOURCE) && !defined(__DARWIN__) && !defined(__APPLE__)
 #  define _XOPEN_SOURCE 600
 #endif
@@ -1564,8 +1563,6 @@ struct sqlite3 {
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
-  u8 should_fingerprint;                /* Non-zero fingerprinting enabled */
-  char fingerprint[16];                 /* Figerprint of the last query prep  */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -1625,6 +1622,10 @@ struct sqlite3 {
 #define SQLITE_VdbeAddopTrace HI(0x0008)  /* Trace sqlite3VdbeAddOp() calls */
 #define SQLITE_VdbeEQP        HI(0x0010)  /* Debug EXPLAIN QUERY PLAN */
 #endif
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PrepareOnly    HI(0x1000)  /* Pending flag for prepare_v3() */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Allowed values for sqlite3.mDbFlags
@@ -2618,9 +2619,6 @@ struct Expr {
                            ** for a column of an index on an expression */
     Window *pWin;          /* TK_FUNCTION: Window definition for the func */
   } y;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  u8 visited;            /* Set if visited by fingerprinter. */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /*
@@ -3260,6 +3258,9 @@ struct Parse {
 
   int aTempReg[8];        /* Holding area for temporary registers */
   Token sNameToken;       /* Token with unqualified schema object name */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int preserve_update;      /* statement replacement, preserve flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /************************************************************************
   ** Above is constant between recursions.  Below is reset before and after
@@ -3305,6 +3306,11 @@ struct Parse {
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
   ast_t *ast;
+  int prepare_only;         /* Prepare-only mode, skip schema changes that
+                             * originate from DDL, etc.  This is primarily
+                             * of interest to the DDL integration code in
+                             * the "comdb2build.c" and "comdb2lua.c" files.
+                             */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4501,6 +4507,9 @@ int sqlite3GetToken(const unsigned char *, int *);
 int sqlite3GetTokenNormalized(const unsigned char *, int *, int *);
 #endif
 void sqlite3NestedParse(Parse*, const char*, ...);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3NestedParsePreserveFlags(Parse*, const char*, ...);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3ExpirePreparedStatements(sqlite3*, int);
 int sqlite3CodeSubselect(Parse*, Expr *, int, int);
 void sqlite3SelectPrep(Parse*, Select*, NameContext*);
@@ -4787,6 +4796,13 @@ void sqlite3ExprSetHeightAndFlags(Parse *pParse, Expr *p);
 u32 sqlite3Get4byte(const u8*);
 void sqlite3Put4byte(u8*, u32);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+i64 sqlite3DoubleToInt64(double);
+double sqlite3Int64ToDouble(i64);
+u64 sqlite3Get8byte(const u8*);
+void sqlite3Put8byte(u8*, u64);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 #ifdef SQLITE_ENABLE_UNLOCK_NOTIFY
   void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 *);
   void sqlite3ConnectionUnlocked(sqlite3 *db);
@@ -4954,10 +4970,6 @@ void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
 
-void sqlite3FingerprintSelect(sqlite3 *db, Select *p);
-void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
-void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
-void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);

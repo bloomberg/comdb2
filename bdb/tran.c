@@ -39,7 +39,7 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 
 #include <ctrace.h>
 

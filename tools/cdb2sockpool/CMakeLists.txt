@@ -4,7 +4,6 @@ add_executable(cdb2sockpool
   ${PROJECT_SOURCE_DIR}/util/bb_daemon.c
   ${PROJECT_SOURCE_DIR}/util/dbg_locks.c
   ${PROJECT_SOURCE_DIR}/util/list.c
-  ${PROJECT_SOURCE_DIR}/util/lockassert.c
   ${PROJECT_SOURCE_DIR}/util/logmsg.c
   ${PROJECT_SOURCE_DIR}/util/plhash.c
   ${PROJECT_SOURCE_DIR}/util/pool.c

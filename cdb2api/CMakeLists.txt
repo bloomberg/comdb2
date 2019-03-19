@@ -50,6 +50,7 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
   if (NOT COMDB2_BUILD_STATIC)
     target_link_libraries(cdb2api_shared
       ${OPENSSL_LIBRARIES}
+      ${ZLIB_LIBRARIES}
       ${PROTOBUF_C_LIBRARY}
       ${UNWIND_LIBRARY}
     )

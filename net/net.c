@@ -1415,8 +1415,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -1504,8 +1503,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -6355,9 +6353,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = malloc(sizeof(sanc_node_type));
-    bzero(ptr, sizeof(sanc_node_type));
-
+    ptr = calloc(1, sizeof(sanc_node_type));
     ptr->next = netinfo_ptr->sanctioned_list;
     ptr->host = hostname;
     ptr->port = portnum;

@@ -35,9 +35,9 @@
 #include <unistd.h>
 
 #include <epochlib.h>
-#include <lockmacro.h>
 #include <segstring.h>
 
+#include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
 #include "mem_util.h"
@@ -776,6 +776,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
+
+    /* If queue_override is true, try to enqueue unless hitting maxqoverride;
+       If force_queue is true, enqueue regardless. */
+    int force_queue = (flags & THDPOOL_FORCE_QUEUE);
+
     time_t crt_dump;
 
     LOCK(&pool->mutex)
@@ -886,10 +891,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_passed++;
         } else {
             if (listc_size(&pool->queue) >= pool->maxqueue) {
-                if (queue_override &&
-                    (enqueue_front || !pool->maxqueueoverride ||
-                     listc_size(&pool->queue) <
-                         (pool->maxqueue + pool->maxqueueoverride))) {
+                if (force_queue ||
+                    (queue_override &&
+                     (enqueue_front || !pool->maxqueueoverride ||
+                      listc_size(&pool->queue) <
+                          (pool->maxqueue + pool->maxqueueoverride)))) {
                     if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
                         int now = comdb2_time_epoch();
 

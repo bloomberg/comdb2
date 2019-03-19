@@ -406,7 +406,6 @@ static int lookupName(
       pExpr->iColumn = -1;
       pExpr->affinity = SQLITE_AFF_INTEGER;
     }
- 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /*
     ** if it's a "comdb2_rowid" set a magic -2 for the column (instead of
