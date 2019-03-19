@@ -4880,8 +4880,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
-    free(clnt->zNormSql);
-    clnt->zNormSql = 0;
+    if (clnt->zNormSql) {
+        free(clnt->zNormSql);
+        clnt->zNormSql = 0;
+    }
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
