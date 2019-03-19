@@ -699,6 +699,44 @@ static void guidFromByteFunc(
   sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static void comdb2DoubleToBlobFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  u8 aByte[8];
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])==SQLITE_INTEGER ){
+    sqlite3Put8byte(aByte, (u64)sqlite3_value_int64(argv[0]));
+  }else if( sqlite3_value_type(argv[0])==SQLITE_FLOAT ){
+    sqlite3Put8byte(aByte, (u64)sqlite3DoubleToInt64(
+                    sqlite3_value_double(argv[0])));
+  }else{
+    sqlite3_result_null(context);
+    return;
+  }
+  sqlite3_result_blob(context, (char*)aByte, sizeof(aByte), SQLITE_TRANSIENT);
+}
+
+static void comdb2BlobToDoubleFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])!=SQLITE_BLOB ){
+    sqlite3_result_null(context);
+    return;
+  }
+  if( sqlite3_value_bytes(argv[0])!=8 ){
+    sqlite3_result_null(context);
+    return;
+  }
+  sqlite3_result_double(context, sqlite3Int64ToDouble(
+                        (i64)sqlite3Get8byte(sqlite3_value_blob(argv[0]))));
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Implementation of the comdb2_version() SQL function.  The return
@@ -2455,19 +2493,21 @@ void sqlite3RegisterBuiltinFunctions(void){
     LIKEFUNC(like, 3, &likeInfoNorm, SQLITE_FUNC_LIKE),
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    FUNCTION(comdb2_version,       0, 0, 0, comdb2VersionFunc),
-    FUNCTION(table_version,        1, 0, 0, tableVersionFunc),
-    FUNCTION(partition_info,       2, 0, 0, partitionInfoFunc),
-    FUNCTION(comdb2_host,          0, 0, 0, comdb2HostFunc),
-    FUNCTION(comdb2_node,          0, 0, 0, comdb2HostFunc),
-    FUNCTION(comdb2_port,          0, 0, 0, comdb2PortFunc),
-    FUNCTION(comdb2_dbname,        0, 0, 0, comdb2DbnameFunc),
-    FUNCTION(comdb2_prevquerycost, 0, 0, 0, comdb2PrevquerycostFunc),
-    FUNCTION(comdb2_starttime,     0, 0, 0, comdb2StartTimeFunc),
+    FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
+    FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
+    FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
+    FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
+    FUNCTION(partition_info,        2, 0, 0, partitionInfoFunc),
+    FUNCTION(comdb2_host,           0, 0, 0, comdb2HostFunc),
+    FUNCTION(comdb2_node,           0, 0, 0, comdb2HostFunc),
+    FUNCTION(comdb2_port,           0, 0, 0, comdb2PortFunc),
+    FUNCTION(comdb2_dbname,         0, 0, 0, comdb2DbnameFunc),
+    FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
+    FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
-    FUNCTION(dbglog_cookie,        0, 0, 0, dbglogCookieFunc),
-    FUNCTION(dbglog_begin,         1, 0, 0, dbglogBeginFunc),
-    FUNCTION(dbglog_end,           1, 0, 0, dbglogEndFunc),
+    FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
+    FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
+    FUNCTION(dbglog_end,            1, 0, 0, dbglogEndFunc),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG) */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION

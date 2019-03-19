@@ -4815,6 +4815,13 @@ void sqlite3ExprSetHeightAndFlags(Parse *pParse, Expr *p);
 u32 sqlite3Get4byte(const u8*);
 void sqlite3Put4byte(u8*, u32);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+i64 sqlite3DoubleToInt64(double);
+double sqlite3Int64ToDouble(i64);
+u64 sqlite3Get8byte(const u8*);
+void sqlite3Put8byte(u8*, u64);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 #ifdef SQLITE_ENABLE_UNLOCK_NOTIFY
   void sqlite3ConnectionBlocked(sqlite3 *, sqlite3 *);
   void sqlite3ConnectionUnlocked(sqlite3 *db);

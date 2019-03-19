@@ -1252,6 +1252,70 @@ void sqlite3Put4byte(unsigned char *p, u32 v){
 }
 
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Convert an eight-byte integer value to a double and vice versa.
+** This method should be safe; however, it may not be the fastest.
+*/
+i64 sqlite3DoubleToInt64(double rVal){
+  i64 iVal;
+  assert( sizeof(double)==sizeof(i64) );
+  memcpy(&iVal, &rVal, sizeof(i64));
+  return iVal;
+}
+double sqlite3Int64ToDouble(i64 iVal){
+  double rVal;
+  assert( sizeof(i64)==sizeof(double) );
+  memcpy(&rVal, &iVal, sizeof(double));
+  return rVal;
+}
+/*
+** Read or write an eight-byte big-endian integer value.
+*/
+u64 sqlite3Get8byte(const u8 *p){
+#if SQLITE_BYTEORDER==4321
+  u64 x;
+  memcpy(&x,p,8);
+  return x;
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
+  u64 x;
+  memcpy(&x,p,8);
+  return __builtin_bswap64(x);
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
+  u64 x;
+  memcpy(&x,p,8);
+  return _byteswap_uint64(x);
+#else
+  testcase( p[0]&0x80 );
+  testcase( p[1]&0x80 );
+  testcase( p[2]&0x80 );
+  testcase( p[3]&0x80 );
+  testcase( p[4]&0x80 );
+  return ((u64)p[0]<<56) | ((u64)p[1]<<48) | ((u64)p[2]<<40) |
+         ((u64)p[3]<<32) | ((u64)p[4]<<24) | (p[5]<<16) | (p[6]<<8) | p[7];
+#endif
+}
+void sqlite3Put8byte(unsigned char *p, u64 v){
+#if SQLITE_BYTEORDER==4321
+  memcpy(p,&v,8);
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
+  u64 x = __builtin_bswap64(v);
+  memcpy(p,&x,8);
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
+  u64 x = _byteswap_uint64(v);
+  memcpy(p,&x,8);
+#else
+  p[0] = (u8)(v>>56);
+  p[1] = (u8)(v>>48);
+  p[2] = (u8)(v>>40);
+  p[3] = (u8)(v>>32);
+  p[4] = (u8)(v>>24);
+  p[5] = (u8)(v>>16);
+  p[6] = (u8)(v>>8);
+  p[7] = (u8)v;
+#endif
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Translate a single byte of Hex into an integer.
