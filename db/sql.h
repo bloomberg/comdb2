@@ -1123,7 +1123,8 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
-void add_fingerprint(const char *, int64_t, int64_t, int64_t, struct reqlogger *);
+void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
+                     struct reqlogger *);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
