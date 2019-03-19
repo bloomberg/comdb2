@@ -5433,10 +5433,6 @@ void *watcher_thread(void *arg)
 #if defined(DBG_PTHREAD_LOCKS)
                 dbg_pthread_dump(stdout);
 #endif
-
-#ifndef NDEBUG
-                abort();
-#endif
             }
         }
 
