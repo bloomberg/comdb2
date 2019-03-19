@@ -23,7 +23,6 @@
 #include "dohsql.h"
 #include "sqlinterfaces.h"
 #include "memcompare.c"
-#include "tohex.h"
 
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
@@ -251,11 +250,6 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     int ncols, i;
 
     ncols = sqlite3_column_count(stmt);
-
-    if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_column_count ncols %d\n",
-               pthread_self(), __func__, ncols);
-    }
 
     if (!conn->cols || conn->ncols < ncols) {
         conn->cols = (my_col_t *)realloc(conn->cols, ncols * sizeof(my_col_t));
