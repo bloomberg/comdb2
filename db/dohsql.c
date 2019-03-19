@@ -420,9 +420,8 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
                                          sqlite3_stmt *stmt, int iCol)         \
     {                                                                          \
         dohsql_t *conns = clnt->conns;                                         \
-        if (conns->row_src == 0) {                                             \
+        if (conns->row_src == 0)                                               \
             return sqlite3_column_##type(stmt, iCol);                          \
-        }                                                                      \
         return sqlite3_value_##type(&conns->row[iCol]);                        \
     }
 
