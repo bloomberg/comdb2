@@ -21,6 +21,7 @@ set_source_files_properties(
 include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/util
   ${PROTOBUF_C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )

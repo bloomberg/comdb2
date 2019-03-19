@@ -30,7 +30,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE

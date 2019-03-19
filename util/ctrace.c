@@ -55,7 +55,7 @@
 
 #include "roll_file.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 enum { DEFAULT_WARNAT = 1 * 1024 * 1024 * 1024 };
 
