@@ -2986,6 +2986,26 @@ int sqlengine_prepare_engine(struct sqlthdstate *thd,
     return rc;
 }
 
+static void normalize_stmt_and_store(
+  struct sqlclntstate *clnt,
+  struct sql_state *rec
+){
+  if (clnt->zNormSql) {
+    free(clnt->zNormSql);
+    clnt->zNormSql = 0;
+  }
+  assert(rec && rec->stmt);
+  assert(rec && rec->sql);
+  if (gbl_fingerprint_queries) {
+    const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
+    if (zNormSql) {
+      clnt->zNormSql = strdup(zNormSql);
+    } else if (gbl_verbose_normalized_queries) {
+      logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+    }
+  }
+}
+
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3024,19 +3044,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                                 sqlPrepFlags, &rec->stmt, &tail);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
-            if (clnt->zNormSql) {
-                free(clnt->zNormSql);
-                clnt->zNormSql = 0;
-            }
-            if (gbl_fingerprint_queries) {
-                const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
-                if (zNormSql) {
-                    clnt->zNormSql = strdup(zNormSql);
-                } else if (gbl_verbose_normalized_queries) {
-                    logmsg(LOGMSG_USER,
-                           "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
-                }
-            }
             rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
@@ -3049,6 +3056,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         update_schema_remotes(clnt, rec);
     }
     if (rec->stmt) {
+        normalize_stmt_and_store(clnt, rec);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
