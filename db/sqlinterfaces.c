@@ -3006,7 +3006,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
-    int sqlPrepFlags = SQLITE_PREPARE_NORMALIZE;
+    int sqlPrepFlags = 0;
+
+    if (gbl_fingerprint_queries)
+        sqlPrepFlags |= SQLITE_PREPARE_NORMALIZE;
 
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
