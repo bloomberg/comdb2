@@ -64,7 +64,6 @@
 #include "llog_auto.h"
 #include "missing.h"
 #include <list.h>
-#include <lockmacro.h>
 
 #include "genid.h"
 #include "logmsg.h"

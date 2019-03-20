@@ -689,14 +689,15 @@ static int sqlite3Prepare(
   Parse sParse;             /* Parsing context */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if (db->should_fingerprint && !db->init.busy) {
-      memset(db->fingerprint, 0, sizeof(db->fingerprint));
-  }
+  int prepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
+  if( prepareOnly ) db->flags |= SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sParse.prepare_only = prepareOnly;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
   assert( sqlite3_mutex_held(db->mutex) );
@@ -836,6 +837,7 @@ end_prepare:
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
+  if( prepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
@@ -960,7 +962,7 @@ static int estimateNormalizedSize(
   int nSql,         /* Length of original SQL string */
   u8 prepFlags      /* The flags passed to sqlite3_prepare_v3() */
 ){
-  int nOut = nSql + 4;
+  int nOut = nSql + 5;
   const char *z = zSql;
   while( nOut<nSql*5 ){
     while( z[0]!=0 && z[0]!='I' && z[0]!='i' ){ z++; }
@@ -1270,25 +1272,6 @@ int sqlite3_prepare_v3(
   return rc;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3_fingerprint_size(sqlite3 *db) {
-    return sizeof(db->fingerprint);
-}
-
-const char *sqlite3_fingerprint(sqlite3 *db) {
-    return db->fingerprint;
-}
-
-int sqlite3_fingerprint_enable(sqlite3 *db) {
-    db->should_fingerprint = 1;
-    return 0;
-}
-
-int sqlite3_fingerprint_disable(sqlite3 *db) {
-    db->should_fingerprint = 0;
-    return 0;
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_UTF16
 /*

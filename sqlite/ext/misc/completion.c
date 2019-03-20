@@ -159,9 +159,7 @@ static int completionOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
    * already filtered for current user.
    */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   completion_cursor *pCur;
-
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));

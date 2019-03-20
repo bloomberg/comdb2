@@ -23,7 +23,7 @@
  * of this when doing appsock stuff!
  */
 
-#include <lockmacro.h>
+#include "lockmacros.h"
 #include "util.h"
 #include "comdb2.h"
 #include "comdb2_plugin.h"

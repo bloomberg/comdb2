@@ -31,7 +31,7 @@
 #include <plhash.h>
 #include <list.h>
 #include <walkback.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 #include <logmsg.h>
 
 #if 0
