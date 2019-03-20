@@ -625,8 +625,13 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+extern int comdb2IsPrepareOnly(Parse*);
+
 int comdb2_check_parallel(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;
