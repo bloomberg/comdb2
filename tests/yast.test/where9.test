@@ -455,7 +455,7 @@ ifcapable explain {
   #
   do_test where9-5.1 {
     queryplan { SELECT a FROM t1 WHERE b>1000 AND (c=31031 OR d IS NULL) }
-  } {92 93 97 nosort (id=5, parent=0, notused=0, detail='MULTI-INDEX OR') t1 t1c t1 t1d}
+  } {92 93 97 nosort (id=5, parent=0, notused=0, detail='MULTI-INDEX OR') (id=6, parent=5, notused=0, detail='INDEX 1') t1 t1c (id=20, parent=5, notused=0, detail='INDEX 2') t1 t1d}
 
   # In contrast, b=1000 is preferred over any OR-clause.
   #

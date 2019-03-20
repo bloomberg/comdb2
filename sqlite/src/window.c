@@ -823,8 +823,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     pSub = sqlite3SelectNew(
         pParse, pSublist, pSrc, pWhere, pGroupBy, pHaving, pSort, 0, 0
     );
-    p->pSrc = sqlite3SrcListAppend(db, 0, 0, 0);
-    assert( p->pSrc || db->mallocFailed );
+    p->pSrc = sqlite3SrcListAppend(pParse, 0, 0, 0);
     if( p->pSrc ){
       p->pSrc->a[0].pSelect = pSub;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -885,6 +884,9 @@ void sqlite3WindowListDelete(sqlite3 *db, Window *p){
 */
 static Expr *sqlite3WindowOffsetExpr(Parse *pParse, Expr *pExpr){
   if( 0==sqlite3ExprIsConstant(pExpr) ){
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( IN_RENAME_OBJECT ) sqlite3RenameExprUnmap(pParse, pExpr);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ExprDelete(pParse->db, pExpr);
     pExpr = sqlite3ExprAlloc(pParse->db, TK_NULL, 0, 0);
   }
@@ -1079,6 +1081,7 @@ static void windowCheckIntValue(Parse *pParse, int reg, int eCond){
   VdbeCoverageNeverNullIf(v, eCond==0);
   VdbeCoverageNeverNullIf(v, eCond==1);
   VdbeCoverageNeverNullIf(v, eCond==2);
+  sqlite3MayAbort(pParse);
   sqlite3VdbeAddOp2(v, OP_Halt, SQLITE_ERROR, OE_Abort);
   sqlite3VdbeAppendP4(v, (void*)azErr[eCond], P4_STATIC);
   sqlite3ReleaseTempReg(pParse, regZero);
@@ -1334,7 +1337,7 @@ static void windowReturnOneRow(
      || pFunc->zName==first_valueName
     ){
       int csr = pWin->csrApp;
-      int lbl = sqlite3VdbeMakeLabel(v);
+      int lbl = sqlite3VdbeMakeLabel(pParse);
       int tmpReg = sqlite3GetTempReg(pParse);
       sqlite3VdbeAddOp2(v, OP_Null, 0, pWin->regResult);
 
@@ -1357,7 +1360,7 @@ static void windowReturnOneRow(
       int nArg = pWin->pOwner->x.pList->nExpr;
       int iEph = pMWin->iEphCsr;
       int csr = pWin->csrApp;
-      int lbl = sqlite3VdbeMakeLabel(v);
+      int lbl = sqlite3VdbeMakeLabel(pParse);
       int tmpReg = sqlite3GetTempReg(pParse);
 
       if( nArg<3 ){
@@ -1618,8 +1621,8 @@ static void windowCodeRowExprStep(
 
   /* Allocate register and label for the "flush_partition" sub-routine. */
   regFlushPart = ++pParse->nMem;
-  lblFlushPart = sqlite3VdbeMakeLabel(v);
-  lblFlushDone = sqlite3VdbeMakeLabel(v);
+  lblFlushPart = sqlite3VdbeMakeLabel(pParse);
+  lblFlushDone = sqlite3VdbeMakeLabel(pParse);
 
   regStart = ++pParse->nMem;
   regEnd = ++pParse->nMem;
@@ -1729,7 +1732,7 @@ static void windowCodeRowExprStep(
    || pMWin->eStart==TK_PRECEDING 
    || pMWin->eStart==TK_FOLLOWING 
   ){
-    int lblSkipInverse = sqlite3VdbeMakeLabel(v);;
+    int lblSkipInverse = sqlite3VdbeMakeLabel(pParse);;
     if( pMWin->eStart==TK_PRECEDING ){
       sqlite3VdbeAddOp3(v, OP_IfPos, regStart, lblSkipInverse, 1);
       VdbeCoverage(v);
@@ -1894,13 +1897,13 @@ static void windowCodeCacheStep(
        || (pMWin->eStart==TK_CURRENT && pMWin->eEnd==TK_UNBOUNDED) 
   );
 
-  lblEmpty = sqlite3VdbeMakeLabel(v);
+  lblEmpty = sqlite3VdbeMakeLabel(pParse);
   regNewPeer = pParse->nMem+1;
   pParse->nMem += nPeer;
 
   /* Allocate register and label for the "flush_partition" sub-routine. */
   regFlushPart = ++pParse->nMem;
-  lblFlushPart = sqlite3VdbeMakeLabel(v);
+  lblFlushPart = sqlite3VdbeMakeLabel(pParse);
 
   csrLead = pParse->nTab++;
   regCtr = ++pParse->nMem;
