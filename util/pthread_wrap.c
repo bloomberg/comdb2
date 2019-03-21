@@ -27,7 +27,7 @@ int wrap_pthread_mutex_trylock(
   LKDBG_TRACE(TRY, __func__, mutex);
   rc = pthread_mutex_trylock(mutex);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)mutex, rc,
@@ -53,7 +53,7 @@ int wrap_pthread_mutex_timedlock(
   LKDBG_TRACE(TRY, __func__, mutex);
   rc = pthread_mutex_timedlock(mutex, abs_timeout);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)mutex, rc,
@@ -78,7 +78,7 @@ int wrap_pthread_rwlock_tryrdlock(
   LKDBG_TRACE(TRY, __func__, rwlock);
   rc = pthread_rwlock_tryrdlock(rwlock);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)rwlock, rc,
@@ -103,7 +103,7 @@ int wrap_pthread_rwlock_trywrlock(
   LKDBG_TRACE(TRY, __func__, rwlock);
   rc = pthread_rwlock_trywrlock(rwlock);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)rwlock, rc,
@@ -129,7 +129,7 @@ int wrap_pthread_rwlock_timedrdlock(
   LKDBG_TRACE(TRY, __func__, rwlock);
   rc = pthread_rwlock_timedrdlock(rwlock, abs_timeout);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)rwlock, rc,
@@ -155,7 +155,7 @@ int wrap_pthread_rwlock_timedwrlock(
   LKDBG_TRACE(TRY, __func__, rwlock);
   rc = pthread_rwlock_timedwrlock(rwlock, abs_timeout);
   if( rc!=0 ){
-#if LOCK_DEBUG
+#ifdef LOCK_DEBUG
     logmsg(LOGMSG_USER,
            "%s:%d %s(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",
            func, line, __func__, (uintptr_t)rwlock, rc,
