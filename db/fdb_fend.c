@@ -60,7 +60,7 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
-int gbl_fdb_track = 1;
+int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 
 struct fdb_tbl;
