@@ -1017,12 +1017,6 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             msg->co.srcname = NULL;
         }
 
-        if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
-            char *data = strdup("Access Error: db not allowed to connect");
-            int datalen = strlen(data) + 1;
-            fdb_bend_send_row(sb, msg, NULL, 0, data, datalen, NULL, 0, FDB_ERR_ACCESS, 0);
-            return -1;
-        }
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
@@ -1049,6 +1043,13 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
 #else
         msg->co.ssl = 0;
 #endif
+
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
+            char *data = strdup("Access Error: db not allowed to connect");
+            int datalen = strlen(data) + 1;
+            fdb_bend_send_row(sb, msg, NULL, 0, data, datalen, NULL, 0, FDB_ERR_ACCESS, 0);
+            return -1;
+        }
 
         break;
 
