@@ -13,11 +13,10 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-#include <byteswap.h>
 
-#define flibc_shortflip(x) bswap_16(x)
-#define flibc_intflip(x) bswap_32(x)
-#define flibc_llflip(x) bswap_64(x)
+#define flibc_shortflip(x) __builtin_bswap16(x)
+#define flibc_intflip(x) __builtin_bswap32(x)
+#define flibc_llflip(x) __builtin_bswap64(x)
 #define flibc_ntohll(x) flibc_llflip(x)
 #define flibc_ntohf(x) flibc_floatflip(x)
 #define flibc_ntohd(x) flibc_dblflip(x)
