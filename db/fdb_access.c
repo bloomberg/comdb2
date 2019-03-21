@@ -61,6 +61,7 @@ struct fdb_access {
 
 
 static hash_t *fdb_dbname_hash;
+static pthread_mutex_t fdb_dbname_hash_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int access_violations;
 static int _access_control_add(fdb_access_t *acc, enum fdb_access_type type,
@@ -331,6 +332,7 @@ const u_int ptrhashfunc(u_char *keyp, int len)
 int fdb_add_dbname_to_whitelist(const char *dbname)
 {
     /* hash will contain pointers to strings, it needs to memcmp ptrs */
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
     if (fdb_dbname_hash == NULL)
         fdb_dbname_hash = hash_init_user((hashfunc_t *)ptrhashfunc,
                                          (cmpfunc_t *)memcmp, 0, 0);
@@ -341,14 +343,16 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
           name++;
 
     char *nptr = internn(dbname, name - dbname);
+    int rc = 0;
 
     if (hash_find_readonly(fdb_dbname_hash, nptr) != NULL) {
         logmsg(LOGMSG_USER, "%s already in whitelist\n", nptr);
-        return 0;
     }
-
-    hash_add(fdb_dbname_hash, nptr);
-    return 0;
+    else {
+        rc = hash_add(fdb_dbname_hash, nptr);
+    }
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+    return rc;
 }
 
 int fdb_del_dbname_from_whitelist(const char *dbname)
@@ -358,7 +362,10 @@ int fdb_del_dbname_from_whitelist(const char *dbname)
         return 0;
 
     const char *ptr = intern(dbname);
-    return hash_del(fdb_dbname_hash, ptr);
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
+    int rc = hash_del(fdb_dbname_hash, ptr);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+    return rc;
 }
 
 int dump_whitelist(void *obj, void *dum)
@@ -375,7 +382,9 @@ void fdb_dump_whitelist()
         return;
     }
 
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
     hash_for(fdb_dbname_hash, dump_whitelist, NULL);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
 }
 
 /* Check if parameter dbname is in whitelist
@@ -393,8 +402,9 @@ int fdb_is_dbname_in_whitelist(const char *name)
         dbname[i++] = *(name++);
     dbname[i] = '\0';
     const char *nptr = intern(dbname);
-    logmsg(LOGMSG_DEBUG, "%s: nptr=%s\n", __func__, nptr);
 
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
     const char *strptr = hash_find_readonly(fdb_dbname_hash, nptr);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
     return strptr != NULL;
 }

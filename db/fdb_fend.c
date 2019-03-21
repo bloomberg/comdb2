@@ -60,7 +60,7 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
-int gbl_fdb_track = 0;
+int gbl_fdb_track = 1;
 int gbl_fdb_track_times = 0;
 
 struct fdb_tbl;
@@ -702,7 +702,7 @@ int fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
     /* we need to move this from ent->tbl->ents to tbl_stat->ents */
     listc_rfl(&stat_ent->tbl->ents, stat_ent);
     stat_ent->tbl = stat_tbl;
-   stat_ent->tbl->version = stat_ent->_version;
+    stat_ent->tbl->version = stat_ent->_version;
     listc_abl(&stat_tbl->ents, stat_ent);
     assert(stat_ent->ixnum == -1);
 
@@ -4929,7 +4929,7 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 
     int tot = snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
     if (tot >= sizeof(sql))
-        return FDB_ERR_GENERIC;
+        return FDB_ERR_FDB_TBL_NOTFOUND;
 
     rc = cdb2_open(&db, dbname, location, flags);
     if (rc)
