@@ -55,11 +55,7 @@ char sqlite3ExprAffinity(Expr *pExpr){
   if( pExpr->flags & EP_Generic ) return 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   op = pExpr->op;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( op==TK_SELECT || op==TK_SELECTV ){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( op==TK_SELECT ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pExpr->flags&EP_xIsSelect );
     return sqlite3ExprAffinity(pExpr->x.pSelect->pEList->a[0].pExpr);
   }
@@ -1952,9 +1948,6 @@ static int exprNodeIsConstant(Walker *pWalker, Expr *pExpr){
     default:
       testcase( pExpr->op==TK_SELECT ); /* sqlite3SelectWalkFail() disallows */
       testcase( pExpr->op==TK_EXISTS ); /* sqlite3SelectWalkFail() disallows */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      testcase( pExpr->op==TK_SELECTV ); /* sqlite3SelectWalkFail() disallows */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       return WRC_Continue;
   }
 }
@@ -2957,19 +2950,11 @@ int sqlite3CodeSubselect(Parse *pParse, Expr *pExpr){
   */
   ExplainQueryPlan((pParse, 1, "%sSCALAR SUBQUERY %d",
         addrOnce?"":"CORRELATED ", pSel->selId));
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  nReg = pExpr->op==TK_SELECT || pExpr->op==TK_SELECTV ? pSel->pEList->nExpr : 1;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   nReg = pExpr->op==TK_SELECT ? pSel->pEList->nExpr : 1;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   sqlite3SelectDestInit(&dest, 0, pParse->nMem+1);
   pParse->nMem += nReg;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pExpr->op==TK_SELECT || pExpr->op==TK_SELECTV ){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pExpr->op==TK_SELECT ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     dest.eDest = SRT_Mem;
     dest.iSdst = dest.iSDParm;
     dest.nSdst = nReg;
@@ -3971,16 +3956,10 @@ expr_code_doover:
     }
 #ifndef SQLITE_OMIT_SUBQUERY
     case TK_EXISTS:
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    case TK_SELECTV:
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case TK_SELECT: {
       int nCol;
       testcase( op==TK_EXISTS );
       testcase( op==TK_SELECT );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      testcase( op==TK_SELECTV );
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( op==TK_SELECT && (nCol = pExpr->x.pSelect->pEList->nExpr)!=1 ){
         sqlite3SubselectError(pParse, nCol, 1);
       }else{
@@ -5711,7 +5690,6 @@ char * binary_op(int op){
     case TK_EXCEPT:
     case TK_INTERSECT:
     case TK_SELECT:
-    case TK_SELECTV:
     case TK_DISTINCT:
     case TK_DOT:
     case TK_FROM:
@@ -6088,8 +6066,7 @@ static char* sqlite3ExprDescribe_inner(
     case TK_NULL : {
       return sqlite3_mprintf("NULL");
     }
-    case TK_SELECT:
-    case TK_SELECTV: {
+    case TK_SELECT: {
       return NULL; /* ignore subqueries */
     }
     case TK_PRIMARY:

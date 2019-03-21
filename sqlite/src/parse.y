@@ -743,7 +743,6 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   if( A ){
-    A->op = TK_SELECTV;
     A->recording = 1;
   }
 }
@@ -753,7 +752,6 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   if( A ){
-    A->op = TK_SELECTV;
     A->recording = 1;
     A->pWinDefn = R;
   }else{

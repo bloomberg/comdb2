@@ -827,7 +827,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     if( p->pSrc ){
       p->pSrc->a[0].pSelect = pSub;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      sqlite3SrcListAssignCursors(pParse, p->pSrc, p->op==TK_SELECTV || p->recording);
+      sqlite3SrcListAssignCursors(pParse, p->pSrc, p->recording);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3SrcListAssignCursors(pParse, p->pSrc);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
