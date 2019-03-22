@@ -290,7 +290,8 @@ static void dbg_pthread_remove_self(
   pthread_t self = pthread_self();
   inner_key_t ikey = { obj, self, type };
   inner_pair_t *pair = hash_find(okey->locks, &ikey);
-  if( pair!=NULL && --pair->nRef==0 ){
+  if( pair==NULL ) goto done;
+  if( --pair->nRef==0 ){
     if( hash_del(okey->locks, pair)!=0 ) abort();
     free(pair);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
