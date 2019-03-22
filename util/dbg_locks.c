@@ -120,9 +120,9 @@ static int dbg_pthread_dump_inner_pair(
 
     dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
 
-    fprintf(out, "%s: "
-            "[refs:%4d] [type:%s @ %18p / %18p] [%s @ %s:%d] (pair:%18p)\n",
-            __func__, pair->nRef, zBuf, pair->key.obj, pair->key.thread,
+    fprintf(out, "%s: [refs:%4d] [type:%s @ %18p / %18p] "
+            "[%s @ %s:%d] (pair:%18p)\n", __func__, pair->nRef,
+            zBuf, pair->key.obj, (void *)pair->key.thread,
             pair->func, pair->file, pair->line, (void *)pair);
 
     fflush(out);
