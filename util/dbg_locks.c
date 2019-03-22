@@ -296,7 +296,7 @@ static void dbg_pthread_remove_self(
     free(pair);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
     if( hash_get_num_entries(okey->locks)==0 ){
-      if( hash_del(dbg_locks, obj)!=0 ) abort();
+      if( hash_del(dbg_locks, &obj)!=0 ) abort();
       hash_for(okey->locks, dbg_pthread_free_inner_pair, NULL);
       hash_clear(okey->locks);
       hash_free(okey->locks);
