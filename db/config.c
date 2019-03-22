@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "fdb_whitelist.h"
 #include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -442,8 +443,8 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     fclose(ff); /* lets get one fd back */
 }
 
-struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
-                                int required)
+static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
+                                       int required)
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
@@ -689,6 +690,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             /* nsiblings == 1 means there's no other nodes in the cluster */
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
+        }
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist db1 db2 ...  */
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = fdb_add_dbname_to_whitelist(tok);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
