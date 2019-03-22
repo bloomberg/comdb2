@@ -2155,6 +2155,8 @@ static void *pglogs_asof_thread(void *arg)
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
         DB_LSN max_commit_lsn_in_queue = {0};
 
+        if (bdb_state->exiting) break; /* shutting down, stop now... */
+
         // Get commit list
         Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         new_asof_lsn = bdb_asof_current_lsn;
@@ -2374,7 +2376,6 @@ static int my_fileid_free(void *obj, void *arg)
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
     int rc, bdberr;
-    pthread_t thread_id;
 
     if (gbl_new_snapisol_asof) {
         bdb_checkpoint_list_init();
@@ -2474,8 +2475,8 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
                             &bdb_asof_current_lsn.offset);
         bdb_gbl_ltran_pglogs_hash_processed = 1;
 
-        rc = pthread_create(&thread_id, &thd_attr, pglogs_asof_thread,
-                            (void *)bdb_state);
+        rc = pthread_create(&bdb_state->pglogs_asof_thread, &thd_attr,
+                            pglogs_asof_thread, (void *)bdb_state);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "pglogs_asof_thread pthread_create error");
             exit(1);

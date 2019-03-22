@@ -845,6 +845,7 @@ struct bdb_state_tag {
     pthread_t lock_detect_thread;
     pthread_t coherency_lease_thread;
     pthread_t master_lease_thread;
+    pthread_t pglogs_asof_thread;
 
     struct bdb_state_tag *parent; /* pointer to our parent */
     short numchildren;
