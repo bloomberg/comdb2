@@ -116,7 +116,6 @@ static void eventlog_roll_cleanup()
     int rc = system(cmd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
-        exit(1);
     }
 }
 
