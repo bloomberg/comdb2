@@ -5843,8 +5843,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             goto out;
 
         while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
-            callbackrc =
-                cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+            callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE,
+                                              (intptr_t)rc);
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
