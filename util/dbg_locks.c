@@ -163,11 +163,15 @@ static int dbg_pthread_free_outer_pair(
 
 /*****************************************************************************/
 
-void dbg_pthread_dump(FILE *out){
+void dbg_pthread_dump(
+  FILE *out,
+  const char *zDesc,
+  int bSummaryOnly
+){
   pthread_mutex_lock(&dbg_locks_lk);
-  fprintf(out, "%s: used %" BBPRIu64 ", peak %" BBPRIu64 "\n",
-          __func__, dbg_locks_bytes, dbg_locks_peak_bytes);
-  if( dbg_locks==NULL ) goto done;
+  fprintf(out, "%s (%s): used %" BBPRIu64 ", peak %" BBPRIu64 "\n",
+          __func__, zDesc, dbg_locks_bytes, dbg_locks_peak_bytes);
+  if( bSummaryOnly || dbg_locks==NULL ) goto done;
   hash_for(dbg_locks, dbg_pthread_dump_outer_pair, out);
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
@@ -188,7 +192,7 @@ static void dbg_pthread_check_init(void){
 /*****************************************************************************/
 
 void dbg_pthread_term(void){
-  dbg_pthread_dump(stdout);
+  dbg_pthread_dump(stdout, "before cleanup", 1);
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
   hash_for(dbg_locks, dbg_pthread_free_outer_pair, NULL);
@@ -196,6 +200,8 @@ void dbg_pthread_term(void){
   hash_free(dbg_locks);
   DBG_LESS_MEMORY(sizeof(hash_t*));
   dbg_locks = NULL;
+  dbg_pthread_dump(stdout, "after cleanup", 1);
+  assert( dbg_locks_bytes==0 );
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
 }
