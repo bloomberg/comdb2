@@ -416,65 +416,46 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     SP sp = getsp(L);
     sp->num_instructions = 0;
     int retry = round(register_timeoutms / 1000.0);
-    if (retry == 0) {
+    if (retry <= 0) {
         retry = 1;
     }
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
-        switch (rc) {
-        case CDB2_TRIG_ASSIGNED_OTHER:
-        case CDB2_TRIG_NOT_MASTER:
-        case NET_SEND_FAIL_INTERNAL:
-        case NET_SEND_FAIL_INVALIDNODE:
-        case NET_SEND_FAIL_TIMEOUT:
-            if (retry) {
-                sleep(1);
-                break;
-            }
-        default:
-            if (register_timeoutms == 0) {
-                luabb_error(L, sp, "trigger:%s registration failed rc:%d",
-                            reg->spname, rc);
-                return -1;
-            } else {
+        if (register_timeoutms) {
+            if (retry == 0) {
                 luabb_error(L, sp, " trigger:%s registration timeout %dms",
                             reg->spname, register_timeoutms);
                 return -2;
             }
-        }
-        if (register_timeoutms) {
             --retry;
         }
         if (check_retry_conditions(L, 1) != 0) {
             return luabb_error(L, sp, sp->error);
         }
+        sleep(1);
     }
     return rc;
 }
+
 static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
-        bdb_trigger_unsubscribe(q->iq.usedb->handle);
+        if (*q->open) {
+            bdb_trigger_unsubscribe(q->iq.usedb->handle);
+        }
         Pthread_mutex_unlock(q->lock);
     }
     int rc;
     int retry = 10;
-    do {
+    while (retry > 0) {
         --retry;
         rc = trigger_unregister_req(&q->info);
-        switch (rc) {
-        case CDB2_TRIG_NOT_MASTER:
-        case NET_SEND_FAIL_INTERNAL:
-        case NET_SEND_FAIL_INVALIDNODE:
-        case NET_SEND_FAIL_TIMEOUT:
-            if (L) check_retry_conditions(L, 1);
-            sleep(1);
-            break;
-        default:
-            retry = 0;
-            break;
-        }
-    } while (retry > 0);
+        if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
+            return;
+        if (L)
+            check_retry_conditions(L, 1);
+        sleep(1);
+    }
 }
 
 static int stop_waiting(Lua L, dbconsumer_t *q)
@@ -4169,7 +4150,7 @@ static int db_error(lua_State *lua)
     return 1;
 }
 
-static void force_unregister(Lua L, trigger_reg_t *reg)
+void force_unregister(Lua L, trigger_reg_t *reg)
 {
     // setup fake dbconsumer_t to send unregister
     dbconsumer_t *q = alloca(dbconsumer_sz(reg->spname));
