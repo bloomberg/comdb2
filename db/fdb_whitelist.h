@@ -22,13 +22,12 @@
 #ifndef _FDB_WHITELIST_H_
 #define _FDB_WHITELIST_H_
 
-
-/* 
+/*
  * Add dbname to whitelist
  */
 int fdb_add_dbname_to_whitelist(const char *dbname);
 
-/* 
+/*
  * Check if dbname is in whitelist
  * if whitelist is null, then all dbs are allowed to query us
  */

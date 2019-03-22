@@ -444,7 +444,7 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
 }
 
 static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
-                                int required)
+                                       int required)
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
@@ -694,7 +694,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
         /* expected parse line: remsql_whitelist db1 db2 ...  */
         tok = segtok(line, len, &st, &ltok);
-        while(ltok) {
+        while (ltok) {
             int lrc = fdb_add_dbname_to_whitelist(tok);
             if (lrc)
                 return -1;

@@ -59,7 +59,6 @@ struct fdb_access {
     listc_t lst;
 };
 
-
 static hash_t *fdb_dbname_hash;
 static pthread_mutex_t fdb_dbname_hash_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -324,8 +323,8 @@ static int _access_control_clear(fdb_access_t *acc)
 const u_int ptrhashfunc(u_char *keyp, int len)
 {
     unsigned hash = 0;
-    for (int i = 0; i < sizeof(u_char *)/sizeof(int); i++)
-        hash += ((int*)&keyp)[i];
+    for (int i = 0; i < sizeof(u_char *) / sizeof(int); i++)
+        hash += ((int *)&keyp)[i];
     return hash;
 }
 
@@ -339,16 +338,15 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
 
     assert(fdb_dbname_hash != NULL);
     const char *name = dbname;
-    while(*name && *name != '@')
-          name++;
+    while (*name && *name != '@')
+        name++;
 
     char *nptr = internn(dbname, name - dbname);
     int rc = 0;
 
     if (hash_find_readonly(fdb_dbname_hash, nptr) != NULL) {
         logmsg(LOGMSG_USER, "%s already in whitelist\n", nptr);
-    }
-    else {
+    } else {
         rc = hash_add(fdb_dbname_hash, nptr);
     }
     Pthread_mutex_unlock(&fdb_dbname_hash_lock);
@@ -357,7 +355,6 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
 
 int fdb_del_dbname_from_whitelist(const char *dbname)
 {
-    /* hash will contain pointers to strings, it just needs to memcmp ptrs */
     if (fdb_dbname_hash == NULL)
         return 0;
 
@@ -388,7 +385,7 @@ void fdb_dump_whitelist()
 }
 
 /* Check if parameter dbname is in whitelist
- * Note that dbname can be dbname or uri (dbname@hostname) 
+ * Note that dbname can be dbname or uri (dbname@hostname)
  */
 int fdb_is_dbname_in_whitelist(const char *name)
 {
@@ -398,7 +395,7 @@ int fdb_is_dbname_in_whitelist(const char *name)
 
     char dbname[MAX_DBNAME_LENGTH];
     int i = 0;
-    while(*name && *name != '@' && i < MAX_DBNAME_LENGTH)
+    while (*name && *name != '@' && i < MAX_DBNAME_LENGTH)
         dbname[i++] = *(name++);
     dbname[i] = '\0';
     const char *nptr = intern(dbname);

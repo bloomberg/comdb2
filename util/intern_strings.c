@@ -123,7 +123,8 @@ void cleanup_interned_strings()
 static int intern_dump(void *ptr, void *unused)
 {
     struct interned_string *obj = ptr;
-    logmsg(LOGMSG_USER, "%s: str=%s %p (obj %p)\n", __func__, obj->str, obj->str, obj);
+    logmsg(LOGMSG_USER, "%s: str=%s %p (obj %p)\n", __func__, obj->str,
+           obj->str, obj);
     return 0;
 }
 
