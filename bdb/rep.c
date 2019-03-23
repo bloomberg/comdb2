@@ -5431,7 +5431,7 @@ void *watcher_thread(void *arg)
                 lock_info_lockers(stdout, bdb_state);
 
 #if defined(DBG_PTHREAD_LOCKS)
-                dbg_pthread_dump(stdout);
+                dbg_pthread_dump(stdout, "rep_process_message", 0);
 #endif
             }
         }
