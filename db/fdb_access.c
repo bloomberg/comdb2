@@ -19,7 +19,8 @@
  *
  */
 
-#include <plhash.h>
+#include "plhash.h"
+#include "util.h"
 #include "list.h"
 
 #include "comdb2.h"
@@ -33,6 +34,8 @@
 #include "fdb_util.h"
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
+#include "fdb_whitelist.h"
+#include "intern_strings.h"
 #include "logmsg.h"
 
 /**
@@ -55,6 +58,9 @@ struct fdb_access {
     hash_t *wlst_byfullname; /* presence in this list give per table access */
     listc_t lst;
 };
+
+static hash_t *fdb_dbname_hash;
+static pthread_mutex_t fdb_dbname_hash_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int access_violations;
 static int _access_control_add(fdb_access_t *acc, enum fdb_access_type type,
@@ -311,3 +317,91 @@ static int _access_control_clear(fdb_access_t *acc)
     return 0;
 }
 
+// simple hash for a ptr address
+// for 4 bytes ptr (32bit arch), it's just the first 4 bytes
+// for 8 bytes ptr, sum the first 4 bytes with the second 4 bytes
+const u_int ptrhashfunc(u_char *keyp, int len)
+{
+    unsigned hash = 0;
+    for (int i = 0; i < sizeof(u_char *) / sizeof(int); i++)
+        hash += ((int *)&keyp)[i];
+    return hash;
+}
+
+int fdb_add_dbname_to_whitelist(const char *dbname)
+{
+    /* hash will contain pointers to strings, it needs to memcmp ptrs */
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
+    if (fdb_dbname_hash == NULL)
+        fdb_dbname_hash = hash_init_user((hashfunc_t *)ptrhashfunc,
+                                         (cmpfunc_t *)memcmp, 0, 0);
+
+    assert(fdb_dbname_hash != NULL);
+    const char *name = dbname;
+    while (*name && *name != '@')
+        name++;
+
+    char *nptr = internn(dbname, name - dbname);
+    int rc = 0;
+
+    if (hash_find_readonly(fdb_dbname_hash, nptr) != NULL) {
+        logmsg(LOGMSG_USER, "%s already in whitelist\n", nptr);
+    } else {
+        rc = hash_add(fdb_dbname_hash, nptr);
+    }
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+    return rc;
+}
+
+int fdb_del_dbname_from_whitelist(const char *dbname)
+{
+    if (fdb_dbname_hash == NULL)
+        return 0;
+
+    const char *ptr = intern(dbname);
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
+    int rc = hash_del(fdb_dbname_hash, ptr);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+    return rc;
+}
+
+int dump_whitelist(void *obj, void *dum)
+{
+    const char *str = obj;
+    logmsg(LOGMSG_USER, "%s\n", str);
+    return 0;
+}
+
+void fdb_dump_whitelist()
+{
+    if (fdb_dbname_hash == NULL) {
+        logmsg(LOGMSG_USER, "Whitelist is empty\n");
+        return;
+    }
+
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
+    hash_for(fdb_dbname_hash, dump_whitelist, NULL);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+}
+
+/* Check if parameter dbname is in whitelist
+ * Note that dbname can be dbname or uri (dbname@hostname)
+ */
+int fdb_is_dbname_in_whitelist(const char *name)
+{
+    logmsg(LOGMSG_DEBUG, "%s: name=%s\n", __func__, name);
+    if (fdb_dbname_hash == NULL)
+        return 1;
+
+    char dbname[MAX_DBNAME_LENGTH];
+    int i = 0;
+    while (*name && *name != '@' && i < MAX_DBNAME_LENGTH)
+        dbname[i++] = *(name++);
+    dbname[i] = '\0';
+    const char *nptr = intern(dbname);
+
+    Pthread_mutex_lock(&fdb_dbname_hash_lock);
+    const char *strptr = hash_find_readonly(fdb_dbname_hash, nptr);
+    Pthread_mutex_unlock(&fdb_dbname_hash_lock);
+    return strptr != NULL;
+}

@@ -1773,9 +1773,6 @@ static const char *columnTypeImpl(
       break;
     }
 #ifndef SQLITE_OMIT_SUBQUERY
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    case TK_SELECTV:
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case TK_SELECT: {
       /* The expression is a sub-select. Return the declaration type and
       ** origin info for the single column in the result set of the SELECT
@@ -4941,7 +4938,7 @@ static int selectExpander(Walker *pWalker, Select *p){
   ** the FROM clause of the SELECT statement.
   */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3SrcListAssignCursors(pParse, pTabList, p->op==TK_SELECTV || p->recording);
+  sqlite3SrcListAssignCursors(pParse, pTabList, p->recording);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3SrcListAssignCursors(pParse, pTabList);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -6672,7 +6669,7 @@ int sqlite3Select(
         /* Open a read-only cursor, execute the OP_Count, close the cursor. */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         /* TODO: use op4 ? */
-        if(p->op == TK_SELECTV || p->recording) {
+        if( p->recording ){
             /* sqlite3VdbeAddOp3(v, OP_OpenRead_Record, iCsr, iRoot, iDb); */
             sqlite3VdbeAddOp4Int(v, OP_OpenRead_Record, iCsr, iRoot, iDb, 1);
         }else
