@@ -1721,7 +1721,8 @@ int main(int argc, char *argv[])
     if (istty) {
         rl_attempted_completion_function = my_completion;
         load_readline_history();
-        struct sigaction sact = {sact.sa_handler = int_handler};
+        struct sigaction sact = {0};
+        sact.sa_handler = int_handler;
         sigaction(SIGINT, &sact, NULL);
     }
     char *line;

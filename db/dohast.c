@@ -495,7 +495,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         crt->selFlags |= SF_ASTIncluded;
         span++;
         /* only handle union all */
-        if (crt->op != TK_SELECT && crt->op != TK_ALL)
+        if ((crt->op != TK_SELECT && crt->op != TK_ALL) || crt->recording)
             not_recognized = 1;
 
         /* skip certain tables */
@@ -625,8 +625,13 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+extern int comdb2IsPrepareOnly(Parse*);
+
 int comdb2_check_parallel(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;

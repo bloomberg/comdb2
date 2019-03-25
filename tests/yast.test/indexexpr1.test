@@ -184,7 +184,7 @@ do_execsql_test indexexpr1-250eqp {
   SELECT id FROM t1 WHERE substr(a,b,3) IN ('and','l_t','xyz')
    ORDER BY +id;
 } {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)}
-   32 0 0 {USE TEMP B-TREE FOR ORDER BY}
+   34 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1abx/}
 

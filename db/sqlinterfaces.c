@@ -123,6 +123,7 @@ extern int g_osql_max_trans;
 extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
+extern int gbl_verbose_normalized_queries;
 
 extern int gbl_expressions_indexes;
 
@@ -1051,10 +1052,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
-        if ((clnt->thd->sqldb != NULL) && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows,
-                            h->sql, logger);
+    if (gbl_fingerprint_queries) {
+        if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(h->sql, clnt->zNormSql, h->cost, h->time,
+                            clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3070,6 +3071,26 @@ int sqlengine_prepare_engine(struct sqlthdstate *thd,
     return rc;
 }
 
+static void normalize_stmt_and_store(
+  struct sqlclntstate *clnt,
+  struct sql_state *rec
+){
+  if (clnt->zNormSql) {
+    free(clnt->zNormSql);
+    clnt->zNormSql = 0;
+  }
+  assert(rec && rec->stmt);
+  assert(rec && rec->sql);
+  if (gbl_fingerprint_queries) {
+    const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
+    if (zNormSql) {
+      clnt->zNormSql = strdup(zNormSql);
+    } else if (gbl_verbose_normalized_queries) {
+      logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+    }
+  }
+}
+
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3094,6 +3115,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
     int sqlPrepFlags = 0;
+
+    if (gbl_fingerprint_queries)
+        sqlPrepFlags |= SQLITE_PREPARE_NORMALIZE;
 
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
@@ -3124,6 +3148,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         update_schema_remotes(clnt, rec);
     }
     if (rec->stmt) {
+        normalize_stmt_and_store(clnt, rec);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
@@ -4948,6 +4973,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->planner_effort =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
+
+    if (clnt->zNormSql) {
+        free(clnt->zNormSql);
+        clnt->zNormSql = 0;
+    }
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;

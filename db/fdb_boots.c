@@ -351,7 +351,6 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      /* out: */ char *nodes[REPMAX],
                                      int *nnodes, int *room)
 {
-    char query[1024];
     int rc = FDB_NOERR;
     char *node;
     cdb2_hndl_tp *db;
@@ -374,11 +373,10 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     }
 
     /* get the nodes on which a db runs, rescpued */
-    snprintf(query, sizeof(query),
-             "select m.name, m.room  from machines as m,clusters as c, "
-             "databases as d"
-             " where c.name=@dbname and c.cluster_name=@class"
-             " and m.cluster=c.cluster_machs and d.name=@dbname");
+    const char *query = "select m.name, m.room  from machines as m,clusters as "
+                        "c, databases as d where c.name=@dbname and "
+                        "c.cluster_name=@class and m.cluster=c.cluster_machs "
+                        "and d.name=@dbname";
 
     rc = cdb2_bind_param(db, "dbname", CDB2_CSTRING, dbname, strlen(dbname));
     if (rc) {

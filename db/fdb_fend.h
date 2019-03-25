@@ -133,6 +133,8 @@ enum fdb_errors {
     FDB_ERR_INDEX_DESCRIBE = -24 /* failed to describe index */
     ,
     FDB_ERR_SSL = -25 /* SSL configuration error */
+    ,
+    FDB_ERR_ACCESS = -26 /* Access error */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
