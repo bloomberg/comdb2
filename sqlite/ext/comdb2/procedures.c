@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "sqliteInt.h"
 #include "comdb2.h"
 #include "bdb_api.h"
 #include "comdb2systbl.h"
@@ -55,12 +56,12 @@ inline static void free_sp_versions(systbl_sps_cursor *c){
   c->pVer = NULL;
 }
 
-static void get_sp_versions(systbl_sps_cursor *c) {
+static void get_sp_versions(sqlite3 *db, systbl_sps_cursor *c) {
   free_sp_versions(c);
   char *sp = c->ppProc[c->iProc];
   char **cvers;
   int scnt, ccnt, bdberr;
-  bdb_get_lua_highest(NULL, sp, &scnt, INT_MAX, &bdberr);
+  bdb_get_lua_highest(db->tran, sp, &scnt, INT_MAX, &bdberr);
   bdb_get_all_for_versioned_sp(sp, &cvers, &ccnt);
   c->pVer = sqlite3_malloc(sizeof(spversion) * (scnt + ccnt));
   int i;
@@ -77,7 +78,7 @@ static void get_sp_versions(systbl_sps_cursor *c) {
   c->defaultVer.sVer = 0;
   c->defaultVer.cVer = NULL;
   int rc;
-  if((rc = bdb_get_sp_get_default_version(NULL, sp, &bdberr)) > 0) {
+  if((rc = bdb_get_sp_get_default_version(db->tran, sp, &bdberr)) > 0) {
     c->defaultVer.sVer = rc;
   } else {
     bdb_get_default_versioned_sp(sp, &c->defaultVer.cVer);
@@ -268,7 +269,7 @@ static int systblSPsColumn(
 
   /* Check to see if c->pVer is already allocated. If not, allocate. */
   if (c->iVer == 0 && c->pVer == NULL) {
-    get_sp_versions(c);
+    get_sp_versions(sqlite3_context_db_handle(ctx), c);
   }
   v = &c->pVer[c->iVer];
 
