@@ -27,7 +27,7 @@ int comdb2LocateSP(tran_type *tran, Parse *p, char *sp)
 {
 	char *ver = NULL;
 	int bdberr;
-	int rc0 = bdb_get_sp_get_default_version(sp, &bdberr);
+	int rc0 = bdb_get_sp_get_default_version(tran, sp, &bdberr);
 	int rc1 = bdb_get_default_versioned_sp(sp, &ver);
 	free(ver);
 	if (rc0 < 0 && rc1 < 0) {
