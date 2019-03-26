@@ -35,7 +35,6 @@
 #include <limits.h>
 
 #include "fwd_types.h"
-#include "bdb_cursor.h"
 #include "bdb_net.h"
 
 #include <assert.h>
@@ -641,17 +640,6 @@ tran_type *bdb_tran_begin_dirty(bdb_state_type *bdb_handle,
 
 tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
                                   int *bdberr);
-
-tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
-                                           tran_type *parent_tran,
-                                           cursor_tran_t *curtran,
-                                           unsigned int *savedlid,
-                                           int *bdberr);
-
-int bdb_restore_tran_lockerid_and_abort(bdb_state_type *bdb_state,
-                                        tran_type *tran,
-                                        unsigned int *savedlid,
-                                        int *bdberr);
 
 tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
                            unsigned long long ltranid, void *firstlsn,

@@ -199,4 +199,15 @@ int bdb_get_context_from_lsn(bdb_state_type *bdb_state, void *lsnp,
 
 int bdb_direct_count(bdb_cursor_ifn_t *, int ixnum, int64_t *count);
 
+tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
+                                           tran_type *parent_tran,
+                                           cursor_tran_t *curtran,
+                                           unsigned int *savedlid,
+                                           int *bdberr);
+
+int bdb_restore_tran_lockerid_and_abort(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned int *savedlid,
+                                        int *bdberr);
+
 #endif

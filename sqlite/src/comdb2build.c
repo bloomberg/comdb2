@@ -10,6 +10,7 @@
 #include <sc_lua.h>
 #include <comdb2.h>
 #include <bdb_api.h>
+#include <bdb_cursor.h>
 #include <osqlsqlthr.h>
 #include <sqloffload.h>
 #include <analyze.h>
