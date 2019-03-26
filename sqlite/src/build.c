@@ -29,6 +29,7 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "comdb2Int.h"
 #include "pragma.h"
+#include "bdb_int.h"
 #include "logmsg.h"
 
 int has_comdb2_index_for_sqlite(Table *pTab);
