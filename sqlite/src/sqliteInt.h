@@ -17,6 +17,7 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <cheapstack.h>
+#include "sql.h"
 #include "tunables.h"
 #include "fwd_types.h"
 #include "ast.h"
