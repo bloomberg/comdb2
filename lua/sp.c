@@ -1620,16 +1620,17 @@ static char bootstrap_src[] = "\n"
                               "end\n"
                               "comdb2_main()";
 
-static char *load_default_src(char *spname, struct spversion_t *spversion,
-                              int *size)
+static char *load_default_src(void *tran, char *spname,
+                              struct spversion_t *spversion, int *size)
 {
     char *src = NULL;
     int bdberr;
-    int v = bdb_get_sp_get_default_version(spname, &bdberr);
+    int v = bdb_get_sp_get_default_version(tran, spname, &bdberr);
     if (v > 0) {
-        if (bdb_get_sp_lua_source(NULL, NULL, spname, &src, v, size, &bdberr) ==
-            0)
+        if (bdb_get_sp_lua_source(thedb->bdb_env, tran, spname, &src, v, size,
+                                  &bdberr) == 0) {
             spversion->version_num = v;
+        }
         return src;
     }
     if (bdb_get_default_versioned_sp(spname, &spversion->version_str) != 0) {
@@ -1643,18 +1644,18 @@ static char *load_default_src(char *spname, struct spversion_t *spversion,
 
 #define IS_SYS(spname) (!strncasecmp(spname, "sys.", 4))
 
-static char *load_user_src(char *spname, struct spversion_t *spversion,
-        int bootstrap, char **err)
+static char *load_user_src(void *tran, char *spname,
+        struct spversion_t *spversion, int bootstrap, char **err)
 {
     char *src = NULL;
     int size, bdb_err, rc;
     if (spversion->version_num == 0 && spversion->version_str == NULL) {
-        if ((src = load_default_src(spname, spversion, &size)) == NULL) {
+        if ((src = load_default_src(tran, spname, spversion, &size)) == NULL) {
             *err = no_such_procedure(spname, spversion);
             return NULL;
         }
     } else if (spversion->version_num > 0) {
-        if ((rc = bdb_get_sp_lua_source(thedb->bdb_env, NULL, spname, &src,
+        if ((rc = bdb_get_sp_lua_source(thedb->bdb_env, tran, spname, &src,
                                         spversion->version_num, &size,
                                         &bdb_err)) != 0) {
             *err = no_such_procedure(spname, spversion);
@@ -1674,7 +1675,7 @@ static char *load_user_src(char *spname, struct spversion_t *spversion,
     return src;
 }
 
-static char *load_src(char *spname, struct spversion_t *spversion,
+static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
                       int bootstrap, char **err)
 {
     char *src, *sys_src;
@@ -1686,8 +1687,8 @@ static char *load_src(char *spname, struct spversion_t *spversion,
             *err = no_such_procedure(spname, spversion);
             return NULL;
         }
-        if (override && (src = load_user_src(override, spversion, bootstrap,
-                        err))) {
+        if (override && (src = load_user_src(tran, override, spversion,
+                        bootstrap, err))) {
             return src;
         }
 
@@ -1702,7 +1703,7 @@ static char *load_src(char *spname, struct spversion_t *spversion,
         }
     }
 
-    src = load_user_src(spname, spversion, bootstrap, err);
+    src = load_user_src(tran, spname, spversion, bootstrap, err);
     return src;
 }
 
@@ -1718,7 +1719,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
 
     enable_global_variables(sp->lua);
 
-    sp_source = load_src(sp->spname, &sp->spversion, 0, err);
+    sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
     if (sp_source) {
         source_size = strlen(sp_source);
     } else {
@@ -2943,6 +2944,17 @@ static void reset_sp(SP sp)
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
+    if (sp->tran) {
+        int bdberr = 0;
+        if (bdb_restore_tran_lockerid_and_abort(bdb_state, sp->tran,
+                                                &sp->savedlid, &bdberr) != 0) {
+            logmsg(LOGMSG_FATAL,
+                   "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+                   __func__, bdberr);
+            abort();
+        }
+        sp->tran = 0;
+    }
 }
 
 static void free_spversion(SP sp)
@@ -4203,9 +4215,10 @@ static int db_sp(Lua L)
     } else if (lua_isstring(L, 3)) {
         spversion.version_str = (char *)lua_tostring(L, 3);
     }
+    SP sp = getsp(L);
     char *err = NULL;
     rdlock_schema_lk();
-    char *src = load_src(name, &spversion, 0, &err);
+    char *src = load_src(sp->tran, name, &spversion, 0, &err);
     unlock_schema_lk();
     free(spversion.version_str);
     if (src == NULL) {
@@ -4219,7 +4232,7 @@ static int db_sp(Lua L)
     sprintf(buf, "%s\nreturn main", src);
     free(src);
     if (luaL_dostring(L, buf) != 0) {
-        luabb_error(L, getsp(L), lua_tostring(L, -1));
+        luabb_error(L, sp, lua_tostring(L, -1));
         lua_pushnil(L);
     }
     return 1;
@@ -5450,6 +5463,16 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 {
     SP sp = clnt->sp;
     if (sp) {
+        int bdberr = 0;
+        sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
+                                                   clnt->dbtran.cursor_tran,
+                                                   &sp->savedlid, &bdberr);
+        if (sp->tran == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+                   __func__, bdberr);
+            abort();
+        }
         if (clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug ||
             sp->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
@@ -5469,7 +5492,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
-            int num = bdb_get_sp_get_default_version(spname, &bdberr);
+            int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
             if (num != sp->spversion.version_num) {
                 free_spversion(sp);
             }
@@ -5522,7 +5545,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             rdlock_schema_lk();
             locked = 1;
         }
-        sp->src = load_src(spname, &sp->spversion, 1, err);
+        sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
         sp->lua_version = gbl_lua_version;
         if (locked)
             unlock_schema_lk();

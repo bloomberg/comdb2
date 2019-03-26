@@ -4503,7 +4503,8 @@ int bdb_get_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                           int *size, int *bdberr)
 {
     if (lua_ver == 0) {
-        if ((lua_ver = bdb_get_sp_get_default_version(sp_name, bdberr)) <= 0) {
+        if ((lua_ver = bdb_get_sp_get_default_version(tran, sp_name,
+                                                      bdberr)) <= 0) {
             *bdberr = BDBERR_BADARGS;
             return -1;
         }
@@ -4514,11 +4515,12 @@ int bdb_get_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
-    return bdb_lite_exact_var_fetch(llmeta_bdb_state, key, (void **)lua_file,
-                                    size, bdberr);
+    return bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, key,
+                                         (void **)lua_file, size, bdberr);
 }
 
-int bdb_get_sp_get_default_version(const char *sp_name, int *bdberr)
+int bdb_get_sp_get_default_version(tran_type *tran, const char *sp_name,
+                                   int *bdberr)
 {
 
     int rc;
@@ -4534,8 +4536,8 @@ int bdb_get_sp_get_default_version(const char *sp_name, int *bdberr)
 
     int default_ver;
     int default_version;
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, key, &default_ver, sizeof(int),
-                              &size, bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &default_ver,
+                                   sizeof(int), &size, bdberr);
     buf_get(&default_version, sizeof(default_version), (uint8_t *)&default_ver,
             ((uint8_t *)&default_ver) + sizeof(default_ver));
     if (rc)

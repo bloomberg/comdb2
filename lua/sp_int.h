@@ -44,6 +44,8 @@ struct stored_proc {
     struct sqlclntstate *clnt;
     struct sqlclntstate *debug_clnt;
     struct sqlthdstate *thd;
+    tran_type *tran;
+    int savedlid;
     int bufsz;
     int num_instructions;
     int max_num_instructions;

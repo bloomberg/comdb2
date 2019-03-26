@@ -1596,7 +1596,8 @@ int bdb_rowlocks_check_commit_physical(bdb_state_type *bdb_state,
                                        tran_type *tran, int blockop_count);
 int bdb_is_rowlocks_transaction(tran_type *tran);
 
-int bdb_get_sp_get_default_version(const char *sp_name, int *bdberr);
+int bdb_get_sp_get_default_version(tran_type *tran, const char *sp_name,
+                                   int *bdberr);
 int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                           const char *sp_name, char *lua_file, int size,
                           int version, int *bdberr);
