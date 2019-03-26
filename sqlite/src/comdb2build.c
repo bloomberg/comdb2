@@ -380,54 +380,30 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
-static int comdb2AuthenticateUserDDL(const char *tablename)
+static int comdb2AuthenticateUserDDL(Parse *pParse, const char *tablename)
 {
-    int rc = SQLITE_OK;
-    bdb_state_type *bdb_state = thedb->bdb_env;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    void *tran = 0;
-    unsigned int savedlid = 0;
-    int bdberr = 0;
-    int authOn;
+     struct sql_thread *thd = pthread_getspecific(query_info_key);
+     bdb_state_type *bdb_state = thedb->bdb_env;
+     int bdberr; 
+     int authOn = bdb_authentication_get(bdb_state, pParse->tran, &bdberr); 
+    
+     if (authOn != 0)
+        return SQLITE_OK;
 
-    if (thd && thd->clnt) {
-        tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
-                                               thd->clnt->dbtran.cursor_tran,
-                                               &savedlid, &bdberr);
-        if (tran == NULL) {
-            logmsg(LOGMSG_FATAL,
-                   "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-                   __func__, bdberr);
-            abort();
-        }
-    }
+     if (thd->clnt && tablename)
+     {
+        if (bdb_tbl_op_access_get(bdb_state, pParse->tran, 0, 
+            tablename, thd->clnt->user, &bdberr))
+          return SQLITE_AUTH;
+        else
+            return SQLITE_OK;
+     }
 
-    authOn = bdb_authentication_get(bdb_state, tran, &bdberr);
-
-    if (authOn == 0) {
-        if (thd && thd->clnt && tablename) {
-            if (bdb_tbl_op_access_get(bdb_state, tran, 0, tablename,
-                                      thd->clnt->user, &bdberr)) {
-                rc = SQLITE_AUTH;
-            }
-        } else {
-            rc = SQLITE_AUTH;
-        }
-    }
-
-    if (tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
-                                                    &savedlid, &bdberr) != 0) {
-        logmsg(LOGMSG_FATAL,
-               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
-               __func__, bdberr);
-        abort();
-    }
-
-    return rc;
+     return SQLITE_AUTH;
 }
 
-static int comdb2CheckOpAccess(void) {
-    if (comdb2AuthenticateUserDDL(""))
+static int comdb2CheckOpAccess(Parse *pParse) {
+    if (comdb2AuthenticateUserDDL(pParse, ""))
         return SQLITE_AUTH;
     return SQLITE_OK;
 }
@@ -440,7 +416,7 @@ int comdb2IsPrepareOnly(Parse* pParse)
 int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
-    rc = comdb2CheckOpAccess();
+    rc = comdb2CheckOpAccess(pParse);
     if (rc != SQLITE_OK) {
         setError(pParse, rc, "User does not have OP credentials");
     }
@@ -628,7 +604,7 @@ static int authenticateSC(const char * table,  Parse *pParse)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (username && strcmp(username+1, thd->clnt->user) == 0) {
         return 0;
-    } else if (comdb2AuthenticateUserDDL(table) == 0) {
+    } else if (comdb2AuthenticateUserDDL(pParse, table) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserOp(pParse) == 0) {
         return 0;
@@ -779,7 +755,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->fastinit = 1;
     sc->nothrevent = 1;
 
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
+    if (get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL,
+                           pParse->tran)) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -838,8 +815,8 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->convert_sleep = gbl_convert_sleep;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
-    {
+    if (get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL,
+                           pParse->tran)) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -936,8 +913,8 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     sc->nothrevent = 1;
     sc->same_schema = 1;
 
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
-    {
+    if (get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL,
+                           pParse->tran)) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -981,7 +958,8 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
+    if (get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL,
+                           pParse->tran)) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -1996,7 +1974,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         goto clean_arg;
     }
 
-    if (comdb2AuthenticateUserDDL(""))
+    if (comdb2AuthenticateUserDDL(pParse, ""))
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */
@@ -6239,7 +6217,8 @@ void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
     if (authenticateSC(sc->tablename, pParse))
         goto out;
 
-    if (get_csc2_file(sc->tablename, -1, &sc->newcsc2, NULL)) {
+    if (get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL,
+                           pParse->tran)) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");

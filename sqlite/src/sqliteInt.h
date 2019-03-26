@@ -3326,6 +3326,8 @@ struct Parse {
                              * of interest to the DDL integration code in
                              * the "comdb2build.c" and "comdb2lua.c" files.
                              */
+  tran_type *tran;          /* The transaction to be used during the entire
+                             * prepare phase of query execution. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

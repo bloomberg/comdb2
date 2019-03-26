@@ -20,8 +20,10 @@
 #include <time.h>
 #include <ctype.h>
 #include <datetime.h>
+#include <pthread.h>
 void comdb2SetWriteFlag(int);
 
+#include "sql.h"
 #include "cdb2_constants.h"
 #include <logmsg.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -701,6 +703,9 @@ static int sqlite3Prepare(
   Parse sParse;             /* Parsing context */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  bdb_state_type *bdb_state = 0;
+  unsigned int savedlid = 0;
+  int bdberr = 0;
   int wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
   int isPrepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
   if( isPrepareOnly ) db->flags |= SQLITE_PrepareOnly;
@@ -710,6 +715,21 @@ static int sqlite3Prepare(
   sParse.pReprepare = pReprepare;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   sParse.prepare_only = isPrepareOnly;
+  if( !sParse.prepare_only ){
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if( thd && thd->clnt ){
+      bdb_state = thedb->bdb_env;
+      sParse.tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+                                                    thd->clnt->dbtran.cursor_tran,
+                                                    &savedlid, &bdberr);
+      if( !sParse.tran ){
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
+      }
+    }
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
@@ -852,6 +872,16 @@ end_prepare:
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
+  if( sParse.tran ){
+    if( bdb_restore_tran_lockerid_and_abort(bdb_state, sParse.tran, &savedlid,
+                                            &bdberr)!=0 ){
+      logmsg(LOGMSG_FATAL,
+             "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+             __func__, bdberr);
+      abort();
+    }
+    sParse.tran = 0;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
