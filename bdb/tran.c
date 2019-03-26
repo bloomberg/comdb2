@@ -1445,7 +1445,7 @@ tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
                                            cursor_tran_t *curtran,
                                            unsigned int *savedlid,
                                            int *bdberr){
-    tran_type *tran = bdb_tran_begin(bdb_state, parent_tran, &bdberr);
+    tran_type *tran = bdb_tran_begin(bdb_state, parent_tran, bdberr);
     if (tran == NULL) return NULL;
 
     int lid = bdb_get_lid_from_cursortran(curtran);
