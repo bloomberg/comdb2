@@ -57,7 +57,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
             int version = INT_MAX;
             int lua_ver;
             int default_version =
-                bdb_get_sp_get_default_version(new_sp, &bdberr);
+                bdb_get_sp_get_default_version(NULL, new_sp, &bdberr);
             for (;;) {
                 bdb_get_lua_highest(NULL, new_sp, &lua_ver, version, &bdberr);
                 if (lua_ver < 1) break;
@@ -158,7 +158,7 @@ static void show_all_versioned_sps(struct schema_change_type *sc)
     for (int i = 0; i < count; ++i) {
         char *vstr;
         int vnum, bdberr;
-        vnum = bdb_get_sp_get_default_version(names[i], &bdberr);
+        vnum = bdb_get_sp_get_default_version(NULL, names[i], &bdberr);
         if (vnum < 0 && bdb_get_default_versioned_sp(names[i], &vstr) == 0) {
             sbuf2printf(sb,
                         ">SP name: %s             Default Version is: '%s'\n",
@@ -211,7 +211,7 @@ static int add_versioned_sp(struct schema_change_type *sc)
     int rc, bdberr;
     char *spname = sc->tablename;
     char *version = sc->fname;
-    int default_ver_num = bdb_get_sp_get_default_version(spname, &bdberr);
+    int default_ver_num = bdb_get_sp_get_default_version(NULL, spname, &bdberr);
     char *default_ver_str = NULL;
     bdb_get_default_versioned_sp(spname, &default_ver_str);
     free(default_ver_str);
@@ -269,7 +269,7 @@ static int show_all_sps(struct schema_change_type *sc)
             return 0;
         }
         char *vstr;
-        int vnum = bdb_get_sp_get_default_version(new_sp, &bdberr);
+        int vnum = bdb_get_sp_get_default_version(NULL, new_sp, &bdberr);
         if (vnum >= 0) {
             sbuf2printf(sb, ">SP name: %s             Default Version is: %d\n",
                         new_sp, vnum);
@@ -300,7 +300,8 @@ static void show_sp(struct schema_change_type *sc, int *num, int *has_default)
         version = lua_ver;
     }
     if (*num) {
-        *has_default = bdb_get_sp_get_default_version(sc->tablename, &bdberr);
+        *has_default = bdb_get_sp_get_default_version(NULL, sc->tablename,
+                                                      &bdberr);
         if (*has_default > 0)
             sbuf2printf(sb, ">Default version is: %d\n", *has_default);
     }

@@ -19,11 +19,11 @@
 
 struct dbtable;
 struct dbtable *getqueuebyname(const char *);
-int bdb_get_sp_get_default_version(const char *, int *);
+int bdb_get_sp_get_default_version(tran_type *, const char *, int *);
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
-int comdb2LocateSP(Parse *p, char *sp)
+int comdb2LocateSP(tran_type *tran, Parse *p, char *sp)
 {
 	char *ver = NULL;
 	int bdberr;
@@ -177,7 +177,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 		return;
 	}
 
-	if (comdb2LocateSP(parse, spname) != 0) {
+	if (comdb2LocateSP(NULL, parse, spname) != 0) {
 		return;
 	}
 
@@ -284,7 +284,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
         }                                                                      \
-        if (comdb2LocateSP(parse, spname) != 0) {                              \
+        if (comdb2LocateSP(NULL, parse, spname) != 0) {                        \
             return;                                                            \
         }                                                                      \
         if (find_lua_##pfx##func(spname)) {                                    \

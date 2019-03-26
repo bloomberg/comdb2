@@ -2946,7 +2946,7 @@ static void reset_sp(SP sp)
     LIST_INIT(&sp->tmptbls);
     if (sp->tran) {
         int bdberr = 0;
-        if (bdb_restore_tran_lockerid_and_abort(bdb_state, sp->tran,
+        if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                                 &sp->savedlid, &bdberr) != 0) {
             logmsg(LOGMSG_FATAL,
                    "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
