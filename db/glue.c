@@ -4115,14 +4115,14 @@ static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 }
 
 
-void get_disable_skipscan_all() 
+void get_disable_skipscan_all(tran_type *tran)
 {
 #ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d, NULL);
+        get_disable_skipscan(d, tran);
     }
 }
  

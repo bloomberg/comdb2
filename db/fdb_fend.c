@@ -4081,7 +4081,7 @@ char *fdb_get_alias(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     char *errstr = NULL;
     char *alias = NULL;
     const char *tablename = *p_tablename;
-    void *tran = NULL;
+    void *tran = 0;
     unsigned int savedlid = 0;
     int bdberr = 0;
 
@@ -4116,8 +4116,8 @@ char *fdb_get_alias(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         }
     }
 
-    if (bdb_restore_tran_lockerid_and_abort(bdb_state, tran, &savedlid,
-                                            &bdberr) != 0) {
+    if (tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
+                                                    &savedlid, &bdberr) != 0) {
         logmsg(LOGMSG_FATAL,
                "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
                __func__, bdberr);

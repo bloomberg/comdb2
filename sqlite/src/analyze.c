@@ -143,6 +143,7 @@
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <sql.h>
 #include <logmsg.h>
 int is_comdb2_index_disableskipscan(const char *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2434,8 +2435,33 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* AZ: put disabler loader here */
-  void get_disable_skipscan_all();
-  get_disable_skipscan_all();
+  void get_disable_skipscan_all(void *tran);
+  {
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    void *tran = 0;
+    unsigned int savedlid = 0;
+    int bdberr = 0;
+    if( thd && thd->clnt ){
+      tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+                                             thd->clnt->dbtran.cursor_tran,
+                                             &savedlid, &bdberr);
+      if( tran==NULL ){
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
+      }
+    }
+    get_disable_skipscan_all(tran);
+    if( tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
+                                                    &savedlid, &bdberr)!=0 ){
+      logmsg(LOGMSG_FATAL,
+             "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+             __func__, bdberr);
+      abort();
+    }
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );

@@ -385,7 +385,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
     int rc = SQLITE_OK;
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    void *tran = NULL;
+    void *tran = 0;
     unsigned int savedlid = 0;
     int bdberr = 0;
     int authOn;
@@ -415,8 +415,8 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
         }
     }
 
-    if (bdb_restore_tran_lockerid_and_abort(bdb_state, tran, &savedlid,
-                                            &bdberr) != 0) {
+    if (tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
+                                                    &savedlid, &bdberr) != 0) {
         logmsg(LOGMSG_FATAL,
                "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
                __func__, bdberr);
