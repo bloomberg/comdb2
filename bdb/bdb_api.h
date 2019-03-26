@@ -35,6 +35,7 @@
 #include <limits.h>
 
 #include "fwd_types.h"
+#include "bdb_cursor.h"
 #include "bdb_net.h"
 
 #include <assert.h>
