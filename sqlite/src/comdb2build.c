@@ -393,7 +393,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
     if (thd && thd->clnt) {
         tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
                                                thd->clnt->dbtran.cursor_tran,
-                                               savedlid, &bdberr);
+                                               &savedlid, &bdberr);
         if (tran == NULL) {
             logmsg(LOGMSG_FATAL,
                    "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
