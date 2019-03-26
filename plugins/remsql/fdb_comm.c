@@ -3732,7 +3732,7 @@ int handle_alias_request(comdb2_appsock_arg_t *arg)
 
         rc = llmeta_set_tablename_alias(NULL, aliasname, url, &errstr);
     } else if (strncasecmp(op, "get", 3) == 0) {
-        url = llmeta_get_tablename_alias(aliasname, &errstr);
+        url = llmeta_get_tablename_alias(aliasname, 0, &errstr);
         rc = (url == 0);
 
         if (rc == 0) {

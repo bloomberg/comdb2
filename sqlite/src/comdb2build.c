@@ -381,45 +381,48 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
 
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
-     struct sql_thread *thd = pthread_getspecific(query_info_key);
-     void *tran = NULL;
-     unsigned int savelid;
-     bdb_state_type *bdb_state = thedb->bdb_env;
-     int bdberr; 
-     int authOn;
-     
-     if (thd && thd->clnt && (tran = bdb_tran_begin(bdb_state, NULL, &bdberr))
-             == NULL) {
-         logmsg(LOGMSG_FATAL, "%s failed allocating tran\n", __func__);
-         abort();
-     }
+    int rc = SQLITE_OK;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    void *tran = NULL;
+    unsigned int savedlid;
+    int bdberr;
+    int authOn;
 
-     if (tran) {
-         int lid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
-         bdb_get_tran_lockerid(tran, &savelid);
-         bdb_set_tran_lockerid(tran, lid);
-     }
+    if (thd && thd->clnt) {
+        tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+                                               thd->clnt->dbtran.cursor_tran,
+                                               savedlid, &bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+                   __func__, bdberr);
+            abort();
+        }
+    }
 
-     authOn = bdb_authentication_get(bdb_state, tran, &bdberr); 
+    authOn = bdb_authentication_get(bdb_state, tran, &bdberr);
 
-     if (tran) {
-         bdb_set_tran_lockerid(tran, savelid);
-         bdb_tran_abort(bdb_state, tran, &bdberr);
-     }
-    
-     if (authOn != 0)
-        return SQLITE_OK;
+    if (authOn == 0) {
+        if (thd && thd->clnt && tablename) {
+            if (bdb_tbl_op_access_get(bdb_state, tran, 0, tablename,
+                                      thd->clnt->user, &bdberr)) {
+                rc = SQLITE_AUTH;
+            }
+        } else {
+            rc = SQLITE_AUTH;
+        }
+    }
 
-     if (thd->clnt && tablename)
-     {
-        if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, thd->clnt->user, &bdberr))
-          return SQLITE_AUTH;
-        else
-            return SQLITE_OK;
-     }
+    if (bdb_restore_tran_lockerid_and_abort(bdb_state, tran, &savedlid,
+                                            &bdberr) != 0) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+               __func__, bdberr);
+        abort();
+    }
 
-     return SQLITE_AUTH;
+    return rc;
 }
 
 static int comdb2CheckOpAccess(void) {

@@ -4074,7 +4074,7 @@ char *fdb_get_alias(const char **p_tablename)
     char *alias = NULL;
     const char *tablename = *p_tablename;
 
-    alias = llmeta_get_tablename_alias(tablename, &errstr);
+    alias = llmeta_get_tablename_alias(tablename, 0, &errstr);
     if (!alias) {
         if (errstr) {
             logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n", __func__,

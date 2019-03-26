@@ -1440,6 +1440,30 @@ tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
                                      bdberr, epoch, file, offset, is_ha_retry);
 }
 
+tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
+                                           tran_type *parent_tran,
+                                           struct cursor_tran *curtran,
+                                           unsigned int *savedlid,
+                                           int *bdberr){
+    tran_type *tran = bdb_tran_begin(bdb_state, parent_tran, &bdberr);
+    if (tran == NULL) return NULL;
+
+    int lid = bdb_get_lid_from_cursortran(curtran);
+
+    bdb_get_tran_lockerid(tran, savedlid);
+    bdb_set_tran_lockerid(tran, lid);
+
+    return tran;
+}
+
+int bdb_restore_tran_lockerid_and_abort(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned int *savedlid,
+                                        int *bdberr){
+    bdb_set_tran_lockerid(tran, *savedlid);
+    return bdb_tran_abort(bdb_state, tran, bdberr);
+}
+
 /*
   this function is interwoven with replication stuff.
   i wish it werent.

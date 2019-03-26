@@ -641,6 +641,17 @@ tran_type *bdb_tran_begin_dirty(bdb_state_type *bdb_handle,
 tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
                                   int *bdberr);
 
+tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
+                                           tran_type *parent_tran,
+                                           struct cursor_tran *curtran,
+                                           unsigned int *savedlid,
+                                           int *bdberr);
+
+int bdb_restore_tran_lockerid_and_abort(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned int *savedlid,
+                                        int *bdberr);
+
 tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
                            unsigned long long ltranid, void *firstlsn,
                            unsigned int flags);
@@ -1930,7 +1941,8 @@ int bdb_osql_serial_check(bdb_state_type *bdb_state, void *ranges,
 
 int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
                                const char *url, char **errstr);
-char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr);
+char *llmeta_get_tablename_alias(const char *tablename_alias, tran_type *tran,
+                                 char **errstr);
 int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr);
 void llmeta_list_tablename_alias(void);
 

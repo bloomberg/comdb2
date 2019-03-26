@@ -7479,7 +7479,8 @@ retry:
     return 0;
 }
 
-char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr)
+char *llmeta_get_tablename_alias(const char *tablename_alias, tran_type *tran,
+                                 char **errstr)
 {
     struct llmeta_tablename_alias_key key = {0};
 
@@ -7505,7 +7506,7 @@ char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr)
 
 retry:
     rc =
-        bdb_lite_exact_fetch(llmeta_bdb_state, &key_buf, data_buf,
+        bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, &key_buf, data_buf,
                              LLMETA_TABLENAME_ALIAS_DATA_LEN, &fndlen, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
