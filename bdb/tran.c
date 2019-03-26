@@ -1442,7 +1442,7 @@ tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
 
 tran_type *bdb_tran_begin_from_cursor_tran(bdb_state_type *bdb_state,
                                            tran_type *parent_tran,
-                                           struct cursor_tran *curtran,
+                                           cursor_tran_t *curtran,
                                            unsigned int *savedlid,
                                            int *bdberr){
     tran_type *tran = bdb_tran_begin(bdb_state, parent_tran, &bdberr);
