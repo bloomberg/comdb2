@@ -2437,7 +2437,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   /* AZ: put disabler loader here */
   void get_disable_skipscan_all(void *tran);
   get_disable_skipscan_all(db->tran);
-  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
