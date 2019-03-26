@@ -34,7 +34,8 @@
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
-char *fdb_get_alias(const char **p_tablename);
+char *fdb_get_alias(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                    const char **p_tablename);
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -470,7 +471,10 @@ retry_after_fdb_creation:
     /* NOTE: zDatabase is NOT null if we already looked up a foreign
     ** db and retried, so this code doesn't run twice
     */
-    dbAlias = fdb_get_alias(&zName);
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd ? thd->clnt : 0;
+    dbAlias = fdb_get_alias(bdb_state, clnt, &zName);
     zDatabase = dbAlias;
     if( zDatabase ){
       goto retry_alias;

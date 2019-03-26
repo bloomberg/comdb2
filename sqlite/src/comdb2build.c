@@ -386,8 +386,8 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     void *tran = NULL;
-    unsigned int savedlid;
-    int bdberr;
+    unsigned int savedlid = 0;
+    int bdberr = 0;
     int authOn;
 
     if (thd && thd->clnt) {
