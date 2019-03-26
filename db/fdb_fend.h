@@ -313,7 +313,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt);
 int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans);
 char *fdb_trans_id(fdb_tran_t *trans);
 
-char *fdb_get_alias(tran_type *tran, const char **p_tablename);
+char *fdb_get_alias(void *tran, const char **p_tablename);
 void fdb_stat_alias(void);
 
 /**
