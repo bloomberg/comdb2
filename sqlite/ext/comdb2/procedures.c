@@ -77,7 +77,7 @@ static void get_sp_versions(systbl_sps_cursor *c) {
   c->defaultVer.sVer = 0;
   c->defaultVer.cVer = NULL;
   int rc;
-  if((rc = bdb_get_sp_get_default_version(sp, &bdberr)) > 0) {
+  if((rc = bdb_get_sp_get_default_version(NULL, sp, &bdberr)) > 0) {
     c->defaultVer.sVer = rc;
   } else {
     bdb_get_default_versioned_sp(sp, &c->defaultVer.cVer);
