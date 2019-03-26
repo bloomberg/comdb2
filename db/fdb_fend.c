@@ -4075,33 +4075,17 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage)
 **       must be used and associated with the cursor transaction for this
 **       thread.
 */
-char *fdb_get_alias(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                    const char **p_tablename)
+char *fdb_get_alias(void *tran, const char **p_tablename)
 {
     char *errstr = NULL;
     char *alias = NULL;
     const char *tablename = *p_tablename;
-    void *tran = 0;
-    unsigned int savedlid = 0;
-    int bdberr = 0;
-
-    if (clnt) {
-        tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
-                                               clnt->dbtran.cursor_tran,
-                                               &savedlid, &bdberr);
-        if (tran == NULL) {
-            logmsg(LOGMSG_FATAL,
-                   "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-                   __func__, bdberr);
-            abort();
-        }
-    }
 
     alias = llmeta_get_tablename_alias(tablename, tran, &errstr);
     if (!alias) {
         if (errstr) {
-            logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n",
-                   __func__, tablename);
+            logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n", __func__,
+                    tablename);
             free(errstr);
         }
     } else {
@@ -4109,19 +4093,10 @@ char *fdb_get_alias(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         if (!dot || dot[1] == '\0') {
             logmsg(LOGMSG_ERROR, "%s bad alias %s\n", __func__, alias);
             free(alias);
-            alias = NULL;
-        } else {
-            dot[0] = '\0';
-            *p_tablename = dot + 1; /* point now to the tablename */
+            return NULL;
         }
-    }
-
-    if (tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
-                                                    &savedlid, &bdberr) != 0) {
-        logmsg(LOGMSG_FATAL,
-               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
-               __func__, bdberr);
-        abort();
+        dot[0] = '\0';
+        *p_tablename = dot + 1; /* point now to the tablename */
     }
 
     return alias;

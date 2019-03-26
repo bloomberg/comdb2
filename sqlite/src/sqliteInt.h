@@ -1569,7 +1569,9 @@ struct sqlite3 {
   sqlite3_userauth auth;        /* User authentication information */
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  u8 isExpert;                          /* Analyze using SQLite expert */
+  void *tran;                   /* The transaction to be used during the
+                                 * entire prepare phase of query execution. */
+  u8 isExpert;                  /* Analyze using SQLite expert */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

@@ -719,9 +719,9 @@ static int sqlite3Prepare(
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if( thd && thd->clnt ){
       bdb_state = thedb->bdb_env;
-      sParse.tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
-                                                    thd->clnt->dbtran.cursor_tran,
-                                                    &savedlid, &bdberr);
+      db->tran = sParse.tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+                                                 thd->clnt->dbtran.cursor_tran,
+                                                 &savedlid, &bdberr);
       if( !sParse.tran ){
         logmsg(LOGMSG_FATAL,
                "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
@@ -872,6 +872,7 @@ end_prepare:
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
+  db->tran = 0;
   if( sParse.tran ){
     if( bdb_restore_tran_lockerid_and_abort(bdb_state, sParse.tran, &savedlid,
                                             &bdberr)!=0 ){
