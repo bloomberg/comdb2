@@ -635,7 +635,6 @@ void comdb2CreateTableCSC2(
 #endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
     int table_exists = 0;
 
     if (temp) {
