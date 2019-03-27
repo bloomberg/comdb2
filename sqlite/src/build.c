@@ -472,7 +472,31 @@ retry_after_fdb_creation:
     /* NOTE: zDatabase is NOT null if we already looked up a foreign
     ** db and retried, so this code doesn't run twice
     */
-    dbAlias = fdb_get_alias(tran, &zName);
+    if( tran ){
+      dbAlias = fdb_get_alias(tran, &zName);
+    }else{
+      struct sql_thread *thd = pthread_getspecific(query_info_key);
+      bdb_state_type *bdb_state = thedb->bdb_env;
+      unsigned int savedlid = 0;
+      int bdberr = 0;
+      tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+                                             thd->clnt->dbtran.cursor_tran,
+                                             &savedlid, &bdberr);
+      if( tran==NULL ){
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
+      }
+      dbAlias = fdb_get_alias(tran, &zName);
+      if( tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
+                                                      &savedlid, &bdberr)!=0 ){
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+               __func__, bdberr);
+        abort();
+      }
+    }
     zDatabase = dbAlias;
     if( zDatabase ){
       goto retry_alias;
