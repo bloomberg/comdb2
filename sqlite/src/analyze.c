@@ -2441,6 +2441,7 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   }else{
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
+    void *tran = 0;
     unsigned int savedlid = 0;
     int bdberr = 0;
     if( thd && thd->clnt ){
