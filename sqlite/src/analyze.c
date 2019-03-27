@@ -2436,10 +2436,11 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* AZ: put disabler loader here */
   void get_disable_skipscan_all(void *tran);
-  {
+  if( db->tran ){
+    get_disable_skipscan_all(db->tran);
+  }else{
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    void *tran = 0;
     unsigned int savedlid = 0;
     int bdberr = 0;
     if( thd && thd->clnt ){
