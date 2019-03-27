@@ -61,7 +61,7 @@ static void get_sp_versions(sqlite3 *db, systbl_sps_cursor *c) {
   char *sp = c->ppProc[c->iProc];
   char **cvers;
   int scnt, ccnt, bdberr;
-  bdb_get_lua_highest(db->tran, sp, &scnt, INT_MAX, &bdberr);
+  bdb_get_lua_highest(0, sp, &scnt, INT_MAX, &bdberr);
   bdb_get_all_for_versioned_sp(sp, &cvers, &ccnt);
   c->pVer = sqlite3_malloc(sizeof(spversion) * (scnt + ccnt));
   int i;
@@ -78,7 +78,7 @@ static void get_sp_versions(sqlite3 *db, systbl_sps_cursor *c) {
   c->defaultVer.sVer = 0;
   c->defaultVer.cVer = NULL;
   int rc;
-  if((rc = bdb_get_sp_get_default_version(db->tran, sp, &bdberr)) > 0) {
+  if((rc = bdb_get_sp_get_default_version(0, sp, &bdberr)) > 0) {
     c->defaultVer.sVer = rc;
   } else {
     bdb_get_default_versioned_sp(sp, &c->defaultVer.cVer);

@@ -709,7 +709,7 @@ static int sqlite3Prepare(
   int wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
   int isPrepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
   if( isPrepareOnly ) db->flags |= SQLITE_PrepareOnly;
-  db->pParse = &sParse;
+  if( db->nPrepare++==0 ) db->pParse = &sParse;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
@@ -883,7 +883,7 @@ end_prepare:
     }
     sParse.tran = 0;
   }
-  db->pParse = 0;
+  if( --db->nPrepare==0 ) db->pParse = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }

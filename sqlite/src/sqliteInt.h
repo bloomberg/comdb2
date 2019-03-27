@@ -1569,6 +1569,7 @@ struct sqlite3 {
   sqlite3_userauth auth;        /* User authentication information */
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int nPrepare;                 /* Number of prepare nesting levels. */
   Parse *pParse;                /* The currently active parse, if any. */
   u8 isExpert;                  /* Analyze using SQLite expert */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
