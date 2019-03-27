@@ -2944,7 +2944,7 @@ static void reset_sp(SP sp)
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
-    if (sp->tran && sp->began_tran) {
+    if ((sp->tran != NULL) && sp->began_tran) {
         int bdberr = 0;
         if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                                 &sp->savedlid, &bdberr) != 0) {
