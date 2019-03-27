@@ -2429,6 +2429,12 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   char *zSql;
   int rc = SQLITE_OK;
   Schema *pSchema = db->aDb[iDb].pSchema;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  bdb_state_type *bdb_state = 0;
+  void *tran = 0;
+  unsigned int savedlid = 0;
+  int bdberr = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   assert( iDb>=0 && iDb<db->nDb );
   assert( db->aDb[iDb].pBt!=0 );
@@ -2439,12 +2445,11 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   if( db->tran ){
     get_disable_skipscan_all(db->tran);
   }else{
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    void *tran = 0;
     unsigned int savedlid = 0;
     int bdberr = 0;
     if( thd && thd->clnt ){
+      bdb_state = thedb->bdb_env;
       tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
                                              thd->clnt->dbtran.cursor_tran,
                                              &savedlid, &bdberr);
@@ -2456,13 +2461,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
       }
     }
     get_disable_skipscan_all(tran);
-    if( tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
-                                                    &savedlid, &bdberr)!=0 ){
-      logmsg(LOGMSG_FATAL,
-             "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
-             __func__, bdberr);
-      abort();
-    }
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Clear any prior statistics */
@@ -2505,7 +2503,8 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   sInfo.db = db;
   sInfo.zDatabase = db->aDb[iDb].zDbSName;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( sqlite3FindTableByAnalysisLoad(db, "sqlite_stat1", sInfo.zDatabase)!=0 ){
+  if( sqlite3FindTableByAnalysisLoad(db, db->tran ? db->tran : tran,
+                                     "sqlite_stat1", sInfo.zDatabase)!=0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( sqlite3FindTable(db, "sqlite_stat1", sInfo.zDatabase)!=0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2522,6 +2521,15 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
       sqlite3DbFree(db, zSql);
     }
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( tran && bdb_restore_tran_lockerid_and_abort(bdb_state, tran,
+                                                  &savedlid, &bdberr)!=0 ){
+    logmsg(LOGMSG_FATAL,
+           "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+           __func__, bdberr);
+    abort();
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Set appropriate defaults on all indexes not in the sqlite_stat1 table */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );

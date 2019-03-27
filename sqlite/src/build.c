@@ -385,6 +385,7 @@ int sqlite3UserAuthTable(const char *zTable){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static Table *sqlite3FindTable_int(
   sqlite3 *db,
+  void *tran,
   const char *zName,
   const char *czDatabase,
   int create,
@@ -471,7 +472,7 @@ retry_after_fdb_creation:
     /* NOTE: zDatabase is NOT null if we already looked up a foreign
     ** db and retried, so this code doesn't run twice
     */
-    dbAlias = fdb_get_alias(db->tran, &zName);
+    dbAlias = fdb_get_alias(tran, &zName);
     zDatabase = dbAlias;
     if( zDatabase ){
       goto retry_alias;
@@ -578,7 +579,7 @@ done:
 ** See also sqlite3LocateTable().
 */
 Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
-   return sqlite3FindTable_int(db, zName, zDatabase, 1, 0);
+   return sqlite3FindTable_int(db, 0, zName, zDatabase, 1, 0);
 }
 
 /*
@@ -590,7 +591,7 @@ Table *sqlite3FindTableCheckOnly(
   const char *zName,
   const char *zDatabase
 ){
-   return sqlite3FindTable_int(db, zName, zDatabase, 0, 0);
+   return sqlite3FindTable_int(db, 0, zName, zDatabase, 0, 0);
 }
 
 /*
@@ -600,10 +601,11 @@ Table *sqlite3FindTableCheckOnly(
 **/
 Table *sqlite3FindTableByAnalysisLoad(
   sqlite3 *db,
+  void *tran,
   const char *zName,
   const char *zDatabase
 ){
-  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1);
+  return sqlite3FindTable_int(db, tran, zName, zDatabase, 1, 1);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
