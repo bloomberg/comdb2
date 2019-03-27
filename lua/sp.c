@@ -6514,8 +6514,10 @@ void *exec_trigger(trigger_reg_t *reg)
                    sp->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
+        reset_sp_tran(clnt.sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
+    reset_sp_tran(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
@@ -6542,6 +6544,7 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);
+    reset_sp_tran(clnt->sp);
     put_curtran(thedb->bdb_env, clnt);
 }
 
@@ -6550,6 +6553,7 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
         reset_sp(clnt->sp);
+        reset_sp_tran(clnt->sp);
     }
     return rc;
 }
