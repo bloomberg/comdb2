@@ -2008,10 +2008,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
 #endif
 
     if (comdb2AuthenticateUserOp(pParse))
-    {
-        setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
         return;
-    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -2278,7 +2275,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
 #endif
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = NULL;
@@ -2343,7 +2340,7 @@ static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
 #endif
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
 
     char name[MAXTABLELEN];
     char *query;
