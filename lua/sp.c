@@ -164,6 +164,7 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
+static void reset_sp_tran(SP);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -2944,6 +2945,10 @@ static void reset_sp(SP sp)
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
+}
+
+static void reset_sp_tran(SP sp)
+{
     if ((sp->tran != NULL) && sp->began_tran) {
         int bdberr = 0;
         if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
@@ -5457,13 +5462,11 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
     apply_clnt_override(clnt, sp);
 }
 
-static int setup_sp(char *spname, struct sqlthdstate *thd,
-                    struct sqlclntstate *clnt,
-                    int *new_vm, // out param
-                    char **err)  // out param
+static int setup_sp_tran(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
     if (sp) {
+        if (sp->tran) return;
         sp->tran = bdb_tran_get_handle(thedb->bdb_env);
         if (sp->tran != NULL) {
             sp->began_tran = 0;
@@ -5481,6 +5484,16 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
                 abort();
             }
         }
+    }
+}
+
+static int setup_sp(char *spname, struct sqlthdstate *thd,
+                    struct sqlclntstate *clnt,
+                    int *new_vm, // out param
+                    char **err)  // out param
+{
+    SP sp = clnt->sp;
+    if (sp) {
         if (clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug ||
             sp->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
@@ -5489,6 +5502,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             sp = NULL;
         }
     }
+    setup_sp_tran(clnt);
     if (sp && sp->lua) {
         // Have lua vm
         if (strcmp(spname, clnt->spname) == 0) {
