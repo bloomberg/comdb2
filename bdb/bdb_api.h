@@ -621,6 +621,9 @@ unsigned long long bdb_normalise_genid(bdb_state_type *bdb_state,
 #define BDB_TRAN_RECOVERY 0x00000001
 #define BDB_TRAN_NOLOG 0x00000002
 
+/* return existing tran handle, if any */
+tran_type *bdb_tran_get_handle(bdb_state_type *bdb_state);
+
 /* return a new tran handle, begin a transaction */
 tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle,
                                 tran_type *parent_tran, int *bdberr,

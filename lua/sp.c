@@ -2944,7 +2944,7 @@ static void reset_sp(SP sp)
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
-    if (sp->tran) {
+    if (sp->tran && sp->began_tran) {
         int bdberr = 0;
         if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                                 &sp->savedlid, &bdberr) != 0) {
@@ -2953,8 +2953,9 @@ static void reset_sp(SP sp)
                    __func__, bdberr);
             abort();
         }
-        sp->tran = 0;
     }
+    sp->tran = 0;
+    sp->began_tran = 0;
 }
 
 static void free_spversion(SP sp)
@@ -5463,15 +5464,22 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 {
     SP sp = clnt->sp;
     if (sp) {
-        int bdberr = 0;
-        sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
-                                                   clnt->dbtran.cursor_tran,
-                                                   &sp->savedlid, &bdberr);
-        if (sp->tran == NULL) {
-            logmsg(LOGMSG_FATAL,
-                   "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-                   __func__, bdberr);
-            abort();
+        sp->tran = bdb_tran_get_handle(thedb->bdb_env);
+        if (sp->tran != NULL) {
+            sp->began_tran = 0;
+        } else {
+            int bdberr = 0;
+            sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
+                                                       clnt->dbtran.cursor_tran,
+                                                       &sp->savedlid, &bdberr);
+            if (sp->tran != NULL) {
+                sp->began_tran = 1;
+            } else {
+                logmsg(LOGMSG_FATAL,
+                       "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+                       __func__, bdberr);
+                abort();
+            }
         }
         if (clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug ||

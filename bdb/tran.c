@@ -724,6 +724,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
             *bdberr = BDBERR_READONLY;
             myfree(tran);
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
             return NULL;
         }
 
@@ -1116,6 +1117,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->threadid = pthread_self();
 
     tran->usrptr = 0;
+    int setThdTran = 0; /* was tran saved into thread local data? */
 
     /* comdb2 coding style:  "if parent" means "i am a child" */
     if (parent) {
@@ -1132,6 +1134,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
         tran->master = 1;
 
         Pthread_setspecific(bdb_state->seqnum_info->key, tran);
+        setThdTran = 1;
 
         /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
@@ -1172,6 +1175,10 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
             myfree(tran);
+            if (setThdTran){
+                Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+                setThdTran = 0;
+            }
             return NULL;
         } else {
             if (!parent) {
@@ -2130,6 +2137,11 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         bdb_state, tran, seqnum, bdberr, getseqnum, out_txnsize, blkseq, blklen,
         blkkey, blkkeylen);
     return rc;
+}
+
+tran_type *bdb_tran_get_handle(bdb_state_type *bdb_state)
+{
+    return pthread_getspecific(bdb_state->seqnum_info->key);
 }
 
 int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state)
