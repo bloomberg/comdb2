@@ -5462,7 +5462,7 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
     apply_clnt_override(clnt, sp);
 }
 
-static int setup_sp_tran(struct sqlclntstate *clnt)
+static void setup_sp_tran(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
     if (sp) {
