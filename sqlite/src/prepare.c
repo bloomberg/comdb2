@@ -709,6 +709,7 @@ static int sqlite3Prepare(
   int wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
   int isPrepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
   if( isPrepareOnly ) db->flags |= SQLITE_PrepareOnly;
+  db->pParse = &sParse;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
@@ -719,7 +720,7 @@ static int sqlite3Prepare(
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if( thd && thd->clnt ){
       bdb_state = thedb->bdb_env;
-      db->tran = sParse.tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
+      sParse.tran = bdb_tran_begin_from_cursor_tran(bdb_state, NULL,
                                                  thd->clnt->dbtran.cursor_tran,
                                                  &savedlid, &bdberr);
       if( !sParse.tran ){
@@ -872,7 +873,6 @@ end_prepare:
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
-  db->tran = 0;
   if( sParse.tran ){
     if( bdb_restore_tran_lockerid_and_abort(bdb_state, sParse.tran, &savedlid,
                                             &bdberr)!=0 ){
@@ -883,6 +883,7 @@ end_prepare:
     }
     sParse.tran = 0;
   }
+  db->pParse = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }

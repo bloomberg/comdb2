@@ -2442,8 +2442,8 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* AZ: put disabler loader here */
   void get_disable_skipscan_all(void *tran);
-  if( db->tran ){
-    get_disable_skipscan_all(db->tran);
+  if( db->pParse && db->pParse->tran ){
+    get_disable_skipscan_all(db->pParse->tran);
   }else{
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     unsigned int savedlid = 0;
@@ -2503,8 +2503,9 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   sInfo.db = db;
   sInfo.zDatabase = db->aDb[iDb].zDbSName;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( sqlite3FindTableByAnalysisLoad(db, db->tran ? db->tran : tran,
-                                     "sqlite_stat1", sInfo.zDatabase)!=0 ){
+  if( sqlite3FindTableByAnalysisLoad(db, db->pParse && db->pParse->tran ?
+                                     db->pParse->tran : tran, "sqlite_stat1",
+                                     sInfo.zDatabase)!=0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( sqlite3FindTable(db, "sqlite_stat1", sInfo.zDatabase)!=0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

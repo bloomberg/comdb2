@@ -474,6 +474,8 @@ retry_after_fdb_creation:
     */
     if( tran ){
       dbAlias = fdb_get_alias(tran, &zName);
+    }else if( db->pParse && db->pParse->tran ){
+      dbAlias = fdb_get_alias(db->pParse->tran, &zName);
     }else{
       struct sql_thread *thd = pthread_getspecific(query_info_key);
       bdb_state_type *bdb_state = thedb->bdb_env;
