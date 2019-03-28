@@ -5564,6 +5564,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             rdlock_schema_lk();
             locked = 1;
         }
+        setup_sp_tran(clnt);
         assert( sp->tran!=NULL );
         sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
         sp->lua_version = gbl_lua_version;
