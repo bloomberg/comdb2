@@ -1708,6 +1708,23 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
     return src;
 }
 
+static void setup_sp_tran(struct sqlclntstate *clnt)
+{
+    SP sp = clnt->sp;
+    if (!sp || sp->tran) return;
+    int bdberr = 0;
+    assert( sp->tran==NULL );
+    sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
+                                               clnt->dbtran.cursor_tran,
+                                               &sp->savedlid, &bdberr);
+    if (sp->tran == NULL) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
+    }
+}
+
 static int load_debugging_information(struct stored_proc *sp, char **err)
 {
     int i, rc = 0;
@@ -5464,23 +5481,6 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
         }
     }
     apply_clnt_override(clnt, sp);
-}
-
-static void setup_sp_tran(struct sqlclntstate *clnt)
-{
-    SP sp = clnt->sp;
-    if (!sp || sp->tran) return;
-    int bdberr = 0;
-    assert( sp->tran==NULL );
-    sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
-                                               clnt->dbtran.cursor_tran,
-                                               &sp->savedlid, &bdberr);
-    if (sp->tran == NULL) {
-        logmsg(LOGMSG_FATAL,
-               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-               __func__, bdberr);
-        abort();
-    }
 }
 
 static int setup_sp(char *spname, struct sqlthdstate *thd,
