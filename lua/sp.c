@@ -1738,8 +1738,8 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
     enable_global_variables(sp->lua);
 
     setup_sp_tran(sp->clnt);
-    assert( sp->tran!=NULL );
     sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
+    reset_sp_tran(sp);
     if (sp_source) {
         source_size = strlen(sp_source);
     } else {
@@ -4242,10 +4242,11 @@ static int db_sp(Lua L)
     }
     SP sp = getsp(L);
     char *err = NULL;
-    setup_sp_tran(sp->clnt);
     rdlock_schema_lk();
     assert( sp->tran!=NULL );
+    setup_sp_tran(sp->clnt);
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
+    reset_sp_tran(sp);
     unlock_schema_lk();
     free(spversion.version_str);
     if (src == NULL) {
@@ -5510,8 +5511,8 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             // Have src for some version_num. Check if num is default.
             int bdberr;
             setup_sp_tran(clnt);
-            assert( sp->tran!=NULL );
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
+            reset_sp_tran(sp);
             if (num != sp->spversion.version_num) {
                 free_spversion(sp);
             }
@@ -5565,8 +5566,8 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             locked = 1;
         }
         setup_sp_tran(clnt);
-        assert( sp->tran!=NULL );
         sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
+        reset_sp_tran(sp);
         sp->lua_version = gbl_lua_version;
         if (locked)
             unlock_schema_lk();
@@ -6513,10 +6514,8 @@ void *exec_trigger(trigger_reg_t *reg)
                    sp->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
-        reset_sp_tran(clnt.sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
-    reset_sp_tran(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
@@ -6543,7 +6542,6 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);
-    reset_sp_tran(clnt->sp);
     put_curtran(thedb->bdb_env, clnt);
 }
 
@@ -6552,7 +6550,6 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
         reset_sp(clnt->sp);
-        reset_sp_tran(clnt->sp);
     }
     return rc;
 }
