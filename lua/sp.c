@@ -1720,6 +1720,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
 
     enable_global_variables(sp->lua);
 
+    assert( sp->tran!=NULL );
     sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
     if (sp_source) {
         source_size = strlen(sp_source);
@@ -4224,6 +4225,7 @@ static int db_sp(Lua L)
     SP sp = getsp(L);
     char *err = NULL;
     rdlock_schema_lk();
+    assert( sp->tran!=NULL );
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
     unlock_schema_lk();
     free(spversion.version_str);
@@ -5514,6 +5516,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
+            assert( sp->tran!=NULL );
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
             if (num != sp->spversion.version_num) {
                 free_spversion(sp);
@@ -5567,6 +5570,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             rdlock_schema_lk();
             locked = 1;
         }
+        assert( sp->tran!=NULL );
         sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
         sp->lua_version = gbl_lua_version;
         if (locked)
