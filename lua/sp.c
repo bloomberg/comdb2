@@ -2950,7 +2950,7 @@ static void reset_sp(SP sp)
 
 static void reset_sp_tran(SP sp)
 {
-    if ((sp->tran != NULL) && sp->began_tran) {
+    if (sp->tran != NULL) {
         int bdberr = 0;
         if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                                 &sp->savedlid, &bdberr) != 0) {
@@ -2959,9 +2959,9 @@ static void reset_sp_tran(SP sp)
                    __func__, bdberr);
             abort();
         }
+        sp->savedlid = 0;
+        sp->tran = NULL;
     }
-    sp->tran = 0;
-    sp->began_tran = 0;
 }
 
 static void free_spversion(SP sp)
@@ -5467,25 +5467,17 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
 static void setup_sp_tran(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
-    if (sp) {
-        if (sp->tran) return;
-        sp->tran = bdb_tran_get_handle(thedb->bdb_env);
-        if (sp->tran != NULL) {
-            sp->began_tran = 0;
-        } else {
-            int bdberr = 0;
-            sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
-                                                       clnt->dbtran.cursor_tran,
-                                                       &sp->savedlid, &bdberr);
-            if (sp->tran != NULL) {
-                sp->began_tran = 1;
-            } else {
-                logmsg(LOGMSG_FATAL,
-                       "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-                       __func__, bdberr);
-                abort();
-            }
-        }
+    if (!sp || sp->tran) return;
+    int bdberr = 0;
+    assert( sp->tran==NULL );
+    sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
+                                               clnt->dbtran.cursor_tran,
+                                               &sp->savedlid, &bdberr);
+    if (sp->tran == NULL) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
     }
 }
 
