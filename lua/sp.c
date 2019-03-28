@@ -1720,6 +1720,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
 
     enable_global_variables(sp->lua);
 
+    setup_sp_tran(sp->clnt);
     assert( sp->tran!=NULL );
     sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
     if (sp_source) {
@@ -4224,6 +4225,7 @@ static int db_sp(Lua L)
     }
     SP sp = getsp(L);
     char *err = NULL;
+    setup_sp_tran(sp->clnt);
     rdlock_schema_lk();
     assert( sp->tran!=NULL );
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
@@ -5496,7 +5498,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             sp = NULL;
         }
     }
-    setup_sp_tran(clnt);
     if (sp && sp->lua) {
         // Have lua vm
         if (strcmp(spname, clnt->spname) == 0) {
@@ -5508,6 +5509,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
+            setup_sp_tran(clnt);
             assert( sp->tran!=NULL );
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
             if (num != sp->spversion.version_num) {
