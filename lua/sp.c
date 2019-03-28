@@ -164,7 +164,6 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
-static void reset_sp_tran(SP);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -1711,7 +1710,7 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
 static void setup_sp_tran(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
-    if (!sp || sp->tran) return;
+    if (!sp || (sp->tran != NULL)) return;
     int bdberr = 0;
     assert( sp->tran==NULL );
     sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
@@ -1723,6 +1722,22 @@ static void setup_sp_tran(struct sqlclntstate *clnt)
                __func__, bdberr);
         abort();
     }
+}
+
+static void reset_sp_tran(SP sp)
+{
+    if (!sp || (sp->tran == NULL)) return;
+    int bdberr = 0;
+    assert( sp->tran!=NULL );
+    if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
+                                            &sp->savedlid, &bdberr) != 0) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+               __func__, bdberr);
+        abort();
+    }
+    sp->savedlid = 0;
+    sp->tran = NULL;
 }
 
 static int load_debugging_information(struct stored_proc *sp, char **err)
@@ -2964,22 +2979,6 @@ static void reset_sp(SP sp)
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
-}
-
-static void reset_sp_tran(SP sp)
-{
-    if (sp->tran != NULL) {
-        int bdberr = 0;
-        if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
-                                                &sp->savedlid, &bdberr) != 0) {
-            logmsg(LOGMSG_FATAL,
-                   "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
-                   __func__, bdberr);
-            abort();
-        }
-        sp->savedlid = 0;
-        sp->tran = NULL;
-    }
 }
 
 static void free_spversion(SP sp)
