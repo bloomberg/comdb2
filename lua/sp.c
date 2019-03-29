@@ -4242,7 +4242,6 @@ static int db_sp(Lua L)
     SP sp = getsp(L);
     char *err = NULL;
     rdlock_schema_lk();
-    assert( sp->tran!=NULL );
     setup_sp_tran(sp->clnt);
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
     reset_sp_tran(sp);
