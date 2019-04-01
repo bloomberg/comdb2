@@ -6,7 +6,6 @@
  */
 
 #include "db_config.h"
-#define DEBUG_LOCKS
 
 #ifndef lint
 static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp $";
