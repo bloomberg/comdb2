@@ -865,7 +865,7 @@ dokill:
 			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
 #ifdef DEBUG_LOCKS
-            __lock_dump_active_locks(dbenv, stderr);
+			__lock_dump_active_locks(dbenv, stderr);
 #endif
 		}
 

@@ -1019,9 +1019,9 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	logmsgf(LOGMSG_USER, fp, "%-10s %4lu %-7s ",
 	        mode, (u_long)lp->refcount, status);
 #else
-    DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, lp->holderp->master_locker);
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, lp->holderp->master_locker);
 	logmsgf(LOGMSG_USER, fp, "0x%lx %8x %8x %-10s %4lu %-7s ",
-	        lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
+			lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
 #endif
 
 	lockobj = lp->lockobj;
@@ -1302,8 +1302,8 @@ berkdb_dump_lockers_summary(DB_ENV *dbenv)
 
 // PUBLIC: int __lock_dump_active_locks __P((DB_ENV *, FILE *));
 int __lock_dump_active_locks(
-	DB_ENV *dbenv,
-	FILE *fp)
+		DB_ENV *dbenv,
+		FILE *fp)
 {
-    return __lock_dump_region_int(dbenv, "l", fp, 1 /*just_active_locks*/);
+	return __lock_dump_region_int(dbenv, "l", fp, 1 /*just_active_locks*/);
 }

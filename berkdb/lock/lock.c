@@ -813,12 +813,12 @@ init_latches(dbenv, lt)
 int __get_lockerid_from_lock(DB_ENV *dbenv, u_int32_t locker)
 {
 	DB_LOCKTAB *lt = dbenv->lk_handle;
-    if (!lt)
-        return 0;
+	if (!lt)
+		return 0;
 	struct __db_lock *lp = (struct __db_lock *)R_ADDR(&lt->reginfo, locker);
-    if (lp && lp->holderp)
-        return lp->holderp->id;
-    return 0;
+	if (lp && lp->holderp)
+		return lp->holderp->id;
+	return 0;
 }
 
 static inline int
@@ -2084,7 +2084,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 
 	threadid[idx] = pthread_self();
 	snprintf(lkbuffer[idx], LKBUFSZ, " 0x%"PRIx64" get lid %x %s size=%d ",
-	    pthread_self(), locker, desc, size);
+			pthread_self(), locker, desc, size);
 	logmsg(LOGMSG_ERROR, "AZ __lock_get_internal_int: 0x%"PRIx64" get lid %x %s size=%d\n",
 	       pthread_self(), locker, desc, size);
 #endif
@@ -2144,11 +2144,11 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	lpartition = sh_locker->partition;
 
 #ifdef DEBUG_LOCKS
-    DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
-    logmsg(LOGMSG_ERROR, "0x%lx Get (%c) locker lock %x (m %x)\n",
-           pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
-           mlockerp->id);
-    cheap_stack_trace();
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+	logmsg(LOGMSG_ERROR, "0x%lx Get (%c) locker lock %x (m %x)\n",
+			pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			mlockerp->id);
+	cheap_stack_trace();
 #endif
 
 	if (obj == NULL) {
@@ -2510,7 +2510,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		break;
 
 	case UPGRADE:
-        abort(); //we allow upgrade?
 upgrade:
 		if (wwrite != NULL) {
 			lp = wwrite;
@@ -3159,7 +3158,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
-
 #ifdef DEBUG_LOCKS
 	{
 		char desc[100];
@@ -3201,7 +3199,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		 * free list.
 		 */
 		(void)__lock_freelock(lt, lockp, lockp->holderp, DB_LOCK_FREE);
-		logmsg(LOGMSG_ERROR, "Someone removed this lock \n");
 		return (0);
 	}
 
@@ -3212,7 +3209,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 	if (!LF_ISSET(DB_LOCK_DOALL) && lockp->refcount > 1) {
 		lockp->refcount--;
-		logmsg(LOGMSG_ERROR, "Refcount-- \n");
 		return (0);
 	}
 
