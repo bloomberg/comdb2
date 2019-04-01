@@ -951,7 +951,7 @@ __lock_dump_object(lt, op, fp, just_active_locks)
 }
 
 /* XXX It's easier to diff against master & replicant locks if I don't print the lid */
-#define TRACE_DIFF
+#undef TRACE_DIFF
 
 
 /*
@@ -966,8 +966,8 @@ __lock_printheader(fp)
 	    "Mode",
 	    "Count", "Status", "----------------- Object ---------------");
 #else
-	logmsgf(LOGMSG_USER, fp, "%-8s %-10s%-4s %-7s %s\n",
-	    "Locker", "Mode",
+	logmsgf(LOGMSG_USER, fp, "%-14s %-8s %-8s %-10s%-4s %-7s %s\n",
+	    "TID", "MRLocker", "Locker", "Mode",
 	    "Count", "Status", "----------------- Object ---------------");
 #endif
 }
@@ -1019,8 +1019,9 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	logmsgf(LOGMSG_USER, fp, "%-10s %4lu %-7s ",
 	        mode, (u_long)lp->refcount, status);
 #else
-	logmsgf(LOGMSG_USER, fp, "%8lx %-10s %4lu %-7s ",
-	        (u_long)lp->holderp->id, mode, (u_long)lp->refcount, status);
+    DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, lp->holderp->master_locker);
+	logmsgf(LOGMSG_USER, fp, "0x%lx %8x %8x %-10s %4lu %-7s ",
+	        lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
 #endif
 
 	lockobj = lp->lockobj;
@@ -1299,3 +1300,10 @@ berkdb_dump_lockers_summary(DB_ENV *dbenv)
 	unlock_lockers(region);
 }
 
+// PUBLIC: int __lock_dump_active_locks __P((DB_ENV *, FILE *));
+int __lock_dump_active_locks(
+	DB_ENV *dbenv,
+	FILE *fp)
+{
+    return __lock_dump_region_int(dbenv, "l", fp, 1 /*just_active_locks*/);
+}

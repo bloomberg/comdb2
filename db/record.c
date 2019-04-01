@@ -666,7 +666,6 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *odv_dta = NULL;
     void *old_dta = NULL;
     char tag[MAXTAGLEN + 1];
-    int fndlen;
     int blobno;
     char lclprimkey[MAXKEYLEN];
     unsigned char lclnulls[64];
@@ -896,6 +895,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
      * will be placed into "old_record."
      * Handle deadlock correctly!
      */
+    int fndlen;
     if (primkey) {
         int fndrrn;
         char fndkey[MAXKEYLEN];

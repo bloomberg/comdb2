@@ -550,8 +550,19 @@ hash_backup:
 	if (!stack &&
 	    ((LF_ISSET(S_PARENT) && (u_int8_t)(stop + 1) >= h->level) ||
 		(LF_ISSET(S_WRITE) && h->level == LEAFLEVEL))) {
+
+#if 0
+        int __get_lockerid_from_lock(DB_ENV *dbenv, u_int32_t locker);
+        int lockerid = __get_lockerid_from_lock(dbp->dbenv, lock.off);
+		logmsg(LOGMSG_ERROR, "dumping before releasing locker lock %x \n", lockerid);
+        __lock_dump_active_locks(dbp->dbenv, stderr);
+#endif
 		(void)__memp_fput(mpf, h, 0);
 		(void)__LPUT(dbc, lock);
+#if 0
+		logmsg(LOGMSG_ERROR, "dumping after releasing locker lock %x \n", lockerid);
+        __lock_dump_active_locks(dbp->dbenv, stderr);
+#endif
 		INTERNAL_PTR_CHECK(cp == dbc->internal);
 		lock_mode = DB_LOCK_WRITE;
 		if ((ret = __db_lget(dbc, 0, pg, lock_mode, 0, &lock)) != 0)

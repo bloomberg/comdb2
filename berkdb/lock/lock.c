@@ -6,6 +6,7 @@
  */
 
 #include "db_config.h"
+#define DEBUG_LOCKS
 
 #ifndef lint
 static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp $";
@@ -809,6 +810,16 @@ init_latches(dbenv, lt)
 	return 0;
 }
 
+int __get_lockerid_from_lock(DB_ENV *dbenv, u_int32_t locker)
+{
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+    if (!lt)
+        return 0;
+	struct __db_lock *lp = (struct __db_lock *)R_ADDR(&lt->reginfo, locker);
+    if (lp && lp->holderp)
+        return lp->holderp->id;
+    return 0;
+}
 
 static inline int
 __find_latch_lockerid(DB_ENV *dbenv, u_int32_t locker,
@@ -2072,8 +2083,10 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	Pthread_mutex_unlock(&lblk);
 
 	threadid[idx] = pthread_self();
-	snprintf(lkbuffer[idx], LKBUFSZ, "%d get lid %x %s size=%d ",
+	snprintf(lkbuffer[idx], LKBUFSZ, " 0x%"PRIx64" get lid %x %s size=%d ",
 	    pthread_self(), locker, desc, size);
+	logmsg(LOGMSG_ERROR, "AZ __lock_get_internal_int: 0x%"PRIx64" get lid %x %s size=%d\n",
+	       pthread_self(), locker, desc, size);
 #endif
 
 	/* Check if locks have been globally turned off. */
@@ -2129,6 +2142,14 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		lock_locker_partition(region, sh_locker->partition);
 	}
 	lpartition = sh_locker->partition;
+
+#ifdef DEBUG_LOCKS
+    DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+    logmsg(LOGMSG_ERROR, "0x%lx Get (%c) locker lock %x (m %x)\n",
+           pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+           mlockerp->id);
+    cheap_stack_trace();
+#endif
 
 	if (obj == NULL) {
 		DB_ASSERT(LOCK_ISSET(*lock));
@@ -2489,6 +2510,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		break;
 
 	case UPGRADE:
+        abort(); //we allow upgrade?
 upgrade:
 		if (wwrite != NULL) {
 			lp = wwrite;
@@ -2997,6 +3019,13 @@ __lock_put_nolock(dbenv, lock, runp, flags)
 
 	lockp = (struct __db_lock *)R_ADDR(&lt->reginfo, lock->off);
 	sh_locker = lockp->holderp;
+#ifdef DEBUG_LOCKS
+    DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+    logmsg(LOGMSG_ERROR, "0x%lx Releasing locker (%c) lock %x (m %x)\n",
+           pthread_self(), lock->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+           mlockerp->id);
+    cheap_stack_trace();
+#endif
 
 	u_int32_t lpartition = sh_locker->partition;
 	u_int32_t partition = lock->partition;
@@ -3130,6 +3159,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
+
 #ifdef DEBUG_LOCKS
 	{
 		char desc[100];
@@ -3138,8 +3168,8 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		u_int8_t *lockdata;
 		DBT dbt = { 0 };
 		sh_obj = lockp->lockobj;
-		lockdata = &sh_obj->lockobj;
-		lockdata += sh_obj->lockobj.off;
+		lockdata = (u_int8_t*)&sh_obj->lockobj;
+		//invalid: lockdata += sh_obj->lockobj.off;
 
 		dbt.data = lockdata;
 		dbt.size = sh_obj->lockobj.size;
@@ -3152,8 +3182,10 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		Pthread_mutex_unlock(&lblk);
 
 		threadid[idx] = pthread_self();
-		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
-		    pthread_self(), desc, sh_obj->lockobj.size);
+		snprintf(lkbuffer[idx], LKBUFSZ, "0x%"PRIx64" put %s size=%d",
+				pthread_self(), desc, sh_obj->lockobj.size);
+		logmsg(LOGMSG_ERROR, "AZ __lock_put_internal: 0x%"PRIx64" put %s size=%d\n",
+		       pthread_self(), desc, sh_obj->lockobj.size);
 	}
 #endif
 
@@ -3169,6 +3201,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		 * free list.
 		 */
 		(void)__lock_freelock(lt, lockp, lockp->holderp, DB_LOCK_FREE);
+		logmsg(LOGMSG_ERROR, "Someone removed this lock \n");
 		return (0);
 	}
 
@@ -3179,6 +3212,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 	if (!LF_ISSET(DB_LOCK_DOALL) && lockp->refcount > 1) {
 		lockp->refcount--;
+		logmsg(LOGMSG_ERROR, "Refcount-- \n");
 		return (0);
 	}
 

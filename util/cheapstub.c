@@ -75,11 +75,12 @@ static void cheapstub(FILE *f)
         if (! (*name)) continue;
         ++name;
         int j = 0;
-        while (name[j] && name[j++] != '+');
+        while (name[j] && name[j] != ')' && name[j] != '+') j++;
+        if (j == 0) continue;
         name[j] = '\0';
         if (strcmp(name, "comdb2_linux_cheap_stack_trace") == 0) continue;
         if (strcmp(name, "cheap_stack_trace") == 0) continue;
-        logmsgf(LOGMSG_USER, f, "0x%x(%u): %s\n", tid, tid, name);
+        logmsgf(LOGMSG_USER, f, "0x%lx: %s\n", tid, name);
     }
     free(funcs);
 #endif
