@@ -76,6 +76,7 @@ extern int gbl_loghist_verbose;
 extern int gbl_master_retry_poll_ms;
 extern int gbl_master_swing_osql_verbose;
 extern int gbl_master_swing_sock_restart_sleep;
+extern int gbl_sql_prepare_sleep;
 extern int gbl_max_lua_instructions;
 extern int gbl_max_sqlcache;
 extern int __gbl_max_mpalloc_sleeptime;

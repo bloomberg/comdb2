@@ -164,6 +164,7 @@ extern int active_appsock_conns;
 int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
+int gbl_sql_prepare_sleep = -1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -3042,6 +3043,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 1;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
+        if (gbl_sql_prepare_sleep >= 0) usleep(gbl_sql_prepare_sleep * 1000);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
@@ -4282,6 +4284,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     sqlite3_stmt *stmt;
     const char *tail;
+    if (gbl_sql_prepare_sleep >= 0) usleep(gbl_sql_prepare_sleep * 1000);
     clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
                                             &tail);
     if (rc != SQLITE_OK) {
