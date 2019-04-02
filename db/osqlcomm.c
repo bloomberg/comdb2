@@ -5584,7 +5584,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_t poke;
+    osql_poke_t poke = {0};
     osql_poke_uuid_t pokeuuid;
     int found = 0;
     int rc = 0;
