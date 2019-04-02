@@ -367,14 +367,14 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d, tid=%lx \n", idmap[lid].id,
 		    idmap[lid].killme, lockerp->tid);
 
-        struct __db_lock *lp;
-        for (lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock); lp !=NULL;
+		struct __db_lock *lp;
+		for (lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock); lp !=NULL;
 				lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
 			__lock_printlock(lt, lp, 1, stdout);
 		}
 
 
-        //TODO: need to show all children
+		//TODO: need to show all children
 		// child = SH_LIST_FIRST(&lockerp->child_locker, __db_locker);
 
 		unlock_locker_partition(region, lockerp->partition);
