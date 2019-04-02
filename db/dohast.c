@@ -320,6 +320,11 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
     node->ncols = p->pEList->nExpr;
 
     if (!node->sql) {
+        if (node->params) {
+            if(node->params->params)
+                free(node->params->params);
+            free(node->params);
+        }
         free(node);
         node = NULL;
     }
@@ -337,6 +342,13 @@ static void node_free(dohsql_node_t **pnode, sqlite3 *db)
         node_free(&node->nodes[i], db);
     }
 
+    /* params */
+    if ((*pnode)->params) {
+        if ((*pnode)->params->params)
+            free((*pnode)->params->params);
+        free((*pnode)->params);
+    }
+    
     /* current node */
     if ((*pnode)->sql) {
         sqlite3_free((*pnode)->sql);
