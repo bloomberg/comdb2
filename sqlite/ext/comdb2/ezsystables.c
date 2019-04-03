@@ -98,18 +98,6 @@ static int systbl_best_index(
   return SQLITE_OK;
 }
 
-static int systbl_disconnect(sqlite3_vtab *pVtab){
-    ez_systable_vtab *vtab = (ez_systable_vtab *) pVtab;
-    struct systable *t = vtab->t;
-    for (int i = 0; i < t->nfields; i++)
-        free(t->fields[i].name);
-    free(t->fields);
-    free(t->name);
-    free(t);
-    free(pVtab);
-  return SQLITE_OK;
-}
-
 static int systbl_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     int rc;
     struct ez_systable_cursor *pCur = calloc(1, sizeof(struct ez_systable_cursor));
@@ -293,19 +281,35 @@ static int systbl_eof(sqlite3_vtab_cursor *cur){
     return pCur->rowid >= pCur->npoints;
 }
 
+static int systbl_disconnect(sqlite3_vtab *pVtab){
+    // SQLite still wants a disconnect.  We have some per-module
+    // state, but that gets freed in the module destructor, so
+    // this is a no-op.
+    return SQLITE_OK;
+}
+
 static const sqlite3_module systbl = {
     .xConnect = systbl_connect,
     .xBestIndex = systbl_best_index,
-    .xDisconnect = systbl_disconnect,
     .xOpen = systbl_open,
     .xClose = systbl_close,
     .xFilter = systbl_filter,
+    .xDisconnect = systbl_disconnect,
     .xNext = systbl_next,
     .xEof = systbl_eof,
     .xColumn = systbl_column,
     .xRowid = systbl_rowid,
     .access_flag = CDB2_ALLOW_USER,
 };
+
+void destroy_system_table(void *p) {
+    struct systable *t = p;
+    for (int i = 0; i < t->nfields; i++)
+        free(t->fields[i].name);
+    free(t->fields);
+    free(t->name);
+    free(t);
+}
 
 int create_system_table(sqlite3 *db, char *name, 
         int(*init_callback)(void **data, int *npoints), 
@@ -345,7 +349,7 @@ int create_system_table(sqlite3 *db, char *name,
         type = va_arg(args, int);
     }
 
-    int rc = sqlite3_create_module(db, name, &systbl, sys);
+    int rc = sqlite3_create_module_v2(db, name, &systbl, sys, destroy_system_table);
     if (rc) {
         fprintf(stderr, "create rc %d %s\n", rc, sqlite3_errmsg(db));
         return rc;
