@@ -762,7 +762,7 @@ int register_db_tunables(struct dbenv *tbl);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
-int run_init_plugins(void);
+int run_init_plugins(int phase);
 
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -3375,6 +3375,8 @@ static int init(int argc, char **argv)
     if (rc)
         return -1;
 
+    run_init_plugins(COMDB2_PLUGIN_INITIALIZER_PRE);
+
     /* open database environment, and all dbs */
     thedb = newdbenv(dbname, lrlname);
     if (thedb == 0)
@@ -5315,7 +5317,7 @@ int main(int argc, char **argv)
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
 
-    if (run_init_plugins()) {
+    if (run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST)) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
         exit(1);
     }
