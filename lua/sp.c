@@ -5531,6 +5531,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
+            assert(!new_tran);
             setup_sp_tran(clnt, sp);
             assert(sp->tran != NULL);
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
@@ -5565,15 +5566,22 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
                 return -1;
             } else if (new_tran) {
                 setup_sp_tran(clnt, sp);
+                new_tran = 0;
             }
         } else if ((sp = create_sp(err)) == NULL) {
             return -1;
         } else if (new_tran) {
             setup_sp_tran(clnt, sp);
+            new_tran = 0;
         }
         if (strcmp(spname, clnt->spname) == 0) {
             apply_clnt_override(clnt, sp);
         }
+    }
+
+    if (new_tran) {
+        setup_sp_tran(clnt, sp);
+        new_tran = 0;
     }
 
     clnt->sp = sp;
