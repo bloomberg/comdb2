@@ -756,6 +756,7 @@ static int dbconsumer_get(Lua L)
     SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
+    assert(sp->tran != NULL);
     if ((rc = dbconsumer_get_int(L, q, sp->tran)) > 0) return rc;
     return luaL_error(L, getsp(L)->error);
 }
@@ -768,6 +769,7 @@ static int dbconsumer_poll(Lua L)
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
+    assert(sp->tran != NULL);
     int rc = dbq_poll(L, q, sp->tran, delay);
     if (rc >= 0) {
         return rc;
@@ -1761,6 +1763,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
     enable_global_variables(sp->lua);
 
     setup_sp_tran(sp->clnt, sp);
+    assert(sp->tran != NULL);
     sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
     reset_sp_tran(sp);
     if (sp_source) {
@@ -4251,6 +4254,7 @@ static int db_sp(Lua L)
     char *err = NULL;
     rdlock_schema_lk();
     setup_sp_tran(sp->clnt, sp);
+    assert(sp->tran != NULL);
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
     reset_sp_tran(sp);
     unlock_schema_lk();
@@ -5519,6 +5523,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             // Have src for some version_num. Check if num is default.
             int bdberr;
             setup_sp_tran(clnt, sp);
+            assert(sp->tran != NULL);
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
             reset_sp_tran(sp);
             if (num != sp->spversion.version_num) {
@@ -5578,6 +5583,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             locked = 1;
         }
         setup_sp_tran(clnt, sp);
+        assert(sp->tran != NULL);
         sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
         reset_sp_tran(sp);
         sp->lua_version = gbl_lua_version;
