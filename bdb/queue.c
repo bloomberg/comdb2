@@ -1669,7 +1669,7 @@ lookagain:
 /* get the first item uncomsumed by this consumer number, AFTER the passed in
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
-int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor, void **fnd,
                   size_t *fnddtalen, size_t *fnddtaoff,
                   struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
@@ -1679,11 +1679,11 @@ int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
 
     BDB_READLOCK("bdb_queue_get");
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-        rc = bdb_queuedb_get(bdb_state, consumer, prevcursor, fnd, fnddtalen,
-                             fnddtaoff, fndcursor, epoch, bdberr);
+        rc = bdb_queuedb_get(bdb_state, tran, consumer, prevcursor, fnd,
+                             fnddtalen, fnddtaoff, fndcursor, epoch, bdberr);
     else
-        rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, fnd, fnddtalen,
-                               fnddtaoff, fndcursor, epoch, bdberr);
+        rc = bdb_queue_get_int(bdb_state, tran, consumer, prevcursor, fnd,
+                               fnddtalen, fnddtaoff, fndcursor, epoch, bdberr);
     BDB_RELLOCK();
 
     return rc;
