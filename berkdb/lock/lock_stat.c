@@ -1305,5 +1305,5 @@ int __lock_dump_active_locks(
 		DB_ENV *dbenv,
 		FILE *fp)
 {
-	return __lock_dump_region_int(dbenv, "o", fp, 1 /*just_active_locks*/);
+	return __lock_dump_region_int(dbenv, "l", fp, 1 /*just_active_locks*/);
 }
