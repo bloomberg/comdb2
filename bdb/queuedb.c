@@ -211,8 +211,8 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, tran_type *tran, int flags,
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
     /* this API is a little nutty... */
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tran->tid,
-                                           &dbcp, 0);
+    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0],
+                                           tran ? tran->tid : 0, &dbcp, 0);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -325,8 +325,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tran->tid,
-                                           &dbcp, 0);
+    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0],
+                                           tran ? tran->tid : 0, &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;
         goto done;
