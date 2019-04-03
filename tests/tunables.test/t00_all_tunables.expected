@@ -461,7 +461,7 @@
 (name='memptrickle.mint', description='Minimum number of threads in the pool.', type='INTEGER', value='1', read_only='N')
 (name='memptrickle.stacksz', description='Thread stack size.', type='INTEGER', value='1048576', read_only='N')
 (name='memptricklemsecs', description='Pause for this many ms between runs of the cache flusher.', type='INTEGER', value='1000', read_only='N')
-(name='memptricklepercent', description='Try to keep at least this percentage of the buffer pool clean. Write pages periodically until that's achieved.', type='INTEGER', value='99', read_only='N')
+(name='memptricklepercent', description='Try to keep at least this percentage of the buffer pool clean. Write pages periodically until that's achieved.', type='INTEGER', value='90', read_only='N')
 (name='memstat_autoreport_freq', description='Dump memory usage to trace files at this frequency (in secs). (Default: 180 secs)', type='INTEGER', value='300', read_only='Y')
 (name='mifid2_datetime_range', description='Extend datetime range to meet mifid2 requirements', type='BOOLEAN', value='ON', read_only='N')
 (name='min_aa_ops', description='Start analyze after this many operations.', type='INTEGER', value='100000', read_only='N')

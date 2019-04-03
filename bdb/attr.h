@@ -121,7 +121,7 @@ DEF_ATTR(DIRECTIO, directio, BOOLEAN, 1,
    evicted cheaply - if there are only dirty blocks, a read will cause
    a write, as the read has no cache blocks to use, and the eviction will
    result in a write. */
-DEF_ATTR(MEMPTRICKLEPERCENT, memptricklepercent, PERCENT, 99,
+DEF_ATTR(MEMPTRICKLEPERCENT, memptricklepercent, PERCENT, 90,
          "Try to keep at least this percentage of the buffer pool clean. Write "
          "pages periodically until that's achieved.")
 DEF_ATTR(MEMPTRICKLEMSECS, memptricklemsecs, MSECS, 1000,
