@@ -2486,8 +2486,8 @@ void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen);
 unsigned long long dbq_item_genid(const void *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr);
+int dbq_walk(struct ireq *iq, tran_type *tran, int flags,
+             dbq_walk_callback_t callback, void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
 int dbq_add_goose(struct ireq *iq, void *trans);

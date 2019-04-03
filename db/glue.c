@@ -5448,8 +5448,8 @@ int dbq_dump(struct dbtable *db, FILE *out)
     return 0;
 }
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr)
+int dbq_walk(struct ireq *iq, tran_type *tran, int flags,
+             dbq_walk_callback_t callback, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5464,7 +5464,7 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 
 retry:
     iq->gluewhere = "bdb_queue_walk";
-    rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
+    rc = bdb_queue_walk(bdb_handle, tran, flags, &lastitem,
                         (bdb_queue_walk_callback_t)callback, userptr, &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
