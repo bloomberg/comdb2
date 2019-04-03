@@ -6488,6 +6488,7 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         SP sp = clnt.sp;
         L = sp->lua;
+        assert(sp->tran != NULL);
         if ((args = dbconsumer_get_int(L, q, sp->tran)) < 0) {
             err = strdup(sp->error);
             goto bad;
