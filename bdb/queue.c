@@ -821,8 +821,8 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
-                              bbuint32_t *lastitem,
+static int bdb_queue_walk_int(bdb_state_type *bdb_state, tran_type *tran,
+                              int flags, bbuint32_t *lastitem,
                               bdb_queue_walk_callback_t callback, void *userptr,
                               int *bdberr)
 {
@@ -851,6 +851,8 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
             return -1;
         }
         tmptid = 1;
+    } else if (tran != NULL) {
+        tid = tran->tid;
     }
 
     rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tid,
@@ -1028,9 +1030,9 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
     return 0;
 }
 
-int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr)
+int bdb_queue_walk(bdb_state_type *bdb_state, tran_type *tran, int flags,
+                   bbuint32_t *lastitem, bdb_queue_walk_callback_t callback,
+                   void *userptr, int *bdberr)
 {
     int rc;
 
@@ -1039,11 +1041,11 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
      * worth of state,
      * caller needs to call it correctly. */
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, userptr,
-                              bdberr);
+        rc = bdb_queuedb_walk(bdb_state, tran, flags, lastitem, callback,
+                              userptr, bdberr);
     } else {
-        rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
-                                bdberr);
+        rc = bdb_queue_walk_int(bdb_state, tran, flags, lastitem, callback,
+                                userptr, bdberr);
     }
     BDB_RELLOCK();
 

@@ -2478,7 +2478,8 @@ int lite_get_keys_auxdb(int auxdb, struct ireq *iq, void *firstkey,
 int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen);
 int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd);
 int dbq_consume_genid(struct ireq *, void *trans, int consumer, const genid_t);
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
+int dbq_get(struct ireq *iq, void *trans, int consumer,
+            const struct dbq_cursor *prevcursor,
             void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
             struct dbq_cursor *fndcursor, unsigned int *epoch);
 void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen);

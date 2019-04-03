@@ -5371,7 +5371,8 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
+int dbq_get(struct ireq *iq, void *trans, int consumer,
+            const struct dbq_cursor *prevcursor,
             void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
             struct dbq_cursor *fndcursor, unsigned int *epoch)
 {

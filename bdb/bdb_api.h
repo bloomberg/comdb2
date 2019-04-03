@@ -930,9 +930,9 @@ enum {
 };
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
-int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr);
+int bdb_queue_walk(bdb_state_type *bdb_state, tran_type *tran, int flags,
+                   bbuint32_t *lastitem, bdb_queue_walk_callback_t callback,
+                   void *userptr, int *bdberr);
 
 /* debug aid - dump the entire queue */
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);

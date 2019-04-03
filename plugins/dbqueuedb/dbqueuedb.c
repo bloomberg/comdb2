@@ -358,7 +358,7 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
 
 /* Returns the genid of the event in the front of the queue. */
 static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
-                                                  int consumer)
+                                                  void *trans, int consumer)
 {
     unsigned long long genid;
     int rc;
@@ -388,8 +388,8 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
         goto skip;
     }
 
-    rc = dbq_get(&iq, consumer, NULL, (void **)&fnddta, &fnddtalen, &fnddtaoff,
-                 NULL, NULL);
+    rc = dbq_get(&iq, trans, consumer, NULL, (void **)&fnddta, &fnddtalen,
+                 &fnddtaoff, NULL, NULL);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
     } else if (rc != IX_NOTFND) {
@@ -421,7 +421,7 @@ static void dbqueue_check_inactivity(struct consumer *consumer)
     if (diff && diff >= intervals) {
         unsigned long long genid;
 
-        genid = dbqueue_get_front_genid(consumer->db, consumer->consumern);
+        genid = dbqueue_get_front_genid(consumer->db, 0, consumer->consumern);
 
         if (!genid)
             return;
@@ -681,7 +681,7 @@ static int flush_thread_active = 0;
 extern int 
 queue_consume(struct ireq *iq, const void *fnd, int consumern);
 
-static void queue_flush(struct dbtable *db, int consumern)
+static void queue_flush(struct dbtable *db, void *trans, int consumern)
 {
     struct ireq iq;
     int nflush = 0;
@@ -706,8 +706,8 @@ static void queue_flush(struct dbtable *db, int consumern)
             return;
         }
 
-        rc = dbq_get(&iq, consumern, NULL, (void **)&item, NULL, NULL, NULL,
-                     NULL);
+        rc = dbq_get(&iq, trans, consumern, NULL, (void **)&item, NULL, NULL,
+                     NULL, NULL);
 
         if (rc != 0) {
             if (rc != IX_NOTFND)

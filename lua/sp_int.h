@@ -46,6 +46,7 @@ struct stored_proc {
     struct sqlthdstate *thd;
     tran_type *tran;
     unsigned int savedlid;
+    int nTranRef;
     int bufsz;
     int num_instructions;
     int max_num_instructions;

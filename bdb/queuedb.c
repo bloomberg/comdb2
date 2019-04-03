@@ -197,9 +197,9 @@ done:
     return rc;
 }
 
-int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
-                     bdb_queue_walk_callback_t callback, void *userptr,
-                     int *bdberr)
+int bdb_queuedb_walk(bdb_state_type *bdb_state, tran_type *tran, int flags,
+                     void *lastitem, bdb_queue_walk_callback_t callback,
+                     void *userptr, int *bdberr)
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
@@ -211,7 +211,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
     /* this API is a little nutty... */
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
+    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tran->tid,
                                            &dbcp, 0);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
@@ -297,7 +297,7 @@ int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr)
     return 0;
 }
 
-int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                     const struct bdb_queue_cursor *prevcursor, void **fnd,
                     size_t *fnddtalen, size_t *fnddtaoff,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
@@ -325,7 +325,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
+    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tran->tid,
                                            &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;

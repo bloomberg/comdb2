@@ -661,10 +661,11 @@ static const int dbq_delay = 1000; // ms
 // Unlocks q->lock on return.
 // Returns  -2:stopped -1:error  0:IX_NOTFND  1:IX_FND
 // If IX_FND will push Lua table on stack.
-static int dbq_poll_int(Lua L, dbconsumer_t *q)
+static int dbq_poll_int(Lua L, dbconsumer_t *q, tran_type *tran)
 {
     struct qfound f = {0};
-    int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
+    int rc = dbq_get(&q->iq, tran, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff,
+                     NULL, NULL);
     Pthread_mutex_unlock(q->lock);
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
@@ -676,7 +677,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     return -1;
 }
 
-static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
+static int dbq_poll(Lua L, dbconsumer_t *q, tran_type *tran, int delay)
 {
     SP sp = getsp(L);
     while (1) {
@@ -686,7 +687,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         int rc;
         Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
-            rc = dbq_poll_int(L, q); // call will release q->lock
+            rc = dbq_poll_int(L, q, tran); // call will release q->lock
         } else {
             Pthread_mutex_unlock(q->lock);
             rc = -2;
@@ -715,10 +716,10 @@ again:  if (*q->open) {
 }
 
 // this call will block until queue item available
-static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
+static int dbconsumer_get_int(Lua L, dbconsumer_t *q, tran_type *tran)
 {
     int rc;
-    while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
+    while ((rc = dbq_poll(L, q, tran, dbq_delay)) == 0)
         ;
     return rc;
 }
@@ -750,22 +751,22 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
     }
 }
 
-static int dbconsumer_get(Lua L)
+static int dbconsumer_get(Lua L, tran_type *tran)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
-    if ((rc = dbconsumer_get_int(L, q)) > 0) return rc;
+    if ((rc = dbconsumer_get_int(L, q, tran)) > 0) return rc;
     return luaL_error(L, getsp(L)->error);
 }
 
-static int dbconsumer_poll(Lua L)
+static int dbconsumer_poll(Lua L, tran_type *tran)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     lua_Number arg = luaL_checknumber(L, 2);
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
-    int rc = dbq_poll(L, q, delay);
+    int rc = dbq_poll(L, q, tran, delay);
     if (rc >= 0) {
         return rc;
     }
@@ -1710,7 +1711,11 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
 static void setup_sp_tran(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
-    if (!sp || (sp->tran != NULL)) return;
+    if (!sp) return;
+    if (sp->tran != NULL) {
+      sp->nTranRef++;
+      return;
+    }
     int bdberr = 0;
     assert( sp->tran==NULL );
     sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
@@ -1722,11 +1727,13 @@ static void setup_sp_tran(struct sqlclntstate *clnt)
                __func__, bdberr);
         abort();
     }
+    sp->nTranRef++;
 }
 
 static void reset_sp_tran(SP sp)
 {
     if (!sp || (sp->tran == NULL)) return;
+    if (--sp->nTranRef > 0) return;
     int bdberr = 0;
     assert( sp->tran!=NULL );
     if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
@@ -6470,20 +6477,19 @@ void *exec_trigger(trigger_reg_t *reg)
         int rc, args = 0;
         char *err = NULL;
         get_curtran(thedb->bdb_env, &clnt);
+        setup_sp_tran(&clnt);
         if (setup_sp_for_trigger(reg, &err, &thd, &clnt, &q) != 0) {
             goto bad;
         }
         if (q == NULL) {
             goto bad;
         }
-        put_curtran(thedb->bdb_env, &clnt);
         SP sp = clnt.sp;
         L = sp->lua;
-        if ((args = dbconsumer_get_int(L, q)) < 0) {
+        if ((args = dbconsumer_get_int(L, q, sp->tran)) < 0) {
             err = strdup(sp->error);
             goto bad;
         }
-        get_curtran(thedb->bdb_env, &clnt);
         if ((rc = begin_sp(&clnt, &err)) != 0) {
             err = strdup(sp->error);
             goto bad;
@@ -6514,8 +6520,10 @@ void *exec_trigger(trigger_reg_t *reg)
                    sp->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
+        reset_sp_tran(&clnt);
         put_curtran(thedb->bdb_env, &clnt);
     }
+    reset_sp_tran(&clnt);
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
