@@ -1226,7 +1226,8 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
     Pthread_mutex_unlock(&mutex);
 }
 
-static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,
+static int bdb_queue_get_int(bdb_state_type *bdb_state, tran_type *tran,
+                             int consumer,
                              const struct bdb_queue_cursor *prevcursor,
                              void **fnd, size_t *fnddtalen, size_t *fnddtaoff,
                              struct bdb_queue_cursor *fndcursor,
