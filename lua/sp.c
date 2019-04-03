@@ -756,8 +756,13 @@ static int dbconsumer_get(Lua L)
     SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
+    setup_sp_tran(sp->clnt, sp);
     assert(sp->tran != NULL);
-    if ((rc = dbconsumer_get_int(L, q, sp->tran)) > 0) return rc;
+    if ((rc = dbconsumer_get_int(L, q, sp->tran)) > 0) {
+        reset_sp_tran(sp);
+        return rc;
+    }
+    reset_sp_tran(sp);
     return luaL_error(L, getsp(L)->error);
 }
 
@@ -769,11 +774,14 @@ static int dbconsumer_poll(Lua L)
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
+    setup_sp_tran(sp->clnt, sp);
     assert(sp->tran != NULL);
     int rc = dbq_poll(L, q, sp->tran, delay);
     if (rc >= 0) {
+        reset_sp_tran(sp);
         return rc;
     }
+    reset_sp_tran(sp);
     return luaL_error(L, getsp(L)->error);
 }
 
