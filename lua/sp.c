@@ -484,6 +484,44 @@ static void ping(Lua L)
     sp->pingpong = 1;
 }
 
+static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
+{
+    if (!sp) return;
+    if (sp->tran != NULL) {
+      sp->nTranRef++;
+      return;
+    }
+    int bdberr = 0;
+    assert( sp->tran==NULL );
+    sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
+                                               clnt->dbtran.cursor_tran,
+                                               &sp->savedlid, &bdberr);
+    if (sp->tran == NULL) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
+               __func__, bdberr);
+        abort();
+    }
+    sp->nTranRef++;
+}
+
+static void reset_sp_tran(SP sp)
+{
+    if (!sp || (sp->tran == NULL)) return;
+    if (--sp->nTranRef > 0) return;
+    int bdberr = 0;
+    assert( sp->tran!=NULL );
+    if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
+                                            &sp->savedlid, &bdberr) != 0) {
+        logmsg(LOGMSG_FATAL,
+               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
+               __func__, bdberr);
+        abort();
+    }
+    sp->savedlid = 0;
+    sp->tran = NULL;
+}
+
 static void pong(Lua L, dbconsumer_t *q)
 {
     SP sp = getsp(L);
@@ -1718,44 +1756,6 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
 
     src = load_user_src(tran, spname, spversion, bootstrap, err);
     return src;
-}
-
-static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
-{
-    if (!sp) return;
-    if (sp->tran != NULL) {
-      sp->nTranRef++;
-      return;
-    }
-    int bdberr = 0;
-    assert( sp->tran==NULL );
-    sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
-                                               clnt->dbtran.cursor_tran,
-                                               &sp->savedlid, &bdberr);
-    if (sp->tran == NULL) {
-        logmsg(LOGMSG_FATAL,
-               "%s failed bdb_tran_begin_from_cursor_tran: err %d\n",
-               __func__, bdberr);
-        abort();
-    }
-    sp->nTranRef++;
-}
-
-static void reset_sp_tran(SP sp)
-{
-    if (!sp || (sp->tran == NULL)) return;
-    if (--sp->nTranRef > 0) return;
-    int bdberr = 0;
-    assert( sp->tran!=NULL );
-    if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
-                                            &sp->savedlid, &bdberr) != 0) {
-        logmsg(LOGMSG_FATAL,
-               "%s failed bdb_restore_tran_lockerid_and_abort: err %d\n",
-               __func__, bdberr);
-        abort();
-    }
-    sp->savedlid = 0;
-    sp->tran = NULL;
 }
 
 static int load_debugging_information(struct stored_proc *sp, char **err)
