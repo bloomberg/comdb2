@@ -6340,12 +6340,14 @@ void *exec_trigger(trigger_reg_t *reg)
         if (q == NULL) {
             goto bad;
         }
+        put_curtran(thedb->bdb_env, &clnt);
         SP sp = clnt.sp;
         L = sp->lua;
         if ((args = dbconsumer_get_int(L, q)) < 0) {
             err = strdup(sp->error);
             goto bad;
         }
+        get_curtran(thedb->bdb_env, &clnt);
         if ((rc = begin_sp(&clnt, &err)) != 0) {
             err = strdup(sp->error);
             goto bad;
