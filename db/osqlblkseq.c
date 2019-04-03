@@ -32,7 +32,7 @@ int gbl_block_blkseq_poll = 10; /* 10 msec */
 
 static hash_t *hiqs = NULL;
 static hash_t *hiqs_cnonce = NULL;
-static pthread_rwlock_t hlock = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_mutex_t hmtx = PTHREAD_MUTEX_INITIALIZER;
 
 unsigned int cnonce_hashfunc(const void *key, int len)
 {
@@ -65,13 +65,13 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
 
     assert(hiqs_cnonce != NULL);
 
-    Pthread_rwlock_wrlock(&hlock);
+    Pthread_mutex_lock(&hmtx);
     iq_src = hash_find(hiqs_cnonce, &iq->snap_info);
     if (!iq_src) { /* not there, we add it */
         hash_add(hiqs_cnonce, &iq->snap_info);
         rc = OSQL_BLOCKSEQ_FIRST;
     }
-    Pthread_rwlock_unlock(&hlock);
+    Pthread_mutex_unlock(&hmtx);
     if (!iq_src) { 
         logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n", iq->snap_info.keylen - 3, iq->snap_info.key);
     }
@@ -81,10 +81,9 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
         logmsg(LOGMSG_DEBUG, "Already in blkseq %*s, stalling...\n", iq->snap_info.keylen - 3, iq->snap_info.key);
         poll(NULL, 0, gbl_block_blkseq_poll);
 
-        /* rdlock will suffice */
-        Pthread_rwlock_rdlock(&hlock);
+        Pthread_mutex_lock(&hmtx);
         iq_src = hash_find_readonly(hiqs_cnonce, &iq->snap_info);
-        Pthread_rwlock_unlock(&hlock);
+        Pthread_mutex_unlock(&hmtx);
 
         if (!iq_src) {
             /* done waiting */
@@ -96,7 +95,7 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
     return rc;
 }
 
-/* call with hlock acquired */
+/* call with hmtx acquired */
 static inline int osql_blkseq_unregister_cnonce(struct ireq *iq)
 {
     assert(hiqs_cnonce != NULL);
@@ -112,7 +111,7 @@ int osql_blkseq_init(void)
 {
     int rc = 0;
 
-    Pthread_rwlock_wrlock(&hlock);
+    Pthread_mutex_lock(&hmtx);
 
     hiqs = hash_init_o(offsetof(struct ireq, seq), sizeof(fstblkseq_t));
     if (!hiqs) {
@@ -126,7 +125,7 @@ int osql_blkseq_init(void)
         abort();
     }
 
-    Pthread_rwlock_unlock(&hlock);
+    Pthread_mutex_unlock(&hmtx);
 
     return rc;
 }
@@ -145,22 +144,21 @@ int osql_blkseq_register(struct ireq *iq)
 
     assert(hiqs != NULL);
 
-    Pthread_rwlock_wrlock(&hlock);
+    Pthread_mutex_lock(&hmtx);
     iq_src = hash_find(hiqs, (const void *)&iq->seq);
     if (!iq_src) { /* not there, we add it */
         hash_add(hiqs, iq);
         rc = OSQL_BLOCKSEQ_FIRST;
     }
-    Pthread_rwlock_unlock(&hlock);
+    Pthread_mutex_unlock(&hmtx);
    
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
         poll(NULL, 0, gbl_block_blkseq_poll);
 
-        /* rdlock will suffice */
-        Pthread_rwlock_rdlock(&hlock);
+        Pthread_mutex_lock(&hmtx);
         iq_src = hash_find_readonly(hiqs, (const void *)&iq->seq);
-        Pthread_rwlock_unlock(&hlock);
+        Pthread_mutex_unlock(&hmtx);
 
         if (!iq_src) {
             /* done waiting */
@@ -188,12 +186,12 @@ int osql_blkseq_unregister(struct ireq *iq)
     assert(hiqs != NULL);
     int rc = 0;
 
-    Pthread_rwlock_wrlock(&hlock);
+    Pthread_mutex_lock(&hmtx);
 
     hash_del(hiqs, iq);
     rc = osql_blkseq_unregister_cnonce(iq);
 
-    Pthread_rwlock_unlock(&hlock);
+    Pthread_mutex_unlock(&hmtx);
     if (iq->have_snap_info)
         logmsg(LOGMSG_DEBUG, "Removed from blkseq %*s, rc=%d\n",
                iq->snap_info.keylen - 3, iq->snap_info.key, rc);
