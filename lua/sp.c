@@ -5493,6 +5493,7 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
 
 static int setup_sp(char *spname, struct sqlthdstate *thd,
                     struct sqlclntstate *clnt,
+                    int new_tran,
                     int *new_vm, // out param
                     char **err)  // out param
 {
@@ -5502,6 +5503,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             clnt->want_stored_procedure_debug ||
             sp->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
             sp->had_allow_lua_dynamic_libs != gbl_allow_lua_dynamic_libs) {
+            reset_sp_tran(sp);
             close_sp(clnt);
             sp = NULL;
         }
@@ -5557,6 +5559,8 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         }
     }
 
+    if (new_tran) setup_sp_tran(clnt);
+
     clnt->sp = sp;
     sp->clnt = clnt;
     sp->emit_mutex = &clnt->wait_mutex;
@@ -5579,6 +5583,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         if (locked)
             unlock_schema_lk();
         if (sp->src == NULL) {
+            reset_sp_tran(sp);
             close_sp(clnt);
             return -1;
         }
@@ -6162,7 +6167,7 @@ static int lua_final_int(char *spname, char **err, struct sqlthdstate *thd,
                          struct sqlclntstate *clnt, sqlite3_context *context)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
     if (new_vm) {
         *err = "failed to obtain lua aggregate object";
         return -1;
@@ -6180,7 +6185,7 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
                         int argc, sqlite3_value **argv)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
 
@@ -6205,7 +6210,7 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
                         int argc, sqlite3_value **argv)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
@@ -6267,7 +6272,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
 
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
 
     SP sp = clnt->sp;
     Lua L = sp->lua;
@@ -6300,7 +6305,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
                                 struct sqlclntstate *clnt, dbconsumer_t **q)
 {
     int new_vm;
-    int rc = setup_sp(reg->spname, thd, clnt, &new_vm, err);
+    int rc = setup_sp(reg->spname, thd, clnt, 1, &new_vm, err);
     if (rc != 0) return rc;
     SP sp = clnt->sp;
     Lua L = sp->lua;
