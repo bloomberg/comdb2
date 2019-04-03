@@ -741,7 +741,7 @@ static void *flush_thd(void *argsptr)
     struct flush_thd_data *args = argsptr;
     thread_started("dbque flush");
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-    queue_flush(args->db, args->consumern);
+    queue_flush(args->db, 0, args->consumern);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
     if (flush_thread_active)
         flush_thread_active = 0;
