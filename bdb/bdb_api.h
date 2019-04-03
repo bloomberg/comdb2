@@ -905,7 +905,7 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * found result (passed in through prevfnd).  On a successful find *fnd will
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
-int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor, void **fnd,
                   size_t *fnddtalen, size_t *fnddtaoff,
                   struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
