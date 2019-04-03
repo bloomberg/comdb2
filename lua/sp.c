@@ -1710,9 +1710,8 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
     return src;
 }
 
-static void setup_sp_tran(struct sqlclntstate *clnt)
+static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
 {
-    SP sp = clnt->sp;
     if (!sp) return;
     if (sp->tran != NULL) {
       sp->nTranRef++;
@@ -1761,7 +1760,7 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
 
     enable_global_variables(sp->lua);
 
-    setup_sp_tran(sp->clnt);
+    setup_sp_tran(sp->clnt, sp);
     sp_source = load_src(sp->tran, sp->spname, &sp->spversion, 0, err);
     reset_sp_tran(sp);
     if (sp_source) {
@@ -4251,7 +4250,7 @@ static int db_sp(Lua L)
     SP sp = getsp(L);
     char *err = NULL;
     rdlock_schema_lk();
-    setup_sp_tran(sp->clnt);
+    setup_sp_tran(sp->clnt, sp);
     char *src = load_src(sp->tran, name, &spversion, 0, &err);
     reset_sp_tran(sp);
     unlock_schema_lk();
@@ -5519,7 +5518,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
-            setup_sp_tran(clnt);
+            setup_sp_tran(clnt, sp);
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
             reset_sp_tran(sp);
             if (num != sp->spversion.version_num) {
@@ -5550,16 +5549,18 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             free_spversion(sp);
             if (create_sp_int(sp, err) != 0) {
                 return -1;
+            } else if (new_tran) {
+                setup_sp_tran(clnt, sp);
             }
         } else if ((sp = create_sp(err)) == NULL) {
             return -1;
+        } else if (new_tran) {
+            setup_sp_tran(clnt, sp);
         }
         if (strcmp(spname, clnt->spname) == 0) {
             apply_clnt_override(clnt, sp);
         }
     }
-
-    if (new_tran) setup_sp_tran(clnt);
 
     clnt->sp = sp;
     sp->clnt = clnt;
@@ -5576,7 +5577,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             rdlock_schema_lk();
             locked = 1;
         }
-        setup_sp_tran(clnt);
+        setup_sp_tran(clnt, sp);
         sp->src = load_src(sp->tran, spname, &sp->spversion, 1, err);
         reset_sp_tran(sp);
         sp->lua_version = gbl_lua_version;
@@ -6484,7 +6485,6 @@ void *exec_trigger(trigger_reg_t *reg)
         int rc, args = 0;
         char *err = NULL;
         get_curtran(thedb->bdb_env, &clnt);
-        setup_sp_tran(&clnt);
         if (setup_sp_for_trigger(reg, &err, &thd, &clnt, &q) != 0) {
             goto bad;
         }
