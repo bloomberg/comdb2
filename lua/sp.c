@@ -751,22 +751,24 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
     }
 }
 
-static int dbconsumer_get(Lua L, tran_type *tran)
+static int dbconsumer_get(Lua L)
 {
+    SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
-    if ((rc = dbconsumer_get_int(L, q, tran)) > 0) return rc;
+    if ((rc = dbconsumer_get_int(L, q, sp->tran)) > 0) return rc;
     return luaL_error(L, getsp(L)->error);
 }
 
-static int dbconsumer_poll(Lua L, tran_type *tran)
+static int dbconsumer_poll(Lua L)
 {
+    SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     lua_Number arg = luaL_checknumber(L, 2);
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
-    int rc = dbq_poll(L, q, tran, delay);
+    int rc = dbq_poll(L, q, sp->tran, delay);
     if (rc >= 0) {
         return rc;
     }
@@ -6520,10 +6522,10 @@ void *exec_trigger(trigger_reg_t *reg)
                    sp->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
-        reset_sp_tran(&clnt);
+        reset_sp_tran(clnt.sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
-    reset_sp_tran(&clnt);
+    reset_sp_tran(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
