@@ -281,12 +281,20 @@ static int systbl_eof(sqlite3_vtab_cursor *cur){
     return pCur->rowid >= pCur->npoints;
 }
 
+static int systbl_disconnect(sqlite3_vtab *pVtab){
+    // SQLite still wants a disconnect.  We have some per-module
+    // state, but that gets freed in the module destructor, so
+    // this is a no-op.
+    return SQLITE_OK;
+}
+
 static const sqlite3_module systbl = {
     .xConnect = systbl_connect,
     .xBestIndex = systbl_best_index,
     .xOpen = systbl_open,
     .xClose = systbl_close,
     .xFilter = systbl_filter,
+    .xDisconnect = systbl_disconnect,
     .xNext = systbl_next,
     .xEof = systbl_eof,
     .xColumn = systbl_column,
