@@ -886,7 +886,7 @@ static int get_stats(struct dbtable *db, struct consumer_stat *st) {
         return -1;
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
-    int rc = dbq_walk(&iq, 0, stat_callback, st);
+    int rc = dbq_walk(&iq, 0, 0, stat_callback, st);
     if (rc)
         return rc;
     return 0;
