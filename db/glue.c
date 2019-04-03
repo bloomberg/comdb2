@@ -5386,7 +5386,7 @@ int dbq_get(struct ireq *iq, void *trans, int consumer,
 
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer,
+    rc = bdb_queue_get(bdb_handle, trans, consumer,
                        (const struct bdb_queue_cursor *)prevcursor, fnddta,
                        fnddtalen, fnddtaoff,
                        (struct bdb_queue_cursor *)fndcursor, epoch, &bdberr);
