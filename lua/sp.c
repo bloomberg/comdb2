@@ -520,6 +520,7 @@ static void reset_sp_tran(SP sp)
     }
     sp->savedlid = 0;
     sp->tran = NULL;
+    sp->nTranRef = 0;
 }
 
 static void pong(Lua L, dbconsumer_t *q)
