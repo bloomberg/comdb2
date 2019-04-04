@@ -159,7 +159,7 @@ static void show_all_versioned_sps(struct schema_change_type *sc)
         char *vstr;
         int vnum, bdberr;
         vnum = bdb_get_sp_get_default_version(NULL, names[i], &bdberr);
-        if (vnum < 0 && bdb_get_default_versioned_sp(names[i], &vstr) == 0) {
+        if (vnum < 0 && bdb_get_default_versioned_sp(NULL, names[i], &vstr) == 0) {
             sbuf2printf(sb,
                         ">SP name: %s             Default Version is: '%s'\n",
                         names[i], vstr);
