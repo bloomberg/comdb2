@@ -5318,8 +5318,8 @@ void *watcher_thread(void *arg)
     int j;
     int time_now, time_then;
     int rc;
-    int last_behind;
-    int num_times_behind;
+    int last_behind = INT_MAX;
+    int num_times_behind = 0;
     int master_is_bad = 0;
     int done = 0;
     char *rep_master = 0;
@@ -5328,9 +5328,6 @@ void *watcher_thread(void *arg)
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
     thread_started("bdb watcher");
-
-    last_behind = INT_MAX;
-    num_times_behind = 0;
 
     /* hold off om "watching" for a little bit during startup */
     sleep(5);
@@ -5421,17 +5418,11 @@ void *watcher_thread(void *arg)
         /* are we incoherent?  see how we're doing, lets send commitdelay
            if we are falling far behind */
         if (!bdb_am_i_coherent_int(bdb_state)) {
-            DB_LSN my_lsn;
-            DB_LSN master_lsn;
-            int behind;
-
+            DB_LSN my_lsn, master_lsn;
             get_my_lsn(bdb_state, &my_lsn);
             get_master_lsn(bdb_state, &master_lsn);
-            behind = subtract_lsn(bdb_state, &master_lsn, &my_lsn);
-
+            int behind = subtract_lsn(bdb_state, &master_lsn, &my_lsn);
             if (behind > bdb_state->attr->commitdelaybehindthresh) {
-                int rc;
-
                 if (behind > last_behind) /* we are falling further behind */
                     num_times_behind++;
                 else
@@ -5441,8 +5432,7 @@ void *watcher_thread(void *arg)
                     logmsg(LOGMSG_WARN, "i am incoherent and falling behind\n");
 
                     if (bdb_state->attr->enable_incoherent_delaymore) {
-                        rc = request_delaymore(bdb_state);
-
+                        int rc = request_delaymore(bdb_state);
                         if (rc != 0) {
                             logmsg(LOGMSG_ERROR,
                                    "failed to send COMMITDELAYMORE to %s\n",
