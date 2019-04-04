@@ -5553,8 +5553,11 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_str) {
             // Have src for some version_str. Check if str is the default.
             char *version_str;
+            setup_sp_tran(clnt, sp);
             assert(sp->tran != NULL);
-            if (bdb_get_default_versioned_sp(sp->tran, spname, &version_str) == 0) {
+            int num = bdb_get_default_versioned_sp(sp->tran, spname, &version_str);
+            reset_sp_tran(sp);
+            if (num == 0) {
                 int cmp = strcmp(sp->spversion.version_str, version_str);
                 free(version_str);
                 if (cmp) {
