@@ -5521,13 +5521,13 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
                     int *new_vm, // out param
                     char **err)  // out param
 {
+    int saved_new_tran = new_tran;
     SP sp = clnt->sp;
     if (sp) {
         if (clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug ||
             sp->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
             sp->had_allow_lua_dynamic_libs != gbl_allow_lua_dynamic_libs) {
-            reset_sp_tran(sp);
             close_sp(clnt);
             sp = NULL;
         }
@@ -5623,7 +5623,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         if (locked)
             unlock_schema_lk();
         if (sp->src == NULL) {
-            reset_sp_tran(sp);
+            if (saved_new_tran) reset_sp_tran(sp);
             close_sp(clnt);
             return -1;
         }
@@ -5633,7 +5633,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
     if (clnt && (clnt->want_stored_procedure_trace ||
                  clnt->want_stored_procedure_debug)) {
         if (load_debugging_information(sp, err)) {
-            reset_sp_tran(sp);
+            if (saved_new_tran) reset_sp_tran(sp);
             return -1;
         }
     }
