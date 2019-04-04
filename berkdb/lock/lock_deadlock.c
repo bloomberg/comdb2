@@ -373,9 +373,16 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 			__lock_printlock(lt, lp, 1, stdout);
 		}
 
-
-		//TODO: need to show all children
-		// child = SH_LIST_FIRST(&lockerp->child_locker, __db_locker);
+        // Also show all the children lockers
+        DB_LOCKER *child = SH_LIST_FIRST(&lockerp->child_locker, __db_locker);
+		while (child) {
+			for (struct __db_lock *lp = SH_LIST_FIRST(&child->heldby, __db_lock);                                                                 
+					lp !=NULL;
+					lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+				__lock_printlock(lt, lp, 1, stdout);
+			}
+			child = SH_LIST_NEXT(child, child_link, __db_locker);
+		}
 
 		unlock_locker_partition(region, lockerp->partition);
 	} else
@@ -402,7 +409,7 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 {
 	int j;
 
-	logmsg(LOGMSG_USER, "DEADLOCK-CYCLE: ");
+	logmsg(LOGMSG_WARN, "DEADLOCK-CYCLE: ");
 
 	for (j = 0; j < nlockers; j++) {
 
@@ -410,12 +417,12 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 			continue;
 
 		if (j == victim)
-			logmsg(LOGMSG_USER, "*");
+			logmsg(LOGMSG_WARN, "*");
 		extern void log_snap_info_key(snap_uid_t *);
 		log_snap_info_key(idmap[j].snap_info);
-		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
+		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
-	logmsg(LOGMSG_USER, "\n");
+	logmsg(LOGMSG_WARN, "\n");
 }
     
 
