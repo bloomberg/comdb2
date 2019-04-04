@@ -247,7 +247,6 @@
 (candidate='comdb2_tunables')
 (candidate='comdb2_type_samples')
 (candidate='comdb2_users')
-(candidate='dummy')
 (candidate='generate_series')
 (candidate='json_each')
 (candidate='json_tree')
