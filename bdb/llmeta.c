@@ -9003,6 +9003,7 @@ static int bdb_del_versioned_sp_int(tran_type *t, char *name, char *version)
 }
 int bdb_del_versioned_sp(char *name, char *version)
 {
+    int bdberr;
     tran_type *t = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     int del_default = 0;
     char *default_ver = NULL;
@@ -9012,7 +9013,7 @@ int bdb_del_versioned_sp(char *name, char *version)
     }
     free(default_ver);
 
-    int rc, bdberr;
+    int rc;
 
     rc = bdb_del_versioned_sp_int(t, name, version);
     if (rc == 0 && del_default) {
