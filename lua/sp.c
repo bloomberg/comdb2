@@ -1685,10 +1685,10 @@ static char *load_default_src(void *tran, char *spname,
         }
         return src;
     }
-    if (bdb_get_default_versioned_sp(spname, &spversion->version_str) != 0) {
+    if (bdb_get_default_versioned_sp(tran, spname, &spversion->version_str) != 0) {
         return NULL;
     }
-    if (bdb_get_versioned_sp(spname, spversion->version_str, &src) == 0) {
+    if (bdb_get_versioned_sp(tran, spname, spversion->version_str, &src) == 0) {
         *size = strlen(src) + 1;
     }
     return src;
@@ -1714,7 +1714,7 @@ static char *load_user_src(void *tran, char *spname,
             return NULL;
         }
     } else {
-        if (bdb_get_versioned_sp(spname, spversion->version_str, &src) != 0) {
+        if (bdb_get_versioned_sp(tran, spname, spversion->version_str, &src) != 0) {
             *err = no_such_procedure(spname, spversion);
             return NULL;
         }
@@ -5542,7 +5542,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_str) {
             // Have src for some version_str. Check if str is the default.
             char *version_str;
-            if (bdb_get_default_versioned_sp(spname, &version_str) == 0) {
+            if (bdb_get_default_versioned_sp(sp->tran, spname, &version_str) == 0) {
                 int cmp = strcmp(sp->spversion.version_str, version_str);
                 free(version_str);
                 if (cmp) {

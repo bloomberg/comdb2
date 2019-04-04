@@ -28,7 +28,7 @@ int comdb2LocateSP(Parse *p, char *sp)
 	char *ver = NULL;
 	int bdberr;
 	int rc0 = bdb_get_sp_get_default_version(p->tran, sp, &bdberr);
-	int rc1 = bdb_get_default_versioned_sp(sp, &ver);
+	int rc1 = bdb_get_default_versioned_sp(p->tran, sp, &ver);
 	free(ver);
 	if (rc0 < 0 && rc1 < 0) {
 		sqlite3ErrorMsg(p, "no such procedure: %s", sp);

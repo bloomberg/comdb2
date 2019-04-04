@@ -194,7 +194,7 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
     char *name = sc->tablename;
     char *version = sc->newcsc2;
     char *src;
-    if (bdb_get_versioned_sp(name, version, &src) != 0) {
+    if (bdb_get_versioned_sp(NULL, name, version, &src) != 0) {
         return -1;
     }
     char *sav = NULL, *line;
@@ -211,12 +211,12 @@ static int add_versioned_sp(struct schema_change_type *sc)
     int rc, bdberr;
     char *spname = sc->tablename;
     char *version = sc->fname;
-    int default_ver_num = bdb_get_sp_get_default_version(NULL, spname, &bdberr);
+    tran_type *tran = sc->tran;
+    int default_ver_num = bdb_get_sp_get_default_version(tran, spname, &bdberr);
     char *default_ver_str = NULL;
-    bdb_get_default_versioned_sp(spname, &default_ver_str);
+    bdb_get_default_versioned_sp(tran, spname, &default_ver_str);
     free(default_ver_str);
 
-    tran_type *tran = sc->tran;
     rc = bdb_add_versioned_sp(tran, spname, version, sc->newcsc2);
     if (default_ver_num <= 0 && default_ver_str == NULL) {
         // first version - set it default as well
@@ -227,7 +227,7 @@ static int add_versioned_sp(struct schema_change_type *sc)
 static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
 {
     char *src = NULL;
-    int rc = bdb_get_versioned_sp(name, version, &src);
+    int rc = bdb_get_versioned_sp(NULL, name, version, &src);
     if (rc != 0) {
         if (iq) {
             errstat_cat_strf(&iq->errstat, "no such procedure %s:%s", name,
@@ -273,7 +273,7 @@ static int show_all_sps(struct schema_change_type *sc)
         if (vnum >= 0) {
             sbuf2printf(sb, ">SP name: %s             Default Version is: %d\n",
                         new_sp, vnum);
-        } else if (bdb_get_default_versioned_sp(new_sp, &vstr) == 0) {
+        } else if (bdb_get_default_versioned_sp(NULL, new_sp, &vstr) == 0) {
             sbuf2printf(sb,
                         ">SP name: %s             Default Version is: '%s'\n",
                         new_sp, vstr);
@@ -478,8 +478,8 @@ int do_show_sp(struct schema_change_type *sc)
         if (def == -1) {
             // check versioned default
             char *def_version;
-            if (bdb_get_default_versioned_sp(sc->tablename, &def_version) ==
-                0) {
+            if (bdb_get_default_versioned_sp(NULL, sc->tablename,
+                &def_version) == 0) {
                 sbuf2printf(sb, ">Default version is: '%s'\n", def_version);
                 free(def_version);
             } else {

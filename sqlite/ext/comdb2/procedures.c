@@ -81,7 +81,7 @@ static void get_sp_versions(sqlite3 *db, systbl_sps_cursor *c) {
   if((rc = bdb_get_sp_get_default_version(0, sp, &bdberr)) > 0) {
     c->defaultVer.sVer = rc;
   } else {
-    bdb_get_default_versioned_sp(sp, &c->defaultVer.cVer);
+    bdb_get_default_versioned_sp(NULL, sp, &c->defaultVer.cVer);
   }
 }
 
@@ -316,7 +316,7 @@ static int systblSPsColumn(
         int bdberr;
         bdb_get_sp_lua_source( NULL, NULL, sp, &src, v->sVer, &size, &bdberr );
       } else {
-        bdb_get_versioned_sp( sp, v->cVer, &src );
+        bdb_get_versioned_sp( NULL, sp, v->cVer, &src );
         size = strlen(src);
       }
       if( src == NULL )

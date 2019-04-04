@@ -2049,11 +2049,11 @@ int bdb_llmeta_del_lua_afunc(char *, int *bdberr);
 int bdb_watchdog_test_io(bdb_state_type *bdb_state);
 
 int bdb_add_versioned_sp(tran_type *, char *name, char *version, char *src);
-int bdb_get_versioned_sp(char *name, char *version, char **src);
+int bdb_get_versioned_sp(tran_type *, char *name, char *version, char **src);
 int bdb_del_versioned_sp(char *name, char *version);
 
 int bdb_set_default_versioned_sp(tran_type *, char *name, char *version);
-int bdb_get_default_versioned_sp(char *name, char **version);
+int bdb_get_default_versioned_sp(tran_type *, char *name, char **version);
 int bdb_del_default_versioned_sp(tran_type *tran, char *name);
 
 int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num);

@@ -8731,6 +8731,46 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     return rc;
 }
 
+// get values for all matching keys
+static int kv_get_tran(tran_type *tran, void *k, size_t klen, void ***ret,
+                       int *num, int *bdberr)
+{
+    int fnd;
+    int n = 0;
+    int inc = 10;
+    int alloc = 0;
+    uint8_t out[LLMETA_IXLEN];
+    void **vals = NULL;
+    int rc =
+        bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, out, &fnd,
+                                    bdberr);
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(k, out, klen) != 0) {
+            break;
+        }
+        void *dta;
+        int dsz;
+        rc =
+            bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, out, &dta,
+                                          &dsz, bdberr);
+        if (rc || *bdberr != BDBERR_NOERROR) {
+            break;
+        }
+        if (n == alloc) {
+            alloc += inc;
+            vals = realloc(vals, sizeof(void *) * alloc);
+        }
+        vals[n++] = dta;
+        uint8_t nxt[LLMETA_IXLEN];
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1,
+                                          &fnd, bdberr);
+        memcpy(out, nxt, sizeof(out));
+    }
+    *num = n;
+    *ret = vals;
+    return rc;
+}
+
 // get full keys for all matching partial keys
 static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 {
@@ -8921,7 +8961,7 @@ int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
     }
     return rc;
 }
-int bdb_get_versioned_sp(char *name, char *version, char **src)
+int bdb_get_versioned_sp(tran_type *t, char *name, char *version, char **src)
 {
     union {
         struct versioned_sp sp;
@@ -8932,7 +8972,7 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
     strcpy(u.sp.version, version);
     char **srcs;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&srcs, &num, &bdberr);
+    rc = kv_get_tran(t, &u, sizeof(u), (void ***)&srcs, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *src = srcs[0];
@@ -9016,7 +9056,7 @@ int bdb_set_default_versioned_sp(tran_type *t, char *name, char *version)
     logmsg(LOGMSG_INFO, "Default SP %s:%s\n", name, version);
     return 0;
 }
-int bdb_get_default_versioned_sp(char *name, char **version)
+int bdb_get_default_versioned_sp(tran_type *tran, char *name, char **version)
 {
     union {
         struct default_versioned_sp sp;
@@ -9028,7 +9068,7 @@ int bdb_get_default_versioned_sp(char *name, char **version)
     strncpy(u.sp.name, name, sizeof(u.sp.name));
     char **versions;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&versions, &num, &bdberr);
+    rc = kv_get_tran(tran, &u, sizeof(u), (void ***)&versions, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *version = versions[0];
