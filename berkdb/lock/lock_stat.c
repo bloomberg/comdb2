@@ -841,6 +841,9 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 	if (lip->has_waiters)
 		have_waiters = 1;
 	have_interesting_locks = 0;
+	/* NB: just dumping active locks via this function will not print
+	 * lockers which have only one lock in WAIT status -- use LOCK_DUMP_OBJECTS
+	 * instead if you want to see those lockers (ex. in case of a deadlock) */
 	if (just_active_locks) {
 		lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
 
@@ -1305,5 +1308,7 @@ int __lock_dump_active_locks(
 		DB_ENV *dbenv,
 		FILE *fp)
 {
-	return __lock_dump_region_int(dbenv, "l", fp, 1 /*just_active_locks*/);
+	/* "o" will print all active objects in object order, including 
+	 * lockers that have onle one lock in WAIT status */
+	return __lock_dump_region_int(dbenv, "o", fp, 1 /*just_active_locks*/);
 }
