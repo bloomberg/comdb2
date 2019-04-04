@@ -6603,6 +6603,7 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
 {
     int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
+        reset_sp_tran(clnt->sp);
         reset_sp(clnt->sp);
     }
     return rc;
