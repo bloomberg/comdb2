@@ -4428,10 +4428,8 @@ static void pg_compact_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         pg_compact_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 /* enqueue a page compact work */
@@ -4872,10 +4870,8 @@ static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
     case THD_RUN:
         touch_page(mpf, pgno);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -4898,10 +4894,8 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         udppfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(req);
-        break;
     }
+    free(req);
 }
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
