@@ -1087,8 +1087,7 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     if (conn->cols)
         free(conn->cols);
 
-    if (conn->params)
-        free(conn->params);
+    free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
@@ -1881,8 +1880,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     newparam = clnt_find_param(params->clnt, name + 1, index);
     if (!newparam) {
         /* clnt parameters are incorrect, fallback to single thread to err */
-        if (params->params)
-            free(params->params);
+        free(params->params);
         free(params);
         *pparams = NULL;
         return NULL;

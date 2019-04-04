@@ -321,8 +321,7 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
 
     if (!node->sql) {
         if (node->params) {
-            if (node->params->params)
-                free(node->params->params);
+            free(node->params->params);
             free(node->params);
         }
         free(node);
@@ -344,8 +343,7 @@ static void node_free(dohsql_node_t **pnode, sqlite3 *db)
 
     /* params */
     if ((*pnode)->params) {
-        if ((*pnode)->params->params)
-            free((*pnode)->params->params);
+        free((*pnode)->params->params);
         free((*pnode)->params);
     }
 
