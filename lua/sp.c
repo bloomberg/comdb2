@@ -6365,8 +6365,11 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     remove_emit(L);
 
     char *spname = reg->spname;
-    Q4SP(qname, spname);
-    struct dbtable *db = getqueuebyname(qname);
+    struct dbtable *db;
+    {
+        Q4SP(qname, spname);
+        db = getqueuebyname(qname);
+    }
     if (db == NULL) {
         *err = strdup("getqueuebyname failed");
         rc = -1; goto done;
