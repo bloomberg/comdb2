@@ -56,7 +56,7 @@ static void cheapstub(FILE *f)
 
     logmsgf(LOGMSG_USER, f,
             "tid=%p(%u) stack trace, run addr2line -f -e <exe> on: \n",
-            (void *) tid, (uint32_t)tid);
+            (void *)tid, (uint32_t)tid);
     for  (int i = 2; i < n; ++i) {
         logmsgf(LOGMSG_USER, f, "%p ", buf[i]);
     }
@@ -75,8 +75,10 @@ static void cheapstub(FILE *f)
         if (! (*name)) continue;
         ++name;
         int j = 0;
-        while (name[j] && name[j] != ')' && name[j] != '+') j++;
-        if (j == 0) continue;
+        while (name[j] && name[j] != ')' && name[j] != '+')
+            j++;
+        if (j == 0)
+            continue;
         name[j] = '\0';
         if (strcmp(name, "comdb2_linux_cheap_stack_trace") == 0) continue;
         if (strcmp(name, "cheap_stack_trace") == 0) continue;
