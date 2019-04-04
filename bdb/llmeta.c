@@ -9003,16 +9003,17 @@ static int bdb_del_versioned_sp_int(tran_type *t, char *name, char *version)
 }
 int bdb_del_versioned_sp(char *name, char *version)
 {
+    tran_type *t = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     int del_default = 0;
     char *default_ver = NULL;
-    bdb_get_default_versioned_sp(name, &default_ver);
+    bdb_get_default_versioned_sp(t, name, &default_ver);
     if (default_ver && strcmp(default_ver, version) == 0) {
         del_default = 1;
     }
     free(default_ver);
 
     int rc, bdberr;
-    tran_type *t = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
+
     rc = bdb_del_versioned_sp_int(t, name, version);
     if (rc == 0 && del_default) {
         rc = bdb_del_default_versioned_sp(t, name);
