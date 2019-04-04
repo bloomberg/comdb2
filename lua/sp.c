@@ -703,6 +703,7 @@ static const int dbq_delay = 1000; // ms
 static int dbq_poll_int(Lua L, dbconsumer_t *q, tran_type *tran)
 {
     struct qfound f = {0};
+    assert(tran != NULL);
     int rc = dbq_get(&q->iq, tran, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff,
                      NULL, NULL);
     Pthread_mutex_unlock(q->lock);
@@ -758,6 +759,7 @@ again:  if (*q->open) {
 static int dbconsumer_get_int(Lua L, dbconsumer_t *q, tran_type *tran)
 {
     int rc;
+    assert(tran != NULL);
     while ((rc = dbq_poll(L, q, tran, dbq_delay)) == 0)
         ;
     return rc;
@@ -1677,17 +1679,21 @@ static char *load_default_src(void *tran, char *spname,
 {
     char *src = NULL;
     int bdberr;
+    assert(tran != NULL);
     int v = bdb_get_sp_get_default_version(tran, spname, &bdberr);
     if (v > 0) {
+        assert(tran != NULL);
         if (bdb_get_sp_lua_source(thedb->bdb_env, tran, spname, &src, v, size,
                                   &bdberr) == 0) {
             spversion->version_num = v;
         }
         return src;
     }
+    assert(tran != NULL);
     if (bdb_get_default_versioned_sp(tran, spname, &spversion->version_str) != 0) {
         return NULL;
     }
+    assert(tran != NULL);
     if (bdb_get_versioned_sp(tran, spname, spversion->version_str, &src) == 0) {
         *size = strlen(src) + 1;
     }
@@ -1702,11 +1708,13 @@ static char *load_user_src(void *tran, char *spname,
     char *src = NULL;
     int size, bdb_err, rc;
     if (spversion->version_num == 0 && spversion->version_str == NULL) {
+        assert(tran != NULL);
         if ((src = load_default_src(tran, spname, spversion, &size)) == NULL) {
             *err = no_such_procedure(spname, spversion);
             return NULL;
         }
     } else if (spversion->version_num > 0) {
+        assert(tran != NULL);
         if ((rc = bdb_get_sp_lua_source(thedb->bdb_env, tran, spname, &src,
                                         spversion->version_num, &size,
                                         &bdb_err)) != 0) {
@@ -1714,6 +1722,7 @@ static char *load_user_src(void *tran, char *spname,
             return NULL;
         }
     } else {
+        assert(tran != NULL);
         if (bdb_get_versioned_sp(tran, spname, spversion->version_str, &src) != 0) {
             *err = no_such_procedure(spname, spversion);
             return NULL;
@@ -1739,6 +1748,7 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
             *err = no_such_procedure(spname, spversion);
             return NULL;
         }
+        assert(tran != NULL);
         if (override && (src = load_user_src(tran, override, spversion,
                         bootstrap, err))) {
             return src;
@@ -1755,6 +1765,7 @@ static char *load_src(void *tran, char *spname, struct spversion_t *spversion,
         }
     }
 
+    assert(tran != NULL);
     src = load_user_src(tran, spname, spversion, bootstrap, err);
     return src;
 }
@@ -5542,6 +5553,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_str) {
             // Have src for some version_str. Check if str is the default.
             char *version_str;
+            assert(sp->tran != NULL);
             if (bdb_get_default_versioned_sp(sp->tran, spname, &version_str) == 0) {
                 int cmp = strcmp(sp->spversion.version_str, version_str);
                 free(version_str);
