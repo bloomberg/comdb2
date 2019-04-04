@@ -6352,12 +6352,12 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     Lua L = sp->lua;
 
     if (new_vm) {
-        if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+        if ((rc = process_src(L, sp->src, err)) != 0) goto done;
     }
 
-    if ((rc = get_func_by_name(L, "main", err)) != 0) return rc;
+    if ((rc = get_func_by_name(L, "main", err)) != 0) goto done;
 
-    if (new_vm == 0) return 0;
+    if (new_vm == 0) { rc = 0; goto done; }
 
     sp->parent->have_consumer = 1;
     remove_tran_funcs(L);
@@ -6369,12 +6369,12 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         *err = strdup("getqueuebyname failed");
-        return -1;
+        rc = -1; goto done;
     }
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
         *err = strdup("no consumer for db");
-        return -1;
+        rc = -1; goto done;
     }
 
     size_t sz = dbconsumer_sz(spname);
@@ -6382,11 +6382,15 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     init_new_t(newq, DBTYPES_DBCONSUMER);
     if (setup_dbconsumer(newq, consumer, db, reg) != 0) {
         *err = strdup("failed to register trigger with qdb");
-        return -1;
+        rc = -1; goto done;
     }
     *q = newq;
 
     lua_settop(L, 1);
+    return rc;
+
+done:
+    reset_sp_tran(sp);
     return rc;
 }
 
