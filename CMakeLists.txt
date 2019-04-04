@@ -54,6 +54,12 @@ if(WITH_TCL)
   find_package(Tcl REQUIRED)
 endif()
 
+option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" ON)
+if(WITH_RDKAFKA)
+  find_package(RdKafka REQUIRED)
+  add_definitions(-DWITH_RDKAFKA)
+endif()
+
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

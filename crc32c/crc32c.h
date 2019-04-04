@@ -27,7 +27,11 @@ extern int gbl_crc32c;
 #define CRC32C_SEED 0 //The sparse files with all 0s will get a 0 checksum
 #ifdef __x86_64
 void crc32c_init(int v);
-uint32_t crc32c(const uint8_t*, uint32_t);
+
+uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz);
+
+#define crc32c(buf, sz) crc32c_comdb2(buf,sz)
+
 #else
 #define crc32c_init(...)
 #define crc32c(x, y) crc32c_software((x), (y), CRC32C_SEED)

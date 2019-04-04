@@ -209,8 +209,8 @@ target_link_libraries(comdb2
   bdb
   util
   cdb2api
-  comdb2rle
   crc32c
+  comdb2rle
   csc2
   cson
   db
@@ -226,6 +226,7 @@ target_link_libraries(comdb2
   m
   ${CMAKE_DL_LIBS}
   ${LZ4_LIBRARY}
+  ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
   ${UNWIND_LIBRARY}

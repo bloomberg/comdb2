@@ -63,6 +63,12 @@
 #include <logmsg.h>
 #include <tohex.h>
 
+#ifdef WITH_RDKAFKA    
+
+#include "librdkafka/rdkafka.h"  /* for Kafka driver */
+
+#endif
+
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -3913,6 +3919,125 @@ static int db_copyrow(Lua lua)
     return 1;
 }
 
+char *gbl_kafka_brokers = NULL;
+char *gbl_kafka_topic = NULL;
+
+#ifdef WITH_RDKAFKA
+
+static int kafka_publish(Lua lua)
+{
+    static rd_kafka_topic_t *rkt_p;  /* Producer topic object */
+    static rd_kafka_t *rk_p;         /* Producer instance handle */
+    const char *dta = lua_tostring(lua, -2);
+    int dta_len = lua_tonumber(lua, -1);
+    rd_kafka_conf_t *conf;  /* Temporary configuration object */
+    char errstr[512];       /* librdkafka API error reporting buffer */
+    SP sp = getsp(lua);
+
+    if (gbl_kafka_topic &&  gbl_kafka_brokers)
+        fprintf(stderr, "TOPIC %s Brokers%s Dta %s Dta_len %d\n", gbl_kafka_topic, gbl_kafka_brokers, dta, dta_len);
+    else 
+        return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
+
+     /*
+     * Create Kafka client configuration place-holder
+     */
+
+    if (!rk_p) {
+       conf = rd_kafka_conf_new();
+       /* Set bootstrap broker(s) as a comma-separated list of
+       * host or host:port (default port 9092).
+       * librdkafka will use the bootstrap broker to acquire the full
+       * set of broker from the cluster. */
+      if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
+                            errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+              fprintf(stderr, "%s\n", errstr);
+              return 1;
+      }
+
+
+    /*
+     * Create producer instance.
+     *
+     * NOTE: rd_kafka_new() takes ownership of the conf object
+     *       and the application must not reference it again after
+     *       this call.
+     */
+        rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+    }
+
+    if (!rk_p) {
+            fprintf(stderr,
+                    "%% Failed to create new producer: %s\n", errstr);
+            return 1;
+    }
+
+     /* Create topic object that will be reused for each message
+     * produced.
+     *
+     * Both the producer instance (rd_kafka_t) and topic objects (topic_t)
+     * are long-lived objects that should be reused as much as possible.
+     */
+    if (!rkt_p) 
+        rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
+
+    if (!rkt_p) {
+            fprintf(stderr, "%% Failed to create topic object: %s\n",
+                    rd_kafka_err2str(rd_kafka_last_error()));
+            rd_kafka_destroy(rk_p);
+            return 1;
+    }
+
+retry:
+    if (rd_kafka_produce(
+            /* Topic object */
+            rkt_p,
+            /* Use builtin partitioner to select partition*/
+            RD_KAFKA_PARTITION_UA,
+            /* Make a copy of the payload. */
+            RD_KAFKA_MSG_F_COPY,
+            /* Message payload (value) and length */
+            (void*)dta, dta_len,
+            /* Optional key and its length */
+            NULL, 0,
+            /* Message opaque, provided in
+             * delivery report callback as
+             * msg_opaque. */
+            NULL) == -1) {
+        /**
+         * Failed to *enqueue* message for producing.
+         */
+        fprintf(stderr,
+                "%% Failed to produce to topic %s: %s\n",
+                rd_kafka_topic_name(rkt_p),
+                rd_kafka_err2str(rd_kafka_last_error()));
+         /* Poll to handle delivery reports */
+        if (rd_kafka_last_error() ==
+            RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+                /* If the internal queue is full, wait for
+                 * messages to be delivered and then retry.
+                 * The internal queue represents both
+             * messages to be sent and messages that have
+                 * been sent or failed, awaiting their
+                 * delivery report callback to be called.
+                 *
+                 * The internal queue is limited by the
+                 * configuration property
+                 * queue.buffering.max.messages */
+                rd_kafka_poll(rk_p, 1000/*block for max 1000ms*/);
+            goto retry;
+        }
+    }
+    //rd_kafka_flush(rk_p, 10*1000 /* wait for max 10 seconds */);
+    //rd_kafka_topic_destroy(rkt_p);
+     /* Destroy the producer instance */
+    //rd_kafka_destroy(rk_p);
+     /* Destroy topic object */
+    return 0;
+}
+
+#endif
+
 static int db_print(Lua lua)
 {
     int nargs = lua_gettop(lua);
@@ -4325,6 +4450,9 @@ static const luaL_Reg db_funcs[] = {
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
     /************ CONSUMER **************/
+#ifdef WITH_RDKAFKA    
+    {"kafka_publish", kafka_publish},
+#endif    
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
