@@ -492,7 +492,8 @@ static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
       return;
     }
     int bdberr = 0;
-    assert( sp->tran==NULL );
+    assert(clnt->dbtran.cursor_tran != NULL);
+    assert(sp->tran == NULL);
     sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
                                                clnt->dbtran.cursor_tran,
                                                &sp->savedlid, &bdberr);
@@ -510,7 +511,7 @@ static void reset_sp_tran(SP sp)
     if (!sp || (sp->tran == NULL)) return;
     if (--sp->nTranRef > 0) return;
     int bdberr = 0;
-    assert( sp->tran!=NULL );
+    assert(sp->tran != NULL);
     if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                             &sp->savedlid, &bdberr) != 0) {
         logmsg(LOGMSG_FATAL,
@@ -2617,7 +2618,7 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
-    assert( clnt.temp_table_mtx==NULL || !clnt.own_temp_table_mtx );
+    assert(clnt.temp_table_mtx==NULL || !clnt.own_temp_table_mtx);
     clnt.temp_table_mtx = parent_clnt->temp_table_mtx;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
@@ -5632,6 +5633,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
     if (clnt && (clnt->want_stored_procedure_trace ||
                  clnt->want_stored_procedure_debug)) {
         if (load_debugging_information(sp, err)) {
+            reset_sp_tran(sp);
             return -1;
         }
     }
