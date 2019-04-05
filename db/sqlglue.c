@@ -10929,11 +10929,11 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
               __func__, dbname, service, host);*/
             goto sbuf;
         }
-    } else
-        /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
-            __func__, dbname, service, host);*/
+    } 
+    /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
+      __func__, dbname, service, host);*/
 
-        retry = 0;
+    retry = 0;
 retry:
     /* this could fail due to load */
     port = portmux_get(host, "comdb2", "replication", dbname);
