@@ -10929,7 +10929,7 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
               __func__, dbname, service, host);*/
             goto sbuf;
         }
-    } 
+    }
     /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
       __func__, dbname, service, host);*/
 
