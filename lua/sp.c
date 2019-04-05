@@ -722,7 +722,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
 again:  if (*q->open) {
             setup_sp_tran(sp->clnt, sp);
             assert(sp->tran != NULL);
-            rc = dbq_poll_int(L, q, tran); // call will release q->lock
+            rc = dbq_poll_int(L, q, sp->tran); // call will release q->lock
             reset_sp_tran(sp);
         } else {
             Pthread_mutex_unlock(q->lock);
@@ -755,7 +755,6 @@ again:  if (*q->open) {
 static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
 {
     int rc;
-    assert(tran != NULL);
     while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
         ;
     return rc;
@@ -790,7 +789,6 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
 
 static int dbconsumer_get(Lua L)
 {
-    SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
     if ((rc = dbconsumer_get_int(L, q)) > 0) {
@@ -5506,7 +5504,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
                     int *new_vm, // out param
                     char **err)  // out param
 {
-    int saved_new_tran = new_tran;
     SP sp = clnt->sp;
     if (sp) {
         if (clnt->want_stored_procedure_trace ||
@@ -5528,7 +5525,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         } else if (sp->spversion.version_num != 0) {
             // Have src for some version_num. Check if num is default.
             int bdberr;
-            assert(!new_tran);
             setup_sp_tran(clnt, sp);
             assert(sp->tran != NULL);
             int num = bdb_get_sp_get_default_version(sp->tran, spname, &bdberr);
