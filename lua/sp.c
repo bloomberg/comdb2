@@ -735,6 +735,8 @@ again:  if (*q->open) {
             luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
             return rc;
         }
+        assert(bdb_tran_can_thread_wait(
+                thedb->bdb_env, sp->clnt->dbtran.cursor_tran, 0));
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (dbq_delay / 1000);
@@ -3110,6 +3112,8 @@ static void dbthread_join_int(Lua L, dbthread_type *thd)
     while (thd->status == THREAD_STATUS_DISPATCH_WAITING ||
            thd->status == THREAD_STATUS_RUNNING) {
         check_retry_conditions(L, 1);
+        assert(!getsp(L)->clnt->dbtran.cursor_tran || bdb_tran_can_thread_wait(
+                thedb->bdb_env, getsp(L)->clnt->dbtran.cursor_tran, 0));
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
@@ -5369,6 +5373,8 @@ halt_here:
     }
     clnt->want_stored_procedure_debug = 1;
 wait_here:
+    assert(!clnt->dbtran.cursor_tran || bdb_tran_can_thread_wait(
+            thedb->bdb_env, clnt->dbtran.cursor_tran, 0));
     Pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
     Pthread_mutex_lock(&lua_debug_mutex);
     Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);

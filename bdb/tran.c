@@ -68,6 +68,39 @@ extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
 #endif
 
+int bdb_tran_can_thread_wait(bdb_state_type *bdb_state,
+                             cursor_tran_t *curtran,
+                             int fatal)
+{
+    int level = fatal ? LOGMSG_FATAL : LOGMSG_ERROR;
+
+    if (bdb_state == NULL) {
+        logmsg(level, "%s: thread %p: invalid bdb state\n",
+               __func__, (void*)pthread_self());
+        if (fatal) abort();
+        return 0;
+    }
+
+    if (curtran == NULL) {
+        logmsg(level, "%s: thread %p: invalid cursor tran\n",
+               __func__, (void*)pthread_self());
+        if (fatal) abort();
+        return 0;
+    }
+
+    // TODO: Verify the schema lock is not held.
+    // TODO: Verify the BDB lock is not held.
+
+    if (__lock_locker_haslocks(bdb_state->dbenv, curtran->lockerid)) {
+        logmsg(level, "%s: thread %p: locker has locks\n",
+               __func__, (void*)pthread_self());
+        if (fatal) abort();
+        return 0;
+    }
+
+    return 1;
+}
+
 int bdb_tran_clear_request_ack(tran_type *tran)
 {
     tran->request_ack = 0;
