@@ -486,13 +486,8 @@ static void ping(Lua L)
 
 static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
 {
-    if (!sp) return;
-    if (sp->tran != NULL) {
-      sp->nTranRef++;
-      return;
-    }
     int bdberr = 0;
-    assert(clnt->dbtran.cursor_tran != NULL);
+    assert(sp != NULL);
     assert(sp->tran == NULL);
     sp->tran = bdb_tran_begin_from_cursor_tran(thedb->bdb_env, NULL,
                                                clnt->dbtran.cursor_tran,
@@ -503,14 +498,12 @@ static void setup_sp_tran(struct sqlclntstate *clnt, SP sp)
                __func__, bdberr);
         abort();
     }
-    sp->nTranRef++;
 }
 
 static void reset_sp_tran(SP sp)
 {
-    if (!sp || (sp->tran == NULL)) return;
-    if (--sp->nTranRef > 0) return;
     int bdberr = 0;
+    assert(sp != NULL);
     assert(sp->tran != NULL);
     if (bdb_restore_tran_lockerid_and_abort(thedb->bdb_env, sp->tran,
                                             &sp->savedlid, &bdberr) != 0) {
@@ -521,7 +514,6 @@ static void reset_sp_tran(SP sp)
     }
     sp->savedlid = 0;
     sp->tran = NULL;
-    sp->nTranRef = 0;
 }
 
 static void pong(Lua L, dbconsumer_t *q)
@@ -718,7 +710,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q, tran_type *tran)
     return -1;
 }
 
-static int dbq_poll(Lua L, dbconsumer_t *q, tran_type *tran, int delay)
+static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
 {
     SP sp = getsp(L);
     while (1) {
@@ -728,7 +720,10 @@ static int dbq_poll(Lua L, dbconsumer_t *q, tran_type *tran, int delay)
         int rc;
         Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
+            setup_sp_tran(sp->clnt, sp);
+            assert(sp->tran != NULL);
             rc = dbq_poll_int(L, q, tran); // call will release q->lock
+            reset_sp_tran(sp);
         } else {
             Pthread_mutex_unlock(q->lock);
             rc = -2;
@@ -757,11 +752,11 @@ again:  if (*q->open) {
 }
 
 // this call will block until queue item available
-static int dbconsumer_get_int(Lua L, dbconsumer_t *q, tran_type *tran)
+static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
 {
     int rc;
     assert(tran != NULL);
-    while ((rc = dbq_poll(L, q, tran, dbq_delay)) == 0)
+    while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
         ;
     return rc;
 }
@@ -798,32 +793,23 @@ static int dbconsumer_get(Lua L)
     SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
-    setup_sp_tran(sp->clnt, sp);
-    assert(sp->tran != NULL);
-    if ((rc = dbconsumer_get_int(L, q, sp->tran)) > 0) {
-        reset_sp_tran(sp);
+    if ((rc = dbconsumer_get_int(L, q)) > 0) {
         return rc;
     }
-    reset_sp_tran(sp);
     return luaL_error(L, getsp(L)->error);
 }
 
 static int dbconsumer_poll(Lua L)
 {
-    SP sp = getsp(L);
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     lua_Number arg = luaL_checknumber(L, 2);
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
-    setup_sp_tran(sp->clnt, sp);
-    assert(sp->tran != NULL);
-    int rc = dbq_poll(L, q, sp->tran, delay);
+    int rc = dbq_poll(L, q, delay);
     if (rc >= 0) {
-        reset_sp_tran(sp);
         return rc;
     }
-    reset_sp_tran(sp);
     return luaL_error(L, getsp(L)->error);
 }
 
@@ -5517,7 +5503,6 @@ static void process_clnt_sp_override(struct sqlclntstate *clnt)
 
 static int setup_sp(char *spname, struct sqlthdstate *thd,
                     struct sqlclntstate *clnt,
-                    int new_tran,
                     int *new_vm, // out param
                     char **err)  // out param
 {
@@ -5580,24 +5565,13 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
             free_spversion(sp);
             if (create_sp_int(sp, err) != 0) {
                 return -1;
-            } else if (new_tran) {
-                setup_sp_tran(clnt, sp);
-                new_tran = 0;
             }
         } else if ((sp = create_sp(err)) == NULL) {
             return -1;
-        } else if (new_tran) {
-            setup_sp_tran(clnt, sp);
-            new_tran = 0;
         }
         if (strcmp(spname, clnt->spname) == 0) {
             apply_clnt_override(clnt, sp);
         }
-    }
-
-    if (new_tran) {
-        setup_sp_tran(clnt, sp);
-        new_tran = 0;
     }
 
     clnt->sp = sp;
@@ -5623,7 +5597,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
         if (locked)
             unlock_schema_lk();
         if (sp->src == NULL) {
-            if (saved_new_tran) reset_sp_tran(sp);
             close_sp(clnt);
             return -1;
         }
@@ -5633,7 +5606,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
     if (clnt && (clnt->want_stored_procedure_trace ||
                  clnt->want_stored_procedure_debug)) {
         if (load_debugging_information(sp, err)) {
-            if (saved_new_tran) reset_sp_tran(sp);
             return -1;
         }
     }
@@ -6208,7 +6180,7 @@ static int lua_final_int(char *spname, char **err, struct sqlthdstate *thd,
                          struct sqlclntstate *clnt, sqlite3_context *context)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
     if (new_vm) {
         *err = "failed to obtain lua aggregate object";
         return -1;
@@ -6226,7 +6198,7 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
                         int argc, sqlite3_value **argv)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
 
@@ -6251,7 +6223,7 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
                         int argc, sqlite3_value **argv)
 {
     int rc, new_vm;
-    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
@@ -6313,7 +6285,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
 
-    if ((rc = setup_sp(spname, thd, clnt, 0, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
     SP sp = clnt->sp;
     Lua L = sp->lua;
@@ -6346,7 +6318,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
                                 struct sqlclntstate *clnt, dbconsumer_t **q)
 {
     int new_vm;
-    int rc = setup_sp(reg->spname, thd, clnt, 1, &new_vm, err);
+    int rc = setup_sp(reg->spname, thd, clnt, &new_vm, err);
     if (rc != 0) return rc;
     SP sp = clnt->sp;
     Lua L = sp->lua;
@@ -6536,8 +6508,7 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         SP sp = clnt.sp;
         L = sp->lua;
-        assert(sp->tran != NULL);
-        if ((args = dbconsumer_get_int(L, q, sp->tran)) < 0) {
+        if ((args = dbconsumer_get_int(L, q)) < 0) {
             err = strdup(sp->error);
             goto bad;
         }
@@ -6571,10 +6542,8 @@ void *exec_trigger(trigger_reg_t *reg)
                    sp->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
-        reset_sp_tran(clnt.sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
-    reset_sp_tran(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
