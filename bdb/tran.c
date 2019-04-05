@@ -84,6 +84,7 @@ int bdb_tran_can_thread_wait(bdb_state_type *bdb_state,
     if (curtran == NULL) {
         logmsg(level, "%s: thread %p: invalid cursor tran\n",
                __func__, (void*)pthread_self());
+        lock_info_lockers(stdout, bdb_state);
         if (fatal) abort();
         return 0;
     }
@@ -94,6 +95,7 @@ int bdb_tran_can_thread_wait(bdb_state_type *bdb_state,
     if (__lock_locker_haslocks(bdb_state->dbenv, curtran->lockerid)) {
         logmsg(level, "%s: thread %p: locker has locks\n",
                __func__, (void*)pthread_self());
+        lock_info_lockers(stdout, bdb_state);
         if (fatal) abort();
         return 0;
     }
