@@ -9009,9 +9009,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 done:
     bdb_thread_event(thedb->bdb_env, 0);
     send_prefault_udp = 0;
-    if (req->record)
-        free(req->record);
-    free(req);
 }
 
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,

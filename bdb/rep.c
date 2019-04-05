@@ -4417,7 +4417,6 @@ static void pg_compact_do_work(struct thdpool *pool, void *work, void *thddata)
 
     __dbenv_pgcompact(dbenv, fileid, &dbt, gbl_pg_compact_thresh,
                       gbl_pg_compact_target_ff);
-    free(arg);
 }
 
 /* thread pool work function */
@@ -4821,11 +4820,8 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
     pgno = req->pgno;
 
     if ((ret = __dbreg_id_to_db_prefault(bdb_state->dbenv, NULL, &file_dbp,
-                                         fileid, 1)) != 0) {
-        // fprintf(stderr, "udp prefault: __dbreg_id_to_db failed with ret:
-        // %d\n", ret);
-        goto out;
-    }
+                                         fileid, 1)) != 0)
+        return;
 
     mpf = file_dbp->mpf;
 
@@ -4834,10 +4830,6 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
         sleep(gbl_prefault_latency);
 
     __dbreg_prefault_complete(bdb_state->dbenv, fileid);
-
-out:
-    free(req);
-    return;
 }
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
