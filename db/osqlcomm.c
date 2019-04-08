@@ -5584,7 +5584,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_t poke;
+    osql_poke_t poke = {0};
     osql_poke_uuid_t pokeuuid;
     int found = 0;
     int rc = 0;
@@ -9009,9 +9009,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 done:
     bdb_thread_event(thedb->bdb_env, 0);
     send_prefault_udp = 0;
-    if (req->record)
-        free(req->record);
-    free(req);
 }
 
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
@@ -9022,12 +9019,9 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         osqlpfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        if (req->record)
-            free(req->record);
-        free(req);
-        break;
     }
+    free(req->record);
+    free(req);
 }
 
 int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,

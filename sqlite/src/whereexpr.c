@@ -213,6 +213,23 @@ static int isLikeOrGlob(
 #endif
   pList = pExpr->x.pList;
   pLeft = pList->a[1].pExpr;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* NC: Restore the old logic. This fixes a regression caused by LIKE
+   * optimization (implemented here) particularly for BLOB types. This
+   * optimization essentially converts LIKE expression into inequality
+   * operations, triggering index lookups, which would fail for BLOB
+   * types as Comdb2 does not provide string->blob converter (db/types.c).
+   * e.g. select * from tab where blob_field like 'a%'
+   */
+  if( pLeft->op!=TK_COLUMN
+   || sqlite3ExprAffinity(pLeft)!=SQLITE_AFF_TEXT
+   || IsVirtual(pLeft->y.pTab)  /* Value might be numeric */
+  ){
+    /* IMP: R-02065-49465 The left-hand side of the LIKE or GLOB operator must
+    ** be the name of an indexed column with TEXT affinity. */
+    return 0;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   pRight = sqlite3ExprSkipCollate(pList->a[0].pExpr);
   op = pRight->op;

@@ -148,8 +148,8 @@ static int systblTablesFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)pVtabCursor;
-
   pCur->iRowid = 0;
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 

@@ -5746,7 +5746,6 @@ char * binary_op(int op){
 extern const char* comdb2_get_sql(void);
 #include "comdb2.h"
 #include "dohsql.h"
-//extern struct params_info* dohsql_params_append(struct params_info**, const char*, int);
 
 static char* sqlite3ExprDescribe_inner(
   Vdbe *v,
