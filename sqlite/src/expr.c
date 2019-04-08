@@ -871,7 +871,7 @@ Expr *sqlite3PExpr(
     p = sqlite3DbMallocRawNN(pParse->db, sizeof(Expr));
     if( p ){
       memset(p, 0, sizeof(Expr));
-      p->op = op & TKFLG_MASK;
+      p->op = op & 0xff;
       p->iAgg = -1;
     }
     sqlite3ExprAttachSubtrees(pParse->db, p, pLeft, pRight);
@@ -5121,6 +5121,17 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
 */
 int sqlite3ExprImpliesNonNullRow(Expr *p, int iTab){
   Walker w;
+  p = sqlite3ExprSkipCollate(p);
+  while( p ){
+    if( p->op==TK_NOTNULL ){
+      p = p->pLeft;
+    }else if( p->op==TK_AND ){
+      if( sqlite3ExprImpliesNonNullRow(p->pLeft, iTab) ) return 1;
+      p = p->pRight;
+    }else{
+      break;
+    }
+  }
   w.xExprCallback = impliesNotNullRow;
   w.xSelectCallback = 0;
   w.xSelectCallback2 = 0;

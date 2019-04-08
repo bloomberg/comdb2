@@ -363,11 +363,11 @@ struct sqlite3_value {
 #define MEM_TypeMask  0x0fff   /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
-/* Available          0x0020   */
+#define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
 /* Available          0x0040   */
 #define MEM_Undefined 0x0080   /* Value is undefined */
 #define MEM_Cleared   0x0100   /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0xc1ff   /* Mask of type bits */
+#define MEM_TypeMask  0xc1df   /* Mask of type bits */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
@@ -411,6 +411,12 @@ struct sqlite3_value {
 */
 #define MemSetTypeFlag(p, f) \
    ((p)->flags = ((p)->flags&~(MEM_TypeMask|MEM_Zero))|f)
+
+/*
+** True if Mem X is a NULL-nochng type.
+*/
+#define MemNullNochng(X) \
+  ((X)->flags==(MEM_Null|MEM_Zero) && (X)->n==0 && (X)->u.nZero==0)
 
 /*
 ** Return true if a memory cell is not marked as invalid.  This macro

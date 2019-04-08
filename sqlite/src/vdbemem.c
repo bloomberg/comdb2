@@ -70,7 +70,7 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
               ((p->flags&MEM_Static)!=0 ? 1 : 0) <= 1 );
 
       /* No other bits set */
-      assert( (p->flags & ~(MEM_Null|MEM_Term|MEM_Subtype
+      assert( (p->flags & ~(MEM_Null|MEM_Term|MEM_Subtype|MEM_FromBind
                            |MEM_Dyn|MEM_Ephem|MEM_Static))==0 );
     }else{
       /* A pure NULL might have other flags, such as MEM_Static, MEM_Dyn,
@@ -200,8 +200,7 @@ int sqlite3VdbeChangeEncoding(Mem *pMem, int desiredEnc){
 }
 
 /*
-** Make sure pMem->z points to a writable allocation of at least 
-** min(n,32) bytes.
+** Make sure pMem->z points to a writable allocation of at least n bytes.
 **
 ** If the bPreserve argument is true, then copy of the content of
 ** pMem->z into the new allocation.  pMem must be either a string or
@@ -215,14 +214,16 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
 
   /* If the bPreserve flag is set to true, then the memory cell must already
   ** contain a valid string or blob value.  */
-  assert( bPreserve==0 || pMem->flags&(MEM_Blob|MEM_Str) );
+  assert( bPreserve==0 
+       || pMem->flags&(MEM_Blob|MEM_Str)
+       || MemNullNochng(pMem)
+  );
   testcase( bPreserve && pMem->z==0 );
 
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pMem->szMalloc==0
        || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) );
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( n<32 ) n = 32;
   if( pMem->szMalloc>0 && bPreserve && pMem->z==pMem->zMalloc ){
     pMem->z = pMem->zMalloc = sqlite3DbReallocOrFree(pMem->db, pMem->z, n);
     bPreserve = 0;
@@ -338,7 +339,8 @@ int sqlite3VdbeMemMakeWriteable(Mem *pMem){
 int sqlite3VdbeMemExpandBlob(Mem *pMem){
   int nByte;
   assert( pMem->flags & MEM_Zero );
-  assert( pMem->flags&MEM_Blob );
+  assert( (pMem->flags&MEM_Blob)!=0 || MemNullNochng(pMem) );
+  testcase( sqlite3_value_nochange(pMem) );
   assert( !sqlite3VdbeMemIsRowSet(pMem) );
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
 
@@ -1309,7 +1311,6 @@ int sqlite3VdbeMemSetStr(
     assert( enc!=0 );
     if( enc==SQLITE_UTF8 ){
       nByte = 0x7fffffff & (int)strlen(z);
-      if( nByte>iLimit ) nByte = iLimit+1;
     }else{
       for(nByte=0; nByte<=iLimit && (z[nByte] | z[nByte+1]); nByte+=2){}
     }
@@ -1321,7 +1322,7 @@ int sqlite3VdbeMemSetStr(
   ** management (one of MEM_Dyn or MEM_Static).
   */
   if( xDel==SQLITE_TRANSIENT ){
-    int nAlloc = nByte;
+    u32 nAlloc = nByte;
     if( flags&MEM_Term ){
       nAlloc += (enc==SQLITE_UTF8?1:2);
     }
@@ -1331,19 +1332,20 @@ int sqlite3VdbeMemSetStr(
     testcase( nAlloc==0 );
     testcase( nAlloc==31 );
     testcase( nAlloc==32 );
-    if( sqlite3VdbeMemClearAndResize(pMem, MAX(nAlloc,32)) ){
+    if( sqlite3VdbeMemClearAndResize(pMem, (int)MAX(nAlloc,32)) ){
       return SQLITE_NOMEM_BKPT;
     }
     memcpy(pMem->z, z, nAlloc);
-  }else if( xDel==SQLITE_DYNAMIC ){
-    sqlite3VdbeMemRelease(pMem);
-    pMem->zMalloc = pMem->z = (char *)z;
-    pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
   }else{
     sqlite3VdbeMemRelease(pMem);
     pMem->z = (char *)z;
-    pMem->xDel = xDel;
-    flags |= ((xDel==SQLITE_STATIC)?MEM_Static:MEM_Dyn);
+    if( xDel==SQLITE_DYNAMIC ){
+      pMem->zMalloc = pMem->z;
+      pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
+    }else{
+      pMem->xDel = xDel;
+      flags |= ((xDel==SQLITE_STATIC)?MEM_Static:MEM_Dyn);
+    }
   }
 
   pMem->n = nByte;
