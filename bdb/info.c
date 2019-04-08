@@ -70,6 +70,7 @@ int __latch_dump_region __P((DB_ENV *, FILE *));
 void __dbenv_heap_dump __P((DB_ENV * dbenv));
 int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
+int __lock_dump_active_locks(DB_ENV *, FILE *);
 int __db_cprint(DB *dbp);
 char *bdb_coherent_state_string(const char *host);
 
@@ -1002,7 +1003,7 @@ void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out)
     extern u_int32_t gbl_rep_lockid;
     fprintf(out, "Replication locker: %x\n", gbl_rep_lockid);
 #endif
-    __lock_dump_region_int(bdb_state->dbenv, "o", out, 1);
+    __lock_dump_active_locks(bdb_state->dbenv, out);
 }
 
 void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out)
