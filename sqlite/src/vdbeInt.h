@@ -361,6 +361,7 @@ struct sqlite3_value {
 #define MEM_Undefined 0x0400   /* Value is undefined */
 #define MEM_Cleared   0x0800   /* NULL set by OP_Null, not from data */
 #define MEM_TypeMask  0x0fff   /* Mask of type bits */
+#define MEM_FromBind  0x1000   /* Value originates from sqlite3_bind() */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
 #define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
@@ -377,15 +378,15 @@ struct sqlite3_value {
 ** string is \000 or \u0000 terminated
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define MEM_Term      0x001000 /* String in Mem.z is zero terminated */
-#define MEM_Dyn       0x002000 /* Need to call Mem.xDel() on Mem.z */
-#define MEM_Static    0x004000 /* Mem.z points to a static string */
-#define MEM_Ephem     0x008000 /* Mem.z points to an ephemeral string */
-#define MEM_Agg       0x010000 /* Mem.z points to an agg function context */
-#define MEM_Zero      0x020000 /* Mem.i contains count of 0s appended to blob */
-#define MEM_Xor       0x040000 /* Mem.z needs XOR; <DESCEND> keys */
-#define MEM_OpFunc    0x080000 /* Mem.u is a custom function */
-#define MEM_Subtype   0x100000 /* Mem.eSubtype is valid */
+#define MEM_Term      0x002000 /* String in Mem.z is zero terminated */
+#define MEM_Dyn       0x004000 /* Need to call Mem.xDel() on Mem.z */
+#define MEM_Static    0x008000 /* Mem.z points to a static string */
+#define MEM_Ephem     0x010000 /* Mem.z points to an ephemeral string */
+#define MEM_Agg       0x020000 /* Mem.z points to an agg function context */
+#define MEM_Zero      0x040000 /* Mem.i contains count of 0s appended to blob */
+#define MEM_Xor       0x080000 /* Mem.z needs XOR; <DESCEND> keys */
+#define MEM_OpFunc    0x100000 /* Mem.u is a custom function */
+#define MEM_Subtype   0x200000 /* Mem.eSubtype is valid */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_Term      0x0200   /* String in Mem.z is zero terminated */
 #define MEM_Dyn       0x0400   /* Need to call Mem.xDel() on Mem.z */
