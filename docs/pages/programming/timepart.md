@@ -20,12 +20,15 @@ RETENTION = the maximum number of shards the partition will contain
 The server will schedule a rollout event at the specified `START` time once the partition is created.  The rollout involves creating a new shard, schedule the deletion of the oldest shard if there are more than `RETENTION` shards, and update the partition info.  Updating the partition info triggers a schema update for existing sqlite engines. 
 Reading from a time partition will return rows from every single shard.  Inserting in a partition will add the rows to the newest shard.  Updating a row will preserve the shard location of that row.
 
+## Logical time partitions
+
+Creating a partition with `manual` period allows client to control the rollout using a logical clock.  This way the rollout can be done based on table size, contention, or ad-hoc rules.  The logical clock is created using `PUT COUNTER <name>`, where `name` is the same as the partition name.  The `START` value for a manual rollout is the value of the counter at which the rollout occurs.
 
 ## Sql syntax examples
 
 Creating a partition syntax is:
 
-`CREATE TIME PARTITION ON shard0 as name PERIOD ['daily'|'weekly'|'yearly'] RETENTION n START 'datetime string'`
+`CREATE TIME PARTITION ON shard0 as name PERIOD ['daily'|'weekly'|'yearly'|'manual'] RETENTION n START 'datetime string|integer'`
 
 Dropping an existing partition syntax is:
 

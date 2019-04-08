@@ -55,11 +55,6 @@
 #include "views.h"
 #include "comdb2uuid.h"
 
-#define IS_TIMEPARTITION(p)                                                    \
-    ((p) == VIEW_PARTITION_DAILY || (p) == VIEW_PARTITION_WEEKLY ||            \
-     (p) == VIEW_PARTITION_MONTHLY || (p) == VIEW_PARTITION_YEARLY ||          \
-     (p) == VIEW_PARTITION_TEST2MIN)
-
 static char *_concat(char *str, int *len, const char *fmt, ...);
 
 static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
@@ -1259,7 +1254,10 @@ char *convert_to_start_string(enum view_partition_period period, int value,
 {
     if (IS_TIMEPARTITION(period))
         return convert_epoch_to_time_string(value, buf, buflen);
-    /*VIEW_PARTITION_MANUAL*/
+    if (period == VIEW_PARTITION_MANUAL) {
+        snprintf(buf, buflen, "%d", value);
+        return buf;
+    }
     abort();
 }
 
@@ -1268,7 +1266,9 @@ int convert_from_start_string(enum view_partition_period period,
 {
     if (IS_TIMEPARTITION(period))
         return convert_time_string_to_epoch(str);
-    /*VIEW_PARTITION_MANUAL*/
+    if (period == VIEW_PARTITION_MANUAL)
+        return atoi(str);
+
     abort();
 }
 

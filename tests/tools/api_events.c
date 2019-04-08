@@ -34,13 +34,20 @@ static cdb2_event *init_once_event;
 
 static void register_once(void)
 {
+    static int inited = 0;
+
+    if (inited)
+        return;
+
     init_once_event = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "HELLO", 0);
+
+    inited = 1;
 }
 
 static int TEST_init_once_registration(const char *db, const char *tier)
 {
-    extern void (*cdb2_init)(void);
-    cdb2_init = register_once;
+    extern void (*cdb2_install)(void);
+    cdb2_install = register_once;
     return 0;
 }
 

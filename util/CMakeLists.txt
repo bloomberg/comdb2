@@ -19,8 +19,8 @@ set(src
   int_overflow.c
   intern_strings.c
   list.c
-  lockassert.c
   logmsg.c
+  memdup.c
   misc.c
   nodemap.c
   object_pool.c

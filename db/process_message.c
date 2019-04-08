@@ -75,11 +75,12 @@ extern int __berkdb_read_alarm_ms;
 #include "crc32c.h"
 #include "ssl_bend.h"
 #include "dohsql.h"
+#include "fdb_whitelist.h"
 
-#include <trigger.h>
-#include <sc_stripes.h>
-#include <sc_global.h>
-#include <logmsg.h>
+#include "trigger.h"
+#include "sc_stripes.h"
+#include "sc_global.h"
+#include "logmsg.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -2550,6 +2551,30 @@ clipper_usage:
         dbgflag = toknum(tok, ltok);
         gbl_time_osql = dbgflag;
         logmsg(LOGMSG_USER, "sqllogtime %s\n", (gbl_time_osql) ? "enabled" : "disabled");
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist add db1 */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected action\n");
+            return -1;
+        }
+        if (tokcmp(tok, ltok, "add") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "add: expected db name\n");
+                return -1;
+            }
+            fdb_add_dbname_to_whitelist(tok);
+        } else if (tokcmp(tok, ltok, "del") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "del: expected db name\n");
+                return -1;
+            }
+            fdb_del_dbname_from_whitelist(tok);
+        } else if (tokcmp(tok, ltok, "dump") == 0) {
+            fdb_dump_whitelist();
+        }
     } else if (tokcmp(tok, ltok, "fdblogtime") == 0) {
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);

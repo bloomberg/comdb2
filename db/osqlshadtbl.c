@@ -434,8 +434,6 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     int rc = 0;
     int bdberr = 0;
 
-    /*pBt->vdbe = pthread_getspecific(sqlite3VDBEkey);*/
-
     tbl = calloc(1, sizeof(shad_tbl_t));
     if (!tbl)
         return NULL;
@@ -3322,9 +3320,7 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
     unsigned long long genid = 0;
     char *data = NULL;
     int datalen = 0;
-    if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
-        !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl)
-        return 1;
+
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
         cur =
@@ -3339,5 +3335,6 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
         if (rc != IX_EMPTY)
             return 0;
     }
-    return 1;
+
+    return (!osql->verify_tbl && !osql->sc_tbl && !osql->bpfunc_tbl);
 }

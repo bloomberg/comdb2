@@ -942,7 +942,6 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             op->p1, op->p2);
         break;
     case OP_Insert:
-    case OP_InsertInt:
         strbuf_appendf(out, "Write record in R%d into ", op->p2);
         print_cursor_description(out, &cur[op->p1]);
         strbuf_appendf(out, " using cursor [%d]", op->p1);
@@ -1241,7 +1240,9 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     sqlite3_stmt *stmt = NULL;
     char *eos;
     char *newSql = sqlite3_mprintf("EXPLAIN QUERY PLAN %s", sql);
-    int rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt, (const char **)&eos);
+    int rc;
+    clnt->prep_rc = rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt,
+                                            (const char **)&eos);
     if( newSql ) sqlite3_free(newSql);
     sqlite3WhereTrace = 0;
     if (f) 

@@ -22,6 +22,7 @@ typedef struct VdbeSorter VdbeSorter;
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
+#include "fdb_whitelist.h"
 #include "poll.h"
 #include "flibc.h"
 #include "logmsg.h"
@@ -37,6 +38,7 @@ extern int gbl_time_fdb;
 extern int gbl_notimeouts;
 extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
+extern char *gbl_myuri;
 
 /* matches fdb_svc_callback_t callbacks */
 enum {
@@ -393,8 +395,8 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.version = version;
     msg->co.seq = (trans) ? trans->seq : 0;
     msg->co.srcpid = gbl_mypid;
-    msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
-    msg->co.srcname = gbl_myhostname;
+    msg->co.srcnamelen = strlen(gbl_myuri) + 1;
+    msg->co.srcname = gbl_myuri;
     msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
@@ -688,7 +690,7 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
-        if (msg->co.srcname != gbl_myhostname) {
+        if (msg->co.srcname != gbl_myuri) {
             free(msg->co.srcname);
             msg->co.srcname = NULL;
             msg->co.srcnamelen = 0;
@@ -1014,6 +1016,7 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         } else {
             msg->co.srcname = NULL;
         }
+
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
@@ -1040,6 +1043,14 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
 #else
         msg->co.ssl = 0;
 #endif
+
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
+            char *data = strdup("Access Error: db not allowed to connect");
+            int datalen = strlen(data) + 1;
+            fdb_bend_send_row(sb, msg, NULL, 0, data, datalen, NULL, 0,
+                              FDB_ERR_ACCESS, 0);
+            return -1;
+        }
 
         break;
 
@@ -2750,13 +2761,13 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
 
     /* was there any error processing? */
-    if (clnt->fdb_state.err.errval != 0) {
+    int irc;
+    if ((irc = errstat_get_rc(&clnt->fdb_state.xerr)) != 0) {
         /* we need to send back a rc code */
-        rc = fdb_svc_sql_row(
-            clnt->fdb_state.remote_sql_sb, cid,
-            clnt->fdb_state.err.errstr, /* the actual row is the errstr */
-            strlen(clnt->fdb_state.err.errstr) + 1, clnt->fdb_state.err.errval,
-            arg->isuuid);
+        const char *tmp = errstat_get_str(&clnt->fdb_state.xerr);
+        rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                             (char *)tmp, /* the actual row is the errstr */
+                             strlen(tmp) + 1, irc, arg->isuuid);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fdb_send_rc failed rc=%d\n", __func__,
                    rc);
@@ -3365,7 +3376,7 @@ static int _check_code_release(SBUF2 *sb, char *cid, int code_release,
     return 0;
 }
 
-int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
+static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 {
     fdb_msg_cursor_open_t open_msg;
     fdb_msg_t msg;

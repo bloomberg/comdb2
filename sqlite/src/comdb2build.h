@@ -76,6 +76,7 @@ void comdb2DropForeignKey(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
 void comdb2DropIndex(Parse *, Token *, Token *, int);
 void comdb2AlterDropIndex(Parse *, Token *);
+void comdb2AlterCommitPending(Parse *);
 
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);
@@ -96,6 +97,8 @@ void comdb2RebuildData(Parse*, Token*, Token*,int opt);
 void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);
 void comdb2Truncate(Parse*, Token*, Token*);
 
+void comdb2SchemachangeControl(Parse*, int, Token*, Token *);
+
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);
 
 void comdb2CreateProcedure(Parse*, Token*, Token*, Token*);
@@ -113,6 +116,8 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,
         Token* lnm, Token* u);
 
 void comdb2timepartRetention(Parse*, Token*, Token*, int val);
+void comdb2CounterIncr(Parse*, Token*, Token*);
+void comdb2CounterSet(Parse*, Token*, Token*, long long val);
 
 void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);
@@ -132,6 +137,7 @@ enum
 void comdb2getkw(Parse* pParse, int reserved);
 int comdb2TokenToStr(Token *nm, char *buf, size_t len);
 
+int comdb2IsPrepareOnly(Parse* pParse);
 int comdb2AuthenticateUserOp(Parse* pParse);
 
 #endif // COMDB2BUILD_H

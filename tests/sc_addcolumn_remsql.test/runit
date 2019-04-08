@@ -3,13 +3,10 @@
 # Remote cursor moves testcase for comdb2
 ################################################################################
 
-dbnm=$1
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select comdb2_dbname(), comdb2_host()"
-
 # args
 # <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster> <task>
 echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_OPTIONS"
 for required in $vars; do
     q=${!required}
     echo "$required=$q" 
@@ -18,50 +15,13 @@ for required in $vars; do
         exit 1
     fi
 done
-
-dbname=$1
-srcdbname=srcdb$DBNAME
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$srcdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively srcdb config -- needed to setup srcdb
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "remote db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
-
-
-#setup remode db
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "select comdb2_dbname(), comdb2_host()"
-
 
 #run tests
 echo "Starting tests"
 
-echo ./test_sc.sh $dbname $cdb2config $srcdbname $dbdir $testdir
-./test_sc.sh $dbname $cdb2config $srcdbname $dbdir $testdir
+echo ./test_sc.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
+./test_sc.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
 result=$?
-
-if (( $result == 0 )) ; then
-   successful=1
-fi
-
-$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
-
-
 
 if (( $result != 0 )) ; then
    echo "FAILURE"

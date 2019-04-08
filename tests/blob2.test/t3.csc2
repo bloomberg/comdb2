@@ -1,0 +1,9 @@
+schema
+{
+    byte b[20]
+}
+
+keys
+{
+    "key" = b
+}

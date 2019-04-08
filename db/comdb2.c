@@ -58,7 +58,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 #include <mem.h>
@@ -291,6 +290,7 @@ struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
 char *gbl_myhostname; /* added for now to merge fdb source id */
 pid_t gbl_mypid;      /* my pid */
+char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
@@ -711,6 +711,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
@@ -828,6 +829,34 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
+
+    return p_db;
+}
+
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
+{
+    struct dbtable *p_db = NULL;
+    int rc = 0;
+
+    if (!tran)
+        return get_dbtable_by_name(p_name);
+
+    Pthread_rwlock_rdlock(&thedb_lock);
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
+        p_db = &thedb->static_table;
+    if (!p_db) {
+        rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
+    } else {
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+    }
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
+               __func__, rc);
+        return NULL;
+    }
 
     return p_db;
 }
@@ -3246,6 +3275,9 @@ static int init(int argc, char **argv)
         return -1;
     }
     strcpy(gbl_dbname, dbname);
+    char tmpuri[1024];
+    snprintf(tmpuri, sizeof(tmpuri), "%s@%s", gbl_dbname, gbl_myhostname);
+    gbl_myuri = intern(tmpuri);
 
     if (optind < argc && isdigit((int)argv[optind][0])) {
         cacheszkb = atoi(argv[optind]);
@@ -4594,8 +4626,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
-                                struct errstat *err)
+static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -4616,8 +4647,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     return NULL;
 }
 
-static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
-                                  void *arg4, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
 
     int tm;
@@ -4988,6 +5018,9 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("verbose_normalized_queries",
+                        "For new fingerprints, show normalized queries.",
+                        &gbl_verbose_normalized_queries);
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
