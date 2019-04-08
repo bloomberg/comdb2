@@ -5737,10 +5737,8 @@ char * binary_op(int op){
     case TK_TO_REAL:
     case TK_TO_DECIMAL:
     case TK_ISNOT:
-    case TK_END_OF_FILE:
     case TK_ILLEGAL:
     case TK_SPACE:
-    case TK_UNCLOSED_STRING:
     case TK_FUNCTION:
     case TK_COLUMN:
     case TK_AGG_FUNCTION:
@@ -6242,10 +6240,8 @@ static char* sqlite3ExprDescribe_inner(
     case TK_TO_REAL:
     case TK_TO_DECIMAL:
     case TK_ISNOT:
-    case TK_END_OF_FILE:
     case TK_ILLEGAL:
-    case TK_SPACE:
-    case TK_UNCLOSED_STRING: {
+    case TK_SPACE: {
       break;
     }
     case TK_FUNCTION: {
