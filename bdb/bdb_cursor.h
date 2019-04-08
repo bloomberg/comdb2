@@ -199,4 +199,8 @@ int bdb_get_context_from_lsn(bdb_state_type *bdb_state, void *lsnp,
 
 int bdb_direct_count(bdb_cursor_ifn_t *, int ixnum, int64_t *count);
 
+int bdb_tran_can_thread_wait(bdb_state_type *bdb_state,
+                             cursor_tran_t *curtran,
+                             int fatal);
+
 #endif

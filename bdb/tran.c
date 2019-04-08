@@ -80,6 +80,38 @@ int bdb_tran_set_request_ack(tran_type *tran)
     return 0;
 }
 
+int bdb_tran_can_thread_wait(bdb_state_type *bdb_state,
+                             cursor_tran_t *curtran,
+                             int fatal)
+{
+    int level = fatal ? LOGMSG_FATAL : LOGMSG_ERROR;
+
+    if (bdb_state == NULL) {
+        logmsg(level, "%s: thread %p: invalid bdb state\n",
+               __func__, (void*)pthread_self());
+        if (fatal) abort();
+        return 0;
+    }
+
+    if (curtran == NULL) {
+        logmsg(level, "%s: thread %p: invalid cursor tran\n",
+               __func__, (void*)pthread_self());
+        lock_info_lockers(stdout, bdb_state);
+        if (fatal) abort();
+        return 0;
+    }
+
+    if (__lock_locker_haslocks(bdb_state->dbenv, curtran->lockerid)) {
+        logmsg(level, "%s: thread %p: locker has locks\n",
+               __func__, (void*)pthread_self());
+        lock_info_lockers(stdout, bdb_state);
+        if (fatal) abort();
+        return 0;
+    }
+
+    return 1;
+}
+
 tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
                                                  unsigned long long tranid,
                                                  int trak, int *bdberr)

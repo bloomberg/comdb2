@@ -4085,7 +4085,7 @@ check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             if (!recreate) {
-                return rc;
+                goto done;
             }
             delete_prepared_stmts(thd);
             sqlite3_close_serial(&thd->sqldb);
@@ -4168,6 +4168,7 @@ check_version:
             thd->views_gen = gbl_views_gen;
         }
     }
+ done:
     if (got_views_lock) {
         views_unlock();
     }

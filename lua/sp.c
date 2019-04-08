@@ -681,8 +681,6 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
-            put_curtran(thedb->bdb_env, sp->clnt);
-            get_curtran(thedb->bdb_env, sp->clnt);
         } else {
             Pthread_mutex_unlock(q->lock);
             rc = -2;
@@ -694,6 +692,8 @@ again:  if (*q->open) {
             luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
             return rc;
         }
+        assert(bdb_tran_can_thread_wait(
+               thedb->bdb_env, sp->clnt->dbtran.cursor_tran, 0));
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (dbq_delay / 1000);
