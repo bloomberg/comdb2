@@ -2565,6 +2565,21 @@ filter_opt(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 ** are synthesized and do not actually appear in the grammar:
 */
 %token
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  TO_TEXT
+  TO_DATETIME
+  TO_INTERVAL_YE
+  TO_INTERVAL_MO
+  TO_INTERVAL_DY
+  TO_INTERVAL_HO
+  TO_INTERVAL_MI
+  TO_INTERVAL_SE
+  TO_BLOB
+  TO_NUMERIC
+  TO_INT
+  TO_REAL
+  TO_DECIMAL
+%endif SQLITE_BUILDING_FOR_COMDB2
   TRUEFALSE       /* True or false keyword */
   ISNOT           /* Combination of IS and NOT */
   FUNCTION        /* A function invocation */

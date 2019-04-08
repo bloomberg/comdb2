@@ -158,8 +158,6 @@ add_custom_command(
   OUTPUT parse.c parse.h
   DEPENDS lemon tool/lempar.c src/parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
-  COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
-  COMMAND SQLITE_BUILDING_FOR_COMDB2=1 ${tclsh} addopcodes.tcl parse.h.temp > parse.h
 )
 
 add_custom_command(
