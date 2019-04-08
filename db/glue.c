@@ -2016,17 +2016,18 @@ int ix_find_auxdb_by_rrn_and_genid_prefault(int auxdb, struct ireq *iq, int rrn,
     return rc;
 }
 
-int ix_find_auxdb_by_rrn_and_genid_tran(int auxdb, struct ireq *iq, int rrn,
-                                        unsigned long long genid, void *fnddta,
-                                        int *fndlen, int maxlen, void *trans,
-                                        int *ver)
+static int ix_find_auxdb_by_rrn_and_genid_tran(
+        int auxdb, struct ireq *iq, int rrn,
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans,
+        int *ver, int for_write)
 {
     int rc;
     int retries = 0;
     void *bdb_handle;
     int bdberr;
     char *req;
-    bdb_fetch_args_t args = {0};
+    bdb_fetch_args_t args = { .for_write = for_write };
 
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
@@ -2218,13 +2219,29 @@ int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, NULL);
+                                             fndlen, maxlen, trans, NULL, 0 /* for_write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
 
     return rc;
 }
+
+int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
+                                  unsigned long long genid, void *fnddta,
+                                  int *fndlen, int maxlen, void *trans)
+{
+    int rc = 0;
+
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
+                                             fndlen, maxlen, trans, NULL, 1 /* for_write */);
+
+    if (rc == IX_EMPTY)
+        rc = IX_NOTFND;
+
+    return rc;
+}
+
 
 int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                       unsigned long long genid, void *fnddta,
@@ -2234,7 +2251,7 @@ int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, version);
+                                             fndlen, maxlen, trans, version, 0 /* for write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;

@@ -67,8 +67,9 @@
 
 typedef struct {
     uint8_t ver;
-    int ignore_incoherent;
-    int page_order;
+    uint8_t ignore_incoherent;
+    uint8_t page_order;
+    uint8_t for_write;
 } bdb_fetch_args_t;
 
 int bdb_fetch(bdb_state_type *bdb_handle, void *ix, int ixnum, int ixlen,

@@ -956,12 +956,21 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         // other instead of relatively expensive memcpy()
         od_dta = old_dta;
     } else {
-        rc = ix_find_by_rrn_and_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
+
+        // this causes a DEADLOCK:
+        //       t1    t2
+        // have  R     R
+        // want  W     W
+
+        rc = ix_load_for_write_by_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
                                            od_len, trans);
         if (iq->debug)
             reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
                           "DTALEN %u FNDLEN %u RC %d",
                       rrn, vgenid, od_len, fndlen, rc);
+        // solutions: 
+        // 1. get this read record done under a write lock
+        // 2. release this read lock, and when doing update verify that nothing has changed on this record
     }
     if (rc != 0 || od_len != fndlen) {
         if (iq->debug)
