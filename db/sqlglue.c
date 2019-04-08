@@ -7912,6 +7912,9 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_REMOTE;
     cur->cursor_move = cursor_move_remote;
 
+    /* Reset previous fdb error (if any). */
+    clnt->fdb_state.xerr.errval = 0;
+
     if (clnt->intrans) {
         int rc = osql_sock_start_deferred(clnt);
         if (rc) {

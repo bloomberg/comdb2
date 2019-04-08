@@ -3242,9 +3242,8 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int rc = 0;
     struct sqlclntstate *clnt;
 
-    rc =
-        fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, arg->isuuid, &clnt);
-
+    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, arg->isuuid,
+                             &clnt);
     if (!rc) {
         arg->clnt = clnt;
         arg->flags = flags;
@@ -3591,6 +3590,11 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
         if (rc != 0) {
             int rc2;
         clear:
+            /* Bail-out if we failed early. */
+            if (svc_cb_arg.clnt == 0) {
+                goto done;
+            }
+
             rc2 = fdb_svc_trans_rollback(
                 open_msg.tid, open_msg.lvl, svc_cb_arg.clnt,
                 svc_cb_arg.clnt->dbtran.dtran->fdb_trans.top->seq);
@@ -3599,6 +3603,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
                        "%s: fdb_svc_trans_rollback failed rc=%d\n", __func__,
                        rc2);
             }
+
             break;
         }
 
@@ -3621,8 +3626,6 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     reset_clnt(svc_cb_arg.clnt, NULL, 0);
 
-    done_sql_thread();
-
     Pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
     Pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
     Pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
@@ -3631,6 +3634,9 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     free(svc_cb_arg.clnt);
     svc_cb_arg.clnt = NULL;
+
+done:
+    done_sql_thread();
 
     return rc;
 }

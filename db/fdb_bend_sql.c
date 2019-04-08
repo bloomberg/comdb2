@@ -308,10 +308,13 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
                         int seq, struct sql_thread *thd, int isuuid,
                         struct sqlclntstate **pclnt)
 {
-    struct sqlclntstate *clnt = NULL;
-    int rc = 0;
+    struct sqlclntstate *clnt;
+    int rc;
 
-    assert(seq == 0);
+    /* A malicious user could set seq to anything. */
+    if (seq == 0) {
+        return -1;
+    }
 
     *pclnt = clnt = calloc(1, sizeof(struct sqlclntstate));
     if (!clnt) {
@@ -341,10 +344,15 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
                 __func__, clnt->osql.rqid);
     }
 
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
         return rc;
+    }
 
-    return osql_sock_start_deferred(clnt);
+    if ((rc = osql_sock_start_deferred(clnt)) != 0) {
+        return rc;
+    }
+
+    return 0;
 }
 
 /**
