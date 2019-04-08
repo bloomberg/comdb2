@@ -1046,8 +1046,8 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                file, line, clnt->ctrl_sqlengine, newstate);
 
     if (newstate == SQLENG_WRONG_STATE) {
-        logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from %s line %d.\n",
-                file, line);
+        logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from state %d file %s line %d.\n",
+               clnt->ctrl_sqlengine, file, line);
     }
 
     clnt->ctrl_sqlengine = newstate;
@@ -4083,7 +4083,7 @@ check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             if (!recreate) {
-                return rc;
+                goto done;
             }
             delete_prepared_stmts(thd);
             sqlite3_close_serial(&thd->sqldb);
@@ -4166,6 +4166,7 @@ check_version:
             thd->views_gen = gbl_views_gen;
         }
     }
+ done: /* reached via goto for error handling case. */
     if (got_views_lock) {
         views_unlock();
     }

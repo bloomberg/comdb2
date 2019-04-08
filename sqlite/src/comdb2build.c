@@ -37,8 +37,8 @@ extern int gbl_ddl_cascade_drop;
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
 {
-    pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
+    pParse->rc = rc;
     return rc;
 }
 
@@ -2004,7 +2004,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         return;
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;       
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -2055,11 +2055,14 @@ clean_arg:
 static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
         int isset, long long value)
 {
-    char name[MAXTABLELEN];
-    char *query;
+    if (comdb2IsPrepareOnly(pParse))
+        return;
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
+
+    char name[MAXTABLELEN];
+    char *query;
 
     if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
         goto err;
