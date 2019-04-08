@@ -2240,7 +2240,8 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
 static int cdb2_random_int()
 {
     static __thread unsigned short rand_state[3] = {0};
-    if (rand_state[0] == 0) {
+    static __thread unsigned short do_once = 0;
+    if (!do_once) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
         /* Initialize rand_state once per thread
@@ -2253,6 +2254,7 @@ static int cdb2_random_int()
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
+        do_once = 1;
     }
     return nrand48(rand_state);
 }
