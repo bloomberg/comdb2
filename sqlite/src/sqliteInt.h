@@ -3272,7 +3272,7 @@ struct Parse {
   int aTempReg[8];        /* Holding area for temporary registers */
   Token sNameToken;       /* Token with unqualified schema object name */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int preserve_update;      /* statement replacement, preserve flags */
+  int preserve_update;    /* statement replacement, preserve flags */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /************************************************************************
