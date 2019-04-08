@@ -3924,68 +3924,52 @@ char *gbl_kafka_topic = NULL;
 
 #ifdef WITH_RDKAFKA
 
+rd_kafka_topic_t *rkt_p = NULL;
+rd_kafka_t *rk_p = NULL;
+
 static int kafka_publish(Lua lua)
 {
-    static rd_kafka_topic_t *rkt_p;  /* Producer topic object */
-    static rd_kafka_t *rk_p;         /* Producer instance handle */
-    const char *dta = lua_tostring(lua, -2);
+    const void *dta = lua_topointer(lua, -2);
     int dta_len = lua_tonumber(lua, -1);
+
     rd_kafka_conf_t *conf;  /* Temporary configuration object */
     char errstr[512];       /* librdkafka API error reporting buffer */
+
     SP sp = getsp(lua);
 
-    if (gbl_kafka_topic &&  gbl_kafka_brokers)
-        fprintf(stderr, "TOPIC %s Brokers%s Dta %s Dta_len %d\n", gbl_kafka_topic, gbl_kafka_brokers, dta, dta_len);
-    else 
+    if (!gbl_kafka_topic || !gbl_kafka_brokers)
         return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
+    else 
+        fprintf(stderr, "TOPIC %s Brokers%s Dta %s Dta_len %d\n", gbl_kafka_topic, gbl_kafka_brokers, (char*)dta, dta_len);
 
      /*
      * Create Kafka client configuration place-holder
      */
 
     if (!rk_p) {
-       conf = rd_kafka_conf_new();
-       /* Set bootstrap broker(s) as a comma-separated list of
-       * host or host:port (default port 9092).
-       * librdkafka will use the bootstrap broker to acquire the full
-       * set of broker from the cluster. */
-      if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
-                            errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-              fprintf(stderr, "%s\n", errstr);
-              return 1;
-      }
-
-
-    /*
-     * Create producer instance.
-     *
-     * NOTE: rd_kafka_new() takes ownership of the conf object
-     *       and the application must not reference it again after
-     *       this call.
-     */
+        conf = rd_kafka_conf_new();
+        if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
+                             errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+               fprintf(stderr, "%s\n", errstr);
+               return 1;
+        }
         rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
-    }
 
-    if (!rk_p) {
-            fprintf(stderr,
-                    "%% Failed to create new producer: %s\n", errstr);
-            return 1;
-    }
+        if (!rk_p) {
+                fprintf(stderr,
+                        "%% Failed to create new producer: %s\n", errstr);
+                return 1;
+        }
 
-     /* Create topic object that will be reused for each message
-     * produced.
-     *
-     * Both the producer instance (rd_kafka_t) and topic objects (topic_t)
-     * are long-lived objects that should be reused as much as possible.
-     */
-    if (!rkt_p) 
+    }
+    if (!rkt_p)  {
         rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
-
-    if (!rkt_p) {
-            fprintf(stderr, "%% Failed to create topic object: %s\n",
-                    rd_kafka_err2str(rd_kafka_last_error()));
-            rd_kafka_destroy(rk_p);
-            return 1;
+        if (!rkt_p) {
+                fprintf(stderr, "%% Failed to create topic object: %s\n",
+                        rd_kafka_err2str(rd_kafka_last_error()));
+                rd_kafka_destroy(rk_p);
+                return 1;
+        }
     }
 
 retry:
@@ -4028,11 +4012,6 @@ retry:
             goto retry;
         }
     }
-    //rd_kafka_flush(rk_p, 10*1000 /* wait for max 10 seconds */);
-    //rd_kafka_topic_destroy(rkt_p);
-     /* Destroy the producer instance */
-    //rd_kafka_destroy(rk_p);
-     /* Destroy topic object */
     return 0;
 }
 
