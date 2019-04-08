@@ -164,6 +164,11 @@ void free_cached_idx(uint8_t **cached_idx)
     }
 }
 
+static void sqlite3MakeSureDbHasErr(sqlite3 *db, int rc){
+    if ((db == NULL) || (db->errCode != SQLITE_OK)) return;
+    db->errCode = (rc != SQLITE_OK) ? rc : SQLITE_ERROR;
+}
+
 extern int sqldbgflag;
 extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
@@ -3093,6 +3098,10 @@ void xdump(void *b, int len)
 }
 
 const char *sqlite3ErrStr(int);
+
+sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
+    return 2147483647; /* see vdbeMemFromBtreeResize in vdbemem.c */
+}
 
 /*
  ** Return the currently defined page size
@@ -7610,6 +7619,8 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  tab->zName);
+                sqlite3VdbeTransferError(p);
+                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
                 return SQLITE_SCHEMA;
             }
@@ -7642,10 +7653,10 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
 
             if (short_version != clnt->fdb_state.version) {
-                clnt->fdb_state.err.errval = SQLITE_SCHEMA;
+                clnt->fdb_state.xerr.errval = SQLITE_SCHEMA;
                 /* NOTE: first word of the error string is the actual version,
                    expected on the other side; please do not change */
-                errstat_set_strf(&clnt->fdb_state.err,
+                errstat_set_strf(&clnt->fdb_state.xerr,
                                  "%llu Stale version local %u != received %u",
                                  version, short_version,
                                  clnt->fdb_state.version);
@@ -7674,6 +7685,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  db->tablename);
                 sqlite3VdbeTransferError(p);
+                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
                 return SQLITE_SCHEMA;
@@ -9656,6 +9668,8 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                 sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
+                sqlite3VdbeTransferError(cur->vdbe);
+                sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
                 return SQLITE_COMDB2SCHEMA;
             } else if (!cur->bt->is_remote && cur->db) {
@@ -10915,11 +10929,11 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
               __func__, dbname, service, host);*/
             goto sbuf;
         }
-    } else
-        /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
-            __func__, dbname, service, host);*/
+    }
+    /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
+      __func__, dbname, service, host);*/
 
-        retry = 0;
+    retry = 0;
 retry:
     /* this could fail due to load */
     port = portmux_get(host, "comdb2", "replication", dbname);
@@ -12558,7 +12572,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
                          mod->zName, thd->clnt->user, bdberr);
-                logmsg(LOGMSG_WARN, "%s\n", msg);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
                 errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
                 errstat_set_str(&thd->clnt->osql.xerr, msg);
                 return SQLITE_AUTH;
@@ -12568,4 +12582,80 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
     }
     assert(0);
     return 0;
+}
+
+int _some_callback(void *theresult, int ncols, char **vals, char **cols)
+{
+    if ((ncols < 1) || (!vals[0])) {
+        logmsg(LOGMSG_ERROR, "%s query failed to retrieve a proper row!\n",
+               __func__);
+        return SQLITE_ABORT;
+    }
+
+    *(long long *)theresult = atoll(vals[0]);
+
+    return SQLITE_OK;
+}
+
+long long run_sql_return_ll(const char *sql, struct errstat *err)
+{
+    struct sql_thread *thd;
+    int rc;
+
+    thd = start_sql_thread();
+    rc = run_sql_thd_return_ll(sql, thd, err);
+    done_sql_thread();
+
+    return rc;
+}
+
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
+                                struct errstat *err)
+{
+    struct sqlclntstate client;
+    sqlite3 *sqldb;
+    int rc;
+    int crc;
+    char *msg;
+    long long ret = LLONG_MIN;
+
+    reset_clnt(&client, NULL, 1);
+    strncpy(client.tzname, "UTC", sizeof(client.tzname));
+    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    client.dbtran.mode = TRANLEVEL_SOSQL;
+    client.sql = (char *)query;
+    client.debug_sqlclntstate = pthread_self();
+
+    sql_get_query_id(thd);
+    thd->clnt = &client;
+
+    if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
+        errstat_set_rcstrf(err, -1, "%s: failed to open a new curtran, rc=%d",
+                           __func__, rc);
+        goto done;
+    }
+
+    if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
+        errstat_set_rcstrf(err, -1, "%s:sqlite3_open_serial rc %d", __func__,
+                           rc);
+        goto cleanup;
+    }
+
+    if ((rc = sqlite3_exec(sqldb, query, _some_callback, &ret, &msg)) != 0) {
+        errstat_set_rcstrf(err, -1, "q:\"%.100s\" failed rc %d: \"%.50s\"",
+                           query, rc, msg ? msg : "<unknown error>");
+        goto cleanup;
+    }
+    thd->clnt = NULL;
+
+    if ((crc = sqlite3_close(sqldb)) != 0)
+        errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
+
+cleanup:
+    crc = put_curtran(thedb->bdb_env, &client);
+    if (crc && !rc)
+        errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
+done:
+    thd->clnt = NULL;
+    return ret;
 }

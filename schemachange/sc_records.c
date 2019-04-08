@@ -1149,6 +1149,7 @@ void *convert_records_thd(struct convert_record_data *data)
         Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
+    int prev_preempted = data->s->preempted;
     /* convert each record */
     while (rc > 0) {
         if (data->cmembers->is_decrease_thrds &&
@@ -1168,6 +1169,12 @@ void *convert_records_thd(struct convert_record_data *data)
 
         if (stopsc) { // set from downgrade
             data->outrc = SC_MASTER_DOWNGRADE;
+            goto cleanup_no_msg;
+        }
+        if (prev_preempted != data->s->preempted) {
+            logmsg(LOGMSG_INFO, "%s schema change preempted %d\n", __func__,
+                   data->s->preempted);
+            data->outrc = SC_PREEMPTED;
             goto cleanup_no_msg;
         }
     }

@@ -43,7 +43,6 @@
 #include <f2cstr.h>
 #include <list.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
 #include <unistd.h>
@@ -2360,7 +2359,8 @@ void handle_postcommit_bpfunc(struct ireq *iq)
     while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
     {
         assert(cur_bpfunc->func->success != NULL);
-        cur_bpfunc->func->success(NULL/*not used*/, cur_bpfunc->func, NULL);
+        cur_bpfunc->func->success(NULL /*not used*/, cur_bpfunc->func,
+                                  &iq->errstat);
         free_bpfunc(cur_bpfunc->func);
     }
 }
@@ -2371,7 +2371,8 @@ void handle_postabort_bpfunc(struct ireq *iq)
     while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
     {
         assert(cur_bpfunc->func->fail != NULL);
-        cur_bpfunc->func->fail(NULL/*not used*/, cur_bpfunc->func, NULL);
+        cur_bpfunc->func->fail(NULL /*not used*/, cur_bpfunc->func,
+                               &iq->errstat);
         free_bpfunc(cur_bpfunc->func);
     }
 }

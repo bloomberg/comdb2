@@ -553,6 +553,7 @@ static void destroy_fdb(fdb_t *fdb)
     fdb->users--;
     if (fdb->users == 0) {
         __cache_unlink_fdb(fdb);
+        Pthread_mutex_unlock(&fdb->users_mtx);
         __free_fdb(fdb);
     } else {
         Pthread_mutex_unlock(&fdb->users_mtx);
@@ -1359,7 +1360,6 @@ retry_fdb_creation:
             perrstr = "remote db requires SSL";
             break;
         }
-
         default: {
             perrstr = "error adding remote table";
         }
@@ -2961,6 +2961,7 @@ done:
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    sqlclntstate_fdb_t *state = pCur->clnt ? &pCur->clnt->fdb_state : NULL;
     int rc = 0;
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
@@ -3073,9 +3074,18 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 #endif
                 } else {
                     if (rc != FDB_ERR_SSL) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
-                                             "row rc=%d \"%s\"\n",
-                               __func__, rc, errstr);
+                        if (state) {
+                            state->preserve_err = 1;
+                            errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
+                            errstat_set_str(&state->xerr,
+                                            errstr ? errstr
+                                                   : "error string not set");
+                        }
+                        logmsg(LOGMSG_ERROR,
+                               "%s: failed to retrieve streaming "
+                               "row rc=%d \"%s\"\n",
+                               __func__, rc,
+                               errstr ? errstr : "error string not set");
                         fdbc->streaming = FDB_CUR_ERROR;
                     }
                 }
@@ -3157,6 +3167,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
      */
 
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    sqlclntstate_fdb_t *state = pCur->clnt ? &pCur->clnt->fdb_state : NULL;
     int rc = 0;
     char *packed_key = NULL;
     int packed_keylen = 0;
@@ -3264,9 +3275,18 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
                     if (rc != FDB_ERR_SSL) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
-                                             "row rc=%d \"%s\"\n",
-                               __func__, rc, errstr);
+                        if (state) {
+                            state->preserve_err = 1;
+                            errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
+                            errstat_set_str(&state->xerr,
+                                            errstr ? errstr
+                                                   : "error string not set");
+                        }
+                        logmsg(LOGMSG_ERROR,
+                               "%s: failed to retrieve streaming"
+                               " row rc=%d \"%s\"\n",
+                               __func__, rc,
+                               errstr ? errstr : "error string not set");
                         fdbc->streaming = FDB_CUR_ERROR;
                     }
                 }
@@ -4907,7 +4927,9 @@ int fdb_get_remote_version(const char *dbname, const char *table,
         flags = 0;
     }
 
-    snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    int tot = snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    if (tot >= sizeof(sql))
+        return FDB_ERR_FDB_TBL_NOTFOUND;
 
     rc = cdb2_open(&db, dbname, location, flags);
     if (rc)

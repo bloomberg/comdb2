@@ -309,7 +309,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
+    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
@@ -721,7 +721,7 @@ extern int gbl_readonly_sc;
 
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
-    int bdberr;
+    int bdberr = 0;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;

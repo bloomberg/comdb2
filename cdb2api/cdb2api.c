@@ -64,7 +64,14 @@ static char *CDB2DBCONFIG_BUF = NULL;
 
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
-static char cdb2_dnssuffix[255] = "";
+
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
+
+#ifndef CDB2_DNS_SUFFIX
+#define CDB2_DNS_SUFFIX
+#endif
+static char cdb2_dnssuffix[255] = QUOTE(CDB2_DNS_SUFFIX);
 static char cdb2_machine_room[16] = "";
 
 #define CDB2_PORTMUXPORT_DEFAULT 5105
@@ -388,9 +395,6 @@ static void do_init_once(void)
     _PID = getpid();
     _MACHINE_ID = gethostid();
     _ARGV0 = cdb2_getargv0();
-
-    if (cdb2_install != NULL)
-        (*cdb2_install)();
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -1318,6 +1322,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
+            } else if (strcasecmp("install_static_libs", tok) == 0) {
+                if (cdb2_install != NULL)
+                    (*cdb2_install)();
             } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
@@ -1359,8 +1366,6 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts);
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");
@@ -5742,7 +5747,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     cdb2_hndl_tp *hndl;
     int rc = 0;
     void *callbackrc;
-    int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
@@ -5796,19 +5800,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "random_room");
     }
 
-    rc = refresh_gbl_events_on_hndl(hndl);
-    if (rc != 0)
-        goto out;
-
-    while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
-    }
-
-    if (overwrite_rc)
-        goto out;
-
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
@@ -5850,6 +5841,18 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (hndl->send_stack)
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
+
+    if (rc == 0) {
+        rc = refresh_gbl_events_on_hndl(hndl);
+        if (rc != 0)
+            goto out;
+
+        while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
+            callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE,
+                                              (intptr_t)rc);
+            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+        }
+    }
 
 out:
     if (log_calls) {

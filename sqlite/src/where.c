@@ -335,6 +335,17 @@ static WhereTerm *whereScanNext(WhereScan *pScan){
 }
 
 /*
+** This is whereScanInit() for the case of an index on an expression.
+** It is factored out into a separate tail-recursion subroutine so that
+** the normal whereScanInit() routine, which is a high-runner, does not
+** need to push registers onto the stack as part of its prologue.
+*/
+static SQLITE_NOINLINE WhereTerm *whereScanInitIndexExpr(WhereScan *pScan){
+  pScan->idxaff = sqlite3ExprAffinity(pScan->pIdxExpr);
+  return whereScanNext(pScan);
+}
+
+/*
 ** Initialize a WHERE clause scanner object.  Return a pointer to the
 ** first match.  Return NULL if there are no matches.
 **
@@ -366,12 +377,19 @@ static WhereTerm *whereScanInit(
   pScan->pIdxExpr = 0;
   pScan->idxaff = 0;
   pScan->zCollName = 0;
+  pScan->opMask = opMask;
+  pScan->k = 0;
+  pScan->aiCur[0] = iCur;
+  pScan->nEquiv = 1;
+  pScan->iEquiv = 1;
   if( pIdx ){
     int j = iColumn;
     iColumn = pIdx->aiColumn[j];
     if( iColumn==XN_EXPR ){
       pScan->pIdxExpr = pIdx->aColExpr->a[j].pExpr;
       pScan->zCollName = pIdx->azColl[j];
+      pScan->aiColumn[0] = XN_EXPR;
+      return whereScanInitIndexExpr(pScan);
     }else if( iColumn==pIdx->pTable->iPKey ){
       iColumn = XN_ROWID;
     }else if( iColumn>=0 ){
@@ -381,12 +399,7 @@ static WhereTerm *whereScanInit(
   }else if( iColumn==XN_EXPR ){
     return 0;
   }
-  pScan->opMask = opMask;
-  pScan->k = 0;
-  pScan->aiCur[0] = iCur;
   pScan->aiColumn[0] = iColumn;
-  pScan->nEquiv = 1;
-  pScan->iEquiv = 1;
   return whereScanNext(pScan);
 }
 
@@ -866,7 +879,7 @@ static void constructAutomaticIndex(
     addrTop = sqlite3VdbeAddOp1(v, OP_Rewind, pLevel->iTabCur); VdbeCoverage(v);
   }
   if( pPartial ){
-    iContinue = sqlite3VdbeMakeLabel(v);
+    iContinue = sqlite3VdbeMakeLabel(pParse);
     sqlite3ExprIfFalse(pParse, pPartial, iContinue, SQLITE_JUMPIFNULL);
     pLoop->wsFlags |= WHERE_PARTIALIDX;
   }
@@ -883,6 +896,7 @@ static void constructAutomaticIndex(
     translateColumnToCopy(pParse, addrTop, pLevel->iTabCur,
                           pTabItem->regResult, 1);
     sqlite3VdbeGoto(v, addrTop);
+    pTabItem->fg.viaCoroutine = 0;
   }else{
     sqlite3VdbeAddOp2(v, OP_Next, pLevel->iTabCur, addrTop+1); VdbeCoverage(v);
   }
@@ -2241,7 +2255,7 @@ static int whereLoopInsert(WhereLoopBuilder *pBuilder, WhereLoop *pTemplate){
   rc = whereLoopXfer(db, p, pTemplate);
   if( (p->wsFlags & WHERE_VIRTUALTABLE)==0 ){
     Index *pIndex = p->u.btree.pIndex;
-    if( pIndex && pIndex->tnum==0 ){
+    if( pIndex && pIndex->idxType==SQLITE_IDXTYPE_IPK ){
       p->u.btree.pIndex = 0;
     }
   }
@@ -2408,8 +2422,8 @@ static int whereRangeVectorLen(
 ** terms only. If it is modified, this value is restored before this 
 ** function returns.
 **
-** If pProbe->tnum==0, that means pIndex is a fake index used for the
-** INTEGER PRIMARY KEY.
+** If pProbe->idxType==SQLITE_IDXTYPE_IPK, that means pIndex is 
+** a fake index used for the INTEGER PRIMARY KEY.
 */
 static int whereLoopAddBtreeIndex(
   WhereLoopBuilder *pBuilder,     /* The WhereLoop factory */
@@ -2909,6 +2923,7 @@ static int whereLoopAddBtree(
     sPk.onError = OE_Replace;
     sPk.pTable = pTab;
     sPk.szIdxRow = pTab->szTabRow;
+    sPk.idxType = SQLITE_IDXTYPE_IPK;
     aiRowEstPk[0] = pTab->nRowLogEst;
     aiRowEstPk[1] = 0;
     pFirst = pSrc->pTab->pIndex;
@@ -2984,7 +2999,6 @@ static int whereLoopAddBtree(
       testcase( pNew->iTab!=pSrc->iCursor );  /* See ticket [98d973b8f5] */
       continue;  /* Partial index inappropriate for this query */
     }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* if index looks like COMDB2_DISABLED_xxx then skip */
     if( pProbe->zName && strncmp(pProbe->zName, "$COMDB2_DISABLED_", 17)==0 ){
@@ -2997,7 +3011,6 @@ static int whereLoopAddBtree(
       continue;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     if( pProbe->bNoQuery ) continue;
     rSize = pProbe->aiRowLogEst[0];
     pNew->u.btree.nEq = 0;
@@ -3013,7 +3026,7 @@ static int whereLoopAddBtree(
     b = indexMightHelpWithOrderBy(pBuilder, pProbe, pSrc->iCursor);
     /* The ONEPASS_DESIRED flags never occurs together with ORDER BY */
     assert( (pWInfo->wctrlFlags & WHERE_ONEPASS_DESIRED)==0 || b==0 );
-    if( pProbe->tnum<=0 ){
+    if( pProbe->idxType==SQLITE_IDXTYPE_IPK ){
       /* Integer primary key index */
       pNew->wsFlags = WHERE_IPK;
 
@@ -3999,12 +4012,10 @@ static LogEst whereSortingCost(
   ** The (Y/X) term is implemented using stack variable rScale
   ** below.  */
   LogEst rScale, rSortCost;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern int gbl_sqlite_sortermult;
   nRow *= gbl_sqlite_sortermult;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( nOrderBy>0 && 66==sqlite3LogEst(100) );
   rScale = sqlite3LogEst((nOrderBy-nSorted)*100/nOrderBy) - 66;
   rSortCost = nRow + rScale + 16;
@@ -4059,7 +4070,6 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
   ** For 2-way joins, the 5 best paths are followed.
   ** For joins of 3 or more tables, track the 10 best paths */
   mxChoice = (nLoop<=1) ? 1 : (nLoop==2 ? 5 : 10);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
     int planner_effort = comdb2_get_planner_effort();
@@ -4081,7 +4091,6 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
     }
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( nLoop<=pWInfo->pTabList->nSrc );
   WHERETRACE(0x002, ("---- begin solver.  (nRowEst=%d)\n", nRowEst));
 
@@ -4665,7 +4674,6 @@ WhereInfo *sqlite3WhereBegin(
     pWhere = pNewExpr;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( (wctrlFlags & WHERE_ONEPASS_MULTIROW)==0 || (
         (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 
      && (wctrlFlags & WHERE_OR_SUBCLAUSE)==0 
@@ -4727,7 +4735,7 @@ WhereInfo *sqlite3WhereBegin(
   pWInfo->pResultSet = pResultSet;
   pWInfo->aiCurOnePass[0] = pWInfo->aiCurOnePass[1] = -1;
   pWInfo->nLevel = nTabList;
-  pWInfo->iBreak = pWInfo->iContinue = sqlite3VdbeMakeLabel(v);
+  pWInfo->iBreak = pWInfo->iContinue = sqlite3VdbeMakeLabel(pParse);
   pWInfo->wctrlFlags = wctrlFlags;
   pWInfo->iLimit = iAuxArg;
   pWInfo->savedNQueryLoop = pParse->nQueryLoop;
@@ -5001,9 +5009,10 @@ WhereInfo *sqlite3WhereBegin(
   if( (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 ){
     int wsFlags = pWInfo->a[0].pWLoop->wsFlags;
     int bOnerow = (wsFlags & WHERE_ONEROW)!=0;
+    assert( !(wsFlags & WHERE_VIRTUALTABLE) || IsVirtual(pTabList->a[0].pTab) );
     if( bOnerow || (
         0!=(wctrlFlags & WHERE_ONEPASS_MULTIROW)
-     && 0==(wsFlags & WHERE_VIRTUALTABLE)
+     && !IsVirtual(pTabList->a[0].pTab)
      && (0==(wsFlags & WHERE_MULTI_OR) || (wctrlFlags & WHERE_DUPLICATES_OK))
     )){
       pWInfo->eOnePass = bOnerow ? ONEPASS_SINGLE : ONEPASS_MULTI;
@@ -5105,13 +5114,11 @@ WhereInfo *sqlite3WhereBegin(
       pLevel->iIdxCur = iIndexCur;
       assert( pIx->pSchema==pTab->pSchema );
       assert( iIndexCur>=0 );
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       if( op!=OP_ReopenIdx && GET_CURSOR_RECORDING(pParse, pLevel->iTabCur) ){
         op = OP_OpenRead_Record;
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       if( op ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3VdbeAddTable(v, pTab);
@@ -5123,7 +5130,6 @@ WhereInfo *sqlite3WhereBegin(
           goto whereBeginError;
         }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
         sqlite3VdbeAddOp3(v, op, iIndexCur, pIx->tnum, iDb);
         sqlite3VdbeSetP4KeyInfo(pParse, pIx);
         if( (pLoop->wsFlags & WHERE_CONSTRAINT)!=0
@@ -5176,7 +5182,7 @@ WhereInfo *sqlite3WhereBegin(
         pParse, pTabList, pLevel, wctrlFlags
     );
     pLevel->addrBody = sqlite3VdbeCurrentAddr(v);
-    notReady = sqlite3WhereCodeOneLoopStart(pWInfo, ii, notReady);
+    notReady = sqlite3WhereCodeOneLoopStart(pParse,v,pWInfo,ii,pLevel,notReady);
     pWInfo->iContinue = pLevel->addrCont;
     if( (wsFlags&WHERE_MULTI_OR)==0 && (wctrlFlags&WHERE_OR_SUBCLAUSE)==0 ){
       sqlite3WhereAddScanStatus(v, pTabList, pLevel, addrExplain);

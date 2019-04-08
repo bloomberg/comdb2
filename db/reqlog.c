@@ -50,7 +50,6 @@
 #include <list.h>
 #include <segstr.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 
 #include <epochlib.h>
@@ -2686,6 +2685,15 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
     if (logger) logger->queuetimeus = timeus;
+}
+
+void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
+{
+    if (logger == NULL)
+        return;
+    size_t min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    memset(logger->fingerprint, 0, min);
+    logger->have_fingerprint = 1;
 }
 
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,

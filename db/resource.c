@@ -103,8 +103,9 @@ char *getdbrelpath(const char *relpath)
     size_t reltolen, relpathlen;
     const char *relto = lrlname;
 
-    /* if relpath is absolute then return it unaltered */
-    if (relpath[0] == '/')
+    /* if relpath is absolute then return it unaltered -OR- if there is
+     * no base path available to help us modify it */
+    if (relpath[0] == '/' || !relto)
         return strdup(relpath);
 
     /* if relto has no path information then return relpath unaltered */

@@ -667,7 +667,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int prefixes = 0;
     int conv_flags = 0;
     int expected_dat_len;
-    blob_status_t oldblobs[MAXBLOBS];
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
     struct schema *dynschema = NULL;
     char *allocced_memory = NULL;
     size_t mallocced_bytes;
@@ -692,8 +692,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *vrecord = p_buf_vrec;
     size_t reclen = p_buf_rec_end - p_buf_rec;
     int got_oldblobs = 0;
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
-    blob_buffer_t del_blobs_buf[MAXBLOBS];
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
+    blob_buffer_t del_blobs_buf[MAXBLOBS] = {{0}};
     blob_buffer_t *add_idx_blobs = NULL;
     blob_buffer_t *del_idx_blobs = NULL;
 
@@ -716,10 +716,6 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             goto err;
         }
     }
-
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
-    bzero(del_blobs_buf, sizeof(del_blobs_buf));
 
     /* must have blobs in case any byte arrays in .DEFAULT convert to blobs */
     if (!blobs) {
@@ -1491,19 +1487,17 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int retrc = 0;
     int prefixes = 0;
     void *allocced_memory = NULL;
-    blob_status_t oldblobs[MAXBLOBS];
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
     void *od_dta;
     size_t od_len;
     int od_len_int;
     int fndlen;
     int rc;
     int got_oldblobs = 0;
-    blob_buffer_t blobs_buf[MAXBLOBS];
+    blob_buffer_t blobs_buf[MAXBLOBS] = {{0}};
     blob_buffer_t *del_idx_blobs = NULL;
 
     *ixfailnum = -1;
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(blobs_buf, sizeof(blobs_buf));
 
     if (iq->debug) {
         reqpushprefixf(iq, "del_record: ");

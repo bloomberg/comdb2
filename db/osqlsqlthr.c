@@ -1743,7 +1743,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
             snprintf(
                 msg, sizeof(msg), "Write access denied to %s from %d bdberr=%d",
                 pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
-            logmsg(LOGMSG_WARN, "%s\n", msg);
+            logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
 
@@ -1763,7 +1763,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
                      pCur->db->tablename, thd->clnt->user, bdberr);
-            logmsg(LOGMSG_WARN, "%s\n", msg);
+            logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
 
@@ -1791,7 +1791,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             snprintf(
                 msg, sizeof(msg), "Read access denied to %s from %d bdberr=%d",
                 pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
-            logmsg(LOGMSG_WARN, "%s\n", msg);
+            logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
 
@@ -1810,7 +1810,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
                      pCur->db->tablename, thd->clnt->user, bdberr);
-            logmsg(LOGMSG_WARN, "%s\n", msg);
+            logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
 

@@ -25,7 +25,6 @@
 
 struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
 {
-    memset(sc, 0, sizeof(struct schema_change_type));
     sc->tran = NULL;
     sc->type = DBTYPE_TAGGED_TABLE;
     sc->sb = NULL;
@@ -52,8 +51,9 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
 struct schema_change_type *new_schemachange_type()
 {
     struct schema_change_type *sc =
-        (struct schema_change_type *)malloc(sizeof(struct schema_change_type));
-    if (sc != NULL) sc = init_schemachange_type(sc);
+        calloc(1, sizeof(struct schema_change_type));
+    if (sc != NULL)
+        sc = init_schemachange_type(sc);
 
     return sc;
 }
@@ -130,7 +130,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
         sizeof(s->header_change) + sizeof(s->compress) +
         sizeof(s->compress_blobs) + sizeof(s->ip_updates) +
-        sizeof(s->instant_sc) + sizeof(s->doom) + sizeof(s->use_plan) +
+        sizeof(s->instant_sc) + sizeof(s->preempted) + sizeof(s->use_plan) +
         sizeof(s->commit_sleep) + sizeof(s->convert_sleep) +
         sizeof(s->same_schema) + sizeof(s->dbnum) + sizeof(s->flg) +
         sizeof(s->rebuild_index) + sizeof(s->index_to_rebuild) +
@@ -246,7 +246,7 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
 
-    p_buf = buf_put(&s->doom, sizeof(s->doom), p_buf, p_buf_end);
+    p_buf = buf_put(&s->preempted, sizeof(s->preempted), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
 
@@ -458,7 +458,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->instant_sc, sizeof(s->instant_sc), p_buf,
                                p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->doom, sizeof(s->doom), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->preempted, sizeof(s->preempted), p_buf,
+                               p_buf_end);
 
     p_buf =
         (uint8_t *)buf_get(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
