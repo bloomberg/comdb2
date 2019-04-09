@@ -538,7 +538,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     dtikey_t delditk = {0}; // will serve as the delete key obj
     dtikey_t ditk = {0};    // will serve as the add or upd key obj
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
-        (flags & RECFLAGS_NO_CONSTRAINTS) &&
+        iq->usedb->n_constraints == 0 &&
         (flags & RECFLAGS_NO_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
