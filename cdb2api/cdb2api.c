@@ -2287,11 +2287,12 @@ static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
 }
 
 /* Get random value from range 0 to max-1 excluding 1 value */
-static int getRandomExclude(int max, int exclude) {
+static int getRandomExclude(int max, int exclude)
+{
     int val = 0;
     if (max < 2)
         return 0;
-    for (int i=0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
         val = cdb2_random_int() % max;
         if (val != exclude)
             return val;
@@ -2315,10 +2316,11 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = getRandomExclude (hndl->num_hosts, hndl->master);
+        hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
+        hndl->node_seq =
+            getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
