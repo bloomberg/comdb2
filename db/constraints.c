@@ -1050,7 +1050,6 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
          * child tables.
          */
         if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
-logmsg(LOGMSG_ERROR, "%s(): OSQL_ITEM_REORDERED skipping genid=%lld\n", __func__, curop->genid);
             goto next_record;
         }
 
