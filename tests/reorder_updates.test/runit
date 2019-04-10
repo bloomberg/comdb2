@@ -246,8 +246,8 @@ do_updates()
 }
 
 NUM=10000
-TRANSZ=10
-UPDATERS=10
+TRANSZ=20
+UPDATERS=20
 
 cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(random()+1)%100000,(random()+2)%100000,(random()+3)%100000 FROM i" > ins1.out
 
