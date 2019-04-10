@@ -186,7 +186,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (stored_sc && !stored_sc->fulluprecs &&
                 !stored_sc->partialuprecs &&
                 stored_sc->type == DBTYPE_TAGGED_TABLE) {
-                if (stored_sc->rqid == iq->sorese.rqid &&
+                if (stored_sc->rqid && stored_sc->rqid == iq->sorese.rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
                     s->rqid = stored_sc->rqid;
                     comdb2uuidcpy(s->uuid, stored_sc->uuid);
