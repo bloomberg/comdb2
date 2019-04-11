@@ -540,7 +540,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
         iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
-        (flags & RECFLAGS_NO_REORDER_IDX) == 0;
+        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -841,7 +841,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb && 
-        (flags & RECFLAGS_NO_REORDER_IDX) == 0;
+        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);

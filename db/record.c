@@ -470,7 +470,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         bool reorder = gbl_reorder_idx_writes &&
             !is_event_from_sc(flags) &&
             rec_flags == 0 &&
-            (flags & RECFLAGS_NO_REORDER_IDX) == 0 &&
+            (flags & RECFLAGS_DONT_REORDER_IDX) == 0 &&
             iq->usedb->sc_from != iq->usedb &&
             strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0  &&
             strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
