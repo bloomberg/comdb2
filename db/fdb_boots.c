@@ -77,8 +77,8 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
 
     assert(loc);
 
-    lvl = get_class_str(loc->class);
-    if (strncasecmp(lvl, "???", 3) == 0) {
+    lvl = mach_class_class2name(loc->class);
+    if (strncasecmp(lvl, "unknown", 7) == 0) {
         return FDB_ERR_CLASS_UNKNOWN;
     }
 

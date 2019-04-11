@@ -17,7 +17,9 @@
 #ifndef INCLUDED_MACHCLASS_H
 #define INCLUDED_MACHCLASS_H
 
-/* order is important */
+/* order is important; custom defined classes are indexed from 1 to 
+  < CLASS_DENIED
+*/
 enum mach_class {
     CLASS_UNKNOWN = 0,
     CLASS_TEST = 1,
@@ -25,7 +27,12 @@ enum mach_class {
     CLASS_UAT = 3,
     CLASS_BETA = 4,
     CLASS_PROD = 5,
-    CLASS_DENIED = 10
+    CLASS_DENIED = 255 
 };
+
+int mach_class_init(void);
+int mach_class_addclass(const char *name, int value);
+int mach_class_name2class(const char *name);
+const char* mach_class_class2name(int value);
 
 #endif
