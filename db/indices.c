@@ -840,7 +840,9 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     int rc = 0;
     void *cur = NULL;
     dtikey_t delditk= {0};
-    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb && 
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
+        iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
         (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
