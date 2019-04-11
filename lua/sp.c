@@ -74,6 +74,7 @@ extern int gbl_notimeouts;
 extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
+extern int gbl_allow_lua_exec_with_ddl;
 
 char *gbl_break_spname;
 void *debug_clnt;
