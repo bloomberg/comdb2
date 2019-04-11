@@ -3384,7 +3384,7 @@ done:
     return rc;
 }
 
-static int db_exec(Lua lua)
+static int db_exec_int(Lua lua, int withDdl)
 {
     luaL_checkudata(lua, 1, dbtypes.db);
     lua_remove(lua, 1);
@@ -3402,7 +3402,12 @@ static int db_exec(Lua lua)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    if ((rc = lua_prepare_sql(lua, sp, sql, &stmt)) != 0) {
+    if (withDdl) {
+        rc = lua_prepare_sql_with_ddl(lua, sp, sql, &stmt);
+    } else {
+        rc = lua_prepare_sql(lua, sp, sql, &stmt);
+    }
+    if (rc != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
         return 2;
@@ -3437,57 +3442,14 @@ static int db_exec(Lua lua)
     return 2;
 }
 
+static int db_exec(Lua lua)
+{
+    return db_exec_int(lua, 0);
+}
+
 static int db_exec_with_ddl(Lua lua)
 {
-    luaL_checkudata(lua, 1, dbtypes.db);
-    lua_remove(lua, 1);
-
-    SP sp = getsp(lua);
-
-    int rc;
-    const char *sql = lua_tostring(lua, -1);
-    if (sql == NULL) {
-        luabb_error(lua, sp, "expected sql string");
-        return 2;
-    }
-
-    while (isspace(*sql))
-        ++sql;
-
-    sqlite3_stmt *stmt = NULL;
-    if ((rc = lua_prepare_sql_with_ddl(lua, sp, sql, &stmt)) != 0) {
-        lua_pushnil(lua);
-        lua_pushinteger(lua, rc);
-        return 2;
-    }
-    dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
-    if (sqlite3_stmt_readonly(stmt)) {
-        // dbstmt:fetch() will run it
-        lua_pushinteger(lua, 0);
-        return 2;
-    }
-
-    // a write stmt - run it now
-    setup_first_sqlite_step(sp, dbstmt);
-    sqlite3 *sqldb = getdb(sp);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
-    if (rc == SQLITE_DONE) {
-        dbstmt->rows_changed = sqlite3_changes(sqldb);
-        sp->rc = 0;
-    } else {
-        const char *err;
-        sp->rc = lua_check_errors(sp->clnt, sqldb, stmt, &err);
-        sp->error = strdup(err);
-    }
-
-    if (sp->rc) {
-        lua_pushnil(lua);
-        lua_pushinteger(lua, sp->rc);
-    } else {
-        lua_pushinteger(lua, 0); /* Success return code */
-    }
-    return 2;
+    return db_exec_int(lua, 1);
 }
 
 static int db_prepare(Lua L)
