@@ -1063,6 +1063,16 @@ enum cache_status {
     CACHE_FOUND_STMT = 2,
     CACHE_FOUND_STR = 4,
 };
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_DDL = 2,
+    PREPARE_IGNORE_ERR = 4
+};
+struct sql_authorizer_state {
+    int denyDdl;                       /* non-zero if DDL is forbidden */
+    int numDdls;                       /* number of DDL statements found */
+};
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
@@ -1071,9 +1081,9 @@ struct sql_state {
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *);
+                      struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *);
+                               struct sql_state *, struct errstat *, int);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
