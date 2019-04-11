@@ -771,6 +771,8 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_PRAGMA: /* NOTE: Non-debug build blocked by check_sql(). */
 #endif
     case SQLITE_ALTER_TABLE:
+    case SQLITE_REINDEX:
+    case SQLITE_ANALYZE:
     case SQLITE_CREATE_VTABLE:
     case SQLITE_DROP_VTABLE:
     case SQLITE_REBUILD_TABLE:       /* COMDB2 ONLY */
@@ -2856,12 +2858,11 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
  * put_prepared_stmt_int() so are not handled in this function.
  * However, most of these cases are now handled via the custom
  * authorizer callback.  This function only needs to handle the
- * ANALYZE and EXPLAIN cases.
+ * EXPLAIN case.
  */
-#define sql_equal(keyword) (strncasecmp(sql, keyword, sizeof(keyword) - 1) == 0)
-static inline int dont_cache_this_sql(const char *sql)
+static inline int dont_cache_this_sql(struct sql_state *rec)
 {
-    return (sql_equal("analyze") || sql_equal("explain"));
+    return sqlite3_stmt_isexplain(rec->stmt);
 }
 
 /* return code of 1 means we encountered an error and the caller
@@ -2878,6 +2879,9 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 1;
     }
     if (rec->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
+        return 1;
+    }
+    if (dont_cache_this_sql(rec)) {
         return 1;
     }
     sqlite3_stmt *stmt = rec->stmt;
@@ -2903,10 +2907,6 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
-
-    if (dont_cache_this_sql(sqlptr)) {
-        return 1;
-    }
 
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
