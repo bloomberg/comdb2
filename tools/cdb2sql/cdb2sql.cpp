@@ -1476,15 +1476,20 @@ static char *get_multi_line_statement(char *line)
 
 static inline int dbtype_valid(char *type)
 {
-    if (type && (type[0] == '@' || strcasecmp(type, "dev") == 0 ||
-        strcasecmp(type, "uat") == 0 ||
-        strcasecmp(type, "default") == 0 ||
-        strcasecmp(type, "alpha") == 0 ||
-        strcasecmp(type, "beta") == 0 ||
-        strcasecmp(type, "local") == 0 ||
-        strcasecmp(type, "prod") == 0)) {
-        return 1;
+    static const char *dbtypes[] = {"default", "local", "dev",
+                                    "restore", "fuzz",  "alpha",
+                                    "beta",    "uat",   "prod"};
+
+    if (type) {
+        if (type[0] == '@') // @host[:port]
+            return 1;
+        else
+            for (size_t i = 0, len = sizeof(dbtypes) / sizeof(dbtypes[0]);
+                 i != len; ++i)
+                if (strcasecmp(type, dbtypes[i]) == 0)
+                    return 1;
     }
+
     return 0;
 }
 
