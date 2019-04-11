@@ -680,10 +680,12 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     case OSQL_UPDREC:
     case OSQL_DELREC:
         sess->last_is_ins = 0;
+        sess->rows++;
         break;
     case OSQL_INSERT:
     case OSQL_INSREC:
         sess->last_is_ins = 1;
+        sess->rows++;
         break;
     default:
         sess->last_is_ins = 0;
@@ -1359,7 +1361,12 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        /* this locks pages */
+        /* if only one row add/upd/del then no need to reorder indices */
+        if (sess->rows <= 1)
+            flags |= OSQL_NO_REORDER_IDX;
+
+        /* this locks pages
+         * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
         free(data);

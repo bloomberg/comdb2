@@ -90,6 +90,7 @@ struct osql_sess {
                 do*/
     time_t initstart; /* when this was first started */
     int retries;      /* how many times this session was retried */
+    int rows;         /* number of rows that are actual ADD/UPD/DEL */
 
     int queryid;
     char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
