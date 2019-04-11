@@ -328,32 +328,35 @@ done_with_open:
   ** way we found it.
   */
   if( rc==SQLITE_OK ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    Table *p;
-    int savedBusy = db->init.busy;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BtreeEnterAll(db);
     db->init.iDb = 0;
     db->mDbFlags &= ~(DBFLAG_SchemaKnownOk);
+    if( !REOPEN_AS_MEMDB(db) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    db->init.busy = 0; /* prevent assert */
-    rc = sqlite3InitTable(db, &zErrDyn, zName);
-    db->init.busy = savedBusy;
-    /*
-    ** Need to set the version to the table to support per table schema refresh
-    */
-    p = sqlite3HashFind(&db->aDb[iFndDb].pSchema->tblHash, tblName);
-    if( !p ){
-      logmsg(LOGMSG_ERROR, "%s: failed to find table \"%s\" after init\n",
-             __func__, tblName);
-      rc = SQLITE_ERROR;
-    }else{
-      p->version = version;
-      p->iDb = iFndDb;
-    }
+      Table *p;
+      int savedBusy = db->init.busy;
+
+      db->init.busy = 0; /* TODO: prevent assert (?) */
+      rc = sqlite3InitTable(db, &zErrDyn, zName);
+      db->init.busy = savedBusy;
+
+      /*
+      ** Need to set the version to the table to support per table schema
+      ** refresh
+      */
+      p = sqlite3HashFind(&db->aDb[iFndDb].pSchema->tblHash, tblName);
+      if( !p ){
+        logmsg(LOGMSG_ERROR, "%s: failed to find table \"%s\" after init\n",
+               __func__, tblName);
+        rc = SQLITE_ERROR;
+      }else{
+        p->version = version;
+        p->iDb = iFndDb;
+      }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    rc = sqlite3Init(db, &zErrDyn);
+      rc = sqlite3Init(db, &zErrDyn);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    }
     sqlite3BtreeLeaveAll(db);
     assert( zErrDyn==0 || rc!=SQLITE_OK );
   }

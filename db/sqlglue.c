@@ -3986,9 +3986,6 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
     if (pBt->is_temporary) {
-#ifndef NDEBUG
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-#endif
         // TODO: The thread pool causes this to be violated.
         // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
@@ -8810,17 +8807,6 @@ done:
                 pCur->cursorid, sqlite3ErrStr(rc));
     return rc;
 }
-
-/*
-** This function is a no-op if cursor pCur does not point to a valid row.
-** Otherwise, if pCur is valid, configure it so that the next call to
-** sqlite3BtreeNext() is a no-op.
-*/
-#ifndef SQLITE_OMIT_WINDOWFUNC
-void sqlite3BtreeSkipNext(BtCursor *pCur){
-  /* TODO: Do something here. */
-}
-#endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
 ** Advance the cursor to the next entry in the database. 

@@ -674,6 +674,7 @@ int sqlite3VdbeAssertMayAbort(Vdbe *v, int mayAbort){
     int opcode = pOp->opcode;
     if( opcode==OP_Destroy || opcode==OP_VUpdate || opcode==OP_VRename 
      || opcode==OP_VDestroy
+     || (opcode==OP_Function0 && pOp->p4.pFunc->funcFlags&SQLITE_FUNC_INTERNAL)
      || ((opcode==OP_Halt || opcode==OP_HaltIfNull) 
       && ((pOp->p1)!=SQLITE_OK && pOp->p2==OE_Abort))
     ){
@@ -4355,7 +4356,11 @@ u32 sqlite3VdbeSerialGet(
       ** length.
       ** EVIDENCE-OF: R-28401-00140 Value is a string in the text encoding and
       ** (N-13)/2 bytes in length. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      static const u32 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       static const u16 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pMem->z = (char *)buf;
       pMem->n = (serial_type-12)/2;
       pMem->flags = aFlag[serial_type&1];
