@@ -1079,6 +1079,8 @@ struct sql_state {
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
+    struct sql_authorizer_state authState; /* SQL authorizer state info */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                       struct sql_state *, struct errstat *, int);
