@@ -379,7 +379,8 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
         char *label = strndup(tok, *ltok);
         int value = mach_class_name2class(label);
 
-        if (my_class == value) return 0;
+        if (my_class == value)
+            return 0;
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;

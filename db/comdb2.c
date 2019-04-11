@@ -3247,7 +3247,7 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
-    if(mach_class_init()) {
+    if (mach_class_init()) {
         logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
         exit(1);
     }

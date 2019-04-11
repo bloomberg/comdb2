@@ -166,7 +166,7 @@ static int parse_mach_or_group(char *tok, int ltok, char **mach,
     *mach = NULL;
 
     *cls = mach_class_name2class(name);
-    if(!*cls) {
+    if (!*cls) {
         char *m;
         m = tokdup(tok, ltok);
         *mach = intern(m);
@@ -295,7 +295,7 @@ int process_allow_command(char *line, int lline)
         if (allow == 1) {
             bset(&pol->explicit_allow_classes, cls);
             bclr(&pol->explicit_disallow_classes, cls);
-            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr, 
+            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr,
                    mach_class_class2name(cls));
         } else if (allow == 0) {
             bset(&pol->explicit_disallow_classes, cls);
@@ -305,8 +305,8 @@ int process_allow_command(char *line, int lline)
         } else if (allow == -1) {
             bclr(&pol->explicit_disallow_classes, cls);
             bclr(&pol->explicit_allow_classes, cls);
-            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n", pol->descr,
-                   mach_class_class2name(cls));
+            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n",
+                   pol->descr, mach_class_class2name(cls));
         }
     } else {
         goto bad;

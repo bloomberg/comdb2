@@ -33,12 +33,12 @@ hash_t *class_names;
 
 static machine_class_t default_classes[] = {
     {"unknown", 0}, /* 0 indexed! */
-    {"test", 1}, /* CLASS_TEST == 1 */
-    {"dev", 1}, /* CLASS_TEST == 1 */
-    {"alpha", 2}, /* CLASS_ALPHA == 2 */
-    {"uat", 3}, /* CLASS_UAT == 3 */
-    {"beta", 4}, /* CLASS_BETA == 4  */
-    {"prod", 5}, /* CLASS_PROD == 5 */
+    {"test", 1},    /* CLASS_TEST == 1 */
+    {"dev", 1},     /* CLASS_TEST == 1 */
+    {"alpha", 2},   /* CLASS_ALPHA == 2 */
+    {"uat", 3},     /* CLASS_UAT == 3 */
+    {"beta", 4},    /* CLASS_BETA == 4  */
+    {"prod", 5},    /* CLASS_PROD == 5 */
 };
 
 int is_default = 0;
@@ -53,24 +53,25 @@ int mach_class_init(void)
     Pthread_mutex_lock(&mtx);
     classes = hash_init_strptr(offsetof(struct machine_class, name));
     class_names = hash_init_i4(offsetof(struct machine_class, value));
-    if(!classes || !class_names) {
+    if (!classes || !class_names) {
         return -1;
     }
 
-    for(i=0; i<sizeof(default_classes)/sizeof(default_classes[0]); i++) {
+    for (i = 0; i < sizeof(default_classes) / sizeof(default_classes[0]); i++) {
         rc = _mach_class_add(&default_classes[i], NULL);
-        if (rc) 
+        if (rc)
             break;
     }
     is_default = 1;
     Pthread_mutex_unlock(&mtx);
-    return rc; 
+    return rc;
 }
 
 static int _mach_class_add(machine_class_t *class, int *added)
 {
     if (!hash_find(classes, &class->name)) {
-        logmsg(LOGMSG_DEBUG, "Adding class %s value %d\n", class->name, class->value);
+        logmsg(LOGMSG_DEBUG, "Adding class %s value %d\n", class->name,
+               class->value);
         hash_add(classes, class);
         hash_add(class_names, class);
         if (added)
@@ -79,7 +80,7 @@ static int _mach_class_add(machine_class_t *class, int *added)
     return 0;
 }
 
-int mach_class_addclass(const char *name, int value) 
+int mach_class_addclass(const char *name, int value)
 {
     machine_class_t *class = calloc(1, sizeof(machine_class_t));
     int rc = 0;
@@ -94,7 +95,7 @@ int mach_class_addclass(const char *name, int value)
         return -1;
     }
     class->value = value;
-        
+
     Pthread_mutex_lock(&mtx);
     if (is_default) {
         /* override the default with client classes */
@@ -106,7 +107,7 @@ int mach_class_addclass(const char *name, int value)
 
     Pthread_mutex_unlock(&mtx);
 
-    if(!added) {
+    if (!added) {
         free(class->name);
         free(class);
     }
@@ -129,7 +130,7 @@ int mach_class_name2class(const char *name)
     return value;
 }
 
-const char* mach_class_class2name(int value)
+const char *mach_class_class2name(int value)
 {
     machine_class_t *class;
     const char *name = NULL;
