@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=206)
+(KEYWORDS_COUNT=210)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=206)
+(RESERVED_KW=210)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=0)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -154,6 +154,7 @@
 (name='END', reserved='Y')
 (name='ESCAPE', reserved='Y')
 (name='EXCEPT', reserved='Y')
+(name='EXCLUDE', reserved='Y')
 (name='EXCLUSIVE', reserved='Y')
 (name='EXISTS', reserved='Y')
 (name='EXPLAIN', reserved='Y')
@@ -170,6 +171,7 @@
 (name='GLOB', reserved='Y')
 (name='GRANT', reserved='Y')
 (name='GROUP', reserved='Y')
+(name='GROUPS', reserved='Y')
 (name='HAVING', reserved='Y')
 (name='IF', reserved='Y')
 (name='IGNORE', reserved='Y')
@@ -214,6 +216,7 @@
 (name='OPTIONS', reserved='Y')
 (name='OR', reserved='Y')
 (name='ORDER', reserved='Y')
+(name='OTHERS', reserved='Y')
 (name='OUTER', reserved='Y')
 (name='OVER', reserved='Y')
 (name='PAGEORDER', reserved='Y')
@@ -268,6 +271,7 @@
 (name='THEN', reserved='Y')
 (name='THREADS', reserved='Y')
 (name='THRESHOLD', reserved='Y')
+(name='TIES', reserved='Y')
 (name='TIME', reserved='Y')
 (name='TO', reserved='Y')
 (name='TRANSACTION', reserved='Y')
