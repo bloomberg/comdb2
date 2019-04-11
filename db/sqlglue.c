@@ -3986,9 +3986,6 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
     if (pBt->is_temporary) {
-#ifndef NDEBUG
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-#endif
         // TODO: The thread pool causes this to be violated.
         // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
