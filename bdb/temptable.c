@@ -1947,7 +1947,14 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
         return -1;
     }
 
-    if (recsz < 8) recsz = 8; //force it to be min 8 bytes
+    struct temp_cursor *cur = bdb_temp_table_cursor(parent, db, NULL, &bdberr);
+    if (!cur) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr=%d\n",
+               __func__, bdberr);
+        return -1;
+    }
+
+    if (recsz < 16) recsz = 16; //force it to be min 16 bytes
     if (maxins > 10000000 || recsz * maxins > 100000000) {
         logmsg(LOGMSG_USER, "Too much data to write %d records\n", maxins);
         return -1; // limit the temptbl size
@@ -1975,15 +1982,38 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     //insert: replace first 4 bytes with a new random value, payload is same val
     for (int cnt = 0; cnt < maxins; cnt++) {
         int x = rand();
-        ((int *)rkey)[0] = x;
-        rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
-                              &x, sizeof(x), NULL, &bdberr);
+        ((int *)rkey)[0] = 123456789;
+        ((int *)rkey)[1] = 123456789;
+        ((int *)rkey)[2] = 123456789;
+        ((int *)rkey)[3] = x;
+        /* 
+         * Can either use insert or put as follows:
+         * rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
+         *                         &x, sizeof(x), NULL, &bdberr);
+         */
+        rc = bdb_temp_table_insert(parent, cur, &rkey, sizeof(rkey),
+                                   &x, sizeof(x), &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put into temp tbl rc=%d bdberr=%d\n",
                     __func__, rc, bdberr);
             break; 
         }
+    }
+
+    rc = bdb_temp_table_first(parent, cur, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: first error bdberr=%d\n",
+               __func__, bdberr);
+        return -1;
+    }
+
+    while (rc == IX_OK) {
+        uint8_t *keyp = bdb_temp_table_key(cur);
+        uint8_t *datap = bdb_temp_table_data(cur);
+        if (((int *)keyp)[3] != *(int *)datap)
+            abort();
+        rc = bdb_temp_table_next(parent, cur, &bdberr);
     }
 
     struct timeval t2;
@@ -1995,6 +2025,7 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
            (float)(sec + msec) / 1000000);
 
     //cleanup
+    rc = bdb_temp_table_close_cursor(parent, cur, &bdberr);
     rc = bdb_temp_table_close(parent, db, &bdberr);
     return rc;
 }
