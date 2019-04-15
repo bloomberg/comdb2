@@ -1340,6 +1340,10 @@ static int process_this_session(
     if (rc)
         return rc;
 
+    /* if only one row add/upd/del then no need to reorder indices */
+    if (sess->tran_rows <= 1)
+        flags |= OSQL_DONT_REORDER_IDX;
+
     while (!rc && !rc_out) {
         char *data = NULL;
         int datalen = 0;
@@ -1360,10 +1364,6 @@ static int process_this_session(
         }
 
         lastrcv = receivedrows;
-
-        /* if only one row add/upd/del then no need to reorder indices */
-        if (sess->tran_rows <= 1)
-            flags |= OSQL_DONT_REORDER_IDX;
 
         /* This call locks pages:
          * func is osql_process_packet or osql_process_schemachange */
