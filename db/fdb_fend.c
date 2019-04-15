@@ -1095,7 +1095,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
     if ((tmpname = strchr(dbname, '_')) != NULL) {
         class = strndup(dbname, tmpname - dbname);
         dbname = tmpname + 1;
-        if (strncasecmp(dbname, "LOCAL_", 6) == 0) {
+        if (strncasecmp(class, "LOCAL", 6) == 0) {
             *local = 1;
             remote_lvl = my_lvl;
             /* accessed allowed implicitely */
