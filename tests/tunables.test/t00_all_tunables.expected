@@ -626,7 +626,7 @@
 (name='private_blkseq_enabled', description='Sets whether dupe detection is enabled.', type='BOOLEAN', value='ON', read_only='N')
 (name='private_blkseq_maxage', description='Maximum time in seconds to let 'old' transactions live.', type='INTEGER', value='600', read_only='N')
 (name='private_blkseq_maxtraverse', description='', type='INTEGER', value='4', read_only='N')
-(name='private_blkseq_stripes', description='Number of stripes for the blkseq table.', type='INTEGER', value='1', read_only='N')
+(name='private_blkseq_stripes', description='Number of stripes for the blkseq table.', type='INTEGER', value='8', read_only='N')
 (name='qscanmode', description='Enables queue scan mode optimisation.', type='BOOLEAN', value='OFF', read_only='N')
 (name='queuedb_genid_filename', description='Use genid in queuedb filenames.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='queuedb_timeout_sec', description='Unassign Lua consumer/trigger if no heartbeat received for this time', type='INTEGER', value='10', read_only='N')
