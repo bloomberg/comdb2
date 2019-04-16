@@ -739,6 +739,26 @@ static void comdb2BlobToDoubleFunc(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
+** Implementation of the comdb2_sysinfo() SQL function.  The return
+** value depends on the class of system information being requested.
+*/
+static void comdb2SysinfoFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  const char *zName;
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ){
+    return;
+  }
+  zName = (const char *)sqlite3_value_text(argv[0]);
+  if( sqlite3_stricmp(zName, "pid")==0 ){
+    sqlite3_result_int64(context, (sqlite3_int64)getpid());
+  }
+}
+
+/*
 ** Implementation of the comdb2_version() SQL function.  The return
 ** value is the same as the stat value for version
 */
@@ -2499,6 +2519,7 @@ void sqlite3RegisterBuiltinFunctions(void){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
+    FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
     FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
     FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,        2, 0, 0, partitionInfoFunc),

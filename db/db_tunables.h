@@ -1669,4 +1669,10 @@ REGISTER_TUNABLE(
     "Number of iterations of PBKDF2 algorithm for password hashing.",
     TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
     pbkdf2_iterations_update, NULL);
+
+REGISTER_TUNABLE("machine_class",
+                 "override for the machine class from this db perspective.",
+                 TUNABLE_STRING, &gbl_machine_class, READEARLY | READONLY, NULL,
+                 NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

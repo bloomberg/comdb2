@@ -1084,33 +1084,23 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
     const char *dbname = *p_dbname;
     enum mach_class my_lvl = CLASS_UNKNOWN;
     enum mach_class remote_lvl = CLASS_UNKNOWN;
+    const char *tmpname;
+    const char *class;
 
     *local = 0;
 
     my_lvl = get_my_mach_class();
 
     /* extract class if any */
-    if (strchr(dbname, '_') != NULL) {
-        if (strncasecmp(dbname, "LOCAL_", 6) == 0) {
+    if ((tmpname = strchr(dbname, '_')) != NULL) {
+        class = strndup(dbname, tmpname - dbname);
+        dbname = tmpname + 1;
+        if (strncasecmp(class, "LOCAL", 6) == 0) {
             *local = 1;
             remote_lvl = my_lvl;
-            ; /* accessed allowed implicitely */
-            dbname += 6;
-        } else if (strncasecmp(dbname, "PROD_", 5) == 0) {
-            remote_lvl = CLASS_PROD;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "BETA_", 5) == 0) {
-            remote_lvl = CLASS_BETA;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "ALPHA_", 6) == 0) {
-            remote_lvl = CLASS_ALPHA;
-            dbname += 6;
-        } else if (strncasecmp(dbname, "TEST_", 5) == 0) {
-            remote_lvl = CLASS_TEST;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "UAT_", 4) == 0) {
-            remote_lvl = CLASS_UAT;
-            dbname += 4;
+            /* accessed allowed implicitely */
+        } else {
+            remote_lvl = mach_class_name2class(class);
         }
 
         *p_dbname = dbname;
@@ -4889,21 +4879,6 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
     cur->ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, tblname);
 }
 
-static const char *get_cdb2_class_str(enum mach_class cls)
-{
-    switch (cls) {
-    default:
-        return "default";
-    case CLASS_TEST:
-        return "dev";
-    case CLASS_ALPHA:
-        return "alpha";
-    case CLASS_BETA:
-        return "beta";
-    case CLASS_PROD:
-        return "prod";
-    }
-}
 
 /**
  * Retrieve the schema of a remote table
@@ -4923,7 +4898,7 @@ int fdb_get_remote_version(const char *dbname, const char *table,
         location = "localhost";
         flags = CDB2_DIRECT_CPU;
     } else {
-        location = get_cdb2_class_str(class);
+        location = mach_class_class2name(class);
         flags = 0;
     }
 
