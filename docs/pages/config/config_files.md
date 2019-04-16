@@ -645,7 +645,7 @@ sequence).  Tunables to control it are below
 |--------------|-------------
 |PRIVATE_BLKSEQ_CACHESZ | 4194304 | Cache size of the blkseq table
 |PRIVATE_BLKSEQ_MAXAGE | 20 | Maximum time in seconds to let "old" transactions live
-|PRIVATE_BLKSEQ_STRIPES | 1 | Number of stripes for the blkseq table
+|PRIVATE_BLKSEQ_STRIPES | 8 | Number of stripes for the blkseq table
 |PRIVATE_BLKSEQ_ENABLED | 1 | Sets whether dupe detection is enabled
 |PRIVATE_BLKSEQ_CLOSE_WARN_TIME | 100 | Warn when it takes longer than this many MS to roll a blkseq table
 
