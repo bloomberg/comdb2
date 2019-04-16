@@ -3248,6 +3248,11 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
+    if (mach_class_init()) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
+        exit(1);
+    }
+
     handle_cmdline_options(argc, argv, &lrlname);
 
     if (gbl_create_mode) {        /*  10  */
