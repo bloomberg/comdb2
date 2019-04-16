@@ -41,7 +41,7 @@ typedef enum { DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC} di
 typedef struct {
     struct dbtable *usedb; //consider not storing usedb and processing each usedb separately
     short ixnum;
-    char ixkey[MAXKEYLEN];
+    char ixkey[MAXKEYLEN]; //consider storing up to the largest key
     dit_t type;
     unsigned long long genid;
     unsigned long long newgenid; // new genid used for update

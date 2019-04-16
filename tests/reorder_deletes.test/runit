@@ -245,36 +245,17 @@ do_deletes()
     echo "done updater $updater"
 }
 
-NUM=1000
+NUM=10000
 TRANSZ=10
 CONCURRENT=10
 
 
-do_inserts()
-{
-    item=$1
-
-    local j=0
-    start=$RANDOM$RANDOM
-    outfl=insert${item}.out
-    echo "" > $outfl
-
-    while [[ $j -lt $NUM ]] ; do 
-      cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 (a, b, c, d, e, f, g) values (($j+$start)%$NUM, random()%100000, random()%100000, random()%100000, random()%100000, random()%100000, random()%100000)" &>> $outfl
-      let j=j+1
-    done
-
-    echo "done inserter $item"
-}
-
-i=0
-while [[ $i -lt $CONCURRENT ]] ; do 
-    do_inserts $i &
-    let i=i+1
-done
-
+# round robin stripes will ensure an equal distribution of the genids accross the 8 dta stripes 
+# thus lowering chance for updates to serialize on pages in the same dta
+cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d,e,f,g) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(random()+1)%100000,random()%100000,random()%100000,random()%100000,random()%100000,random()%100000 FROM i" > ins1.out
 
 wait
+assertcnt t1 $NUM
 
 cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
 i=0
@@ -298,11 +279,11 @@ fi
 ddcount=`grep -c DEADLOCK $mlog`
 
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
-    if [[ $ddcount -lt 300 ]] ; then
+    if [[ $ddcount -lt 100 ]] ; then
         failexit 'no reorder expected to get more than 100 deadlocks for this test'
     fi
 else
-    if [[ $ddcount -gt 300 ]] ; then
+    if [[ $ddcount -gt 100 ]] ; then
         failexit 'reorder expected to get less than 10 deadlocks for this test'
     fi
 fi

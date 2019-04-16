@@ -3,5 +3,5 @@ indices conflicting in the order of page locks thus resulting in deadlocks
 (if not reordered).
 With reorder on there should be almost zero deadlocks during the updates.
 
-With reorder off the conflicts arise in the indices, so we expect much more 
+With reorder off the conflicts arise in the indices, so we expect many more 
 ( > 100) deadlocks.
