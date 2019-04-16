@@ -277,6 +277,7 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
 
 static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
                                int *flags);
+static int _validate_existing_table(fdb_t *fdb, int cls, int local);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -1269,6 +1270,13 @@ retry_fdb_creation:
         /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(db, dbname, FDB_ERR_MALLOC,
                                        "OOM allocating fdb object");
+    }
+    if (!created) {
+        /* we need to validate requested class to existing class */
+        rc = _validate_existing_table(fdb, lvl, local);
+        if (rc != FDB_NOERR) {
+        }
+        return _failed_AddAndLockTable( db, dbname, rc, "mismatching class");
     }
 
     /* NOTE: FROM NOW ON, CREATED FDB IS VISIBLE TO OTHER THREADS! */
@@ -4938,6 +4946,19 @@ done:
     return rc;
 }
 
+static int _validate_existing_table(fdb_t *fdb, int cls, int local)
+{
+    if (fdb->local != local ) {
+        /* follow-up instances don't specify LOCAL mode */
+        return FDB_ERR_CLASS_DENIED;
+    } 
+    if (fdb->class != cls) {
+        /* follow-up instances don't specify same class */
+        return FDB_ERR_CLASS_DENIED;
+    }
+    return FDB_NOERR;
+}
+
 int fdb_validate_existing_table(const char *zDatabase)
 {
     fdb_t *fdb = NULL;
@@ -4952,21 +4973,11 @@ int fdb_validate_existing_table(const char *zDatabase)
     fdb = __cache_fnd_fdb(dbName, NULL);
     if(fdb)
     {
-        if (fdb->local != local ) {
-                /* follow-up instances don't specify LOCAL mode */
-                rc = FDB_ERR_CLASS_DENIED;
-                goto done;
-        } 
-        if (fdb->class != cls) {
-                /* follow-up instances don't specify same class */
-                rc = FDB_ERR_CLASS_DENIED;
-                goto done;
-        }
+        rc = _validate_existing_table(fdb, cls, local);
     }
     /* else {}: if the fdb was removed, there is no validation
        to be done; fdb was probably removed and the follow
        up code might actually establish a new fdb */
-done:
     Pthread_rwlock_unlock(&fdbs.arr_lock);
     return rc;
 }
