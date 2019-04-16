@@ -1275,8 +1275,8 @@ retry_fdb_creation:
         /* we need to validate requested class to existing class */
         rc = _validate_existing_table(fdb, lvl, local);
         if (rc != FDB_NOERR) {
+            return _failed_AddAndLockTable( db, dbname, rc, "mismatching class");
         }
-        return _failed_AddAndLockTable( db, dbname, rc, "mismatching class");
     }
 
     /* NOTE: FROM NOW ON, CREATED FDB IS VISIBLE TO OTHER THREADS! */
