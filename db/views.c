@@ -1689,7 +1689,7 @@ static int _get_biggest_shard_number(timepart_view_t *view, int *oldest,
                                        view->period == VIEW_PARTITION_TEST2MIN);
         if (i == 0 && newest)
             *newest = crt;
-        else if (i == view->nshards - 1 && oldest)
+        if (i == view->nshards - 1 && oldest)
             *oldest = crt;
 
         if (span != 0) {
