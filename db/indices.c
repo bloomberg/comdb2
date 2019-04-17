@@ -1481,10 +1481,11 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
 #endif
 
-    void *cur = get_defered_index_tbl_cursor(0);
-
     defered_index_array_sort();
     //defered_index_array_dump();
+
+    /*
+    void *cur = get_defered_index_tbl_cursor(0);
 
     if (!cur) {
         // never inserted anything in tmp tbl
@@ -1493,6 +1494,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
 #endif
         return 0;
     }
+    */
 
 
 #if DEBUG_REORDER
@@ -1640,7 +1642,6 @@ logmsg(LOGMSG_DEBUG, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_
     if (rc == IX_PASTEOF)
         rc = IX_OK;
 
-printf("AZ: tottime = %dms\n", tottime);
 done:
     truncate_defered_index_tbl();
     // We can also delete if we are done with the tmptbl
