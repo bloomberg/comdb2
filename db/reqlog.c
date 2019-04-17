@@ -1545,7 +1545,17 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               U2M(logger->durationus));
     }
-    dumpf(logger, out, "from %s rc %d\n", reqorigin(logger), logger->rc);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+        dumpf(logger, out, "for fingerprint %.*s", FINGERPRINTSZ * 2,
+                    expanded_fp);
+    }
+
+    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1744,15 +1754,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
-    }
-
-    /* If fingerprinting is enabled and the logger has a fingerprint,
-       log the fingerprint as well. */
-    if (gbl_fingerprint_queries && logger->have_fingerprint) {
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s", FINGERPRINTSZ * 2,
-                    expanded_fp);
     }
 
     logger->in_request = 0;
