@@ -1830,15 +1830,35 @@ int comdb2genidcontainstime(void)
 int producekw(OpFunc *f)
 {
     int found = 0;
+
     for (int i=0; i < sqlite3_keyword_count(); i++)
     {
-        if ((f->int_arg != KW_ALL) && (f->int_arg != KW_RES))
-            continue;
-
         const char *zName = 0;
         int nName = 0;
         if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
-            opFuncPrintf(f, "%.*s", nName, zName);
+            char kw[100];
+
+            if (nName < sizeof(kw)-1 && (f->int_arg == KW_RES || f->int_arg == KW_FB)) {
+                // See if reserved word
+                extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+                extern int sqlite3ParserFallback(int iToken);
+                int tok;
+
+                strncpy(kw, zName, nName);
+                kw[nName] = 0;
+
+                int rc = sqlite3GetToken((unsigned char*) kw, &tok);
+                if (rc > 0) {
+                    int isfb = sqlite3ParserFallback(tok);
+                    if ((isfb && f->int_arg == KW_FB) || (!isfb && f->int_arg == KW_RES)) {
+                        opFuncPrintf(f, "%.*s", nName, zName);
+                        found++;
+                    }
+                }
+                continue;
+            }
+            else if (f->int_arg == KW_ALL)
+                opFuncPrintf(f, "%.*s", nName, zName);
             found++;
         }
     }
