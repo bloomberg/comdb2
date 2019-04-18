@@ -3027,27 +3027,6 @@ int sqlite3_set_authorizer(
 #define SQLITE_SAVEPOINT            32   /* Operation       Savepoint Name  */
 #define SQLITE_COPY                  0   /* No longer used */
 #define SQLITE_RECURSIVE            33   /* NULL            NULL            */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
-#define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
-#define SQLITE_REBUILD_DATA        162   /* NULL            NULL            */
-#define SQLITE_REBUILD_DATABLOB    163   /* NULL            NULL            */
-#define SQLITE_TRUNCATE_TABLE      164   /* NULL            NULL            */
-#define SQLITE_CREATE_PROC         166   /* NULL            NULL            */
-#define SQLITE_DROP_PROC           168   /* NULL            NULL            */
-#define SQLITE_CREATE_PART         169   /* NULL            NULL            */
-#define SQLITE_DROP_PART           170   /* NULL            NULL            */
-#define SQLITE_GET_TUNABLE         171   /* NULL            NULL            */
-#define SQLITE_PUT_TUNABLE         172   /* NULL            NULL            */
-#define SQLITE_GRANT               173   /* NULL            NULL            */
-#define SQLITE_REVOKE              174   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_FUNCTION 175   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_FUNCTION   176   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_TRIGGER  177   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_TRIGGER    178   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_CONSUMER 179   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_CONSUMER   180   /* NULL            NULL            */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Tracing And Profiling Functions
