@@ -2022,7 +2022,7 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int task_len, stack_len;
+    int task_len, stack_len, nclntstats;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
     nodestats_t *entry_chk = NULL;
@@ -2084,7 +2084,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 }
             }
             Pthread_mutex_lock(&clntlru_mtx);
-            while (hash_get_num_entries(clientstats) + 1 >
+            while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
                 old_entry = listc_rtl(&clntlru);
                 if (old_entry) {
@@ -2093,10 +2093,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: too many clientstats %d, max %d\n", __func__,
-                           hash_get_num_entries(clientstats) + 1,
-                           gbl_max_clientstats_cache);
+                    if (gbl_max_clientstats_cache &&
+                        (nclntstats % gbl_max_clientstats_cache == 1))
+                        logmsg(LOGMSG_ERROR,
+                               "%s: too many clientstats %d, max %d\n",
+                               __func__, nclntstats, gbl_max_clientstats_cache);
                     break;
                 }
             }
