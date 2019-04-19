@@ -78,6 +78,11 @@ typedef struct stmt_hash_entry {
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
+struct sql_authorizer_state {
+    int denyDdl;                       /* non-zero if DDL is forbidden */
+    int numDdls;                       /* number of DDL statements found */
+};
+
 /* Thread specific sql state */
 struct sqlthdstate {
     struct reqlogger *logger;
@@ -1069,10 +1074,6 @@ enum prepare_flags {
     PREPARE_RECREATE = 1,
     PREPARE_DENY_DDL = 2,
     PREPARE_IGNORE_ERR = 4
-};
-struct sql_authorizer_state {
-    int denyDdl;                       /* non-zero if DDL is forbidden */
-    int numDdls;                       /* number of DDL statements found */
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
