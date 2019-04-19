@@ -21,6 +21,7 @@
 #include "logmsg.h"
 #include "indices.h"
 #include "tohex.h"
+#include "dyn_array.h"
 
 #define DEBUG_REORDER 0
 
@@ -29,6 +30,8 @@ extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
 static __thread void *defered_index_tbl = NULL;
 static __thread void *defered_index_tbl_cursor = NULL;
+
+static __thread dyn_array_t defered_index_array;
 
 //
 //del needs to sort before adds because dels used to happen online
@@ -62,22 +65,6 @@ typedef struct {
         return __rc;                                                           \
     }                                                                          \
 
-
-
-typedef struct {
-    dtikey_t key;
-    int data_len;
-    void *data;
-} dia_keyval_t;
-
-typedef struct {
-    int items;
-    int capacity;
-    dia_keyval_t *kv;
-} defered_index_array_t;
-
-static __thread defered_index_array_t defered_index_array;
-
 static int defered_index_key_cmp(void *usermem, int key1len,
                                  const void *key1, int key2len,
                                  const void *key2)
@@ -97,6 +84,11 @@ static int defered_index_key_cmp(void *usermem, int key1len,
     return 0;
 }
 
+static void init_reorder_tbl()
+{
+    dyn_array_init(&defered_index_array);
+    dyn_array_set_cmpr(&defered_index_array, defered_index_key_cmp);
+}
 
 static inline void *create_defered_index_table()
 {
@@ -149,130 +141,12 @@ static inline void close_defered_index_tbl_cursor()
     defered_index_tbl_cursor = NULL;
 }
 
-static inline void close_defered_index_array()
-{   
-    defered_index_array_t *dia = &defered_index_array;
-    for (int i = 0; i < dia->items; i++) {
-        if (dia->kv[i].data_len > 0)
-            free(dia->kv[i].data);
-    }
-    free(dia->kv);
-    dia->kv = NULL;
-    dia->items = 0;
-    dia->capacity = 0;
-}
 
 void truncate_defered_index_array() 
 {
-    close_defered_index_array();
+    dyn_array_close(&defered_index_array);
 }
 
-void delete_defered_index_array() 
-{
-    close_defered_index_array();
-}
-
-int defered_index_array_append(dtikey_t *key, void *data, int dtalen)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (dia->capacity == 0) {
-        assert(dia->items == 0);
-        dia->capacity = 512;
-        dia->kv = malloc(sizeof(*dia->kv) * dia->capacity );
-        if (!dia->kv) return 1;
-    }
-    if (dia->items + 1 >= dia->capacity) {
-        dia->capacity *= 2;
-        void * n = realloc(dia->kv, sizeof(*dia->kv) * dia->capacity);
-        if (!n) return 1;
-        dia->kv = n;
-    }
-    dia_keyval_t *kv = &dia->kv[dia->items++];
-    kv->key = *key;
-    kv->data_len = dtalen;
-    if(dtalen > 0) {
-        kv->data = malloc(dtalen);
-        if (!kv->data) return 1;
-        memcpy(kv->data, data, dtalen);
-    }
-    return 0;
-}
-
-static int
-cmpr_dia_keyval_asc(const void *p1, const void *p2)
-{
-    const dia_keyval_t *dia1 = p1;
-    const dia_keyval_t *dia2 = p2;
-    return defered_index_key_cmp(NULL, sizeof(dia1->key), &dia1->key, sizeof(dia2->key), &dia2->key);
-}
-
-int defered_index_array_sort()
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (dia->capacity == 0) {
-        assert(dia->items == 0);
-        return 0;
-    }
-
-    qsort(dia->kv, dia->items, sizeof(dia_keyval_t), cmpr_dia_keyval_asc);
-    return 0;
-}
-
-int defered_index_array_first(int *cur)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    *cur = 0;
-    if (dia->items == 0)
-        return IX_EMPTY;
-    return IX_OK;
-}
-
-dtikey_t *defered_index_array_key(int *cur)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (*cur >= dia->items)
-        abort();
-
-    return &dia->kv[*cur].key;
-}
-
-void *defered_index_array_data(int *cur)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (*cur >= dia->items)
-        abort();
-
-    return dia->kv[*cur].data;
-}
-
-int defered_index_array_datasize(int *cur)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (*cur >= dia->items)
-        abort();
-
-    return dia->kv[*cur].data_len;
-}
-
-int defered_index_array_next(int *cur)
-{
-    defered_index_array_t *dia = &defered_index_array;
-    if (++(*cur) >= dia->items)
-        return IX_PASTEOF;
-    if (*cur == 80000) abort();
-
-    return IX_OK;
-}
-
-void defered_index_array_dump()
-{
-    defered_index_array_t *dia = &defered_index_array;
-    for (int i = 0; i < dia->items; i++) {
-        logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
-        hexdump(LOGMSG_ERROR, (const char *)&dia->kv[i].key, sizeof(dia->kv[i].key));
-        printf("\n");
-    }
-}
 
 void truncate_defered_index_tbl() 
 {
@@ -547,7 +421,8 @@ gettimeofday(&tmp, NULL);
             //rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
             //        data, datalen, &err);
 
-            rc = defered_index_array_append(&ditk, data, datalen);
+            rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
+
 
 struct timeval tmp2;
 gettimeofday(&tmp2, NULL);
@@ -848,7 +723,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                 //int err = 0;
                 //rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                 //        data, datalen, &err);
-                rc = defered_index_array_append(&ditk, data, datalen);
+                rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                             rc);
@@ -896,7 +771,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n"
                     //int err = 0;
                     //rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
                     //       data, datalen, &err);
-                    rc = defered_index_array_append(&delditk, data, datalen);
+                    rc = dyn_array_append(&defered_index_array, &delditk, sizeof(delditk), data, datalen);
                     if (rc != 0) {
                         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                                 rc);
@@ -955,7 +830,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                     //int err = 0;
                     //rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                     //        data, datalen, &err);
-                    rc = defered_index_array_append(&ditk, data, datalen);
+                    rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                     if (rc != 0) {
                         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                                 rc);
@@ -1076,7 +951,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             //int err = 0;
             //rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
             //        data, datalen, &err);
-            rc = defered_index_array_append(&delditk, data, datalen);
+            rc = dyn_array_append(&defered_index_array, &delditk, sizeof(delditk), data, datalen);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                         rc);
@@ -1481,7 +1356,8 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
 #endif
 
-    defered_index_array_sort();
+    dyn_array_set_cmpr(&defered_index_array, defered_index_key_cmp);
+    dyn_array_sort(&defered_index_array);
     //defered_index_array_dump();
 
     /*
@@ -1502,14 +1378,12 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, void * cur, int);
     bdb_temp_table_debug_dump(thedb->bdb_env, cur, LOGMSG_DEBUG);
-#endif
     int count = 0;
-
-    int icur = 0;
+#endif
 
     //int err;
     //int rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
-    int rc = defered_index_array_first(&icur);
+    int rc = dyn_array_first(&defered_index_array);
     if (rc != IX_OK) {
         //free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
@@ -1528,14 +1402,16 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
 
     while (rc == IX_OK) {
         //dtikey_t *ditk = (dtikey_t *)bdb_temp_table_key(cur);
-        dtikey_t *ditk = defered_index_array_key(&icur);
-logmsg(LOGMSG_DEBUG, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx\n", __func__, ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
+        //int od_tail_len = bdb_temp_table_datasize(cur);
+        dtikey_t *ditk;
+        void *od_dta_tail;
+        int od_tail_len;
+        dyn_array_get_kv(&defered_index_array, (void**)&ditk, &od_dta_tail, &od_tail_len);
+
 #if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx\n", __func__, ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
 #endif
         //void *od_dta_tail = bdb_temp_table_data(cur);
-        //int od_tail_len = bdb_temp_table_datasize(cur);
-        void *od_dta_tail = defered_index_array_data(&icur);
-        int od_tail_len = defered_index_array_datasize(&icur);
 
         iq->usedb = ditk->usedb;
 
@@ -1637,10 +1513,12 @@ logmsg(LOGMSG_DEBUG, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_
 
         /* get next record from table */
         //rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
-        rc = defered_index_array_next(&icur);
+        rc = dyn_array_next(&defered_index_array);
     }
     if (rc == IX_PASTEOF)
         rc = IX_OK;
+
+printf("AZ: tottime = %dms\n", tottime);
 
 done:
     truncate_defered_index_tbl();

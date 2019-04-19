@@ -14,6 +14,7 @@ set(src
   compat.c
   ctrace.c
   debug_switches.c
+  dyn_array.c
   flibc.c
   fsnapf.c
   int_overflow.c
