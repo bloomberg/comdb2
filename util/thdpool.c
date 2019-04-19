@@ -22,6 +22,7 @@
  */
 
 #include "limit_fortify.h"
+#include <assert.h>
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
