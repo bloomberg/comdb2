@@ -910,6 +910,7 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
             }
         }
     }
+    comdb2_setup_authorizer_for_sqlite(thd->sqldb, &thd->authState, 1);
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
     return rc;
@@ -2878,7 +2879,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (distributed || clnt->conns || clnt->plugin.state) {
         return 1;
     }
-    if (rec->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
+    if (thd && thd->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
         return 1;
     }
     if (dont_cache_this_sql(rec)) {
@@ -3127,13 +3128,11 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        rec->authState.denyDdl = denyDdl;
-        rec->authState.numDdls = 0;
+        thd->authState.denyDdl = denyDdl;
+        thd->authState.numDdls = 0;
         rec->prepFlags = flags;
-        comdb2_setup_authorizer_for_sqlite(thd->sqldb, &rec->authState, 1);
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
-        comdb2_setup_authorizer_for_sqlite(thd->sqldb, NULL, 0);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);

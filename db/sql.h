@@ -84,6 +84,7 @@ struct sqlthdstate {
     struct sql_thread *sqlthd;
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
+    struct sql_authorizer_state authState; /* SQL authorizer state info */
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
@@ -1080,7 +1081,6 @@ struct sql_state {
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
     int prepFlags;                     /* flags to get_prepared_stmt_int */
-    struct sql_authorizer_state authState; /* SQL authorizer state info */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                       struct sql_state *, struct errstat *, int);
