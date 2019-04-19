@@ -632,6 +632,8 @@ static void *thdpool_thd(void *voidarg)
 
     if (pool->per_thread_data_sz > 0) {
         thddata = alloca(pool->per_thread_data_sz);
+        assert(thddata != NULL);
+        memset(thddata, 0, pool->per_thread_data_sz);
     }
 
     init_fn = pool->init_fn;
