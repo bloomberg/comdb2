@@ -100,7 +100,6 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
-    int started_backend;
 };
 
 typedef struct osqltimings {
