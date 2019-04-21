@@ -76,3 +76,4 @@ include_directories(
 )
 add_dependencies(util mem)
 set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)
+set_source_files_properties(dyn_array.c PROPERTIES COMPILE_FLAGS -I${PROJECT_SOURCE_DIR}/bdb)

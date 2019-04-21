@@ -19,8 +19,10 @@
 #define INCLUDED_DYN_ARRAY_H
 
 
+#include <stdbool.h>
 
-#define MAX_ARR_SZ 1024*1024
+#define MAX_ARR_SZ 1024*24024
+typedef struct bdb_state_tag bdb_state_type;
 
 /*
  kv       -> [a b c                ]
@@ -34,6 +36,13 @@ typedef struct {
     int data_start;
 } key_val_t;
 
+
+/* Note that the intention for a dyamic array is to store things consecutively
+ * If you want items to be sorted you call sort() on the dynamic array.
+ * However if the array spills to a temp_table then it will be automatically
+ * sorted. This may be good because you don't need to sort it explicitly, 
+ * but it may be bad because you will loose the original order of insertion.
+ */
 typedef struct {
     key_val_t *kv;
     void *buffer;
@@ -46,6 +55,10 @@ typedef struct {
     int (*compar)(void *usermem, int key1len,
                                  const void *key1, int key2len,
                                  const void *key2);
+    void *temp_table;
+    void *temp_table_cur;
+    bdb_state_type *bdb_env; // needed to spill to temptables
+    bool using_temp_table;
 } dyn_array_t;
 
 
@@ -55,7 +68,7 @@ void dyn_array_set_cmpr(dyn_array_t *arr,
     int (*compar)(void *usermem, int key1len,
                                  const void *key1, int key2len,
                                  const void *key2));
-void dyn_array_init(dyn_array_t *arr);
+void dyn_array_init(dyn_array_t *arr, void *bdb_env);
 int dyn_array_first(dyn_array_t *arr);
 int dyn_array_next(dyn_array_t *arr);
 void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen);

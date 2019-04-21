@@ -1343,6 +1343,10 @@ static int process_this_session(
     /* if only one row add/upd/del then no need to reorder indices */
     if (sess->tran_rows <= 1)
         flags |= OSQL_DONT_REORDER_IDX;
+    else {
+        void init_reorder_tbl();
+        init_reorder_tbl();
+    }
 
     while (!rc && !rc_out) {
         char *data = NULL;
