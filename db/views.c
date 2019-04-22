@@ -118,9 +118,9 @@ int views_cron_restart(timepart_views_t *views);
 
 static int _view_rollout_publish(void *tran, timepart_view_t *view,
                                  struct errstat *err);
-static int _view_get_next_rollout(enum view_partition_period period, int retention,
-                                  int startTime, int crtTime, int nshards,
-                                  int back_in_time);
+static int _view_get_next_rollout(enum view_partition_period period,
+                                  int retention, int startTime, int crtTime,
+                                  int nshards, int back_in_time);
 static int _generate_evicted_shard_name(timepart_view_t *view,
                                         int checked_number,
                                         char *evictedShardName,
@@ -1589,7 +1589,7 @@ static int _views_rollout_phase2(timepart_view_t *view,
         goto oom;
     }
     view->shards[0].low = view->roll_time;
-    if(view->retention>1)
+    if (view->retention > 1)
         view->shards[1].high = view->roll_time;
     else
         view->shards[0].high = INT_MAX;
@@ -1598,12 +1598,13 @@ static int _views_rollout_phase2(timepart_view_t *view,
 
     /* the only way to move 1 shard partitions forward is to continuously update
        the start time */
-    if (view->retention == 1) 
+    if (view->retention == 1)
         view->starttime = view->roll_time;
 
     /* we need to schedule the next rollout */
-    *timeNextRollout = _view_get_next_rollout(
-        view->period, view->retention, view->starttime, view->shards[0].low, view->nshards, 0);
+    *timeNextRollout =
+        _view_get_next_rollout(view->period, view->retention, view->starttime,
+                               view->shards[0].low, view->nshards, 0);
     if ((*timeNextRollout) == INT_MAX) {
         errstat_set_strf(err, "Failed to compute next rollout time");
         return err->errval = VIEW_ERR_BUG;
@@ -2013,8 +2014,9 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
         return xerr.errval;
     }
 
-    *rolloutTime = _view_get_next_rollout(
-        view->period, view->retention, view->starttime, view->shards[0].low, view->nshards, 1);
+    *rolloutTime =
+        _view_get_next_rollout(view->period, view->retention, view->starttime,
+                               view->shards[0].low, view->nshards, 1);
     if ((*rolloutTime) == INT_MAX) {
         logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, xerr.errval,
                 xerr.errstr);
@@ -2082,8 +2084,9 @@ done:
  * to establish the next rollout time
  *
  */
-static int _view_get_next_rollout_epoch(enum view_partition_period period, int retention,
-                                        int startTime, int crtTime, int nshards,
+static int _view_get_next_rollout_epoch(enum view_partition_period period,
+                                        int retention, int startTime,
+                                        int crtTime, int nshards,
                                         int back_in_time)
 {
     int timeNextRollout = INT_MAX;
@@ -2159,13 +2162,13 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period, int r
     return timeNextRollout;
 }
 
-static int _view_get_next_rollout(enum view_partition_period period, int retention,
-                                  int startTime, int crtTime, int nshards,
-                                  int back_in_time)
+static int _view_get_next_rollout(enum view_partition_period period,
+                                  int retention, int startTime, int crtTime,
+                                  int nshards, int back_in_time)
 {
     if (IS_TIMEPARTITION(period))
-        return _view_get_next_rollout_epoch(period, retention, startTime, crtTime, nshards,
-                                            back_in_time);
+        return _view_get_next_rollout_epoch(period, retention, startTime,
+                                            crtTime, nshards, back_in_time);
 
     if (period == VIEW_PARTITION_MANUAL)
         return (crtTime == INT_MIN) ? startTime : (crtTime + 1);
@@ -2602,7 +2605,8 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     int rc = VIEW_NOERR;
 
     /* get existing versioning, if any */
-    if (strcmp(view->shards[0].tblname, view->shard0name) && view->nshards > 1) {
+    if (strcmp(view->shards[0].tblname, view->shard0name) &&
+        view->nshards > 1) {
 
         version = comdb2_table_version(view->shards[1].tblname);
 

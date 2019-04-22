@@ -2478,7 +2478,8 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
      * schema_lk */
     int cached_analyze_gen = gbl_analyze_gen;
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
+        logmsg(LOGMSG_USER,
+               "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
                thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
