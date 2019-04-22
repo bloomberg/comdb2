@@ -5297,8 +5297,7 @@ struct client_query_stats *get_query_stats_from_thd()
     if (!clnt)
         return NULL;
 
-    if (!clnt->query_stats)
-        record_query_cost(thd, clnt);
+    record_query_cost(thd, clnt);
 
     return clnt->query_stats;
 }
