@@ -142,6 +142,8 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
         return err->errval;
     }
 
+    fprintf(stderr, "Running the DESTROYER \"%s\"\n", stmt_str);
+
     rc = _views_run_sql(db, stmt_str, err);
 
     /* free the statement */

@@ -118,7 +118,7 @@ int views_cron_restart(timepart_views_t *views);
 
 static int _view_rollout_publish(void *tran, timepart_view_t *view,
                                  struct errstat *err);
-static int _view_get_next_rollout(enum view_partition_period period,
+static int _view_get_next_rollout(enum view_partition_period period, int retention,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time);
 static int _generate_evicted_shard_name(timepart_view_t *view,
@@ -320,7 +320,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     }
 
     /* create initial rollout */
-    tm = _view_get_next_rollout(view->period, view->starttime,
+    tm = _view_get_next_rollout(view->period, view->retention, view->starttime,
                                 view->shards[0].low, view->nshards, 0);
     if (tm == INT_MAX) {
         errstat_set_strf(err, "Failed to compute next rollout time");
@@ -1588,14 +1588,22 @@ static int _views_rollout_phase2(timepart_view_t *view,
     if (!view->shards[0].tblname) {
         goto oom;
     }
-    view->shards[0].low = view->shards[1].high = view->roll_time;
-    view->shards[0].high = INT_MAX;
+    view->shards[0].low = view->roll_time;
+    if(view->retention>1)
+        view->shards[1].high = view->roll_time;
+    else
+        view->shards[0].high = INT_MAX;
     /* we we purge oldest shard, we need to adjust the min of current oldest */
     view->shards[view->nshards - 1].low = INT_MIN;
 
+    /* the only way to move 1 shard partitions forward is to continuously update
+       the start time */
+    if (view->retention == 1) 
+        view->starttime = view->roll_time;
+
     /* we need to schedule the next rollout */
     *timeNextRollout = _view_get_next_rollout(
-        view->period, view->starttime, view->shards[0].low, view->nshards, 0);
+        view->period, view->retention, view->starttime, view->shards[0].low, view->nshards, 0);
     if ((*timeNextRollout) == INT_MAX) {
         errstat_set_strf(err, "Failed to compute next rollout time");
         return err->errval = VIEW_ERR_BUG;
@@ -1797,7 +1805,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
    }
 
    /* recover phase 2 */
-   tm = _view_get_next_rollout(view->period, view->starttime,
+   tm = _view_get_next_rollout(view->period, view->retention, view->starttime,
                                view->shards[0].low, view->nshards, 0);
    if (tm == INT_MAX) {
        errstat_set_strf(err, "Failed to compute next rollout time");
@@ -2006,7 +2014,7 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
     }
 
     *rolloutTime = _view_get_next_rollout(
-        view->period, view->starttime, view->shards[0].low, view->nshards, 1);
+        view->period, view->retention, view->starttime, view->shards[0].low, view->nshards, 1);
     if ((*rolloutTime) == INT_MAX) {
         logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, xerr.errval,
                 xerr.errstr);
@@ -2074,7 +2082,7 @@ done:
  * to establish the next rollout time
  *
  */
-static int _view_get_next_rollout_epoch(enum view_partition_period period,
+static int _view_get_next_rollout_epoch(enum view_partition_period period, int retention,
                                         int startTime, int crtTime, int nshards,
                                         int back_in_time)
 {
@@ -2092,13 +2100,17 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
     fmt = (back_in_time) ? fmt_backward : fmt_forward;
 
     /* time reference */
-    if (crtTime == INT_MIN) {
+    if (crtTime == INT_MIN && retention > 1) {
         /* if this is the first shard incompassing all records, starttime tells
            us
            where we shard this in two */
         assert(nshards == 1);
 
         return startTime;
+    } else if (retention == 1) {
+        /* for retention 1, the startTime moves forward, since there is no other
+        persistent info about rollouts */
+        crtTime = startTime;
     }
 
     /* if there are at least 2 hards, low was the original split, and now we
@@ -2147,12 +2159,12 @@ static int _view_get_next_rollout_epoch(enum view_partition_period period,
     return timeNextRollout;
 }
 
-static int _view_get_next_rollout(enum view_partition_period period,
+static int _view_get_next_rollout(enum view_partition_period period, int retention,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time)
 {
     if (IS_TIMEPARTITION(period))
-        return _view_get_next_rollout_epoch(period, startTime, crtTime, nshards,
+        return _view_get_next_rollout_epoch(period, retention, startTime, crtTime, nshards,
                                             back_in_time);
 
     if (period == VIEW_PARTITION_MANUAL)
@@ -2590,8 +2602,7 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     int rc = VIEW_NOERR;
 
     /* get existing versioning, if any */
-    if (strcmp(view->shards[0].tblname, view->shard0name)) {
-        assert(view->nshards > 1);
+    if (strcmp(view->shards[0].tblname, view->shard0name) && view->nshards > 1) {
 
         version = comdb2_table_version(view->shards[1].tblname);
 
