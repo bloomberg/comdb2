@@ -605,7 +605,7 @@ void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
-static void *clean_exit_thd(void *unused)
+void *clean_exit_thd(void *unused)
 {
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
