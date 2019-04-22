@@ -70,6 +70,10 @@ extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_break_lua;
+extern int gbl_notimeouts;
+extern int gbl_epoch_time;
+extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_dynamic_libs;
 
 char *gbl_break_spname;
 void *debug_clnt;
@@ -791,7 +795,8 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    clnt->ctrl_sqlengine = SQLENG_INTRANS_STATE;
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                            SQLENG_INTRANS_STATE);
     return osql_dbq_consume_logic(clnt, q->info.spname, q->genid);
 }
 
@@ -827,7 +832,8 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
             luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
         }
     } else {
-        clnt->ctrl_sqlengine = SQLENG_INTRANS_STATE;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_INTRANS_STATE);
     }
     return rc;
 }
@@ -1943,8 +1949,6 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
                 load_debugging_information(sp, &err);
             }
         }
-        extern int gbl_notimeouts;
-        extern int gbl_epoch_time;
 
         if (gbl_epoch_time) {
             if ((gbl_epoch_time - sp->clnt->last_check_time) > 5) {
@@ -4456,7 +4460,6 @@ static int create_sp_int(SP sp, char **err)
     lua_newtable(lua);
     lua_setglobal(lua, "_SP");
 
-    extern int gbl_allow_lua_print;
     if (!gbl_allow_lua_print) {
         if (luaL_dostring(lua, "function print(...) end") != 0) {
             *err = strdup(lua_tostring(lua, -1));
@@ -4465,7 +4468,6 @@ static int create_sp_int(SP sp, char **err)
         }
     }
 
-    extern int gbl_allow_lua_dynamic_libs;
     if(!gbl_allow_lua_dynamic_libs)
         disable_global_variables(lua);
 

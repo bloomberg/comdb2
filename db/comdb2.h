@@ -1591,6 +1591,7 @@ extern int gbl_maxthreads;   /* max number of threads allowed */
 extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_mynode;     /* my hostname */
+extern char *gbl_machine_class; /* my machine class */
 struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern char *gbl_myhostname; /* my hostname */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
@@ -1815,6 +1816,7 @@ int schema_init(void);
 int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
+int mach_class_init(void);
 
 /* deinit routines */
 int destroy_appsock(void);
@@ -2537,7 +2539,6 @@ void hash_set_cmpfunc(hash_t *h, cmpfunc_t cmpfunc);
 enum mach_class get_my_mach_class(void);
 enum mach_class get_mach_class(const char *host);
 const char *get_mach_class_str(char *host);
-const char *get_class_str(enum mach_class cls);
 int allow_write_from_remote(const char *host);
 int allow_cluster_from_remote(const char *host);
 int allow_broadcast_to_remote(const char *host);

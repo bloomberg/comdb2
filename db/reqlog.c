@@ -1545,7 +1545,17 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               U2M(logger->durationus));
     }
-    dumpf(logger, out, "from %s rc %d\n", reqorigin(logger), logger->rc);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+        dumpf(logger, out, "for fingerprint %.*s", FINGERPRINTSZ * 2,
+                    expanded_fp);
+    }
+
+    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1744,15 +1754,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
-    }
-
-    /* If fingerprinting is enabled and the logger has a fingerprint,
-       log the fingerprint as well. */
-    if (gbl_fingerprint_queries && logger->have_fingerprint) {
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s", FINGERPRINTSZ * 2,
-                    expanded_fp);
     }
 
     logger->in_request = 0;
@@ -2021,7 +2022,7 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int task_len, stack_len;
+    int task_len, stack_len, nclntstats;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
     nodestats_t *entry_chk = NULL;
@@ -2083,7 +2084,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 }
             }
             Pthread_mutex_lock(&clntlru_mtx);
-            while (hash_get_num_entries(clientstats) + 1 >
+            while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
                 old_entry = listc_rtl(&clntlru);
                 if (old_entry) {
@@ -2092,10 +2093,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: too many clientstats %d, max %d\n", __func__,
-                           hash_get_num_entries(clientstats) + 1,
-                           gbl_max_clientstats_cache);
+                    if (gbl_max_clientstats_cache &&
+                        (nclntstats % gbl_max_clientstats_cache == 1))
+                        logmsg(LOGMSG_ERROR,
+                               "%s: too many clientstats %d, max %d\n",
+                               __func__, nclntstats, gbl_max_clientstats_cache);
                     break;
                 }
             }

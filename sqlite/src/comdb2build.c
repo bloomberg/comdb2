@@ -37,8 +37,8 @@ extern int gbl_ddl_cascade_drop;
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
 {
-    pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
+    pParse->rc = rc;
     return rc;
 }
 
@@ -1830,15 +1830,35 @@ int comdb2genidcontainstime(void)
 int producekw(OpFunc *f)
 {
     int found = 0;
+
     for (int i=0; i < sqlite3_keyword_count(); i++)
     {
-        if ((f->int_arg != KW_ALL) && (f->int_arg != KW_RES))
-            continue;
-
         const char *zName = 0;
         int nName = 0;
         if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
-            opFuncPrintf(f, "%.*s", nName, zName);
+            char kw[100];
+
+            if (nName < sizeof(kw)-1 && (f->int_arg == KW_RES || f->int_arg == KW_FB)) {
+                // See if reserved word
+                extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+                extern int sqlite3ParserFallback(int iToken);
+                int tok;
+
+                strncpy(kw, zName, nName);
+                kw[nName] = 0;
+
+                int rc = sqlite3GetToken((unsigned char*) kw, &tok);
+                if (rc > 0) {
+                    int isfb = sqlite3ParserFallback(tok);
+                    if ((isfb && f->int_arg == KW_FB) || (!isfb && f->int_arg == KW_RES)) {
+                        opFuncPrintf(f, "%.*s", nName, zName);
+                        found++;
+                    }
+                }
+                continue;
+            }
+            else if (f->int_arg == KW_ALL)
+                opFuncPrintf(f, "%.*s", nName, zName);
             found++;
         }
     }
@@ -2004,7 +2024,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         return;
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;       
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -2055,11 +2075,14 @@ clean_arg:
 static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
         int isset, long long value)
 {
-    char name[MAXTABLELEN];
-    char *query;
+    if (comdb2IsPrepareOnly(pParse))
+        return;
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
+
+    char name[MAXTABLELEN];
+    char *query;
 
     if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
         goto err;

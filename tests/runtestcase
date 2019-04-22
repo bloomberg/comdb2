@@ -246,12 +246,16 @@ verify_db_at_finish() {
 
 call_setup
 
-echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo "!$TESTCASE: started running with timeout ${TEST_TIMEOUT} at $DATETIME"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+rc=${PIPESTATUS[0]}
+
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo "!$TESTCASE: finished running with timeout ${TEST_TIMEOUT} at $DATETIME"
 
 # get the return code from the first phase of the pipe
-rc=${PIPESTATUS[0]}
 sleep 1
 
 
