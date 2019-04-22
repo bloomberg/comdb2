@@ -104,7 +104,7 @@ int osql_blkseq_unregister(struct ireq *iq)
 {
     /* Fast return if have_blkseq is false.
        It not only saves quite a few instructions,
-       but also avoids the race condition with osql_open() */
+       but also avoids a race condition with osql_open() */
     if (!iq->have_blkseq)
         return 0;
 
