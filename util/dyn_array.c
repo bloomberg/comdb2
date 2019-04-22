@@ -209,16 +209,17 @@ int dyn_array_append(dyn_array_t *arr, void *key, int keylen, void *data, int da
     return append_to_array(arr, key, keylen, data, datalen);
 }
 
-void defered_index_array_dump(dyn_array_t *arr)
+void dyn_array_dump(dyn_array_t *arr)
 {
     for (int i = 0; i < arr->items; i++) {
         //logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
         char *buffer = arr->buffer;
         key_val_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
-        //hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
-        printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
-        //hexdump(LOGMSG_ERROR, "\n");
+        void hexdump(loglvl lvl, const char *key, int keylen);
+        hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
+        //printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
+        logmsg(LOGMSG_ERROR, "\n");
     }
 }
 
@@ -271,6 +272,6 @@ int test_dyn_array()
         dyn_array_append(&arr, &i, sizeof(i), NULL, 0);
 
     dyn_array_sort(&arr);
-    defered_index_array_dump(&arr);
+    dyn_array_dump(&arr);
     abort();
 }
