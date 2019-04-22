@@ -72,7 +72,7 @@ void dyn_array_close(dyn_array_t *arr)
  * if you want this to spill to a temptable */
 void dyn_array_init(dyn_array_t *arr, void *bdb_env)
 {
-    if (arr->capacity > 0)
+    if (arr->capacity > 0 || arr->using_temp_table)
         dyn_array_close(arr);
     arr->bdb_env = bdb_env;
 }
@@ -87,9 +87,11 @@ void dyn_array_set_cmpr(dyn_array_t *arr,
 
 int dyn_array_sort(dyn_array_t *arr)
 {
+    if (arr->using_temp_table)
+        return 0; // already sorted
     if (arr->capacity == 0) {
         assert(arr->items == 0);
-        return 0;
+        return 0; // nothing to sort
     }
 
     qsort_r(arr->kv, arr->items, sizeof(key_val_t), dyn_array_keyval_cmpr_asc, arr);
