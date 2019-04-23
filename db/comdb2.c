@@ -1402,8 +1402,12 @@ int clear_temp_tables(void)
 }
 
 void clean_exit_sigwrap(int signum) {
-   signal(SIGTERM, SIG_DFL);
-   clean_exit();
+    void *clean_exit_thd(void *unused);
+    signal(SIGTERM, SIG_DFL);
+
+    /* Call the wrapper which checks the exit flag
+       to avoid multiple clean-exit's. */
+    clean_exit_thd(NULL);
 }
 
 static void free_sqlite_table(struct dbenv *dbenv)
