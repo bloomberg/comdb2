@@ -66,7 +66,7 @@
 #include "logmsg.h"
 #include "dyn_array.h"
 
-#define DEBUG_REORDER 1
+#define DEBUG_REORDER 0
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -1281,9 +1281,9 @@ static int process_this_session(
 
 #if DEBUG_REORDER
     // if needed to check content of socksql temp table, dump with:
-#endif
     logmsg(LOGMSG_DEBUG, "OSQL ");
     dyn_array_dump(&tran->osql_rows);
+#endif
 
     /* go through each record */
     rc = dyn_array_first(&tran->osql_rows);
