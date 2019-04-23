@@ -100,13 +100,6 @@ typedef struct oplog_key {
 } oplog_key_t;
 
 
-/* data to store in tmp tbl */
-typedef struct {
-	void *dataptr;
-	int datalen;
-} osql_data_t;
-
-
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
@@ -532,8 +525,6 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
 
-    //need to free data before closing
-
     dyn_array_close(&tran->osql_rows);
     dyn_array_close(&tran->add_osql_rows);
     free(tran);
@@ -772,12 +763,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (sess->last_is_ins)
         arr = &tran->add_osql_rows;
 
-    osql_data_t data_wrap;
-    data_wrap.dataptr = malloc(rplen); //store a copy so it can be freed by who reads the array
-    memcpy(data_wrap.dataptr, rpl, rplen);
-    data_wrap.datalen = rplen;
-    logmsg(LOGMSG_ERROR, "AZ: SET_KV %p %d\n", data_wrap.dataptr, data_wrap.datalen);
-    rc_op = dyn_array_append(arr, &key, sizeof(key), &data_wrap, sizeof(data_wrap));
+    rc_op = dyn_array_append(arr, &key, sizeof(key), rpl, rplen);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d\n",
                __func__, sess->seq, rc_op);
@@ -1191,18 +1177,23 @@ static inline void get_tmptbl_data_and_len(blocksql_tran_t *tran,
                                            bool drain_adds, char **data_p,
                                            int *datalen_p)
 {
-	void *key;
-	osql_data_t *data_wrap;
-	int data_wrap_len;
+    void *key;
+    void *loc_data;
 
-	dyn_array_t *arr = (drain_adds) ?  &tran->add_osql_rows : &tran->osql_rows;
+    dyn_array_t *arr = (drain_adds) ?  &tran->add_osql_rows : &tran->osql_rows;
 
-	dyn_array_get_kv(arr, &key, (void**)&data_wrap, &data_wrap_len);
-	if(data_wrap_len != sizeof(*data_wrap))
-		abort();
-	*data_p = malloc(data_wrap->datalen);
-    memcpy(*data_p, data_wrap->dataptr, data_wrap->datalen);
-	*datalen_p = data_wrap->datalen; // actual len of data
+    dyn_array_get_kv(arr, &key, &loc_data, datalen_p);
+    uint8_t *p_buf = (uint8_t *)loc_data;
+    int type = 0;
+    buf_get(&type, sizeof(type), p_buf, p_buf + sizeof(type));
+
+    if (type == OSQL_QBLOB) {
+        *data_p = malloc(*datalen_p);
+        memcpy(*data_p, loc_data, *datalen_p);
+    }
+    else {
+        *data_p = loc_data;
+    }
 }
 
 /* utility function to determine if row from ins tmp tbl sorts less than
@@ -1339,7 +1330,6 @@ static int process_this_session(
         get_tmptbl_data_and_len(tran, drain_adds, &data, &datalen);
         /* Reset temp cursor data - we will free data after the callback. 
         bdb_temp_table_reset_datapointers(drain_adds ? dbc_ins : dbc);*/
-	logmsg(LOGMSG_ERROR, "AZ: %d) GET_KV %p %d\n", step, data, datalen);
 
         DEBUG_PRINT_TMPBL_READ();
 
@@ -1359,7 +1349,6 @@ static int process_this_session(
          * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
-        free(data); // we have ownership of data now
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
