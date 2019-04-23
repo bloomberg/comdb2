@@ -135,17 +135,6 @@ update_all_records()
     done
 }
 
-update_records()
-{
-    j=0
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 
-        let j=j+1
-    done
-}
 
 
 insert_records()
