@@ -532,6 +532,8 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
 
+    //need to free data before closing
+
     dyn_array_close(&tran->osql_rows);
     dyn_array_close(&tran->add_osql_rows);
     free(tran);
@@ -770,10 +772,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (sess->last_is_ins)
         arr = &tran->add_osql_rows;
 
-	osql_data_t data_wrap;
-	data_wrap.dataptr = malloc(rplen); //store a copy so it can be freed by who reads the array
-	memcpy(data_wrap.dataptr, rpl, rplen);
-	data_wrap.datalen = rplen;
+    osql_data_t data_wrap;
+    data_wrap.dataptr = malloc(rplen); //store a copy so it can be freed by who reads the array
+    memcpy(data_wrap.dataptr, rpl, rplen);
+    data_wrap.datalen = rplen;
+    logmsg(LOGMSG_ERROR, "AZ: SET_KV %p %d\n", data_wrap.dataptr, data_wrap.datalen);
     rc_op = dyn_array_append(arr, &key, sizeof(key), &data_wrap, sizeof(data_wrap));
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d\n",
@@ -1197,7 +1200,8 @@ static inline void get_tmptbl_data_and_len(blocksql_tran_t *tran,
 	dyn_array_get_kv(arr, &key, (void**)&data_wrap, &data_wrap_len);
 	if(data_wrap_len != sizeof(*data_wrap))
 		abort();
-	*data_p = data_wrap->dataptr;
+	*data_p = malloc(data_wrap->datalen);
+    memcpy(*data_p, data_wrap->dataptr, data_wrap->datalen);
 	*datalen_p = data_wrap->datalen; // actual len of data
 }
 
@@ -1335,6 +1339,7 @@ static int process_this_session(
         get_tmptbl_data_and_len(tran, drain_adds, &data, &datalen);
         /* Reset temp cursor data - we will free data after the callback. 
         bdb_temp_table_reset_datapointers(drain_adds ? dbc_ins : dbc);*/
+	logmsg(LOGMSG_ERROR, "AZ: %d) GET_KV %p %d\n", step, data, datalen);
 
         DEBUG_PRINT_TMPBL_READ();
 
@@ -1354,8 +1359,7 @@ static int process_this_session(
          * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
-        if (iq_tran) // if from osql_bplog_commit rather than osql_bplog_schemachange
-			free(data); // we have ownership of data now
+        free(data); // we have ownership of data now
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);

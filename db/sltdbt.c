@@ -153,6 +153,7 @@ retry:
 
     if (rc == RC_INTERNAL_RETRY) {
         iq->retries++;
+        logmsg(LOGMSG_DEBUG, "Have RC_INTERNAL_RETRY cnt=%d\n", iq->retries);
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
