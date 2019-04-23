@@ -71,6 +71,7 @@ void dyn_array_set_cmpr(dyn_array_t *arr,
 void dyn_array_init(dyn_array_t *arr, void *bdb_env);
 int dyn_array_first(dyn_array_t *arr);
 int dyn_array_next(dyn_array_t *arr);
+void dyn_array_get_key(dyn_array_t *arr, void **key);
 void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen);
 int dyn_array_append(dyn_array_t *arr, void *key, int keylen, void *data, int datalen);
 int dyn_array_sort(dyn_array_t *arr);

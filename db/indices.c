@@ -1402,8 +1402,6 @@ logmsg(LOGMSG_DEBUG, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_
     if (rc == IX_PASTEOF)
         rc = IX_OK;
 
-printf("AZ: tottime = %dms\n", tottime);
-
 done:
     truncate_defered_index_tbl();
     // We can also delete if we are done with the tmptbl

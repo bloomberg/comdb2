@@ -245,6 +245,19 @@ int dyn_array_next(dyn_array_t *arr)
     return IX_OK;
 }
 
+void dyn_array_get_key(dyn_array_t *arr, void **key)
+{
+    if (arr->using_temp_table) {
+        *key = bdb_temp_table_key(arr->temp_table_cur);
+        return;
+    }
+    if (arr->cursor >= arr->items) 
+        abort();
+    char *buffer = arr->buffer;
+    key_val_t *tmp = &arr->kv[arr->cursor];
+    *key = &buffer[tmp->key_start];
+}
+
 void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen)
 {
     if (arr->using_temp_table) {
