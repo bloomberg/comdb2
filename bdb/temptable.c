@@ -1366,60 +1366,61 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
 
-    Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+    if (tbl->dbenv_temp != NULL || gbl_temptable_pool_capacity == 0) {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
 
-    if ((tbl->dbenv_temp != NULL) &&
-        (tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
-                                    DB_STAT_CLEAR)) == 0) {
-        bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
-        bdb_state->temp_stats->st_bytes += tmp->st_bytes;
-        bdb_state->temp_stats->st_ncache += tmp->st_ncache;
-        bdb_state->temp_stats->st_regsize += tmp->st_regsize;
-        bdb_state->temp_stats->st_map += tmp->st_map;
-        bdb_state->temp_stats->st_cache_hit += tmp->st_cache_hit;
-        bdb_state->temp_stats->st_cache_miss += tmp->st_cache_miss;
-        bdb_state->temp_stats->st_cache_ihit += tmp->st_cache_ihit;
-        bdb_state->temp_stats->st_cache_imiss += tmp->st_cache_imiss;
-        bdb_state->temp_stats->st_cache_lhit += tmp->st_cache_lhit;
-        bdb_state->temp_stats->st_cache_lmiss += tmp->st_cache_lmiss;
-        bdb_state->temp_stats->st_page_create += tmp->st_page_create;
-        bdb_state->temp_stats->st_page_pf_in += tmp->st_page_pf_in;
-        bdb_state->temp_stats->st_page_in += tmp->st_page_in;
-        bdb_state->temp_stats->st_page_out += tmp->st_page_out;
-        bdb_state->temp_stats->st_ro_merges += tmp->st_ro_merges;
-        bdb_state->temp_stats->st_rw_merges += tmp->st_rw_merges;
-        bdb_state->temp_stats->st_ro_evict += tmp->st_ro_evict;
-        bdb_state->temp_stats->st_rw_evict += tmp->st_rw_evict;
-        bdb_state->temp_stats->st_pf_evict += tmp->st_pf_evict;
-        bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
-        bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
-        bdb_state->temp_stats->st_pages += tmp->st_pages;
-        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
-        bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
-        bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
-        bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
-        bdb_state->temp_stats->st_hash_longest += tmp->st_hash_longest;
-        bdb_state->temp_stats->st_hash_examined += tmp->st_hash_examined;
-        bdb_state->temp_stats->st_region_nowait += tmp->st_region_nowait;
-        bdb_state->temp_stats->st_region_wait += tmp->st_region_wait;
-        bdb_state->temp_stats->st_alloc += tmp->st_alloc;
-        bdb_state->temp_stats->st_alloc_buckets += tmp->st_alloc_buckets;
-        bdb_state->temp_stats->st_alloc_max_buckets +=
-            tmp->st_alloc_max_buckets;
-        bdb_state->temp_stats->st_alloc_pages += tmp->st_alloc_pages;
-        bdb_state->temp_stats->st_alloc_max_pages += tmp->st_alloc_max_pages;
-        bdb_state->temp_stats->st_ckp_pages_sync += tmp->st_ckp_pages_sync;
-        bdb_state->temp_stats->st_ckp_pages_skip += tmp->st_ckp_pages_skip;
+        if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
+                                        DB_STAT_CLEAR)) == 0) {
+            bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
+            bdb_state->temp_stats->st_bytes += tmp->st_bytes;
+            bdb_state->temp_stats->st_ncache += tmp->st_ncache;
+            bdb_state->temp_stats->st_regsize += tmp->st_regsize;
+            bdb_state->temp_stats->st_map += tmp->st_map;
+            bdb_state->temp_stats->st_cache_hit += tmp->st_cache_hit;
+            bdb_state->temp_stats->st_cache_miss += tmp->st_cache_miss;
+            bdb_state->temp_stats->st_cache_ihit += tmp->st_cache_ihit;
+            bdb_state->temp_stats->st_cache_imiss += tmp->st_cache_imiss;
+            bdb_state->temp_stats->st_cache_lhit += tmp->st_cache_lhit;
+            bdb_state->temp_stats->st_cache_lmiss += tmp->st_cache_lmiss;
+            bdb_state->temp_stats->st_page_create += tmp->st_page_create;
+            bdb_state->temp_stats->st_page_pf_in += tmp->st_page_pf_in;
+            bdb_state->temp_stats->st_page_in += tmp->st_page_in;
+            bdb_state->temp_stats->st_page_out += tmp->st_page_out;
+            bdb_state->temp_stats->st_ro_merges += tmp->st_ro_merges;
+            bdb_state->temp_stats->st_rw_merges += tmp->st_rw_merges;
+            bdb_state->temp_stats->st_ro_evict += tmp->st_ro_evict;
+            bdb_state->temp_stats->st_rw_evict += tmp->st_rw_evict;
+            bdb_state->temp_stats->st_pf_evict += tmp->st_pf_evict;
+            bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
+            bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
+            bdb_state->temp_stats->st_pages += tmp->st_pages;
+            ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty,
+                       tmp->st_page_dirty);
+            bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
+            bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
+            bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
+            bdb_state->temp_stats->st_hash_longest += tmp->st_hash_longest;
+            bdb_state->temp_stats->st_hash_examined += tmp->st_hash_examined;
+            bdb_state->temp_stats->st_region_nowait += tmp->st_region_nowait;
+            bdb_state->temp_stats->st_region_wait += tmp->st_region_wait;
+            bdb_state->temp_stats->st_alloc += tmp->st_alloc;
+            bdb_state->temp_stats->st_alloc_buckets += tmp->st_alloc_buckets;
+            bdb_state->temp_stats->st_alloc_max_buckets +=
+                tmp->st_alloc_max_buckets;
+            bdb_state->temp_stats->st_alloc_pages += tmp->st_alloc_pages;
+            bdb_state->temp_stats->st_alloc_max_pages +=
+                tmp->st_alloc_max_pages;
+            bdb_state->temp_stats->st_ckp_pages_sync += tmp->st_ckp_pages_sync;
+            bdb_state->temp_stats->st_ckp_pages_skip += tmp->st_ckp_pages_skip;
 
-        free(tmp);
-    }
+            free(tmp);
+        }
 
-    if (gbl_temptable_pool_capacity == 0) {
         tbl->next = bdb_state->temp_list;
         bdb_state->temp_list = tbl;
-    }
 
     Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+    }
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
