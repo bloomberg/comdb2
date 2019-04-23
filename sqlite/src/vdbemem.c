@@ -483,10 +483,10 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       char *z;
       sqlite3ErrorWithMsg(pMem->db, SQLITE_CONV_ERROR,
             "can't convert datetime value to string");
+      pMem->n = strlen("conv_error");
       z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
       if( !z ) return SQLITE_NOMEM;
       memcpy(z, "conv_error", pMem->n);
-      pMem->n = strlen("conv_error");
       z[pMem->n] = 0;
       z[pMem->n+1] = 0;
       pMem->z = z;
@@ -498,10 +498,10 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
       return SQLITE_CONV_ERROR;
     }else{
       char *z;
+      pMem->n = strlen(tmp);
       z = sqlite3GlobalConfig.m.xMalloc(pMem->n+2);
       if( !z ) return SQLITE_NOMEM;
       memcpy(z, tmp, pMem->n);
-      pMem->n = strlen(tmp);
       z[pMem->n] = 0;
       z[pMem->n+1] = 0;
       pMem->z = z;
