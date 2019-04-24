@@ -14,8 +14,13 @@
    limitations under the License.
  */
 
+#ifndef _compress_h
+#define _compress_h
+
 #include <stdio.h>
 
 int rle8_compress(const void *from, size_t fromlen, void *to, size_t tolen);
 
 int rle8_decompress(const void *from, size_t fromlen, void *to, size_t tolen);
+
+#endif

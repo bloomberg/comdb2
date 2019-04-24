@@ -3570,7 +3570,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
         filenum = 0;
 
     p_buf = (uint8_t *)&filenum_net;
-    p_buf_end = (uint8_t *)(&filenum_net + sizeof(int));
+    p_buf_end = p_buf + sizeof(int);
 
     buf_put(&filenum, sizeof(int), p_buf, p_buf_end);
 
