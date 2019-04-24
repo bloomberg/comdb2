@@ -4438,9 +4438,9 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
-    if (size > PGCOMPMAXLEN) {
-        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
-               __FILE__, __LINE__);
+    if (size > PGCOMPMAXLEN || size < 0 || ((sizeof(pgcomp_rcv_t) + size) < size)) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction invalid size: %u.\n",
+               __FILE__, __LINE__, size);
         return E2BIG;
     }
 
