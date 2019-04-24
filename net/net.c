@@ -4871,8 +4871,8 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         } else {
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
-                                 "'%s': gethostbyname '%s' addr %d\n", __func__,
-                                 rephostname, *addr);
+                                 "'%s': gethostbyname '%s' addr %x\n", __func__,
+                                 rephostname, (unsigned) addr->s_addr);
             }
             break;
         }

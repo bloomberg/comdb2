@@ -332,7 +332,7 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
         goto err;
     } else {
         if (iq->debug)
-            reqprintf(iq, "CACHED BLOB LEN %u TBL %s TAG %s RRN %d GENID %llu "
+            reqprintf(iq, "CACHED BLOB LEN %zu TBL %s TAG %s RRN %d GENID %llu "
                           "EXTRA %u+%u NUMBLOBS %d\n",
                       total_length, table, tag, rrn, genid, *extra1, *extra2,
                       numblobs);
@@ -636,7 +636,7 @@ int toblobask(struct ireq *iq)
         } else {
             if (req.taglen >= sizeof(dbtag)) {
                 if (iq->debug)
-                    reqprintf(iq, "TAG NAME IS TOO LONG '%s' (%d>%d)\n",
+                    reqprintf(iq, "TAG NAME IS TOO LONG '%s' (%d>%zu)\n",
                               cachetag, req.taglen, sizeof(dbtag) - 1);
                 rc = ERR_BADREQ;
                 goto error;
@@ -670,7 +670,7 @@ int toblobask(struct ireq *iq)
                     static int throttle = 100;
                     if (throttle > 0 || iq->debug)
                         reqprintf(iq, "BLOB ASK %u:%s:%s:%d:%llu+%u:%u "
-                                      "RECOVERED BUT WITH WRONG LENGTH %u\n",
+                                      "RECOVERED BUT WITH WRONG LENGTH %zu\n",
                                   key.total_length, table, cachetag, key.rrn,
                                   key.genid, key.dyntag_extra1,
                                   key.dyntag_extra2, new_length);

@@ -73,6 +73,8 @@
 #include "logmsg.h"
 #include <compat.h>
 
+#include <inttypes.h>
+
 #define REP_PRI 100     /* we are all equal in the eyes of god */
 #define REPTIME 3000000 /* default 3 second timeout on election */
 
@@ -1908,7 +1910,7 @@ void *hostdown_thread(void *arg)
     if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
-        print(bdb_state, "xxx master is %d we are %d\n", master_host,
+        print(bdb_state, "xxx master is %s we are %s\n", master_host,
               bdb_state->repinfo->myhost);
         electable = is_electable(bdb_state, &num_up, &num_connected);
         print(bdb_state, "connected to %d out of %d up nodes\n", num_connected,
@@ -5219,7 +5221,7 @@ void *watcher_thread(void *arg)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    print(bdb_state, "watcher_thread started as 0x%p\n",
+    print(bdb_state, "watcher_thread started as 0x%"PRIxPTR"\n",
           (intptr_t)pthread_self());
 
     poll(NULL, 0, (rand() % 100) + 1000);

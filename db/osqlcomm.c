@@ -6909,7 +6909,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // thus they will not need to check table version
         if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %llu\n",
                           dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
@@ -7370,8 +7370,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             int jj = 0;
             uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
-                        comdb2uuidstr(uuid, us), dt.ixnum,
-                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+                        comdb2uuidstr(uuid, us),
+                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
             for (jj = 0; jj < dt.nData; jj++)
                 sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -8252,8 +8252,8 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         lclgenid = bdb_genid_to_host_order(dt.seq);
-        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us, dt.ixnum,
-                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us,
+                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
         for (jj = 0; jj < dt.nData; jj++)
             sbuf2printf(logsb, "%02x", pData[jj]);
 
