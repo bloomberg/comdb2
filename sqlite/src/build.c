@@ -344,6 +344,8 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_list ap;
 
+  pParse->preserve_update = 0;
+
   va_start(ap, zFormat);
   sqlite3NestedParse_int(pParse, NULL, zFormat, ap);
   va_end(ap);

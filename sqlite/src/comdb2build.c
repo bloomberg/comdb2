@@ -1249,6 +1249,12 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     }
     strncpy0(retention_str, retention->z, retention->n + 1);
     tp->retention = atoi(retention_str);
+#if 0    
+    if (tp->retention < 2) {
+        setError(pParse, SQLITE_MISUSE, "Retention must be at least 2");
+        goto clean_arg;
+    }
+#endif
 
     char start_str[200];
 
