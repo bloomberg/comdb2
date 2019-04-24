@@ -191,7 +191,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                "durable-lsn request "
                                "returns %d snapshot_file=%d snapshot_offset=%d "
                                "is_hasql_retry=%d\n",
-                               clnt->snapshot_file, clnt->snapshot_offset,
+                               rc, clnt->snapshot_file, clnt->snapshot_offset,
                                clnt->is_hasql_retry);
                 rcode = -1;
             }

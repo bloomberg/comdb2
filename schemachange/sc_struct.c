@@ -735,10 +735,10 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
                   (s->live ? "Live" : "Readonly"));
         break;
     case SCAN_STRIPES:
-        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        sc_printf(s, "Schema change running in stripes scan mode\n");
         break;
     case SCAN_OLDCODE:
-        sc_printf(s, "%s schema change running in oldcode mode\n");
+        sc_printf(s, "Schema change running in oldcode mode\n");
         break;
     }
 }
