@@ -249,6 +249,10 @@ call_setup
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "!$TESTCASE: started running with timeout ${TEST_TIMEOUT} at $DATETIME"
 
+if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+    callgrind_control -i on
+fi
+
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 rc=${PIPESTATUS[0]}
 
@@ -258,6 +262,9 @@ echo "!$TESTCASE: finished running with timeout ${TEST_TIMEOUT} at $DATETIME"
 # get the return code from the first phase of the pipe
 sleep 1
 
+if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+    callgrind_control -i off
+fi
 
 cr=`find_cores ${DBNAME} $DBDIR`
 

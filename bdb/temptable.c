@@ -58,6 +58,19 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #define backtrace_symbols_fd(A, B, C)
 #endif
 
+#define REOPEN_CURSOR(c)                                                       \
+    do {                                                                       \
+        if ((c)->cur == NULL) {                                                \
+            int rc =                                                           \
+                (c)->tbl->tmpdb->cursor((c)->tbl->tmpdb, NULL, &(c)->cur, 0);  \
+            if (rc) {                                                          \
+                logmsg(LOGMSG_ERROR, "%s: cursor create returned rc=%d\n",     \
+                       __func__, rc);                                          \
+                return rc;                                                     \
+            }                                                                  \
+        }                                                                      \
+    } while (0)
+
 extern char *gbl_crypto;
 extern int64_t gbl_temptable_spills;
 
@@ -644,6 +657,8 @@ int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (rc <= 0)
         goto done;
 
+    REOPEN_CURSOR(cur);
+
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -653,7 +668,6 @@ int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cur,
     ddata.data = data;
     dkey.data = key;
 
-    assert(cur->cur != NULL);
     rc = cur->cur->c_put(cur->cur, &dkey, &ddata, DB_KEYFIRST);
     if (rc && rc != DB_KEYEXIST) {
         *bdberr = rc;
@@ -682,6 +696,8 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
         return -1;
     }
 
+    REOPEN_CURSOR(cur);
+
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
@@ -696,7 +712,6 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
             ddata.data, ddata.size, dkey.data, dkey.size);
      */
 
-    assert(cur->cur != NULL);
     rc = cur->cur->c_put(cur->cur, &dkey, &ddata, DB_CURRENT);
     if (rc) {
         *bdberr = rc;
@@ -793,13 +808,7 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
         return 0;
     }
 
-    /* if cursor was deleted, need to reopen */
-    if (cur->cur == NULL) {
-        int rc = cur->tbl->tmpdb->cursor(cur->tbl->tmpdb, NULL, &cur->cur, 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: cursor create returned rc=%d\n", __func__, rc);
-        }
-    }
+    REOPEN_CURSOR(cur);
 
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
@@ -885,13 +894,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
         return 0;
     }
 
-    /* if cursor was deleted, need to reopen */
-    if (cur->cur == NULL) {
-        int rc = cur->tbl->tmpdb->cursor(cur->tbl->tmpdb, NULL, &cur->cur, 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: cursor create returned rc=%d\n", __func__, rc);
-        }
-    }
+    REOPEN_CURSOR(cur);
 
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
@@ -1408,7 +1411,8 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         goto done;
     }
 
-    assert(cur->cur != NULL);
+    REOPEN_CURSOR(cur);
+
     rc = cur->cur->c_del(cur->cur, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "c_del rc %d\n", rc);
@@ -1510,7 +1514,7 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
         return bdb_temp_table_find_hash(cur, key, keylen);
     }
 
-    assert(cur->cur != NULL);
+    REOPEN_CURSOR(cur);
 
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
@@ -1623,6 +1627,8 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
+    REOPEN_CURSOR(cur);
+
     /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
@@ -1631,7 +1637,6 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     dkey.data = key;
     dkey.size = keylen;
 
-    assert(cur->cur != NULL);
     cur->valid = 0;
     rc = cur->cur->c_get(cur->cur, &dkey, &ddata, DB_SET);
     /*
