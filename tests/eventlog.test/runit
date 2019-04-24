@@ -200,7 +200,7 @@ cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
 echo lastfls 
 cat lastfls.txt
 
-res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep '"type": "sql"'| wc -l)
+res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep -c '"type": "sql"')
 assertres $res 1
 
 exit 0
