@@ -562,8 +562,6 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
     return 0;
 }
 
-int sql_testrun(char *sql, int sqllen);
-
 void fastcount(char *tablename);
 
 /* Seem to need this all over the place. */
@@ -2797,8 +2795,6 @@ clipper_usage:
            logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
-        } else if (tokcmp(tok, ltok, "testrun") == 0) {
-            sql_testrun(&line[st], lline - st);
         } else if (tokcmp(tok, ltok, "debug") == 0) {
             extern int gbl_debug_sql_opcodes;
             on_off_trap(line, lline, &st, &ltok, "SQL debug mode", "sql debug",

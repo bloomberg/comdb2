@@ -1125,18 +1125,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 }
 
 /**
- * Signal blockprocessor that one has completed
- * For now this is used only for
- *
- */
-int osql_bplog_session_is_done(struct ireq *iq)
-{
-    blocksql_tran_t *tran = iq->blocksql_tran;
-    if (tran) return 0;
-    return -1;
-}
-
-/**
  * Set parallelism threshold
  *
  */

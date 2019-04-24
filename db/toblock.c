@@ -4855,18 +4855,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             GOTOBACKOUT;
     }
 
-    /* Trigger JAVASP_TRANS_LISTEN_BEFORE_COMMIT. */
-    thrman_wheref(thr_self, "%s [javasp pre commit hooks]", req2a(iq->opcode));
-    rc = javasp_trans_misc_trigger(javasp_trans_handle,
-                                   JAVASP_TRANS_LISTEN_BEFORE_COMMIT);
-    if (rc != 0) {
-        err.blockop_num = 0;
-        err.errcode = OP_FAILED_INTERNAL + ERR_JAVASP_ABORT_OP;
-        err.ixnum = -1;
-        numerrs = 1;
-        GOTOBACKOUT;
-    }
-
     Pthread_rwlock_rdlock(&commit_lock);
     hascommitlock = 1;
     if (iq->arr || iq->selectv_arr) {
@@ -5805,13 +5793,7 @@ add_blkseq:
     n_commits++;
     Pthread_mutex_unlock(&commit_stat_lk);
 
-    /* Trigger JAVASP_TRANS_LISTEN_AFTER_COMMIT.  Doesn't really matter what
-     * it does since the transaction is committed. */
     if (outrc == 0) {
-        thrman_wheref(thr_self, "%s [javasp post commit]", req2a(iq->opcode));
-        javasp_trans_misc_trigger(javasp_trans_handle,
-                                  JAVASP_TRANS_LISTEN_AFTER_COMMIT);
-
         if (iq->__limits.maxcost_warn &&
             (iq->cost > iq->__limits.maxcost_warn)) {
             logmsg(LOGMSG_WARN, "[%s] warning: transaction exceeded cost threshold "

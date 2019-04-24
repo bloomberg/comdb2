@@ -5689,8 +5689,6 @@ done:
     return ret;
 }
 
-int sql_testrun(char *sql, int sqllen) { return 0; }
-
 int sqlpool_init(void)
 {
     gbl_sqlengine_thdpool =
