@@ -26,8 +26,6 @@
 #include <logical_cron.h>
 #include "cdb2_constants.h"
 
-#define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
-
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
@@ -623,15 +621,6 @@ void comdb2CreateTableCSC2(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     int table_exists = 0;
 
@@ -681,15 +670,6 @@ void comdb2AlterTableCSC2(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     struct schema_change_type *sc = new_schemachange_type();
@@ -725,15 +705,6 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_DROP_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -832,15 +803,6 @@ void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(p, SQLITE_REBUILD_TABLE, 0, 0, 0) ){
-            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB + opt);
 }
 
@@ -850,15 +812,6 @@ void comdb2RebuildData(Parse* p, Token* nm, Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(p, SQLITE_REBUILD_DATA, 0, 0, 0) ){
-            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     comdb2Rebuild(p,nm,lnm,REBUILD_DATA + opt);
 }
 
@@ -867,15 +820,6 @@ void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(p, SQLITE_REBUILD_DATABLOB, 0, 0, 0) ){
-            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     comdb2Rebuild(p, nm, lnm, REBUILD_BLOB + opt);
 }
 
@@ -883,15 +827,6 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_TRUNCATE_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -930,17 +865,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_INDEX, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
     char* indexname;
     int index_num;
 
@@ -1013,15 +938,6 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PROC, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1063,15 +979,6 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1115,15 +1022,6 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_DROP_PROC, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1175,15 +1073,6 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -1289,15 +1178,6 @@ void comdb2DropPartition(Parse* pParse, Token* partition_name)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_DROP_PART, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -1366,15 +1246,6 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1414,15 +1285,6 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1467,15 +1329,6 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1519,15 +1372,6 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1564,15 +1408,6 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1608,15 +1443,6 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1663,15 +1489,6 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1727,15 +1544,6 @@ void comdb2getAlias(Parse* pParse, Token* t1)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1775,15 +1583,6 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, revoke ? SQLITE_REVOKE : SQLITE_GRANT, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1860,14 +1659,7 @@ void comdb2enableAuth(Parse* pParse, int on)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
+    Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateOpPassword(pParse))
     {
@@ -1875,7 +1667,6 @@ void comdb2enableAuth(Parse* pParse, int on)
         return;
     }
 
-    Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     
     if (arg)
@@ -1920,15 +1711,6 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     char username[MAX_USERNAME_LEN];
     char passwd[MAX_PASSWORD_LEN];
@@ -2000,17 +1782,11 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
+    {
+        setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
         return;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -2102,15 +1878,6 @@ void comdb2getkw(Parse* pParse, int arg)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Keyword"};
     const int coltype = OPFUNC_STRING_TYPE;
@@ -2145,15 +1912,6 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Coverage"};
     const int coltype = OPFUNC_INT_TYPE;
@@ -2172,15 +1930,6 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     char tblname[MAXTABLELEN];
 
@@ -2215,15 +1964,6 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Threshold"};
@@ -2284,23 +2024,15 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
+    BpfuncArg *arg = NULL;
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
-        return;
+        return;       
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    BpfuncArg *arg = NULL;
 
     if (retention < 2)
     {
@@ -2352,15 +2084,6 @@ static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -2395,15 +2118,6 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     char table[MAXTABLELEN];
     char newTable[MAXTABLELEN];
@@ -2454,15 +2168,6 @@ void comdb2schemachangeCommitsleep(Parse* pParse, int num)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -2473,15 +2178,6 @@ void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -4081,15 +3777,6 @@ void comdb2AlterTableStart(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     struct comdb2_ddl_context *ctx;
 
     assert(pParse->comdb2_ddl_ctx == 0);
@@ -4217,15 +3904,6 @@ void comdb2CreateTableStart(
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     int table_exists = 0;
 
@@ -5094,15 +4772,6 @@ void comdb2CreateIndex(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
@@ -5744,15 +5413,6 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_DROP_INDEX, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     Vdbe *v;
     struct dbtable *table = NULL;
     struct schema_change_type *sc;
@@ -5945,15 +5605,6 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;

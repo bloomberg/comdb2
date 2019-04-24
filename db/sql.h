@@ -78,18 +78,12 @@ typedef struct stmt_hash_entry {
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
-struct sql_authorizer_state {
-    int denyDdl;                       /* non-zero if DDL is forbidden */
-    int numDdls;                       /* number of DDL statements found */
-};
-
 /* Thread specific sql state */
 struct sqlthdstate {
     struct reqlogger *logger;
     struct sql_thread *sqlthd;
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
-    struct sql_authorizer_state authState; /* SQL authorizer state info */
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
@@ -100,6 +94,7 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+    int started_backend;
 };
 
 typedef struct osqltimings {
@@ -1068,24 +1063,17 @@ enum cache_status {
     CACHE_FOUND_STMT = 2,
     CACHE_FOUND_STR = 4,
 };
-enum prepare_flags {
-    PREPARE_NONE = 0,
-    PREPARE_RECREATE = 1,
-    PREPARE_DENY_DDL = 2,
-    PREPARE_IGNORE_ERR = 4
-};
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *, int);
+                      struct sql_state *, struct errstat *);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *, int);
+                               struct sql_state *, struct errstat *);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);

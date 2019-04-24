@@ -398,8 +398,7 @@ db:table, rc = db:exec(query)
 Description:
 
 This method creates an anonymous dbtable backed by the dynamic SQL query specified.  The resulting dbtable
-is fully equivalent to a dbtable referencing a base table, supporting all of the same methods.  Use of DDL
-statements is not allowed unless the 'allow_lua_exec_with_ddl' tunable is enabled.
+is fully equivalent to a dbtable referencing a base table, supporting all of the same methods.
 
 Return Values:
 
