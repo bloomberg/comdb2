@@ -370,6 +370,7 @@ int handle_ireq(struct ireq *iq)
                     rc = offload_comm_send_blockreply(
                         iq->frommach, iq->rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
+                    free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {
                     /* The tag request is handled locally.
                        We know for sure `request_data' is a `buf_lock_t'. */
