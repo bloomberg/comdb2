@@ -234,6 +234,19 @@ void sqlite3ErrorMsg(Parse *pParse, const char *zFormat, ...){
 }
 
 /*
+** If database connection db is currently parsing SQL, then transfer
+** error code errCode to that parser if the parser has not already
+** encountered some other kind of error.
+*/
+int sqlite3ErrorToParser(sqlite3 *db, int errCode){
+  Parse *pParse;
+  if( db==0 || (pParse = db->pParse)==0 ) return errCode;
+  pParse->rc = errCode;
+  pParse->nErr++;
+  return errCode;
+}
+
+/*
 ** Convert an SQL-style quoted string into a normal string by removing
 ** the quote characters.  The conversion is done in-place.  If the
 ** input does not begin with a quote character, then this routine
@@ -1672,7 +1685,7 @@ VList *sqlite3VListAdd(
   assert( pIn==0 || pIn[0]>=3 );  /* Verify ok to add new elements */
   if( pIn==0 || pIn[1]+nInt > pIn[0] ){
     /* Enlarge the allocation */
-    int nAlloc = (pIn ? pIn[0]*2 : 10) + nInt;
+    sqlite3_int64 nAlloc = (pIn ? 2*(sqlite3_int64)pIn[0] : 10) + nInt;
     VList *pOut = sqlite3DbRealloc(db, pIn, nAlloc*sizeof(int));
     if( pOut==0 ) return pIn;
     if( pIn==0 ) pOut[1] = 2;
