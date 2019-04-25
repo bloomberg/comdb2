@@ -6433,7 +6433,6 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         put_curtran(thedb->bdb_env, &clnt);
     }
-    put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(L, q);
         logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
@@ -6441,6 +6440,7 @@ void *exec_trigger(trigger_reg_t *reg)
     } else {
         force_unregister(L, reg);
     }
+    put_curtran(thedb->bdb_env, &clnt);
     close_sp(&clnt);
     cleanup_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
