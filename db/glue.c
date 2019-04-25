@@ -91,6 +91,7 @@
 
 #include "views.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -973,8 +974,14 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
+    int rc;
+    CHRONO_START();
+
+    rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
                          dtalen, isnull);
+
+    CHRONO_STOP_AND_SAVE("ix_addk");
+    return rc;
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
@@ -1234,7 +1241,14 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
 int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
-    return dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    int rc;
+    CHRONO_START();
+
+    rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+
+    CHRONO_STOP_AND_SAVE("dat_add");
+
+    return rc;
 }
 
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
