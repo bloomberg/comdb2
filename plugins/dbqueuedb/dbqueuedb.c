@@ -54,7 +54,6 @@
 #include <tcputil.h>
 #include "dbdest.h"
 #include "comdb2.h"
-#include <portmuxapi.h>
 
 #include "util.h"
 

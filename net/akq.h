@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,13 +12,14 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-#ifndef INCLUDED_PORTMUXUSR
-#define INCLUDED_PORTMUXUSR
-
-/* The portmux api has moved desks.. please #include its new location
- * directly. */
-#include <portmuxapi.h>
-
-#endif
+#pragma once
+#include <stddef.h>
+struct akq;
+typedef void (*akq_callback)(void *);
+void *akq_work_new(struct akq *);
+void akq_enqueue(struct akq *, void *);
+void akq_truncate(struct akq *, akq_callback);
+void akq_stop(struct akq *);
+struct akq *akq_new(size_t, akq_callback, akq_callback, akq_callback);

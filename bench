@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+DB=${1:-akdb}
+NUM=50
+CONCURRENT=50
+NODES=0
+for c in $CLUSTER; do
+	NODES=$(($NODES + 1))
+done
+
+function setup()
+{
+	echo "Setup"
+	for c in $CLUSTER; do 
+		cdb2sql $DB @$c - > /dev/null <<- EOF
+			drop table if exists t$c
+			create table t$c(i int unique, c cstring(1024))\$\$
+		EOF
+	done
+}
+
+function count()
+{
+	total=0
+	for c in $CLUSTER; do
+		t=$(cdb2sql -tabs $DB default "select count(*) as t$c from t$c")
+		total=$(($total + $t))
+	done
+	echo "Total rows: $total"
+}
+
+function bench()
+{
+	echo "Insert"
+	echo "Expected total rows: $(($NUM * $CONCURRENT * $NODES))"
+	for c in $CLUSTER; do
+		for ((i = 0; i < $CONCURRENT; ++i)); do
+			cdb2sql -s $DB --host $c - > /dev/null >&1 <<- EOF &
+				insert into t$c(i) select value from generate_series limit $NUM offset $(($NUM * $i))
+				select 'boom' as bad, '$c' as target, comdb2_host() as actual where '$c' != comdb2_host()
+			EOF
+		done
+	done
+	wait
+	count
+	echo "Delete"
+	for c in $CLUSTER; do
+		for ((i = 0; i < $CONCURRENT; ++i)); do
+			cdb2sql -s $DB --host $c - > /dev/null >&1 <<- EOF &
+				delete from t$c where i between $(($NUM * $i)) and $((($NUM * ($i + 1)) - 1))
+				select 'boom' as bad, '$c' as target, comdb2_host() as actual where '$c' != comdb2_host()
+			EOF
+		done
+	done
+	wait
+	echo "Expected total rows: 0"
+	count
+}
+
+[[ "$1" == "setup" ]] && setup && exit 0
+
+setup
+time bench
+# vim: set noet ts=8 sw=8:

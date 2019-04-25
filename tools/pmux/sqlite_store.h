@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <iostream>
 #include "pmux_store.h"
 #include "raii.h"
 

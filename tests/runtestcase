@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# set -x
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
@@ -75,6 +74,7 @@ find_cores() {
     local LCLDBDIR=$2
     local COREAGE=60
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    [[ ${CPAT:0:1} == '|' ]] && return #TODO: handle cores controled by coredumpctl
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+set -x
+TESTSROOTDIR=$HOME/src/net-thds/tests
+TESTSBUILDDIR=$HOME/src/net-thds/build/tests/tools
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Debug variable
+debug=0
+
+dbnm=akdb
+DBNAME=akdb
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists t2"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists t1"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 {$(<t1.csc2)}"
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+assertthdpoolcntzero()
+{
+    node=$1
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
+    grep "Current num threads       : 0"  assertthdpoolcntzero.out
+    if [ $? -ne 0 ] ; then
+        failexit "nonzero count of current threads running verify, see assertthdpoolcntzero.out"
+    fi
+}
+
+assert_vers()
+{
+    tbl=$1
+    target=$2
+    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    if [[ $newver != $target ]] ; then
+        failexit "newver is now $newver but should be $target"
+    fi
+    tblver=$newver
+}
+
+assert_schema()
+{
+    tbl=$1
+    schema=$2
+
+    echo "make sure that the current schema is $schema"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
+
+    if ! diff -Bw schema.out $schema ; then 
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
+        failexit "final schema is not same as $schema: diff schema.out $schema"
+    fi
+}
+
+gen_series_test()
+{
+    MAX=9000
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t2 (i int)"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "insert into t2 select * from generate_series(1, $MAX) "
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select distinct i from t2" | sort -n > gen.out
+    seq 1 $MAX > gen.exp
+    if ! diff gen.out gen.exp ; then 
+        failexit 'genseries content not what it is expected'
+    fi
+}
+
+echo $CDB2_CONFIG
+THRDS=20
+CNT=10000
+ITERATIONS=5
+TRANSIZE=0
+
+gen_series_test
+
+time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
+assertcnt t1 $((THRDS * CNT * ITERATIONS))
+do_verify t1
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
+#TODO: split this test in two via testopts
+TRANSIZE=2800
+time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
+assertcnt t1 $((THRDS * CNT * ITERATIONS))
+do_verify t1
+
+node=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
+
+### testing cancelling verify behavior ###
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel', 'verbose')" &> verify_t1.out &
+pid=$!
+sleep 0.5
+kill -9 $pid
+sleep 2.5
+assertthdpoolcntzero $node
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel')" &> verify_t1.out &
+pid=$!
+sleep 0.5
+kill -9 $pid
+sleep 2.5
+assertthdpoolcntzero $node
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'verbose')" &> verify_t1.out &
+pid=$!
+sleep 0.5
+kill -9 $pid
+sleep 2.5
+assertthdpoolcntzero $node
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1')" &> verify_t1.out &
+pid=$!
+sleep 0.5
+kill -9 $pid
+sleep 2.5
+assertthdpoolcntzero $node
+
+echo "Success"

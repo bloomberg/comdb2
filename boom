@@ -1,0 +1,19 @@
+#!/bin/bash
+
+function get_log
+{
+    echo $(send $1 bdb logstat | grep cur_file | awk '{print $2}')
+}
+
+l=$(get_log akdb)
+last=$l
+target=$(($1 + $l))
+send -m akdb pushlogs $target
+while [[ $l -lt $target ]]; do
+    l=$(get_log akdb)
+    if [[ $l -ne $last ]]; then
+        echo $l
+        last=$l
+    fi
+    sleep 1
+done
