@@ -90,6 +90,8 @@ static inline void free_gbl_eventlog_fname()
 
 static void eventlog_roll_cleanup()
 {
+    if (gbl_create_mode)
+        return;
     if (eventlog_nkeep == 0)
         return;
 

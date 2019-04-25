@@ -198,6 +198,7 @@ extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
 extern int gbl_rand_elect_timeout;
 extern int gbl_rand_elect_min_ms;
+extern int gbl_libevent;
 extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;

@@ -604,32 +604,17 @@ int bdb_sync_cluster(bdb_state_type *bdb_state, int sync_all)
 
 static void send_context_to_all(bdb_state_type *bdb_state)
 {
-    const char *hostlist[REPMAX];
-    int count = 0;
-    unsigned long long gblcontext;
-    int i;
-
     if (!bdb_state->attr->net_send_gblcontext)
         return;
-
     /* only the master can send these */
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
         return;
-
-    gblcontext = get_gblcontext(bdb_state);
-
-    /* send to all */
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        if (gblcontext == -1ULL) {
-            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n",
-                   hostlist[i]);
-            cheap_stack_trace();
-        }
-
-        net_send(bdb_state->repinfo->netinfo, hostlist[i], USER_TYPE_GBLCONTEXT,
-                 &gblcontext, sizeof(unsigned long long), 0);
-    }
+    unsigned long long gblcontext = get_gblcontext(bdb_state);
+    void *data[] = {&gblcontext};
+    int sz[] = {sizeof(gblcontext)};
+    int type[] = {USER_TYPE_GBLCONTEXT};
+    int flag[] = {0};
+    net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
 }
 
 static inline int is_incoherent_complete(bdb_state_type *bdb_state,
@@ -754,14 +739,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum = {0};
     uint8_t *p_buf, *p_buf_end;
     int rectype = 0;
-    int i;
     int *seqnum;
-    const char *hostlist[REPMAX];
-    int count = 0;
     int nodelay;
     int useheap = 0;
-    unsigned long long gblcontext;
-    int dontsend;
 
     int is_logput = 0;
 
@@ -973,23 +953,48 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         }
     }
 
-    gblcontext = 0;
-
-    if (tran) {
-        gblcontext = get_gblcontext(bdb_state);
-
-        /*fprintf(stderr, "getting gblcontext 0x%08llx\n", gblcontext);*/
-    }
-
     if (host == db_eid_broadcast) {
+        void *data[2];
+        int sz[2];
+        int type[2];
+        int flag[2];
+        int num = 0;
+        uint64_t gblcontext;
+        /* Leaving original code below. Skipping check for
+         * throttle_updates_incoherent_nodes() for now. Trying to replicate
+         * logic as follows: */
+        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost &&
+            is_logput && tran && bdb_state->attr->net_send_gblcontext &&
+            nodelay && !gbl_rowlocks &&
+            (gblcontext = get_gblcontext(bdb_state)) != 0
+        ) {
+            data[num] = &gblcontext;
+            sz[num] = sizeof(gblcontext);
+            type[num] = USER_TYPE_GBLCONTEXT;
+            flag[num] = 0;
+            ++num;
+        }
+        data[num] = buf;
+        sz[num] = bufsz;
+        type[num] = USER_TYPE_BERKDB_REP;
+        flag[num] =
+            (!is_logput ? (NET_SEND_NODROP | NET_SEND_NODELAY) : 0) |
+            ((flags & DB_REP_NODROP) ? NET_SEND_NODROP : 0) |
+            (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) |
+            (nodelay ? NET_SEND_NODELAY : 0) |
+            (flags & DB_REP_TRACE ? NET_SEND_TRACE : 0);
+        ++num;
+        rc = net_send_all(bdb_state->repinfo->netinfo, num, data, sz, type, flag);
+#       if 0
         /* send to all */
-        count =
+        const char *hostlist[REPMAX];
+        int count =
             net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
         for (i = 0; i < count; i++) {
             int tmpseq;
             uint8_t *p_seq_num = (uint8_t *)seqnum;
             uint8_t *p_seq_num_end = ((uint8_t *)seqnum + sizeof(int));
-            dontsend = 0;
+            int dontsend = 0;
 
             p_rep_type_berkdb_rep_seqnum.seqnum = tmpseq =
                 get_seqnum(bdb_state, hostlist[i]);
@@ -1064,6 +1069,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     rc = 1; /* haha, keep ignoring it */
             }
         }
+#       endif
     } else {
         int tmpseq;
         uint8_t *p_seq_num = (uint8_t *)seqnum;
@@ -3667,32 +3673,18 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
 /* let everyone know what logfile we are currently using */
 void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
 {
-    int rc;
-    int count;
-    int filenum_net;
-    const char *hostlist[REPMAX];
-    int i;
-    uint8_t *p_buf, *p_buf_end;
-
     if (bdb_state->exiting)
         return;
-
     if (!bdb_state->caught_up)
         filenum = 0;
-
-    p_buf = (uint8_t *)&filenum_net;
-    p_buf_end = p_buf + sizeof(int);
-
-    buf_put(&filenum, sizeof(int), p_buf, p_buf_end);
-
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                      USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
-                      nodelay);
-        if (rc)
-            logmsg(LOGMSG_WARN, "%s:net_send returned rc=%d\n", __func__, rc);
-    }
+    filenum = htonl(filenum);
+    void *data[] = {&filenum};
+    int sz[] = {sizeof(filenum)};
+    int type[] = {USER_TYPE_BERKDB_FILENUM};
+    int flag[] = {nodelay};
+    int rc = net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
+    if (rc)
+        logmsg(LOGMSG_WARN, "%s:net_send returned rc=%d\n", __func__, rc);
 }
 
 int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
@@ -3789,38 +3781,18 @@ int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 
 void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
 {
-    int rc;
-    int i;
-    int count;
-    const char *hostlist[REPMAX];
-    uint8_t p_net_seqnum[BDB_SEQNUM_TYPE_LEN];
-
-    if (0 == (rc = get_myseqnum(bdb_state, p_net_seqnum))) {
-        count =
-            net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-        for (i = 0; i < count; i++) {
-            if (0) {
-                seqnum_type p;
-                rep_berkdb_seqnum_type_get(
-                    &p, p_net_seqnum,
-                    (const uint8_t *)((seqnum_type *)p_net_seqnum + 1));
-
-                fprintf(stderr, "%s:%d %s sending %d:%d to %s\n", __FILE__,
-                        __LINE__, __func__, p.lsn.file, p.lsn.offset,
-                        hostlist[i]);
-            }
-
-            rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
-                          USER_TYPE_BERKDB_NEWSEQ, &p_net_seqnum,
-                          sizeof(seqnum_type), nodelay);
-
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d to %s\n",
-                       pthread_self(), __func__, __LINE__, rc, hostlist[i]);
-            }
-        }
+    uint8_t seqnum[BDB_SEQNUM_TYPE_LEN];
+    if (get_myseqnum(bdb_state, seqnum) != 0)
+        return;
+    void *data[] = {seqnum};
+    int sz[] = {BDB_SEQNUM_TYPE_LEN};
+    int type[] = {USER_TYPE_BERKDB_NEWSEQ};
+    int flag[] = {nodelay};
+    int rc = net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d\n", pthread_self(),
+               __func__, __LINE__, rc);
     }
-    return;
 }
 
 void bdb_exiting(bdb_state_type *bdb_state)
@@ -4036,12 +4008,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         call_for_election(bdb_state, __func__, __LINE__);
 
-        /*
-           send a hello msg to the node who called for an election.  the
-           reason for this is he may have incomplete knowledge of the topology
-        */
-        if (rand() < (RAND_MAX / 4))
-            net_send_hello(bdb_state->repinfo->netinfo, host);
+        /* send a hello msg to the node who called for an election.  the reason
+         * for this is he may have incomplete knowledge of the topology */
+        net_send_hello(bdb_state->repinfo->netinfo, host);
 
         break;
 
@@ -5292,8 +5261,6 @@ extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
                             int truncate);
-extern int db_is_stopped();
-extern int db_is_exiting();
 
 int request_delaymore(void *bdb_state_in)
 {
@@ -5738,7 +5705,6 @@ void *watcher_thread(void *arg)
                 connect_to_all(bdb_state->repinfo->netinfo);
                 i = 0;
             }
-
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
                 logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",

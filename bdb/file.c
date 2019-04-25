@@ -1519,12 +1519,13 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         /* get me off the network */
         net_send_decom_all(netinfo_ptr, gbl_mynode);
         osql_process_message_decom(gbl_mynode);
-
-        sleep(2);
-
-        net_exiting(netinfo_ptr);
-        osql_net_exiting();
-
+        if (gbl_libevent) {
+            stop_event_net();
+        } else {
+            sleep(2);
+            net_exiting(netinfo_ptr);
+            osql_net_exiting();
+        }
     }
     net_cleanup_netinfo(netinfo_ptr);
     osql_cleanup_netinfo();
@@ -2140,6 +2141,12 @@ static void set_dbenv_stuff(DB_ENV *dbenv, bdb_state_type *bdb_state)
 /* spawn off thread that does updbackup and autoanalyze */
 void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 {
+    if (gbl_libevent) {
+        add_timer_event(udp_backup, bdb_state, 500);
+        add_timer_event(auto_analyze, bdb_state, bdb_state->attr->chk_aa_time * 1000);
+        return;
+    }
+
     pthread_t thread_id;
     pthread_attr_t thd_attr;
 
@@ -2151,12 +2158,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
     Pthread_attr_setstacksize(&thd_attr, 128 * 1024); /* 4K */
     Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-    int rc = pthread_create(&thread_id, &thd_attr,
-                            udpbackup_and_autoanalyze_thd, (void *)bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "create_udpbackup_analyze_thread: pthread_create: %s", strerror(errno));
-        exit(1);
-    }
+    Pthread_create(&thread_id, &thd_attr, udpbackup_and_autoanalyze_thd, bdb_state);
 }
 
 int gbl_passed_repverify = 0;

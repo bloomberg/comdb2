@@ -1783,6 +1783,8 @@ typedef struct udppf_rq {
 
 void start_udp_reader(bdb_state_type *bdb_state);
 void *udpbackup_and_autoanalyze_thd(void *arg);
+void udp_backup(int, short, void *);
+void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,

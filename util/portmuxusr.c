@@ -51,7 +51,7 @@
 #include "mem_override.h"
 #endif
 
-int gbl_pmux_route_enabled = 1;
+int gbl_pmux_route_enabled = 0;
 
 #define PORTMUX_ROUTE_MODE_ENABLED() gbl_pmux_route_enabled
 #define PORTMUX_SET_NO_LINGER() 1
@@ -1756,9 +1756,15 @@ void portmux_set_max_wait_timeout(unsigned timeoutms)
     max_wait_timeoutms = timeoutms;
 }
 
-const char *portmux_fds_get_app(portmux_fd_t *fds) { return fds->app; }
+const char *portmux_fds_get_app(portmux_fd_t *fds)
+{
+    return fds->app;
+}
 
-const char *portmux_fds_get_service(portmux_fd_t *fds) { return fds->service; }
+const char *portmux_fds_get_service(portmux_fd_t *fds)
+{
+    return fds->service;
+}
 
 const char *portmux_fds_get_instance(portmux_fd_t *fds)
 {

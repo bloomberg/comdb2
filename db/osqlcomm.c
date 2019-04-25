@@ -77,7 +77,6 @@ extern int gbl_goslow;
 
 extern int gbl_partial_indexes;
 
-extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 int gbl_toblock_random_deadlock_trans;
 
@@ -2906,6 +2905,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromnode,
 static void net_startthread_rtn(void *arg);
 static void net_stopthread_rtn(void *arg);
 
+static void osql_heartbeat(int, short, void *);
 static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
@@ -3129,20 +3129,15 @@ int osql_comm_init(struct dbenv *dbenv)
 
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
 
-    Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    Pthread_attr_setstacksize(&attr, 100 * 1024);
-
-    rc = pthread_create(&stat_hbeat_tid, &attr, osql_heartbeat_thread, NULL);
-
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: pthread_create error %d %s\n", __func__, rc,
-                strerror(errno));
-        return -1;
+    if (gbl_libevent) {
+        add_timer_event(osql_heartbeat, NULL, gbl_osql_heartbeat_send * 1000);
+    } else {
+        Pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        Pthread_attr_setstacksize(&attr, 100 * 1024);
+        Pthread_create(&stat_hbeat_tid, &attr, osql_heartbeat_thread, NULL);
+        Pthread_attr_destroy(&attr);
     }
-
-    Pthread_attr_destroy(&attr);
-
     return 0;
 }
 
@@ -5768,40 +5763,36 @@ static void signal_rtoff(void)
     }
 }
 
-/*
-   thread responsible for sending heartbeats to the master
- */
+static void osql_heartbeat(int dummy_fd, short what, void *dummy_arg)
+{
+    osql_comm_t *comm = get_thecomm();
+    if (!g_osql_ready || !comm) {
+        return;
+    }
+
+    /* we get away with setting source and destination to 0 since the
+     * callback code doesn't actually care - it just needs heartbeats, but
+     * doesn't look at the contents */
+    hbeat_t msg;
+    msg.dst = 0;
+    msg.src = 0;
+    msg.time = comdb2_time_epoch();
+
+    uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN];
+    uint8_t *p_buf = buf;
+    uint8_t *p_buf_end = buf + OSQLCOMM_HBEAT_TYPE_LEN;
+    osqlcomm_hbeat_type_put(&msg, p_buf, p_buf_end);
+
+    net_send_message(comm->handle_sibling, thedb->master, NET_HBEAT_SQL, &buf,
+                     sizeof(buf), 0, 0);
+}
+
+/* thread responsible for sending heartbeats to the master */
 static void *osql_heartbeat_thread(void *arg)
 {
-
-    int rc = 0;
-    hbeat_t msg;
-
     thread_started("osql heartbeat");
-
     while (!db_is_stopped()) {
-        uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
-            *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
-
-        /* we get away with setting source and destination to 0 since the
-         * callback code
-         * doesn't actually care - it just needs heartbeats, but doesn't look at
-         * the contents */
-        msg.dst = 0;
-        msg.src = 0;
-        msg.time = comdb2_time_epoch();
-
-        osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
-
-        osql_comm_t *comm = get_thecomm();
-        if (g_osql_ready && comm) {
-            rc =
-                net_send_message(comm->handle_sibling, thedb->master,
-                                 NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
-            if (rc && rc != NET_SEND_FAIL_SENDTOME)
-                logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
-        }
-
+        osql_heartbeat(-1, 0, NULL);
         poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
     }
     return NULL;
@@ -5943,8 +5934,7 @@ out:
 }
 
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
-   packets
-   due to queue being full */
+ * packets due to queue being full */
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay)
 {

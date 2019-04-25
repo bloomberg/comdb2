@@ -38,14 +38,15 @@ On every machine in the cluster:
        build-essential \
        cmake \
        flex \
-       protobuf-c-compiler \
+       libevent-dev \
        liblz4-dev \
        libncurses5-dev \
        libprotobuf-c-dev \
        libreadline-dev \
-       libssl-dev \
        libsqlite3-dev \
+       libssl-dev \
        libunwind-dev \
+       protobuf-c-compiler \
        tcl \
        uuid-dev \
        zlib1g-dev
@@ -54,7 +55,7 @@ On every machine in the cluster:
    **CentOS 7**
 
    ```
-   sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
+   sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which libevent-devel
    ```
 
    **macOS High Sierra (experimental)**
@@ -62,7 +63,7 @@ On every machine in the cluster:
    Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   brew install cmake lz4 openssl protobuf-c readline
+   brew install cmake lz4 openssl protobuf-c readline libevent
    ```
 
    To run tests, install following:

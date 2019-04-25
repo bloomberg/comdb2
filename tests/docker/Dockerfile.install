@@ -2,42 +2,43 @@ FROM ubuntu:xenial
 
 RUN apt-get update && \
     apt-get install -y \
-    cmake \
     bc \
     bison \
     build-essential \
+    cmake \
     flex \
     gawk \
+    gdb \
+    iproute2 \
+    iputils-ping \
+    libevent-dev \
     liblz4-dev \
+    liblz4-tool \
     libprotobuf-c-dev \
+    libprotobuf-c1 \
     libreadline-dev \
+    libsqlite3-0 \
     libsqlite3-dev \
     libssl-dev \
     libunwind-dev \
+    libuuid1 \
     libz-dev \
+    libz1 \
+    libz1 \
     make \
     ncurses-dev \
-    protobuf-c-compiler \
-    tcl \
-    tcl-dev \
-    uuid-dev \
-    libz1 \
-    liblz4-tool \
-    libprotobuf-c1 \
-    libsqlite3-0 \
-    libuuid1 \
-    libz1 \
-    tzdata \
-    iputils-ping \
     net-tools \
     netcat-openbsd \
-    iproute2 \
-    socat \
-    time \
-    strace \
-    gdb \
     openssh-server \
-    psmisc
+    protobuf-c-compiler \
+    psmisc \
+    socat \
+    strace \
+    tcl \
+    tcl-dev \
+    time \
+    tzdata \
+    uuid-dev
 
 COPY . /comdb2
 

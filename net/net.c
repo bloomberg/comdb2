@@ -91,8 +91,6 @@
 #include <cdb2_constants.h>
 #include "intern_strings.h"
 
-#include <fsnapf.h>
-
 #include "rtcpu.h"
 
 #include "mem_net.h"
@@ -124,6 +122,12 @@ int subnet_blackout_timems = 5000;
 #else
 #define HOST_MALLOC(h, sz) malloc(sz)
 #endif /* PER_THREAD_MALLOC */
+
+static int net_flush(host_node_type *host_node_ptr)
+{
+    return gbl_libevent ? net_flush_bufferevent(host_node_ptr)
+                        : sbuf2flush(host_node_ptr->sb);
+}
 
 void net_set_subnet_blackout(int ms)
 {
@@ -179,9 +183,6 @@ static int process_hello(netinfo_type *netinfo_ptr,
                          host_node_type *host_node_ptr);
 static int process_hello_reply(netinfo_type *netinfo_ptr,
                                host_node_type *host_node_ptr);
-/* '_ll' lockless -- the caller should be holding the netinfo_ptr->lock */
-static host_node_type *get_host_node_by_name_ll(netinfo_type *netinfo_ptr,
-                                                const char name[]);
 static int connect_to_host(netinfo_type *netinfo_ptr,
                            host_node_type *host_node_ptr,
                            host_node_type *sponsor_host);
@@ -202,32 +203,6 @@ static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
 int sbuf2ungetc(char c, SBUF2 *sb);
 
 static int net_portmux_hello(void *);
-
-/* We can't change the on-wire protocol easily.  So it
- * retains node numbers, but they're unused for now */
-/* type 0 is internal connect message.
-   type >0 is for applications */
-typedef struct {
-    char to_hostname[HOSTNAME_LEN];
-    int to_portnum;
-    int flags; /* was `int to_nodenum` */
-    char my_hostname[HOSTNAME_LEN];
-    int my_portnum;
-    int my_nodenum;
-} connect_message_type;
-
-/* flags for connect_message_typs */
-#define CONNECT_MSG_SSL 0x80000000
-#define CONNECT_MSG_TONODE 0x0000ffff /* backwards compatible */
-
-enum {
-    NET_CONNECT_MESSAGE_TYPE_LEN = HOSTNAME_LEN + sizeof(int) + sizeof(int) +
-                                   HOSTNAME_LEN + sizeof(int) + sizeof(int)
-};
-
-BB_COMPILE_TIME_ASSERT(net_connect_message_type,
-                       sizeof(connect_message_type) ==
-                           NET_CONNECT_MESSAGE_TYPE_LEN);
 
 /* Endian manipulation routines */
 static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
@@ -253,9 +228,9 @@ static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
     return p_buf;
 }
 
-static const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
-                                              const uint8_t *p_buf,
-                                              const uint8_t *p_buf_end)
+const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
+                                       const uint8_t *p_buf,
+                                       const uint8_t *p_buf_end)
 {
     int node = 0;
     if (p_buf_end < p_buf || NET_CONNECT_MESSAGE_TYPE_LEN > (p_buf_end - p_buf))
@@ -438,6 +413,9 @@ typedef struct connect_and_accept {
 /* Close socket related to hostnode.  */
 static void shutdown_hostnode_socket(host_node_type *host_node_ptr)
 {
+    if (gbl_libevent) {
+        return;
+    }
     if (gbl_verbose_net) {
         host_node_printf(LOGMSG_USER, host_node_ptr, "shutting down fd %d\n",
                          host_node_ptr->fd);
@@ -552,6 +530,10 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
                       const wire_header_type *headptr, const struct iovec *iov,
                       int iovcount, int flags)
 {
+    if (gbl_libevent) {
+        int f = (flags & WRITE_MSG_NODELAY) ? NET_SEND_NODELAY : 0;
+        return write_list_bufferevent(host_node_ptr, headptr->type, iov, iovcount, f);
+    }
     write_data *insert;
     int ii;
     size_t datasz;
@@ -763,11 +745,6 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
             host_node_ptr->stats.bytes_read += nread;
     }
 
-#if 0 
-   printf("IN %s:%d %d\n", from, line, nread);
-   fsnapf(stdout, inptr, nread);
-#endif
-
     return nread;
 }
 
@@ -775,8 +752,8 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
  * Retrieve the host_node_type by name.
  * Caller should be holding netinfo_ptr->lock.
  */
-static host_node_type *get_host_node_by_name_ll(netinfo_type *netinfo_ptr,
-                                                const char name[])
+host_node_type *get_host_node_by_name_ll(netinfo_type *netinfo_ptr,
+                                         const char name[])
 {
     if (!isinterned(name))
         abort();
@@ -880,12 +857,10 @@ static ssize_t write_stream(netinfo_type *netinfo_ptr,
                             host_node_type *hostinfo_ptr, SBUF2 *sb,
                             void *inptr, size_t maxbytes)
 {
+    if (gbl_libevent) {
+        return write_stream_bufferevent(hostinfo_ptr, inptr, maxbytes);
+    }
     int nwrite = sbuf2write(inptr, maxbytes, sb);
-
-#if 0
-   printf("OUT %s:%d %d :\n", from, line, maxbytes);
-   fsnapf(stdout, inptr, maxbytes);
-#endif
 
     /* Note for future - this locking seems OTT.  We must already be under lock
      * here or we couldn't safely use the sbuf. */
@@ -1047,15 +1022,15 @@ int write_connect_message(netinfo_type *netinfo_ptr,
     connect_message_type connect_message;
     uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN] = {0}, *p_buf, *p_buf_end;
     int rc;
-    char type;
+    char type = 0;
     int append_to = 0, append_from = 0;
 
-    type = 0;
-
-    rc = write_stream(netinfo_ptr, host_node_ptr, sb, &type, sizeof(char));
-    if (rc != sizeof(char)) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error\n");
-        return 1;
+    if (!gbl_libevent) {
+        rc = write_stream(netinfo_ptr, host_node_ptr, sb, &type, sizeof(char));
+        if (rc != sizeof(char)) {
+            host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error\n");
+            return 1;
+        }
     }
 
     memset(&connect_message, 0, sizeof(connect_message_type));
@@ -1101,35 +1076,64 @@ int write_connect_message(netinfo_type *netinfo_ptr,
 
     net_connect_message_put(&connect_message, p_buf, p_buf_end);
 
-    /* always do a write_stream for the connect message */
-    rc = write_stream(netinfo_ptr, host_node_ptr, sb, &conndata,
-                      NET_CONNECT_MESSAGE_TYPE_LEN);
-    if (rc != sizeof(connect_message_type)) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error\n");
-        return 1;
-    }
+    if (gbl_libevent) {
+        int i = 0;
+        int n = 2 + append_from + append_to;
+        struct iovec iov[n];
 
-    if (append_from) {
-        rc = write_stream(netinfo_ptr, host_node_ptr, sb,
-                          netinfo_ptr->myhostname, netinfo_ptr->myhostname_len);
-        if (rc != netinfo_ptr->myhostname_len) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "write connect message error (from)\n");
+        iov[i].iov_base = &type;
+        iov[i].iov_len = sizeof(type);
+        ++i;
+
+        iov[i].iov_base = &conndata;
+        iov[i].iov_len = NET_CONNECT_MESSAGE_TYPE_LEN;
+        ++i;
+
+        if (append_from) {
+            iov[i].iov_base = netinfo_ptr->myhostname;
+            iov[i].iov_len = netinfo_ptr->myhostname_len;
+            ++i;
+        }
+
+        if (append_to) {
+            iov[i].iov_base = host_node_ptr->host;
+            iov[i].iov_len = host_node_ptr->hostname_len;
+            ++i;
+        }
+
+        if (write_list_bufferevent_no_hdr(host_node_ptr, iov, n) != 0) {
             return 1;
         }
-    }
-    if (append_to) {
-        rc = write_stream(netinfo_ptr, host_node_ptr, sb, host_node_ptr->host,
-                          host_node_ptr->hostname_len);
-        if (rc != host_node_ptr->hostname_len) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error (to)\n");
+    } else {
+        /* always do a write_stream for the connect message */
+        rc = write_stream(netinfo_ptr, host_node_ptr, sb, &conndata,
+                          NET_CONNECT_MESSAGE_TYPE_LEN);
+        if (rc != sizeof(connect_message_type)) {
+            host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error\n");
             return 1;
+        }
+        if (append_from) {
+            rc = write_stream(netinfo_ptr, host_node_ptr, sb,
+                              netinfo_ptr->myhostname, netinfo_ptr->myhostname_len);
+            if (rc != netinfo_ptr->myhostname_len) {
+                host_node_errf(LOGMSG_ERROR, host_node_ptr,
+                               "write connect message error (from)\n");
+                return 1;
+            }
+        }
+        if (append_to) {
+            rc = write_stream(netinfo_ptr, host_node_ptr, sb, host_node_ptr->host,
+                              host_node_ptr->hostname_len);
+            if (rc != host_node_ptr->hostname_len) {
+                host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error (to)\n");
+                return 1;
+            }
         }
     }
 
 #if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
-        sbuf2flush(sb);
+        net_flush(host_node_ptr);
         if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
                           gbl_nid_dbname, NULL, 0, 1) != 1)
             return 1;
@@ -1185,6 +1189,10 @@ static int write_message_int(netinfo_type *netinfo_ptr,
         }
     }
 
+    if (gbl_libevent) {
+        return 0;
+    }
+
     /* wake up the writer thread */
     if (flags & WRITE_MSG_NODELAY)
         Pthread_cond_signal(&(host_node_ptr->write_wakeup));
@@ -1199,7 +1207,8 @@ static int write_message_checkhello(netinfo_type *netinfo_ptr,
 {
     return write_message_int(netinfo_ptr, host_node_ptr, type, iov, iovcount,
                              (nodelay ? WRITE_MSG_NODELAY : 0) |
-                                 WRITE_MSG_NOHELLOCHECK |
+                             /* FIXME TODO XXX what is going on with this flag? */
+                                 /*WRITE_MSG_NOHELLOCHECK | */
                                  (nodrop ? WRITE_MSG_NOLIMIT : 0) |
                                  (inorder ? WRITE_MSG_INORDER : 0));
 }
@@ -1834,7 +1843,6 @@ int net_send_message(netinfo_type *netinfo_ptr, const char *to_host,
                                         datalen, NULL, NULL, waitforack,
                                         waitms);
 }
-
 
 static unsigned long long num_flushes = 0;
 static unsigned long long send_interval_flushes = 0;
@@ -2750,15 +2758,12 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
 /* called from connect thread upon exiting:
  * when db is exiting or when host_node_ptr decom_flag is set
  */
-static void rem_from_netinfo(netinfo_type *netinfo_ptr,
-                             host_node_type *host_node_ptr)
+void rem_from_netinfo(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
-    host_node_printf(LOGMSG_INFO, host_node_ptr, "rem_from_netinfo: node=%s\n",
-                     host_node_ptr->host);
-
     if (!host_node_ptr)
         return;
-
+    host_node_printf(LOGMSG_INFO, host_node_ptr, "rem_from_netinfo: node=%s\n",
+                     host_node_ptr->host);
     Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
     rem_from_netinfo_ll(netinfo_ptr, host_node_ptr);
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -3623,6 +3628,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
 void net_decom_node(netinfo_type *netinfo_ptr, const char *host)
 {
     if (host && netinfo_ptr->myhostname == host) {
+        printf("%s IGNORING ON SELF\n", __func__);
         return;
     }
 
@@ -3721,9 +3727,8 @@ void set_decom_writer(decom_writer *impl)
 }
 
 /* write decom message to to_host */
-static int write_decom(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
-                       const char *decom_host, int decom_hostlen,
-                       const char *to_host)
+int write_decom(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
+                const char *decom_host, int decom_hostlen, const char *to_host)
 {
     return write_decom_impl(netinfo_ptr, host_node_ptr, decom_host,
                             decom_hostlen, to_host);
@@ -3766,8 +3771,12 @@ static int net_send_decom(netinfo_type *netinfo_ptr, const char *decom_host,
 
 static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
 {
-    net_decom_node(netinfo_ptr, host);
-    run_net_decom_node_delayed(netinfo_ptr, host);
+    if (gbl_libevent) {
+        decom(host);
+    } else {
+        net_decom_node(netinfo_ptr, host);
+        run_net_decom_node_delayed(netinfo_ptr, host);
+    }
     return 0;
 }
 
@@ -4086,7 +4095,7 @@ static void *writer_thread(void *args)
                 net_delay(host_node_ptr->host);
                 if (netinfo_ptr->trace && debug_switch_net_verbose())
                     logmsg(LOGMSG_USER, "Flushing %llu\n", gettmms());
-                sbuf2flush(host_node_ptr->sb);
+                net_flush(host_node_ptr);
             }
             end_time = comdb2_time_epoch();
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
@@ -4376,7 +4385,6 @@ static void *reader_thread(void *arg)
     }
 
 done:
-
     Pthread_mutex_lock(&(host_node_ptr->lock));
     host_node_ptr->have_reader_thread = 0;
     if (gbl_verbose_net)
@@ -4386,7 +4394,6 @@ done:
 
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-
     return NULL;
 }
 
@@ -4913,7 +4920,7 @@ static void *connect_thread(void *arg)
             close_hostnode_ll(host_node_ptr);
             goto again;
         }
-        sbuf2flush(host_node_ptr->sb);
+        net_flush(host_node_ptr);
 
         /*
            dont set this till after we wrote the connect message -
@@ -5280,7 +5287,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
 
 
 /* find the remote peer.  code stolen from sqlinterfaces.c */
-static inline int findpeer(int fd, char *addr, int len)
+int findpeer(int fd, char *addr, int len)
 {
     int rc;
     struct sockaddr_in peeraddr;
@@ -6157,6 +6164,10 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
 
 void connect_to_all(netinfo_type *netinfo_ptr)
 {
+    if (gbl_libevent) {
+        return;
+    }
+
     host_node_type *host_node_ptr;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
@@ -6195,7 +6206,15 @@ int net_init(netinfo_type *netinfo_ptr)
          host_node_ptr = host_node_ptr->next) {
         add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host,
                                  host_node_ptr->port);
-        host_node_printf(LOGMSG_INFO, host_node_ptr, "adding to sanctioned\n");
+        host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
+    }
+
+    if (gbl_libevent) {
+        for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
+             host_node_ptr = host_node_ptr->next) {
+            add_host(host_node_ptr);
+        }
+        return 0;
     }
 
     /* create heartbeat writer thread */
@@ -6728,4 +6747,24 @@ int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_h
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
     return 0;
+}
+
+int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
+                 int *type, int *flag)
+{
+    if (gbl_libevent) {
+        return net_send_all_bufferevent(netinfo_ptr, num, data, sz, type, flag);
+    }
+    int rc = 0;
+    const char *hostlist[REPMAX];
+    int count = net_get_all_nodes_connected(netinfo_ptr, hostlist);
+    for (int i = 0; i < count; i++) {
+        const char *h = hostlist[i];
+        for (int j = 0; j < num; ++j) {
+            if (net_send_flags(netinfo_ptr, h, type[j], data[j], sz[j], flag[j])) {
+                rc = 1;
+            }
+        }
+    }
+    return rc;
 }
