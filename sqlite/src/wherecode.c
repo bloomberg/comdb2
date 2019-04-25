@@ -1707,7 +1707,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     codeCursorHint(pTabItem, pWInfo, pLevel, pRangeEnd);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     regBase = codeAllEqualityTerms(pParse,pLevel,bRev,nExtraReg,&zStartAff);
     assert( zStartAff==0 || sqlite3Strlen30(zStartAff)>=nEq );
     if( zStartAff && nTop ){
