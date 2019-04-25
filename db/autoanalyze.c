@@ -70,7 +70,8 @@ void reset_aa_counter(char *tblname)
     char my_buf[30];
     ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d and last "
            "run time %s",
-           tbl->tablename, tbl->aa_saved_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+           tbl->tablename, tbl->aa_saved_counter,
+           ctime_r(&tbl->aa_lastepoch, my_buf));
 }
 
 static inline void loc_print_date(const time_t *timep)

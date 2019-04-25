@@ -14,8 +14,8 @@
    limitations under the License.
  */
 
-#ifndef _compress_h
-#define _compress_h
+#ifndef __compress_h
+#define __compress_h
 
 #include <stdio.h>
 

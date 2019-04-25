@@ -14,8 +14,8 @@
    limitations under the License.
  */
 
-#ifndef _dbdest_h
-#define _dbdest_h
+#ifndef __dbdest_h
+#define __dbdest_h
 
 #include <stdlib.h>
 #include <stdio.h>

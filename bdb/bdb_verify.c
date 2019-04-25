@@ -551,8 +551,9 @@ static int bdb_verify_ll(
                                       ix, expected_keybuf, &keylen);
                 if (rc) {
                     ret = 1;
-                    locprint(sb, lua_callback, lua_params, "!%016llx ix %d formkey rc %d\n",
-                                genid_flipped, ix, rc);
+                    locprint(sb, lua_callback, lua_params,
+                             "!%016llx ix %d formkey rc %d\n", genid_flipped,
+                             ix, rc);
                     ckey->c_close(ckey);
                     continue;
                 }

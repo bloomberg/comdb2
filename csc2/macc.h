@@ -1,5 +1,5 @@
-#ifndef _macc_h
-#define _macc_h
+#ifndef __macc_h
+#define __macc_h
 
 #include <stdio.h>
 #include <time.h>

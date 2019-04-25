@@ -401,10 +401,14 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         if (c->table[0])
             cson_object_set(lobj, "table",
                             cson_value_new_string(c->table, strlen(c->table)));
-        if (c->ix != -1) cson_object_set(lobj, "index", cson_new_int(c->ix));
-        if (c->nfind) cson_object_set(lobj, "find", cson_new_int(c->nfind));
-        if (c->nnext) cson_object_set(lobj, "next", cson_new_int(c->nnext));
-        if (c->nwrite) cson_object_set(lobj, "write", cson_new_int(c->nwrite));
+        if (c->ix != -1)
+            cson_object_set(lobj, "index", cson_new_int(c->ix));
+        if (c->nfind)
+            cson_object_set(lobj, "find", cson_new_int(c->nfind));
+        if (c->nnext)
+            cson_object_set(lobj, "next", cson_new_int(c->nnext));
+        if (c->nwrite)
+            cson_object_set(lobj, "write", cson_new_int(c->nwrite));
         cson_array_append(arr, component);
     }
     cson_object_set(obj, "path", components);
