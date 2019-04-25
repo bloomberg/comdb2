@@ -678,13 +678,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         /* Stack overflows with 128KiB stack size in Debug build.
            Slightly bump it up. */
         Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
-        pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-
-        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
-        if (rc != 0) {
-            logmsgperror("create exit thread: pthread_create");
-            exit(1);
-        }
+        Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+        Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];

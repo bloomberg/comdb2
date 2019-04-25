@@ -437,10 +437,12 @@ int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 
-int gbl_osql_verify_retries_max =
-    499; /* how many times we retry osql for verify */
-int gbl_osql_verify_ext_chk =
-    1; /* extended verify-checking after this many failures */
+/* how many times we retry osql for verify */
+int gbl_osql_verify_retries_max = 499;
+
+/* extended verify-checking after this many failures */
+int gbl_osql_verify_ext_chk = 1;
+
 int gbl_test_badwrite_intvl = 0;
 int gbl_test_blob_race = 0;
 int gbl_skip_ratio_trace = 0;
@@ -1520,7 +1522,7 @@ void clean_exit(void)
     ctrace_closelog();
 
     backend_cleanup(thedb);
-    net_cleanup_subnets();
+    net_cleanup();
     cleanup_sqlite_master();
 
     free_sqlite_table(thedb);
@@ -1542,7 +1544,6 @@ void clean_exit(void)
     free(gbl_myhostname);
 
     cleanresources(); // list of lrls
-    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
@@ -3380,7 +3381,7 @@ static int init(int argc, char **argv)
     int stripes, blobstripe;
 
     if (argc < 2) {
-        print_usage_and_exit();
+        print_usage_and_exit(1);
     }
 
     dyns_allow_bools();
@@ -5472,8 +5473,6 @@ int main(int argc, char **argv)
 
     register_all_int_switches();
     repl_list_init();
-
-    set_portmux_bind_path(NULL);
 
     gbl_argc = argc;
     gbl_argv = argv;

@@ -102,6 +102,7 @@
 #include "str0.h"
 #include "comdb2_atomic.h"
 #include "sc_util.h"
+#include <portmuxapi.h>
 
 int gbl_delay_sql_lock_release_sec = 5;
 

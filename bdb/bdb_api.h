@@ -2110,9 +2110,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
 
 /* Return per-node replication wait and net usage. */
-#ifndef HOST_NAME_MAX
-#define HOST_NAME_MAX 64
-#endif
 typedef struct repl_wait_and_net_use {
     char host[HOST_NAME_MAX];
     unsigned long long bytes_written;
