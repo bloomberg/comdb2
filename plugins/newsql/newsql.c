@@ -2310,7 +2310,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     query = read_newsql_query(dbenv, &clnt, sb);
     if (query == NULL) {
-        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
 

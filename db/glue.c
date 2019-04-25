@@ -6061,7 +6061,10 @@ int table_version_set(tran_type *tran, const char *tablename,
     return rc;
 }
 
-void *get_bdb_env(void) { return thedb->bdb_env; }
+void *get_bdb_env(void)
+{
+    return thedb->bdb_env;
+}
 
 /* This function can be used as an iterator to jump to the next
  * base table, starting the table at the specified index in the

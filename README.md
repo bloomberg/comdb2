@@ -33,21 +33,22 @@ On every machine in the cluster:
    **Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL)**
         
    ```
-   sudo apt-get install -y \
-       bison \
-       build-essential \
-       cmake \
-       flex \
-       protobuf-c-compiler \
-       liblz4-dev \
-       ncurses-dev  \
-       libprotobuf-c-dev \
-       libreadline-dev \
-       libssl-dev \
-       libsqlite3-dev \
-       libunwind-dev \
-       tcl \
-       uuid-dev \
+   sudo apt-get install -y  \
+       bison                \
+       build-essential      \
+       cmake                \
+       flex                 \
+       libevent-dev         \
+       liblz4-dev           \
+       libprotobuf-c-dev    \
+       libreadline-dev      \
+       libsqlite3-dev       \
+       libssl-dev           \
+       libunwind-dev        \
+       ncurses-dev          \
+       protobuf-c-compiler  \
+       tcl                  \
+       uuid-dev             \
        zlib1g-dev
    ```
 
@@ -61,33 +62,34 @@ On every machine in the cluster:
 
    ```
    yum install -y       \
+       byacc            \
+       cmake3           \
+       epel-release     \
+       flex             \
+       gawk             \
        gcc              \
        gcc-c++          \
-       cmake3           \
-       make             \
-       protobuf-c       \
+       libevent-devel   \
        libunwind        \
        libunwind-devel  \
-       protobuf-c-devel \
-       byacc            \
-       flex             \
+       libuuid          \
+       libuuid-devel    \
+       lz4              \
+       lz4-devel        \
+       make             \
        openssl          \
        openssl-devel    \
        openssl-libs     \
+       protobuf-c       \
+       protobuf-c-devel \
        readline-devel   \
+       rpm-build        \
        sqlite           \
        sqlite-devel     \
-       libuuid          \
-       libuuid-devel    \
-       zlib-devel       \
-       zlib             \
-       lz4-devel        \
-       gawk             \
        tcl              \
-       epel-release     \
-       lz4              \
-       rpm-build        \
-       which
+       which            \
+       zlib             \
+       zlib-devel
    ```
 
    **macOS High Sierra (experimental)**
@@ -95,7 +97,7 @@ On every machine in the cluster:
    Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   brew install cmake lz4 openssl protobuf-c readline
+   brew install cmake lz4 openssl protobuf-c readline libevent
    ```
 
    To run tests, install following:
