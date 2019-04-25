@@ -1659,12 +1659,6 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         cleanup_newdb(tbl);
         return NULL;
     }
-    if (tbl->nix < 0) {
-        logmsg(LOGMSG_ERROR, "too few indices %d in csc schema %s\n", tbl->nix,
-                tblname);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
     for (ii = 0; ii < tbl->nix; ii++) {
         tmpidxsz = dyns_get_idx_size(ii);
         if (tmpidxsz < 1 || tmpidxsz > MAXKEYLEN) {

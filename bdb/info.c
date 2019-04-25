@@ -1820,13 +1820,13 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             free(lsn);
     } else if (tokcmp(tok, ltok, "dumpqext") == 0) {
         int i;
-        bdb_state_type *st;
+        bdb_state_type *chld;
         for (i = 0; i < bdb_state->numchildren; i++) {
-            st = bdb_state->children[i];
-            if (st) {
-                if (st->bdbtype == BDBTYPE_QUEUE) {
-                    logmsgf(LOGMSG_USER, out, "queue %s\n", st->name);
-                    bdb_queue_extent_info(out, st, st->name);
+            chld = bdb_state->children[i];
+            if (chld) {
+                if (chld->bdbtype == BDBTYPE_QUEUE) {
+                    logmsgf(LOGMSG_USER, out, "queue %s\n", chld->name);
+                    bdb_queue_extent_info(out, chld, chld->name);
                 }
             }
         }

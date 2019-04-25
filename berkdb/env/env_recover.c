@@ -1015,12 +1015,13 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		if ((ret = __log_earliest(dbenv, logc, &low, &lowlsn)) != 0)
 			goto err;
 		if ((int32_t)dbenv->tx_timestamp < low) {
+			char my_buf[30];
 			(void)snprintf(t1, sizeof(t1),
-				"%s", ctime(&dbenv->tx_timestamp));
+				"%s", ctime_r(&dbenv->tx_timestamp, my_buf));
 			if ((p = strchr(t1, '\n')) != NULL)
 				*p = '\0';
 			tlow = (time_t)low;
-			(void)snprintf(t2, sizeof(t2), "%s", ctime(&tlow));
+			(void)snprintf(t2, sizeof(t2), "%s", ctime_r(&tlow, my_buf));
 			if ((p = strchr(t2, '\n')) != NULL)
 				*p = '\0';
 			__db_err(dbenv,
@@ -1638,7 +1639,8 @@ done:
 
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY)) {
 		(void)time(&now);
-		__db_err(dbenv, "Recovery complete at %.24s", ctime(&now));
+		char my_buf[30];
+		__db_err(dbenv, "Recovery complete at %.24s", ctime_r(&now, my_buf));
 		__db_err(dbenv, "%s %lx %s [%lu][%lu]",
 			"Maximum transaction ID",
 			(u_long) (txninfo == NULL ?

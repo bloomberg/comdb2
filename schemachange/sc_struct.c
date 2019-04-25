@@ -578,7 +578,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 
     if (p_buf == NULL) {
 
-        if (s->tablename_len < 0) {
+        if (s->tablename_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of table in packed"
@@ -587,7 +587,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
             return -1;
         }
 
-        if (s->fname_len < 0) {
+        if (s->fname_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of fname in packed"
@@ -595,7 +595,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
                 "array in schema_change_type\n");
             return -1;
         }
-        if (s->aname_len < 0) {
+        if (s->aname_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of aname in packed"
@@ -605,7 +605,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
         }
     }
 
-    if (s->newcsc2 && s->newcsc2_len < 0) {
+    if (s->newcsc2 && s->newcsc2_len == -1) { // is set to -1 on error
         logmsg(LOGMSG_ERROR, "unpack_schema_change_type: length of newcsc2 in "
                              "packed data doesn't match specified length\n");
         return -1;
@@ -735,10 +735,10 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
                   (s->live ? "Live" : "Readonly"));
         break;
     case SCAN_STRIPES:
-        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        sc_printf(s, "Schema change running in stripes scan mode\n");
         break;
     case SCAN_OLDCODE:
-        sc_printf(s, "%s schema change running in oldcode mode\n");
+        sc_printf(s, "Schema change running in oldcode mode\n");
         break;
     }
 }

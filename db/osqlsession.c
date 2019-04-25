@@ -294,9 +294,6 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
 
     sess->completed = rqid;
     comdb2uuidcpy(sess->completed_uuid, uuid);
-    if (sess->terminate != OSQL_TERMINATE) {
-        osql_bplog_session_is_done(sess->iq);
-    }
     Pthread_mutex_unlock(&sess->completed_lock);
 
     return 0;
@@ -614,9 +611,6 @@ int osql_session_testterminate(void *obj, void *arg)
         Pthread_mutex_lock(&sess->completed_lock);
         sess->terminate = OSQL_TERMINATE;
         if (!sess->completed) {
-            if (sess->iq)
-                osql_bplog_session_is_done(sess->iq);
-
             /* NOTE: here we have to do a bit more;
                if this is a sorese transaction, transaction
                has not received done yet, chances are
@@ -893,9 +887,6 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 {
     int rc = 0;
     sess->terminate = OSQL_TERMINATE;
-    if (sess->iq) {
-        osql_bplog_session_is_done(sess->iq);
-    }
     rc = osql_repository_rem(sess, 0, __func__, NULL,
                              __LINE__); /* already have exclusive lock */
     if (rc) {

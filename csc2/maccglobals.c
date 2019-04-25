@@ -3,7 +3,6 @@
 #include "maccparse.h"
 #include <string.h>
 
-char VER[16];
 struct constraint constraints[MAXCNSTRTS];
 struct symbol sym[MAX];
 struct table tables[MAXTBLS];

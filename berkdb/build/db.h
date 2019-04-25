@@ -53,7 +53,6 @@
 /* <sys/types.h> does not include <inttypes.h> on some systems. */
 #include <inttypes.h>
 #include <stdio.h>
-#endif
 
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
@@ -2958,3 +2957,5 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 }
 #endif
 #endif				/* !_DB_EXT_PROT_IN_ */
+
+#endif

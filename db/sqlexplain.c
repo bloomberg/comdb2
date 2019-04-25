@@ -41,8 +41,8 @@
 #include "views.h"
 #include "logmsg.h"
 
-char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-              '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+static char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                     '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 int all_opcodes = 0;
 

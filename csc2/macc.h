@@ -1,3 +1,6 @@
+#ifndef __macc_h
+#define __macc_h
+
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
@@ -347,3 +350,5 @@ void rng_add(int i);
 void expr_assoc_name(char *name);
 void expr_clear();
 void expr_add_pc(char *sym, int op, int num);
+
+#endif

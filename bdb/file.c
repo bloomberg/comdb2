@@ -500,7 +500,7 @@ static int form_file_name_ex(
 
         p_file_version_num_type.version_num = version_num;
         p_buf = (uint8_t *)&pr_vers;
-        p_buf_end = (uint8_t *)(&pr_vers + sizeof(pr_vers));
+        p_buf_end = p_buf + sizeof(pr_vers);
         bdb_file_version_num_put(&(p_file_version_num_type), p_buf, p_buf_end);
 
         offset = snprintf(outbuf, buflen, "_%016llx.%s", pr_vers, file_ext);

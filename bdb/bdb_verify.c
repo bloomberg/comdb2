@@ -551,8 +551,9 @@ static int bdb_verify_ll(
                                       ix, expected_keybuf, &keylen);
                 if (rc) {
                     ret = 1;
-                    locprint(sb, lua_callback, lua_params, "!%016llx ix %d formkey rc %d\n",
-                                genid_flipped, rc);
+                    locprint(sb, lua_callback, lua_params,
+                             "!%016llx ix %d formkey rc %d\n", genid_flipped,
+                             ix, rc);
                     ckey->c_close(ckey);
                     continue;
                 }
@@ -701,7 +702,7 @@ static int bdb_verify_ll(
             if (dbt_data.size < sizeof(unsigned long long)) {
                 ret = 1;
                 locprint(sb, lua_callback, lua_params,
-                         "!ix %d unexpected length %d\n", dbt_data.size);
+                         "!ix %d unexpected length %d\n", ix, dbt_data.size);
                 goto next_key;
             }
             memcpy(&genid, dbt_data.data, sizeof(unsigned long long));

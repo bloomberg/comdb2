@@ -2477,18 +2477,18 @@ retry:
             }
             CDB2QUERY query = CDB2__QUERY__INIT;
             query.spcmd = cmd;
-            int len = cdb2__query__get_packed_size(&query);
-            unsigned char *locbuf = malloc(len + 1);
+            int loc_len = cdb2__query__get_packed_size(&query);
+            unsigned char *locbuf = malloc(loc_len + 1);
 
             cdb2__query__pack(&query, locbuf);
 
             struct newsqlheader hdr = {.type =
                                            ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
                                        .compression = ntohl(0),
-                                       .length = ntohl(len)};
+                                       .length = ntohl(loc_len)};
 
             sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-            sbuf2write((char *)locbuf, len, hndl->sb);
+            sbuf2write((char *)locbuf, loc_len, hndl->sb);
 
             int rc = sbuf2flush(hndl->sb);
             free(locbuf);

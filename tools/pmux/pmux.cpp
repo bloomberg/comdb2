@@ -406,7 +406,6 @@ static void dealloc_svc_running_on_port(int port)
     for (std::map<std::string, int>::iterator it = port_map.begin();
          it != port_map.end(); ++it) {
         if (it->second == port) {
-            int port = it->second;
             pmux_store->del_port(it->first.c_str());
             port_map.erase(it);
             if (is_port_in_range(port))
