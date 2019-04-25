@@ -895,8 +895,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
-                 NULL, NULL);
+                 NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
+                 portmux_bind_path_set, NULL);
 REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
@@ -1718,6 +1718,10 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("libevent",
+                 "Use libevent in net library. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_libevent, 0, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",

@@ -229,6 +229,7 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
+  ${LIBEVENT_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
 )
 
