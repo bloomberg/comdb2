@@ -761,8 +761,13 @@ static void comdb2SysinfoFunc(
     sqlite3_result_text(context, thedb->bdb_env->repinfo->master_host, -1,
                         SQLITE_TRANSIENT);
   }else if( sqlite3_stricmp(zName, "host")==0 ){
-    sqlite3_result_text(context, thedb->bdb_env->repinfo->myhost, -1,
-                        SQLITE_TRANSIENT);
+    char zHostName[1024];
+    memset(zHostName, 0, sizeof(zHostName));
+    if( gethostname(zHostName, sizeof(zHostName))==0 ){
+      sqlite3_result_text(context, zHostName, -1, SQLITE_TRANSIENT);
+    }else{
+      sqlite3_result_error(context, "unable to obtain host name", -1);
+    }
   }
 }
 
