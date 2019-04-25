@@ -22,6 +22,7 @@
 #include <uuid/uuid.h>
 #include <memcompare.c>
 #include "comdb2.h"
+#include "bdb_int.h"
 extern const char *const gbl_db_build_name;
 extern const char * const gbl_db_release_name;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -757,11 +758,11 @@ static void comdb2SysinfoFunc(
   if( sqlite3_stricmp(zName, "pid")==0 ){
     sqlite3_result_int64(context, (sqlite3_int64)getpid());
   }else if( sqlite3_stricmp(zName, "master")==0 ){
-    sqlite3_result_text64(context, thedb->bdb_env->repinfo->master_host, -1,
-                          SQLITE_TRANSIENT, SQLITE_UTF8);
+    sqlite3_result_text(context, thedb->bdb_env->repinfo->master_host, -1,
+                        SQLITE_TRANSIENT);
   }else if( sqlite3_stricmp(zName, "host")==0 ){
-    sqlite3_result_text64(context, thedb->bdb_env->repinfo->myhost, -1,
-                          SQLITE_TRANSIENT, SQLITE_UTF8);
+    sqlite3_result_text(context, thedb->bdb_env->repinfo->myhost, -1,
+                        SQLITE_TRANSIENT);
   }
 }
 
