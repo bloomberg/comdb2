@@ -104,7 +104,7 @@ void print_time_accounting(const char *name)
 static int print_name_time_pair(void *obj, void *unused)
 {
     name_time_pair_t *ptr = obj;
-    logmsg(LOGMSG_USER, "%s: str=%s %lluus\n", __func__, ptr->name, ptr->utime);
+    logmsg(LOGMSG_USER, "name=%s time=%lluus\n", ptr->name, ptr->utime);
     return 0;
 
 }
