@@ -18,6 +18,8 @@
 #include "sql.h"
 #include "sqlexplain.h"
 
+#include <inttypes.h>
+
 /*
   enhancements to sqlites built in explain facility.
   this provides english like explain output as opposed to
@@ -552,7 +554,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "R%d = %d", op->p2, op->p1);
         break;
     case OP_Int64:
-        strbuf_appendf(out, "R%d = %ld", op->p2, op->p4.pI64);
+        strbuf_appendf(out, "R%d = %"PRId64, op->p2, op->p4.pI64);
         break;
     case OP_Real:
         strbuf_appendf(out, "R%d = %f", op->p2, *op->p4.pReal);
@@ -1188,7 +1190,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        maskStr);
     } break;
     case OP_OpFuncLoad:
-        strbuf_appendf(out, "Load OpFunc P4(%s) into R%d",
+        strbuf_appendf(out, "Load OpFunc P4(%p) into R%d",
                        op->p4.comdb2func, op->p2);
         break;
     case OP_OpFuncNext:

@@ -930,7 +930,7 @@ static int bdb_verify_ll(
                     ret = 1;
                     locprint(sb, lua_callback, lua_params,
                              "!%016llx ix %d decimal payload wrong size "
-                             "expected %d got %d\n",
+                             "expected %zu got %d\n",
                              genid_flipped, ix,
                              sizeof(unsigned long long) +
                                  4 * bdb_state->ixcollattr[ix],

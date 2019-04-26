@@ -6505,7 +6505,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
             if (iq->debug)
                 reqprintf(
                     iq, "resolve_tag_name CAN'T ALLOCATE DYNAMIC SCHEMA '%.*s'",
-                    taglen, tagdescr);
+                    (int) taglen, tagdescr);
             return -1;
         }
         add_tag_schema(iq->usedb->tablename, *dynschema);
@@ -6515,7 +6515,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
         if (taglen > tagnamelen - 1) {
             if (iq->debug)
                 reqprintf(iq, "resolve_tag_name TAG NAME TOO LONG '%.*s'",
-                          taglen, tagdescr);
+                          (int) taglen, tagdescr);
             return -1;
         }
         memcpy(tagname, tagdescr, taglen);
@@ -7182,7 +7182,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
         case CLIENT_UINT: {
             uint64_t uint;
             memcpy(&uint, (uint8_t *)rec + f->offset, sizeof(uint));
-            strbuf_appendf(buf, "%u", uint);
+            strbuf_appendf(buf, "%"PRIu64, uint);
             break;
         }
         case CLIENT_INT: {
@@ -7241,7 +7241,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
                 if (isnull)
                     strbuf_appendf(buf, "null");
                 else
-                    strbuf_appendf(buf, "%u", uint);
+                    strbuf_appendf(buf, "%"PRIu64, uint);
             }
             break;
         }

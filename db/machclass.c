@@ -27,9 +27,9 @@ typedef struct machine_class {
     int value;
 } machine_class_t;
 
-pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-hash_t *classes;
-hash_t *class_names;
+static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *classes;
+static hash_t *class_names;
 
 static machine_class_t default_classes[] = {
     {"unknown", 0}, /* 0 indexed! */

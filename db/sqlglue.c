@@ -3387,7 +3387,7 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 {
     /* backend takes care of this */
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
-                "SetSafetyLevel(pBt %d, level %d, int fullsync)     = %s\n",
+                "SetSafetyLevel(pBt %d, level %d, fullsync %d)     = %s\n",
                 pBt->btreeid, level, fullsync, sqlite3ErrStr(SQLITE_OK));
     return SQLITE_OK;
 }

@@ -2200,7 +2200,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
 #endif
-    assert(query->sqlquery);
+    if (query->sqlquery == NULL) {
+        logmsg(LOGMSG_DEBUG, "Malformed SQL request.\n");
+        goto done;
+    }
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
