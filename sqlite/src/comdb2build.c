@@ -6499,3 +6499,82 @@ cleanup:
     free_ddl_context(pParse);
     return;
 }
+
+void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
+                        const char *zStmt, int temp)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    if (temp) {
+        setError(pParse, SQLITE_MISUSE, "Can't create temporary views");
+        return;
+    }
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (view_name_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    } else {
+        memcpy(sc->tablename, view_name, view_name_len);
+    }
+
+    sc->newcsc2 = strdup(zStmt); /* Freed by free_schema_change_type() */
+    if (sc->newcsc2 == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto out;
+    }
+
+    sc->add_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->fastinit = 1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+    return;
+}
+
+void comdb2_drop_view(Parse *pParse, SrcList *pName)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    sc->tablename_len = strlen(pName->a[0].zName);
+    if (sc->tablename_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    }
+    memcpy(sc->tablename, pName->a[0].zName, sc->tablename_len);
+
+    sc->drop_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->fastinit = 1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}

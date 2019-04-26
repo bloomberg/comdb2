@@ -167,7 +167,9 @@ typedef enum {
     LLMETA_TABLE_NUM_SC_DONE = 47,
     LLMETA_GLOBAL_STRIPE_INFO = 48,
     LLMETA_SC_START_LSN = 49,
-    LLMETA_SCHEMACHANGE_STATUS = 50
+    LLMETA_SCHEMACHANGE_STATUS = 50,
+    LLMETA_VIEW_NAMES = 51, /* View names */
+    LLMETA_VIEW_DEF = 52,   /* View definition */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -2911,6 +2913,7 @@ retry:
     /* set csc2_vers */
     p_file_type_dbname_csc2_vers_key.csc2_vers = csc2_vers;
 
+    /* TODO(NC): called again only to put csc2_vers. */
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, 
@@ -9792,4 +9795,812 @@ done:
         }
     }
     return rc;
+}
+
+/* View definition key */
+struct llmeta_view_def_key {
+    int file_type;
+    char view_name[LLMETA_TBLLEN];
+    int view_name_len;
+    int view_version; /* UNUSED */
+};
+
+/* View names key */
+struct llmeta_view_names_key {
+    int file_type;
+};
+
+/* View name */
+struct llmeta_view_name {
+    char view_name[LLMETA_TBLLEN];
+    int view_name_len;
+};
+
+enum {
+    LLMETA_VIEW_DEF_KEY_LEN = 4 + LLMETA_TBLLEN + 4 + 4,
+    LLMETA_VIEW_NAMES_KEY_LEN = 4,
+    LLMETA_VIEW_NAME_LEN = LLMETA_TBLLEN + 4,
+    LLMETA_VIEW_NAME_MIN_LEN = 2,
+};
+
+static uint8_t *llmeta_view_def_key_put(const struct llmeta_view_def_key *key,
+                                        uint8_t *p_buf,
+                                        const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_DEF_KEY_LEN > (p_buf_end - p_buf)) {
+        return NULL;
+    }
+
+    if (key->view_name_len > sizeof(key->view_name)) {
+        return NULL;
+    }
+
+    /* Type */
+    p_buf =
+        buf_put(&(key->file_type), sizeof(key->file_type), p_buf, p_buf_end);
+    /* Name */
+    p_buf =
+        buf_no_net_put(&(key->view_name), key->view_name_len, p_buf, p_buf_end);
+    /* Version */
+    p_buf = buf_put(&(key->view_version), sizeof(key->view_version), p_buf,
+                    p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *llmeta_view_def_key_get(struct llmeta_view_def_key *key,
+                                              const uint8_t *p_buf,
+                                              const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_DEF_KEY_LEN > (p_buf_end - p_buf)) {
+        return NULL;
+    }
+
+    /* Type */
+    p_buf =
+        buf_get(&(key->file_type), sizeof(key->file_type), p_buf, p_buf_end);
+
+    if ((key->view_name_len = (strlen((const char *)p_buf) + 1)) >
+        sizeof(key->view_name)) {
+        return NULL;
+    }
+
+    /* Name */
+    p_buf =
+        buf_no_net_get(&(key->view_name), key->view_name_len, p_buf, p_buf_end);
+    /* Version */
+    p_buf = buf_get(&(key->view_version), sizeof(key->view_version), p_buf,
+                    p_buf_end);
+
+    return p_buf;
+}
+
+static uint8_t *
+llmeta_view_names_key_put(const struct llmeta_view_names_key *key,
+                          uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_NAMES_KEY_LEN > (p_buf_end - p_buf)) {
+        return NULL;
+    }
+
+    /* Type */
+    p_buf =
+        buf_put(&(key->file_type), sizeof(key->file_type), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *
+llmeta_view_names_key_get(struct llmeta_view_names_key *key,
+                          const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_NAMES_KEY_LEN > (p_buf_end - p_buf)) {
+        return NULL;
+    }
+
+    /* Type */
+    p_buf =
+        buf_get(&(key->file_type), sizeof(key->file_type), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static uint8_t *llmeta_view_name_put(const struct llmeta_view_name *p_view_name,
+                                     uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_NAME_MIN_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    if (p_view_name->view_name_len > sizeof(p_view_name->view_name))
+        return NULL;
+
+    /* Name */
+    p_buf = buf_no_net_put(&(p_view_name->view_name),
+                           p_view_name->view_name_len, p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *llmeta_view_name_get(struct llmeta_view_name *p_view_name,
+                                           const uint8_t *p_buf,
+                                           const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_VIEW_NAME_MIN_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    if ((p_view_name->view_name_len = strlen((const char *)p_buf) + 1) >
+        sizeof(p_view_name->view_name))
+        return NULL;
+
+    /* Name */
+    p_buf = buf_no_net_get(&(p_view_name->view_name),
+                           p_view_name->view_name_len, p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static int llmeta_make_view_def_key(uint8_t *buf, const char *view_name,
+                                    int view_version, int *bdberr)
+{
+    struct llmeta_view_def_key key;
+    size_t key_offset;
+    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+
+    /* Add the key type */
+    key.file_type = LLMETA_VIEW_DEF;
+
+    /* Name of the view */
+    strncpy(key.view_name, view_name, sizeof(key.view_name));
+    key.view_name_len = strlen(key.view_name);
+
+    /* Unused: zero this out for now */
+    key.view_version = 0;
+
+    p_buf_start = p_buf = (uint8_t *)buf;
+    p_buf_end = p_buf + sizeof(key);
+
+    /* Copy key to the buffer */
+    if (!(p_buf = llmeta_view_def_key_put(&(key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: failed\n", __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    key_offset = p_buf - p_buf_start;
+
+    /* Safety check */
+    if (key_offset > sizeof(key)) {
+        logmsg(LOGMSG_ERROR, "%s: view name is too long\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int llmeta_make_view_names_key(uint8_t *buf, int *bdberr)
+{
+    struct llmeta_view_names_key key;
+    size_t key_offset;
+    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+
+    /* Add the key type */
+    key.file_type = LLMETA_VIEW_NAMES;
+
+    p_buf_start = p_buf = (uint8_t *)buf;
+    p_buf_end = p_buf + sizeof(key);
+
+    /* Copy key to the buffer */
+    if (!(p_buf = llmeta_view_names_key_put(&(key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: failed\n", __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    key_offset = p_buf - p_buf_start;
+
+    /* Safety check */
+    if (key_offset > sizeof(key)) {
+        logmsg(LOGMSG_ERROR, "%s: view name is too long\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    return 0;
+}
+
+int bdb_llmeta_get_view_def(tran_type *in_trans, const char *view_name,
+                            int view_version,
+                            char **view_def /* OUT, must be freed by caller */,
+                            int *bdberr)
+{
+    uint8_t key_buf[LLMETA_IXLEN] = {0};
+    tran_type *trans;
+    int retries = 0;
+    int rc;
+    int view_def_len;
+
+    /* Fail if the db isn't open. */
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
+                             "you must run bdb_llmeta_open\n",
+               __func__);
+        if (bdberr)
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!(view_name && bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr) {
+            *bdberr = BDBERR_BADARGS;
+        }
+        return -1;
+    }
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if ((rc = llmeta_make_view_def_key(key_buf, view_name, view_version,
+                                       bdberr)) != 0) {
+        return rc;
+    }
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
+               retries);
+        return -1;
+    }
+
+    /* Create a transaction, if the user didn't give us one. */
+    if (!in_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            return -1;
+        }
+    } else
+        trans = in_trans;
+
+    /* Try to fetch the view definition */
+    rc =
+        bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, trans, key_buf,
+                                      (void **)view_def, &view_def_len, bdberr);
+
+    /* Handle return codes */
+    if (rc || *bdberr != BDBERR_NOERROR) {
+
+        if (*bdberr == BDBERR_DEADLOCK) {
+            if (++retries < 500 /*gbl_maxretries*/)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR,
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
+        }
+        goto backout;
+    }
+
+    /* make sure the length appears normal */
+    if (view_def_len != strlen(*view_def) + 1 /* for NULL byte */) {
+        logmsg(LOGMSG_ERROR, "%s: view definition length does not match the"
+                             " length retrieved\n",
+               __func__);
+        *bdberr = BDBERR_MISC;
+        goto backout;
+    }
+
+    /* Commit if we created our own transaction */
+    if (!in_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR) {
+            return -1;
+        }
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+
+    /* If we created the transaction */
+    if (!in_trans) {
+        int prev_bdberr = *bdberr;
+
+        /* Kill the transaction */
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
+            return -1;
+        }
+
+        *bdberr = prev_bdberr;
+        if (*bdberr == BDBERR_DEADLOCK)
+            goto retry;
+
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
+    }
+    return -1;
+}
+
+/* Store view definition in the llmeta table. */
+int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
+                            char *view_def, int view_version, int *bdberr)
+{
+    uint8_t key_buf[LLMETA_IXLEN] = {0};
+    tran_type *trans;
+    int retries = 0;
+    int rc;
+
+    /* Fail if the db isn't open. */
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
+                             "you must run bdb_llmeta_open\n",
+               __func__);
+        if (bdberr)
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!(view_name && view_def && bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr) {
+            *bdberr = BDBERR_BADARGS;
+        }
+        return -1;
+    }
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if ((rc = llmeta_make_view_def_key(key_buf, view_name, view_version,
+                                       bdberr)) != 0) {
+        return rc;
+    }
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
+               retries);
+        return -1;
+    }
+
+    /* Create a transaction, if the user didn't give us one. */
+    if (!in_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            return -1;
+        }
+    } else
+        trans = in_trans;
+
+    /* Delete old entry */
+    rc = bdb_lite_exact_del(llmeta_bdb_state, trans, key_buf, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR && *bdberr != BDBERR_DEL_DTA) {
+        goto backout;
+    }
+
+    /* Add new entry */
+    rc = bdb_lite_add(llmeta_bdb_state, trans, view_def, strlen(view_def) + 1,
+                      key_buf, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR) {
+        goto backout;
+    }
+
+    /* Commit if we created our own transaction */
+    if (!in_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR) {
+            return -1;
+        }
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+
+    /* If we created the transaction */
+    if (!in_trans) {
+        int prev_bdberr = *bdberr;
+
+        /* Kill the transaction */
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
+            return -1;
+        }
+
+        *bdberr = prev_bdberr;
+        if (*bdberr == BDBERR_DEADLOCK)
+            goto retry;
+
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
+    }
+    return -1;
+}
+
+int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
+                            int view_version, int *bdberr)
+{
+    int rc;
+    uint8_t key_buf[LLMETA_IXLEN] = {0};
+    tran_type *tran;
+
+    /* Fail if the db isn't open. */
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
+                             "you must run bdb_llmeta_open\n",
+               __func__);
+        if (bdberr)
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!(view_name && bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr) {
+            *bdberr = BDBERR_BADARGS;
+        }
+        return -1;
+    }
+
+    if (in_tran == NULL) {
+        tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            return -1;
+        }
+    } else {
+        tran = in_tran;
+    }
+
+    if ((rc = llmeta_make_view_def_key(key_buf, view_name, view_version,
+                                       bdberr)) != 0) {
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key_buf, bdberr);
+    if (rc && *bdberr == BDBERR_DEL_DTA) {
+        rc = 0;
+    }
+
+done:
+    if (!in_tran) {
+        if (rc == 0)
+            rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr);
+        else {
+            int arc;
+            arc = bdb_tran_abort(llmeta_bdb_state, tran, bdberr);
+            if (arc)
+                rc = arc;
+        }
+    }
+    if (rc == 0)
+        logmsg(LOGMSG_INFO, "%s: view %s deleted\n", __func__, view_name);
+    else
+        logmsg(LOGMSG_ERROR, "%s: failed to delete view %s (rc:%d)\n", __func__,
+               view_name, rc);
+    return rc;
+}
+
+int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
+                              int *view_count, size_t max_view_count,
+                              int *bdberr)
+{
+    uint8_t key_buf[LLMETA_IXLEN] = {0};
+    tran_type *trans;
+    int retries = 0;
+    int rc;
+    int fndlen = 0;
+    int offset = 0;
+    uint8_t *p_outbuf, *p_outbuf_start, *p_outbuf_end;
+    size_t outbuflen = max_view_count * (LLMETA_TBLLEN + sizeof(int));
+
+    /* Fail if the db isn't open. */
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
+                             "you must run bdb_llmeta_open\n",
+               __func__);
+        if (bdberr)
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!(view_names && view_count && bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr) {
+            *bdberr = BDBERR_BADARGS;
+        }
+        return -1;
+    }
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if ((rc = llmeta_make_view_names_key(key_buf, bdberr)) != 0) {
+        return rc;
+    }
+
+    /* Prepare the out buffer */
+    if (!(p_outbuf = malloc(outbuflen))) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu bytes\n", __func__,
+               outbuflen);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    p_outbuf_start = p_outbuf;
+
+    *view_count = 0;
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
+               retries);
+        goto err;
+    }
+
+    /* Create a transaction, if the user didn't give us one. */
+    if (!in_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            goto err;
+        }
+    } else
+        trans = in_trans;
+
+    /* Try to fetch the view definition */
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, trans, key_buf, p_outbuf,
+                                   outbuflen, &fndlen, bdberr);
+
+    /* Handle return codes */
+    if (rc || *bdberr != BDBERR_NOERROR) {
+
+        if (*bdberr == BDBERR_DEADLOCK) {
+            if (++retries < 500 /*gbl_maxretries*/)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR,
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
+        }
+        /* It's ok if we found nothing. */
+        if (*bdberr != BDBERR_FETCH_DTA) {
+            goto backout;
+        }
+    }
+
+    p_outbuf_end = p_outbuf + fndlen;
+
+    /* The data we get back should be a series of string, one for each view. */
+    while (p_outbuf && offset < fndlen) {
+        struct llmeta_view_name llmeta_view;
+        p_outbuf = (uint8_t *)llmeta_view_name_get(&llmeta_view, p_outbuf,
+                                                   p_outbuf_end);
+
+        if (p_outbuf) {
+            *view_names = strdup(llmeta_view.view_name);
+            ++view_names;
+            ++*view_count;
+            offset = p_outbuf - p_outbuf_start;
+        }
+    }
+
+    if (offset != fndlen)
+        logmsg(LOGMSG_ERROR, "%s: returned data did not match "
+                             "length exactly, this should not happen\n",
+               __func__);
+
+    /* Commit if we created our own transaction */
+    if (!in_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR) {
+            goto err;
+        }
+    }
+
+    free(p_outbuf_start);
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+
+    /* If we created the transaction */
+    if (!in_trans) {
+        int prev_bdberr = *bdberr;
+
+        /* Kill the transaction */
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
+            return -1;
+        }
+
+        *bdberr = prev_bdberr;
+        if (*bdberr == BDBERR_DEADLOCK)
+            goto retry;
+
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
+    }
+
+err:
+    free(p_outbuf_start);
+    return -1;
+}
+
+int bdb_llmeta_put_view_names(tran_type *in_trans, char **view_names,
+                              int view_count, int *bdberr)
+{
+    uint8_t key_buf[LLMETA_IXLEN] = {0};
+    tran_type *trans;
+    int retries = 0;
+    int rc;
+    int i;
+    int offset = 0;
+    int buflen = view_count * LLMETA_TBLLEN;
+    uint8_t *p_buf = NULL, *p_buf_start, *p_buf_end;
+
+    /* Fail if the db isn't open. */
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
+                             "you must run bdb_llmeta_open\n",
+               __func__);
+        if (bdberr)
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!(view_names && bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr) {
+            *bdberr = BDBERR_BADARGS;
+        }
+        return -1;
+    }
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if ((rc = llmeta_make_view_names_key(key_buf, bdberr)) != 0) {
+        return rc;
+    }
+
+    if (buflen && (p_buf = malloc(buflen)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %u bytes\n", __func__,
+               buflen);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    p_buf_start = p_buf;
+    p_buf_end = (p_buf_start + buflen);
+
+    /* Construct the data */
+    for (i = 0; i < view_count && offset < buflen; ++i) {
+        struct llmeta_view_name llmeta_view;
+
+        strncpy(llmeta_view.view_name, view_names[i],
+                sizeof(llmeta_view.view_name));
+        llmeta_view.view_name_len = strlen(llmeta_view.view_name) + 1;
+
+        if (!(p_buf = llmeta_view_name_put(&llmeta_view, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s: tablename: %s longer then "
+                                 "the max: %d\n",
+                   __func__, view_names[i], LLMETA_TBLLEN);
+            *bdberr = BDBERR_BADARGS;
+            goto err;
+        }
+    }
+
+    offset = (p_buf - p_buf_start);
+
+    if (i < view_count || offset > buflen) {
+        logmsg(LOGMSG_ERROR, "%s: buffer was not long enough, "
+                             "this should not happen",
+               __func__);
+        *bdberr = BDBERR_MISC;
+        goto err;
+    }
+
+retry:
+    if (++retries >= gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
+               retries);
+        goto err;
+    }
+
+    /* Create a transaction, if the user didn't give us one. */
+    if (!in_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            goto err;
+        }
+    } else
+        trans = in_trans;
+
+    /* Delete old entry */
+    rc = bdb_lite_exact_del(llmeta_bdb_state, trans, key_buf, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR && *bdberr != BDBERR_DEL_DTA) {
+        goto backout;
+    }
+
+    /* Add new entry */
+    rc = bdb_lite_add(llmeta_bdb_state, trans, p_buf_start, offset, key_buf,
+                      bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR) {
+        goto backout;
+    }
+
+    /* Commit if we created our own transaction */
+    if (!in_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR) {
+            goto err;
+        }
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    free(p_buf_start);
+    p_buf = NULL;
+    return 0;
+
+backout:
+
+    /* If we created the transaction */
+    if (!in_trans) {
+        int prev_bdberr = *bdberr;
+
+        /* Kill the transaction */
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
+            return -1;
+        }
+
+        *bdberr = prev_bdberr;
+        if (*bdberr == BDBERR_DEADLOCK)
+            goto retry;
+
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
+    }
+
+err:
+    free(p_buf_start);
+    p_buf = NULL;
+    return -1;
 }

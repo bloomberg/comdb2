@@ -2097,6 +2097,64 @@ static int llmeta_load_queues(struct dbenv *dbenv)
     return 0;
 }
 
+static int llmeta_load_views(struct dbenv *dbenv, void *tran)
+{
+    int rc = 0;
+    int bdberr = 0;
+    char *view_names[MAX_NUM_TABLES];
+    char *view_def;
+    int view_count;
+    hash_t *view_hash;
+
+    view_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct dbview, view_name), 0);
+
+    /* load the tables from the low level metatable */
+    if (bdb_llmeta_get_view_names(tran, (char **)&view_names, &view_count,
+                                  sizeof(view_names), &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR,
+               "couldn't load view names from low level meta table\n");
+        return 1;
+    }
+
+    for (int i = 0; i < view_count; i++) {
+        struct dbview *view = malloc(sizeof(struct dbview));
+
+        if (!view) {
+            logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
+                   __LINE__);
+            return 1;
+        }
+
+        rc =
+            bdb_llmeta_get_view_def(tran, view_names[i], 0, &view_def, &bdberr);
+        if (rc) {
+            /* TODO (NC): handle error */
+        }
+
+        view->view_name = strdup(view_names[i]);
+        if (!view->view_name) {
+            logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
+                   __LINE__);
+            return 1;
+        }
+        view->view_def = strdup(view_def);
+        if (!view->view_def) {
+            logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
+                   __LINE__);
+            free(view_def);
+            return 1;
+        }
+        free(view_def);
+        hash_add(view_hash, view);
+    }
+    hash_clear(thedb->view_hash);
+    thedb->view_hash = view_hash;
+    return rc;
+}
+
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
 static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
@@ -2110,7 +2168,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
-                        "\n");
+                             "\n");
         return 1;
     }
 
@@ -2234,6 +2292,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     while (i < fndnumtbls)
         free(tblnames[i++]);
 
+    rc = llmeta_load_views(dbenv, tran);
+
     return rc;
 }
 
@@ -2269,6 +2329,31 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
 
     return 0; /* success */
 }
+
+int llmeta_set_views(tran_type *tran, struct dbenv *dbenv)
+{
+    int i = 0;
+    int bdberr = 0;
+    char *view_names[MAX_NUM_TABLES];
+    void *ent;
+    unsigned int bkt;
+    struct dbview *view;
+
+    for (view = (struct dbview *)hash_first(dbenv->view_hash, &ent, &bkt); view;
+         view = (struct dbview *)hash_next(dbenv->view_hash, &ent, &bkt)) {
+        view_names[i++] = view->view_name;
+    }
+
+    /* Put the values in the low level meta table */
+    if (bdb_llmeta_put_view_names(tran, view_names, i, &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "couldn't set views in low level meta table\n");
+        return 1;
+    }
+
+    return 0; /* success */
+}
+
 
 /* prints out a file (datadir/dbname_file_vers_map) that provides a mapping of
  * all the file types and numbers to version numbers, for example,
@@ -2542,6 +2627,10 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->qdb_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtable, tablename), 0);
+
+   dbenv->view_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct dbview, view_name), 0);
 
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
@@ -3945,7 +4034,14 @@ static int init(int argc, char **argv)
         if (llmeta_set_tables(NULL /*tran*/, thedb)) /* add tables to meta */
         {
             logmsg(LOGMSG_FATAL, "could not add tables to the low level meta "
-                            "table\n");
+                                 "table\n");
+            return -1;
+        }
+
+        if (llmeta_set_views(NULL /*tran*/, thedb)) /* add tables to meta */
+        {
+            logmsg(LOGMSG_FATAL,
+                   "could not add views to the low level meta table\n");
             return -1;
         }
 
@@ -5554,6 +5650,32 @@ void replace_db_idx(struct dbtable *p_db, int idx)
     if (move == 1) {
         hash_add(thedb->db_hash, p_db);
     }
+
+    Pthread_rwlock_unlock(&thedb_lock);
+}
+
+int add_view(struct dbview *view)
+{
+    Pthread_rwlock_wrlock(&thedb_lock);
+
+    if (hash_find_readonly(thedb->view_hash, view) != 0) {
+        Pthread_rwlock_unlock(&thedb_lock);
+        return -1;
+    }
+
+    /* Add view to the hash. */
+    hash_add(thedb->view_hash, view);
+
+    Pthread_rwlock_unlock(&thedb_lock);
+    return 0;
+}
+
+void delete_view(char *view_name)
+{
+    Pthread_rwlock_wrlock(&thedb_lock);
+
+    /* Remove the view from hash. */
+    hash_delk(thedb->view_hash, view_name);
 
     Pthread_rwlock_unlock(&thedb_lock);
 }

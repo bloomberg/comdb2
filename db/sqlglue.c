@@ -2061,7 +2061,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         sql_mem_shutdown(NULL);
         return -1;
     }
-    ents = create_master_entry_array(&db, 1, &nents);
+    ents = create_master_entry_array(&db, 1, thedb->view_hash, &nents);
     if (!ents) {
         logmsg(LOGMSG_ERROR, "%s: failed to create master entries\n", __func__);
         sql_mem_shutdown(NULL);
