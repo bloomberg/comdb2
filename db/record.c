@@ -377,6 +377,21 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
+    int check_status;
+    rc = run_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
+                               &check_status);
+    if (rc != 0) {
+        reqerrstrhdr(iq, "Internal error during CHECK constraint");
+        *opfailcode = ERR_INTERNAL;
+        rc = retrc = ERR_INTERNAL;
+        ERR;
+    } else if (check_status != 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation");
+        *opfailcode = ERR_CHECK_CONSTRAINT;
+        rc = retrc = ERR_CHECK_CONSTRAINT;
+        ERR;
+    }
+
     rc =
         validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
@@ -1123,6 +1138,21 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
+    }
+
+    int check_status;
+    rc = run_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
+                               &check_status);
+    if (rc != 0) {
+        reqerrstrhdr(iq, "Internal error during CHECK constraint");
+        *opfailcode = ERR_INTERNAL;
+        rc = retrc = ERR_INTERNAL;
+        ERR;
+    } else if (check_status != 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation");
+        *opfailcode = ERR_CHECK_CONSTRAINT;
+        rc = retrc = ERR_CHECK_CONSTRAINT;
+        ERR;
     }
 
     if (has_constraint(flags)) {

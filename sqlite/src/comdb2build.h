@@ -67,6 +67,7 @@ void comdb2DropPrimaryKey(Parse *);
 void comdb2AddIndex(Parse *, Token *, ExprList *, int, Expr *, const char *,
                     const char *, int, u8, int);
 void comdb2AddDbpad(Parse *, int);
+void comdb2AddCheckConstraint(Parse *, Expr *, const char *, const char *);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
                        Token *, Expr *, const char *, const char *, int, int,
                        u8, int, int);

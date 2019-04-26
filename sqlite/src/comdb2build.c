@@ -2572,9 +2572,17 @@ enum {
     CONS_DELETED = 1 << 2,
 };
 
+/* Constraint types */
+enum {
+    CONS_FKEY,
+    CONS_CHECK,
+};
+
 struct comdb2_constraint {
     /* Name of the constraint. */
     char *name;
+    /* Constraint type */
+    uint8_t type;
 
     /*
        The following are helper fields to hold the column names and respective
@@ -2595,7 +2603,8 @@ struct comdb2_constraint {
     char *parent_key;
     /* Constraint flags */
     uint8_t flags;
-
+    /* CHECK expr */
+    char *check_expr;
     /* Link */
     LINKC_T(struct comdb2_constraint) lnk;
 };
@@ -3022,6 +3031,31 @@ err:
     return 1;
 }
 
+static void csc2_append_fkey_cons(struct strbuf *csc2,
+                                  struct comdb2_constraint *constraint)
+{
+    if (constraint->name)
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+
+    strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
+    strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
+                   constraint->parent_key);
+
+    if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
+        strbuf_append(csc2, "on update cascade ");
+    }
+    if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
+        strbuf_append(csc2, "on delete cascade ");
+    }
+}
+
+static void csc2_append_check_cons(struct strbuf *csc2,
+                                   struct comdb2_constraint *constraint)
+{
+    strbuf_appendf(csc2, "check \"%s\" = \"%s\"", constraint->name,
+                   constraint->check_expr);
+}
+
 /*
   Format the table information into a CSC2 string.
 */
@@ -3122,7 +3156,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
             strbuf_appendf(csc2, "%s%s ",
                            (idx_part->flags & INDEX_ORDER_DESC) ? "<DESCEND> "
-                                                                  : "",
+                                                                : "",
                            idx_part->name);
 
             added++;
@@ -3151,18 +3185,10 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
         strbuf_append(csc2, "\n\t\t");
 
-        if (constraint->name)
-            strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
-
-        strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
-        strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
-                       constraint->parent_key);
-
-        if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
-            strbuf_append(csc2, "on update cascade ");
-        }
-        if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
-            strbuf_append(csc2, "on delete cascade ");
+        if (constraint->type == CONS_FKEY) {
+            csc2_append_fkey_cons(csc2, constraint);
+        } else if (constraint->type == CONS_CHECK) {
+            csc2_append_check_cons(csc2, constraint);
         }
     }
 
@@ -3532,6 +3558,10 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     {
         /* Check whether the constraint has been dropped. */
         if (constraint->flags & CONS_DELETED)
+            continue;
+
+        /* Skip for CHECK constraints. */
+        if (constraint->type == CONS_CHECK)
             continue;
 
         /* Check if there's already a child key */
@@ -5276,6 +5306,45 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     return 1;
 }
 
+static int set_constraint_name(Parse *pParse,
+                               struct comdb2_constraint *constraint)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char constraint_name_buf[MAXCONSLEN + 1];
+    char *constraint_name;
+
+    if (pParse->constraintName.n == 0) {
+        /*
+          Check whether a similar constraint already exists.
+
+          Generate the constraint name.
+        */
+        gen_constraint_name2(constraint, constraint_name_buf,
+                             sizeof(constraint_name_buf));
+        constraint_name = constraint_name_buf;
+    } else {
+        if (pParse->constraintName.n > MAXCONSLEN) {
+            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
+            return 1;
+        }
+        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
+                                          pParse->constraintName.n);
+        if (constraint->name == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 1;
+        }
+        sqlite3Dequote(constraint->name);
+        constraint_name = constraint->name;
+    }
+    if ((find_cons_by_name(ctx, constraint_name))) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
+                        constraint_name);
+        return 1;
+    }
+    return 0;
+}
+
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -5291,8 +5360,6 @@ void comdb2CreateForeignKey(
     struct comdb2_index_part *idx_part;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct dbtable *parent_table;
-    char *constraint_name;
-    char constraint_name_buf[MAXCONSLEN + 1];
     int key_found = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -5476,32 +5543,9 @@ parent_key_found:
         goto cleanup;
     }
     constraint->flags = flags;
+    constraint->type = CONS_FKEY;
 
-    if (pParse->constraintName.n == 0) {
-        /*
-          Check whether a similar constraint already exists.
-
-          Generate the constraint name.
-        */
-        gen_constraint_name2(constraint, constraint_name_buf,
-                             sizeof(constraint_name_buf));
-        constraint_name = constraint_name_buf;
-    } else {
-        if (pParse->constraintName.n > MAXCONSLEN) {
-            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
-            goto cleanup;
-        }
-        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                          pParse->constraintName.n);
-        if (constraint->name == 0)
-            goto oom;
-        sqlite3Dequote(constraint->name);
-        constraint_name = constraint->name;
-    }
-    if ((find_cons_by_name(ctx, constraint_name))) {
-        pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
-                        constraint_name);
+    if ((set_constraint_name(pParse, constraint)) != 0) {
         goto cleanup;
     }
 
@@ -6255,4 +6299,64 @@ out:
     if (t_action)
         free(t_action);
     free_schema_change_type(sc);
+}
+
+void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
+                              Expr *pCheckExpr,   /* The check expression */
+                              const char *zStart, /* Start of CHECK expr text */
+                              const char *zEnd    /* End of CHECK expr text */
+)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_constraint *constraint;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    size_t check_expr_sz;
+
+    if (use_sqlite_impl(pParse)) {
+        assert(ctx == 0);
+        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        return;
+    }
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+    if (constraint == 0)
+        goto oom;
+
+    constraint->type = CONS_CHECK;
+    if ((set_constraint_name(pParse, constraint)) != 0) {
+        goto cleanup;
+    }
+
+    /* Get CHECK expression */
+    assert(pCheckExpr && zStart && zEnd);
+    check_expr_sz = zEnd - zStart;
+    assert(check_expr_sz > 0);
+    constraint->check_expr = comdb2_strndup(ctx->mem, zStart, check_expr_sz);
+    if (constraint->check_expr == 0)
+        goto oom;
+
+    /* Add this new constraint to the list. */
+    listc_abl(&ctx->schema->constraint_list, constraint);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    sqlite3ExprDelete(pParse->db, pCheckExpr);
+    free_ddl_context(pParse);
+    return;
 }

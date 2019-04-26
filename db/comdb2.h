@@ -403,6 +403,7 @@ enum RCODES {
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
+    ERR_CHECK_CONSTRAINT = 320,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
     ERR_INCOHERENT =
@@ -468,6 +469,11 @@ enum CONSTRAINT_FLAGS {
     CT_UPD_CASCADE = 0x00000001,
     CT_DEL_CASCADE = 0x00000002,
     CT_BLD_SKIP = 0x00000004
+};
+
+enum {
+    CT_FKEY,
+    CT_CHECK,
 };
 
 enum {
@@ -593,11 +599,13 @@ typedef struct {
 typedef struct {
     struct dbtable *lcltable;
     char *consname;
+    int type;
     char *lclkeyname;
     int nrules;
     int flags;
     char *table[MAXCONSTRAINTS];
     char *keynm[MAXCONSTRAINTS];
+    char *check_expr;
 } constraint_t;
 
 struct managed_component {
@@ -3553,7 +3561,9 @@ int release_locks_int(const char *trace, const char *func, int line);
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter);
-
+int run_check_constraints(struct dbtable *table, uint8_t *rec,
+                          blob_buffer_t *blobs, size_t maxblobs, int is_alter,
+                          int *check_status);
 /* Authentication types for users */
 enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 

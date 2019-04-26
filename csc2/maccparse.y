@@ -22,11 +22,8 @@
   double fltpoint;
   char *varname;
   char *opttext;
-  char *casetxt;
-  char *unnmtxt;
   char *where;
   char *comment;
-  char *codetxt;
   char *bytestr; /* first int is size */
   struct unum {
     int   number;
@@ -56,6 +53,7 @@
 %token T_TABLE_TAG T_DEFAULT T_ONDISK T_SCHEMA
 %token T_CONSTRAINTS T_CASCADE
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
+%token T_CHECK
 
 %token T_RECNUMS T_PRIMARY T_DATAKEY T_UNIQNULLS
 %token T_YES T_NO
@@ -149,6 +147,7 @@ cnstrtnamedstart: string T_EQ string '-' T_GT {
 /* Note: a named constraint does not allow a list of parent key references. */
 cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { /*end_constraint_list(); */}
                 | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { /*end_constraint_list(); */}
+                | cnstrtdef T_CHECK string T_EQ string { add_check_constraint($3, $5); }
                 | /* %empty */
                 ;
 

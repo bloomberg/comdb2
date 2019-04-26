@@ -1729,8 +1729,10 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         0; /* this will be initialized at verification time */
     tbl->n_constraints = dyns_get_constraint_count();
     if (tbl->n_constraints > 0) {
+        int type;
         char *consname = NULL;
         char *keyname = NULL;
+        char *check_expr = NULL;
         int rulecnt = 0, flags = 0;
         if (tbl->n_constraints >= MAXCONSTRAINTS) {
             logmsg(LOGMSG_ERROR, "too many constraints for table %s (%d>=%d)\n",
@@ -1739,19 +1741,28 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             return NULL;
         }
         for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt,
-                                        &flags);
+            rc = dyns_get_constraint_at(ii, &consname, &type, &keyname,
+                                        &rulecnt, &flags, &check_expr);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
                         tbl->n_constraints);
                 cleanup_newdb(tbl);
                 return NULL;
             }
+
             tbl->constraints[ii].flags = flags;
             tbl->constraints[ii].lcltable = tbl;
-            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
-            tbl->constraints[ii].lclkeyname = strdup(keyname);
+            tbl->constraints[ii].type = type;
             tbl->constraints[ii].nrules = rulecnt;
+            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
+            tbl->constraints[ii].lclkeyname = (keyname) ? strdup(keyname) : 0;
+            tbl->constraints[ii].check_expr =
+                (check_expr) ? strdup(check_expr) : 0;
+
+            if (tbl->constraints[ii].type != CT_FKEY) {
+                continue;
+            }
+
             if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
                 logmsg(LOGMSG_ERROR, "too many constraint rules for table %s:%s (%d>=%d)\n",
                         tblname, keyname, tbl->constraints[ii].nrules,

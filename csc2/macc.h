@@ -104,14 +104,17 @@ struct fieldopt {
 };
 
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
+enum constraint_type { CT_FKEY, CT_CHECK };
 
 extern struct constraint {
     char *consname;
+    int type;
     char *lclkey;
     int ncnstrts;
     int flags;
     char *table[MAXCNSTRTS];
     char *keynm[MAXCNSTRTS];
+    char *check_expr;
 } constraints[MAXCNSTRTS];
 
 extern int nconstraints;
@@ -297,6 +300,7 @@ void set_constraint_mod(int start, int op, int type);
 void set_constraint_name(char *name);
 void start_constraint_list(char *tblname);
 void add_constraint(char *tbl, char *key);
+void add_check_constraint(char *name, char *expr);
 void add_constant(char *name, int value, short type);
 void add_fldopt(int opttype, int valtype, void *value);
 void reset_array();

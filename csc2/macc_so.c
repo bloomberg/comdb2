@@ -117,9 +117,11 @@ void set_constraint_mod(int start, int op, int type)
 
 void set_constraint_name(char *name)
 {
+    /* TODO (NC): Verify that constraint names are unique. */
     constraints[nconstraints].consname = name;
 }
 
+/* TODO (NC): Cleanup - remove this func */
 void end_constraint_list(void)
 {
     /*  fprintf(stderr, "constraint: end list\n");*/
@@ -137,10 +139,28 @@ void add_constraint(char *tbl, char *key)
         return;
     }
     constraints[nconstraints].ncnstrts++;
+    constraints[nconstraints].type = CT_FKEY;
     constraints[nconstraints].table[cidx] = tbl;
     constraints[nconstraints].keynm[cidx] = key;
+    constraints[nconstraints].check_expr = 0;
     /*  fprintf(stderr, "constraint: tbl %s key %s %d\n",
      * tbl,key,nconstraints);*/
+}
+
+void add_check_constraint(char *name, char *expr)
+{
+    nconstraints++;
+    int cidx = constraints[nconstraints].ncnstrts;
+
+    set_constraint_name(name);
+    constraints[nconstraints].ncnstrts++;
+    constraints[nconstraints].type = CT_CHECK;
+    constraints[nconstraints].flags = 0;
+    constraints[nconstraints].ncnstrts = 1;
+    constraints[nconstraints].lclkey = 0;
+    constraints[nconstraints].table[cidx] = 0;
+    constraints[nconstraints].keynm[cidx] = 0;
+    constraints[nconstraints].check_expr = expr;
 }
 
 int constant(char *var)
@@ -3221,15 +3241,17 @@ int dyns_get_constraint_count(void)
     return nconstraints;
 }
 
-int dyns_get_constraint_at(int idx, char **consname, char **keyname,
-                           int *rulecnt, int *flags)
+int dyns_get_constraint_at(int idx, char **consname, int *type, char **keyname,
+                           int *rulecnt, int *flags, char **check_expr)
 {
     if (idx < 0 || idx >= nconstraints)
         return -1;
+    *type = constraints[idx].type;
     *consname = constraints[idx].consname;
     *keyname = constraints[idx].lclkey;
     *rulecnt = constraints[idx].ncnstrts;
     *flags = constraints[idx].flags;
+    *check_expr = constraints[idx].check_expr;
     return 0;
 }
 

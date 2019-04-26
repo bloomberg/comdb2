@@ -12318,3 +12318,112 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     struct temptable *t = hash_find(h, &i);
     return *t;
 }
+
+int run_check_constraints(struct dbtable *table, uint8_t *rec,
+                          blob_buffer_t *blobs, size_t maxblobs, int is_alter,
+                          int *check_status /* 0 - Pass, 1 - Fail */)
+{
+    struct schema *sc;
+    strbuf *sql;
+    Mem *m;
+    int rc;
+
+    *check_status = 0;
+    rc = 0;
+
+    if (!rec) {
+        logmsg(LOGMSG_ERROR, "%s: invalid input\n", __func__);
+        return 1;
+    }
+
+    sc = table->schema;
+    if (sc == NULL) {
+        logmsg(LOGMSG_FATAL, "No .ONDISK tag for table %s.\n",
+               table->tablename);
+        abort();
+    }
+
+    sql = strbuf_new();
+
+    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
+    if (m == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
+        rc = 1;
+        goto done;
+    }
+
+    for (int i = 0; i < sc->nmembers; ++i) {
+        memset(&m[i], 0, sizeof(Mem));
+        rc = get_data_from_ondisk(sc, rec, blobs, maxblobs, i, &m[i], 0,
+                                  "America/New_York");
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get field from record",
+                   __func__);
+            goto done;
+        }
+    }
+
+    for (int i = 0; i < table->n_constraints; i++) {
+        if (table->constraints[i].type != CT_CHECK) {
+            continue;
+        }
+        strbuf_clear(sql);
+        /* TODO: (NC) Generate a unique name. */
+        strbuf_appendf(sql, "WITH \"temp\" (\"%s\"", sc->member[0].name);
+        for (int i = 1; i < sc->nmembers; ++i) {
+            strbuf_appendf(sql, ", %s", sc->member[i].name);
+        }
+        strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
+        for (int i = 1; i < sc->nmembers; ++i) {
+            strbuf_appendf(sql, ", @%s", sc->member[i].name);
+        }
+        strbuf_appendf(sql, ") SELECT 1 FROM \"temp\" WHERE %s",
+                       table->constraints[i].check_expr);
+
+        struct sqlclntstate clnt;
+        struct schema_mem sm;
+        sm.sc = sc;
+        sm.min = m;
+        sm.mout = NULL;
+
+        start_internal_sql_clnt(&clnt);
+        clnt.dbtran.mode = TRANLEVEL_SOSQL;
+        clnt.sql = (char *)strbuf_buf(sql);
+        clnt.verify_indexes = 1;
+        clnt.schema_mems = &sm;
+
+        rc = dispatch_sql_query(&clnt);
+        if (!clnt.has_sqliterow) {
+            *check_status = 1;
+        }
+        clnt_reset_cursor_hints(&clnt);
+        osql_clean_sqlclntstate(&clnt);
+
+        if (clnt.dbglog) {
+            sbuf2close(clnt.dbglog);
+            clnt.dbglog = NULL;
+        }
+
+        /* XXX free logical tran?  */
+
+        clnt.dbtran.mode = TRANLEVEL_INVALID;
+        if (clnt.query_stats)
+            free(clnt.query_stats);
+
+        Pthread_mutex_destroy(&clnt.wait_mutex);
+        Pthread_cond_destroy(&clnt.wait_cond);
+        Pthread_mutex_destroy(&clnt.write_lock);
+        Pthread_mutex_destroy(&clnt.dtran_mtx);
+
+        if (*check_status == 1) {
+            /* Check failed, no need to continue. */
+            break;
+        }
+    }
+
+done:
+    if (m)
+        free(m);
+    strbuf_free(sql);
+    return rc;
+}

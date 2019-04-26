@@ -288,7 +288,8 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL>"<DESCEND>"	        { return T_DESCEND; }
 
 <CONSTRAINTS>cascade            { return T_CASCADE; }
-<CONSTRAINTS>restrict            { return T_RESTRICT; }
+<CONSTRAINTS>restrict           { return T_RESTRICT; }
+<CONSTRAINTS>check              { return T_CHECK; }
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }

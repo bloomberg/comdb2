@@ -81,8 +81,8 @@ int dyns_get_table_field_count(char *tabletag);
 
 /* constraint accessors */
 int dyns_get_constraint_count(void);
-int dyns_get_constraint_at(int idx, char **consname, char **keyname,
-                           int *rulecnt, int *flags);
+int dyns_get_constraint_at(int idx, char **consname, int *type, char **keyname,
+                           int *rulecnt, int *flags, char **check_expr);
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm);
 
 /* misc */
