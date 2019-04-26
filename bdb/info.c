@@ -82,11 +82,11 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
 #define prn_statstr(x) logmsgf(LOGMSG_USER, out, #x ": %s\n", stats->x)
 
 extern int gbl_namemangle_loglevel;
-extern int __db_dump_freepages(DB * dbp, FILE * out);
+extern int __db_dump_freepages(DB *dbp, FILE *out);
 extern int __memp_dump_region(DB_ENV *dbenv, const char *area, FILE *fp);
-extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins);
+extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz,
+                                      int maxins);
 extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
-
 
 static void printf_wrapper(void *userptr, const char *fmt, ...)
 {

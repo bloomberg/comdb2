@@ -96,8 +96,9 @@ static struct comdb2_metrics_store stats;
 comdb2_metric gbl_metrics[] = {
     {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits, NULL},
-    {"cache_misses", "Buffer pool misses", (int64_t)STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     (int64_t)STATISTIC_INTEGER, &stats.cache_misses, NULL},
+    {"cache_misses", "Buffer pool misses",
+     (int64_t)STATISTIC_COLLECTION_TYPE_CUMULATIVE, (int64_t)STATISTIC_INTEGER,
+     &stats.cache_misses, NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER,
