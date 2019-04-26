@@ -17,7 +17,9 @@
 #ifndef _time_accounting_h
 #define _time_accounting_h
 
+
 #ifndef NDEBUG
+enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX };
 
 #define CHRONO_START()   \
 {                        \
@@ -29,15 +31,13 @@
 }
 
 int chrono_stop(struct timeval *tv);
-void accumulate_time(const char *name, int us);
+void accumulate_time(int el, int us);
 
-void print_time_accounting(const char *name);
+void print_time_accounting(int el);
 void print_all_time_accounting();
 
-void reset_time_accounting(const char *name);
+void reset_time_accounting(int el);
 void reset_all_time_accounting();
-
-void cleanup_time_accounting();
 
 #else
 #define CHRONO_START()  {}

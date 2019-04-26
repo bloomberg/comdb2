@@ -980,7 +980,7 @@ int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
     rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
                          dtalen, isnull);
 
-    CHRONO_STOP_AND_SAVE("ix_addk");
+    CHRONO_STOP_AND_SAVE(CHR_IXADDK);
     return rc;
 }
 
@@ -1246,7 +1246,7 @@ int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
 
     rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
 
-    CHRONO_STOP_AND_SAVE("dat_add");
+    CHRONO_STOP_AND_SAVE(CHR_DATADD);
 
     return rc;
 }

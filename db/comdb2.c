@@ -1443,7 +1443,6 @@ void clean_exit(void)
     no_new_requests(thedb);
 
     print_all_time_accounting();
-    cleanup_time_accounting();
     wait_for_sc_to_stop("exit");
 
     /* let the lower level start advertising high lsns to go non-coherent

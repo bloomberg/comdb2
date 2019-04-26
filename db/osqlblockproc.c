@@ -795,7 +795,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
-    CHRONO_STOP_AND_SAVE("temp_table_saveop");
+    CHRONO_STOP_AND_SAVE(CHR_TMPSVOP);
 
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",

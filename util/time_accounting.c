@@ -17,16 +17,14 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include "locks_wrap.h"
-#include "plhash.h"
-#include "intern_strings.h"
+#include "comdb2_atomic.h"
+#include "time_accounting.h"
 
-pthread_mutex_t hlock = PTHREAD_MUTEX_INITIALIZER;
-static hash_t *htimes = NULL;
+#ifndef NDEBUG
+const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
 
-typedef struct {
-    const char *name;
-    unsigned long long utime;
-} name_time_pair_t;
+
+unsigned long long gbl_chron_times[CHR_MAX];
 
 // return timediff in microseconds (us) from tv passed in
 int chrono_stop(struct timeval *tv)
@@ -40,101 +38,27 @@ int chrono_stop(struct timeval *tv)
 }
 
 // add time accounting to appropriate slot
-void accumulate_time(const char *name, int us)
+void accumulate_time(int el, int us)
 {
-    Pthread_mutex_lock(&hlock);
-    if (!htimes) {
-        htimes = hash_init_o(offsetof(name_time_pair_t, name), sizeof(const char *));
-    }
-    name_time_pair_t *ptr;
-    const char *iptr = intern(name);
-    if ((ptr = hash_find_readonly(htimes, &iptr)) == 0) {
-        ptr = malloc(sizeof(name_time_pair_t));
-        ptr->name = intern(name);
-        ptr->utime = 0;
-        hash_add(htimes, ptr);
-    }
-    ptr->utime += us;
-    Pthread_mutex_unlock(&hlock);
+    ATOMIC_ADD(gbl_chron_times[el], us);
 }
 
-void reset_time_accounting(const char *name)
+void reset_time_accounting(int el)
 {
-    if (!htimes) {
-        return;
-    }
-    Pthread_mutex_lock(&hlock);
-    name_time_pair_t *ptr;
-    const char *iptr = intern(name);
-    if ((ptr = hash_find_readonly(htimes, &iptr)) != 0) {
-        ptr->utime = 0;
-    }
-    Pthread_mutex_unlock(&hlock);
-}
-static int reset_time(void *obj, void *unused)
-{
-    name_time_pair_t *ptr = obj;
-    ptr->utime = 0;
-    return 0;
-
-}
-void reset_all_time_accounting()
-{
-    if (!htimes) {
-        return;
-    }
-    hash_for(htimes, reset_time, NULL);
+    XCHANGE(gbl_chron_times[el], 0);
 }
 
-
-void print_time_accounting(const char *name)
+void print_time_accounting(int el)
 {
-    if (!htimes) {
-        return;
-    }
-    Pthread_mutex_lock(&hlock);
-    name_time_pair_t *ptr;
-    const char *iptr = intern(name);
-    if ((ptr = hash_find_readonly(htimes, &iptr)) != 0) {
-        logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", ptr->name, ptr->utime);
-    }
-    Pthread_mutex_unlock(&hlock);
-}
-
-static int print_name_time_pair(void *obj, void *unused)
-{
-    name_time_pair_t *ptr = obj;
-    logmsg(LOGMSG_USER, "name=%s time=%lluus\n", ptr->name, ptr->utime);
-    return 0;
-
+    logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", 
+           CHR_NAMES[el], gbl_chron_times[el]);
 }
 
 void print_all_time_accounting()
 {
-    if (!htimes) {
-        return;
-    }
     logmsg(LOGMSG_USER, "Timing information:\n");
-    Pthread_mutex_lock(&hlock);
-    hash_for(htimes, print_name_time_pair, NULL);
-    Pthread_mutex_unlock(&hlock);
-}
-
-static int free_name_time_pair(void *obj, void *unused)
-{
-    free(obj);
-    return 0;
-}
-
-void cleanup_time_accounting()
-{
-    if (!htimes) {
-        return;
+    for (int i = 0; i < CHR_MAX; i++) {
+        logmsg(LOGMSG_USER, "%s: %lluus\n", CHR_NAMES[i], gbl_chron_times[i]);
     }
-    Pthread_mutex_lock(&hlock);
-    hash_for(htimes, free_name_time_pair, NULL);
-    hash_clear(htimes);
-    hash_free(htimes);
-    htimes = NULL;
-    Pthread_mutex_unlock(&hlock);
 }
+#endif
