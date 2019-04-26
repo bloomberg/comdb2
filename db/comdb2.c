@@ -2354,7 +2354,6 @@ int llmeta_set_views(tran_type *tran, struct dbenv *dbenv)
     return 0; /* success */
 }
 
-
 /* prints out a file (datadir/dbname_file_vers_map) that provides a mapping of
  * all the file types and numbers to version numbers, for example,
  * for each table the file will have output
@@ -2628,7 +2627,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtable, tablename), 0);
 
-   dbenv->view_hash =
+    dbenv->view_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbview, view_name), 0);
 

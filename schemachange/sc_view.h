@@ -16,8 +16,7 @@
 
 #ifndef INCLUDE_SC_ADD_VIEW_H
 #define INCLUDE_SC_ADD_VIEW_H
-int do_add_view(struct ireq *iq, struct schema_change_type *s,
-                tran_type *tran);
+int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran);
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran);
 #endif

@@ -143,7 +143,7 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
         create_sqlite_master();
     }
 
-// live_sc_off(db);
+        // live_sc_off(db);
 
 #if 0
     if (!gbl_create_mode) {

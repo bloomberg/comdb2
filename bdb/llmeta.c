@@ -10022,8 +10022,9 @@ int bdb_llmeta_get_view_def(tran_type *in_trans, const char *view_name,
 
     /* Fail if the db isn't open. */
     if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                             "you must run bdb_llmeta_open\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: low level meta table not yet open,"
+               "you must run bdb_llmeta_open\n",
                __func__);
         if (bdberr)
             *bdberr = BDBERR_MISC;
@@ -10091,8 +10092,9 @@ retry:
 
     /* make sure the length appears normal */
     if (view_def_len != strlen(*view_def) + 1 /* for NULL byte */) {
-        logmsg(LOGMSG_ERROR, "%s: view definition length does not match the"
-                             " length retrieved\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: view definition length does not match the"
+               " length retrieved\n",
                __func__);
         *bdberr = BDBERR_MISC;
         goto backout;
@@ -10143,8 +10145,9 @@ int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
 
     /* Fail if the db isn't open. */
     if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                             "you must run bdb_llmeta_open\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: low level meta table not yet open,"
+               "you must run bdb_llmeta_open\n",
                __func__);
         if (bdberr)
             *bdberr = BDBERR_MISC;
@@ -10246,8 +10249,9 @@ int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
 
     /* Fail if the db isn't open. */
     if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                             "you must run bdb_llmeta_open\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: low level meta table not yet open,"
+               "you must run bdb_llmeta_open\n",
                __func__);
         if (bdberr)
             *bdberr = BDBERR_MISC;
@@ -10316,8 +10320,9 @@ int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
 
     /* Fail if the db isn't open. */
     if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                             "you must run bdb_llmeta_open\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: low level meta table not yet open,"
+               "you must run bdb_llmeta_open\n",
                __func__);
         if (bdberr)
             *bdberr = BDBERR_MISC;
@@ -10413,8 +10418,9 @@ retry:
     }
 
     if (offset != fndlen)
-        logmsg(LOGMSG_ERROR, "%s: returned data did not match "
-                             "length exactly, this should not happen\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: returned data did not match "
+               "length exactly, this should not happen\n",
                __func__);
 
     /* Commit if we created our own transaction */
@@ -10469,8 +10475,9 @@ int bdb_llmeta_put_view_names(tran_type *in_trans, char **view_names,
 
     /* Fail if the db isn't open. */
     if (!llmeta_bdb_state) {
-        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet open,"
-                             "you must run bdb_llmeta_open\n",
+        logmsg(LOGMSG_ERROR,
+               "%s: low level meta table not yet open,"
+               "you must run bdb_llmeta_open\n",
                __func__);
         if (bdberr)
             *bdberr = BDBERR_MISC;
@@ -10514,8 +10521,9 @@ int bdb_llmeta_put_view_names(tran_type *in_trans, char **view_names,
         llmeta_view.view_name_len = strlen(llmeta_view.view_name) + 1;
 
         if (!(p_buf = llmeta_view_name_put(&llmeta_view, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s: tablename: %s longer then "
-                                 "the max: %d\n",
+            logmsg(LOGMSG_ERROR,
+                   "%s: tablename: %s longer then "
+                   "the max: %d\n",
                    __func__, view_names[i], LLMETA_TBLLEN);
             *bdberr = BDBERR_BADARGS;
             goto err;
@@ -10525,8 +10533,9 @@ int bdb_llmeta_put_view_names(tran_type *in_trans, char **view_names,
     offset = (p_buf - p_buf_start);
 
     if (i < view_count || offset > buflen) {
-        logmsg(LOGMSG_ERROR, "%s: buffer was not long enough, "
-                             "this should not happen",
+        logmsg(LOGMSG_ERROR,
+               "%s: buffer was not long enough, "
+               "this should not happen",
                __func__);
         *bdberr = BDBERR_MISC;
         goto err;
