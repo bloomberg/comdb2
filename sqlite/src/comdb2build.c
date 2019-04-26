@@ -6535,7 +6535,6 @@ void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
     sc->add_view = 1;
     sc->nothrevent = 1;
     sc->type = -1;
-    sc->fastinit = 1;
     sc->live = 1;
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
@@ -6569,7 +6568,6 @@ void comdb2_drop_view(Parse *pParse, SrcList *pName)
     sc->drop_view = 1;
     sc->nothrevent = 1;
     sc->type = -1;
-    sc->fastinit = 1;
     sc->live = 1;
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);

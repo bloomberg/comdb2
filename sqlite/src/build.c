@@ -2607,8 +2607,10 @@ void sqlite3EndTable(
           "CREATE %s %.*s", zType2, n, pParse->sNameToken.z
       );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
-                         zStmt, 0);
+      if (p->pSelect) {
+        comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
+                           zStmt, 0);
+      }
 #endif
     }
 
