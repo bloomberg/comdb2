@@ -6682,7 +6682,6 @@ void update_dbstore(struct dbtable *db)
         if (ver == NULL) {
             logmsg(LOGMSG_FATAL, "%s: %s not found!! PANIC!! %s() @ %d\n",
                    db->tablename, tag, __func__, __LINE__);
-            /* FIXME */
             cheap_stack_trace();
             abort();
         }
@@ -6708,7 +6707,6 @@ void update_dbstore(struct dbtable *db)
                        "%s: %s no such field: %s in .ONDISK. but in %s!! "
                        "PANIC!!\n",
                        db->tablename, __func__, from->name, tag);
-                /* FIXME */
                 abort();
             }
 
@@ -6727,7 +6725,6 @@ void update_dbstore(struct dbtable *db)
                         logmsg(LOGMSG_FATAL,
                                "%s: %s() @ %d calloc failed!! PANIC!!\n",
                                db->tablename, __func__, __LINE__);
-                        /* FIXME */
                         abort();
                     }
                     rc = SERVER_to_SERVER(
@@ -6741,7 +6738,6 @@ void update_dbstore(struct dbtable *db)
                                "%s: %s() @ %d: SERVER_to_SERVER failed!! "
                                "PANIC!!\n",
                                db->tablename, __func__, __LINE__);
-                        /* FIXME */
                         abort();
                     }
                 }

@@ -839,13 +839,13 @@ static bool init_local_names()
     return true;
 }
 
-static bool init(std::vector<std::pair<int, int>> port_ranges)
+static bool init(const std::vector<std::pair<int, int>> &pranges)
 {
 
     if (!init_local_names())
         return false;
 
-    for (auto &range : port_ranges) {
+    for (auto &range : pranges) {
 #ifdef VERBOSE
         syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
                range.second);

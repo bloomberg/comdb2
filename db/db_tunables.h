@@ -678,7 +678,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,

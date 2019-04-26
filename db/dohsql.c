@@ -112,7 +112,6 @@ struct dohsql {
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
 };
-typedef struct dohsql dohsql_t;
 
 struct dohsql_stats {
     long long num_reqs;

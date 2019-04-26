@@ -716,39 +716,39 @@ static int process_escape(const char *cmdstr)
     return 0;
 }
 
-static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
+static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
 {
     void *val;
 
     assert((printmode & DISP_TABULAR) == 0);
 
-    val = cdb2_column_value(cdb2h, col);
+    val = cdb2_column_value(hndl, col);
 
     if (val == NULL) {
         if (printmode & DISP_CLASSIC) {
-            fprintf(f, "%s=NULL", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=NULL", cdb2_column_name(hndl, col));
         } else {
             fprintf(f, "NULL");
         }
         return;
     }
 
-    switch (cdb2_column_type(cdb2h, col)) {
+    switch (cdb2_column_type(hndl, col)) {
     case CDB2_INTEGER:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
+            fprintf(f, "%s=%lld", cdb2_column_name(hndl, col),
                     *(long long *)val);
         else
             fprintf(f, "%lld", *(long long *)val);
         break;
     case CDB2_REAL:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, doublefmt, *(double *)val);
         break;
     case CDB2_CSTRING:
         if (printmode & DISP_CLASSIC) {
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
             dumpstring(f, (char *)val, 1, 0);
         } else if (printmode & DISP_TABS)
             dumpstring(f, (char *)val, 0, 0);
@@ -757,10 +757,10 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
         break;
     case CDB2_BLOB:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         if (string_blobs) {
             char *c = (char *) val;
-            int len = cdb2_column_size(cdb2h, col);
+            int len = cdb2_column_size(hndl, col);
             fputc('\'', stdout);
             while (len > 0) {
                 if (isprint(*c) || *c == '\n' || *c == '\t') {
@@ -774,13 +774,13 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             fputc('\'', stdout);
         } else {
             if (printmode & DISP_BINARY) {
-                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                int rc = write(1, val, cdb2_column_size(hndl, col));
                 if (rc == -1)
                     std::cerr << "write() returns rc = " << rc << std::endl;
                 exit(0);
             } else {
                 fprintf(f, "x'");
-                hexdump(f, val, cdb2_column_size(cdb2h, col));
+                hexdump(f, val, cdb2_column_size(hndl, col));
                 fprintf(f, "'");
             }
         }
@@ -788,7 +788,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_DATETIME: {
         cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->msec,
@@ -798,7 +798,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_DATETIMEUS: {
         cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->usec,
@@ -808,7 +808,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALYM: {
         cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
                 ym->months);
         break;
@@ -816,7 +816,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALDS: {
         cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->msec);
@@ -825,7 +825,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALDSUS: {
         cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->usec);
