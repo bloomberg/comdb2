@@ -135,6 +135,6 @@ void cleanup_time_accounting()
     hash_for(htimes, free_name_time_pair, NULL);
     hash_clear(htimes);
     hash_free(htimes);
-    htimes = 0;
+    htimes = NULL;
     Pthread_mutex_unlock(&hlock);
 }
