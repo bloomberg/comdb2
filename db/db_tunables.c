@@ -273,7 +273,7 @@ void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
 #include <stdbool.h>
 extern bool gbl_rcache;
 
-static char *name = NULL;
+static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;
 

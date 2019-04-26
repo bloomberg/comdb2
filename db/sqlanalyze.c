@@ -611,7 +611,7 @@ done:
 
 /* get tbl sampling threshold, if NOT -1 set it
  */
-static void get_sampling_threshold(char *table, long long *sampling_threshold)
+static void get_sampling_threshold(char *table, long long *sampling_thresh)
 {
     int bdberr = 0;
     long long threshold = 0;
@@ -623,12 +623,12 @@ static void get_sampling_threshold(char *table, long long *sampling_threshold)
 #endif
 
     if (threshold > 0) {
-        *sampling_threshold = threshold;
+        *sampling_thresh = threshold;
 #ifdef DEBUG
-        printf("Using llmetasaved threshold %d\n", *sampling_threshold);
+        printf("Using llmetasaved threshold %d\n", *sampling_thresh);
     }
     else {
-        printf("Using default threshold %d\n", *sampling_threshold);
+        printf("Using default threshold %d\n", *sampling_thresh);
 #endif
     }
 }

@@ -13,7 +13,6 @@
 #include "mem_override.h"
 
 extern char *revision;
-extern char VER[16]; /* version info */
 
 #define ONDISKTAG ".ONDISK"
 #define DEFAULTTAG ".DEFAULT"
