@@ -79,7 +79,7 @@ struct hashobj {
     unsigned char data[/*len*/];
 };
 
-int gbl_temptable_count;
+int gbl_temptable_count = 0;
 
 unsigned int hashfunc(const void *key, int len)
 {
