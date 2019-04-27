@@ -79,7 +79,7 @@ struct hashobj {
     unsigned char data[/*len*/];
 };
 
-int gbl_temptable_count = 0;
+int gbl_temptable_count;
 
 unsigned int hashfunc(const void *key, int len)
 {
@@ -477,7 +477,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     }
 #endif
 
-    gbl_temptable_count++;
+    if (tbl != NULL) gbl_temptable_count++;
 
 done:
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
@@ -1279,8 +1279,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         }
     }
 
-    gbl_temptable_count--;
-
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
         char *sql;
@@ -1414,6 +1412,13 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
 
     free(tbl);
+
+    if (rc == 0) {
+        gbl_temptable_count--;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close rc %d\n",
+               __func__, rc);
+    }
 
     dbgtrace(3, "temp_table_destroy_lru() = %d %s", rc, db_strerror(rc));
     return rc;

@@ -135,7 +135,7 @@ extern int gbl_expressions_indexes;
 static __thread struct temptable *tmptbl_clone = NULL;
 static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
-int gbl_sql_temptable_count = 0;
+int gbl_sql_temptable_count;
 
 static const char *rootPageNumToTempHashKey(
   int iTable
