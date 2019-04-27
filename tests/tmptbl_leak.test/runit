@@ -25,18 +25,23 @@ done
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
 
-for i in `seq 1 $N` ; do
-  testcase_output=$(cat q_$i.out)
+check_output()
+{
+  testcase_output=$(cat q_$1.out)
   expected_output=$(cat output.expect)
   testcase_output_alt=$(cat output.expect.alt)
 
   if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
-    echo "SELECT output mismatch at index $i"
+    echo "SELECT output mismatch at index $1"
     echo "Failed."
-    diff q_$i.out output.expect
-    diff q_$i.out output.expect.alt
+    diff q_$1.out output.expect
+    diff q_$1.out output.expect.alt
     exit 1
   fi
+}
+
+for i in `seq 1 $N` ; do
+  check_output $i
 done
 
 tempdata1=$(cat temptable1.out)
