@@ -1357,6 +1357,14 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
+        extern int gbl_temptable_count;
+        extern int gbl_sql_temptable_count;
+        logmsg(LOGMSG_USER, 
+                "Overall temptable count is %d, SQL temptable count is %d\n",
+                gbl_temptable_count, gbl_sql_temptable_count);
+    }
+
     /*
        pagesize set <tablename> <data|blob|index> <pagesize>
        pagesize specified in bytes: 65536 for 64K pages

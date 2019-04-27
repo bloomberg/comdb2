@@ -135,6 +135,8 @@ extern int gbl_expressions_indexes;
 static __thread struct temptable *tmptbl_clone = NULL;
 static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
+int gbl_sql_temptable_count;
+
 static const char *rootPageNumToTempHashKey(
   int iTable
 ){
@@ -3218,6 +3220,7 @@ static int releaseTempTableRef(
                 ++pTbl->nRef; /* UNDO */
                 return SQLITE_INTERNAL;
             }
+            gbl_sql_temptable_count--;
         }
         /* pTbl->tbl = NULL; */
         free(pTbl);
@@ -5193,6 +5196,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
+        gbl_sql_temptable_count++;
         pNewTbl->tbl = tbl;
         pNewTbl->lk = NULL;
         pNewTbl->flags = flags;
@@ -5208,6 +5212,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
+        gbl_sql_temptable_count++;
         pNewTbl->tbl = tbl;
         pNewTbl->lk = tmptbl_lk;
         pNewTbl->flags = flags;
