@@ -19,7 +19,7 @@ cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (4, 'four')
 N=500
 echo running $N SELECTs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
 done
 
 for i in `seq 1 $N` ; do
