@@ -463,7 +463,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         sql = pthread_getspecific(current_sql_query_key);
         if (sql) {
             logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s\n",
-                   tbl, sql, rc);
+                   tbl, rc, sql);
         } else {
             int nframes;
             void *stack[100];
