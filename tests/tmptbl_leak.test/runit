@@ -35,7 +35,7 @@ for i in `seq 1 $N` ; do
   fi
 done
 
-cdb2sql $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable.out
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable.out
 
 tempdata=`cat temptable.out`
 regex1="# returns            : ([0-9]+)"
@@ -44,14 +44,26 @@ regex2="# borrows            : ([0-9]+)"
 if [[ $tempdata =~ $regex1 ]]; then
   num1="${BASH_REMATCH[1]}"
 
-  if [[ $tempdata =~ $regex2 ]]; then
-    num2="${BASH_REMATCH[1]}"
+  if [[ -n $num1 ]]; then
+    if [[ $tempdata =~ $regex2 ]]; then
+      num2="${BASH_REMATCH[1]}"
 
-    if [[ $num1 -ne $num2 ]]; then
-      echo "temptable pool returns $num1 does not match temptable pool borrows $num2"
-      echo "Failed."
-      exit 1
+      if [[ -n $num2 ]]; then
+        if [[ $num1 -ne $num2 ]]; then
+          echo "temptable pool return count $num1 does not match temptable pool borrow count $num2"
+          echo "Failed."
+          exit 1
+        fi
+      else
+        echo "missing temptable pool borrow count"
+        echo "Failed."
+        exit 1
+      fi
     fi
+  else
+    echo "missing temptable pool return count"
+    echo "Failed."
+    exit 1
   fi
 fi
 
