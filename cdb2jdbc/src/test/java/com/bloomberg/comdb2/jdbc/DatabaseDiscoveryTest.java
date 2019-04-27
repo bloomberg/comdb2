@@ -191,4 +191,15 @@ public class DatabaseDiscoveryTest {
                     sqle.getMessage().contains("No entries of does_not_exist found in"));
         }
     }
+
+    @After public void tearDown() throws SQLException{
+        String db = System.getProperty("cdb2jdbc.test.database");
+        String cluster = System.getProperty("cdb2jdbc.test.cluster");
+        Connection conn = DriverManager.getConnection(
+                String.format("jdbc:comdb2://%s/%s", cluster, db));
+        conn.createStatement().execute("DROP TABLE if exists clusters");
+        conn.createStatement().execute("DROP TABLE if exists machines");
+        conn.createStatement().execute("DROP TABLE if exists databases");
+    }
+
 }

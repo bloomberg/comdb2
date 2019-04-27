@@ -1030,7 +1030,7 @@ public class Comdb2Handle extends AbstractConnection {
                     }
                     Thread.sleep(sleepms);
                 } catch (InterruptedException e) {
-                    tdlog(Level.WARNING, "Error while waiting for nodes", e);
+                    tdlog(Level.WARNING, "Error while waiting for nodes");
                 }
             }
 
@@ -1155,7 +1155,7 @@ public class Comdb2Handle extends AbstractConnection {
             tdlog(Level.FINEST, "reading results");
             // Read results
             if ((nsh = readNsh()) == null || (raw = readRaw(nsh.length)) == null) {
-                tdlog(Level.FINEST, "Failure to read: nsh=%s raw=%s", nsh, raw);
+                tdlog(Level.FINEST, "Failure to read: nsh=%s raw=%s", nsh, Arrays.toString(raw));
                 // Read error
                 if (errVal != 0) {
                     if (is_rollback) {
