@@ -26,8 +26,12 @@ for i in `seq 1 $N` ; do
   diff q_$i.out output.expect
   if [[ $? -ne 0 ]]; then
     echo "SELECT mismatch at $i"
-    echo "Failed."
-    exit 1
+    diff q_$i.out output.expect.alt
+    if [[ $? -ne 0 ]]; then
+      echo "SELECT alt mismatch at $i"
+      echo "Failed."
+      exit 1
+    fi
   fi
 done
 
