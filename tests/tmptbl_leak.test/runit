@@ -31,9 +31,10 @@ for i in `seq 1 $N` ; do
   testcase_output_alt=$(cat output.expect.alt)
 
   if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
+    echo "SELECT output mismatch at index $i"
+    echo "Failed."
     diff q_$i.out output.expect
     diff q_$i.out output.expect.alt
-    echo "Failed."
     exit 1
   fi
 done
