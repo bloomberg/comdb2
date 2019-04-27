@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+echo dropping test tables
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DROP TABLE t1" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DROP TABLE t2" &> /dev/null
+
+echo adding test tables
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1(x INT, y TEXT)" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t2(x INT, y TEXT)" > /dev/null
+
+echo inserting test data
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(x,y) VALUES (1, 'one')" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(x,y) VALUES (2, 'two')" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (3, 'three')" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (4, 'four')" > /dev/null
+
+N=500
+echo running $N SELECTs asynchronously...
+for i in `seq 1 $N` ; do
+  cdb2sql $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
+done
+
+for i in `seq 1 $N` ; do
+  diff q_$i.out output.expect
+  if [[ $? -ne 0 ]]; then
+    echo "SELECT mismatch at $i"
+    echo "Failed."
+    exit 1
+  fi
+done
+
+cdb2sql $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable.out
+
+tempdata=`cat temptable.out`
+regex1="# returns            : ([0-9]+)"
+regex2="# borrows            : ([0-9]+)"
+
+if [[ $tempdata =~ $regex1 ]]; then
+  num1="${BASH_REMATCH[1]}"
+
+  if [[ $tempdata =~ $regex2 ]]; then
+    num2="${BASH_REMATCH[1]}"
+
+    if [[ $num1 -ne $num2 ]]; then
+      echo "temptable pool returns $num1 does not match temptable pool borrows $num2"
+      echo "Failed."
+      exit 1
+    fi
+  fi
+fi
+
+echo "Passed."
