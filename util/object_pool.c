@@ -588,7 +588,7 @@ static int object_create(comdb2_objpool_t op, void **objp)
         if (op->nobjs > op->npeakobjs)
             op->npeakobjs = op->nobjs;
         ++op->nactiveobjs;
-        logmsg(LOGMSG_INFO, "creating a %s pool object %p\n", op->name, *objp);
+        logmsg(LOGMSG_INFO, "created a pool %s object %p\n", op->name, *objp);
         OP_DBG(op, "create object done");
     } else {
         if (op->del_fn != NULL)
@@ -696,7 +696,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         --op->nactiveobjs;
         ++op->nreturns;
         --op->nobjs;
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, obj);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, obj);
         OP_DBG(op, "evicted due to max idle");
     } else {
         clock_gettime(CLOCK_REALTIME, &rec->tm);
@@ -905,7 +905,7 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
             op->del_fn(object, op->del_arg);
         --op->nobjs;
 
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
         OP_DBG(op, "idle object evicted");
     }
 
@@ -976,7 +976,7 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
             op->del_fn(object, op->del_arg);
         --op->nobjs;
 
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
         OP_DBG(op, "idle object evicted");
     }
 
@@ -1045,7 +1045,7 @@ static void objpool_rand_evict(comdb2_objpool_t op)
             --op->in;
             op->objs[indx] = op->objs[op->in];
 
-            logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+            logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
             OP_DBG(op, "idle object evicted");
         }
     }
