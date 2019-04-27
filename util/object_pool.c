@@ -588,7 +588,7 @@ static int object_create(comdb2_objpool_t op, void **objp)
         if (op->nobjs > op->npeakobjs)
             op->npeakobjs = op->nobjs;
         ++op->nactiveobjs;
-        logmsg(LOGMSG_INFO, "creating a %s object %p\n", op->name, *objp);
+        logmsg(LOGMSG_INFO, "creating a %s pool object %p\n", op->name, *objp);
         OP_DBG(op, "create object done");
     } else {
         if (op->del_fn != NULL)
