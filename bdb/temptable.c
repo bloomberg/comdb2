@@ -1270,8 +1270,10 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                 pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
                 Pthread_mutex_lock(&(bdb_state->temp_list_lock));
                 if (bdb_state->haspriosqlthr &&
-                    pthread_equal(pthread_self(), bdb_state->priosqlthr))
+                    pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
                     bdb_state->haspriosqlthr = 0;
+                    bdb_state->priosqlthr = 0;
+                }
                 Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
             }
         }
