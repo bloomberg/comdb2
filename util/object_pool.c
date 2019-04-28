@@ -678,6 +678,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         rc = 0;
         if (op->del_fn != NULL)
             rc = op->del_fn(obj, op->del_arg);
+        logmsg(LOGMSG_INFO, "destroyed a forced pool %s object %p\n", op->name, obj);
         OP_DBG(op, "object deleted");
     } else if (rec->active == 0) {
         OP_DBG(op, "error- double return");
