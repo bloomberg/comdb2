@@ -147,7 +147,7 @@ struct temp_table {
     void *next;
 };
 
-enum { TMPTBL_PRIORITY, TMPTBL_WAIT };
+enum { TMPTBL_PRIORITY, TMPTBL_WAIT, TMPTBL_AVAILABLE };
 
 static int curid; /* for debug trace only */
 
@@ -536,12 +536,12 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
                          ? TMPTBL_PRIORITY
                          : TMPTBL_WAIT;
-        } else if (!comdb2_objpool_available(bdb_state->temp_table_pool)) {
+        } else {
             Pthread_mutex_lock(&bdb_state->temp_list_lock);
             if (!bdb_state->haspriosqlthr) {
                 bdb_state->haspriosqlthr = 1;
                 bdb_state->priosqlthr = pthread_self();
-                action = TMPTBL_PRIORITY;
+                action = TMPTBL_AVAILABLE;
             }
             Pthread_mutex_unlock(&bdb_state->temp_list_lock);
         }
@@ -553,6 +553,10 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             break;
         case TMPTBL_WAIT:
             comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
+            break;
+        case TMPTBL_AVAILABLE:
+            comdb2_objpool_available_borrow(bdb_state->temp_table_pool,
+                                            (void **)&table);
             break;
         }
     }

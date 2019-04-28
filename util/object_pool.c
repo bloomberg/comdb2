@@ -355,16 +355,9 @@ int comdb2_objpool_return(comdb2_objpool_t op, void *obj)
     return objpool_return_int(op, obj);
 }
 
-int comdb2_objpool_available(comdb2_objpool_t op)
+int comdb2_objpool_available_borrow(comdb2_objpool_t op, void **objp)
 {
-    int avail;
-
-    Pthread_mutex_lock(&op->data_mutex);
-
-    avail = !exhausted(op) || !full(op);
-
-    Pthread_mutex_unlock(&op->data_mutex);
-    return avail;
+    return objpool_borrow_int(op, objp, -1, 2);
 }
 
 int comdb2_objpool_borrow(comdb2_objpool_t op, void **objp)
@@ -746,6 +739,11 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
     if (op->stopped) {
         Pthread_mutex_unlock(&op->data_mutex);
         return EPERM;
+    }
+
+    /* set force to 1 if we would block */
+    if (force == 2) {
+        force = exhausted(op) && full(op) ? 1 : 0;
     }
 
     if (exhausted(op)) {

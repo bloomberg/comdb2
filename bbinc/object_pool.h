@@ -288,18 +288,6 @@ int comdb2_objpool_setopt(comdb2_objpool_t op,
 int comdb2_objpool_return(comdb2_objpool_t op, void *obj);
 
 /*
-** Check object availability of a pool.
-**
-** Parameters
-** op  - an object pool
-**
-** Return Value
-** 0      - no available object
-** 1      - object(s) available
-*/
-int comdb2_objpool_available(comdb2_objpool_t op);
-
-/*
 ** Borrow an object from a pool.
 ** Block if the pool has no available object.
 **
@@ -334,6 +322,23 @@ int comdb2_objpool_borrow(comdb2_objpool_t op, void **objp);
 ** Other  - failed to lock/unlock mutex
 */
 int comdb2_objpool_forcedborrow(comdb2_objpool_t op, void **objp);
+
+/*
+** Borrow an object from a pool.
+** If the pool has an available object, return it.
+** Otherwise, create a new one.
+**
+** Parameters
+** op   - an object pool
+** objp - address to be written upon success
+**
+** Return Value
+** 0      - success
+** EPERM  - the pool is stopped
+** EEXIST - object returned by creation function already exists
+** Other  - failed to lock/unlock mutex
+*/
+int comdb2_objpool_available_borrow(comdb2_objpool_t op, void **objp);
 
 /*
 ** Borrow an object from a pool. Return immediately
