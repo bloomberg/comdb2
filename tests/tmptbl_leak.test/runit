@@ -40,6 +40,8 @@ check_output()
   fi
 }
 
+wait
+
 for i in `seq 1 $N` ; do
   check_output $i
 done
