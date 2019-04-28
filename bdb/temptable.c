@@ -530,15 +530,13 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             ** so don't block non-sql.
             */
             action = TMPTBL_PRIORITY;
-        } else if (bdb_state->haspriosqlthr) {
-            /* there is a priority thread. there might be a dirty read here but
-             * wouldn't matter */
-            action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
-                         ? TMPTBL_PRIORITY
-                         : TMPTBL_WAIT;
         } else {
             Pthread_mutex_lock(&bdb_state->temp_list_lock);
-            if (!bdb_state->haspriosqlthr) {
+            if (bdb_state->haspriosqlthr) {
+                action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
+                             ? TMPTBL_PRIORITY
+                             : TMPTBL_WAIT;
+            } else {
                 bdb_state->haspriosqlthr = 1;
                 bdb_state->priosqlthr = pthread_self();
                 action = TMPTBL_AVAILABLE;
@@ -1265,18 +1263,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
-        if (rc == 0) {
-            if (bdb_state->haspriosqlthr &&
-                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-                Pthread_mutex_lock(&(bdb_state->temp_list_lock));
-                if (bdb_state->haspriosqlthr &&
-                    pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-                    bdb_state->haspriosqlthr = 0;
-                    bdb_state->priosqlthr = 0;
-                }
-                Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
-            }
-        }
     }
 
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));

@@ -793,6 +793,19 @@ void done_sql_thread(void)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         free(thd);
     }
+
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    if (bdb_state->haspriosqlthr &&
+            pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+        if (bdb_state->haspriosqlthr &&
+                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+            bdb_state->haspriosqlthr = 0;
+            bdb_state->priosqlthr = 0;
+        }
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+    }
 }
 
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
