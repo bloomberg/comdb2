@@ -1829,6 +1829,20 @@ inline int bdb_is_hashtable(struct temp_table *tt)
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
 
+void bdb_temp_table_maybe_reset_priority(bdb_state_type *bdb_state)
+{
+    if (bdb_state && bdb_state->haspriosqlthr &&
+            pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+        if (bdb_state->haspriosqlthr &&
+                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+            bdb_state->haspriosqlthr = 0;
+            bdb_state->priosqlthr = 0;
+        }
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+    }
+}
+
 static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                                      struct temp_table *tbl, void *key,
                                      int keylen, void *data, int dtalen,

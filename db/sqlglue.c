@@ -794,18 +794,7 @@ void done_sql_thread(void)
         free(thd);
     }
 
-    bdb_state_type *bdb_state = thedb->bdb_env;
-
-    if (bdb_state->haspriosqlthr &&
-            pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
-        if (bdb_state->haspriosqlthr &&
-                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-            bdb_state->haspriosqlthr = 0;
-            bdb_state->priosqlthr = 0;
-        }
-        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
-    }
+    bdb_temp_table_maybe_reset_priority(thedb->bdb_env);
 }
 
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
