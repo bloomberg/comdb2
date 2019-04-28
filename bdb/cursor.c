@@ -6089,6 +6089,7 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
     if (cur->type == BDBC_DT && how == DB_FIRST && cur->pageorder) {
         /* Create my vs_stab temp_table if it doesn't exist. */
         if (cur->vs_skip == NULL) {
+            assert(cur->vs_stab == NULL);
             cur->vs_stab = bdb_temp_table_create(cur->state, bdberr);
         }
         /* Otherwise truncate it. */
@@ -6098,7 +6099,6 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
         }
 
         /* Get a cursor to the new (or truncated) table. */
-        assert(cur->vs_skip == NULL);
         cur->vs_skip =
             bdb_temp_table_cursor(cur->state, cur->vs_stab, NULL, bdberr);
 
