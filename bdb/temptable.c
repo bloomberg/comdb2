@@ -520,7 +520,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 return NULL;
         }
     } else {
-        action = TMPTBL_WAIT;
         sql_thread = pthread_getspecific(query_info_key);
 
         if (sql_thread == NULL) {
@@ -535,11 +534,11 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             if (bdb_state->haspriosqlthr) {
                 action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
                              ? TMPTBL_PRIORITY
-                             : TMPTBL_WAIT;
+                             : TMPTBL_AVAILABLE;
             } else {
                 bdb_state->haspriosqlthr = 1;
                 bdb_state->priosqlthr = pthread_self();
-                action = TMPTBL_AVAILABLE;
+                action = TMPTBL_PRIORITY;
             }
             Pthread_mutex_unlock(&bdb_state->temp_list_lock);
         }
@@ -549,8 +548,9 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
                                         (void **)&table);
             break;
-        case TMPTBL_WAIT:
-            comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
+        case TMPTBL_WAIT: /* NOTE: No longer used, for now. */
+            comdb2_objpool_borrow(bdb_state->temp_table_pool,
+                                  (void **)&table);
             break;
         case TMPTBL_AVAILABLE:
             comdb2_objpool_available_borrow(bdb_state->temp_table_pool,
@@ -1829,7 +1829,7 @@ inline int bdb_is_hashtable(struct temp_table *tt)
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
 
-void bdb_temp_table_maybe_reset_priority(bdb_state_type *bdb_state)
+void bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state)
 {
     if (bdb_state && bdb_state->haspriosqlthr &&
             pthread_equal(pthread_self(), bdb_state->priosqlthr)) {

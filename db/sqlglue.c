@@ -794,7 +794,7 @@ void done_sql_thread(void)
         free(thd);
     }
 
-    bdb_temp_table_maybe_reset_priority(thedb->bdb_env);
+    bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env);
 }
 
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
