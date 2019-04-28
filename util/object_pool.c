@@ -678,7 +678,8 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         rc = 0;
         if (op->del_fn != NULL)
             rc = op->del_fn(obj, op->del_arg);
-        logmsg(LOGMSG_INFO, "destroyed a forced pool %s object %p\n", op->name, obj);
+        logmsg(LOGMSG_INFO, "destroyed a forced pool %s object %p (%d)\n",
+               op->name, obj, rc);
         OP_DBG(op, "object deleted");
     } else if (rec->active == 0) {
         OP_DBG(op, "error- double return");
@@ -774,6 +775,9 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                     op->npeakobjs = op->nforcedobjs + op->nobjs;
                 ++op->nborrows;
             }
+            logmsg(LOGMSG_INFO, "created a forced pool %s object %p (%d)\n",
+                   op->name, *objp, rc);
+            OP_DBG(op, "forced create object done");
             Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
