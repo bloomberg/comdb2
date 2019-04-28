@@ -79,32 +79,37 @@ if [[ $tempdata1 =~ $regex1 ]]; then
 fi
 
 tempdata2=$(cat temptable2.out)
-regex2="# returns            : ([0-9]+)"
-regex3="# borrows            : ([0-9]+)"
+regex2="Temptable pool not enabled"
+regex3="# returns            : ([0-9]+)"
+regex4="# borrows            : ([0-9]+)"
 
 if [[ $tempdata2 =~ $regex2 ]]; then
-  num1="${BASH_REMATCH[1]}"
+  echo "temptable pool is disabled, check skipped"
+else
+  if [[ $tempdata2 =~ $regex3 ]]; then
+    num1="${BASH_REMATCH[1]}"
 
-  if [[ -n $num1 ]]; then
-    if [[ $tempdata2 =~ $regex3 ]]; then
-      num2="${BASH_REMATCH[1]}"
+    if [[ -n $num1 ]]; then
+      if [[ $tempdata2 =~ $regex4 ]]; then
+        num2="${BASH_REMATCH[1]}"
 
-      if [[ -n $num2 ]]; then
-        if [[ $num1 -ne $num2 ]]; then
-          echo "temptable pool return count $num1 does not match temptable pool borrow count $num2"
+        if [[ -n $num2 ]]; then
+          if [[ $num1 -ne $num2 ]]; then
+            echo "temptable pool return count $num1 does not match temptable pool borrow count $num2"
+            echo "Failed."
+            exit 1
+          fi
+        else
+          echo "missing temptable pool borrow count"
           echo "Failed."
           exit 1
         fi
-      else
-        echo "missing temptable pool borrow count"
-        echo "Failed."
-        exit 1
       fi
+    else
+      echo "missing temptable pool return count"
+      echo "Failed."
+      exit 1
     fi
-  else
-    echo "missing temptable pool return count"
-    echo "Failed."
-    exit 1
   fi
 fi
 
