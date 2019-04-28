@@ -3456,6 +3456,11 @@ int sqlite3BtreeOpen(
         Pthread_mutex_lock(bt->temp_table_mtx);
         sqlite3HashInit(&bt->temp_tables);
         Pthread_mutex_unlock(bt->temp_table_mtx);
+        thd->bttmp = bt;
+        listc_init(&bt->cursors, offsetof(BtCursor, lnk));
+        if (flags & BTREE_UNORDERED) {
+            bt->is_hashtable = 1;
+        }
         /*
         ** NOTE: There are no temporary tables whatsoever.  There must be a
         **       "sqlite_temp_master" table before anything else, because it
@@ -3470,11 +3475,6 @@ int sqlite3BtreeOpen(
             sqlite3HashClear(&bt->temp_tables);
             Pthread_mutex_unlock(bt->temp_table_mtx);
             goto done;
-        }
-        thd->bttmp = bt;
-        listc_init(&bt->cursors, offsetof(BtCursor, lnk));
-        if (flags & BTREE_UNORDERED) {
-            bt->is_hashtable = 1;
         }
         *ppBtree = bt;
     } else if (zFilename) {
