@@ -6098,6 +6098,7 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
         }
 
         /* Get a cursor to the new (or truncated) table. */
+        assert(cur->vs_skip == NULL);
         cur->vs_skip =
             bdb_temp_table_cursor(cur->state, cur->vs_stab, NULL, bdberr);
 
