@@ -621,8 +621,10 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         logmsg(LOGMSG_USER, "Cur %p opened with no shadow tran\n", cur);
     }
 
-    if (bdb_state->isopen == 0)
+    if (bdb_state->isopen == 0) {
+        free(pcur_ifn);
         return NULL;
+    }
 
     if (ixnum >= 0) {
         cur->idx = ixnum;
@@ -634,6 +636,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
                 logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
                        bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
+                free(pcur_ifn);
                 return NULL;
             }
         }
