@@ -22,9 +22,6 @@ for i in `seq 1 $N` ; do
   cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
 done
 
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
-
 check_output()
 {
   testcase_output=$(cat q_$1.out)
@@ -41,6 +38,9 @@ check_output()
 }
 
 wait
+
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
 
 for i in `seq 1 $N` ; do
   check_output $i
