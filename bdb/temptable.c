@@ -1279,26 +1279,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         }
     }
 
-#ifdef _LINUX_SOURCE
-    if (gbl_debug_temptables) {
-        char *sql;
-        sql = pthread_getspecific(current_sql_query_key);
-        if (sql) {
-            logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s\n",
-                   tbl, rc, sql);
-        } else {
-            int nframes;
-            void *stack[100];
-            logmsg(LOGMSG_USER, "closing a temp table object %p (%d): ", tbl,
-                   rc);
-            nframes = backtrace(stack, 100);
-            for (int i = 0; i < nframes; i++)
-               logmsg(LOGMSG_USER, "%p ", stack[i]);
-           logmsg(LOGMSG_USER, "\n");
-        }
-    }
-#endif
-
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));
     return rc;
 }
@@ -1410,6 +1390,26 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     /* close the environments*/
     rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
+
+#ifdef _LINUX_SOURCE
+    if (gbl_debug_temptables) {
+        char *sql;
+        sql = pthread_getspecific(current_sql_query_key);
+        if (sql) {
+            logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s\n",
+                   tbl, rc, sql);
+        } else {
+            int nframes;
+            void *stack[100];
+            logmsg(LOGMSG_USER, "closing a temp table object %p (%d): ", tbl,
+                   rc);
+            nframes = backtrace(stack, 100);
+            for (int i = 0; i < nframes; i++)
+               logmsg(LOGMSG_USER, "%p ", stack[i]);
+           logmsg(LOGMSG_USER, "\n");
+        }
+    }
+#endif
 
     free(tbl);
 
