@@ -6,7 +6,7 @@
 # args
 # <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
 echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
 for required in $vars; do
     q=${!required}
     echo "$required=$q" 
@@ -16,36 +16,17 @@ for required in $vars; do
     fi
 done
 
-dbname=$1
-srcdbname=srcdb$DBNAME
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$srcdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively srcdb config -- needed to setup srcdb
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-
-#setup remote db
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
-
-
 #run tests
 echo "Starting tests"
-echo ./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
-./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
+echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
+./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
+#echo ./writes_remsql_names.sh $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBNAME $SECONDARY_DBDIR $TESTDIR
+#./writes_remsql_names.sh $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBNAME $SECONDARY_DBDIR $TESTDIR
 result=$?
 
 if (( $result == 0 )) ; then
    successful=1
 fi
-
-$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
-
-
 
 if (( $result != 0 )) ; then
    echo "FAILURE"
@@ -54,6 +35,3 @@ fi
 
 
 echo "SUCCESS"
-DBNAME=$
-SRCDBNAME=srcdb$DBNAME
-DBDIR=srcdb$DBDIR

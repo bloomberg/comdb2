@@ -350,6 +350,7 @@ setup_db() {
 setup_db
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    cd -
     sec_vars="SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_OPTIONS"
     for required in $sec_vars; do
         q=${!required}
@@ -363,6 +364,7 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
 
     # setup secondary db for the test, if specified
     DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db
+    cd -
 fi
 
 
