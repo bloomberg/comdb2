@@ -605,7 +605,7 @@ void bdb_newsi_mempool_stat();
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 void *clean_exit_thd(void *unused)
 {
-    if (thedb->bdb_env == NULL)
+    if (!gbl_ready)
         return NULL;
 
     Pthread_mutex_lock(&exiting_lock);
