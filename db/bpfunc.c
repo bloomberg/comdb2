@@ -181,7 +181,7 @@ int success_create_timepart(void *tran, bpfunc_t *func, struct errstat *err)
                         &bdberr);
     if (rc)
         errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d",
-                           __func__, rc);
+                           __func__, rc, bdberr);
     return rc;
 }
 

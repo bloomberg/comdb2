@@ -148,6 +148,7 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
+int gbl_allow_lua_exec_with_ddl = 0;
 int gbl_allow_lua_dynamic_libs = 0;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
@@ -763,7 +764,7 @@ int register_db_tunables(struct dbenv *tbl);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
-int run_init_plugins(void);
+int run_init_plugins(int phase);
 
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -1403,8 +1404,12 @@ int clear_temp_tables(void)
 }
 
 void clean_exit_sigwrap(int signum) {
-   signal(SIGTERM, SIG_DFL);
-   clean_exit();
+    void *clean_exit_thd(void *unused);
+    signal(SIGTERM, SIG_DFL);
+
+    /* Call the wrapper which checks the exit flag
+       to avoid multiple clean-exit's. */
+    clean_exit_thd(NULL);
 }
 
 static void free_sqlite_table(struct dbenv *dbenv)
@@ -1651,12 +1656,6 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->nix = dyns_get_idx_count();
     if (tbl->nix > MAXINDEX) {
         logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", tbl->nix,
-                tblname);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
-    if (tbl->nix < 0) {
-        logmsg(LOGMSG_ERROR, "too few indices %d in csc schema %s\n", tbl->nix,
                 tblname);
         cleanup_newdb(tbl);
         return NULL;
@@ -3248,6 +3247,11 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
+    if (mach_class_init()) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
+        exit(1);
+    }
+
     handle_cmdline_options(argc, argv, &lrlname);
 
     if (gbl_create_mode) {        /*  10  */
@@ -3375,6 +3379,8 @@ static int init(int argc, char **argv)
     rc = schema_init();
     if (rc)
         return -1;
+
+    run_init_plugins(COMDB2_PLUGIN_INITIALIZER_PRE);
 
     /* open database environment, and all dbs */
     thedb = newdbenv(dbname, lrlname);
@@ -5316,7 +5322,7 @@ int main(int argc, char **argv)
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
 
-    if (run_init_plugins()) {
+    if (run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST)) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
         exit(1);
     }

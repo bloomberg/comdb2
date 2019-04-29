@@ -562,8 +562,6 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
     return 0;
 }
 
-int sql_testrun(char *sql, int sqllen);
-
 void fastcount(char *tablename);
 
 /* Seem to need this all over the place. */
@@ -605,7 +603,7 @@ void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
-static void *clean_exit_thd(void *unused)
+void *clean_exit_thd(void *unused)
 {
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
@@ -651,7 +649,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_t thd_attr;
 
         Pthread_attr_init(&thd_attr);
-        Pthread_attr_setstacksize(&thd_attr, 128 * 1024);
+        /* Stack overflows with 128KiB stack size in Debug build.
+           Slightly bump it up. */
+        Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
         int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
@@ -2795,8 +2795,6 @@ clipper_usage:
            logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
-        } else if (tokcmp(tok, ltok, "testrun") == 0) {
-            sql_testrun(&line[st], lline - st);
         } else if (tokcmp(tok, ltok, "debug") == 0) {
             extern int gbl_debug_sql_opcodes;
             on_off_trap(line, lline, &st, &ltok, "SQL debug mode", "sql debug",

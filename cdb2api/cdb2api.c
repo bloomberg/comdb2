@@ -2252,7 +2252,8 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
 static int cdb2_random_int()
 {
     static __thread unsigned short rand_state[3] = {0};
-    if (rand_state[0] == 0) {
+    static __thread unsigned short do_once = 0;
+    if (!do_once) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
         /* Initialize rand_state once per thread
@@ -2265,6 +2266,7 @@ static int cdb2_random_int()
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
+        do_once = 1;
     }
     return nrand48(rand_state);
 }
@@ -2284,6 +2286,20 @@ static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
     return 0;
 }
 
+/* Get random value from range 0 to max-1 excluding 1 value */
+static int getRandomExclude(int max, int exclude)
+{
+    int val = 0;
+    if (max < 2)
+        return 0;
+    for (int i = 0; i < 10; i++) {
+        val = cdb2_random_int() % max;
+        if (val != exclude)
+            return val;
+    }
+    return val;
+}
+
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
     if (hndl->sb) {
@@ -2300,10 +2316,11 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
+        hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
+        hndl->node_seq =
+            getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
@@ -2460,18 +2477,18 @@ retry:
             }
             CDB2QUERY query = CDB2__QUERY__INIT;
             query.spcmd = cmd;
-            int len = cdb2__query__get_packed_size(&query);
-            unsigned char *locbuf = malloc(len + 1);
+            int loc_len = cdb2__query__get_packed_size(&query);
+            unsigned char *locbuf = malloc(loc_len + 1);
 
             cdb2__query__pack(&query, locbuf);
 
             struct newsqlheader hdr = {.type =
                                            ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
                                        .compression = ntohl(0),
-                                       .length = ntohl(len)};
+                                       .length = ntohl(loc_len)};
 
             sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-            sbuf2write((char *)locbuf, len, hndl->sb);
+            sbuf2write((char *)locbuf, loc_len, hndl->sb);
 
             int rc = sbuf2flush(hndl->sb);
             free(locbuf);

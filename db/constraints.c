@@ -653,7 +653,7 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
         int upd_cascade = 0;
         struct backward_ct *bct = &ctrq->ctop.bwdct;
         struct dbtable *currdb = iq->usedb; /* make a copy */
-        char *skey = bct->key ? bct->key : "";
+        char *skey = bct ? bct->key : "";
 
         if (is_delete_op(bct->optype) && (bct->flags & CT_DEL_CASCADE))
             del_cascade = 1;

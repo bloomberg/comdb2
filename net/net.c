@@ -4683,11 +4683,12 @@ void net_subnet_status()
 {
     int i = 0;
     Pthread_mutex_lock(&subnet_mtx);
+    char my_buf[30];
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                subnet_disabled[i] ? "disabled" : "enabled\n",
                subnet_disabled[i] ? " at " : "",
-               subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+               subnet_disabled[i] ? ctime_r(&subnet_disabled[i], my_buf) : "");
     }
     Pthread_mutex_unlock(&subnet_mtx);
 }
@@ -4870,8 +4871,8 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         } else {
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
-                                 "'%s': gethostbyname '%s' addr %d\n", __func__,
-                                 rephostname, *addr);
+                                 "'%s': gethostbyname '%s' addr %x\n", __func__,
+                                 rephostname, (unsigned) addr->s_addr);
             }
             break;
         }

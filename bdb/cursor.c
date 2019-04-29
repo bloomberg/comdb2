@@ -94,6 +94,7 @@ as long as there was a successful move in the past
 #include "logmsg.h"
 #include "util.h"
 #include "tohex.h"
+#include "thrman.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)
@@ -2144,12 +2145,22 @@ static void *pglogs_asof_thread(void *arg)
     static int fileid_max_count = 0;
     struct pglogs_queue_heads qh = {0};
     struct commit_list *lcommit, *bcommit, *next;
-    int pollms, ret;
+    int pollms, ret, haslock = 0;
+    DB_ENV *dbenv = bdb_state->dbenv;
+
+    /* Register the thread to the thread manager.
+       The thread accesses bdb_state in a loop.
+       Therefore we need to make sure that clean_exit
+       waits for the thread to exit before closing the bdb env. */
+    thrman_register(THRTYPE_PGLOGS_ASOF);
 
     /* We need to stop this thread when truncating the log */
-    bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
+    if (!db_is_stopped()) {
+        haslock = 1;
+        dbenv->lock_recovery_lock(dbenv);
+    }
 
-    while (1) {
+    while (!db_is_stopped()) {
         // Remove list
         int count, i, dont_poll = 0;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
@@ -2332,7 +2343,7 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
-        bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
+        dbenv->unlock_recovery_lock(dbenv);
         clear_newsi_pool();
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
@@ -2340,9 +2351,11 @@ static void *pglogs_asof_thread(void *arg)
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
-        bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
+        dbenv->lock_recovery_lock(dbenv);
     }
-    bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
+
+    if (haslock)
+        dbenv->unlock_recovery_lock(dbenv);
 
     return NULL;
 }

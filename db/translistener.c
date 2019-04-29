@@ -228,14 +228,6 @@ void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle)
     free(javasp_trans_handle);
 }
 
-int javasp_trans_misc_trigger(struct javasp_trans_state *javasp_trans_handle,
-                              int event)
-{
-    if (javasp_trans_handle == NULL)
-        return 0;
-    return 0;
-}
-
 struct byte_buffer {
     unsigned char *bytes;
     int used;

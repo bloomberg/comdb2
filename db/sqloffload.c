@@ -154,18 +154,18 @@ int osql_open(struct dbenv *dbenv)
         return -2;
     }
 
+    rc = osql_blkseq_init();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failing to init blocksql blockseq module\n",
+               __func__);
+    }
+
     /* create comm endpoint and kickoff the communication */
     rc = osql_comm_init(dbenv);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to init network\n", __func__);
         osql_repository_destroy();
         return -2;
-    }
-
-    rc = osql_blkseq_init();
-    if (rc) {
-        fprintf(stderr, "%s failing to init blocksql blockseq module\n",
-                __func__);
     }
 
     g_osql_ready = 1;
@@ -733,10 +733,10 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             if (write_scdone) {
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
-                scdone_t type = -1;
+                scdone_t type = invalid;
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
-                    type = -1;
+                    type = invalid;
                 } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
@@ -747,7 +747,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = rename_table;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type < 0 || s->db == NULL) {
+                if (type == invalid || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {

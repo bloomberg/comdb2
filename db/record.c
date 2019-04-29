@@ -232,7 +232,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (rc != 0) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
-                  "invalid tag description '%.*s'", taglen, tagdescr);
+                  "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -282,11 +282,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
         if (mismatched_size) {
             if (iq->debug)
-                reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n",
+                reqprintf(iq, "BAD DTA LEN %zu TAG %s EXPECTS DTALEN %u\n",
                           reclen, tag, expected_dat_len);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u",
+                      "bad data length %zu tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -424,7 +424,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             retrc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
 
         if (iq->debug) {
-            reqprintf(iq, "dat_add RRN %d GENID 0x%llx DTALEN %u RC %d DATA ",
+            reqprintf(iq, "dat_add RRN %d GENID 0x%llx DTALEN %zu RC %d DATA ",
                       *rrn, *genid, od_len, retrc);
             reqdumphex(iq, od_dta, od_len);
         }
@@ -445,7 +445,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
                              *genid, IS_ODH_READY(blob));
             if (iq->debug) {
-                reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length,
+                reqprintf(iq, "blob_add LEN %zu RC %d DATA ", blob->length,
                           retrc);
                 reqdumphex(iq, blob->data, blob->length);
             }
@@ -700,8 +700,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     if (p_buf_vrec && (p_buf_vrec_end - p_buf_vrec) != reclen) {
         if (iq->debug)
-            reqprintf(iq, "REC LEN %u DOES NOT EQUAL VREC LEN %u", reclen,
-                      p_buf_vrec_end - p_buf_vrec);
+            reqprintf(iq, "REC LEN %zu DOES NOT EQUAL VREC LEN %td", reclen,
+                      (p_buf_vrec_end - p_buf_vrec));
         retrc = ERR_BADREQ;
         goto err;
     }
@@ -814,10 +814,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         if (mismatched_size) {
             if (iq->debug)
-                reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n",
+                reqprintf(iq, "BAD DTA LEN %zu TAG %s EXPECTS DTALEN %u\n",
                           reclen, tag, expected_dat_len);
             reqerrstr(iq, COMDB2_UPD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u",
+                      "bad data length %zu tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -918,7 +918,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                                      &vgenid, old_dta, &fndlen, od_len, trans);
         if (iq->debug) {
             reqprintf(iq, "ix_find_by_primkey_tran RRN %d FND RRN %d "
-                          "GENID 0x%llx DTALEN %u FNDLEN %u PRIMKEY ",
+                          "GENID 0x%llx DTALEN %zu FNDLEN %u PRIMKEY ",
                       rrn, fndrrn, vgenid, od_len, fndlen);
             reqdumphex(iq, primkey, primkeysz);
             reqmoref(iq, " RC %d", rc);
@@ -943,7 +943,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (iq->debug)
                 reqprintf(
                     iq, "ix_find_ver_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
-                        "DTALEN %u FNDLEN %u VER %d RC %d",
+                        "DTALEN %zu FNDLEN %u VER %d RC %d",
                     rrn, vgenid, od_len, fndlen, ver, rc);
 
             if (rc == 0 && ver == iq->usedb->schema_version) {
@@ -967,7 +967,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                                            od_len, trans);
         if (iq->debug)
             reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
-                          "DTALEN %u FNDLEN %u RC %d",
+                          "DTALEN %zu FNDLEN %u RC %d",
                       rrn, vgenid, od_len, fndlen, rc);
         // solutions: 
         // 1. get this read record done under a write lock
@@ -975,7 +975,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
     if (rc != 0 || od_len != fndlen) {
         if (iq->debug)
-            reqprintf(iq, "FIND OLD RECORD FAILED od_len %u fndlen %u RC %d",
+            reqprintf(iq, "FIND OLD RECORD FAILED od_len %zu fndlen %u RC %d",
                       od_len, fndlen, rc);
         reqerrstr(iq, COMDB2_UPD_RC_UNKN_REC, "find old record failed");
         *opfailcode = OP_FAILED_VERIFY;
@@ -1594,7 +1594,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                                      &fndlen, od_len, trans);
         if (iq->debug)
             reqprintf(iq, "ix_find_by_primkey_tran RRN %d FND RRN %d "
-                          "GENID 0x%llx DTALEN %u FNDLEN %u RC %d",
+                          "GENID 0x%llx DTALEN %zu FNDLEN %u RC %d",
                       rrn, fndrrn, fndgenid, od_len, fndlen, rc);
         if (rc == 0 && rrn != fndrrn) {
             *opfailcode = OP_FAILED_VERIFY;
@@ -1607,14 +1607,14 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                                              od_len, trans);
         if (iq->debug)
             reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
-                          "DTALEN %u FNDLEN %u RC %d",
+                          "DTALEN %zu FNDLEN %u RC %d",
                       rrn, genid, od_len, fndlen, rc);
     }
 
     /* Must handle deadlock correctly */
     if (rc != 0 || od_len != fndlen) {
         if (iq->debug)
-            reqprintf(iq, "FIND OLD RECORD FAILED od_len %u fndlen %u RC %d",
+            reqprintf(iq, "FIND OLD RECORD FAILED od_len %zu fndlen %u RC %d",
                       od_len, fndlen, rc);
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_DEL_RC_UNKN_REC, "find old record failed");
@@ -2043,7 +2043,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             /* delete */
             rc = blob_del(iq, trans, 2, oldgenid, blobn);
             if (iq->debug) {
-                reqprintf(iq, "blob_del genid 0x%llx rc %d", blobn, rc);
+                reqprintf(iq, "blob_del genid 0x%llx blob %d rc %d", oldgenid, blobn, rc);
             }
 
             if (rc != IX_NOTFND && rc != 0) /* like in upd_record() */
@@ -2391,7 +2391,7 @@ static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
         if (blobs[i].exists && blobs[i].length != -2 &&
             blobs[i].length > MAXBLOBLENGTH) {
             reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
-                      "blob size (%d) exceeds maximum (%d)", blobs[i].length,
+                      "blob size (%zu) exceeds maximum (%d)", blobs[i].length,
                       MAXBLOBLENGTH);
             return ERR_BLOB_TOO_LARGE;
         }
@@ -2520,7 +2520,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (rc != 0) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
-                  "invalid tag description '%.*s'", taglen, tagdescr);
+                  "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -2557,11 +2557,11 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     expected_dat_len = get_size_of_schema(dbname_schema);
     if ((size_t)expected_dat_len > reclen) {
         if (iq->debug)
-            reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n", reclen,
+            reqprintf(iq, "BAD DTA LEN %zu TAG %s EXPECTS DTALEN %u\n", reclen,
                       tag, expected_dat_len);
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
-                  "bad data length %u tag '%s' expects data length %u\n",
+                  "bad data length %zu tag '%s' expects data length %u\n",
                   reclen, tag, expected_dat_len);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;

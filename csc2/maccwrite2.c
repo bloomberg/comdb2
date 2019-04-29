@@ -81,7 +81,7 @@ int compute_all_data(int tidx)
 
     for (i = 0; i < tables[tidx].nsym; i++) {
         if (i == un_start[tables[tidx].sym[i].un_idx]) {
-
+            /* do nothing */
         } else if (un_reset[i]) {
             off = tables[tidx].sym[un_start[tables[tidx].sym[i].un_idx]].off;
         }

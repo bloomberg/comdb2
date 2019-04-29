@@ -59,7 +59,7 @@ if [[ -n ${DEBUGGER} ]]; then
         fi
         ;;
     callgrind)
-        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
         if [[ -n ${COLLECTFUNC} ]]; then
             # collect info on $COLLECTFUNC only
             DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
@@ -382,8 +382,10 @@ if [[ $debug -eq 1 ]]; then
         echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
         echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
         echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
+        echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
         echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
     fi
+    echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
     echo "export PATH=${paths}"':${PATH}' >> $SETENV
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV

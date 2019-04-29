@@ -147,7 +147,7 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 
     if (buf->qnamelen > sizeof(qname) - 1) {
         if (iq->debug)
-            reqprintf(iq, "NAME TOO LONG %d>%d", buf->qnamelen,
+            reqprintf(iq, "NAME TOO LONG %u>%zu", buf->qnamelen,
                       sizeof(qname) - 1);
         reqerrstr(iq, COMDB2_CUST_RC_NAME_SZ, "queue name to long %d>%d",
                   buf->qnamelen, sizeof(qname) - 1);
@@ -465,7 +465,7 @@ static int forward_longblock_to_master(struct ireq *iq,
     /*have a valid master to pass this off to. */
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%d\n",
+                      "%zu\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
     if (iq->is_socketrequest) {
         if (iq->sb == NULL) {
@@ -525,7 +525,7 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%d\n",
+                      "%zu\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
 
     if (iq->is_socketrequest) {
@@ -4186,7 +4186,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 } else if (qblob.length != blob->length) {
                     reqerrstr(iq, COMDB2_BLOB_RC_RCV_BAD_LENGTH,
                               "bad fragment for blob %d gives length %u "
-                              "expected %u",
+                              "expected %zu",
                               qblob.blobno, qblob.length, blob->length);
                     rc = ERR_BADREQ;
                     GOTOBACKOUT;
@@ -4196,7 +4196,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     if (qblob.frag_len + blob->collected > blob->length) {
                         reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_MUCH,
                                   "received too much data for blob %d "
-                                  "(I had %u/%u bytes, received another "
+                                  "(I had %zu/%zu bytes, received another "
                                   "%u)",
                                   qblob.blobno, blob->collected, blob->length,
                                   qblob.frag_len);
@@ -4873,18 +4873,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
         if (rc)
             GOTOBACKOUT;
-    }
-
-    /* Trigger JAVASP_TRANS_LISTEN_BEFORE_COMMIT. */
-    thrman_wheref(thr_self, "%s [javasp pre commit hooks]", req2a(iq->opcode));
-    rc = javasp_trans_misc_trigger(javasp_trans_handle,
-                                   JAVASP_TRANS_LISTEN_BEFORE_COMMIT);
-    if (rc != 0) {
-        err.blockop_num = 0;
-        err.errcode = OP_FAILED_INTERNAL + ERR_JAVASP_ABORT_OP;
-        err.ixnum = -1;
-        numerrs = 1;
-        GOTOBACKOUT;
     }
 
     Pthread_rwlock_rdlock(&commit_lock);
@@ -5825,13 +5813,7 @@ add_blkseq:
     n_commits++;
     Pthread_mutex_unlock(&commit_stat_lk);
 
-    /* Trigger JAVASP_TRANS_LISTEN_AFTER_COMMIT.  Doesn't really matter what
-     * it does since the transaction is committed. */
     if (outrc == 0) {
-        thrman_wheref(thr_self, "%s [javasp post commit]", req2a(iq->opcode));
-        javasp_trans_misc_trigger(javasp_trans_handle,
-                                  JAVASP_TRANS_LISTEN_AFTER_COMMIT);
-
         if (iq->__limits.maxcost_warn &&
             (iq->cost > iq->__limits.maxcost_warn)) {
             logmsg(LOGMSG_WARN, "[%s] warning: transaction exceeded cost threshold "

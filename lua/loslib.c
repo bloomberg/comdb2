@@ -141,12 +141,13 @@ static int os_date (lua_State *L) {
   const char *s = luaL_optstring(L, 1, "%c");
   time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
   struct tm *stm;
+  struct tm mytime;
   if (*s == '!') {  /* UTC? */
-    stm = gmtime(&t);
+    stm = gmtime_r(&t, &mytime);
     s++;  /* skip `!' */
   }
   else
-    stm = localtime(&t);
+    stm = localtime_r(&t, &mytime);
   if (stm == NULL)  /* invalid date? */
     lua_pushnil(L);
   else if (strcmp(s, "*t") == 0) {

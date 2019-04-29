@@ -38,6 +38,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;
@@ -234,6 +235,7 @@ extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
+extern char *gbl_machine_class;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -271,7 +273,7 @@ void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
 #include <stdbool.h>
 extern bool gbl_rcache;
 
-static char *name = NULL;
+static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;
 

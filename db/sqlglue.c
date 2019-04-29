@@ -3387,7 +3387,7 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 {
     /* backend takes care of this */
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
-                "SetSafetyLevel(pBt %d, level %d, int fullsync)     = %s\n",
+                "SetSafetyLevel(pBt %d, level %d, fullsync %d)     = %s\n",
                 pBt->btreeid, level, fullsync, sqlite3ErrStr(SQLITE_OK));
     return SQLITE_OK;
 }
@@ -3986,10 +3986,8 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
     if (pBt->is_temporary) {
-#ifndef NDEBUG
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-#endif
-        assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+        // TODO: The thread pool causes this to be violated.
+        // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         struct temptable_entry *pEntry = sqlite3HashFind(
@@ -5135,7 +5133,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         return rc;
     }
 
-    assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+    // TODO: The thread pool causes this to be violated.
+    // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
     Pthread_mutex_lock(pBt->temp_table_mtx);
 
     if (!pBt->is_temporary) { /* must go through comdb2 to do this */
@@ -8808,17 +8807,6 @@ done:
                 pCur->cursorid, sqlite3ErrStr(rc));
     return rc;
 }
-
-/*
-** This function is a no-op if cursor pCur does not point to a valid row.
-** Otherwise, if pCur is valid, configure it so that the next call to
-** sqlite3BtreeNext() is a no-op.
-*/
-#ifndef SQLITE_OMIT_WINDOWFUNC
-void sqlite3BtreeSkipNext(BtCursor *pCur){
-  /* TODO: Do something here. */
-}
-#endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*
 ** Advance the cursor to the next entry in the database. 

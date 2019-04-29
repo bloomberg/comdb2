@@ -366,7 +366,8 @@ std::string getDTString() {
     char buffer[80];
 
     time(&rawtime);
-    timeinfo = localtime(&rawtime);
+    struct tm mytime;
+    timeinfo = localtime_r(&rawtime, &mytime);
 
     strftime(buffer, sizeof(buffer), "%Y%m%d%I%M%S", timeinfo);
     std::string str(buffer);
