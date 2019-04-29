@@ -1358,11 +1358,13 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
+        extern int gbl_sql_cursor_count;
         extern int gbl_temptable_count;
         extern int gbl_sql_temptable_count;
         logmsg(LOGMSG_USER, 
-                "Overall temptable count is %d, SQL temptable count is %d\n",
-                gbl_temptable_count, gbl_sql_temptable_count);
+                "Overall temptable count is %d, SQL temptable count is %d, "
+                "SQL cursor count is %d\n", gbl_temptable_count,
+                gbl_sql_temptable_count, gbl_sql_cursor_count);
     }
 
     /*
