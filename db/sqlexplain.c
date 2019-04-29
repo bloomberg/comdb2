@@ -554,7 +554,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "R%d = %d", op->p2, op->p1);
         break;
     case OP_Int64:
-        strbuf_appendf(out, "R%d = %"PRId64, op->p2, op->p4.pI64);
+        strbuf_appendf(out, "R%d = %lld", op->p2, (long long) *op->p4.pI64);
         break;
     case OP_Real:
         strbuf_appendf(out, "R%d = %f", op->p2, *op->p4.pReal);
