@@ -683,7 +683,7 @@ static void *netconndumptime_value(void *context)
     return val;
 }
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 static int deadlock_policy_override_update(void *context, void *value)

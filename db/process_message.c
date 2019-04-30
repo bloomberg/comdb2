@@ -41,6 +41,7 @@ extern int __berkdb_read_alarm_ms;
 #include <memory_sync.h>
 
 #include <bdb_api.h>
+#include <bdb_int.h>
 #ifdef _LINUX_SOURCE
 #endif
 #include <sqliteInt.h>
@@ -1356,7 +1357,7 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
-        comdb2_objpool_clear(thedb->bdb_env->temp_table_pool);
+        bdb_temp_table_clear_pool(thedb->bdb_env);
         logmsg(LOGMSG_USER, "Temptable pool cleared.\n");
     }
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
@@ -4383,7 +4384,6 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             gbl_deadlock_policy_override = toknum(tok, ltok);
-            const char *deadlock_policy_str(int policy);
             logmsg(LOGMSG_USER, "Set deadlock policy to %s\n",
                    deadlock_policy_str(gbl_deadlock_policy_override));
         } else {
