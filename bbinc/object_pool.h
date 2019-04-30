@@ -241,6 +241,18 @@ int comdb2_objpool_stop(comdb2_objpool_t op);
 int comdb2_objpool_resume(comdb2_objpool_t op);
 
 /*
+** Clears an object pool.
+**
+** Parameters
+** op - an object pool
+**
+** Return Value
+** 0      - success
+** Other  - failed to lock/unlock mutex
+*/
+int comdb2_objpool_clear(comdb2_objpool_t op);
+
+/*
 ** Destroy an object pool.
 **
 ** Parameters

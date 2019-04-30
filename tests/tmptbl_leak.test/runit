@@ -39,6 +39,7 @@ check_output()
 
 wait
 
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_clear')" &> temptable0.out
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
 

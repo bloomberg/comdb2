@@ -1355,6 +1355,10 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
+        comdb2_objpool_clear(thedb->bdb_env->temp_table_pool);
+        logmsg(LOGMSG_USER, "Temptable pool cleared.\n");
+    }
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
         extern int gbl_sql_cursor_count;
         extern int gbl_temptable_count;

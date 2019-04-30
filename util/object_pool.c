@@ -210,6 +210,8 @@ static void objpool_rand_get(comdb2_objpool_t op, void **objp);
 static void objpool_rand_evict(comdb2_objpool_t op);
 static void objpool_rand_clear(comdb2_objpool_t op);
 
+static void objpool_evict_all_int(comdb2_objpool_t op);
+
 /*************************
 ** stats-display helpers *
 **************************/
@@ -257,6 +259,12 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
     Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 0;
     Pthread_mutex_unlock(&op->data_mutex);
+    return 0;
+}
+
+int comdb2_objpool_clear(comdb2_objpool_t op)
+{
+    objpool_evict_all_int(op);
     return 0;
 }
 
@@ -1065,6 +1073,38 @@ static void objpool_rand_clear(comdb2_objpool_t op)
             op->del_fn(op->objs[indx], op->del_arg);
 }
 // ^^^^^^get/put impl
+
+static void objpool_evict_all_int(comdb2_objpool_t op)
+{
+    int indx;
+    pooled_object *rec;
+    void *object;
+
+    Pthread_mutex_lock(&op->data_mutex);
+
+    for (indx = 0; indx != nidles(op); ++indx) {
+        object = op->objs[indx];
+        rec = (pooled_object *)hash_find(op->history, &object);
+
+        hash_del(op->history, rec);
+        free(rec);
+        if (op->del_fn != NULL)
+            op->del_fn(object, op->del_arg);
+        --op->nobjs;
+
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
+        OP_DBG(op, "object evicted");
+    }
+
+    if (indx != 0) {
+        memcpy(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
+
+        op->in -= indx;
+        op->out = op->in - 1;
+    }
+
+    Pthread_mutex_unlock(&op->data_mutex);
+}
 
 static int opt_capacity(comdb2_objpool_t op, int value)
 {
