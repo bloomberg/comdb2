@@ -81,6 +81,15 @@ struct hashobj {
 
 int gbl_temptable_count;
 
+static void dump_stack_backtrace(void)
+{
+    int nframes;
+    void *stack[100];
+    nframes = backtrace(stack, 100);
+    for (int i = 0; i < nframes; i++)
+        logmsg(LOGMSG_USER, "%p ", stack[i]);
+}
+
 unsigned int hashfunc(const void *key, int len)
 {
     struct hashobj *o = (struct hashobj *)key;
@@ -462,11 +471,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         char *sql = pthread_getspecific(current_sql_query_key);
         logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, ",
                tbl, rc, sql);
-        int nframes;
-        void *stack[100];
-        nframes = backtrace(stack, 100);
-        for (int i = 0; i < nframes; i++)
-            logmsg(LOGMSG_USER, "%p ", stack[i]);
+        dump_stack_backtrace();
         logmsg(LOGMSG_USER, "\n");
     }
 #endif
@@ -1382,11 +1387,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         char *sql = pthread_getspecific(current_sql_query_key);
         logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s, ",
                tbl, rc, sql);
-        int nframes;
-        void *stack[100];
-        nframes = backtrace(stack, 100);
-        for (int i = 0; i < nframes; i++)
-            logmsg(LOGMSG_USER, "%p ", stack[i]);
+        dump_stack_backtrace();
         logmsg(LOGMSG_USER, "\n");
     }
 #endif
