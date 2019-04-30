@@ -11161,8 +11161,12 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     dataoffset = hdrsz;
     hdroffset +=
         sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
-    assert(type == 6);
-    assert(hdroffset == dataoffset);
+
+    /* Sanity checks */
+    if (type != 6 || hdroffset != dataoffset) {
+        return -1;
+    }
+
     sqlite3VdbeSerialGet((unsigned char *)key + dataoffset, type, &m);
     *outlen = sizeof(m.u.i);
     memcpy(outbuf, &m.u.i, *outlen);

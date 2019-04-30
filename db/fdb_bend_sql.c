@@ -308,11 +308,22 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
                         int seq, struct sql_thread *thd, int isuuid,
                         struct sqlclntstate **pclnt)
 {
-    struct sqlclntstate *clnt;
-    int rc;
+    struct sqlclntstate *clnt = NULL;
+    unsigned long long rqid;
+    int rc = 0;
+
+    *pclnt = NULL;
 
     /* A malicious user could set seq to anything. */
-    if (seq == 0) {
+    if (seq != 0) {
+        logmsg(LOGMSG_ERROR, "%s: unexpected sequence number %d\n", __func__,
+               seq);
+        return -1;
+    }
+
+    memcpy(&rqid, tid, sizeof(clnt->osql.rqid));
+    if (isuuid == 0 && rqid == 0) {
+        logmsg(LOGMSG_ERROR, "%s: invalid rqid\n", __func__);
         return -1;
     }
 
@@ -338,21 +349,17 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else
-        memcpy(&clnt->osql.rqid, tid, sizeof(clnt->osql.rqid));
+        clnt->osql.rqid = rqid;
+
     if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
         logmsg(LOGMSG_ERROR, "%s: unable to register blocksql thread %llx\n",
                 __func__, clnt->osql.rqid);
     }
 
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
         return rc;
-    }
 
-    if ((rc = osql_sock_start_deferred(clnt)) != 0) {
-        return rc;
-    }
-
-    return 0;
+    return osql_sock_start_deferred(clnt);
 }
 
 /**
@@ -620,9 +627,17 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
     /* retrieve the table involved */
     if (tblname) {
         pCur->db = get_dbtable_by_name(tblname);
+        if (pCur->db == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: invalid table %s?\n", __func__, tblname);
+            return NULL;
+        }
         pCur->ixnum = -1;
     } else {
         pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+        if (pCur->db == NULL) {
+            logmsg(LOGMSG_ERROR, "%s failed\n", __func__);
+            return NULL;
+        }
     }
     pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
 

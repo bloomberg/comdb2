@@ -2575,7 +2575,7 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_nop(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 static enum svc_move_types move_type(int type)
@@ -3242,10 +3242,13 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int rc = 0;
     struct sqlclntstate *clnt;
 
-    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, arg->isuuid,
-                             &clnt);
+    rc =
+        fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, arg->isuuid, &clnt);
+
+    /* clnt gets set to NULL on error. */
+    arg->clnt = clnt;
+
     if (!rc) {
-        arg->clnt = clnt;
         arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
@@ -3270,7 +3273,7 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_trans_prepare(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
@@ -3331,7 +3334,7 @@ int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_trans_rc(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 int fdb_bend_trans_hbeat(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
@@ -3567,26 +3570,31 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     }
 
     while (1) {
+        int msg_type;
+
         if (gbl_fdb_track) {
             fdb_msg_print_message(sb, &msg, "received msg");
         }
 
         svc_cb_arg.isuuid = (msg.hd.type & FD_MSG_FLAGS_ISUUID);
+        msg_type = (msg.hd.type & FD_MSG_TYPE);
 
-        rc = callbacks[msg.hd.type & FD_MSG_TYPE](sb, &msg, &svc_cb_arg);
+        rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
 
-        if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
-            (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK ||
-            (msg.hd.type & FD_MSG_TYPE) ==
-                FDB_MSG_TRAN_RC /* this should be actuall the only case,
-                  since we reuse the buffer to send back results */
-            ) {
-            if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
-                (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK)
+        if (msg_type == FDB_MSG_TRAN_COMMIT ||
+            msg_type == FDB_MSG_TRAN_ROLLBACK) {
+            /* Sanity check:
+             * The msg buffer is reused for response, thus in some cases,
+             * the type it initially stored, could change.
+             * This check ensures that the change adheres with the design.
+             */
+            if (msg_type == FDB_MSG_TRAN_COMMIT &&
+                (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
                 abort();
-
+            }
             break;
         }
+
         if (rc != 0) {
             int rc2;
         clear:
@@ -3603,7 +3611,6 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
                        "%s: fdb_svc_trans_rollback failed rc=%d\n", __func__,
                        rc2);
             }
-
             break;
         }
 
