@@ -3031,7 +3031,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             osql->xerr.errval = ERR_SC;
             errstat_set_strf(
                 &(osql->xerr),
-                "stale version for table:%s master:%d replicant:%d",
+                "stale version for table:%s master:%llu replicant:%d",
                 sc->tablename, comdb2_table_version(sc->tablename),
                 packed_sc_key[1]);
             return ERR_SC;

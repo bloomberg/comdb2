@@ -2376,6 +2376,7 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
 
+    char VER[16];
     strcpy(VER, revision + 10); /* get my version               */
     ifn = strchr(VER, '$');     /* clean up version text        */
     if (ifn)

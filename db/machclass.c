@@ -27,9 +27,9 @@ typedef struct machine_class {
     int value;
 } machine_class_t;
 
-pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
-hash_t *classes;
-hash_t *class_names;
+static pthread_mutex_t mach_mtx = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *classes;
+static hash_t *class_names;
 
 static machine_class_t default_classes[] = {
     {"unknown", 0}, /* 0 indexed! */
@@ -50,7 +50,7 @@ int mach_class_init(void)
     int i;
     int rc = 0;
 
-    Pthread_mutex_lock(&mtx);
+    Pthread_mutex_lock(&mach_mtx);
     classes = hash_init_strptr(offsetof(struct machine_class, name));
     class_names = hash_init_i4(offsetof(struct machine_class, value));
     if (!classes || !class_names) {
@@ -63,7 +63,7 @@ int mach_class_init(void)
             break;
     }
     is_default = 1;
-    Pthread_mutex_unlock(&mtx);
+    Pthread_mutex_unlock(&mach_mtx);
     return rc;
 }
 
@@ -96,7 +96,7 @@ int mach_class_addclass(const char *name, int value)
     }
     class->value = value;
 
-    Pthread_mutex_lock(&mtx);
+    Pthread_mutex_lock(&mach_mtx);
     if (is_default) {
         /* override the default with client classes */
         hash_clear(classes);
@@ -105,7 +105,7 @@ int mach_class_addclass(const char *name, int value)
     }
     rc = _mach_class_add(class, &added);
 
-    Pthread_mutex_unlock(&mtx);
+    Pthread_mutex_unlock(&mach_mtx);
 
     if (!added) {
         free(class->name);
@@ -119,13 +119,13 @@ int mach_class_name2class(const char *name)
     machine_class_t *class;
     int value = CLASS_UNKNOWN;
 
-    Pthread_mutex_lock(&mtx);
+    Pthread_mutex_lock(&mach_mtx);
 
     class = hash_find(classes, &name);
     if (class)
         value = class->value;
 
-    Pthread_mutex_unlock(&mtx);
+    Pthread_mutex_unlock(&mach_mtx);
 
     return value;
 }
@@ -135,13 +135,13 @@ const char *mach_class_class2name(int value)
     machine_class_t *class;
     const char *name = NULL;
 
-    Pthread_mutex_lock(&mtx);
+    Pthread_mutex_lock(&mach_mtx);
 
     class = hash_find(class_names, &value);
     if (class)
         name = class->name;
 
-    Pthread_mutex_unlock(&mtx);
+    Pthread_mutex_unlock(&mach_mtx);
 
     return name;
 }

@@ -37,7 +37,7 @@ static config_t *default_config(void)
 
 int main(int argc, char *argv[])
 {
-    cdb2_hndl_tp *sqlh;
+    cdb2_hndl_tp *sqlh = NULL;
     config_t *c;
     int ret, type;
     int err = 0, opt;

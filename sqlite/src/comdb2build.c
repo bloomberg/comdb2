@@ -4918,13 +4918,13 @@ static void comdb2AddIndexInt(
       the command.
     */
     if (key->name == 0) {
-        char *keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
-        if (keyname == 0) {
+        char *loc_keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
+        if (loc_keyname == 0) {
             goto oom;
         }
 
-        gen_key_name(key, ctx->schema->name, keyname, MAXGENKEYLEN);
-        key->name = keyname;
+        gen_key_name(key, ctx->schema->name, loc_keyname, MAXGENKEYLEN);
+        key->name = loc_keyname;
     }
 
     /*

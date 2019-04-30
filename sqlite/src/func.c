@@ -699,7 +699,6 @@ static void guidFromByteFunc(
   sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
 static void comdb2DoubleToBlobFunc(
   sqlite3_context *context,
   int argc,
@@ -736,7 +735,6 @@ static void comdb2BlobToDoubleFunc(
   sqlite3_result_double(context, sqlite3Int64ToDouble(
                         (i64)sqlite3Get8byte(sqlite3_value_blob(argv[0]))));
 }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Implementation of the comdb2_sysinfo() SQL function.  The return

@@ -380,8 +380,8 @@ void *bdb_llop_find(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
     if (raw || ix != -1) {
         rc = dbc->c_get(dbc, &dkey, &ddata, DB_SET);
     } else {
-        uint8_t ver;
-        rc = bdb_cget_unpack(bdb_state, dbc, &dkey, &ddata, &ver, DB_SET);
+        uint8_t loc_ver;
+        rc = bdb_cget_unpack(bdb_state, dbc, &dkey, &ddata, &loc_ver, DB_SET);
     }
     if (rc) {
         *errstr = comdb2_asprintf("find rc %d", rc);

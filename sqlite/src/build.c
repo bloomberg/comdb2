@@ -34,6 +34,7 @@
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
+int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -439,7 +440,11 @@ retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         assert( sqlite3SchemaMutexHeld(db, j, 0) );
         p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, zName);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( p  && i<= 1) return p;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         if( p ) return p;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
     /* Not found.  If the name we were looking for was temp.sqlite_master
@@ -467,6 +472,16 @@ retry_after_fdb_creation:
 
   /* so we found the table, we are done */
   if( likely(p) ){
+    if (unlikely(zDatabase) && !db->init.busy) {
+      /* we need to validate class here, before
+         shortcutting to "local table" mode */
+      if(fdb_validate_existing_table(zDatabase)) {
+        logmsg(LOGMSG_USER,
+          "Remote db table exists and class mismatches \"%s:%s\"\n",
+          fqDbname, zName);
+        p = NULL;
+      }
+    }
     goto done;
   }
 

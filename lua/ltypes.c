@@ -618,8 +618,8 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
         } else {
             strcpy(ret->tzname, "US/Eastern");
         }
-        struct tm *t = localtime(&temp_t);
-        ret->tm = *t; /* Correct it, if table doesn't have correct values. */
+        /* Correct it, if table doesn't have correct values. */
+        localtime_r(&temp_t, &ret->tm);
         return;
     case DBTYPES_DATETIME:
         *ret = ((lua_datetime_t *)lua_topointer(lua, idx))->val;

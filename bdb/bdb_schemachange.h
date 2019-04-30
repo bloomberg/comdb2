@@ -24,6 +24,7 @@ extern volatile int gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
 typedef enum scdone {
+    invalid = -1,
     alter,
     fastinit,
     add = fastinit,
