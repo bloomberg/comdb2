@@ -3278,10 +3278,13 @@ int sqlite3BtreeClose(Btree *pBt)
         // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
-        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem;
-                pElem=sqliteHashNext(pElem)){
+        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem; ){
             /* internally this will close cursors open on the table */
             struct temptable_entry *pEntry = pElem->data;
+
+            /* releaseTempTableRef may free pElem. So we get the next element
+               now before invoking releaseTempTableRef(). */
+            pElem=sqliteHashNext(pElem);
 
             if (pEntry != NULL) {
                 assert( pEntry->value );
@@ -3393,7 +3396,7 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 {
     /* backend takes care of this */
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
-                "SetSafetyLevel(pBt %d, level %d, int fullsync)     = %s\n",
+                "SetSafetyLevel(pBt %d, level %d, fullsync %d)     = %s\n",
                 pBt->btreeid, level, fullsync, sqlite3ErrStr(SQLITE_OK));
     return SQLITE_OK;
 }

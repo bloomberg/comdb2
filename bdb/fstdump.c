@@ -1291,9 +1291,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
         if (!is_handled_rc(rc))
             break;
 
-        if (rc == DB_REP_HANDLE_DEAD) {
-        }
-
         if (++retries > deadlock_sleep_start)
             usleep(deadlock_sleep_amt);
     }

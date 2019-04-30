@@ -170,6 +170,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	dbt = &t;
 	t = *udbt;
 	u_int8_t *pp;
+    int adjsize = 0;
 
 	lock_held = need_free = 0;
 	flags &= (~(DB_LOG_DONT_LOCK | DB_LOG_DONT_INFLATE));
@@ -206,8 +207,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	 * to clients.
 	 */
 	if (!LF_ISSET(DB_LOG_NOCOPY) || IS_REP_MASTER(dbenv)) {
-		if (CRYPTO_ON(dbenv))
-			t.size += db_cipher->adj_size(udbt->size);
+		if (CRYPTO_ON(dbenv)) {
+            adjsize = db_cipher->adj_size(udbt->size);
+			t.size += adjsize;
+        }
 
 		if (t.size > 4096) {
 			if ((ret = __os_calloc(dbenv, 1, t.size, &t.data)) != 0)
@@ -217,6 +220,13 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 			t.data = alloca(t.size);
 
 		memcpy(t.data, udbt->data, udbt->size);
+
+        if (adjsize) {
+            assert(adjsize < 16);
+            uint8_t *pad = (uint8_t*) t.data + (t.size - adjsize);
+            for (int i = 0; i < adjsize; i++)
+                pad[i] = adjsize;
+        }
 	}
 	unsigned long long ltranid = 0;
 	if (10006 == rectype) {

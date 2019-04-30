@@ -2509,16 +2509,16 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int flags = DB_LOCK_ID_READONLY;
+        unsigned int loc_flags = DB_LOCK_ID_READONLY;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)
-            flags |= DB_LOCK_ID_LOWPRI;
+            loc_flags |= DB_LOCK_ID_LOWPRI;
         if (gbl_track_curtran_locks)
-            flags |= DB_LOCK_ID_TRACK;
+            loc_flags |= DB_LOCK_ID_TRACK;
 
         rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv,
-                                             &curtran->lockerid, flags);
+                                             &curtran->lockerid, loc_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fail to get lock_id rc=%d\n", __func__, rc);
             *bdberr = (rc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : rc;

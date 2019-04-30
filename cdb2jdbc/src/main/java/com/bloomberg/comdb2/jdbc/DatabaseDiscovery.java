@@ -315,11 +315,9 @@ public class DatabaseDiscovery {
             if (validHosts.size() <= 0)
                 throw new IOException("Received incomplete dbinfo response");
 
-            if (hndl != null) {
-                hndl.masterIndexInMyDbHosts = master;
-                hndl.numHostsSameRoom = hosts_same_room;
-                hndl.peersslmode = dbInfoResp.peermode;
-            }
+            hndl.masterIndexInMyDbHosts = master;
+            hndl.numHostsSameRoom = hosts_same_room;
+            hndl.peersslmode = dbInfoResp.peermode;
 
             return master;
 

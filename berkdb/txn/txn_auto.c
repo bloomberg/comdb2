@@ -441,9 +441,10 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
     lt = localtime((time_t *)&timestamp);
     if (lt)
     {
+		char my_buf[30];
         (void)printf(
                 "\ttimestamp: %ld (%.24s, 20%02lu%02lu%02lu%02lu%02lu.%02lu)\n",
-                (long)argp->timestamp, ctime(&timestamp),
+                (long)argp->timestamp, ctime_r(&timestamp, my_buf),
                 (u_long)lt->tm_year - 100, (u_long)lt->tm_mon+1,
                 (u_long)lt->tm_mday, (u_long)lt->tm_hour,
                 (u_long)lt->tm_min, (u_long)lt->tm_sec);

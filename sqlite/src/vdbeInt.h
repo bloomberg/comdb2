@@ -794,6 +794,6 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
-#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)==SQLITE_MAX_U32 || (t)==(SQLITE_MAX_U32-1) )
+#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)==SQLITE_MAX_U32 || ((unsigned int)t)==(SQLITE_MAX_U32-1) )
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif /* !defined(SQLITE_VDBEINT_H) */

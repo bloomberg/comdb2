@@ -18,8 +18,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "comdb2_plugin.h"
 #include "pb_alloc.h"
 #include "sp.h"
@@ -191,7 +189,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                "durable-lsn request "
                                "returns %d snapshot_file=%d snapshot_offset=%d "
                                "is_hasql_retry=%d\n",
-                               clnt->snapshot_file, clnt->snapshot_offset,
+                               rc, clnt->snapshot_file, clnt->snapshot_offset,
                                clnt->is_hasql_retry);
                 rcode = -1;
             }
@@ -260,7 +258,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0;                                              \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
@@ -2200,7 +2198,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
 #endif
-    assert(query->sqlquery);
+    if (query->sqlquery == NULL) {
+        logmsg(LOGMSG_DEBUG, "Malformed SQL request.\n");
+        goto done;
+    }
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 

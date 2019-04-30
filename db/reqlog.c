@@ -1568,8 +1568,8 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                   iq->txnsize, iq->reptimems, rate);
         }
 
-        dumpf(logger, out, "  nretries %d reply len %d\n", iq->retries,
-              iq->p_buf_out - iq->p_buf_out_start);
+        dumpf(logger, out, "  nretries %d reply len %td\n", iq->retries,
+              (ptrdiff_t)(iq->p_buf_out - iq->p_buf_out_start));
     }
 
     args.logger = logger;

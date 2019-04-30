@@ -332,7 +332,7 @@ int create_system_table(sqlite3 *db, char *name,
 
     int type = va_arg(args, int);
     while (type != SYSTABLE_END_OF_FIELDS) {
-        char *name = va_arg(args, char*);
+        char *vname = va_arg(args, char*);
         int nulloffset = va_arg(args, size_t);
         int offset = va_arg(args, size_t);
 
@@ -341,7 +341,7 @@ int create_system_table(sqlite3 *db, char *name,
             sys->fields = realloc(sys->fields, nalloc * sizeof(struct sysfield));
         }
 
-        sys->fields[sys->nfields].name = strdup(name);
+        sys->fields[sys->nfields].name = strdup(vname);
         sys->fields[sys->nfields].type = type;
         sys->fields[sys->nfields].nulloffset = nulloffset;
         sys->fields[sys->nfields++].offset = offset;

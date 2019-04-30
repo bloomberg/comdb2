@@ -1655,7 +1655,7 @@ static int bdb_new_file_version(
     version_num.version_num = inversion_num;
 
     p_buf = (uint8_t *)&real_version_num;
-    p_buf_end = (uint8_t *)(&real_version_num + sizeof(real_version_num));
+    p_buf_end = p_buf + sizeof(real_version_num);
 
     if (!(llmeta_version_number_put(&(version_num), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_version_number_put returns NULL\n",
@@ -2438,7 +2438,7 @@ retry:
     }
 
     p_buf = (uint8_t *)&tmpversion;
-    p_buf_end = (uint8_t *)(&tmpversion + sizeof(tmpversion));
+    p_buf_end = p_buf + sizeof(tmpversion);
 
     if (!(llmeta_version_number_get(&(version_num), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s:llmeta_version_number_get returns NULL\n",
