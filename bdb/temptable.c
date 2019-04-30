@@ -486,7 +486,9 @@ done:
 
 void bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
 {
-    comdb2_objpool_clear(bdb_state->temp_table_pool);
+    comdb2_objpool_t op = bdb_state->temp_table_pool;
+    if (op == NULL) return;
+    comdb2_objpool_clear(op);
 }
 
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
