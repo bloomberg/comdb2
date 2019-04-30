@@ -6094,8 +6094,20 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
         }
         /* Otherwise truncate it. */
         else {
-            bdb_temp_table_close_cursor(cur->state, cur->vs_skip, bdberr);
-            bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            int rc2 = bdb_temp_table_close_cursor(cur->state, cur->vs_skip,
+                                                  bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_close_cursor(%p, %p) rc %d, bdberr %d\n",
+                   __func__, cur->vs_stab, cur->vs_skip, rc, *bdberr);
+            }
+            assert(cur->vs_stab != NULL);
+            rc2 = bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: bdb_temp_table_truncate(%p) rc %d, bdberr %d\n",
+                       __func__, cur->vs_stab, rc, *bdberr);
+            }
         }
 
         /* Get a cursor to the new (or truncated) table. */
