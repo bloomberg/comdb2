@@ -441,7 +441,7 @@ retry_after_fdb_creation:
         assert( sqlite3SchemaMutexHeld(db, j, 0) );
         p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        if( p  && i<= 1) return p;
+        if( p && i<=1 ) return p;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         if( p ) return p;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -472,13 +472,13 @@ retry_after_fdb_creation:
 
   /* so we found the table, we are done */
   if( likely(p) ){
-    if (unlikely(zDatabase) && !db->init.busy) {
+    if( unlikely(zDatabase) && !db->init.busy ){
       /* we need to validate class here, before
          shortcutting to "local table" mode */
-      if(fdb_validate_existing_table(zDatabase)) {
+      if( fdb_validate_existing_table(zDatabase) ){
         logmsg(LOGMSG_USER,
-          "Remote db table exists and class mismatches \"%s:%s\"\n",
-          fqDbname, zName);
+               "Remote db table exists and class mismatches \"%s:%s\"\n",
+               fqDbname, zName);
         p = NULL;
       }
     }
