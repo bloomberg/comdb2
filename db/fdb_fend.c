@@ -1275,6 +1275,7 @@ retry_fdb_creation:
         /* we need to validate requested class to existing class */
         rc = _validate_existing_table(fdb, lvl, local);
         if (rc != FDB_NOERR) {
+            __fdb_rem_user(fdb, 1);
             return _failed_AddAndLockTable(db, dbname, rc, "mismatching class");
         }
     }
@@ -1417,7 +1418,7 @@ int sqlite3UnlockTable(const char *dbname, const char *table)
         abort();
     }
 
-    __fdb_rem_user(fdb, 0); /* matches __fdb_add_user in sqlite3AddAndLockTable */
+    __fdb_rem_user(fdb, 1); /* matches __fdb_add_user in sqlite3AddAndLockTable */
 
     return SQLITE_OK;
 }
@@ -4673,7 +4674,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                ent->tbl->version);
     }
 
-    __fdb_rem_user(ent->tbl->fdb, 0);
+    __fdb_rem_user(ent->tbl->fdb, 1);
 
     return FDB_NOERR;
 }
