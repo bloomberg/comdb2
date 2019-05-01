@@ -15,8 +15,14 @@ a_cdb2config=$4
 set -e
 
 output="output.log"
-cmd_rmt="cdb2sql -s --cdb2cfg ${a_remcdb2config} $a_remdbname default -" 
-cmd="cdb2sql -s --cdb2cfg ${a_cdb2config} $a_dbname default " 
+
+mach=`cdb2sql -tabs -cdb2cfg ${a_cdb2config} $a_dbname default "select comdb2_node()"`
+if [[ -z $mach ]] ; then
+    echo "Failing to get machine node"
+fi
+
+cmd_rmt="cdb2sql -s --cdb2cfg ${a_remcdb2config} $a_remdbname --host $mach" 
+cmd="cdb2sql -s --cdb2cfg ${a_cdb2config} $a_dbname --host $mach" 
 
 echo "Inserting rows"
 $cmd_rmt < inserts.req > ${output} 2>&1
