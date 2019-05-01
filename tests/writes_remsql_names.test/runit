@@ -18,10 +18,8 @@ done
 
 #run tests
 echo "Starting tests"
-echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
-./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $DBDIR $TESTDIR
-#echo ./writes_remsql_names.sh $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBNAME $SECONDARY_DBDIR $TESTDIR
-#./writes_remsql_names.sh $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBNAME $SECONDARY_DBDIR $TESTDIR
+echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
+./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
 result=$?
 
 if (( $result == 0 )) ; then

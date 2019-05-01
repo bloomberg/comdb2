@@ -4,8 +4,9 @@
 ################################################################################
 
 a_remdbname=$1
-a_remcdb2config=$2
+a_remdb2config=$2
 a_dbname=$3
+a_cdb2config=$4
 a_dbdir=$4
 a_testdir=$5
 
@@ -69,7 +70,6 @@ run_test()
    # retrieve data through remote sql
    ${CDB2SQL_EXE} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.${tblname} order by ${column}" >> $output
 
-   a_cdb2config=${CDB2_OPTIONS}
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
    echo ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
@@ -83,7 +83,12 @@ run_test()
 }
 
 # Make sure we talk to the same host
-mach=`${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
+echo "${CDB2SQL_EXE} --tabs --cdb2cfg $a_cdb2config $a_dbname default 'SELECT comdb2_host()'"
+mach=`${CDB2SQL_EXE} --tabs --cdb2cfg $a_cdb2config $a_dbname default "SELECT comdb2_host()"`
+if [[ -z $mach ]]; then
+    echo "Failure to get a machine name"
+    exit 1
+fi
 
 if [[ -z $opt || "$opt" == "1" ]]; then
    output=./run.out
@@ -100,7 +105,7 @@ if [[ -z $opt || "$opt" == "2" ]]; then
 fi
 
 if [[ -z $opt || "$opt" == "3" ]]; then
-    ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${a_remdbname} default "drop table tt"
+    ${CDB2SQL_EXE} --cdb2cfg $a_remdb2config ${a_remdbname} default "drop table tt"
 fi
 
 if [[ -z $opt || "$opt" == "4" ]]; then
