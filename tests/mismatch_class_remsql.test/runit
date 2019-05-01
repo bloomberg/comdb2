@@ -17,15 +17,6 @@ for required in $vars; do
     fi
 done
 
-#generate testscripts in new files
-files=`ls *.req.src`
-for file in $files ; do
-   newfile=${file%%.src}
-   sed "/^insert /!s/ t$/ LOCAL_$DBNAME.t/g" $file > $newfile.tmp
-   sed "/^insert /!s/ t / LOCAL_$DBNAME.t /g" $newfile.tmp > $newfile
-   rm $newfile.tmp
-done
-
 #run tests
 echo "Starting tests"
 ./remsql.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG
