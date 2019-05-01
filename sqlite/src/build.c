@@ -3276,9 +3276,9 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   v = sqlite3GetVdbe(pParse);
   if( v ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (isView) {
+    if (isView && db->isTimepartView == 0) {
         comdb2_drop_view(pParse, pName);
-    }else if( iDb==1 && !bDropTable ){
+    }else if( isView || (iDb==1 && !bDropTable) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
     if( !isView ){
