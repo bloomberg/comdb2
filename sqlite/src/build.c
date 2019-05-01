@@ -2607,7 +2607,7 @@ void sqlite3EndTable(
           "CREATE %s %.*s", zType2, n, pParse->sNameToken.z
       );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if (p->pSelect) {
+      if (p->pSelect && db->isTimepartView == 0) {
         comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
                            zStmt, 0);
       }

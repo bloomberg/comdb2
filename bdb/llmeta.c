@@ -10310,7 +10310,6 @@ int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
                               int *bdberr)
 {
     uint8_t key_buf[LLMETA_IXLEN] = {0};
-    tran_type *trans;
     int retries = 0;
     int rc;
     int fndlen = 0;
@@ -10366,22 +10365,9 @@ retry:
         goto err;
     }
 
-    /* Create a transaction, if the user didn't give us one. */
-    if (!in_trans) {
-        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
-        if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
-                goto retry;
-
-            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
-            goto err;
-        }
-    } else
-        trans = in_trans;
-
     /* Try to fetch the view definition */
-    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, trans, key_buf, p_outbuf,
-                                   outbuflen, &fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, in_trans, key_buf,
+                                   p_outbuf, outbuflen, &fndlen, bdberr);
 
     /* Handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
@@ -10397,7 +10383,7 @@ retry:
         }
         /* It's ok if we found nothing. */
         if (*bdberr != BDBERR_FETCH_DTA) {
-            goto backout;
+            goto err;
         }
     }
 
@@ -10423,38 +10409,9 @@ retry:
                "length exactly, this should not happen\n",
                __func__);
 
-    /* Commit if we created our own transaction */
-    if (!in_trans) {
-        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
-        if (rc && *bdberr != BDBERR_NOERROR) {
-            goto err;
-        }
-    }
-
     free(p_outbuf_start);
     *bdberr = BDBERR_NOERROR;
     return 0;
-
-backout:
-
-    /* If we created the transaction */
-    if (!in_trans) {
-        int prev_bdberr = *bdberr;
-
-        /* Kill the transaction */
-        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
-        if (rc && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
-                   __func__, *bdberr);
-            return -1;
-        }
-
-        *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
-            goto retry;
-
-        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
-    }
 
 err:
     free(p_outbuf_start);
