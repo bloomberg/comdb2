@@ -2206,6 +2206,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because of send analyze abort\n",
                     __func__);
+        sampler_close(pCur->sampler);
         *done = 1;
         rc = -1;
         return SQLITE_BUSY;
@@ -2633,7 +2634,6 @@ static int tmptbl_cursor_move(BtCursor *pCur, int *pRes, int how)
 
 static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
 {
-    int bdberr = 0;
     int done = 0;
     int rc = SQLITE_OK;
 
@@ -2643,23 +2643,19 @@ static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
 
     switch (how) {
     case CFIRST:
-        rc = bdb_temp_table_first(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                  &bdberr);
+        rc = sampler_first(pCur->sampler);
         break;
 
     case CLAST:
-        rc = bdb_temp_table_last(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_last(pCur->sampler);
         break;
 
     case CPREV:
-        rc = bdb_temp_table_prev(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_prev(pCur->sampler);
         break;
 
     case CNEXT:
-        rc = bdb_temp_table_next(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_next(pCur->sampler);
         break;
     }
 
@@ -2674,7 +2670,7 @@ static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
     }
 
     else {
-        void *tmp = bdb_temp_table_key(pCur->sampled_idx->cursor);
+        void *tmp = sampler_key(pCur->sampler);
 
         rc = ondisk_to_sqlite_tz(pCur->db, pCur->sc, tmp, 2, 0, pCur->keybuf,
                                  pCur->keybuf_alloc, 0, NULL, NULL, NULL,
@@ -4046,7 +4042,7 @@ int sqlite3BtreeKey(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
     // the following code is slated for removal
     if (pCur->is_sampled_idx) {
         /* this is in ondisk format- i want to convert */
-        buf = bdb_temp_table_key(pCur->sampled_idx->cursor);
+        buf = sampler_key(pCur->sampler);
         rc = ondisk_to_sqlite_tz(pCur->db, pCur->sc, pCur->ondisk_key, 2, 0,
                                  pCur->keybuf, pCur->keybuflen, 0, NULL, NULL,
                                  NULL, &reqsz, NULL, pCur);
@@ -6192,15 +6188,13 @@ skip:
             free(pCur->keybuf);
 
         if (pCur->is_sampled_idx) {
-            rc = bdb_temp_table_close_cursor(
-                thedb->bdb_env, pCur->sampled_idx->cursor, &bdberr);
+            rc = sampler_close(pCur->sampler);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
                        __func__, bdberr);
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
-            free(pCur->sampled_idx);
         } else if (pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
                 rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
@@ -6929,7 +6923,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
                            BtCursor *cur,   /* Write new cursor here */
                            struct sql_thread *thd)
 {
-    int bdberr = 0;
     int key_size;
     int sz;
     struct sqlclntstate *clnt = thd->clnt;
@@ -6943,25 +6936,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     cur->cursor_move = cursor_move_compressed;
 
-    cur->sampled_idx = calloc(1, sizeof(struct temptable));
-    if (!cur->sampled_idx) {
-        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temptable) failed\n",
-                __func__);
-        return SQLITE_INTERNAL;
-    }
-
-    cur->sampled_idx->tbl =
-        analyze_get_sampled_temptable(clnt, db->tablename, cur->ixnum);
-    assert(cur->sampled_idx->tbl != NULL);
-
-    cur->sampled_idx->cursor = bdb_temp_table_cursor(
-        thedb->bdb_env, cur->sampled_idx->tbl, pArg, &bdberr);
-    if (cur->sampled_idx->cursor == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:bdb_temp_table_cursor failed\n", __func__);
-        return SQLITE_INTERNAL;
-    }
-
-    bdb_temp_table_set_cmp_func(cur->sampled_idx->tbl, (tmptbl_cmp)xCmp);
+    cur->sampler = analyze_get_sampler(clnt, db->tablename, cur->ixnum);
 
     cur->db = db;
     cur->tableversion = cur->db->tableversion;
@@ -6976,7 +6951,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     if (!cur->ondisk_key) {
         logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
                key_size + sizeof(int));
-        free(cur->sampled_idx);
         return SQLITE_INTERNAL;
     }
     cur->ondisk_keybuf_alloc = key_size;
@@ -6984,7 +6958,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->keybuf = malloc(sz);
     if (!cur->keybuf) {
         logmsg(LOGMSG_ERROR, "%s: keybuf malloc %d failed\n", __func__, sz);
-        free(cur->sampled_idx);
         free(cur->ondisk_key);
         return SQLITE_INTERNAL;
     }
@@ -10042,11 +10015,7 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
 
 void *get_lastkey(BtCursor *pCur)
 {
-    if (pCur->is_sampled_idx) {
-        return bdb_temp_table_key(pCur->sampled_idx->cursor);
-    } else {
-        return pCur->lastkey;
-    }
+    return pCur->is_sampled_idx ? sampler_key(pCur->sampler) : pCur->lastkey;
 }
 
 void set_cook_fields(BtCursor *pCur, int cols)

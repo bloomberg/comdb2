@@ -43,7 +43,7 @@ long long analyze_get_sampling_threshold(void);
  * it
  * exists, or a NULL otherwise.
  */
-struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
+sampler_t *analyze_get_sampler(struct sqlclntstate *client,
                                                  char *table, int idx);
 
 /**

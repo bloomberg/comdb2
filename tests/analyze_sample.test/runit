@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'create table t (i int)'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'create index t_i on t(i)'
+for i in `seq 1 10`; do
+  yes "insert into t values ($i)" | head -2000 | cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default - >/dev/null
+done
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'analyze t 100'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select stat from sqlite_stat1' >stat1.actual
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select sample from sqlite_stat4' >stat4.actual
+
+diff stat1.actual stat1.expected
+diff stat4.actual stat4.expected
