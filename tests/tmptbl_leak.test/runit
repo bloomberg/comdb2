@@ -47,13 +47,6 @@ done
 
 wait
 
-# give the database time to exit background threads that may be using temp tables...
-sleep 60
-
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_clear')" &> temptable0.out
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
-
 for i in `seq 1 $N` ; do
   check_output $i
 done
@@ -61,6 +54,31 @@ done
 for i in `seq 1 $N` ; do
   check_output $i_v
 done
+
+echo running $N INSERTs asynchronously...
+for i in `seq 1 $N` ; do
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (x, y) VALUES($i,'some text #' || CAST($i AS TEXT))" &
+done
+
+echo running $N UPDATEs asynchronously...
+for i in `seq 1 $N` ; do
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET y = 'other text #' || CAST($i AS TEXT) WHERE x = $i AND x > 4" &
+done
+
+echo running $N DELETEs asynchronously...
+for i in `seq 1 $N` ; do
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DELETE FROM t1 WHERE x = $i AND x > 4" &
+done
+
+wait
+
+# give the database time to exit background threads that may be using temp tables...
+sleep 60
+
+# cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT x, y FROM t1 ORDER BY x" &> t1_final.out
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_clear')" &> temptable0.out
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb temptable')" &> temptable2.out
 
 tempdata1=$(cat temptable1.out)
 regex1="Overall temptable count is ([0-9]+), SQL temptable count is ([0-9]+)"
