@@ -2,6 +2,22 @@
 bash -n "$0" | exit 1
 
 dbnm=$1
+
+check_output()
+{
+  testcase_output=$(cat q_$1.out)
+  expected_output=$(cat output.expect)
+  testcase_output_alt=$(cat output.expect.alt)
+
+  if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
+    echo "SELECT output mismatch at index $1"
+    echo "Failed."
+    diff q_$1.out output.expect
+    diff q_$1.out output.expect.alt
+    exit 1
+  fi
+}
+
 echo dropping test tables
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DROP TABLE t1" &> /dev/null
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DROP TABLE t2" &> /dev/null
@@ -22,22 +38,16 @@ for i in `seq 1 $N` ; do
   cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
 done
 
-check_output()
-{
-  testcase_output=$(cat q_$1.out)
-  expected_output=$(cat output.expect)
-  testcase_output_alt=$(cat output.expect.alt)
+wait
 
-  if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
-    echo "SELECT output mismatch at index $1"
-    echo "Failed."
-    diff q_$1.out output.expect
-    diff q_$1.out output.expect.alt
-    exit 1
-  fi
-}
+echo running $N SELECTVs asynchronously...
+for i in `seq 1 $N` ; do
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECTV t1.x, t1.y FROM t1 UNION SELECTV t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i_v.out &
+done
 
 wait
+
+# give the database time to exit background threads that may be using temp tables...
 sleep 60
 
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_clear')" &> temptable0.out
@@ -46,6 +56,10 @@ cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('bdb tempt
 
 for i in `seq 1 $N` ; do
   check_output $i
+done
+
+for i in `seq 1 $N` ; do
+  check_output $i_v
 done
 
 tempdata1=$(cat temptable1.out)
