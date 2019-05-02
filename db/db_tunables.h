@@ -449,7 +449,7 @@ REGISTER_TUNABLE("exitalarmsec", NULL, TUNABLE_INTEGER, &gbl_exit_alarm_sec,
 REGISTER_TUNABLE("exit_on_internal_failure", NULL, TUNABLE_BOOLEAN,
                  &gbl_exit_on_internal_error, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, READONLY,
+REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, 0,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);

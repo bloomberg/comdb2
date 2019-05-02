@@ -1923,6 +1923,15 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
                         12) == 0) {
             goto sqlite_stat4;
         }
+    } else {
+        /* this is the first time we step and locate a table; we 
+        will need to position on the current table; given the order
+        chosen {table, stat1, stat4, done}, if table is stat4, we 
+        end up skipping stat1.  To fix this, we replace stat4 with
+        stat1 since we will get stat4 after this */
+        if (strncasecmp(zTblName, "sqlite_stat4",
+                        12) == 0)
+            zTblName = "sqlite_stat1";
     }
 
 search:
