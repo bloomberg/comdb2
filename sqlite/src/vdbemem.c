@@ -2330,10 +2330,9 @@ int sqlite3VdbeMemDatetimefyTz(Mem *pMem, const char *tz){
      &pMem->du.dt, pMem->dtprec) != 0) {
       return SQLITE_ERROR;
     }
-    /* all is good, get rid of the string, which is user-provided and partial
-       many times */
-    if( pMem->flags & MEM_Dyn ){
-        sqlite3DbFree(pMem->db, pMem->z);
+    if( pMem->szMalloc ){
+      sqlite3DbFreeNN(pMem->db, pMem->zMalloc);
+      pMem->szMalloc = 0;
     }
     pMem->n = 0;
     pMem->z = 0;
