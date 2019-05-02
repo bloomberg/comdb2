@@ -1,3 +1,2 @@
 temptable_limit 3
 debug_temp_tables 1
-appsockpool.maxq 501
