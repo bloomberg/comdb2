@@ -3650,23 +3650,24 @@ int open_bdb_env(struct dbenv *dbenv)
 
     if (dbenv->nsiblings > 0) {
         /*zero element is always me. */
-        dbenv->handle_sibling = (void *)create_netinfo(
+        dbenv->handle_sibling = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_REPLICATION],
             dbenv->listen_fds[NET_REPLICATION], "comdb2", "replication",
-            dbenv->envname, 0, !gbl_disable_etc_services_lookup);
+            dbenv->envname, 0, 0, 0, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "open_bdb_env:failed create_netinfo host %s port %d\n",
-                    dbenv->sibling_hostname[0],
-                    dbenv->sibling_port[0][NET_REPLICATION]);
+            logmsg(LOGMSG_ERROR,
+                   "open_bdb_env:failed create_netinfo host %s port %d\n",
+                   dbenv->sibling_hostname[0],
+                   dbenv->sibling_port[0][NET_REPLICATION]);
             return -1;
         }
 
-        dbenv->handle_sibling_offload = create_netinfo_offload(
+        dbenv->handle_sibling_offload = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL],
-            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql", dbenv->envname);
+            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql",
+            dbenv->envname, 0, 1, 1, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling_offload == NULL) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "open_bdb_env:failed create_netinfo host %s port %d\n",
                    dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL]);
             return -1;
