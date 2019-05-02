@@ -495,10 +495,25 @@ done:
 
 int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
 {
-    comdb2_objpool_t op = bdb_state->temp_table_pool;
-    if (op == NULL) return 0;
-    comdb2_objpool_clear(op);
-    return 1;
+    if (gbl_temptable_pool_capacity == 0) {
+        int rc = 0;
+        int last = 0;
+        while (rc == 0 && last == 0) {
+            int bdberr = 0;
+            rc = bdb_temp_table_destroy_lru(NULL, bdb_state, &last, &bdberr);
+            if (rc != 0) {
+                logmsg(LOGMSG_USER,
+                       "%s: failed to destroy a temp table object rc=%d, bdberr=%d\n",
+                       __func__, rc, bdberr);
+            }
+        }
+        return rc == 0;
+    } else {
+        comdb2_objpool_t op = bdb_state->temp_table_pool;
+        if (op == NULL) return 0;
+        comdb2_objpool_clear(op);
+        return 1;
+    }
 }
 
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
