@@ -5946,7 +5946,9 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
                     strerror(errno));
-            free(ca);
+            Pthread_mutex_lock(&(netinfo_ptr->connlk));
+            pool_relablk(netinfo_ptr->connpool, ca);
+            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
             sbuf2close(sb);
             continue;
         }
