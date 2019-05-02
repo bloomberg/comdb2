@@ -114,6 +114,7 @@ static int curr_udp_cnt = 0;
 extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
+extern int gbl_accept_on_child_nets;
 
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
@@ -1085,14 +1086,13 @@ int write_connect_message(netinfo_type *netinfo_ptr,
         strncpy0(connect_message.my_hostname, netinfo_ptr->myhostname,
                  sizeof(connect_message.my_hostname));
     }
-    if (netinfo_ptr->myport)
-        connect_message.my_portnum =
-            netinfo_ptr->myport | (netinfo_ptr->netnum << 16);
-    else if (netinfo_ptr->ischild)
+
+    if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
+        connect_message.my_portnum = netinfo_ptr->myport;
+    } else {
         connect_message.my_portnum =
             netinfo_ptr->parent->myport | (netinfo_ptr->netnum << 16);
-    else
-        connect_message.my_portnum = 0; /* ? */
+    }
 
     connect_message.my_nodenum = 0;
 
@@ -2989,10 +2989,10 @@ typedef struct netinfo_node {
 static LISTC_T(netinfo_node_t) nets_list;
 static pthread_mutex_t nets_list_lk = PTHREAD_MUTEX_INITIALIZER;
 
-netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
-                                 char app[], char service[], char instance[],
-                                 int fake, int offload, int ischild,
-                                 int use_getservbyname)
+netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
+                             char app[], char service[], char instance[],
+                             int fake, int offload, int ischild,
+                             int use_getservbyname)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
@@ -3035,7 +3035,7 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
         netinfo_ptr->port_from_lrl = 1;
     }
 
-    if (myportnum <= 0 && !ischild && !fake) {
+    if (myportnum <= 0 && !fake && (!ischild || gbl_accept_on_child_nets)) {
         if (netinfo_ptr->use_getservbyname) {
             myportnum = net_get_port_by_service(instance);
         }
@@ -3138,33 +3138,9 @@ fail:
     return NULL;
 }
 
-inline netinfo_type *create_netinfo_fake(void)
+netinfo_type *create_netinfo_fake(void)
 {
-    char myhostname[HOSTNAME_LEN] = "fakehost";
-    int myportnum = -1;
-    char app[HOSTNAME_LEN] = "fakeapp";
-    char service[HOSTNAME_LEN] = "fakeservice";
-    char instance[HOSTNAME_LEN] = "fakeinstance";
-
-    return create_netinfo_int(intern(myhostname), myportnum, -1, app, service,
-                              instance, 1, 0, 0, 0);
-}
-
-inline netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
-                                    char app[], char service[], char instance[],
-                                    int ischild, int use_getservbyname)
-{
-    return create_netinfo_int(myhostname, myportnum, myfd, app, service,
-                              instance, 0, 0, ischild, use_getservbyname);
-}
-
-inline netinfo_type *create_netinfo_offload(char myhostname[], int myportnum,
-                                            int myfd, char app[],
-                                            char service[], char instance[])
-{
-    extern int gbl_accept_on_child_nets;
-    return create_netinfo_int(myhostname, myportnum, myfd, app, service,
-                              instance, 0, 1, !gbl_accept_on_child_nets, 0);
+    return create_netinfo(intern("fakehost"), -1, -1, "fakeapp", "fakeservice", "fakeinstance", 1, 0, 0, 0);
 }
 
 void net_count_nodes_ex(netinfo_type *netinfo_ptr, int *total_ptr,
@@ -4752,26 +4728,18 @@ static void *connect_thread(void *arg)
             goto again;
         }
 
-        /* *always* check portmux before connecting.  The
-         * correct port may have changed since last time. */
         if (!host_node_ptr->port) {
-            if (netinfo_ptr->ischild) {
-                if (netinfo_ptr->use_getservbyname)
-                    connport =
-                        net_get_port_by_service(netinfo_ptr->parent->instance);
-                if (connport <= 0)
-                    connport = portmux_geti(host_node_ptr->addr,
-                                            netinfo_ptr->parent->app,
-                                            netinfo_ptr->parent->service,
-                                            netinfo_ptr->parent->instance);
-                if (connport <= 0)
-                    connport = portmux_geti(
-                        host_node_ptr->addr, netinfo_ptr->app,
-                        netinfo_ptr->service, netinfo_ptr->instance);
-            } else
-                connport =
-                    portmux_geti(host_node_ptr->addr, netinfo_ptr->app,
-                                 netinfo_ptr->service, netinfo_ptr->instance);
+            netinfo_type *net = NULL;
+            if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
+                net = netinfo_ptr;
+            } else {
+                net = netinfo_ptr->parent;
+            }
+            if (net->use_getservbyname)
+                connport = net_get_port_by_service(net->instance);
+            if (connport <= 0)
+                connport = portmux_geti(host_node_ptr->addr, net->app,
+                                        net->service, net->instance);
         } else {
             connport = host_node_ptr->port;
         }

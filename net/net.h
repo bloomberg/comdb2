@@ -214,11 +214,10 @@ seqnum                                        (4 bytes)
 rc                                            (4 bytes)
 */
 
-/* create a netinfo object.  you need to specify your own info at
-   this point, ie, your host name, your port num. your node num */
 netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                              char app[], char service[], char instance[],
-                             int ischild, int use_getservbyname);
+                             int fake, int offload, int ischild,
+                             int use_getservbyname);
 
 host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
                                int portnum);
@@ -228,9 +227,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
    sending/recieving data.  it will fail the "is_real_netinfo" test */
 netinfo_type *create_netinfo_fake(void);
 int is_real_netinfo(netinfo_type *netinfo);
-netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
-                                     char app[], char service[],
-                                     char instance[]);
 int is_offload_netinfo(netinfo_type *netinfo);
 
 void net_inc_recv_cnt_from(netinfo_type *netinfo_ptr, char *host);
