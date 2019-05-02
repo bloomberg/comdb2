@@ -1357,8 +1357,11 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
-        bdb_temp_table_clear_pool(thedb->bdb_env);
-        logmsg(LOGMSG_USER, "Temptable pool cleared.\n");
+        if (bdb_temp_table_clear_pool(thedb->bdb_env)) {
+            logmsg(LOGMSG_USER, "Temptable pool cleared.\n");
+        } else {
+            logmsg(LOGMSG_USER, "Temptable pool not available.\n");
+        }
     }
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
         extern int gbl_temptable_count;
