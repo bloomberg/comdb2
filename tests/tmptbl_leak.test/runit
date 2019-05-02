@@ -16,7 +16,7 @@ cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(x,y) VALUES (2, 'two')"
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (3, 'three')" > /dev/null
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (4, 'four')" > /dev/null
 
-N=500
+N=200
 echo running $N SELECTs asynchronously...
 for i in `seq 1 $N` ; do
   cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
@@ -38,6 +38,7 @@ check_output()
 }
 
 wait
+sleep 60
 
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_clear')" &> temptable0.out
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('temptable_counts')" &> temptable1.out
