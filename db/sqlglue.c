@@ -135,7 +135,6 @@ extern int gbl_expressions_indexes;
 static __thread struct temptable *tmptbl_clone = NULL;
 static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
-int gbl_sql_cursor_count;
 int gbl_sql_temptable_count;
 
 static const char *rootPageNumToTempHashKey(
@@ -6477,8 +6476,6 @@ skip:
         Pthread_mutex_unlock(&thd->lk);
     }
 
-    if (rc == SQLITE_OK) gbl_sql_cursor_count--;
-
 /* We don't allocate BtCursor anymore */
 /* free(pCur); */
 done:
@@ -8407,8 +8404,6 @@ int sqlite3BtreeCursor(
             cur->range->idxnum = cur->ixnum;
         }
     }
-
-    if (cur) gbl_sql_cursor_count++;
 
     if (debug_switch_cursor_deadlock())
         return SQLITE_DEADLOCK;
