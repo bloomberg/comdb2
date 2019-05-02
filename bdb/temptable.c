@@ -49,6 +49,7 @@
 #include "locks.h"
 #include "locks_wrap.h"
 #include "bdb_int.h"
+#include "strbuf.h"
 
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
@@ -81,13 +82,21 @@ struct hashobj {
 
 int gbl_temptable_count;
 
-static void dump_stack_backtrace(void)
+static char *get_stack_backtrace(void)
 {
-    int nframes;
-    void *stack[100];
-    nframes = backtrace(stack, 100);
-    for (int i = 0; i < nframes; i++)
-        logmsg(LOGMSG_USER, "%p ", stack[i]);
+    void *stack[100] = {0};
+    int nFrames = backtrace(stack, sizeof(stack) / sizeof(void*));
+    if (nFrames > 0) {
+        strbuf *pStr = strbuf_new();
+        for (int i = 0; i < nFrames; i++) {
+            if (i > 0) strbuf_append(pStr, " ");
+            strbuf_appendf(pStr, "%p", stack[i]);
+        }
+        char *zBacktrace = strbuf_disown(pStr);
+        strbuf_free(pStr);
+        return zBacktrace;
+    }
+    return NULL;
 }
 
 unsigned int hashfunc(const void *key, int len)
@@ -469,10 +478,10 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
         char *sql = pthread_getspecific(current_sql_query_key);
-        logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, ",
-               tbl, rc, sql);
-        dump_stack_backtrace();
-        logmsg(LOGMSG_USER, "\n");
+        char *zBacktrace = get_stack_backtrace();
+        logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, %s\n",
+               tbl, rc, sql, zBacktrace);
+        free(zBacktrace);
     }
 #endif
 
@@ -1392,10 +1401,10 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
         char *sql = pthread_getspecific(current_sql_query_key);
-        logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s, ",
-               tbl, rc, sql);
-        dump_stack_backtrace();
-        logmsg(LOGMSG_USER, "\n");
+        char *zBacktrace = get_stack_backtrace();
+        logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s, %s\n",
+               tbl, rc, sql, zBacktrace);
+        free(zBacktrace);
     }
 #endif
 
