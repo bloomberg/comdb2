@@ -6470,16 +6470,13 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
                     __func__, rc, *bdberr);
         }
 
-        cur->vs_skip = NULL;
-    }
-
-    if (cur->vs_stab) {
         rc = bdb_temp_table_close(gbl_bdb_state, cur->vs_stab, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing vs_stab table %d %d\n", __func__,
                     rc, *bdberr);
         }
 
+        cur->vs_skip = NULL;
         cur->vs_stab = NULL;
     }
 
