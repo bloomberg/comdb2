@@ -17,18 +17,17 @@
 #ifndef _time_accounting_h
 #define _time_accounting_h
 
+#include <sys/time.h>
 
 #ifndef NDEBUG
 enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX };
 
-#define CHRONO_START()   \
-{                        \
+#define ACCUMULATE_TIMING(NAME, CODE) do { \
     struct timeval __tv; \
-    gettimeofday(&__tv, NULL);
-
-#define CHRONO_STOP_AND_SAVE(name) \
-    accumulate_time(name, chrono_stop(&__tv)); \
-}
+    gettimeofday(&__tv, NULL); \
+    CODE; \
+    accumulate_time(NAME, chrono_stop(&__tv)); \
+} while(0); 
 
 int chrono_stop(struct timeval *tv);
 void accumulate_time(int el, int us);
@@ -40,8 +39,7 @@ void reset_time_accounting(int el);
 void reset_all_time_accounting();
 
 #else
-#define CHRONO_START()  {}
-#define CHRONO_STOP_AND_SAVE(name) {}
+#define ACCUMULATE_TIMING(NAME, CODE) do { CODE; } while(0);
 #define print_all_time_accounting() {}
 #define cleanup_time_accounting() {}
 #endif

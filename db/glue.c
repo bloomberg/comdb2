@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -975,12 +974,10 @@ int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
     int rc;
-    CHRONO_START();
-
-    rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen, isnull);
-
-    CHRONO_STOP_AND_SAVE(CHR_IXADDK);
+    ACCUMULATE_TIMING(CHR_IXADDK,
+        rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
+                           dtalen, isnull);
+    );
     return rc;
 }
 
@@ -1242,11 +1239,10 @@ int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
     int rc;
-    CHRONO_START();
 
-    rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
-
-    CHRONO_STOP_AND_SAVE(CHR_DATADD);
+    ACCUMULATE_TIMING(CHR_DATADD,
+        rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    );
 
     return rc;
 }

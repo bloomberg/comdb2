@@ -255,7 +255,7 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "nodes:\n");
         for (int i = 0; i < numnodes; i++)
             logmsg(LOGMSG_USER, "  %s %d\n", hosts[i], nodeix(hosts[i]));
-    } else if (tokcmp(tok, ltok, "printchron") == 0) {
+    } else if (tokcmp(tok, ltok, "timings") == 0) {
         print_all_time_accounting();
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "tcmtest <test>       - enable a cdb2tcm test\n");
@@ -263,7 +263,7 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "getvers table        - get schema version for table (or all)\n");
         logmsg(LOGMSG_USER, "putvers table num    - set schema version for table\n");
         logmsg(LOGMSG_USER, "delsc   table tag    - delete a tag\n");
-        logmsg(LOGMSG_USER, "printchron           - print all chron timer accumulation \n");
+        logmsg(LOGMSG_USER, "timings              - print all accumulated timing measurements \n");
     } else {
         logmsg(LOGMSG_ERROR, "Unknown debug command <%.*s>\n", ltok, tok);
     }
