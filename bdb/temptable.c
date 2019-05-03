@@ -585,7 +585,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
                                         (void **)&table);
             break;
-        case TMPTBL_WAIT: /* NOTE: No longer used, for now. */
+        case TMPTBL_WAIT:
             comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
             break;
         }
