@@ -26,17 +26,6 @@ const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
 
 unsigned long long gbl_chron_times[CHR_MAX];
 
-// return timediff in microseconds (us) from tv passed in
-int chrono_stop(struct timeval *tv)
-{
-    struct timeval tmp;
-    gettimeofday(&tmp, NULL);
-    int sec_part = (tmp.tv_sec - tv->tv_sec)*1000000;
-    int usec_part = (tmp.tv_usec - tv->tv_usec);
-
-    return sec_part + usec_part;
-}
-
 // add time accounting to appropriate slot
 void accumulate_time(int el, int us)
 {

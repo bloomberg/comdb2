@@ -23,13 +23,16 @@
 enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX };
 
 #define ACCUMULATE_TIMING(NAME, CODE) do { \
-    struct timeval __tv; \
-    gettimeofday(&__tv, NULL); \
+    struct timeval __tv1; \
+    gettimeofday(&__tv1, NULL); \
     CODE; \
-    accumulate_time(NAME, chrono_stop(&__tv)); \
+    struct timeval __tv2; \
+    gettimeofday(&__tv2, NULL); \
+    int __sec_part = (__tv2.tv_sec - __tv1.tv_sec)*1000000; \
+    int __usec_part = (__tv2.tv_usec - __tv1.tv_usec); \
+    accumulate_time(NAME, __sec_part + __usec_part); \
 } while(0); 
 
-int chrono_stop(struct timeval *tv);
 void accumulate_time(int el, int us);
 
 void print_time_accounting(int el);
