@@ -50,4 +50,5 @@ void print_all_time_accounting()
         logmsg(LOGMSG_USER, "%s: %lluus\n", CHR_NAMES[i], gbl_chron_times[i]);
     }
 }
+
 #endif

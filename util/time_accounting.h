@@ -14,13 +14,26 @@
    limitations under the License.
  */
 
-#ifndef _time_accounting_h
-#define _time_accounting_h
+#ifndef _TIME_ACCOUNTING_H
+#define _TIME_ACCOUNTING_H
 
 #include <sys/time.h>
 
 #ifndef NDEBUG
-enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX };
+
+enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX } CHR_ENUM;
+
+/* NB: this construct is ment to encompass a function call like this:
+ * ACCUMULATE_TIMING(CHR_FUNCTOMEASURE
+ *   rc = func_to_measure();
+ * );
+ *
+ * You will have to add CHR_FUNCTOMEASURE to the CHR_ENUM above and
+ * CHR_NAMES (in time_accounting.c for printing purposes).
+ * To print accumulated time for that function then you can
+ * call print_time_accounting(CHR_FUNCTOMEASURE);
+ */
+
 
 #define ACCUMULATE_TIMING(NAME, CODE) do { \
     struct timeval __tv1; \
@@ -38,13 +51,11 @@ void accumulate_time(int el, int us);
 void print_time_accounting(int el);
 void print_all_time_accounting();
 
-void reset_time_accounting(int el);
-void reset_all_time_accounting();
-
 #else
+
 #define ACCUMULATE_TIMING(NAME, CODE) do { CODE; } while(0);
-#define print_all_time_accounting() {}
-#define cleanup_time_accounting() {}
+#define print_all_time_accounting() do {} while(0);
+#define print_time_accounting(el) do {} while(0);
 #endif
 
 
