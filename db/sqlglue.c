@@ -1656,6 +1656,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     strbuf_clear(sql);
     strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
 
+    /* Fields */
     for (field = 0; field < schema->nmembers; field++) {
         char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
@@ -1688,6 +1689,25 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         if (field != schema->nmembers - 1)
             strbuf_append(sql, ", ");
     }
+
+    /* CHECK constraints */
+    int check_cons_count = 0;
+    for (int i = 0; i < tbl->n_constraints; i++) {
+        if (tbl->constraints[i].type != CT_CHECK) {
+            continue;
+        }
+
+        if ((check_cons_count == 0) && (schema->nmembers == 1)) {
+            strbuf_append(sql, ", ");
+        }
+
+        strbuf_appendf(sql, "%sconstraint '%s' check (%s)",
+                       (check_cons_count > 0) ? ", " : "",
+                       tbl->constraints[i].consname,
+                       tbl->constraints[i].check_expr);
+        check_cons_count++;
+    }
+
     strbuf_append(sql, ");");
     if (tbl->sql)
         free(tbl->sql);
@@ -1706,7 +1726,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     ctrace("%s\n", strbuf_buf(sql));
     tbl->nsqlix = 0;
 
-    /* do the indices */
+    /* Indices */
     for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
@@ -1996,9 +2016,32 @@ struct schema_mem {
     Mem *mout;
 };
 
+/* This function let's us skip the syntax check if there is no SQL
+ * in the CSC2 schema.
+ */
+static int do_syntax_check(struct dbtable *tbl)
+{
+    int has_check_constraints = 0;
+
+    for (int i = 0; i < tbl->n_constraints; i++) {
+        if (tbl->constraints[i].type == CT_CHECK) {
+            has_check_constraints = 1;
+            break;
+        }
+    }
+
+    return ((gbl_partial_indexes && tbl->ix_partial) ||
+            (gbl_expressions_indexes && tbl->ix_expr) ||
+            (has_check_constraints == 1))
+               ? 1
+               : 0;
+}
+
 #define INDEXES_THREAD_MEMORY 1048576
-/* force an update on sqlite_master to test partial indexes syntax*/
-int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
+/* Force an update on sqlite_master to perform a syntax check for
+ * partial index and CHECK constraint expressions.
+ */
+int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
@@ -2010,8 +2053,9 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     master_entry_t *ents = NULL;
     int nents = 0;
 
-    if (!gbl_partial_indexes)
-        return -1;
+    if (!do_syntax_check(db)) {
+        return rc;
+    }
 
     sql_mem_init(NULL);
     thread_memcreate(INDEXES_THREAD_MEMORY);
@@ -2069,7 +2113,7 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     rc = sqlite3_exec(hndl, client.sql, NULL, NULL, &err);
 done:
     if (err) {
-        logmsg(LOGMSG_ERROR, "New indexes syntax error: \"%s\"\n", err);
+        logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
         if (iq)
             reqerrstr(iq, ERR_SC, "%s", err);
         sqlite3_free(err);

@@ -2520,7 +2520,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
 void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
-int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
+int sql_syntax_check(struct ireq *iq, struct dbtable *db);
 void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
