@@ -1,7 +1,7 @@
 schema
 {
    int  id
-   cstring order[20] null=yes
+   int order
 }
 keys
 {
