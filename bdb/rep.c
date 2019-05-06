@@ -1522,7 +1522,7 @@ static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
-char *print_permslsn(DB_LSN lsn, char str[])
+static char *print_permslsn(DB_LSN lsn, char str[])
 {
     int *lognum;
     int *seqnum;
@@ -4440,7 +4440,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
-    if (size > PGCOMPMAXLEN || size < 0 || ((sizeof(pgcomp_rcv_t) + size) < size)) {
+    if (size > PGCOMPMAXLEN || ((sizeof(pgcomp_rcv_t) + size) < size)) {
         logmsg(LOGMSG_WARN, "%s %d: page compaction invalid size: %u.\n",
                __FILE__, __LINE__, size);
         return E2BIG;
@@ -5202,7 +5202,6 @@ void *watcher_thread(void *arg)
     int done = 0;
     char *rep_master = 0;
     int list_start;
-    int last_list_start = 0;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5419,7 +5418,7 @@ void *watcher_thread(void *arg)
 
         list_start = gbl_lock_get_list_start;
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
-            list_start != last_list_start && (time(NULL) - list_start) >= 3) {
+            (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
             lock_info_lockers(stdout, bdb_state);
         }

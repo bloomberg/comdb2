@@ -2849,18 +2849,18 @@ static int dyns_is_field_array_comn(char *tag, int fidx)
     return (numdim(tables[tidx].sym[fidx].dim) > 0);
 }
 
-int dyns_get_field_arr_dims(int fidx, int *dims, int ndims, int *nodims)
+int dyns_get_field_arr_dims(int fidx, int *ldims, int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(NULL, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(NULL, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *dims,
+int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *ldims,
                                   int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(tabletag, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(tabletag, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
+int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
                                  int *nodims)
 {
     int i = 0;
@@ -2874,7 +2874,7 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
     for (i = 0;
          tables[tidx].sym[fidx].dim[i] != -1 && i < ((6 > ndims) ? ndims : 6);
          i++) {
-        dims[i] = tables[tidx].sym[fidx].dim[i];
+        ldims[i] = tables[tidx].sym[fidx].dim[i];
         *nodims = *nodims + 1;
     }
     return 0;
