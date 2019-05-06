@@ -3828,12 +3828,15 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         free(msg);
 
         if (gbl_fdb_track) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
-                   comdb2uuidstr((unsigned char *)tran->tid, us), fdb->dbname);
-        } else {
-            logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
-                    *(unsigned long long *)tran->tid, fdb->dbname);
+            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+                uuidstr_t us;
+                logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
+                       comdb2uuidstr((unsigned char *)tran->tid, us),
+                       fdb->dbname);
+            } else {
+                logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
+                       *(unsigned long long *)tran->tid, fdb->dbname);
+            }
         }
     } else {
         if (gbl_fdb_track) {
