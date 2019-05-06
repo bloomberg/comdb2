@@ -43,6 +43,7 @@ cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "INSERT INTO t VALUES(1, 'one
 cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "INSERT INTO t VALUES(2, 'two')" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "INSERT INTO \"select\" VALUES(3, 'three')" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "INSERT INTO \"select\" VALUES(4, 'four')" >> output.actual 2>&1
+
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO t VALUES(5, 'five')" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO t VALUES(6, 'six')" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO \"select\" VALUES(7, 'seven')" >> output.actual 2>&1
@@ -51,8 +52,8 @@ cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO \"select\" VALUES(8
 cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT t1.id, t1.\"order\" FROM t t1 WHERE t1.\"order\" = 'one'" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT t1.id, t1.\"order\" FROM LOCAL_${dbname}.t t1 WHERE t1.\"order\" = 'five'" >> output.actual 2>&1
 
-cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT s1.id, s1.\"order\" FROM \"select\" s1 WHERE t1.\"order\" = 'three'" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT s1.id, s1.\"order\" FROM LOCAL_${dbname}.\"select\" s1 WHERE t1.\"order\" = 'seven'" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT s1.id, s1.\"order\" FROM \"select\" s1 WHERE s1.\"order\" = 'three'" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${cdb2config} $srcdbname default "SELECT s1.id, s1.\"order\" FROM LOCAL_${dbname}.\"select\" s1 WHERE s1.\"order\" = 'seven'" >> output.actual 2>&1
 
 # validate results
 testcase_output=$(cat output.actual)
