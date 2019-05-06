@@ -117,8 +117,21 @@ void set_constraint_mod(int start, int op, int type)
 
 void set_constraint_name(char *name)
 {
-    /* TODO (NC): Verify that constraint names are unique. */
+    int i;
+    for (i = 0; i < nconstraints; i++) {
+        if (!strcasecmp(constraints[i].consname, name)) {
+            csc2_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES ARE "
+                       "NOT ALLOWED (variable '%s')\n",
+                       current_line, name);
+            csc2_syntax_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES "
+                              "ARE NOT ALLOWED (variable '%s')",
+                              current_line, name);
+            any_errors++;
+            return;
+        }
+    }
     constraints[nconstraints].consname = name;
+    return;
 }
 
 /* TODO (NC): Cleanup - remove this func */
