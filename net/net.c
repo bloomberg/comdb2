@@ -4990,7 +4990,6 @@ static void *connect_thread(void *arg)
         sin.sin_port = htons(connport);
 
         if (netinfo_ptr->exiting) {
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
             break;
         }
 
