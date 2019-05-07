@@ -4990,7 +4990,6 @@ static void *connect_thread(void *arg)
         sin.sin_port = htons(connport);
 
         if (netinfo_ptr->exiting) {
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
             break;
         }
 
@@ -5135,9 +5134,9 @@ static void *connect_thread(void *arg)
                                    host_node_ptr->sb);
         if (rc != 0) {
             host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                             "%s: couldnt send connect message\n", __func__);
+                             "%s: couldn't send connect message\n", __func__);
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-            close_hostnode(host_node_ptr);
+            close_hostnode_ll(host_node_ptr);
             goto again;
         }
         sbuf2flush(host_node_ptr->sb);
@@ -5946,7 +5945,9 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
                     strerror(errno));
-            free(ca);
+            Pthread_mutex_lock(&(netinfo_ptr->connlk));
+            pool_relablk(netinfo_ptr->connpool, ca);
+            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
             sbuf2close(sb);
             continue;
         }

@@ -1276,6 +1276,7 @@ retry_fdb_creation:
         /* we need to validate requested class to existing class */
         rc = _validate_existing_table(fdb, lvl, local);
         if (rc != FDB_NOERR) {
+            __fdb_rem_user(fdb, 1);
             return _failed_AddAndLockTable(db, dbname, rc, "mismatching class");
         }
     }
@@ -1418,7 +1419,7 @@ int sqlite3UnlockTable(const char *dbname, const char *table)
         abort();
     }
 
-    __fdb_rem_user(fdb, 0); /* matches __fdb_add_user in sqlite3AddAndLockTable */
+    __fdb_rem_user(fdb, 1); /* matches __fdb_add_user in sqlite3AddAndLockTable */
 
     return SQLITE_OK;
 }
@@ -3155,13 +3156,13 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
         }
 
         if (pCur->ixnum == -1) {
-            if (bias != OP_NotExists) {
+            if (bias != OP_NotExists && bias != OP_SeekRowid) {
                 logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
                 abort();
             }
 
             sql = sqlite3_mprintf("select *, rowid from \"%w\" "
-                                  "where rowid = %llu",
+                                  "where rowid = %lld",
                                   fdbc->ent->tbl->name, key->u.i);
             sqllen = strlen(sql) + 1;
         } else {
@@ -4636,7 +4637,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                ent->tbl->version);
     }
 
-    __fdb_rem_user(ent->tbl->fdb, 0);
+    __fdb_rem_user(ent->tbl->fdb, 1);
 
     return FDB_NOERR;
 }
