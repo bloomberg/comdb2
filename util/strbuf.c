@@ -174,34 +174,3 @@ void strbuf_hex(strbuf *buf, void *tohex, int len)
     strbuf_appendf(buf, output, strsz);
     free(hexst);
 }
-
-void strbuf_append_with_escape(strbuf *buf, const char *str, char esc)
-{
-    assert(buf != NULL);
-    size_t len = strlen(str);
-    if (len > 0) {
-        int dlen = 2 * len;
-        char *out = malloc(dlen);
-        if (out == NULL) {
-            logmsg(LOGMSG_FATAL, "%s: memory allocation failed\n", __func__);
-            abort();
-        }
-        memset(out, 0, dlen);
-        int j = 0;
-        for (int i = 0; i < len; i++) {
-            char c = str[i];
-            if (c == esc) {
-              /*
-              ** NOTE: For this function, to "escape" means to double
-              **       each instance of a particular character.
-               */
-              out[j++] = esc;
-              out[j++] = esc;
-            } else {
-              out[j++] = str[i];
-            }
-        }
-        strbuf_append(buf, out);
-        free(out);
-    }
-}
