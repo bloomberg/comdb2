@@ -838,11 +838,44 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
 {
     DBT dkey, ddata;
     int rc = 0;
+    arr_elem_t *elem;
+    void *keycopy, *dtacopy;
 
-    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE) {
+    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
+        cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_update operation "
-                        "only supported for btree.\n");
+                        "only supported for btree or array.\n");
         return -1;
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+        if (!cur->valid)
+            return -1;
+
+        /* Free the existing elements and update the memory footprint. */
+        elem = &cur->tbl->elements[cur->ind];
+        free(elem->key);
+        free(elem->dta);
+        cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
+
+        /* malloc and copy */
+        keycopy = malloc(keylen);
+        if (keycopy == NULL)
+            return -1;
+        dtacopy = malloc(dtalen);
+        if (dtacopy == NULL) {
+            free(keycopy);
+            return -1;
+        }
+        memcpy(keycopy, key, keylen);
+        memcpy(dtacopy, data, dtalen);
+
+        /* Update the element and the memory footprint. */
+        elem->keylen = keylen;
+        elem->key = keycopy;
+        elem->dtalen = dtalen;
+        elem->dta = dtacopy;
+        cur->tbl->inmemsz += (elem->keylen + elem->dtalen);
     }
 
     REOPEN_CURSOR(cur);
@@ -1610,6 +1643,8 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         elem = &cur->tbl->elements[cur->ind];
+        free(elem->key);
+        free(elem->dta);
         --cur->tbl->num_mem_entries;
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
