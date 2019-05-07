@@ -469,11 +469,9 @@ int recom_abort(struct sqlclntstate *clnt)
     int rc;
 
     /* temp hook for sql transactions */
-    if (clnt->dbtran.dtran)
-    {
+    if (clnt->dbtran.dtran) {
         rc = fdb_trans_rollback(clnt);
-        if(rc)
-        {
+        if (rc) {
             fprintf(stderr, "%s distributed failure rc=%d\n", __func__, rc);
         }
     }

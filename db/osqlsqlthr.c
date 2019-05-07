@@ -1260,11 +1260,9 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 
     /* temp hook for sql transactions */
     /* is it distributed? */
-    if(clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
-    {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran) {
         rc = fdb_trans_rollback(clnt);
-        if(rc)
-        {
+        if (rc) {
             fprintf(stderr, "%s distributed failure rc=%d\n", __func__, rc);
         }
     }

@@ -1761,9 +1761,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_COMMIT:
     case FDB_MSG_TRAN_ROLLBACK:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s seq=%d\n", prefix,
-               __req_2_str(msg->hd.type), *(unsigned long long *)msg->tr.tid,
-               msg->tr.flags, __tran_2_str(msg->tr.lvl), msg->tr.seq);
+        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s seq=%d\n",
+               prefix, __req_2_str(msg->hd.type),
+               *(unsigned long long *)msg->tr.tid, msg->tr.flags,
+               __tran_2_str(msg->tr.lvl), msg->tr.seq);
         break;
 
     case FDB_MSG_TRAN_RC:
@@ -1777,8 +1778,8 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
         logmsg(LOGMSG_USER,
                "XXXX: %s %llu sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
-               "rootpage=%d version=%d seq=%d SRC[%d, %s]\n", prefix,
-               t, sb, *(unsigned long long *)msg->co.cid,
+               "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
+               prefix, t, sb, *(unsigned long long *)msg->co.cid,
                *(unsigned long long *)msg->co.tid, msg->co.flags,
                msg->co.rootpage, msg->co.version, msg->co.seq, msg->co.srcpid,
                (msg->co.srcname) ? msg->co.srcname : "(unknown)");
@@ -1787,8 +1788,8 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_CURSOR_CLOSE:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_CLOSE cid=%llx seq=%d\n", prefix, t,
-               *(unsigned long long *)msg->cc.cid, msg->cc.seq);
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_CLOSE cid=%llx seq=%d\n",
+               prefix, t, *(unsigned long long *)msg->cc.cid, msg->cc.seq);
         break;
 
     case FDB_MSG_CURSOR_FIRST:
@@ -1817,8 +1818,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_DATA_ROW:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %llu DATA_ROW cid=%llx rc=%d genid=%llx "
-                            "datalen=%d datacpylen=%d\n",
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu DATA_ROW cid=%llx rc=%d genid=%llx "
+               "datalen=%d datacpylen=%d\n",
                prefix, t, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
                msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
         break;
@@ -1848,8 +1850,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %llu sb=%p INSERT cid=%llx rootp=%d "
-                            "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p INSERT cid=%llx rootp=%d "
+               "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
                prefix, t, sb, *(unsigned long long *)msg->in.cid,
                msg->in.rootpage, msg->in.version, msg->in.genid,
                msg->in.datalen, msg->in.seq,
@@ -1860,8 +1863,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_DELETE_PI:
     case FDB_MSG_DELETE:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %llu sb=%p DELETE cid=%llx rootp=%d "
-                            "version=%d genid=%llx seq=%d%s%s\n",
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p DELETE cid=%llx rootp=%d "
+               "version=%d genid=%llx seq=%d%s%s\n",
                prefix, t, sb, *(unsigned long long *)msg->up.cid,
                msg->de.rootpage, msg->de.version, msg->de.genid, msg->de.seq,
                (msg->de.tblname) ? " tblname=" : "",
@@ -1883,8 +1887,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_INDEX:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %llu INDEX cid=%llx rootp=%d version=%d "
-                            "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu INDEX cid=%llx rootp=%d version=%d "
+               "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
                prefix, t, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
                msg->ix.version, msg->ix.genid, msg->ix.is_delete, msg->ix.ixnum,
                msg->ix.ixlen);
