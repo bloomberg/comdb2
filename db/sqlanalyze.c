@@ -712,6 +712,8 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
 static int analyze_table_int(table_descriptor_t *td,
                              struct thr_handle *thr_self)
 {
+    char zErrTab[256] = {0};
+
 #ifdef DEBUG
     printf("analyze_table_int() table '%s': scale %d\n", td->table, td->scale);
 #endif
@@ -826,7 +828,7 @@ static int analyze_table_int(table_descriptor_t *td,
         sampled_table = 1;
         rc = sample_indicies(td, &clnt, tbl, td->scale, td->sb);
         if (rc) {
-            snprintf(sql, sizeof(sql), "Sampling table '%s'", td->table);
+            snprintf(zErrTab, sizeof(zErrTab), "Sampling table '%s'", td->table);
             goto error;
         }
     }
