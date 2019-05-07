@@ -300,7 +300,7 @@ void set_constraint_mod(int start, int op, int type);
 void set_constraint_name(char *name);
 void start_constraint_list(char *tblname);
 void add_constraint(char *tbl, char *key);
-void add_check_constraint(char *name, char *expr);
+void add_check_constraint(char *expr);
 void add_constant(char *name, int value, short type);
 void add_fldopt(int opttype, int valtype, void *value);
 void reset_array();

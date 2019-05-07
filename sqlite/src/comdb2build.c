@@ -2572,6 +2572,7 @@ enum {
     CONS_DELETED = 1 << 2,
 };
 
+/* TODO: (NC) merge CONS_CHECK, CT_CHECK */
 /* Constraint types */
 enum {
     CONS_FKEY,
@@ -3052,8 +3053,11 @@ static void csc2_append_fkey_cons(struct strbuf *csc2,
 static void csc2_append_check_cons(struct strbuf *csc2,
                                    struct comdb2_constraint *constraint)
 {
-    strbuf_appendf(csc2, "check \"%s\" = \"%s\"", constraint->name,
-                   constraint->check_expr);
+    strbuf_append(csc2, "check ");
+    if (constraint->name) {
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+    }
+    strbuf_appendf(csc2, "\"%s\"", constraint->check_expr);
 }
 
 /*
@@ -3290,10 +3294,20 @@ static int gen_constraint_name_int(char *in, size_t in_size, char *out,
     return 0;
 }
 
-int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
-                        size_t out_size)
+static int gen_check_constraint_name(const char *check_expr, char *buf,
+                                     size_t buf_sz)
 {
-    char buf[3 * 1024];
+    int pos = 0;
+    /* CHECK expression */
+    SNPRINTF(buf, buf_sz, pos, "%s", check_expr);
+
+done:
+    return pos;
+}
+
+static int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx,
+                                  char *buf, size_t buf_sz)
+{
     struct dbtable *table;
     struct schema *key;
     int pos = 0;
@@ -3312,11 +3326,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -3326,7 +3340,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
     /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
+    SNPRINTF(buf, buf_sz, pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -3348,11 +3362,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -3362,45 +3376,81 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
 done:
-    gen_constraint_name_int(buf, pos, out, out_size);
+    return pos;
+}
+
+int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
+                        size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    if (pConstraint->type == CT_CHECK) {
+        end = gen_check_constraint_name(pConstraint->check_expr, ptr,
+                                        sizeof(buf));
+    } else {
+        end = gen_fk_constraint_name(pConstraint, parent_idx, ptr, sizeof(buf));
+    }
+    gen_constraint_name_int(buf, end, out, out_size);
 
     return 0;
+}
+
+static int gen_fk_constraint_name2(struct comdb2_constraint *constraint,
+                                   char *buf, size_t buf_sz)
+{
+    int pos = 0;
+    struct comdb2_index_part *idx_part;
+
+    if (constraint->type == CT_CHECK) {
+        /* CHECK expression */
+        SNPRINTF(buf, buf_sz, pos, "%s", constraint->check_expr);
+    } else {
+        /* Child key columns and sort orders */
+        LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
+        {
+            /* Column name */
+            SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
+
+            /* Sort order */
+            if (idx_part->flags & INDEX_ORDER_DESC)
+                SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
+        }
+
+        /* Parent table name */
+        SNPRINTF(buf, buf_sz, pos, "%s", constraint->parent_table)
+
+        /* Parent key columns and sort orders */
+        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
+        {
+            /* Column name */
+            SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
+
+            /* Sort order */
+            if (idx_part->flags & INDEX_ORDER_DESC)
+                SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
+        }
+    }
+
+done:
+    return pos;
 }
 
 static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
                                 size_t out_size)
 {
     char buf[3 * 1024];
-    int pos = 0;
-    struct comdb2_index_part *idx_part;
+    char *ptr = (char *)buf;
+    int end;
 
-    /* Child key columns and sort orders */
-    LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
-    {
-        /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
-
-        /* Sort order */
-        if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+    if (constraint->type == CONS_CHECK) {
+        end =
+            gen_check_constraint_name(constraint->check_expr, ptr, sizeof(buf));
+    } else {
+        end = gen_fk_constraint_name2(constraint, ptr, sizeof(buf));
     }
-
-    /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", constraint->parent_table)
-
-    /* Parent key columns and sort orders */
-    LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
-    {
-        /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
-
-        /* Sort order */
-        if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
-    }
-
-done:
-    gen_constraint_name_int(buf, pos, out, out_size);
+    gen_constraint_name_int(buf, end, out, out_size);
 
     return 0;
 }
@@ -5306,6 +5356,9 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     return 1;
 }
 
+/* Set the constraint name. Also check whether another
+ * constraint exists with the same name.
+ */
 static int set_constraint_name(Parse *pParse,
                                struct comdb2_constraint *constraint)
 {
@@ -6335,10 +6388,6 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
         goto oom;
 
     constraint->type = CONS_CHECK;
-    if ((set_constraint_name(pParse, constraint)) != 0) {
-        goto cleanup;
-    }
-
     /* Get CHECK expression */
     assert(pCheckExpr && zStart && zEnd);
     check_expr_sz = zEnd - zStart;
@@ -6346,6 +6395,10 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
     constraint->check_expr = comdb2_strndup(ctx->mem, zStart, check_expr_sz);
     if (constraint->check_expr == 0)
         goto oom;
+
+    if ((set_constraint_name(pParse, constraint)) != 0) {
+        goto cleanup;
+    }
 
     /* Add this new constraint to the list. */
     listc_abl(&ctx->schema->constraint_list, constraint);

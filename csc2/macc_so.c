@@ -160,12 +160,9 @@ void add_constraint(char *tbl, char *key)
      * tbl,key,nconstraints);*/
 }
 
-void add_check_constraint(char *name, char *expr)
+void add_check_constraint(char *expr)
 {
-    nconstraints++;
     int cidx = constraints[nconstraints].ncnstrts;
-
-    set_constraint_name(name);
     constraints[nconstraints].ncnstrts++;
     constraints[nconstraints].type = CT_CHECK;
     constraints[nconstraints].flags = 0;
