@@ -5547,7 +5547,7 @@ static char *print_mem(Mem *m){
       }
       key[2*m->n] = '\0';
 
-      return sqlite3_mprintf("x'%s'", key);
+      return sqlite3_mprintf("x'%q'", key);
     }
     case MEM_Datetime: {
       char tmp[256];
@@ -5556,7 +5556,7 @@ static char *print_mem(Mem *m){
 	return sqlite3_mprintf("???");
       }
 
-      return sqlite3_mprintf("\"%s\"", tmp);
+      return sqlite3_mprintf("'%q'", tmp);
     }
   }
   /** TODO: should I return NULL here? */
@@ -5805,7 +5805,7 @@ static char* sqlite3ExprDescribe_inner(
     case TK_COMMA:
         break;
     case TK_ID:
-        return sqlite3_mprintf("%s", pExpr->u.zToken);
+        return sqlite3_mprintf("\"%w\"", pExpr->u.zToken);
     case TK_INDEXED:
     case TK_ABORT:
     case TK_ACTION:
@@ -6278,7 +6278,7 @@ default_prec:
             if(pExpr->x.pList) 
             {
                 assert(pExpr->x.pList->nExpr == 1);
-                return sqlite3_mprintf("now(\'%s\')", 
+                return sqlite3_mprintf("now('%q')", 
                                        pExpr->x.pList->a[0].pExpr->u.zToken);
             }
             else
@@ -6335,11 +6335,7 @@ default_prec:
         name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
         break;
       }
-      if( atRuntime ){
-        return sqlite3_mprintf("\"%q\"", name);
-      }else{
-        return sqlite3_mprintf("%q", name);
-      }
+      return sqlite3_mprintf("\"%w\"", name);
     }
     case TK_AGG_FUNCTION:
     case TK_AGG_COLUMN: {

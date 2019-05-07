@@ -206,7 +206,7 @@ unsigned long long logical_cron_read_persistent(const char *name,
         goto done;
     }
 
-    query = sqlite3_mprintf("sElEct value frOm %s where name=\'%s\'",
+    query = sqlite3_mprintf("sElEct value frOm %s where name='%q'",
                             LOGICAL_CRON_SYSTABLE, name);
     if (!query) {
         errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "%s malloc error\n", __func__);
@@ -232,18 +232,18 @@ char *logical_cron_update_sql(const char *name, long long value, bool increment)
 
     if (increment)
         query = sqlite3_mprintf(
-            "INSERT INTO %s (name, value) values ('%s', %lld) ON CONFLICT "
+            "INSERT INTO %s (name, value) values ('%q', %lld) ON CONFLICT "
             "(name) DO "
             "UPDATE SET value="
-            "coalesce((select value from %s where name='%s'), 0)"
-            "+1 where name = '%s'",
+            "coalesce((select value from %s where name='%q'), 0)"
+            "+1 where name = '%q'",
             LOGICAL_CRON_SYSTABLE, name, value, LOGICAL_CRON_SYSTABLE, name,
             name);
     else
         query =
-            sqlite3_mprintf("INSERT INTO %s (name, value) values ('%s', %lld) "
+            sqlite3_mprintf("INSERT INTO %s (name, value) values ('%q', %lld) "
                             "ON CONFLICT (name) DO "
-                            "UPDATE SET value=%lld where name = '%s'",
+                            "UPDATE SET value=%lld where name = '%q'",
                             LOGICAL_CRON_SYSTABLE, name, value, value, name);
     return query;
 }

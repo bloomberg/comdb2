@@ -127,17 +127,20 @@ typedef struct table_descriptor {
 int backout_stats_frm_tbl(struct sqlclntstate *clnt, const char *table,
                           int stattbl)
 {
-    char sql[256];
-    snprintf(sql, sizeof(sql), "delete from sqlite_stat%d where tbl='%s'",
-             stattbl, table);
+    char *sql = NULL;
+    sql = sqlite3_mprintf("delete from sqlite_stat%d where tbl='%q'",
+                          stattbl, table);
+    assert(sql != NULL);
     int rc = run_internal_sql_clnt(clnt, sql);
+    sqlite3_free(sql); sql = NULL;
     if (rc)
         return rc;
-
-    snprintf(sql, sizeof(sql),
-             "update sqlite_stat%d set tbl='%s' where tbl='cdb2.%s.sav'",
+    sql = sqlite3_mprintf(
+             "update sqlite_stat%d set tbl='%q' where tbl='cdb2.%q.sav'",
              stattbl, table, table);
+    assert(sql != NULL);
     rc = run_internal_sql_clnt(clnt, sql);
+    sqlite3_free(sql); sql = NULL;
     return rc;
 }
 
@@ -655,24 +658,27 @@ static void get_saved_scale(char *table, int *scale)
 int delete_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
                int stat_tbl, const char *table)
 {
-    char sql[256];
+    char *sql = NULL;
     int ii = 0;
     int more = 1;
     int rc = 0;
-    snprintf( sql, sizeof(sql),
-            "delete from sqlite_stat%d where tbl='cdb2.%s.sav'", 
+    sql = sqlite3_mprintf(
+            "delete from sqlite_stat%d where tbl='cdb2.%q.sav'", 
             stat_tbl, table);
+    assert(sql != NULL);
 #ifdef DEBUG
     printf("query '%s'\n", sql);
 #endif
     if ( (rc = run_sql_part_trans( sqldb, client, sql, &more)) != 0) {
         logmsg(LOGMSG_ERROR, "delete sav failed");
+        sqlite3_free(sql); sql = NULL;
         return rc;
     }
 #ifdef DEBUG
     printf("deleted %d from tbl='cdb2.%s.sav'\n", more, table);
 #endif
     ii++;
+    sqlite3_free(sql); sql = NULL;
     return 0;
 }
 
@@ -680,24 +686,26 @@ int delete_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
 int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
                int stat_tbl, const char *table)
 {
-    char sql[256];
+    char *sql = NULL;
     int ii = 0;
     int more = 1;
     int rc = 0;
-    snprintf( sql, sizeof(sql),
-            "update sqlite_stat%d set tbl='cdb2.%s.sav' where tbl='%s'", 
+    sql = sqlite3_mprintf(
+            "update sqlite_stat%d set tbl='cdb2.%q.sav' where tbl='%q'", 
             stat_tbl, table, table);
 #ifdef DEBUG
     printf("query '%s'\n", sql);
 #endif
     if ( (rc = run_sql_part_trans( sqldb, client, sql, &more)) != 0) {
         logmsg(LOGMSG_ERROR, "update sav failed");
+        sqlite3_free(sql); sql = NULL;
         return rc;
     }
 #ifdef DEBUG
     printf("updated %d from tbl='cdb2.%s.sav'\n", more, table);
 #endif
     ii++;
+    sqlite3_free(sql); sql = NULL;
     return 0;
 }
 
@@ -744,52 +752,64 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto cleanup;
 
-    char sql[256];
-    snprintf(sql, sizeof(sql),
-             "delete from sqlite_stat1 where tbl='cdb2.%s.sav'", td->table);
-
+    char *sql = NULL;
+    sql = sqlite3_mprintf(
+             "delete from sqlite_stat1 where tbl='cdb2.%q.sav'", td->table);
+    assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    sqlite3_free(sql); sql = NULL;
+
     if (rc)
         goto error;
 
-    snprintf(sql, sizeof(sql),
-             "update sqlite_stat1 set tbl='cdb2.%s.sav' where tbl='%s'",
+    sql = sqlite3_mprintf(
+             "update sqlite_stat1 set tbl='cdb2.%q.sav' where tbl='%q'",
              td->table, td->table);
-
+    assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    sqlite3_free(sql); sql = NULL;
+
     if (rc)
         goto error;
 
     if (get_dbtable_by_name("sqlite_stat2")) {
-        snprintf(sql, sizeof(sql),
-                 "delete from sqlite_stat2 where tbl='cdb2.%s.sav'", td->table);
-
+        sql = sqlite3_mprintf(
+                 "delete from sqlite_stat2 where tbl='cdb2.%q.sav'", td->table);
+        assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        sqlite3_free(sql); sql = NULL;
+
         if (rc)
             goto error;
 
-        snprintf(sql, sizeof(sql),
-                 "update sqlite_stat2 set tbl='cdb2.%s.sav' where tbl='%s'",
+        sql = sqlite3_mprintf(
+                 "update sqlite_stat2 set tbl='cdb2.%q.sav' where tbl='%q'",
                  td->table, td->table);
-
+        assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        sqlite3_free(sql); sql = NULL;
+
         if (rc)
             goto error;
     }
 
     if (get_dbtable_by_name("sqlite_stat4")) {
-        snprintf(sql, sizeof(sql),
-                 "delete from sqlite_stat4 where tbl='cdb2.%s.sav'", td->table);
-
+        sql = sqlite3_mprintf(
+                 "delete from sqlite_stat4 where tbl='cdb2.%q.sav'", td->table);
+        assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        sqlite3_free(sql); sql = NULL;
+
         if (rc)
             goto error;
 
-        snprintf(sql, sizeof(sql),
-                 "update sqlite_stat4 set tbl='cdb2.%s.sav' where tbl='%s'",
+        sql = sqlite3_mprintf(
+                 "update sqlite_stat4 set tbl='cdb2.%q.sav' where tbl='%q'",
                  td->table, td->table);
-
+        assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        sqlite3_free(sql); sql = NULL;
+
         if (rc)
             goto error;
     }
@@ -814,14 +834,16 @@ static int analyze_table_int(table_descriptor_t *td,
     clnt.is_analyze = 1;
 
     /* run analyze as sql query */
-    snprintf(sql, sizeof(sql), "analyzesqlite main.\"%s\"", td->table);
+    sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
+    assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    sqlite3_free(sql); sql = NULL;
+
     clnt.is_analyze = 0;
     if (rc)
         goto error;
 
-    snprintf(sql, sizeof(sql), "COMMIT");
-    rc = run_internal_sql_clnt(&clnt, sql);
+    rc = run_internal_sql_clnt(&clnt, "COMMIT");
 
 cleanup:
     sbuf2flush(sb2);
@@ -1329,31 +1351,37 @@ void handle_backout(SBUF2 *sb, char *table)
  */
 void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
 {
+    char *sql = NULL;
+
     if (NULL == get_dbtable_by_name("sqlite_stat1"))
         return; // stat1 does not exist, nothing to do
 
-    char sql[256];
-    snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat1 select tbl, '%s' as "
-                               "idx, stat FROM sqlite_stat1 WHERE tbl='%s' and "
-                               "idx='%s' \n",
+    sql = sqlite3_mprintf("INSERT INTO sqlite_stat1 select tbl, '%q' as "
+                          "idx, stat FROM sqlite_stat1 WHERE tbl='%q' and "
+                          "idx='%q' \n",
              newname, tbl, oldname);
+    assert(sql != NULL);
     run_internal_sql(sql);
+    sqlite3_free(sql); sql = NULL;
 
     if (get_dbtable_by_name("sqlite_stat2")) {
-        snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat2 select tbl, '%s' "
-                                   "as idx, sampleno, sample FROM sqlite_stat2 "
-                                   "WHERE tbl='%s' and idx='%s' \n",
+        sql = sqlite3_mprintf("INSERT INTO sqlite_stat2 select tbl, '%q' "
+                              "as idx, sampleno, sample FROM sqlite_stat2 "
+                              "WHERE tbl='%q' and idx='%q' \n",
                  newname, tbl, oldname);
+        assert(sql != NULL);
         run_internal_sql(sql);
+        sqlite3_free(sql); sql = NULL;
     }
 
     if (get_dbtable_by_name("sqlite_stat4")) {
-        snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat4 select tbl, '%s' "
-                                   "as idx, neq, nlt, ndlt, sample FROM "
-                                   "sqlite_stat4 WHERE tbl='%s' and idx='%s' "
-                                   "\n",
+        sql = sqlite3_mprintf("INSERT INTO sqlite_stat4 select tbl, '%q' "
+                              "as idx, neq, nlt, ndlt, sample FROM "
+                              "sqlite_stat4 WHERE tbl='%q' and idx='%q' \n",
                  newname, tbl, oldname);
+        assert(sql != NULL);
         run_internal_sql(sql);
+        sqlite3_free(sql); sql = NULL;
     }
 }
 

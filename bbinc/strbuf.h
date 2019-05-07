@@ -21,6 +21,7 @@
 typedef struct strbuf strbuf;
 strbuf *strbuf_new(void);
 void strbuf_append(strbuf *, const char *);
+void strbuf_append_with_escape(strbuf *, const char *, char);
 void strbuf_appendf(strbuf *, const char *, ...);
 void strbuf_vappendf(strbuf *, const char *, va_list args);
 void strbuf_clear(strbuf *);
