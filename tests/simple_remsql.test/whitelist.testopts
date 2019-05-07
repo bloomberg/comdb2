@@ -1,0 +1,2 @@
+remsql_whitelist nonexistent
+do reql longsqlrequest 500

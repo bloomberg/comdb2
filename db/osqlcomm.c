@@ -5586,7 +5586,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_t poke;
+    osql_poke_t poke = {0};
     osql_poke_uuid_t pokeuuid;
     int found = 0;
     int rc = 0;
@@ -6911,7 +6911,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // thus they will not need to check table version
         if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %llu\n",
                           dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
@@ -7372,8 +7372,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             int jj = 0;
             uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
-                        comdb2uuidstr(uuid, us), dt.ixnum,
-                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+                        comdb2uuidstr(uuid, us),
+                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
             for (jj = 0; jj < dt.nData; jj++)
                 sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -7528,7 +7528,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
         osql_bpfunc_t *rpl = NULL;
-        char err[MSGERR_MAXLEN]; // TODO TO BE REMOVED
 
         const uint8_t *n_p_buf =
             osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
@@ -7541,7 +7540,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             info.iq = iq;
             int rst = bpfunc_prepare(&func, rpl->data_len, rpl->data, &info);
             if (!rst)
-                rc = func->exec(trans, func, err);
+                rc = func->exec(trans, func, &iq->errstat);
 
             if (rst || rc) {
                 free_bpfunc(func);
@@ -8255,8 +8254,8 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         lclgenid = bdb_genid_to_host_order(dt.seq);
-        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us, dt.ixnum,
-                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us,
+                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
         for (jj = 0; jj < dt.nData; jj++)
             sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -9012,9 +9011,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 done:
     bdb_thread_event(thedb->bdb_env, 0);
     send_prefault_udp = 0;
-    if (req->record)
-        free(req->record);
-    free(req);
 }
 
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
@@ -9025,12 +9021,9 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         osqlpfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        if (req->record)
-            free(req->record);
-        free(req);
-        break;
     }
+    free(req->record);
+    free(req);
 }
 
 int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
@@ -9306,15 +9299,13 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     return p_buf_end;
 }
 
-static void *uprec_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                                struct errstat *err)
+static void *uprec_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
     logmsg(LOGMSG_INFO, "Starting upgrade record cron job\n");
     return NULL;
 }
 
-static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                              struct errstat *err)
+static void *uprec_cron_event(struct cron_event *_, struct errstat *err)
 {
     int rc, nwakeups;
     struct buf_lock_t *p_slock;

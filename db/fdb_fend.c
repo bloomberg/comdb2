@@ -118,6 +118,7 @@ struct fdb {
     int dbname_len; /* excluding terminal 0 */
     enum mach_class class
         ;      /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
+    int local; /* was this added by a LOCAL access ?*/
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
     int users; /* how many clients this db has, sql engines and cursors */
@@ -276,6 +277,7 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
 
 static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
                                int *flags);
+static int _validate_existing_table(fdb_t *fdb, int cls, int local);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -463,7 +465,8 @@ fdb_t *get_fdb(const char *dbname)
  * is set and the db is created.
  *
  */
-fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
+static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
+                      int local)
 {
     int rc = 0;
     fdb_t *fdb;
@@ -494,6 +497,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb->server_version = FDB_VER;
     fdb->dbname_len = strlen(dbname);
     fdb->users = 1;
+    fdb->local = local;
     fdb->h_ents_rootp = hash_init_i4(0);
     fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
     fdb->h_tbls_name = hash_init_strptr(0);
@@ -1084,33 +1088,23 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
     const char *dbname = *p_dbname;
     enum mach_class my_lvl = CLASS_UNKNOWN;
     enum mach_class remote_lvl = CLASS_UNKNOWN;
+    const char *tmpname;
+    const char *class;
 
     *local = 0;
 
     my_lvl = get_my_mach_class();
 
     /* extract class if any */
-    if (strchr(dbname, '_') != NULL) {
-        if (strncasecmp(dbname, "LOCAL_", 6) == 0) {
+    if ((tmpname = strchr(dbname, '_')) != NULL) {
+        class = strndup(dbname, tmpname - dbname);
+        dbname = tmpname + 1;
+        if (strncasecmp(class, "LOCAL", 6) == 0) {
             *local = 1;
             remote_lvl = my_lvl;
-            ; /* accessed allowed implicitely */
-            dbname += 6;
-        } else if (strncasecmp(dbname, "PROD_", 5) == 0) {
-            remote_lvl = CLASS_PROD;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "BETA_", 5) == 0) {
-            remote_lvl = CLASS_BETA;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "ALPHA_", 6) == 0) {
-            remote_lvl = CLASS_ALPHA;
-            dbname += 6;
-        } else if (strncasecmp(dbname, "TEST_", 5) == 0) {
-            remote_lvl = CLASS_TEST;
-            dbname += 5;
-        } else if (strncasecmp(dbname, "UAT_", 4) == 0) {
-            remote_lvl = CLASS_UAT;
-            dbname += 4;
+            /* accessed allowed implicitely */
+        } else {
+            remote_lvl = mach_class_name2class(class);
         }
 
         *p_dbname = dbname;
@@ -1271,11 +1265,19 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
-    fdb = new_fdb(dbname, &created, lvl);
+    fdb = new_fdb(dbname, &created, lvl, local);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(db, dbname, FDB_ERR_MALLOC,
                                        "OOM allocating fdb object");
+    }
+    if (!created) {
+        /* we need to validate requested class to existing class */
+        rc = _validate_existing_table(fdb, lvl, local);
+        if (rc != FDB_NOERR) {
+            __fdb_rem_user(fdb, 1);
+            return _failed_AddAndLockTable(db, dbname, rc, "mismatching class");
+        }
     }
 
     /* NOTE: FROM NOW ON, CREATED FDB IS VISIBLE TO OTHER THREADS! */
@@ -1416,7 +1418,7 @@ int sqlite3UnlockTable(const char *dbname, const char *table)
         abort();
     }
 
-    __fdb_rem_user(fdb, 0); /* matches __fdb_add_user in sqlite3AddAndLockTable */
+    __fdb_rem_user(fdb, 1); /* matches __fdb_add_user in sqlite3AddAndLockTable */
 
     return SQLITE_OK;
 }
@@ -3191,13 +3193,13 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
         }
 
         if (pCur->ixnum == -1) {
-            if (bias != OP_NotExists) {
+            if (bias != OP_NotExists && bias != OP_SeekRowid) {
                 logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
                 abort();
             }
 
             sql = (char *)malloc(256);
-            snprintf(sql, 256, "select *, rowid from %s where rowid = %llu",
+            snprintf(sql, 256, "select *, rowid from %s where rowid = %lld",
                      fdbc->ent->tbl->name, key->u.i);
             sqllen = strlen(sql) + 1;
         } else {
@@ -4672,7 +4674,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                ent->tbl->version);
     }
 
-    __fdb_rem_user(ent->tbl->fdb, 0);
+    __fdb_rem_user(ent->tbl->fdb, 1);
 
     return FDB_NOERR;
 }
@@ -4889,21 +4891,6 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
     cur->ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, tblname);
 }
 
-static const char *get_cdb2_class_str(enum mach_class cls)
-{
-    switch (cls) {
-    default:
-        return "default";
-    case CLASS_TEST:
-        return "dev";
-    case CLASS_ALPHA:
-        return "alpha";
-    case CLASS_BETA:
-        return "beta";
-    case CLASS_PROD:
-        return "prod";
-    }
-}
 
 /**
  * Retrieve the schema of a remote table
@@ -4923,11 +4910,13 @@ int fdb_get_remote_version(const char *dbname, const char *table,
         location = "localhost";
         flags = CDB2_DIRECT_CPU;
     } else {
-        location = get_cdb2_class_str(class);
+        location = mach_class_class2name(class);
         flags = 0;
     }
 
-    snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    int tot = snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+    if (tot >= sizeof(sql))
+        return FDB_ERR_FDB_TBL_NOTFOUND;
 
     rc = cdb2_open(&db, dbname, location, flags);
     if (rc)
@@ -4955,5 +4944,40 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 
 done:
     cdb2_close(db);
+    return rc;
+}
+
+static int _validate_existing_table(fdb_t *fdb, int cls, int local)
+{
+    if (fdb->local != local) {
+        /* follow-up instances don't specify LOCAL mode */
+        return FDB_ERR_CLASS_DENIED;
+    }
+    if (fdb->class != cls) {
+        /* follow-up instances don't specify same class */
+        return FDB_ERR_CLASS_DENIED;
+    }
+    return FDB_NOERR;
+}
+
+int fdb_validate_existing_table(const char *zDatabase)
+{
+    fdb_t *fdb = NULL;
+    int rc = FDB_NOERR;
+    const char *dbName = zDatabase;
+    int local;
+    int cls;
+
+    cls = get_fdb_class(&dbName, &local);
+
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
+    fdb = __cache_fnd_fdb(dbName, NULL);
+    if (fdb) {
+        rc = _validate_existing_table(fdb, cls, local);
+    }
+    /* else {}: if the fdb was removed, there is no validation
+       to be done; fdb was probably removed and the follow
+       up code might actually establish a new fdb */
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
     return rc;
 }

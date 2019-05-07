@@ -73,6 +73,8 @@
 #include "logmsg.h"
 #include <compat.h>
 
+#include <inttypes.h>
+
 #define REP_PRI 100     /* we are all equal in the eyes of god */
 #define REPTIME 3000000 /* default 3 second timeout on election */
 
@@ -1908,7 +1910,7 @@ void *hostdown_thread(void *arg)
     if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
-        print(bdb_state, "xxx master is %d we are %d\n", master_host,
+        print(bdb_state, "xxx master is %s we are %s\n", master_host,
               bdb_state->repinfo->myhost);
         electable = is_electable(bdb_state, &num_up, &num_connected);
         print(bdb_state, "connected to %d out of %d up nodes\n", num_connected,
@@ -3570,7 +3572,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
         filenum = 0;
 
     p_buf = (uint8_t *)&filenum_net;
-    p_buf_end = (uint8_t *)(&filenum_net + sizeof(int));
+    p_buf_end = p_buf + sizeof(int);
 
     buf_put(&filenum, sizeof(int), p_buf, p_buf_end);
 
@@ -4417,7 +4419,6 @@ static void pg_compact_do_work(struct thdpool *pool, void *work, void *thddata)
 
     __dbenv_pgcompact(dbenv, fileid, &dbt, gbl_pg_compact_thresh,
                       gbl_pg_compact_target_ff);
-    free(arg);
 }
 
 /* thread pool work function */
@@ -4428,10 +4429,8 @@ static void pg_compact_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         pg_compact_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 /* enqueue a page compact work */
@@ -4441,9 +4440,9 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
-    if (size > PGCOMPMAXLEN) {
-        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
-               __FILE__, __LINE__);
+    if (size > PGCOMPMAXLEN || size < 0 || ((sizeof(pgcomp_rcv_t) + size) < size)) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction invalid size: %u.\n",
+               __FILE__, __LINE__, size);
         return E2BIG;
     }
 
@@ -4823,11 +4822,8 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
     pgno = req->pgno;
 
     if ((ret = __dbreg_id_to_db_prefault(bdb_state->dbenv, NULL, &file_dbp,
-                                         fileid, 1)) != 0) {
-        // fprintf(stderr, "udp prefault: __dbreg_id_to_db failed with ret:
-        // %d\n", ret);
-        goto out;
-    }
+                                         fileid, 1)) != 0)
+        return;
 
     mpf = file_dbp->mpf;
 
@@ -4836,10 +4832,6 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
         sleep(gbl_prefault_latency);
 
     __dbreg_prefault_complete(bdb_state->dbenv, fileid);
-
-out:
-    free(req);
-    return;
 }
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -4872,10 +4864,8 @@ static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
     case THD_RUN:
         touch_page(mpf, pgno);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -4898,10 +4888,8 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         udppfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(req);
-        break;
     }
+    free(req);
 }
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
@@ -5233,7 +5221,7 @@ void *watcher_thread(void *arg)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    print(bdb_state, "watcher_thread started as 0x%p\n",
+    print(bdb_state, "watcher_thread started as 0x%"PRIxPTR"\n",
           (intptr_t)pthread_self());
 
     poll(NULL, 0, (rand() % 100) + 1000);

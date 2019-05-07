@@ -116,23 +116,20 @@ void debug_trap(char *line, int lline)
 
         else if (tokcmp(tok, ltok, "routecpu") == 0) {
             tok = segtok(line, lline, &st, &ltok);
-            if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "routecpu command requires a node to route-off argument\n");
-                return;
-            }
-            char *tmphost = tokdup(tok, ltok);
             char *host = NULL;
-            char *end = NULL;
-            int node = strtol(tmphost, &end, 10);
-            if (*end == 0) { /* consumed entire token */
-                if (node > 0) {
-                    host = hostname(node);
+            if (ltok > 0) {
+                char *tmphost = tokdup(tok, ltok);
+                char *end = NULL;
+                int node = strtol(tmphost, &end, 10);
+                if (*end == 0) { /* consumed entire token */
+                    if (node > 0) {
+                        host = hostname(node);
+                    }
+                } else {
+                    host = intern(tmphost);
                 }
-            } else {
-                host = intern(tmphost);
+                free(tmphost);
             }
-            free(tmphost);
             logmsg(LOGMSG_USER, "%s routecpu test for node %s\n",
                    host ? "enable" : "disable",
                    host ? host : tcmtest_routecpu_down_node);

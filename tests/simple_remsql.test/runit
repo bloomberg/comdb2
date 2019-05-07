@@ -27,6 +27,56 @@ for file in $files ; do
 done
 
 
+if [[ $DBNAME == *"whitelistgenerated"* ]] ; then
+    node=`cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME default "select comdb2_host()"`
+
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $SECONDARY_DBNAME --host $node "select count(*) from LOCAL_${DBNAME}.t" 2> white0.out
+    if [ "`cat white0.out`" != "[select count(*) from LOCAL_${DBNAME}.t] failed with rc -3 Access Error: db not allowed to connect" ] ; then
+        echo "white0.out content not what expected, rather: `cat white0.out`"
+        exit 1
+    fi
+
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist add nonexistent')" > white1.out
+    if [ "`cat white1.out`" != "nonexistent already in whitelist" ] ; then
+        echo "white1.out content not what expected, rather: `cat white1.out`"
+        exit 1
+    fi
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist add $SECONDARY_DBNAME')" > white2.out
+    if [ "`cat white2.out`" != "" ] ; then
+        echo "white2.out content not what expected, rather: `cat white2.out`"
+        exit 1
+    fi
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist dump')" | sort > white3.out
+    echo "nonexistent
+$SECONDARY_DBNAME" > white3.exp
+    if ! diff white3.out white3.exp ; then
+        echo "white3.out content not what expected, rather: `cat white3.out`"
+        exit 1
+    fi
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist del nonexistent')" > white4.out
+    if [ "`cat white4.out`" != "" ] ; then
+        echo "white4.out content not what expected, rather: `cat white4.out`"
+        exit 1
+    fi
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist dump')" > white5.out
+    if [ "`cat white5.out`" != "$SECONDARY_DBNAME" ] ; then
+        echo "white5.out content not what expected, rather: `cat white5.out`"
+        exit 1
+    fi
+
+    for node in $CLUSTER; do
+        cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('remsql_whitelist add $SECONDARY_DBNAME')"
+    done
+
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $SECONDARY_DBNAME --host $node "select count(*) from LOCAL_${DBNAME}.t" > white6.out
+    if [ "`cat white6.out`" != "0" ] ; then
+        echo "white6.out content not what expected, rather: `cat white6.out`"
+        exit 1
+    fi
+
+fi
+
+
 #run tests
 echo "Starting tests"
 ./remsql_curmoves.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG

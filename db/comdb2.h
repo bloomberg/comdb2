@@ -1591,6 +1591,7 @@ extern int gbl_maxthreads;   /* max number of threads allowed */
 extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_mynode;     /* my hostname */
+extern char *gbl_machine_class; /* my machine class */
 struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern char *gbl_myhostname; /* my hostname */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
@@ -1815,6 +1816,7 @@ int schema_init(void);
 int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
+int mach_class_init(void);
 
 /* deinit routines */
 int destroy_appsock(void);
@@ -1921,10 +1923,16 @@ int getdefaultdatsize(const struct dbtable *db);
 int getondiskclientdatsize(const struct dbtable *db);
 int getclientdatsize(const struct dbtable *db, char *sname);
 
-struct dbtable *getdbbynum(int num);           /*look up managed db's by number*/
-struct dbtable *get_dbtable_by_name(const char *name); /*look up managed db's by name*/
-struct dbtable *
-getqueuebyname(const char *name); /*look up managed queue db's by name*/
+/*look up managed db's by number*/
+struct dbtable *getdbbynum(int num);
+/*look up managed db's by name*/
+struct dbtable *get_dbtable_by_name(const char *name);
+/* lookup a table by name; if it exists, lock table readonly
+   if there is no table, lock table in write mode
+   NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *name);
+/*look up managed queue db's by name*/
+struct dbtable *getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
 
 int get_elect_time_microsecs(void); /* get election time in seconds */
@@ -2498,6 +2506,12 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
                               int nents);
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
+int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
+                                  const char **names,
+                                  struct master_entry **oldentries,
+                                  int *oldnentries, int lock);
+void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
+                           int nents);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();
@@ -2525,7 +2539,6 @@ void hash_set_cmpfunc(hash_t *h, cmpfunc_t cmpfunc);
 enum mach_class get_my_mach_class(void);
 enum mach_class get_mach_class(const char *host);
 const char *get_mach_class_str(char *host);
-const char *get_class_str(enum mach_class cls);
 int allow_write_from_remote(const char *host);
 int allow_cluster_from_remote(const char *host);
 int allow_broadcast_to_remote(const char *host);
@@ -2849,6 +2862,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
+void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);

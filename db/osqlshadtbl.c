@@ -3031,7 +3031,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             osql->xerr.errval = ERR_SC;
             errstat_set_strf(
                 &(osql->xerr),
-                "stale version for table:%s master:%d replicant:%d",
+                "stale version for table:%s master:%llu replicant:%d",
                 sc->tablename, comdb2_table_version(sc->tablename),
                 packed_sc_key[1]);
             return ERR_SC;
@@ -3320,9 +3320,7 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
     unsigned long long genid = 0;
     char *data = NULL;
     int datalen = 0;
-    if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
-        !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl)
-        return 1;
+
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
         cur =
@@ -3337,5 +3335,6 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
         if (rc != IX_EMPTY)
             return 0;
     }
-    return 1;
+
+    return (!osql->verify_tbl && !osql->sc_tbl && !osql->bpfunc_tbl);
 }

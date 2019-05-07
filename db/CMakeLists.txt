@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_fingerprint.c
   db_metrics.c
   db_tunables.c
   db_util.c
@@ -90,6 +91,7 @@ set(src
   shard_range.c
   dohsql.c
   dohast.c
+  machclass.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c

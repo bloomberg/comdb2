@@ -64,7 +64,14 @@ static char *CDB2DBCONFIG_BUF = NULL;
 
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
-static char cdb2_dnssuffix[255] = "";
+
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
+
+#ifndef CDB2_DNS_SUFFIX
+#define CDB2_DNS_SUFFIX
+#endif
+static char cdb2_dnssuffix[255] = QUOTE(CDB2_DNS_SUFFIX);
 static char cdb2_machine_room[16] = "";
 
 #define CDB2_PORTMUXPORT_DEFAULT 5105
@@ -388,9 +395,6 @@ static void do_init_once(void)
     _PID = getpid();
     _MACHINE_ID = gethostid();
     _ARGV0 = cdb2_getargv0();
-
-    if (cdb2_install != NULL)
-        (*cdb2_install)();
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -1318,6 +1322,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
+            } else if (strcasecmp("install_static_libs", tok) == 0) {
+                if (cdb2_install != NULL)
+                    (*cdb2_install)();
             } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
@@ -1359,8 +1366,6 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts);
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");
@@ -2247,7 +2252,8 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
 static int cdb2_random_int()
 {
     static __thread unsigned short rand_state[3] = {0};
-    if (rand_state[0] == 0) {
+    static __thread unsigned short do_once = 0;
+    if (!do_once) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
         /* Initialize rand_state once per thread
@@ -2260,6 +2266,7 @@ static int cdb2_random_int()
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
+        do_once = 1;
     }
     return nrand48(rand_state);
 }
@@ -2279,6 +2286,20 @@ static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
     return 0;
 }
 
+/* Get random value from range 0 to max-1 excluding 1 value */
+static int getRandomExclude(int max, int exclude)
+{
+    int val = 0;
+    if (max < 2)
+        return 0;
+    for (int i = 0; i < 10; i++) {
+        val = cdb2_random_int() % max;
+        if (val != exclude)
+            return val;
+    }
+    return val;
+}
+
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
     if (hndl->sb) {
@@ -2295,10 +2316,11 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
+        hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
+        hndl->node_seq =
+            getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
@@ -2455,18 +2477,18 @@ retry:
             }
             CDB2QUERY query = CDB2__QUERY__INIT;
             query.spcmd = cmd;
-            int len = cdb2__query__get_packed_size(&query);
-            unsigned char *locbuf = malloc(len + 1);
+            int loc_len = cdb2__query__get_packed_size(&query);
+            unsigned char *locbuf = malloc(loc_len + 1);
 
             cdb2__query__pack(&query, locbuf);
 
             struct newsqlheader hdr = {.type =
                                            ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
                                        .compression = ntohl(0),
-                                       .length = ntohl(len)};
+                                       .length = ntohl(loc_len)};
 
             sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
-            sbuf2write((char *)locbuf, len, hndl->sb);
+            sbuf2write((char *)locbuf, loc_len, hndl->sb);
 
             int rc = sbuf2flush(hndl->sb);
             free(locbuf);
@@ -5742,7 +5764,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     cdb2_hndl_tp *hndl;
     int rc = 0;
     void *callbackrc;
-    int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
@@ -5796,19 +5817,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "random_room");
     }
 
-    rc = refresh_gbl_events_on_hndl(hndl);
-    if (rc != 0)
-        goto out;
-
-    while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
-    }
-
-    if (overwrite_rc)
-        goto out;
-
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
@@ -5850,6 +5858,18 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (hndl->send_stack)
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
+
+    if (rc == 0) {
+        rc = refresh_gbl_events_on_hndl(hndl);
+        if (rc != 0)
+            goto out;
+
+        while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
+            callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE,
+                                              (intptr_t)rc);
+            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+        }
+    }
 
 out:
     if (log_calls) {

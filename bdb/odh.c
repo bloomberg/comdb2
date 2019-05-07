@@ -721,7 +721,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
                                           int flags, int verify_updateid)
 {
     int rc;
-    struct odh odh;
+    struct odh odh = {0};
     void *buf;
 
     if (!bdb_state->ondisk_header && *updateid > 0) {
@@ -1376,7 +1376,7 @@ inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr)
 {
-    struct odh odh;
+    struct odh odh = {0};
     int rc;
 
     /* Force ODH in case that a schema change
@@ -1397,7 +1397,7 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
 int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
                   size_t *outlen, void **freeptr)
 {
-    uint32_t recsz;
+    uint32_t recsz = 0;
     int rc;
 
     if (!bdb_state->ondisk_header)

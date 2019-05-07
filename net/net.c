@@ -1415,8 +1415,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -1504,8 +1503,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
-            char lenstr[HOSTNAME_LEN];
-            bzero(lenstr, sizeof(lenstr));
+            char lenstr[HOSTNAME_LEN] = {0};
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
@@ -4685,11 +4683,12 @@ void net_subnet_status()
 {
     int i = 0;
     Pthread_mutex_lock(&subnet_mtx);
+    char my_buf[30];
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                subnet_disabled[i] ? "disabled" : "enabled\n",
                subnet_disabled[i] ? " at " : "",
-               subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+               subnet_disabled[i] ? ctime_r(&subnet_disabled[i], my_buf) : "");
     }
     Pthread_mutex_unlock(&subnet_mtx);
 }
@@ -4872,8 +4871,8 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         } else {
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
-                                 "'%s': gethostbyname '%s' addr %d\n", __func__,
-                                 rephostname, *addr);
+                                 "'%s': gethostbyname '%s' addr %x\n", __func__,
+                                 rephostname, (unsigned) addr->s_addr);
             }
             break;
         }
@@ -4991,7 +4990,6 @@ static void *connect_thread(void *arg)
         sin.sin_port = htons(connport);
 
         if (netinfo_ptr->exiting) {
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
             break;
         }
 
@@ -5136,9 +5134,9 @@ static void *connect_thread(void *arg)
                                    host_node_ptr->sb);
         if (rc != 0) {
             host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                             "%s: couldnt send connect message\n", __func__);
+                             "%s: couldn't send connect message\n", __func__);
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-            close_hostnode(host_node_ptr);
+            close_hostnode_ll(host_node_ptr);
             goto again;
         }
         sbuf2flush(host_node_ptr->sb);
@@ -5947,7 +5945,9 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
                     strerror(errno));
-            free(ca);
+            Pthread_mutex_lock(&(netinfo_ptr->connlk));
+            pool_relablk(netinfo_ptr->connpool, ca);
+            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
             sbuf2close(sb);
             continue;
         }
@@ -6360,9 +6360,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = malloc(sizeof(sanc_node_type));
-    bzero(ptr, sizeof(sanc_node_type));
-
+    ptr = calloc(1, sizeof(sanc_node_type));
     ptr->next = netinfo_ptr->sanctioned_list;
     ptr->host = hostname;
     ptr->port = portnum;

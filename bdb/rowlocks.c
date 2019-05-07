@@ -4119,7 +4119,7 @@ int handle_commit_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                             DB_LSN *lsn, db_recops op)
 {
     bdb_state_type *bdb_state;
-    int rc;
+    int rc = 0;
     bdb_state = dbenv->app_private;
 
     if (bdb_state->parent)

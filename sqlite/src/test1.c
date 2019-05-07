@@ -2675,6 +2675,33 @@ static int SQLITE_TCLAPI test_stmt_readonly(
 }
 
 /*
+** Usage:  sqlite3_stmt_isexplain  STMT
+**
+** Return 1, 2, or 0 respectively if STMT is an EXPLAIN statement, an
+** EXPLAIN QUERY PLAN statement or an ordinary statement or NULL pointer.
+*/
+static int SQLITE_TCLAPI test_stmt_isexplain(
+  void * clientData,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *CONST objv[]
+){
+  sqlite3_stmt *pStmt;
+  int rc;
+
+  if( objc!=2 ){
+    Tcl_AppendResult(interp, "wrong # args: should be \"",
+        Tcl_GetStringFromObj(objv[0], 0), " STMT", 0);
+    return TCL_ERROR;
+  }
+
+  if( getStmtPointer(interp, Tcl_GetString(objv[1]), &pStmt) ) return TCL_ERROR;
+  rc = sqlite3_stmt_isexplain(pStmt);
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(rc));
+  return TCL_OK;
+}
+
+/*
 ** Usage:  sqlite3_stmt_busy  STMT
 **
 ** Return true if STMT is a non-NULL pointer to a statement
@@ -4245,13 +4272,15 @@ static int SQLITE_TCLAPI test_prepare_v2(
   }
   pzTail = objc>=5 ? &zTail : 0;
   rc = sqlite3_prepare_v2(db, zCopy, bytes, &pStmt, pzTail);
+  if( objc>=5 ){
+    zTail = &zSql[(zTail - zCopy)];
+  }
   free(zCopy);
-  zTail = &zSql[(zTail - zCopy)];
 
   assert(rc==SQLITE_OK || pStmt==0);
   Tcl_ResetResult(interp);
   if( sqlite3TestErrCode(interp, db, rc) ) return TCL_ERROR;
-  if( rc==SQLITE_OK && zTail && objc>=5 ){
+  if( rc==SQLITE_OK && objc>=5 && zTail ){
     if( bytes>=0 ){
       bytes = bytes - (int)(zTail-zSql);
     }
@@ -7141,6 +7170,9 @@ static int SQLITE_TCLAPI tclLoadStaticExtensionCmd(
   extern int sqlite3_ieee_init(sqlite3*,char**,const sqlite3_api_routines*);
   extern int sqlite3_nextchar_init(sqlite3*,char**,const sqlite3_api_routines*);
   extern int sqlite3_percentile_init(sqlite3*,char**,const sqlite3_api_routines*);
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+  extern int sqlite3_prefixes_init(sqlite3*,char**,const sqlite3_api_routines*);
+#endif
   extern int sqlite3_regexp_init(sqlite3*,char**,const sqlite3_api_routines*);
   extern int sqlite3_remember_init(sqlite3*,char**,const sqlite3_api_routines*);
   extern int sqlite3_series_init(sqlite3*,char**,const sqlite3_api_routines*);
@@ -7166,6 +7198,9 @@ static int SQLITE_TCLAPI tclLoadStaticExtensionCmd(
     { "ieee754",               sqlite3_ieee_init                 },
     { "nextchar",              sqlite3_nextchar_init             },
     { "percentile",            sqlite3_percentile_init           },
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    { "prefixes",              sqlite3_prefixes_init             },
+#endif
     { "regexp",                sqlite3_regexp_init               },
     { "remember",              sqlite3_remember_init             },
     { "series",                sqlite3_series_init               },
@@ -7642,6 +7677,79 @@ static int SQLITE_TCLAPI test_mmap_warm(
 }
 
 /*
+** Usage:  decode_hexdb TEXT
+**
+** Example:   db deserialize [decode_hexdb $output_of_dbtotxt]
+**
+** This routine returns a byte-array for an SQLite database file that
+** is constructed from a text input which is the output of the "dbtotxt"
+** utility.
+*/
+static int SQLITE_TCLAPI test_decode_hexdb(
+  void * clientData,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *CONST objv[]
+){
+  const char *zIn = 0;
+  unsigned char *a = 0;
+  int n = 0;
+  int lineno = 0;
+  int i, iNext;
+  int iOffset = 0;
+  int j, k;
+  int rc;
+  unsigned char x[16];
+  if( objc!=2 ){
+    Tcl_WrongNumArgs(interp, 1, objv, "HEXDB");
+    return TCL_ERROR;
+  }
+  zIn = Tcl_GetString(objv[1]);
+  for(i=0; zIn[i]; i=iNext){
+    lineno++;
+    for(iNext=i; zIn[iNext] && zIn[iNext]!='\n'; iNext++){}
+    if( zIn[iNext]=='\n' ) iNext++;
+    while( zIn[i]==' ' || zIn[i]=='\t' ){ i++; }
+    if( a==0 ){
+      int pgsz;
+      rc = sscanf(zIn+i, "| size %d pagesize %d", &n, &pgsz);
+      if( rc!=2 ) continue;
+      if( n<512 ){
+        Tcl_AppendResult(interp, "bad 'size' field", (void*)0);
+        return TCL_ERROR;
+      }
+      a = malloc( n );
+      if( a==0 ){
+        Tcl_AppendResult(interp, "out of memory", (void*)0);
+        return TCL_ERROR;
+      }
+      memset(a, 0, n);
+      continue;
+    }
+    rc = sscanf(zIn+i, "| page %d offset %d", &j, &k);
+    if( rc==2 ){
+      iOffset = k;
+      continue;
+    }
+    rc = sscanf(zIn+i,"| %d: %hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx"
+                      "  %hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx",
+                &j, &x[0], &x[1], &x[2], &x[3], &x[4], &x[5], &x[6], &x[7],
+                &x[8], &x[9], &x[10], &x[11], &x[12], &x[13], &x[14], &x[15]);
+    if( rc==17 ){
+      k = iOffset+j;
+      if( k+16<=n ){
+        memcpy(a+k, x, 16);
+      }
+      continue;
+    }
+  }
+  Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(a, n));
+  free(a);
+  return TCL_OK;
+}
+
+
+/*
 ** Register commands with the TCL interpreter.
 */
 int Sqlitetest1_Init(Tcl_Interp *interp){
@@ -7761,6 +7869,7 @@ int Sqlitetest1_Init(Tcl_Interp *interp){
 #endif
      { "sqlite3_next_stmt",             test_next_stmt     ,0 },
      { "sqlite3_stmt_readonly",         test_stmt_readonly ,0 },
+     { "sqlite3_stmt_isexplain",        test_stmt_isexplain,0 },
      { "sqlite3_stmt_busy",             test_stmt_busy     ,0 },
      { "uses_stmt_journal",             uses_stmt_journal ,0 },
 
@@ -7920,6 +8029,7 @@ int Sqlitetest1_Init(Tcl_Interp *interp){
      { "atomic_batch_write",      test_atomic_batch_write, 0 },
      { "sqlite3_mmap_warm",       test_mmap_warm,          0 },
      { "sqlite3_config_sorterref", test_config_sorterref,   0 },
+     { "decode_hexdb",             test_decode_hexdb,       0 },
   };
   static int bitmask_size = sizeof(Bitmask)*8;
   static int longdouble_size = sizeof(LONGDOUBLE_TYPE);

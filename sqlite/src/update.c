@@ -244,7 +244,6 @@ void sqlite3Update(
   if( !pParse->ast ) pParse->ast = ast_init();
   ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){
     pWhere = sqlite3LimitWhere(
@@ -369,6 +368,7 @@ void sqlite3Update(
   ** being updated.  Fill in aRegIdx[] with a register number that will hold
   ** the key for accessing each index.
   */
+  if( onError==OE_Replace ) bReplace = 1;
   for(j=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, j++){
     int reg;
     if( chngKey || hasFK>1 || pIdx==pPk
@@ -385,9 +385,7 @@ void sqlite3Update(
         if( indexColumnIsBeingUpdated(pIdx, i, aXRef, chngRowid) ){
           reg = ++pParse->nMem;
           pParse->nMem += pIdx->nColumn;
-          if( (onError==OE_Replace)
-           || (onError==OE_Default && pIdx->onError==OE_Replace) 
-          ){
+          if( onError==OE_Default && pIdx->onError==OE_Replace ){
             bReplace = 1;
           }
           break;
@@ -406,7 +404,6 @@ void sqlite3Update(
   /* Begin generating code. */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto update_cleanup;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* create our updCols array. */
   if( isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
@@ -416,7 +413,6 @@ void sqlite3Update(
     sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pTrigger || hasFK, iDb);
 
@@ -470,7 +466,7 @@ void sqlite3Update(
 #endif
 
   /* Jump to labelBreak to abandon further processing of this UPDATE */
-  labelContinue = labelBreak = sqlite3VdbeMakeLabel(v);
+  labelContinue = labelBreak = sqlite3VdbeMakeLabel(pParse);
 
   /* Not an UPSERT.  Normal processing.  Begin by
   ** initialize the count of updated rows */
@@ -614,13 +610,13 @@ void sqlite3Update(
         VdbeCoverage(v);
       }
       if( eOnePass!=ONEPASS_SINGLE ){
-        labelContinue = sqlite3VdbeMakeLabel(v);
+        labelContinue = sqlite3VdbeMakeLabel(pParse);
       }
       sqlite3VdbeAddOp2(v, OP_IsNull, pPk ? regKey : regOldRowid, labelBreak);
       VdbeCoverageIf(v, pPk==0);
       VdbeCoverageIf(v, pPk!=0);
     }else if( pPk ){
-      labelContinue = sqlite3VdbeMakeLabel(v);
+      labelContinue = sqlite3VdbeMakeLabel(pParse);
       sqlite3VdbeAddOp2(v, OP_Rewind, iEph, labelBreak); VdbeCoverage(v);
       addrTop = sqlite3VdbeAddOp2(v, OP_RowData, iEph, regKey);
       sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, labelContinue, regKey, 0);

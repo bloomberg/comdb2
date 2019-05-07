@@ -95,7 +95,7 @@ getmembers()
 
 SAVIFS=$IFS
 echo check all .*sql entries for fingerprint
-echo 'fdd7b563dc0eafcac901a58e7ccaf8fe' > exp.txt
+echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
     getmembers $line > out.txt
@@ -107,7 +107,7 @@ done
 
 
 echo check all .*sql entries for fingerprint
-echo 'fdd7b563dc0eafcac901a58e7ccaf8fe' > exp.txt
+echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
     getmembers $line > out.txt
@@ -140,7 +140,7 @@ if ! diff out.txt exp.txt ; then
 fi
 
 echo check all .*sql entries for fingerprint
-echo '8adff58459d888b1814d0f039bd3e93b' > exp.txt
+echo '00000000000000000000000000000000' > exp.txt
 grep 'sql","sql": "select \* from nonexistent"' $logflunziped | while read line ; 
 do
     getmembers $line > out.txt
@@ -153,7 +153,7 @@ done
 echo check the sql parameter now
 echo '1
 no such table: nonexistent
-8adff58459d888b1814d0f039bd3e93b' > exp.txt
+00000000000000000000000000000000' > exp.txt
 line=`grep '"sql","sql": "select \* from nonexistent"' $logflunziped`
 getmembers $line > out.txt
 #grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
@@ -200,7 +200,7 @@ cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
 echo lastfls 
 cat lastfls.txt
 
-res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep '"type": "sql"'| wc -l)
+res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep -c '"type": "sql"')
 assertres $res 1
 
 exit 0

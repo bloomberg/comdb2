@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2019 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,20 +12,9 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-#ifndef INCLUDED_MACHCLASS_H
-#define INCLUDED_MACHCLASS_H
-
-/* order is important */
-enum mach_class {
-    CLASS_UNKNOWN = 0,
-    CLASS_TEST = 1,
-    CLASS_ALPHA = 2,
-    CLASS_UAT = 3,
-    CLASS_BETA = 4,
-    CLASS_PROD = 5,
-    CLASS_DENIED = 10
-};
-
-#endif
+#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
+void *memdup_readonly(const void *, size_t);
+void memdup_free(char *, size_t);
+#endif /* !defined(NDEBUG) && defined(_LINUX_SOURCE) */

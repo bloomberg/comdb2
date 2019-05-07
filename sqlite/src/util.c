@@ -32,15 +32,23 @@ void sqlite3Coverage(int x){
 #endif
 
 /*
-** Give a callback to the test harness that can be used to simulate faults
-** in places where it is difficult or expensive to do so purely by means
-** of inputs.
+** Calls to sqlite3FaultSim() are used to simulate a failure during testing,
+** or to bypass normal error detection during testing in order to let 
+** execute proceed futher downstream.
 **
-** The intent of the integer argument is to let the fault simulator know
-** which of multiple sqlite3FaultSim() calls has been hit.
+** In deployment, sqlite3FaultSim() *always* return SQLITE_OK (0).  The
+** sqlite3FaultSim() function only returns non-zero during testing.
 **
-** Return whatever integer value the test callback returns, or return
-** SQLITE_OK if no test callback is installed.
+** During testing, if the test harness has set a fault-sim callback using
+** a call to sqlite3_test_control(SQLITE_TESTCTRL_FAULT_INSTALL), then
+** each call to sqlite3FaultSim() is relayed to that application-supplied
+** callback and the integer return value form the application-supplied
+** callback is returned by sqlite3FaultSim().
+**
+** The integer argument to sqlite3FaultSim() is a code to identify which
+** sqlite3FaultSim() instance is being invoked. Each call to sqlite3FaultSim()
+** should have a unique code.  To prevent legacy testing applications from
+** breaking, the codes should not be changed or reused.
 */
 #ifndef SQLITE_UNTESTABLE
 int sqlite3FaultSim(int iTest){
@@ -226,6 +234,19 @@ void sqlite3ErrorMsg(Parse *pParse, const char *zFormat, ...){
 }
 
 /*
+** If database connection db is currently parsing SQL, then transfer
+** error code errCode to that parser if the parser has not already
+** encountered some other kind of error.
+*/
+int sqlite3ErrorToParser(sqlite3 *db, int errCode){
+  Parse *pParse;
+  if( db==0 || (pParse = db->pParse)==0 ) return errCode;
+  pParse->rc = errCode;
+  pParse->nErr++;
+  return errCode;
+}
+
+/*
 ** Convert an SQL-style quoted string into a normal string by removing
 ** the quote characters.  The conversion is done in-place.  If the
 ** input does not begin with a quote character, then this routine
@@ -238,7 +259,7 @@ void sqlite3ErrorMsg(Parse *pParse, const char *zFormat, ...){
 ** dequoted string, exclusive of the zero terminator, if dequoting does
 ** occur.
 **
-** 2002-Feb-14: This routine is extended to remove MS-Access style
+** 2002-02-14: This routine is extended to remove MS-Access style
 ** brackets from around identifiers.  For example:  "[a-b-c]" becomes
 ** "a-b-c".
 */
@@ -263,6 +284,11 @@ void sqlite3Dequote(char *z){
     }
   }
   z[j] = 0;
+}
+void sqlite3DequoteExpr(Expr *p){
+  assert( sqlite3Isquote(p->u.zToken[0]) );
+  p->flags |= p->u.zToken[0]=='"' ? EP_Quoted|EP_DblQuoted : EP_Quoted;
+  sqlite3Dequote(p->u.zToken);
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1247,6 +1273,70 @@ void sqlite3Put4byte(unsigned char *p, u32 v){
 }
 
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Convert an eight-byte integer value to a double and vice versa.
+** This method should be safe; however, it may not be the fastest.
+*/
+i64 sqlite3DoubleToInt64(double rVal){
+  i64 iVal;
+  assert( sizeof(double)==sizeof(i64) );
+  memcpy(&iVal, &rVal, sizeof(i64));
+  return iVal;
+}
+double sqlite3Int64ToDouble(i64 iVal){
+  double rVal;
+  assert( sizeof(i64)==sizeof(double) );
+  memcpy(&rVal, &iVal, sizeof(double));
+  return rVal;
+}
+/*
+** Read or write an eight-byte big-endian integer value.
+*/
+u64 sqlite3Get8byte(const u8 *p){
+#if SQLITE_BYTEORDER==4321
+  u64 x;
+  memcpy(&x,p,8);
+  return x;
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
+  u64 x;
+  memcpy(&x,p,8);
+  return __builtin_bswap64(x);
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
+  u64 x;
+  memcpy(&x,p,8);
+  return _byteswap_uint64(x);
+#else
+  testcase( p[0]&0x80 );
+  testcase( p[1]&0x80 );
+  testcase( p[2]&0x80 );
+  testcase( p[3]&0x80 );
+  testcase( p[4]&0x80 );
+  return ((u64)p[0]<<56) | ((u64)p[1]<<48) | ((u64)p[2]<<40) |
+         ((u64)p[3]<<32) | ((u64)p[4]<<24) | (p[5]<<16) | (p[6]<<8) | p[7];
+#endif
+}
+void sqlite3Put8byte(unsigned char *p, u64 v){
+#if SQLITE_BYTEORDER==4321
+  memcpy(p,&v,8);
+#elif SQLITE_BYTEORDER==1234 && GCC_VERSION>=4003000
+  u64 x = __builtin_bswap64(v);
+  memcpy(p,&x,8);
+#elif SQLITE_BYTEORDER==1234 && MSVC_VERSION>=1300
+  u64 x = _byteswap_uint64(v);
+  memcpy(p,&x,8);
+#else
+  p[0] = (u8)(v>>56);
+  p[1] = (u8)(v>>48);
+  p[2] = (u8)(v>>40);
+  p[3] = (u8)(v>>32);
+  p[4] = (u8)(v>>24);
+  p[5] = (u8)(v>>16);
+  p[6] = (u8)(v>>8);
+  p[7] = (u8)v;
+#endif
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Translate a single byte of Hex into an integer.
@@ -1595,7 +1685,7 @@ VList *sqlite3VListAdd(
   assert( pIn==0 || pIn[0]>=3 );  /* Verify ok to add new elements */
   if( pIn==0 || pIn[1]+nInt > pIn[0] ){
     /* Enlarge the allocation */
-    int nAlloc = (pIn ? pIn[0]*2 : 10) + nInt;
+    sqlite3_int64 nAlloc = (pIn ? 2*(sqlite3_int64)pIn[0] : 10) + nInt;
     VList *pOut = sqlite3DbRealloc(db, pIn, nAlloc*sizeof(int));
     if( pOut==0 ) return pIn;
     if( pIn==0 ) pOut[1] = 2;

@@ -225,7 +225,7 @@ static int re_match(ReCompiled *pRe, const unsigned char *zIn, int nIn){
     pToFree = 0;
     aStateSet[0].aState = aSpace;
   }else{
-    pToFree = sqlite3_malloc( sizeof(ReStateNumber)*2*pRe->nState );
+    pToFree = sqlite3_malloc64( sizeof(ReStateNumber)*2*pRe->nState );
     if( pToFree==0 ) return -1;
     aStateSet[0].aState = pToFree;
   }
@@ -337,10 +337,10 @@ re_match_end:
 static int re_resize(ReCompiled *p, int N){
   char *aOp;
   int *aArg;
-  aOp = sqlite3_realloc(p->aOp, N*sizeof(p->aOp[0]));
+  aOp = sqlite3_realloc64(p->aOp, N*sizeof(p->aOp[0]));
   if( aOp==0 ) return 1;
   p->aOp = aOp;
-  aArg = sqlite3_realloc(p->aArg, N*sizeof(p->aArg[0]));
+  aArg = sqlite3_realloc64(p->aArg, N*sizeof(p->aArg[0]));
   if( aArg==0 ) return 1;
   p->aArg = aArg;
   p->nAlloc = N;
@@ -740,13 +740,6 @@ static void re_sql_func(
   }
 }
 
-int sqlite3RegexpInit(sqlite3 *db) {
-  int rc = SQLITE_OK;
-  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0,
-                                 re_sql_func, 0, 0);
-  return rc;
-}
-
 /*
 ** Invoke this routine to register the regexp() function with the
 ** SQLite database connection.
@@ -765,3 +758,16 @@ int sqlite3_regexp_init(
                                  re_sql_func, 0, 0);
   return rc;
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_REGEXP)
+/*
+** Comdb2 does not allow run-time linking for sqlite3 modules, so we must
+** link this staticaly as we do with system tables.
+*/
+int sqlite3RegexpInit(sqlite3 *db) {
+  int rc;
+  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0, re_sql_func,
+                               0, 0);
+  return rc;
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_ENABLE_REGEXP) */

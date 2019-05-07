@@ -467,10 +467,13 @@ static const sqlite3_api_routines sqlite3Apis = {
   sqlite3_create_window_function,
   /* Version 3.26.0 and later */
 #ifdef SQLITE_ENABLE_NORMALIZE
-  sqlite3_normalized_sql
+  sqlite3_normalized_sql,
 #else
-  0
+  0,
 #endif
+  /* Version 3.28.0 and later */
+  sqlite3_stmt_isexplain,
+  sqlite3_value_frombind
 };
 
 /*
@@ -662,7 +665,7 @@ int sqlite3_enable_load_extension(sqlite3 *db, int onoff){
   if( onoff ){
     db->flags |= SQLITE_LoadExtension|SQLITE_LoadExtFunc;
   }else{
-    db->flags &= ~(SQLITE_LoadExtension|SQLITE_LoadExtFunc);
+    db->flags &= ~(u64)(SQLITE_LoadExtension|SQLITE_LoadExtFunc);
   }
   sqlite3_mutex_leave(db->mutex);
   return SQLITE_OK;

@@ -12183,7 +12183,6 @@ static TYPES_INLINE int SERVER_INTVDSUS_to_SERVER_INTVDS(S2S_FUNKY_ARGS)
         intv_dsus, INTVDSUS, 6, usec, unsigned int, /* from */
         intv_ds, INTVDS, 3, msec, unsigned short /* to   */);
 }
-/*FIXME TODO XXX*/
 
 static TYPES_INLINE int SERVER_BCSTR_to_SERVER_VUTF8(S2S_FUNKY_ARGS)
 {

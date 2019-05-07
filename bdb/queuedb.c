@@ -526,7 +526,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     uint8_t key[QUEUEDB_KEY_LEN];
     int rc = 0;
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
-    struct queuedb_key fndk;
+    struct queuedb_key fndk = {0};
 
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;

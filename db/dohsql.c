@@ -5,13 +5,13 @@
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
  */
 
 #include <poll.h>
@@ -112,7 +112,6 @@ struct dohsql {
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
 };
-typedef struct dohsql dohsql_t;
 
 struct dohsql_stats {
     long long num_reqs;
@@ -227,11 +226,16 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
-static int inner_type(sqlite3_stmt *stmt, int col)
+static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
-    int type = sqlite3_column_type(stmt, col);
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+    int type;
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+        type = sqlite3_column_type(stmt, col);
+        if (type == SQLITE_NULL) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
+    } else {
+        type = SQLITE_NULL;
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -254,7 +258,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = inner_type(stmt, i);
+        conn->cols[i].type = inner_type(clnt, stmt, i);
     }
     return 0;
 }
@@ -586,10 +590,10 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = sqlite3_step(stmt);
+    rc = sqlite3_maybe_step(clnt, stmt);
 
     if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
+        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
             logmsg(LOGMSG_DEBUG,
@@ -703,7 +707,7 @@ wait_for_others:
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
-        rc = sqlite3_step(stmt);
+        rc = sqlite3_maybe_step(clnt, stmt);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
@@ -1082,6 +1086,7 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     if (conn->cols)
         free(conn->cols);
 
+    free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
@@ -1876,6 +1881,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         /* clnt parameters are incorrect, fallback to single thread to err */
         free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     /* found, add it to the node->params array */
@@ -1889,5 +1895,6 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
+    free(newparam);
     return *pparams = params;
 }

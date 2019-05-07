@@ -60,14 +60,28 @@ enum transaction_level {
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
+struct fingerprint_track {
+    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    int64_t count;   /* Cumulative number of times executed */
+    int64_t cost;    /* Cumulative cost */
+    int64_t time;    /* Cumulative execution time */
+    int64_t rows;    /* Cumulative number of rows selected */
+    char *zNormSql;  /* The normalized SQL query */
+    size_t nNormSql; /* Length of normalized SQL query */
+};
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    char fingerprint[FINGERPRINTSZ];
     //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
+
+struct sql_authorizer_state {
+    int denyDdl;                       /* non-zero if DDL is forbidden */
+    int numDdls;                       /* number of DDL statements found */
+};
 
 /* Thread specific sql state */
 struct sqlthdstate {
@@ -75,6 +89,7 @@ struct sqlthdstate {
     struct sql_thread *sqlthd;
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
+    struct sql_authorizer_state authState; /* SQL authorizer state info */
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
@@ -85,7 +100,6 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
-    int started_backend;
 };
 
 typedef struct osqltimings {
@@ -500,6 +514,7 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
+    char *zNormSql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -576,6 +591,7 @@ struct sqlclntstate {
 
     struct query_effects effects;
     struct query_effects log_effects;
+    int64_t nsteps;
 
     int have_user;
     char user[MAX_USERNAME_LEN];
@@ -606,9 +622,12 @@ struct sqlclntstate {
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
+    int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
+    int step_rc;    /* last value returned from sqlite3_step() */
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
+    int prepare_only;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;
@@ -682,7 +701,6 @@ struct sqlclntstate {
     uint8_t queue_me;
     uint8_t fail_dispatch;
 
-    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 
@@ -943,6 +961,7 @@ struct sql_thread {
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
+    int selective_rootpages;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 
@@ -1049,17 +1068,24 @@ enum cache_status {
     CACHE_FOUND_STMT = 2,
     CACHE_FOUND_STR = 4,
 };
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_DDL = 2,
+    PREPARE_IGNORE_ERR = 4
+};
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *);
+                      struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *);
+                               struct sql_state *, struct errstat *, int);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
@@ -1078,6 +1104,10 @@ int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
+int sqlite3_is_success(int);
+int sqlite3_is_prepare_only(struct sqlclntstate *);
+int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
+int sqlite3_can_get_column_type_and_data(struct sqlclntstate *, sqlite3_stmt *);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
     ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -1105,5 +1135,11 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
+                     struct reqlogger *);
+
+long long run_sql_return_ll(const char *query, struct errstat *err);
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
+                                struct errstat *err);
 
 #endif

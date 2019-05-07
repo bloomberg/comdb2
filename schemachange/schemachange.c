@@ -186,7 +186,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (stored_sc && !stored_sc->fulluprecs &&
                 !stored_sc->partialuprecs &&
                 stored_sc->type == DBTYPE_TAGGED_TABLE) {
-                if (stored_sc->rqid == iq->sorese.rqid &&
+                if (stored_sc->rqid && stored_sc->rqid == iq->sorese.rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
                     s->rqid = stored_sc->rqid;
                     comdb2uuidcpy(s->uuid, stored_sc->uuid);
@@ -450,14 +450,11 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
 int change_schema(char *table, char *fname, int odh, int compress,
                   int compress_blobs)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_TAGGED_TABLE;
     strncpy0(s->tablename, table, sizeof(s->tablename));
     strncpy0(s->fname, fname, sizeof(s->fname));
@@ -471,14 +468,11 @@ int change_schema(char *table, char *fname, int odh, int compress,
 
 int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_MORESTRIPE;
     s->newdtastripe = newstripe;
     s->blobstripe = blobstripe;
@@ -489,14 +483,11 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
                  int pagesize, int isqueuedb)
 {
-    struct schema_change_type *s;
-
-    s = new_schemachange_type();
+    struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
     s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;

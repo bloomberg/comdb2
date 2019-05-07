@@ -18,6 +18,8 @@
 #include "sql.h"
 #include "sqlexplain.h"
 
+#include <inttypes.h>
+
 /*
   enhancements to sqlites built in explain facility.
   this provides english like explain output as opposed to
@@ -41,8 +43,8 @@
 #include "views.h"
 #include "logmsg.h"
 
-char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-              '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+static char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                     '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 int all_opcodes = 0;
 
@@ -552,7 +554,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "R%d = %d", op->p2, op->p1);
         break;
     case OP_Int64:
-        strbuf_appendf(out, "R%d = %ld", op->p2, op->p4.pI64);
+        strbuf_appendf(out, "R%d = %lld", op->p2, (long long) *op->p4.pI64);
         break;
     case OP_Real:
         strbuf_appendf(out, "R%d = %f", op->p2, *op->p4.pReal);
@@ -942,7 +944,6 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             op->p1, op->p2);
         break;
     case OP_Insert:
-    case OP_InsertInt:
         strbuf_appendf(out, "Write record in R%d into ", op->p2);
         print_cursor_description(out, &cur[op->p1]);
         strbuf_appendf(out, " using cursor [%d]", op->p1);
@@ -1189,7 +1190,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        maskStr);
     } break;
     case OP_OpFuncLoad:
-        strbuf_appendf(out, "Load OpFunc P4(%s) into R%d",
+        strbuf_appendf(out, "Load OpFunc P4(%p) into R%d",
                        op->p4.comdb2func, op->p2);
         break;
     case OP_OpFuncNext:
@@ -1241,7 +1242,9 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     sqlite3_stmt *stmt = NULL;
     char *eos;
     char *newSql = sqlite3_mprintf("EXPLAIN QUERY PLAN %s", sql);
-    int rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt, (const char **)&eos);
+    int rc;
+    clnt->prep_rc = rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt,
+                                            (const char **)&eos);
     if( newSql ) sqlite3_free(newSql);
     sqlite3WhereTrace = 0;
     if (f) 

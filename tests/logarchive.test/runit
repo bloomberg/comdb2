@@ -131,7 +131,7 @@ for onenode in `cdb2sql $CDB2_OPTIONS $TABS $dbnm $DEFAULT 'exec procedure sys.i
     if [[ "$onenode" != "$master" ]]; then
         echo Doing $onenode
         cdb2sql $CDB2_OPTIONS $TABS $dbnm $HOST $onenode 'exec procedure sys.cmd.send("bdb log_archive")'
-        numlogs=`cdb2sql $CDB2_OPTIONS $dbnm $HOST $onenode 'exec procedure sys.cmd.send("bdb log_archive")' | grep 'log.00' | wc -l`
+        numlogs=`cdb2sql $CDB2_OPTIONS $dbnm $HOST $onenode 'exec procedure sys.cmd.send("bdb log_archive")' | grep -c 'log.00'`
 
         if [[ $numlogs -ne 0 ]]; then
             echo The replicant $onenode will not recover correctly! >&2
@@ -141,7 +141,7 @@ for onenode in `cdb2sql $CDB2_OPTIONS $TABS $dbnm $DEFAULT 'exec procedure sys.i
 done
 
 cdb2sql $CDB2_OPTIONS $TABS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb log_archive")'
-numlogs=`cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb log_archive")' | grep 'log.00' | wc -l`
+numlogs=`cdb2sql $CDB2_OPTIONS $dbnm $HOST $master 'exec procedure sys.cmd.send("bdb log_archive")' | grep -c 'log.00'`
 
 if [[ $numlogs -ne 0 ]]; then
     echo Master will not recover correctly after downgrade! >&2
