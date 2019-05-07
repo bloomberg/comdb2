@@ -5333,7 +5333,7 @@ static char *getIndexCond(
   char *ret;
   char *hex = "0123456789ABCDEF";
 
-  u32   flgs = right->flags;
+  u32   flgs = m->flags;
 
   /* remove MEM_Static */
   flgs &= MEM_TypeMask;
