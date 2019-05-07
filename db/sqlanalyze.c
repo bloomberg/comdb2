@@ -853,7 +853,7 @@ cleanup:
 
     if (rc) { // send error to client
         sbuf2printf(td->sb, "?Analyze table %s. Error occurred with: %s\n",
-                    td->table, sql);
+                    td->table, zErrTab);
     } else {
         sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
