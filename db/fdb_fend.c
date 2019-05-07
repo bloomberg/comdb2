@@ -2676,7 +2676,7 @@ done:
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "Build [%d] \"%s\"\n", sqllen, sql);
+        logmsg(LOGMSG_USER, "Build \"%s\"\n", sql);
 
     return sql;
 }
