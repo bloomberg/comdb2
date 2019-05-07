@@ -56,16 +56,18 @@ static int systblConstraintsConnect(
 
 /* Column numbers */
 #define STCON_NAME 0
-#define STCON_TABLE 1
-#define STCON_KEY 2
-#define STCON_FTNAME 3
-#define STCON_FKNAME 4
-#define STCON_CDELETE 5
-#define STCON_CUPDATE 6
+#define STCON_TYPE 1
+#define STCON_TABLE 2
+#define STCON_KEY 3
+#define STCON_FTNAME 4
+#define STCON_FKNAME 5
+#define STCON_CDELETE 6
+#define STCON_CUPDATE 7
+#define STCON_EXPR 8
 
   rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE comdb2_constraints(name,tablename,keyname,"
-    "foreigntablename,foreignkeyname,iscascadingdelete,iscascadingupdate)");
+    "CREATE TABLE comdb2_constraints(name,type,tablename,keyname,"
+    "foreigntablename,foreignkeyname,iscascadingdelete,iscascadingupdate,expr)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -171,6 +173,14 @@ static int systblConstraintsColumn(
         }
         break;
     }
+    case STCON_TYPE: {
+        if (pConstraint->type == CT_FKEY) {
+            sqlite3_result_text(ctx, "FOREIGN KEY", -1, NULL);
+        } else {
+            sqlite3_result_text(ctx, "CHECK", -1, NULL);
+        }
+        break;
+    }
     case STCON_TABLE: {
       sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
@@ -188,17 +198,21 @@ static int systblConstraintsColumn(
       break;
     }
     case STCON_CDELETE: {
-      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_DEL_CASCADE), 
+      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_DEL_CASCADE),
         -1, SQLITE_STATIC);
       break;
     }
     case STCON_CUPDATE: {
-      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_UPD_CASCADE), 
+      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_UPD_CASCADE),
         -1, SQLITE_STATIC);
       break;
     }
+    case STCON_EXPR: {
+        sqlite3_result_text(ctx, pConstraint->check_expr, -1, NULL);
+        break;
+    }
   }
-  return SQLITE_OK; 
+  return SQLITE_OK;
 }
 
 /*

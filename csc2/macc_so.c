@@ -119,7 +119,8 @@ void set_constraint_name(char *name)
 {
     int i;
     for (i = 0; i < nconstraints; i++) {
-        if (!strcasecmp(constraints[i].consname, name)) {
+        if (constraints[i].consname &&
+            !strcasecmp(constraints[i].consname, name)) {
             csc2_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES ARE "
                        "NOT ALLOWED (variable '%s')\n",
                        current_line, name);
