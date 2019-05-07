@@ -39,23 +39,23 @@ done
 #setup remode db
 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "INSERT INTO t VALUES(1, 99)" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "INSERT INTO t VALUES(2, 98)" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "INSERT INTO \"select\" VALUES(3, 97)" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "INSERT INTO \"select\" VALUES(4, 96)" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "INSERT INTO t VALUES(1, 99)" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "INSERT INTO t VALUES(2, 98)" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "INSERT INTO \"select\" VALUES(3, 97)" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "INSERT INTO \"select\" VALUES(4, 96)" >> output.actual 2>&1
 
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO t VALUES(5, 95)" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO t VALUES(6, 94)" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO \"select\" VALUES(7, 93)" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "INSERT INTO \"select\" VALUES(8, 92)" >> output.actual 2>&1
 
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "SELECT t1.id, t1.\"order\" FROM t t1 WHERE t1.\"order\" = 99" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "SELECT t1.id, t1.\"order\" FROM LOCAL_${dbname}.t t1 WHERE t1.\"order\" = 95" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT t1.id, t1.\"order\" FROM t t1 WHERE t1.\"order\" = 99" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT t1.id, t1.\"order\" FROM LOCAL_${dbname}.t t1 WHERE t1.\"order\" = 95" >> output.actual 2>&1
 
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "SELECT t1.id FROM LOCAL_${dbname}.t t1 INNER JOIN \"select\" ON t1.\"order\" = \"select\".id WHERE t1.\"order\" = 95" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT t1.id FROM LOCAL_${dbname}.t t1 INNER JOIN \"select\" ON t1.\"order\" = \"select\".id WHERE t1.\"order\" = 95" >> output.actual 2>&1
 
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "SELECT s1.id, s1.\"order\" FROM \"select\" s1 WHERE s1.\"order\" = 97" >> output.actual 2>&1
-cdb2sql --cdb2cfg ${CDB2_OPTIONS} $srcdbname default "SELECT s1.id, s1.\"order\" FROM LOCAL_${dbname}.\"select\" s1 WHERE s1.\"order\" = 93" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT s1.id, s1.\"order\" FROM \"select\" s1 WHERE s1.\"order\" = 97" >> output.actual 2>&1
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT s1.id, s1.\"order\" FROM LOCAL_${dbname}.\"select\" s1 WHERE s1.\"order\" = 93" >> output.actual 2>&1
 
 # validate results
 testcase_output=$(cat output.actual)
