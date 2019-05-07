@@ -844,7 +844,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
         cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_update operation "
-                        "only supported for btree or array.\n");
+                             "only supported for btree or array.\n");
         return -1;
     }
 
