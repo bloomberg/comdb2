@@ -122,6 +122,8 @@ struct temp_cursor {
     unsigned int hash_cur_buk;
     LINKC_T(struct temp_cursor) lnk;
     int ind;
+    int keymalloclen;
+    int datamalloclen;
 };
 
 typedef struct arr_elem {
@@ -134,25 +136,30 @@ typedef struct arr_elem {
 #define COPY_KV_TO_CUR(c)                                                      \
     do {                                                                       \
         arr_elem_t *elem = &(c)->tbl->elements[(c)->ind];                      \
-        free((c)->key);                                                        \
-        free((c)->data);                                                       \
-        (c)->keylen = elem->keylen;                                            \
-        (c)->datalen = elem->dtalen;                                           \
-        (c)->key = malloc((c)->keylen);                                        \
+        int maxkeylen = (c)->tbl->maxkeylen;                                   \
+        if ((c)->key == NULL || (c)->keymalloclen < maxkeylen) {               \
+            (c)->key = realloc((c)->key, maxkeylen);                           \
+            (c)->keymalloclen = maxkeylen;                                     \
+        }                                                                      \
         if ((c)->key == NULL) {                                                \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
-        memcpy((c)->key, elem->key, (c)->keylen);                              \
-        (c)->data = malloc((c)->datalen);                                      \
+        int maxdatalen = (c)->tbl->maxdatalen;                                 \
+        if ((c)->data == NULL || (c)->datamalloclen < maxdatalen) {            \
+            (c)->data = realloc((c)->data, maxdatalen);                        \
+            (c)->datamalloclen = maxdatalen;                                   \
+        }                                                                      \
         if ((c)->data == NULL) {                                               \
-            free((c)->key);                                                    \
+            free((c)->data);                                                   \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
+        (c)->keylen = elem->keylen;                                            \
+        (c)->datalen = elem->dtalen;                                           \
+        memcpy((c)->key, elem->key, (c)->keylen);                              \
         memcpy((c)->data, elem->dta, (c)->datalen);                            \
         (c)->valid = 1;                                                        \
-        return 0;                                                              \
     } while (0);
 
 /* A temparray is a lightweight replacement of a temptable. It is simply
@@ -190,6 +197,11 @@ struct temp_table {
     unsigned long long inmemsz;
     unsigned long long cachesz;
     arr_elem_t *elements;
+    /* Keep track of the max key length and data length.
+       We allocate that much for a tempcursor such that
+       a tempcursor can reuse the same piece of memory. */
+    int maxkeylen;
+    int maxdatalen;
 };
 
 enum { TMPTBL_PRIORITY, TMPTBL_WAIT };
@@ -954,6 +966,7 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
 
         cur->ind = (how == DB_LAST) ? (arrlen - 1) : 0;
         COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1050,6 +1063,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
         }
 
         COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1366,7 +1380,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
 
-    if (tbl->dbenv_temp != NULL || gbl_temptable_pool_capacity == 0) {
+    if (tbl->dbenv_temp != NULL) {
         Pthread_mutex_lock(&(bdb_state->temp_list_lock));
 
         if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
@@ -1419,7 +1433,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         tbl->next = bdb_state->temp_list;
         bdb_state->temp_list = tbl;
 
-    Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
 
     if (gbl_temptable_pool_capacity > 0) {
@@ -1749,6 +1763,7 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
         }
 
         COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1902,6 +1917,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
 
         cur->ind = found;
         COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1984,11 +2000,9 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
     struct temp_table *tbl;
     tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
+        cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         if (cur->key) {
-#if 0
-          printf( "%p Freeing %p\n", cur, cur->key);
-#endif
             free(cur->key);
             cur->key = NULL;
         }
@@ -1998,6 +2012,7 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
             cur->data = NULL;
         }
 
+        /* A cursor on a temparray will not have `cur'. */
         if (cur->cur) {
             rc = cur->cur->c_close(cur->cur);
             if (rc) {
@@ -2192,6 +2207,11 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                 return -1;
             }
         }
+
+        if (keylen > tbl->maxkeylen)
+            tbl->maxkeylen = keylen;
+        if (dtalen > tbl->maxdatalen)
+            tbl->maxdatalen = dtalen;
 
         return 0;
     }
