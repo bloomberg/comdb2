@@ -3990,7 +3990,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     return rc;
 }
 
-int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
+int fdb_trans_rollback(struct sqlclntstate *clnt)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;

@@ -1258,6 +1258,17 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
     int rc = 0;
     int bdberr = 0;
 
+    /* temp hook for sql transactions */
+    /* is it distributed? */
+    if(clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
+    {
+        rc = fdb_trans_rollback(clnt);
+        if(rc)
+        {
+            fprintf(stderr, "%s distributed failure rc=%d\n", __func__, rc);
+        }
+    }
+
     /* am I talking already with the master? rqid != 0 */
     if (clnt->osql.rqid != 0 && clnt->osql.sock_started) {
         /* send results of sql processing to block master */
