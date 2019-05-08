@@ -253,28 +253,28 @@ typedef enum cdb2_event_ctrl {
 
 typedef enum cdb2_event_type {
     /* Network events */
-    CDB2_BEFORE_CONNECT = 1U,
-    CDB2_AFTER_CONNECT = 1U << 1,
-    CDB2_BEFORE_PMUX = 1U << 2,
-    CDB2_AFTER_PMUX = 1U << 3,
-    CDB2_BEFORE_DBINFO = 1U << 4,
-    CDB2_AFTER_DBINFO = 1U << 5,
-    CDB2_BEFORE_SEND_QUERY = 1U << 6,
-    CDB2_AFTER_SEND_QUERY = 1U << 7,
-    CDB2_BEFORE_READ_RECORD = 1U << 8,
-    CDB2_AFTER_READ_RECORD = 1U << 9,
+    CDB2_BEFORE_CONNECT = 1,
+    CDB2_AFTER_CONNECT = 1 << 1,
+    CDB2_BEFORE_PMUX = 1 << 2,
+    CDB2_AFTER_PMUX = 1 << 3,
+    CDB2_BEFORE_DBINFO = 1 << 4,
+    CDB2_AFTER_DBINFO = 1 << 5,
+    CDB2_BEFORE_SEND_QUERY = 1 << 6,
+    CDB2_AFTER_SEND_QUERY = 1 << 7,
+    CDB2_BEFORE_READ_RECORD = 1 << 8,
+    CDB2_AFTER_READ_RECORD = 1 << 9,
 
     /* Logical operation events.
        A logicial operation event typically
        consists of multiple network events. */
-    CDB2_AT_ENTER_RUN_STATEMENT = 1U << 10,
-    CDB2_AT_EXIT_RUN_STATEMENT = 1U << 11,
-    CDB2_AT_ENTER_NEXT_RECORD = 1U << 12,
-    CDB2_AT_EXIT_NEXT_RECORD = 1U << 13,
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 10,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 11,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 12,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
 
     /* Lifecycle events */
-    CDB2_AT_OPEN = 1U << 30,
-    CDB2_AT_CLOSE = 1U << 31,
+    CDB2_AT_OPEN = 1 << 30,
+    CDB2_AT_CLOSE = 1 << 31,
 } cdb2_event_type;
 
 typedef enum cdb2_event_arg {
