@@ -625,11 +625,6 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
             return 0;
     }
 
-#if 0
-    uuidstr_t us;
-    printf("osql_serial_send_readset rqid %llx uuid %s\n", (unsigned long long) osql->rqid, comdb2uuidstr(osql->uuid, us));
-#endif
-
     if (osql->rqid == OSQL_RQID_USE_UUID)
         nettype = nettypetouuidnettype(nettype);
 
@@ -1174,10 +1169,6 @@ retry:
         logmsg(LOGMSG_ERROR, "%s line %d set rcout to %d\n", __func__, __LINE__, rcout);
     }
 
-#if 0
-      printf("Unregistering rqid=%llu tmp=%llu\n", osql->rqid, osql_log_time());
-#endif
-
 err:
     /* unregister this osql thread from checkboard */
     rc = osql_unregister_sqlthr(clnt);
@@ -1186,23 +1177,9 @@ err:
                 __func__, __LINE__, SQLITE_INTERNAL, rc);
         rcout = SQLITE_INTERNAL;
     }
-#if 0
-   printf("Unregistered rqid=%llu tmp=%llu\n", osql->rqid, osql_log_time());
-#endif
 
 done:
     osql->timings.commit_end = osql_log_time();
-
-#if 0
-   printf( "recv=%llu disp=%llu fin=%llu commit_prep=%llu, commit_start=%llu commit_end=%llu\n",
-         thd->clnt->osql.timings.query_received,
-         thd->clnt->osql.timings.query_dispatched,
-         thd->clnt->osql.timings.query_finished,
-         thd->clnt->osql.timings.commit_prep,
-         thd->clnt->osql.timings.commit_start,
-         thd->clnt->osql.timings.commit_end
-         );
-#endif
 
    /* mark socksql as non-retriable if seletv are present
       also don't retry distributed transactions
@@ -1263,7 +1240,8 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran) {
         rc = fdb_trans_rollback(clnt);
         if (rc) {
-            fprintf(stderr, "%s distributed failure rc=%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__,
+                   rc);
         }
     }
 
