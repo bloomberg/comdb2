@@ -486,8 +486,8 @@ char *osql_get_tran_summary(struct ireq *iq)
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype,
-                 tottm, rtt, rtrs);
+        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype, tottm, rtt,
+                 rtrs);
         ret[sz - 1] = '\0';
     }
 

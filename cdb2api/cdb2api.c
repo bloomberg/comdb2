@@ -3522,7 +3522,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (currnode->incoherent)
             continue;
 
-        if(strlen(currnode->name)>= 64)
+        if (strlen(currnode->name) >= 64)
             continue;
 
         strncpy(valid_hosts[*num_valid_hosts], currnode->name, 64);
