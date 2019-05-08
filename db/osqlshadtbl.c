@@ -1850,13 +1850,15 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
          * bdb_temp_table_find(). */
         rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, key,
                                  sizeof(*key), NULL, bdberr);
-        if (rc != IX_FND)
+        if (rc != IX_FND) {
             free(key);
+            key = NULL;
+        }
 
         tmptblkey = bdb_temp_table_key(tbl->blb_cur);
         idx = i;
-        if (rc == IX_EMPTY || rc == IX_NOTFND || key->seq != tmptblkey->seq ||
-            key->id != tmptblkey->id) {
+        if (rc == IX_EMPTY || rc == IX_NOTFND ||
+            (key && (key->seq != tmptblkey->seq || key->id != tmptblkey->id))) {
             /* null blob */
             data = NULL;
             ldata = -1;
