@@ -1100,6 +1100,7 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		if (delete == 1) {
 			LIST_REMOVE(p, links);
 			__os_free(dbenv, p);
+            p = NULL;
 		} else if (p != LIST_FIRST(head)) {
 			/* Move it to head of list. */
 			LIST_REMOVE(p, links);
