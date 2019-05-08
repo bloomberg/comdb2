@@ -112,7 +112,7 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
 	db_pgno_t last, pgno, newnext;
-	int extend = 0, ret;
+	int ret;
 
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
@@ -130,17 +130,17 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 		goto err;
 	}
 
-    pgno = meta->free;
-    if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
-        goto err;
+	pgno = meta->free;
+	if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
+		goto err;
 
-    /*
-     * We want to take the first page off the free list and
-     * then set meta->free to the that page's next_pgno, but
-     * we need to log the change first.
-     */
-    newnext = h->next_pgno;
-    lsn = h->lsn;
+	/*
+	 * We want to take the first page off the free list and
+	 * then set meta->free to the that page's next_pgno, but
+	 * we need to log the change first.
+	 */
+	newnext = h->next_pgno;
+	lsn = h->lsn;
 
 	/*
 	 * Log the allocation before fetching the new page.  If we
