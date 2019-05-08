@@ -128,6 +128,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_atomic.h"
 #include "cron.h"
 #include "metrics.h"
+#include "time_accounting.h"
 #include <build/db.h>
 
 #define QUOTE_(x) #x
@@ -1405,6 +1406,7 @@ int clear_temp_tables(void)
 void clean_exit_sigwrap(int signum) {
     void *clean_exit_thd(void *unused);
     signal(SIGTERM, SIG_DFL);
+    logmsg(LOGMSG_WARN, "Received SIGTERM...exiting\n");
 
     /* Call the wrapper which checks the exit flag
        to avoid multiple clean-exit's. */
@@ -1440,6 +1442,7 @@ void clean_exit(void)
        here in a second, so letting new reads in would be bad. */
     no_new_requests(thedb);
 
+    print_all_time_accounting();
     wait_for_sc_to_stop("exit");
 
     /* let the lower level start advertising high lsns to go non-coherent

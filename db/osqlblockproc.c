@@ -64,6 +64,7 @@
 #include "comdb2uuid.h"
 #include "bpfunc.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -790,8 +791,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     DEBUG_PRINT_TMPBL_SAVING();
 
-    rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
-                               rplen, NULL, &bdberr);
+    ACCUMULATE_TIMING(CHR_TMPSVOP,
+                      rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
+                                                 sizeof(key), rpl, rplen, NULL,
+                                                 &bdberr););
+
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
                __func__, sess->seq, rc_op, bdberr);

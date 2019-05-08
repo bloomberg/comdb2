@@ -47,6 +47,7 @@ set(src
   thdpool.c
   thread_malloc.c
   thread_util.c
+  time_accounting.c
   timers.c
   tohex.c
   utilmisc.c

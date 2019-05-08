@@ -73,7 +73,7 @@ typedef long long tranid_t;
 #include <dlmalloc.h>
 #include <stdbool.h>
 
-#include "tag.h"
+#include "sqlinterfaces.h"
 #include "errstat.h"
 #include "comdb2_rcodes.h"
 #include "repl_wait.h"
