@@ -1166,7 +1166,7 @@ enum {
 extern pthread_key_t bdb_key;
 
 char *bdb_strerror(int error);
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[PATH_MAX], char outfile[PATH_MAX]);
 
 void *mymalloc(size_t size);
 void myfree(void *ptr);

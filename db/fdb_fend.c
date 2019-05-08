@@ -344,7 +344,7 @@ static int __cache_link_fdb(fdb_t *fdb)
         ptr = realloc(fdbs.arr, sizeof(fdb_t *) * fdbs.nalloc * 2);
         if (!ptr) {
             logmsg(LOGMSG_ERROR, "%s: OOM %zu bytes\n", __func__,
-                   sizeof(fdb_t *) * fdbs.nalloc * 2);
+                   (size_t)(sizeof(fdb_t *) * fdbs.nalloc * 2));
             rc = FDB_ERR_MALLOC;
             goto done;
         }

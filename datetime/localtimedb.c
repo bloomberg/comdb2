@@ -1930,7 +1930,7 @@ register const int doextend;
         if (!doaccess) {
             if ((p = tzdir) == NULL) return -1;
 
-            if ((strlen(p) + strlen(name) + 1) >= sizeof fullname) return -1;
+            if ((strlen(p) + strlen(name) + 1) >= file_max) return -1;
 
             (void)strcpy(fullname, p);
             (void)strcat(fullname, "/");

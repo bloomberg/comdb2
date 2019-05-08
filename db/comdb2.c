@@ -909,12 +909,13 @@ int get_max_reclen(struct dbenv *dbenv)
 
     /* open file */
     file = open(fname, O_RDONLY);
-    free(fname);
     if (file == -1) {
         logmsg(LOGMSG_ERROR, "get_max_reclen: failed to open %s for writing\n",
                 fname);
+        free(fname);
         return -1;
     }
+    free(fname);
 
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {

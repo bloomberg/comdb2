@@ -1214,10 +1214,11 @@ int bdb_del_list_free(void *list, int *bdberr)
 
 bdb_state_type *gbl_bdb_state;
 
-char *bdb_trans(const char infile[], char outfile[])
+/* LINT: At most, (PATH_MAX-1) chars copied, must have terminating NUL char */
+char *bdb_trans(const char infile[PATH_MAX], char outfile[PATH_MAX])
 {
 #ifdef COMPILING_FOR_DB_TOOLS
-    return strcpy(outfile, infile);
+    return strncpy(outfile, infile, PATH_MAX - 1);
 #else
     bdb_state_type *bdb_state;
     char *p;
@@ -1233,16 +1234,18 @@ char *bdb_trans(const char infile[], char outfile[])
     bdb_state = gbl_bdb_state;
 
     if (bdb_state == NULL) {
-        strcpy(outfile, infile);
+        strncpy(outfile, infile, PATH_MAX - 1);
         return outfile;
     }
 
     /* Copy to outfile.  If leading with a XXX., strip this off and replace with
      * full path. */
     if (strncmp(infile, "XXX.", 4) == 0) {
+        /* the -3 is used here because '/' should be counted */
+        assert(strlen(bdb_state->dir) + strlen(infile) - 3 < PATH_MAX);
         sprintf(outfile, "%s/%s", bdb_state->dir, infile + 4);
     } else {
-        strcpy(outfile, infile);
+        strncpy(outfile, infile, PATH_MAX - 1);
     }
 
     /* Look for queue extents and correct them. */
