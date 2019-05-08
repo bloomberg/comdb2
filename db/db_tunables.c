@@ -269,6 +269,7 @@ extern int explicit_flush_trace;
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+extern int set_pbkdf2_iterations(int val);
 
 #include <stdbool.h>
 extern bool gbl_rcache;
@@ -796,7 +797,6 @@ static int sql_tranlevel_default_update(void *context, void *value)
 
 static int pbkdf2_iterations_update(void *context, void *value)
 {
-    extern int set_pbkdf2_iterations(int val);
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
 }

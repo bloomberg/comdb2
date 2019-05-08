@@ -46,6 +46,8 @@ typedef unsigned int u_int;
 #include <logmsg.h>
 #include <locks_wrap.h>
 
+extern void berkdb_dump_lockers_summary(DB_ENV *);
+
 static pthread_attr_t locktest_attr;
 static DB_ENV *dbenv = NULL;
 extern uint64_t detect_skip;
@@ -104,7 +106,6 @@ void bdb_detect(void *_bdb_state)
 void bdb_locker_summary(void *_bdb_state)
 {
     bdb_state_type *bdb_state = _bdb_state;
-    void berkdb_dump_lockers_summary(DB_ENV *);
     berkdb_dump_lockers_summary(bdb_state->dbenv);
 }
 #endif

@@ -62,6 +62,8 @@
 #define TEST_RECOM
 #endif
 
+int scdone_abort_cleanup(struct ireq * iq);
+
 int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
@@ -788,7 +790,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;

@@ -53,6 +53,8 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+extern int sc_ready(void);
+
 /* bdb routines to support schema change */
 
 static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
@@ -74,7 +76,6 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
     else
         bdb_state = bdb_state_in;
 
-    extern int sc_ready(void);
     if (!sc_ready()) {
         logmsg(LOGMSG_INFO, "Skipping bdb_scdone, files not opened yet!\n");
         return 0;

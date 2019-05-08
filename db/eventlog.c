@@ -41,6 +41,9 @@
 
 #include "cson_amalgamation_core.h"
 
+extern int64_t comdb2_time_epochus(void);
+extern void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
+
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 2; // keep only last 2 event log files
@@ -721,7 +724,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_object *obj = cson_value_get_object(dval);
 
     cson_value *dd_list = cson_value_new_array();
-    int64_t comdb2_time_epochus(void);
     uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
@@ -738,7 +740,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
 
-        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);

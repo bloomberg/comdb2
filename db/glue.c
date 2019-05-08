@@ -147,6 +147,11 @@ extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
 
+
+extern int get_physical_transaction(
+        bdb_state_type * bdb_state, tran_type * logical_tran,
+        tran_type * *outtran, int force_commit);
+
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
 static int meta_get(struct dbtable *db, struct metahdr *key, void *dta, int dtalen);
@@ -294,9 +299,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(
-                bdb_state_type * bdb_state, tran_type * logical_tran,
-                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
             if (rc) {
@@ -5630,8 +5632,6 @@ void compr_print_stats()
 {
     int ii;
     int odh, compr, blob_compr;
-
-    const char *bdb_compr_alg_2a(int alg);
 
     logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
     logmsg(LOGMSG_USER, "These apply to new records only!\n");

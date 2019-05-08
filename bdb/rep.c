@@ -96,6 +96,9 @@ extern void osql_decom_node(char *decom_host);
 
 void *mymalloc(size_t size);
 void *myrealloc(void *ptr, size_t size);
+void reset_aa_counter(char *tblname);
+void create_coherency_lease_thread(bdb_state_type * bdb_state);
+void create_master_lease_thread(bdb_state_type * bdb_state);
 
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 
@@ -4755,7 +4758,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         char tblname[MAXTABLELEN + 1] = {0};
         memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
-        void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
     } break;
 
@@ -5275,12 +5277,10 @@ void *watcher_thread(void *arg)
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {
-            void create_coherency_lease_thread(bdb_state_type * bdb_state);
             create_coherency_lease_thread(bdb_state);
         }
 
         if (bdb_state->attr->master_lease && !bdb_state->master_lease_thread) {
-            void create_master_lease_thread(bdb_state_type * bdb_state);
             create_master_lease_thread(bdb_state);
         }
 

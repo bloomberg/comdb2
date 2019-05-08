@@ -83,6 +83,11 @@ struct SortCtx {
 #define SORTFLAG_UseSorter  0x01   /* Use SorterOpen instead of OpenEphemeral */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int comdb2_register_limit(int, int);
+extern void comdb2_register_offset(int, int, int);
+extern const char *comdb2_get_dbname(void);
+extern void comdb2_set_verify_remote_schemas(void);
+
 static void _set_src_recording(
   Parse *pParse,
   Select *pSub
@@ -2253,7 +2258,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    extern int comdb2_register_limit(int, int);
     int is_parallel;
     if( (is_parallel = comdb2_register_limit(iLimit, ++pParse->nMem))!=0 ){
       sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, pParse->nMem);
@@ -2268,7 +2272,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      extern void comdb2_register_offset(int, int, int);
       if( is_parallel ){
         comdb2_register_offset(iOffset, iOffset+1, ++pParse->nMem);
         sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, pParse->nMem);
@@ -5502,7 +5505,6 @@ static int sql_has_remotes(
   int i;
 
   for(i=0;i<pList->nSrc; i++){
-    extern const char *comdb2_get_dbname(void);
     char *dbname = pList->a[i].zDatabase;
     if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
             strcasecmp(dbname, comdb2_get_dbname())) {
@@ -5761,7 +5763,6 @@ int sqlite3Select(
     if( pParse->checkSchema == 1 /* parsing error */ && 
             pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
                 strlen("no such column")) == 0){
-      extern void comdb2_set_verify_remote_schemas(void);
       if (sql_has_remotes(pParse, p->pSrc)) {
         comdb2_set_verify_remote_schemas();
       }

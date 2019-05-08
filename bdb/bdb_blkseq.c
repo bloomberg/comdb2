@@ -36,6 +36,7 @@
 #include "locks_wrap.h"
 #include "tohex.h"
 
+extern int blkseq_get_rcode(void *data, int datalen);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);
 
@@ -602,7 +603,6 @@ static void dump_blkseq(int stripe, int ix, void *plsn, void *pkey, void *pdata,
     } else {
         int timestamp;
         int age;
-        int blkseq_get_rcode(void *data, int datalen);
         int rcode = blkseq_get_rcode(data->data, data->size);
         memcpy(&timestamp, (uint8_t *)data->data + (data->size - 4), 4);
         age = now - timestamp;
