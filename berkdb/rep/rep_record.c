@@ -6727,7 +6727,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				}
 
 				if (txn_rl_args->timestamp < epoch) {
-					__os_free(dbenv, txn_rl_args);
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
 											"break-loop because timestamp "
@@ -6736,6 +6735,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
 					}
+					__os_free(dbenv, txn_rl_args);
 					done = 1;
 					break;
 				}

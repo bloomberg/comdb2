@@ -117,6 +117,7 @@ static void *free_stack_thr(void *unused)
                 comdb2_free(arg->memptr);
                 comdb2_free(arg);
                 // calling trim() at this point should always succeed
+                /* TODO: (NC) fixme */
                 comdb2_malloc_trim(arg->alloc, 0);
 #ifdef M_MMAP_THRESHOLD
                 if (comdb2ma_niceness() && /* Be nice. */
