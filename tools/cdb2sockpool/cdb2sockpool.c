@@ -221,7 +221,7 @@ int recvall(int fd, void *bufp, int len)
     while (bytesleft) {
         rc = recv(fd, buf + off, bytesleft, MSG_WAITALL);
         if (rc == -1) {
-            if (rc == EINTR || rc == EAGAIN)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return -1;
         } else if (rc == 0) /* EOF before entire message read */
