@@ -1889,7 +1889,7 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
             }
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
         }
-        if (notify) {
+        if (notify && rc) {
             comdb2_objpool_notify(bdb_state->temp_table_pool);
         }
     }

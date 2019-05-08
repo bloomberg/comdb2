@@ -793,8 +793,6 @@ void done_sql_thread(void)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         free(thd);
     }
-
-    bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
 }
 
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,

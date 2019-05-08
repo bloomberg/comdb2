@@ -4513,6 +4513,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
             sqlengine_work_lua_thread(thddata, work);
         else
             sqlengine_work_appsock(thddata, work);
+        bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
         break;
     case THD_FREE:
         sqlengine_cleanup_temp_table_mtx(clnt);

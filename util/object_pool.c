@@ -683,6 +683,7 @@ static int objpool_notify_int(comdb2_objpool_t op)
 {
     int rc;
     assert(op != NULL);
+    OP_DBG(op, "notify pool");
     Pthread_mutex_lock(&op->data_mutex);
     if (op->nborrowwaits != 0) {
         rc = objpool_signal_int(op);
