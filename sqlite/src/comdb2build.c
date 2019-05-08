@@ -34,6 +34,10 @@ extern int gbl_convert_sleep;
 extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
+extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+extern int sqlite3ParserFallback(int iToken);
+extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
+extern void *comdb2_get_ddl_context(char *name);
 
 /******************* Utility ****************************/
 
@@ -2070,8 +2074,6 @@ int producekw(OpFunc *f)
 
             if (nName < sizeof(kw)-1 && (f->int_arg == KW_RES || f->int_arg == KW_FB)) {
                 // See if reserved word
-                extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
-                extern int sqlite3ParserFallback(int iToken);
                 int tok;
 
                 strncpy(kw, zName, nName);
@@ -3591,7 +3593,6 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     /* Generate CSC2 for the new/existing table. */
     csc2 = format_csc2(ctx);
 
-    int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
     /* save context to client */
     if (comdb2_save_ddl_context(ctx->schema->name, ctx, ctx->mem) != 0) {
         /* We get here if we are not in client transaction or it failed to save
@@ -5239,7 +5240,6 @@ static int
 find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
                                   struct comdb2_constraint *constraint)
 {
-    void *comdb2_get_ddl_context(char *name);
     struct comdb2_ddl_context *clnt_ctx = NULL;
     struct comdb2_key *key;
 

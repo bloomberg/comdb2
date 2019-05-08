@@ -64,6 +64,7 @@
 #include "comdb2uuid.h"
 #include "bpfunc.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -103,6 +104,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
+extern const char *get_tablename_from_rpl(const char *rpl);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -610,7 +612,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        extern const char *get_tablename_from_rpl(const char *rpl);
         const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
@@ -790,8 +791,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     DEBUG_PRINT_TMPBL_SAVING();
 
-    rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
-                               rplen, NULL, &bdberr);
+    ACCUMULATE_TIMING(CHR_TMPSVOP,
+                      rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
+                                                 sizeof(key), rpl, rplen, NULL,
+                                                 &bdberr););
+
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
                __func__, sess->seq, rc_op, bdberr);

@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -91,6 +90,7 @@
 
 #include "views.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -146,6 +146,11 @@ struct net_morestripe_msg {
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
+
+
+extern int get_physical_transaction(
+        bdb_state_type * bdb_state, tran_type * logical_tran,
+        tran_type * *outtran, int force_commit);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
@@ -294,9 +299,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(
-                bdb_state_type * bdb_state, tran_type * logical_tran,
-                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
             if (rc) {
@@ -973,8 +975,11 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen, isnull);
+    int rc;
+    ACCUMULATE_TIMING(CHR_IXADDK,
+                      rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
+                                         genid, rrn, dta, dtalen, isnull););
+    return rc;
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
@@ -1234,7 +1239,13 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
 int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
-    return dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    int rc;
+
+    ACCUMULATE_TIMING(CHR_DATADD,
+                      rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen,
+                                         genid, out_rrn););
+
+    return rc;
 }
 
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
@@ -5621,8 +5632,6 @@ void compr_print_stats()
 {
     int ii;
     int odh, compr, blob_compr;
-
-    const char *bdb_compr_alg_2a(int alg);
 
     logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
     logmsg(LOGMSG_USER, "These apply to new records only!\n");

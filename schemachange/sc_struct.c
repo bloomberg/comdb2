@@ -75,24 +75,25 @@ static void free_dests(struct schema_change_type *s)
 
 void free_schema_change_type(struct schema_change_type *s)
 {
-    if (s) {
-        if (s->newcsc2) {
-            free(s->newcsc2);
-            s->newcsc2 = NULL;
-        }
-        if (s->sc_convert_done) {
-            free(s->sc_convert_done);
-            s->sc_convert_done = NULL;
-        }
+    if (!s)
+        return;
+    if (s->newcsc2) {
+        free(s->newcsc2);
+        s->newcsc2 = NULL;
+    }
+    if (s->sc_convert_done) {
+        free(s->sc_convert_done);
+        s->sc_convert_done = NULL;
+    }
 
-        free_dests(s);
-        Pthread_mutex_destroy(&s->mtx);
-        Pthread_mutex_destroy(&s->livesc_mtx);
+    free_dests(s);
+    Pthread_mutex_destroy(&s->mtx);
+    Pthread_mutex_destroy(&s->livesc_mtx);
 
-        if (s->sb && s->must_close_sb) close_appsock(s->sb);
-        if (!s->onstack) {
-            free(s);
-        }
+    if (s->sb && s->must_close_sb)
+        close_appsock(s->sb);
+    if (!s->onstack) {
+        free(s);
     }
 }
 

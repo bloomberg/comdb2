@@ -28,6 +28,9 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 
+extern int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
+                               char *buf, size_t size);
+
 /* systbl_constraint_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate constraint. We keep track
 ** of the table we're on and the Constraint/Rule in the given table.
@@ -160,9 +163,6 @@ static int systblConstraintsColumn(
             if (constraint_name == 0)
                 return SQLITE_NOMEM;
 
-            /* Forward declaration */
-            int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
-                                    char *buf, size_t size);
             rc = gen_constraint_name(pConstraint, pCur->iRuleid,
                                      constraint_name, MAXGENCONSLEN);
             if (rc)

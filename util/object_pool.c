@@ -1120,8 +1120,8 @@ static int opt_capacity(comdb2_objpool_t op, int value)
 
     free(op->objs);
     op->objs = resized;
-    op->out = 0;
     op->in = ntotalcpy;
+    op->out = (op->type == OP_LIFO) ? (op->in - 1) : 0;
     op->nobjs = ntotalcpy + op->nactiveobjs;
     op->capacity = value;
 

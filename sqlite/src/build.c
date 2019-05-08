@@ -36,6 +36,7 @@ int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
 int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
+extern int comdb2_check_parallel(Parse*);
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -270,7 +271,6 @@ void sqlite3FinishCoding(Parse *pParse){
     pParse->rc = SQLITE_DONE;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pParse->ast ){
-      extern int comdb2_check_parallel(Parse*);
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;

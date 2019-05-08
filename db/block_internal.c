@@ -23,6 +23,10 @@
 
 #define BYTES_PER_WORD 4
 
+extern const uint8_t *osqlcomm_errstat_type_get(errstat_t * p_errstat_type,
+                                                const uint8_t *p_buf,
+                                                const uint8_t *p_buf_end);
+
 uint8_t *block_req_put(const struct block_req *p_block_req, uint8_t *p_buf,
                        const uint8_t *p_buf_end)
 {
@@ -1954,9 +1958,6 @@ int blkseq_get_rcode(void *data, int datalen)
                 blkseq_line = __LINE__;
                 goto error;
             }
-            const uint8_t *osqlcomm_errstat_type_get(errstat_t * p_errstat_type,
-                                                     const uint8_t *p_buf,
-                                                     const uint8_t *p_buf_end);
             if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(
                       &errstat, p_fstblk_buf, p_fstblk_buf_end))) {
                 blkseq_line = __LINE__;

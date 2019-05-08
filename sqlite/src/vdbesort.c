@@ -142,6 +142,8 @@
 #include <inttypes.h>
 #include <cheapstack.h>
 #include <sys/time.h>
+
+int comdb2_tmpdir_space_low();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* 
@@ -1602,7 +1604,6 @@ static int vdbeSorterListToPMA(SortSubtask *pTask, SorterList *pList){
   }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int comdb2_tmpdir_space_low();
   i64 nByte = pTask->file.iEof+pList->szPMA+9;
   i64 lmt = (1<<27);
   /* if nByte > 124MB and we are running low on free space*/
