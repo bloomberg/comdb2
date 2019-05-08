@@ -2570,7 +2570,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
         rc = comdb2_objpool_create_lifo(
             &bdb_state->temp_table_pool, "temp table",
             gbl_temptable_pool_capacity, bdb_temp_table_create_pool_wrapper,
-            bdb_state, bdb_temp_table_destroy_pool_wrapper,
+            bdb_state, bdb_temp_table_destroy_pool_wrapper, bdb_state,
             bdb_temp_table_notify_pool_wrapper, bdb_state);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "failed to create temp table pool\n");
