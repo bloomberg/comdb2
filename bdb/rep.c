@@ -5422,6 +5422,7 @@ void *watcher_thread(void *arg)
             (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
             lock_info_lockers(stdout, bdb_state);
+            last_list_start = list_start;
         }
 
         if (bdb_state->exiting) {

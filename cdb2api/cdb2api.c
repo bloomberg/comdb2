@@ -3522,7 +3522,10 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (currnode->incoherent)
             continue;
 
-        strcpy(valid_hosts[*num_valid_hosts], currnode->name);
+        if(strlen(currnode->name)>= 64)
+            continue;
+
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name, 64);
         if (currnode->has_port) {
             valid_ports[*num_valid_hosts] = currnode->port;
         } else {

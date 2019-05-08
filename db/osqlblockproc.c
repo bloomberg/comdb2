@@ -470,12 +470,9 @@ char *osql_get_tran_summary(struct ireq *iq)
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
         int sz = 128;
-        int min_rtt = INT_MAX;
-        int max_rtt = 0;
-        int min_tottm = INT_MAX;
-        int max_tottm = 0;
-        int min_rtrs = 0;
-        int max_rtrs = 0;
+        int rtt = 0;
+        int tottm = 0;
+        int rtrs = 0;
 
         ret = (char *)malloc(sz);
         if (!ret) {
@@ -484,24 +481,13 @@ char *osql_get_tran_summary(struct ireq *iq)
         }
 
         if (tran->iscomplete) {
-            int crt_tottm = 0;
-            int crt_rtt = 0;
-            int crt_rtrs = 0;
-
-            osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
-
-            min_tottm = crt_tottm;
-            max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
-            min_rtt = crt_rtt;
-            max_rtt = (max_rtt > crt_rtt) ? max_rtt : crt_rtt;
-            min_rtrs = (min_rtrs < crt_rtrs) ? min_rtrs : crt_rtrs;
-            max_rtrs = (max_rtrs > crt_rtrs) ? max_rtrs : crt_rtrs;
+            osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
         }
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]", nametype,
-                 min_tottm, max_tottm, min_rtt, max_rtt, min_rtrs, max_rtrs);
+        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype,
+                 tottm, rtt, rtrs);
         ret[sz - 1] = '\0';
     }
 

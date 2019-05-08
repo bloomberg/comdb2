@@ -440,6 +440,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
                 logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
                        sizeof(systable_cron_scheds_t) * nsize);
                 cron_systable_schedulers_free(arr, narr);
+                arr = NULL;
                 narr = 0;
                 rc = -1;
                 goto done;

@@ -4226,7 +4226,7 @@ static int db_consumer(Lua L)
         return 0;
     }
     char spname[strlen(sp->spname) + 1];
-    strcpy(spname, sp->spname);
+    strncpy(spname, sp->spname, strlen(sp->spname) + 1);
     Q4SP(qname, spname);
 
     struct dbtable *db = getqueuebyname(qname);
