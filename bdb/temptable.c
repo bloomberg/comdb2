@@ -524,6 +524,13 @@ int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
     return bdberr;
 }
 
+int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_arg;
+    int rc = bdb_temp_table_maybe_set_priority_thread(bdb_state);
+    return (rc == TMPTBL_PRIORITY) ? OP_FORCE_NOW : OP_WAIT_AGAIN;
+}
+
 /*
    pull from a list of these things kept on parent bdb_state.
    if list empty, run create code.
@@ -567,17 +574,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             */
             action = TMPTBL_PRIORITY;
         } else {
-            Pthread_mutex_lock(&bdb_state->temp_list_lock);
-            if (bdb_state->haspriosqlthr) {
-                action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
-                             ? TMPTBL_PRIORITY
-                             : TMPTBL_WAIT;
-            } else {
-                bdb_state->haspriosqlthr = 1;
-                bdb_state->priosqlthr = pthread_self();
-                action = TMPTBL_PRIORITY;
-            }
-            Pthread_mutex_unlock(&bdb_state->temp_list_lock);
+            action = bdb_temp_table_maybe_set_priority_thread(bdb_state);
         }
 
         switch (action) {
@@ -1857,18 +1854,46 @@ inline int bdb_is_hashtable(struct temp_table *tt)
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
 
-void bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state)
+int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state)
 {
-    if (bdb_state && bdb_state->haspriosqlthr &&
-            pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+    int rc = TMPTBL_WAIT;
+    if (bdb_state) {
+        Pthread_mutex_lock(&bdb_state->temp_list_lock);
+        if (bdb_state->haspriosqlthr) {
+            rc = pthread_equal(pthread_self(), bdb_state->priosqlthr)
+                         ? TMPTBL_PRIORITY
+                         : TMPTBL_WAIT;
+        } else {
+            bdb_state->haspriosqlthr = 1;
+            bdb_state->priosqlthr = pthread_self();
+            rc = TMPTBL_PRIORITY;
+        }
+        Pthread_mutex_unlock(&bdb_state->temp_list_lock);
+    }
+    return rc;
+}
+
+int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
+                                               int notify)
+{
+    int rc = 0;
+    if (bdb_state) {
         if (bdb_state->haspriosqlthr &&
                 pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-            bdb_state->haspriosqlthr = 0;
-            bdb_state->priosqlthr = 0;
+            Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+            if (bdb_state->haspriosqlthr &&
+                    pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+                bdb_state->haspriosqlthr = 0;
+                bdb_state->priosqlthr = 0;
+                rc = 1; /* yes, thread was reset. */
+            }
+            Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
         }
-        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+        if (notify) {
+            comdb2_objpool_notify(bdb_state->temp_table_pool);
+        }
     }
+    return rc;
 }
 
 static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,

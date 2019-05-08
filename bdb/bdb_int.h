@@ -1621,6 +1621,7 @@ hash_t *bdb_temp_table_histhash_init(void);
 int bdb_temp_table_clear_pool(bdb_state_type *bdb_state);
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg);
 int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg);
+int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg);
 int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
                         int how, int *bdberr);
 int bdb_temp_table_keysize(struct temp_cursor *cursor);

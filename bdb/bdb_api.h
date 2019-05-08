@@ -1231,7 +1231,9 @@ int bdb_temp_hash_insert(bdb_temp_hash *h, void *key, int keylen, void *dta,
 int bdb_temp_hash_lookup(bdb_temp_hash *h, void *key, int keylen, void *dta,
                          int *dtalen, int maxlen);
 
-void bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state);
+int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state);
+int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
+                                               int notify);
 
 bulk_dump *bdb_start_fstdump(bdb_state_type *bdb_state, int *bdberr);
 int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr);

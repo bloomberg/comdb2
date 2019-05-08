@@ -113,6 +113,8 @@ typedef struct comdb2_objpool {
     void *new_arg;
     obj_del_fn del_fn;
     void *del_arg;
+    obj_not_fn not_fn;
+    void *not_arg;
 
     /* eviction thread */
     int evict_thd_run;
@@ -172,7 +174,8 @@ typedef struct comdb2_objpool {
 static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
                                      unsigned int cap, obj_new_fn new_fn,
                                      void *new_arg, obj_del_fn del_fn,
-                                     void *del_arg, enum objpool_type type);
+                                     void *del_arg, obj_not_fn not_fn,
+                                     void *not_arg, enum objpool_type type);
 
 static int object_create(comdb2_objpool_t op, void **objp);
 static int hash_elem_free_wrapper(void *, void *);
@@ -193,6 +196,8 @@ static int opt_idle_time_ms(comdb2_objpool_t op, int value);
 /**********************************
 ** static return/borrow functions *
 ***********************************/
+static int objpool_signal_int(comdb2_objpool_t op);
+static int objpool_notify_int(comdb2_objpool_t op);
 static int objpool_return_int(comdb2_objpool_t op, void *obj);
 static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                               int force);
@@ -220,27 +225,33 @@ static const char *objpool_type_name(comdb2_objpool_t op);
 
 int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_LIFO);
+                                     del_arg, not_fn, not_arg, OP_LIFO);
 }
 
 int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_FIFO);
+                                     del_arg, not_fn, not_arg, OP_FIFO);
 }
 
 int comdb2_objpool_create_rand(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     srand(time(NULL));
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_RAND);
+                                     del_arg, not_fn, not_arg, OP_RAND);
 }
 
 int comdb2_objpool_stop(comdb2_objpool_t op)
@@ -363,6 +374,11 @@ int comdb2_objpool_return(comdb2_objpool_t op, void *obj)
     return objpool_return_int(op, obj);
 }
 
+int comdb2_objpool_notify(comdb2_objpool_t op)
+{
+    return objpool_notify_int(op);
+}
+
 int comdb2_objpool_borrow(comdb2_objpool_t op, void **objp)
 {
     return objpool_borrow_int(op, objp, -1, 0);
@@ -455,7 +471,8 @@ int comdb2_objpool_stats(comdb2_objpool_t op)
 static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
                                      unsigned int cap, obj_new_fn new_fn,
                                      void *new_arg, obj_del_fn del_fn,
-                                     void *del_arg, enum objpool_type type)
+                                     void *del_arg, obj_not_fn not_fn,
+                                     void *not_arg, enum objpool_type type)
 {
     comdb2_objpool_t op;
     const char *pname;
@@ -527,6 +544,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     op->new_arg = new_arg;
     op->del_fn = del_fn;
     op->del_arg = del_arg;
+    op->not_fn = not_fn;
+    op->not_arg = not_arg;
 
     op->namesz = sz;
     strcpy(op->name, pname);
@@ -651,6 +670,28 @@ static void *eviction_thread(void *arg)
     return NULL;
 }
 
+static int objpool_signal_int(comdb2_objpool_t op)
+{
+    assert(op != NULL);
+    OP_DBG(op, "signal unexhausted");
+    Pthread_cond_signal(&op->unexhausted);
+    return 0;
+}
+
+static int objpool_notify_int(comdb2_objpool_t op)
+{
+    int rc;
+    assert(op != NULL);
+    Pthread_mutex_lock(&op->data_mutex);
+    if (op->nborrowwaits != 0) {
+        rc = objpool_signal_int(op);
+    } else {
+        rc = EPERM;
+    }
+    Pthread_mutex_unlock(&op->data_mutex);
+    return rc;
+}
+
 static int objpool_return_int(comdb2_objpool_t op, void *obj)
 {
     int rc = 0;
@@ -717,8 +758,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         }
 
         if (op->nborrowwaits != 0) {
-            OP_DBG(op, "signal unexhausted");
-            Pthread_cond_signal(&op->unexhausted);
+            objpool_signal_int(op);
         }
     }
 
@@ -743,6 +783,8 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
         Pthread_mutex_unlock(&op->data_mutex);
         return EPERM;
     }
+
+retry:
 
     if (exhausted(op)) {
         if (!full(op)) {
@@ -823,6 +865,19 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                 OP_DBG(op, "intr by stop()");
                 Pthread_mutex_unlock(&op->data_mutex);
                 return EPERM;
+            }
+
+            if (op->not_fn != NULL) {
+                int not_rc = op->not_fn(objp, op->not_arg);
+                if (not_rc == OP_FAIL_NOW) {
+                    OP_DBG(op, "canceled by not_fn()");
+                    Pthread_mutex_unlock(&op->data_mutex);
+                    return ECANCELED;
+                } else if (not_rc == OP_FORCE_NOW) {
+                    OP_DBG(op, "forced by not_fn()");
+                    force = 1;
+                    goto retry; /* mutex still held */
+                }
             }
 
             if (!exhausted(op))
