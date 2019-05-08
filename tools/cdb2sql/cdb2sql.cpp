@@ -1133,7 +1133,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_USER too long, ignored\n");
-            } else if ((length < 0) || ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
+            } else if ((length < 0) ||
+                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
                 fprintf(stderr, "Failed to set user using COMDB2_USER, "
                                 "exiting\n");
                 return 1;
@@ -1148,7 +1149,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
-            } else if ((length < 0) || ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
+            } else if ((length < 0) ||
+                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
                 fprintf(stderr, "Failed to set password using "
                                 "COMDB2_PASSWORD, exiting\n");
                 return 1;

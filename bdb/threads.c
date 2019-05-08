@@ -146,8 +146,7 @@ void *memp_trickle_thread(void *arg)
             sleep(1);
             BDB_READLOCK("memp_trickle_thread");
             goto again;
-        }
-        else if (rc == 0) {
+        } else if (rc == 0) {
             if (nwrote != 0) {
                 goto again;
             }
