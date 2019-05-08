@@ -950,14 +950,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 if (!(p_fstblk_buf = (uint8_t *)buf_get(&(snapinfo_outrc), sizeof(snapinfo_outrc), 
                         p_fstblk_buf, p_fstblk_buf_end)))  {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
             }
 

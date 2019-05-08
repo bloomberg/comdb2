@@ -147,8 +147,7 @@ extern void *lwm_printer_thd(void *p);
 unsigned int sc_get_logical_redo_lwm();
 /* Sorry - reaching into berkeley "internals" here.  This should
  * probably be an environment method. */
-extern int __db_find_recovery_start_if_enabled(DB_ENV * dbenv,
-                                               DB_LSN * lsn);
+extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
 extern void *master_lease_thread(void *arg);
 extern void *coherency_lease_thread(void *arg);
 
@@ -5259,11 +5258,11 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
 	pthread_attr_t attr;
-    Pthread_attr_init(&attr);
-    Pthread_attr_setstacksize(&attr, 128 * 1024);
-    pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-    Pthread_attr_destroy(&attr);
-    return 0;
+        Pthread_attr_init(&attr);
+        Pthread_attr_setstacksize(&attr, 128 * 1024);
+        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+        Pthread_attr_destroy(&attr);
+        return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)

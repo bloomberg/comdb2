@@ -3599,7 +3599,7 @@ int cson_parse( cson_value ** tgt, cson_data_source_f src, void * state,
     cson_parse_opt const opt = opt_ ? *opt_ : cson_parse_opt_empty;
     int rc = 0;
     unsigned int len = 1;
-    cson_parse_info info = info_ ? *info_ : cson_parse_info_empty;
+    cson_parse_info info = info_ ? *info_ : (cson_parse_info) cson_parse_info_empty;
     cson_parser p = cson_parser_empty;
     if( ! tgt || ! src ) return cson_rc.ArgError;
     

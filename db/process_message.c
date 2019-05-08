@@ -141,18 +141,18 @@ extern unsigned long long get_genid(bdb_state_type *bdb_state,
                                     unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
-void bdb_dump_freelist(FILE * out, int datafile, int stripe, int ixnum,
+void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state);
 extern void delete_log_files(bdb_state_type *bdb_state);
 void malloc_stats();
 extern int get_blkmax(void);
 void set_analyze_abort_requested();
 extern void dump_log_event_counts(void);
-extern void bdb_dumptrans(bdb_state_type * bdb_state);
+extern void bdb_dumptrans(bdb_state_type *bdb_state);
 const char *deadlock_policy_str(int policy);
 void bdb_locker_summary(void *_bdb_state);
-extern int printlog(bdb_state_type * bdb_state, int startfile,
-                    int startoff, int endfile, int endoff);
+extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
+                    int endfile, int endoff);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",

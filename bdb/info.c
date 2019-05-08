@@ -44,10 +44,10 @@
 #include <compat.h>
 
 extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
-extern void bdb_dump_table_dbregs(bdb_state_type * bdb_state);
-extern void __test_last_checkpoint(DB_ENV * dbenv);
-extern void __pgdump(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
-extern void __pgtrash(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
+extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
+extern void __test_last_checkpoint(DB_ENV *dbenv);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
