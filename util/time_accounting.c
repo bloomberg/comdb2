@@ -13,7 +13,6 @@
    limitations under the License.
  */
 
-
 #include <pthread.h>
 #include <sys/time.h>
 #include "locks_wrap.h"
@@ -22,7 +21,6 @@
 
 #ifndef NDEBUG
 const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
-
 
 unsigned long long gbl_chron_times[CHR_MAX];
 
@@ -39,8 +37,8 @@ void reset_time_accounting(int el)
 
 void print_time_accounting(int el)
 {
-    logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", 
-           CHR_NAMES[el], gbl_chron_times[el]);
+    logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", CHR_NAMES[el],
+           gbl_chron_times[el]);
 }
 
 void print_all_time_accounting()

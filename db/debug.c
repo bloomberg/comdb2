@@ -263,7 +263,8 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "getvers table        - get schema version for table (or all)\n");
         logmsg(LOGMSG_USER, "putvers table num    - set schema version for table\n");
         logmsg(LOGMSG_USER, "delsc   table tag    - delete a tag\n");
-        logmsg(LOGMSG_USER, "timings              - print all accumulated timing measurements \n");
+        logmsg(LOGMSG_USER, "timings              - print all accumulated "
+                            "timing measurements \n");
     } else {
         logmsg(LOGMSG_ERROR, "Unknown debug command <%.*s>\n", ltok, tok);
     }

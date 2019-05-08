@@ -792,9 +792,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     DEBUG_PRINT_TMPBL_SAVING();
 
     ACCUMULATE_TIMING(CHR_TMPSVOP,
-        rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
-                                   rplen, NULL, &bdberr);
-    );
+                      rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
+                                                 sizeof(key), rpl, rplen, NULL,
+                                                 &bdberr););
 
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
