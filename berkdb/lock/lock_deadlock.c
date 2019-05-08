@@ -38,8 +38,9 @@ extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_rowlocks;
 
-void stack_me(char *location);
-
+extern void stack_me(char *location);
+extern void log_snap_info_key(snap_uid_t *);
+extern void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -418,7 +419,6 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_WARN, "*");
-		extern void log_snap_info_key(snap_uid_t *);
 		log_snap_info_key(idmap[j].snap_info);
 		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
@@ -869,7 +869,6 @@ dokill:
 		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
 #ifdef DEBUG_LOCKS
 			__lock_dump_active_locks(dbenv, stderr);

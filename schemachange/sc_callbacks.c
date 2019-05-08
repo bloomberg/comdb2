@@ -29,6 +29,8 @@
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
 
+extern void free_cached_idx(uint8_t * *cached_idx);
+
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)
 {
@@ -243,7 +245,6 @@ unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
 {
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    void free_cached_idx(uint8_t * *cached_idx);
     int rebuild_keys = 0;
     if ((gbl_partial_indexes && db->ix_partial) ||
         (gbl_expressions_indexes && db->ix_expr)) {

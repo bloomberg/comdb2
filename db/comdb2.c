@@ -167,6 +167,12 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
+extern int has_low_headroom(const char * path, int headroom, int debug);
+extern void *clean_exit_thd(void *unused);
+extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
+extern void update_metrics(void);
+extern void *timer_thread(void *);
+void init_lua_dbtypes(void);
 static int put_all_csc2();
 
 static void *purge_old_blkseq_thread(void *arg);
@@ -1371,7 +1377,6 @@ int comdb2_tmpdir_space_low() {
     int reqfree = bdb_attr_get(thedb->bdb_attr, 
             BDB_ATTR_SQLITE_SORTER_TEMPDIR_REQFREE);
     
-    int has_low_headroom(const char * path, int headroom, int debug);
     return has_low_headroom(path, 100 - reqfree, 1);
 }
 
@@ -1404,7 +1409,6 @@ int clear_temp_tables(void)
 }
 
 void clean_exit_sigwrap(int signum) {
-    void *clean_exit_thd(void *unused);
     signal(SIGTERM, SIG_DFL);
     logmsg(LOGMSG_WARN, "Received SIGTERM...exiting\n");
 
@@ -3902,7 +3906,6 @@ static int init(int argc, char **argv)
     if (!gbl_exit && !gbl_create_mode &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
         thedb->nsiblings == 1) {
-        extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
         bdb_durable_lsn_for_single_node(thedb->bdb_env);
     }
 
@@ -4310,7 +4313,6 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        extern void update_metrics(void);
         if (count % 5 == 0)
             update_metrics();
 
@@ -5309,7 +5311,6 @@ int main(int argc, char **argv)
 
     llmeta_dump_mapping(thedb);
 
-    void init_lua_dbtypes(void);
     init_lua_dbtypes();
 
     comdb2_timprm(clean_mins, TMEV_PURGE_OLD_LONGTRN);
@@ -5332,7 +5333,6 @@ int main(int argc, char **argv)
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
 
-    extern void *timer_thread(void *);
     pthread_t timer_tid;
     pthread_attr_t timer_attr;
     Pthread_attr_init(&timer_attr);

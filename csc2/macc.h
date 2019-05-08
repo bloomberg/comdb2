@@ -143,7 +143,7 @@ extern struct symbol {
     int dpth;
     int numfo; /* number of field options for this symbol */
     struct fieldopt fopts[FLDOPT_MAX]; /* field option structures */
-} sym[MAX];
+} symb[MAX];
 
 extern struct table {
     char table_tag[MAX_TAG_LEN + 1];

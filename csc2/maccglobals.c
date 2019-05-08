@@ -4,7 +4,7 @@
 #include <string.h>
 
 struct constraint constraints[MAXCNSTRTS];
-struct symbol sym[MAX];
+struct symbol symb[MAX];
 struct table tables[MAXTBLS];
 struct constant constants[MAX];
 unsigned int un_start[MAX];
@@ -105,7 +105,7 @@ void init_globals()
     et_p = 0;
     ncluster = 0;
     ntables = 0;
-    memset(sym, 0, sizeof(sym));
+    memset(symb, 0, sizeof(symb));
     memset(tables, 0, sizeof(tables));
     memset(constants, 0, sizeof(constants));
     memset(keys, 0, sizeof(keys));

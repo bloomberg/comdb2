@@ -19,6 +19,7 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3IsComdb2Rowid(const char *);
 int sqlite3IsComdb2RowTimestamp(const char *);
+int is_comdb2_index_blob(const char *dbname, int icol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -429,7 +430,6 @@ static int lookupName(
      && pExpr->y.pTab
      && pExpr->iColumn>=0
     ){
-      int is_comdb2_index_blob(const char *dbname, int icol);
       is_comdb2_index_blob(pExpr->y.pTab->zName, pExpr->iColumn);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
