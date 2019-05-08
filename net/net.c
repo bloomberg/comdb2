@@ -3032,7 +3032,7 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x)
 
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x)
 {
-    if (x >= 0 || x <= 100)
+    if (x >= 0 && x <= 100)
         netinfo_ptr->throttle_percent = x;
     else
         logmsg(LOGMSG_ERROR, 
@@ -4990,7 +4990,6 @@ static void *connect_thread(void *arg)
         sin.sin_port = htons(connport);
 
         if (netinfo_ptr->exiting) {
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
             break;
         }
 
@@ -5135,9 +5134,9 @@ static void *connect_thread(void *arg)
                                    host_node_ptr->sb);
         if (rc != 0) {
             host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                             "%s: couldnt send connect message\n", __func__);
+                             "%s: couldn't send connect message\n", __func__);
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-            close_hostnode(host_node_ptr);
+            close_hostnode_ll(host_node_ptr);
             goto again;
         }
         sbuf2flush(host_node_ptr->sb);

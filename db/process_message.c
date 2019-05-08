@@ -142,6 +142,18 @@ extern unsigned long long get_genid(bdb_state_type *bdb_state,
                                     unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
+void bdb_dump_freelist(FILE * out, int datafile, int stripe, int ixnum,
+                       bdb_state_type *bdb_state);
+extern void delete_log_files(bdb_state_type *bdb_state);
+void malloc_stats();
+extern int get_blkmax(void);
+void set_analyze_abort_requested();
+extern void dump_log_event_counts(void);
+extern void bdb_dumptrans(bdb_state_type * bdb_state);
+const char *deadlock_policy_str(int policy);
+void bdb_locker_summary(void *_bdb_state);
+extern int printlog(bdb_state_type * bdb_state, int startfile,
+                    int startoff, int endfile, int endoff);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -753,8 +765,6 @@ clipper_usage:
         int datafile = -1;
         int stripe = -1;
         int index = -1;
-        void bdb_dump_freelist(FILE * out, int datafile, int stripe, int ixnum,
-                               bdb_state_type *bdb_state);
         init_fake_ireq(dbenv, &iq);
 
         tok = segtok(line, lline, &st, &ltok);
@@ -856,7 +866,6 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
     } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
         logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
-        extern void delete_log_files(bdb_state_type *bdb_state);
         delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
@@ -1160,7 +1169,6 @@ clipper_usage:
         /* This is defined in malloc.h, as is struct mallinfo.  Including
          * malloc.h
          * causes a clash between mallinfo there and in dlmalloc.h. */
-        void malloc_stats();
         malloc_stats();
 #endif
     } else if (tokcmp(tok, ltok, "deletehints") == 0) {
@@ -1352,7 +1360,6 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
-        extern int get_blkmax(void);
         int blkmax = get_blkmax();
         logmsg(LOGMSG_USER, 
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
@@ -2915,7 +2922,6 @@ clipper_usage:
             }
 
             logmsg(LOGMSG_USER, "Abort ongoing analyze\n");
-            void set_analyze_abort_requested();
             set_analyze_abort_requested();
         } else {
             logmsg(LOGMSG_ERROR, "unknown command <%.*s>\n", ltok, tok);
@@ -3961,7 +3967,6 @@ clipper_usage:
                100000000 / (end - start) * 1000);
         bdb_lockspeed(dbenv->bdb_env);
     } else if (tokcmp(tok, ltok, "logevents") == 0) {
-        extern void dump_log_event_counts(void);
         dump_log_event_counts();
     } else if (tokcmp(tok, ltok, "abort_on_in_use_rqid") == 0) {
         gbl_abort_on_clear_inuse_rqid = 1;
@@ -4195,7 +4200,6 @@ clipper_usage:
                    db->do_local_replication ? "YES" : "NO");
         }
     } else if (tokcmp(tok, ltok, "transtat") == 0) {
-        extern void bdb_dumptrans(bdb_state_type * bdb_state);
         bdb_dumptrans(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "ddlk") == 0) {
         extern unsigned gbl_ddlk;
@@ -4422,7 +4426,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {
-        void bdb_locker_summary(void *_bdb_state);
         bdb_locker_summary(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "mempget_timeout") == 0) {
         extern int __gbl_max_mpalloc_sleeptime;
@@ -4523,8 +4526,6 @@ clipper_usage:
             } else
                 endfile = toknum(tok, ltok);
         }
-        extern int printlog(bdb_state_type * bdb_state, int startfile,
-                            int startoff, int endfile, int endoff);
         printlog(thedb->bdb_env, startfile, startoff, endfile, endoff);
 #ifdef _LINUX_SOURCE
     } else if (tokcmp(tok, ltok, "rcache") == 0) {

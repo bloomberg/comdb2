@@ -18,6 +18,11 @@
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "logmsg.h"
+
+
+extern int comdb2genidcontainstime(void);
+extern char* fdb_table_name(int iTable);
+extern const char* comdb2_get_sql(void);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Forward declarations */
@@ -2224,7 +2229,6 @@ int sqlite3IsComdb2Rowid(const char *z){
 }
 
 int sqlite3IsComdb2RowTimestamp(const char *z){
-  extern int comdb2genidcontainstime(void);
   if (comdb2genidcontainstime()){
       return 
           (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
@@ -5523,7 +5527,6 @@ void sqlite3ClearTempRegCache(Parse *pParse){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "vdbeInt.h"
 
-extern char* fdb_table_name(int iTable);
 static char *print_mem(Mem *m){
   int flg = m->flags & MEM_TypeMask;
   char *hex = "0123456789ABCDEF";
@@ -5752,7 +5755,6 @@ char * binary_op(int op){
   return "???????";
 }
 
-extern const char* comdb2_get_sql(void);
 #include "comdb2.h"
 #include "dohsql.h"
 
