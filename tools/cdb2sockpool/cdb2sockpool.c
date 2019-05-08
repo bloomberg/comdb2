@@ -220,11 +220,11 @@ int recvall(int fd, void *bufp, int len)
 
     while (bytesleft) {
         rc = recv(fd, buf + off, bytesleft, MSG_WAITALL);
-        if (rc == EINTR || rc == EAGAIN)
-            continue;
-        else if (rc == -1)
+        if (rc == -1) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
             return -1;
-        else if (rc == 0) /* EOF before entire message read */
+        } else if (rc == 0) /* EOF before entire message read */
             return -1;
         else {
             bytesleft -= rc;
@@ -352,11 +352,11 @@ static int cdb2_get_progname_by_pid(pid_t pid, char *pname, int pnamelen)
      * breaking something.  Ideally - any local enhancements here would be
      * migrated into bb_get_pid_argv0() and this routine would call that one
      * unconditionally.
+     **/
     if (rc != 0 && pname != NULL) {
         strncpy(pname, "???", pnamelen);
         pname[pnamelen - 1] = 0;
     }
-     **/
     return rc;
 }
 
