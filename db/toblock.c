@@ -324,7 +324,7 @@ void toblock_init(void)
 #undef add_blockop
     /* a runtime assert to make sure we have the right size of blockop count
      * array */
-    if (index > NUM_BLOCKOP_OPCODES) {
+    if (index >= NUM_BLOCKOP_OPCODES) {
         logmsg(LOGMSG_FATAL, "%s: too many blockops defined!\n", __func__);
         logmsg(LOGMSG_FATAL, "%s: you need to increase NUM_BLOCKOP_OPCODES to %d\n",
                 __func__, index);
