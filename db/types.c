@@ -6625,7 +6625,7 @@ static TYPES_INLINE int SERVER_BLOB_to_SERVER_BYTEARRAY(
 
     if (len <= inlen - BLOB_ON_DISK_LEN) {
         int rc;
-        rc = bytearray_copy(in + BLOB_ON_DISK_LEN, len, inopts, NULL,
+        rc = bytearray_copy(cin + BLOB_ON_DISK_LEN, len, inopts, NULL,
                             ((char *)out) + 1, outlen - 1, outdtsz, outopts,
                             outblob);
         /* set data bit */

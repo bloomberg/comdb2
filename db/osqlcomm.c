@@ -6678,10 +6678,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
         return 0;
-    else
-        return ERR_SC;
-
-    return 0;
+    
+    return ERR_SC;
 }
 
 /* get the table name part of the rpl request
