@@ -490,9 +490,9 @@ char *osql_get_tran_summary(struct ireq *iq)
 
             osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
 
-            min_tottm = (min_tottm < crt_tottm) ? min_tottm : crt_tottm;
+            min_tottm = crt_tottm;
             max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
-            min_rtt = (min_rtt < crt_rtt) ? min_rtt : crt_rtt;
+            min_rtt = crt_rtt;
             max_rtt = (max_rtt > crt_rtt) ? max_rtt : crt_rtt;
             min_rtrs = (min_rtrs < crt_rtrs) ? min_rtrs : crt_rtrs;
             max_rtrs = (max_rtrs > crt_rtrs) ? max_rtrs : crt_rtrs;

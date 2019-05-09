@@ -52,7 +52,7 @@
 #include <logmsg.h>
 
 extern int db_is_stopped(void);
-extern int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
+extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
 
 void *udp_backup(void *arg)
@@ -141,12 +141,12 @@ void *memp_trickle_thread(void *arg)
     again:
         rc = bdb_state->dbenv->memp_trickle(
             bdb_state->dbenv, bdb_state->attr->memptricklepercent, &nwrote, 1);
-        if (rc == 0) {
-            if (rc == DB_LOCK_DESIRED) {
-                BDB_RELLOCK();
-                sleep(1);
-                BDB_READLOCK("memp_trickle_thread");
-            }
+        if (rc == DB_LOCK_DESIRED) {
+            BDB_RELLOCK();
+            sleep(1);
+            BDB_READLOCK("memp_trickle_thread");
+            goto again;
+        } else if (rc == 0) {
             if (nwrote != 0) {
                 goto again;
             }

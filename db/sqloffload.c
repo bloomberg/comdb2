@@ -62,7 +62,7 @@
 #define TEST_RECOM
 #endif
 
-int scdone_abort_cleanup(struct ireq * iq);
+int scdone_abort_cleanup(struct ireq *iq);
 
 int gbl_master_swing_osql_verbose = 1;
 

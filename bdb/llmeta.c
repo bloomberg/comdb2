@@ -29,6 +29,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include "logmsg.h"
+#include "str0.h"
 
 #include <sys/time.h>
 
@@ -8925,8 +8926,8 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_VERSIONED_SP);
-    strcpy(u.sp.name, name);
-    strcpy(u.sp.version, version);
+    strncpy(u.sp.name, name, sizeof(u.sp.name));
+    strncpy(u.sp.version, version, sizeof(u.sp.version));
     char **srcs;
     int rc, bdberr, num;
     rc = kv_get(&u, sizeof(u), (void ***)&srcs, &num, &bdberr);
@@ -9046,7 +9047,7 @@ int bdb_del_default_versioned_sp(tran_type *tran, char *name)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
-    strcpy(u.sp.name, name);
+    strncpy0(u.sp.name, name, sizeof(u.sp.name));
     int bdberr;
     int rc = kv_del(tran, &u, &bdberr);
     if (rc && bdberr == BDBERR_DEL_DTA)

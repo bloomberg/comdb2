@@ -167,7 +167,6 @@ int gbl_bpfunc_auth_gen = 1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
-
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);

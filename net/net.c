@@ -3032,7 +3032,7 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x)
 
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x)
 {
-    if (x >= 0 || x <= 100)
+    if (x >= 0 && x <= 100)
         netinfo_ptr->throttle_percent = x;
     else
         logmsg(LOGMSG_ERROR, 
