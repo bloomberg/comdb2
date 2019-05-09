@@ -5559,16 +5559,16 @@ bad_resize:	;
 
 		if (txn_args) {
 			__os_free(dbenv, txn_args);
-            txn_args = NULL;
-        }
+			txn_args = NULL;
+		}
 		if (txn_gen_args) {
 			__os_free(dbenv, txn_gen_args);
-            txn_gen_args = NULL;
-        }
+			txn_gen_args = NULL;
+		}
 		if (txn_rl_args) {
 			__os_free(dbenv, txn_rl_args);
-            txn_rl_args = NULL;
-        }
+			txn_rl_args = NULL;
+		}
 
 		ret = wait_for_running_transactions(dbenv);
 		if (ret) {
