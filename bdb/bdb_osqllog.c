@@ -2806,7 +2806,7 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
     bdb_osql_log_addc_ptr_t addptr;
     int rc = 0;
     int outrc = 0;
-    DBT logdta;
+    DBT logdta = {0};
     int offset = 0;
     int page = 0;
     int index = 0;
@@ -2972,11 +2972,6 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
                     bdberr);
             }
 
-            /* Cleanup logfile cursor. */
-            free(logdta.data);
-
-            /* Cleanup update record. */
-            free(upd_dta);
         } else if (rec->dtafile == 0) {
             /* Normal case, add optimized record to the shadow table. */
             rc = bdb_osql_log_apply_ll(cur->state, shadow_tran, log, rec,
@@ -2998,6 +2993,12 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
                 upd_dta->newgenid, &upd_dta->newgenid,
                 sizeof(unsigned long long), NULL, 0, cur->trak, bdberr);
         }
+
+        /* Cleanup logfile cursor. */
+        free(logdta.data);
+
+        /* Cleanup update record. */
+        free(upd_dta);
 
         /* Mark as dirty. */
         *dirty = 1;

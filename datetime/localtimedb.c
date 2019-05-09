@@ -2193,6 +2193,9 @@ static struct db_state *find_tz(const char *name)
     tz_hash_entry_type *ptr;
 
     bzero(key, NAME_KEY_MAX);
+    /* out of range tzname? */
+    if (strlen(name) >= sizeof(key))
+        return NULL;
     strcpy(key, name);
 
     ptr = hash_find(tz_hash_tbl, key);

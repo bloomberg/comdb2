@@ -98,7 +98,7 @@ static void close_tables(berktable_t *tables, int tablecount)
                 logmsg(LOGMSG_ERROR, "%s close error: %d\n", __func__, rc);
                 continue;
             }
-            unlink(bdb_trans(table->name, new));
+            unlink(bdb_trans(table->name, new, sizeof(new)));
         }
     }
     free(tables);
@@ -115,7 +115,7 @@ static berktable_t *create_tables(int *tablecount)
     count = 0;
     table = &tables[count];
     snprintf(table->name, sizeof(table->name), "XXX._berktest%d.index", uniq);
-    unlink(bdb_trans(table->name, new));
+    unlink(bdb_trans(table->name, new, sizeof(new)));
     table->pagesize = 4096;
     table->keysize = 13;
     table->datasize = 8;
@@ -129,7 +129,7 @@ static berktable_t *create_tables(int *tablecount)
     count++;
     table = &tables[count];
     snprintf(table->name, sizeof(table->name), "XXX._berktest%d.data", uniq);
-    unlink(bdb_trans(table->name, new));
+    unlink(bdb_trans(table->name, new, sizeof(new)));
     table->pagesize = 4096;
     table->keysize = 8;
     table->datasize = 12;

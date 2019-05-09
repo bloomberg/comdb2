@@ -1297,7 +1297,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 #include "dbinc/hmac.h"
 #include "dbinc_auto/hmac_ext.h"
 
-extern char *bdb_trans(const char infile[], char outfile[]);
+extern char *bdb_trans(const char infile[], char outfile[], size_t outsz);
 extern int ___os_openhandle(DB_ENV *dbenv, const char *name, int flags,
     int mode, DB_FH ** fhpp);
 extern int __os_closehandle(DB_ENV *dbenv, DB_FH * fhp);
@@ -1314,7 +1314,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	size_t sz;
 
 	snprintf(fname, sizeof(fname), "%s/checkpoint", db_home);
-	pbuf = bdb_trans(fname, buf);
+	pbuf = bdb_trans(fname, buf, sizeof(buf));
 
 	ret =
 	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, 0666,

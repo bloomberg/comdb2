@@ -183,7 +183,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             rc = BDBERR_DEADLOCK;
         goto done;
     }
-    bdb_trans(tmpname, tran_tmpname);
+    bdb_trans(tmpname, tran_tmpname, sizeof(tran_tmpname));
     logmsg(LOGMSG_DEBUG, "open %s\n", tran_tmpname);
 
     fd = open(tran_tmpname, O_RDONLY);

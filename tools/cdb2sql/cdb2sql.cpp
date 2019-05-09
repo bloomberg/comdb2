@@ -1155,7 +1155,13 @@ static int run_statement(const char *sql, int ntypes, int *types,
                                 "COMDB2_PASSWORD, exiting\n");
                 return 1;
             } else {
-                printf("Set password using COMDB2_PASSWORD\n");
+                if ((cdb2_run_statement(cdb2h, cmd)) != 0) {
+                    fprintf(stderr, "Failed to set password using "
+                                    "COMDB2_PASSWORD, exiting\n");
+                    return 1;
+                } else {
+                    printf("Set password using COMDB2_PASSWORD\n");
+                }
             }
         }
     }

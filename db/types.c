@@ -5697,14 +5697,6 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
             *outdtsz += inlen;
         }
     } else if (outblob) {
-        if (inlen <= 0) {
-            /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "CLIENT_PSTR2_to_SERVER_VUTF8: invalid string "
-                            "length: %d\n",
-                    inlen);
-            return -1;
-        }
-
         if (inlen > gbl_blob_sz_thresh_bytes)
             outblob->data = comdb2_bmalloc(blobmem, inlen);
         else

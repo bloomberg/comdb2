@@ -2240,12 +2240,13 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 
     /* open file */
     file = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    free(fname);
     if (file == -1) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open %s for writing\n",
                 fname);
+        free(fname);
         return -1;
     }
+    free(fname);
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open sbuf2\n");
