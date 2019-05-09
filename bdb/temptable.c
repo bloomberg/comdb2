@@ -1890,7 +1890,11 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
         }
         if (notify && rc) {
-            comdb2_objpool_notify(bdb_state->temp_table_pool);
+            int rc2 = comdb2_objpool_notify(bdb_state->temp_table_pool);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_DEBUG, "%s: comdb2_objpool_notify rc=%d\n",
+                       __func__, rc2);
+            }
         }
     }
     return rc;

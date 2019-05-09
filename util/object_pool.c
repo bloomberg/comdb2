@@ -894,6 +894,7 @@ retry:
                 }
                 /* if caller didn't specify waiting time, cond_wait again */
             } else {
+                OP_DBG(op, "pool exhausted but no longer full");
                 rc = object_create(op, objp);
                 if (rc == 0)
                     ++op->nborrows;
