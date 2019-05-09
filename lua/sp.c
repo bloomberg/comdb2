@@ -6380,6 +6380,7 @@ void *exec_trigger(trigger_reg_t *reg)
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
+    sqlengine_setup_temp_table_mtx(&clnt);
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
@@ -6441,6 +6442,7 @@ void *exec_trigger(trigger_reg_t *reg)
         force_unregister(L, reg);
     }
     put_curtran(thedb->bdb_env, &clnt);
+    sqlengine_cleanup_temp_table_mtx(&clnt);
     close_sp(&clnt);
     cleanup_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
