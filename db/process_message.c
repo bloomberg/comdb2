@@ -1381,9 +1381,11 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
         extern int gbl_temptable_count;
         extern int gbl_sql_temptable_count;
-        logmsg(LOGMSG_USER, 
+        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
+        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        logmsg(LOGMSG_USER,
                 "Overall temptable count is %d, SQL temptable count is %d\n",
-                gbl_temptable_count, gbl_sql_temptable_count);
+                temptable_count, sql_temptable_count);
     }
 
     /*
