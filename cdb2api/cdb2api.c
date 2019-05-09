@@ -36,6 +36,7 @@
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
+#include "str0.h"
 
 /*
 *******************************************************************************
@@ -347,8 +348,7 @@ static char *ibm_getargv0(void)
 
     if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
         _PID == p.pi_pid) {
-        strncpy(argv0, p.pi_comm, PATH_MAX);
-        argv0[PATH_MAX - 1] = '\0';
+        strncpy(argv0, p.pi_comm, PATH_MAX - 1);
     } else {
         fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
         return NULL;
@@ -1279,33 +1279,28 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
             } else if (strcasecmp(SSL_CERT_PATH_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    strncpy(cdb2_sslcertpath, tok, PATH_MAX);
-                    cdb2_sslcertpath[PATH_MAX - 1] = '\0';
+                    strncpy(cdb2_sslcertpath, tok, PATH_MAX - 1);
                 }
             } else if (strcasecmp(SSL_CERT_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    strncpy(cdb2_sslcert, tok, PATH_MAX);
-                    cdb2_sslcert[PATH_MAX - 1] = '\0';
+                    strncpy(cdb2_sslcert, tok, PATH_MAX - 1);
                 }
             } else if (strcasecmp(SSL_KEY_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    strncpy(cdb2_sslkey, tok, PATH_MAX);
-                    cdb2_sslkey[PATH_MAX - 1] = '\0';
+                    strncpy(cdb2_sslkey, tok, PATH_MAX - 1);
                 }
             } else if (strcasecmp(SSL_CA_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    strncpy(cdb2_sslca, tok, PATH_MAX);
-                    cdb2_sslca[PATH_MAX - 1] = '\0';
+                    strncpy(cdb2_sslca, tok, PATH_MAX - 1);
                 }
 #if HAVE_CRL
             } else if (strcasecmp(SSL_CRL_OPT, tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    strncpy(cdb2_sslcrl, tok, PATH_MAX);
-                    cdb2_sslcrl[PATH_MAX - 1] = '\0';
+                    strncpy(cdb2_sslcrl, tok, PATH_MAX - 1);
                 }
 #endif /* HAVE_CRL */
             } else if (strcasecmp("ssl_session_cache", tok) == 0) {
@@ -1582,7 +1577,7 @@ static int open_sockpool_ll(void)
 
     struct sockaddr_sun addr = {0};
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path));
+    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         close(fd);
@@ -1943,8 +1938,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
             hndl->sess_list->list = p;
 
             for (i = 0; i != hndl->num_hosts; ++i, ++p) {
-                strncpy(p->host, hndl->hosts[i], sizeof(p->host));
-                p->host[sizeof(p->host) - 1] = '\0';
+                strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
                 p->sess = NULL;
             }
         }
@@ -5689,7 +5683,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
         return ENOMEM;
 
     for (i = 0, p = r; i != hndl->num_hosts; ++i, ++p) {
-        strncpy(p->host, hndl->hosts[i], sizeof(p->host));
+        strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
         p->host[sizeof(p->host) - 1] = '\0';
         p->sess = NULL;
         for (j = 0, q = arg->list; j != arg->n; ++q) {

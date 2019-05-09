@@ -298,7 +298,7 @@ static void init_router_mode()
 
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
+    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path) - 1);
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
@@ -1010,7 +1010,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }
-            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path) - 1);
             break;
         case 'p':
             if (default_ports) {

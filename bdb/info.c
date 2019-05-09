@@ -2148,7 +2148,7 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
 
     for (i = 0; i != nnodes; ++i) {
         pos = rv + i;
-        strncpy(pos->host, nodes[i].host, sizeof(pos->host));
+        strncpy0(pos->host, nodes[i].host, sizeof(pos->host));
         host = nodes[i].host;
 
         /* net_get_nodes_info() returns all nodes. Exclude myself. */
