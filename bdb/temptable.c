@@ -121,9 +121,59 @@ struct temp_cursor {
     void *hash_cur;
     unsigned int hash_cur_buk;
     LINKC_T(struct temp_cursor) lnk;
+    int ind;
+    int keymalloclen;
+    int datamalloclen;
 };
 
-enum { TEMP_TABLE_TYPE_BTREE, TEMP_TABLE_TYPE_HASH, TEMP_TABLE_TYPE_LIST };
+typedef struct arr_elem {
+    int keylen;
+    int dtalen;
+    void *key;
+    void *dta;
+} arr_elem_t;
+
+#define COPY_KV_TO_CUR(c)                                                      \
+    do {                                                                       \
+        arr_elem_t *elem = &(c)->tbl->elements[(c)->ind];                      \
+        int maxkeylen = (c)->tbl->maxkeylen;                                   \
+        if ((c)->key == NULL || (c)->keymalloclen < maxkeylen) {               \
+            (c)->key = realloc((c)->key, maxkeylen);                           \
+            (c)->keymalloclen = maxkeylen;                                     \
+        }                                                                      \
+        if ((c)->key == NULL) {                                                \
+            (c)->valid = 0;                                                    \
+            return -1;                                                         \
+        }                                                                      \
+        int maxdatalen = (c)->tbl->maxdatalen;                                 \
+        if ((c)->data == NULL || (c)->datamalloclen < maxdatalen) {            \
+            (c)->data = realloc((c)->data, maxdatalen);                        \
+            (c)->datamalloclen = maxdatalen;                                   \
+        }                                                                      \
+        if ((c)->data == NULL) {                                               \
+            free((c)->data);                                                   \
+            (c)->valid = 0;                                                    \
+            return -1;                                                         \
+        }                                                                      \
+        (c)->keylen = elem->keylen;                                            \
+        (c)->datalen = elem->dtalen;                                           \
+        memcpy((c)->key, elem->key, (c)->keylen);                              \
+        memcpy((c)->data, elem->dta, (c)->datalen);                            \
+        (c)->valid = 1;                                                        \
+    } while (0);
+
+/* A temparray is a lightweight replacement of a temptable. It is simply
+   a sorted array. If the number of elements is greater than a threshold,
+   or the in-memory data size exceeds a pre-configured cache size,
+   a temparray will fall back to a temptable.
+   A temparray is more efficient than a temptable. Besides, it uses far
+   less memory than a temptable for small and medium-sized requests. */
+enum {
+    TEMP_TABLE_TYPE_BTREE,
+    TEMP_TABLE_TYPE_HASH,
+    TEMP_TABLE_TYPE_LIST,
+    TEMP_TABLE_TYPE_ARRAY
+};
 
 struct temp_table {
     DB_ENV *dbenv_temp;
@@ -143,6 +193,15 @@ struct temp_table {
     int max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
+
+    unsigned long long inmemsz;
+    unsigned long long cachesz;
+    arr_elem_t *elements;
+    /* Keep track of the max key length and data length.
+       We allocate that much for a tempcursor such that
+       a tempcursor can reuse the same piece of memory. */
+    int maxkeylen;
+    int maxdatalen;
 };
 
 enum { TMPTBL_PRIORITY, TMPTBL_WAIT };
@@ -177,6 +236,144 @@ hash_t *bdb_temp_table_histhash_init(void)
 {
     return hash_init_user((hashfunc_t *)hash_default_fixedwidth, histcmpfunc, 0,
                           sizeof(pthread_t));
+}
+
+static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
+                                       struct temp_table *tbl, int *bdberr);
+
+static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
+                              int *bdberr)
+{
+    int rc;
+    DB_ENV *dbenv_temp;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    rc = db_env_create(&dbenv_temp, 0);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "couldnt create temp table env\n");
+        return rc;
+    }
+
+    if (gbl_crypto) {
+        // generate random password for temp tables
+        char passwd[64];
+        passwd[0] = 0;
+        while (passwd[0] == 0) {
+            RAND_bytes((unsigned char *)passwd, 63);
+        }
+        passwd[63] = 0;
+        if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
+                                          DB_ENCRYPT_AES)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s set_encrypt rc:%d\n", __func__, rc);
+            goto error;
+        }
+        memset(passwd, 0xff, sizeof(passwd));
+    }
+
+    rc = dbenv_temp->set_is_tmp_tbl(dbenv_temp, 1);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "couldnt set property is_tmp_tbl\n");
+        goto error;
+    }
+
+    rc = dbenv_temp->set_tmp_dir(dbenv_temp, bdb_state->tmpdir);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "can't set temp table environment's temp directory");
+        /* continue anyway */
+    }
+
+    rc = dbenv_temp->set_cachesize(dbenv_temp, 0, tbl->cachesz, 1);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: bytes %llu\n",
+               tbl->cachesz);
+        goto error;
+    }
+
+    rc = dbenv_temp->open(dbenv_temp, bdb_state->tmpdir,
+                          DB_INIT_MPOOL | DB_CREATE | DB_PRIVATE, 0666);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "couldnt open temp table env\n");
+        goto error;
+    }
+
+    tbl->dbenv_temp = dbenv_temp;
+    rc = bdb_temp_table_init_temp_db(bdb_state, tbl, bdberr);
+    if (rc != 0)
+        goto error;
+    return 0;
+
+error:
+    tbl->dbenv_temp = NULL;
+    (void)dbenv_temp->close(dbenv_temp, 0);
+    return rc;
+}
+
+static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
+                                     struct temp_table *tbl, int *bdberr)
+{
+    int rc = 0, ii;
+    DBT dbt_key, dbt_data;
+    struct temp_cursor *cur;
+    arr_elem_t *elem;
+    unsigned long long nents = tbl->num_mem_entries;
+
+    bzero(&dbt_key, sizeof(DBT));
+    bzero(&dbt_data, sizeof(DBT));
+
+    if (tbl->dbenv_temp == NULL &&
+        create_temp_db_env(bdb_state, tbl, bdberr) != 0) {
+        bdb_temp_table_destroy_pool_wrapper(tbl, bdb_state);
+    }
+
+    for (ii = 0; ii != nents; ++ii) {
+        elem = &tbl->elements[ii];
+        dbt_key.flags = dbt_data.flags = DB_DBT_USERMEM;
+        dbt_key.ulen = dbt_key.size = elem->keylen;
+        dbt_data.ulen = dbt_data.size = elem->dtalen;
+        dbt_data.data = elem->dta;
+        dbt_key.data = elem->key;
+
+        rc = tbl->tmpdb->put(tbl->tmpdb, NULL, &dbt_key, &dbt_data, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d put rc %d\n", __FILE__, __LINE__, rc);
+            return rc;
+        }
+    }
+
+    for (ii = 0; ii != nents; ++ii) {
+        elem = &tbl->elements[ii];
+        free(elem->key);
+        free(elem->dta);
+    }
+    tbl->inmemsz = 0;
+    tbl->num_mem_entries = nents;
+
+    /* its now a btree! */
+    tbl->temp_table_type = TEMP_TABLE_TYPE_BTREE;
+
+    /* Reset all the cursors for this table.
+       For now don't care about position. */
+    LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+    {
+        rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &cur->cur, 0);
+        if (rc) {
+            cur->cur = NULL;
+            /* not sure it's safe to proceed after this point, actually */
+            logmsg(LOGMSG_ERROR, "%s:%d cursor rc %d\n", __FILE__, __LINE__,
+                   rc);
+            goto done;
+        }
+
+        /* New cursor does not point to any data */
+        cur->key = cur->data = NULL;
+        cur->keylen = cur->datalen = 0;
+    }
+
+done:
+    return rc;
 }
 
 static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
@@ -341,12 +538,9 @@ int gbl_debug_temptables = 0;
 static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
                                                      int *bdberr)
 {
-    int rc;
     struct temp_table *tbl;
     bdb_state_type *parent;
     int id;
-    DB_ENV *dbenv_temp;
-    unsigned int gb = 0, bytes = 0;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;
@@ -354,78 +548,16 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         parent = bdb_state;
 
     tbl = calloc(1, sizeof(struct temp_table));
-    tbl->cmpfunc = key_memcmp;
-
-    rc = db_env_create(&dbenv_temp, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "couldnt create temp table env\n");
-        free(tbl);
-        tbl = NULL;
-        goto done;
+    if (tbl == NULL) {
+        *bdberr = ENOMEM;
+        return NULL;
     }
 
-    if (gbl_crypto) {
-        // generate random password for temp tables
-        char passwd[64]; passwd[0] = 0;
-        while (passwd[0] == 0) {
-            RAND_bytes((unsigned char *)passwd, 63);
-        }
-        passwd[63] = 0;
-        if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
-                                          DB_ENCRYPT_AES)) != 0) {
-            fprintf(stderr, "%s set_encrypt rc:%d\n", __func__, rc);
-            free(tbl);
-            tbl = NULL;
-            goto done;
-        }
-        memset(passwd, 0xff, sizeof(passwd));
-    }
-
-    rc = dbenv_temp->set_is_tmp_tbl(dbenv_temp, 1);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "couldnt set property is_tmp_tbl\n");
-        free(tbl);
-        tbl = NULL;
-        goto done;
-    }
-
-    bytes = bdb_state->attr->temptable_cachesz;
+    tbl->cachesz = bdb_state->attr->temptable_cachesz;
 
     /* 512k minimim cache */
-    if (bytes < 524288)
-        bytes = 524288;
-
-    rc = dbenv_temp->set_tmp_dir(dbenv_temp, parent->tmpdir);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "can't set temp table environment's temp directory");
-        /* continue anyway */
-    }
-
-    rc = dbenv_temp->set_cachesize(dbenv_temp, gb, bytes, 1);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: gb %d bytes %d\n", gb, bytes);
-        free(tbl);
-        *bdberr = rc;
-        tbl = NULL;
-        goto done;
-    }
-
-    rc = dbenv_temp->set_tmp_dir(dbenv_temp, parent->tmpdir);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "can't set temp table environment's temp directory");
-        /* continue anyway */
-    }
-
-    rc = dbenv_temp->open(dbenv_temp, parent->tmpdir,
-                          DB_INIT_MPOOL | DB_CREATE | DB_PRIVATE, 0666);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "couldnt open temp table env\n");
-        free(tbl);
-        tbl = NULL;
-        goto done;
-    }
-
-    tbl->dbenv_temp = dbenv_temp;
+    if (tbl->cachesz < 524288)
+        tbl->cachesz = 524288;
 
     if (gbl_temptable_pool_capacity == 0) {
         Pthread_mutex_lock(&parent->temp_list_lock);
@@ -444,16 +576,17 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     tbl->max_mem_entries = bdb_state->attr->temptable_mem_threshold;
 
-    rc = bdb_temp_table_init_temp_db(bdb_state, tbl, bdberr);
-    if (rc) {
+    listc_init(&tbl->temp_tbl_list, offsetof(struct temp_list_node, lnk));
+
+    tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
+
+    tbl->elements = malloc(sizeof(arr_elem_t) * tbl->max_mem_entries);
+    if (tbl->elements == NULL) {
+        bdb_temp_table_close(parent, tbl, bdberr);
         free(tbl);
         tbl = NULL;
         goto done;
     }
-
-    listc_init(&tbl->temp_tbl_list, offsetof(struct temp_list_node, lnk));
-
-    tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
 
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
@@ -561,6 +694,13 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         table->num_mem_entries = 0;
         table->cmpfunc = key_memcmp;
         table->temp_table_type = temp_table_type;
+
+        if (temp_table_type == TEMP_TABLE_TYPE_BTREE &&
+            table->dbenv_temp == NULL &&
+            create_temp_db_env(bdb_state, table, bdberr) != 0) {
+            bdb_temp_table_destroy_pool_wrapper(table, bdb_state);
+            return NULL;
+        }
     }
 
     return table;
@@ -592,6 +732,11 @@ struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_HASH, bdberr);
 }
 
+struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_ARRAY, bdberr);
+}
+
 struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
                                           struct temp_table *tbl, void *usermem,
                                           int *bdberr)
@@ -619,6 +764,10 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
 
     case TEMP_TABLE_TYPE_BTREE:
         rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &cur->cur, 0);
+        break;
+
+    case TEMP_TABLE_TYPE_ARRAY:
+        cur->ind = 0;
         break;
     }
 
@@ -689,11 +838,44 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
 {
     DBT dkey, ddata;
     int rc = 0;
+    arr_elem_t *elem;
+    void *keycopy, *dtacopy;
 
-    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE) {
+    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
+        cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_update operation "
-                        "only supported for btree.\n");
+                             "only supported for btree or array.\n");
         return -1;
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+        if (!cur->valid)
+            return -1;
+
+        /* Free the existing elements and update the memory footprint. */
+        elem = &cur->tbl->elements[cur->ind];
+        free(elem->key);
+        free(elem->dta);
+        cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
+
+        /* malloc and copy */
+        keycopy = malloc(keylen);
+        if (keycopy == NULL)
+            return -1;
+        dtacopy = malloc(dtalen);
+        if (dtacopy == NULL) {
+            free(keycopy);
+            return -1;
+        }
+        memcpy(keycopy, key, keylen);
+        memcpy(dtacopy, data, dtalen);
+
+        /* Update the element and the memory footprint. */
+        elem->keylen = keylen;
+        elem->key = keycopy;
+        elem->dtalen = dtalen;
+        elem->dta = dtacopy;
+        cur->tbl->inmemsz += (elem->keylen + elem->dtalen);
     }
 
     REOPEN_CURSOR(cur);
@@ -766,7 +948,7 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
                                      int how)
 {
     DBT dkey, ddata;
-    int rc;
+    int rc, arrlen;
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         cur->valid = 0;
@@ -805,6 +987,18 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
         } else {
             return IX_EMPTY;
         }
+        return 0;
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+        arrlen = cur->tbl->num_mem_entries;
+        if (arrlen == 0) {
+            cur->valid = 0;
+            return IX_EMPTY;
+        }
+
+        cur->ind = (how == DB_LAST) ? (arrlen - 1) : 0;
+        COPY_KV_TO_CUR(cur);
         return 0;
     }
 
@@ -891,6 +1085,17 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
         } else {
             return IX_PASTEOF;
         }
+        return 0;
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+        if ((how == DB_NEXT && ++cur->ind >= cur->tbl->num_mem_entries) ||
+            (how == DB_PREV && --cur->ind < 0)) {
+            cur->valid = 0;
+            return IX_PASTEOF;
+        }
+
+        COPY_KV_TO_CUR(cur);
         return 0;
     }
 
@@ -1117,7 +1322,8 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
 {
     if (tbl == NULL)
         return 0;
-    int rc = 0;
+    int rc = 0, ii = 0;
+    arr_elem_t *elem;
 
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
@@ -1147,6 +1353,16 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
             hash_free(tbl->temp_hash_tbl);
             tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
         }
+        break;
+
+    case TEMP_TABLE_TYPE_ARRAY:
+        for (; ii != tbl->num_mem_entries; ++ii) {
+            elem = &tbl->elements[ii];
+            free(elem->key);
+            free(elem->dta);
+        }
+        tbl->inmemsz = 0;
+        tbl->num_mem_entries = 0;
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
@@ -1197,59 +1413,61 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
 
-    Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+    if (tbl->dbenv_temp != NULL) {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
 
-    if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
-                                    DB_STAT_CLEAR)) == 0) {
-        bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
-        bdb_state->temp_stats->st_bytes += tmp->st_bytes;
-        bdb_state->temp_stats->st_ncache += tmp->st_ncache;
-        bdb_state->temp_stats->st_regsize += tmp->st_regsize;
-        bdb_state->temp_stats->st_map += tmp->st_map;
-        bdb_state->temp_stats->st_cache_hit += tmp->st_cache_hit;
-        bdb_state->temp_stats->st_cache_miss += tmp->st_cache_miss;
-        bdb_state->temp_stats->st_cache_ihit += tmp->st_cache_ihit;
-        bdb_state->temp_stats->st_cache_imiss += tmp->st_cache_imiss;
-        bdb_state->temp_stats->st_cache_lhit += tmp->st_cache_lhit;
-        bdb_state->temp_stats->st_cache_lmiss += tmp->st_cache_lmiss;
-        bdb_state->temp_stats->st_page_create += tmp->st_page_create;
-        bdb_state->temp_stats->st_page_pf_in += tmp->st_page_pf_in;
-        bdb_state->temp_stats->st_page_in += tmp->st_page_in;
-        bdb_state->temp_stats->st_page_out += tmp->st_page_out;
-        bdb_state->temp_stats->st_ro_merges += tmp->st_ro_merges;
-        bdb_state->temp_stats->st_rw_merges += tmp->st_rw_merges;
-        bdb_state->temp_stats->st_ro_evict += tmp->st_ro_evict;
-        bdb_state->temp_stats->st_rw_evict += tmp->st_rw_evict;
-        bdb_state->temp_stats->st_pf_evict += tmp->st_pf_evict;
-        bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
-        bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
-        bdb_state->temp_stats->st_pages += tmp->st_pages;
-        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
-        bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
-        bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
-        bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
-        bdb_state->temp_stats->st_hash_longest += tmp->st_hash_longest;
-        bdb_state->temp_stats->st_hash_examined += tmp->st_hash_examined;
-        bdb_state->temp_stats->st_region_nowait += tmp->st_region_nowait;
-        bdb_state->temp_stats->st_region_wait += tmp->st_region_wait;
-        bdb_state->temp_stats->st_alloc += tmp->st_alloc;
-        bdb_state->temp_stats->st_alloc_buckets += tmp->st_alloc_buckets;
-        bdb_state->temp_stats->st_alloc_max_buckets +=
-            tmp->st_alloc_max_buckets;
-        bdb_state->temp_stats->st_alloc_pages += tmp->st_alloc_pages;
-        bdb_state->temp_stats->st_alloc_max_pages += tmp->st_alloc_max_pages;
-        bdb_state->temp_stats->st_ckp_pages_sync += tmp->st_ckp_pages_sync;
-        bdb_state->temp_stats->st_ckp_pages_skip += tmp->st_ckp_pages_skip;
+        if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
+                                        DB_STAT_CLEAR)) == 0) {
+            bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
+            bdb_state->temp_stats->st_bytes += tmp->st_bytes;
+            bdb_state->temp_stats->st_ncache += tmp->st_ncache;
+            bdb_state->temp_stats->st_regsize += tmp->st_regsize;
+            bdb_state->temp_stats->st_map += tmp->st_map;
+            bdb_state->temp_stats->st_cache_hit += tmp->st_cache_hit;
+            bdb_state->temp_stats->st_cache_miss += tmp->st_cache_miss;
+            bdb_state->temp_stats->st_cache_ihit += tmp->st_cache_ihit;
+            bdb_state->temp_stats->st_cache_imiss += tmp->st_cache_imiss;
+            bdb_state->temp_stats->st_cache_lhit += tmp->st_cache_lhit;
+            bdb_state->temp_stats->st_cache_lmiss += tmp->st_cache_lmiss;
+            bdb_state->temp_stats->st_page_create += tmp->st_page_create;
+            bdb_state->temp_stats->st_page_pf_in += tmp->st_page_pf_in;
+            bdb_state->temp_stats->st_page_in += tmp->st_page_in;
+            bdb_state->temp_stats->st_page_out += tmp->st_page_out;
+            bdb_state->temp_stats->st_ro_merges += tmp->st_ro_merges;
+            bdb_state->temp_stats->st_rw_merges += tmp->st_rw_merges;
+            bdb_state->temp_stats->st_ro_evict += tmp->st_ro_evict;
+            bdb_state->temp_stats->st_rw_evict += tmp->st_rw_evict;
+            bdb_state->temp_stats->st_pf_evict += tmp->st_pf_evict;
+            bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
+            bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
+            bdb_state->temp_stats->st_pages += tmp->st_pages;
+            ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty,
+                       tmp->st_page_dirty);
+            bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
+            bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
+            bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
+            bdb_state->temp_stats->st_hash_longest += tmp->st_hash_longest;
+            bdb_state->temp_stats->st_hash_examined += tmp->st_hash_examined;
+            bdb_state->temp_stats->st_region_nowait += tmp->st_region_nowait;
+            bdb_state->temp_stats->st_region_wait += tmp->st_region_wait;
+            bdb_state->temp_stats->st_alloc += tmp->st_alloc;
+            bdb_state->temp_stats->st_alloc_buckets += tmp->st_alloc_buckets;
+            bdb_state->temp_stats->st_alloc_max_buckets +=
+                tmp->st_alloc_max_buckets;
+            bdb_state->temp_stats->st_alloc_pages += tmp->st_alloc_pages;
+            bdb_state->temp_stats->st_alloc_max_pages +=
+                tmp->st_alloc_max_pages;
+            bdb_state->temp_stats->st_ckp_pages_sync += tmp->st_ckp_pages_sync;
+            bdb_state->temp_stats->st_ckp_pages_skip += tmp->st_ckp_pages_skip;
 
-        free(tmp);
-    }
+            free(tmp);
+        }
 
-    if (gbl_temptable_pool_capacity == 0) {
         tbl->next = bdb_state->temp_list;
         bdb_state->temp_list = tbl;
-    }
 
-    Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+    }
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
@@ -1274,7 +1492,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                int *bdberr)
 {
     DB_MPOOL_STAT *tmp;
-    int rc;
+    int rc, ii;
+    arr_elem_t *elem;
 
     rc = 0;
 
@@ -1294,7 +1513,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     bdb_state->temp_list = tbl->next;
     *last = 0;
 
-    if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
+    if ((tbl->dbenv_temp != NULL) &&
+        (tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
                                     DB_STAT_CLEAR)) == 0) {
         bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
         bdb_state->temp_stats->st_bytes += tmp->st_bytes;
@@ -1367,15 +1587,25 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         hash_clear(tbl->temp_hash_tbl);
     } break;
 
+    case TEMP_TABLE_TYPE_ARRAY:
+        for (ii = 0; ii != tbl->num_mem_entries; ++ii) {
+            elem = &tbl->elements[ii];
+            free(elem->key);
+            free(elem->dta);
+        }
+        break;
+
     case TEMP_TABLE_TYPE_BTREE:
         break;
     }
 
     hash_free(tbl->temp_hash_tbl);
     tbl->temp_hash_tbl = NULL;
+    free(tbl->elements);
 
     /* close the environments*/
-    rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
+    if (tbl->dbenv_temp != NULL)
+        rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
 
     free(tbl);
 
@@ -1393,6 +1623,12 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
                           int *bdberr)
 {
     int rc;
+    arr_elem_t *elem;
+
+    if (!cur->valid) {
+        rc = -1;
+        goto done;
+    }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         listc_rtl(&(cur->tbl->temp_tbl_list));
@@ -1405,9 +1641,15 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         goto done;
     }
 
-    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
-    if (!cur->valid) {
-        rc = -1;
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+        elem = &cur->tbl->elements[cur->ind];
+        free(elem->key);
+        free(elem->dta);
+        --cur->tbl->num_mem_entries;
+        cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
+        memmove(elem, elem + 1,
+                sizeof(arr_elem_t) * (cur->tbl->num_mem_entries - cur->ind));
+        rc = 0;
         goto done;
     }
 
@@ -1502,7 +1744,9 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
                         const void *key, int keylen, void *unpacked,
                         int *bdberr)
 {
-    int rc;
+    int rc, cmp, lo, hi, mid, found;
+    tmptbl_cmp cmpfn;
+    arr_elem_t *elem;
     DBT dkey, ddata;
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
@@ -1512,6 +1756,49 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
     }
     else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_hash(cur, key, keylen);
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+
+        /* Find the 1st occurrence of `key'. If `key' is not found,
+           find the smallest element greater than `key' */
+
+        if (cur->tbl->num_mem_entries == 0) {
+            cur->valid = 0;
+            return IX_EMPTY;
+        }
+
+        lo = 0;
+        hi = cur->tbl->num_mem_entries - 1;
+        found = -1;
+        cmpfn = cur->tbl->cmpfunc;
+
+        while (lo <= hi) {
+            mid = (lo + hi) >> 1;
+            elem = &cur->tbl->elements[mid];
+            cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
+
+            if (cmp < 0)
+                lo = mid + 1;
+            else if (cmp > 0)
+                hi = mid - 1;
+            else {
+                found = mid;
+                hi = mid - 1;
+            }
+        }
+
+        if (found != -1)
+            cur->ind = found;
+        else if (lo < cur->tbl->num_mem_entries)
+            cur->ind = lo;
+        else {
+            cur->valid = 0;
+            return IX_NOTFND;
+        }
+
+        COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1596,7 +1883,6 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
         cur->keylen = *(int *)data;
         cur->key = data + sizeof(int);
         cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-        ;
         cur->data = data + cur->keylen + 2 * sizeof(int);
         cur->valid = 1;
     } else {
@@ -1614,17 +1900,59 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
 {
-    int rc;
+    int rc, cmp, lo, hi, mid, found;
+    tmptbl_cmp cmpfn;
     DBT dkey, ddata;
     int exists = 0;
+    arr_elem_t *elem;
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_find_exact operation not supported for "
                         "temp list.\n");
         return -1;
     }
-    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
+    }
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+
+        /* Find the 1st occurrence of `key'. */
+
+        if (cur->tbl->num_mem_entries == 0) {
+            cur->valid = 0;
+            return IX_EMPTY;
+        }
+
+        lo = 0;
+        hi = cur->tbl->num_mem_entries - 1;
+        found = -1;
+        cmpfn = cur->tbl->cmpfunc;
+
+        while (lo <= hi) {
+            mid = (lo + hi) >> 1;
+            elem = &cur->tbl->elements[mid];
+            cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
+
+            if (cmp < 0)
+                lo = mid + 1;
+            else if (cmp > 0)
+                hi = mid - 1;
+            else {
+                found = mid;
+                hi = mid - 1;
+            }
+        }
+
+        if (found == -1) {
+            cur->valid = 0;
+            return IX_NOTFND;
+        }
+
+        cur->ind = found;
+        COPY_KV_TO_CUR(cur);
+        return 0;
     }
 
     REOPEN_CURSOR(cur);
@@ -1707,11 +2035,9 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
     struct temp_table *tbl;
     tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
+        cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         if (cur->key) {
-#if 0
-          printf( "%p Freeing %p\n", cur, cur->key);
-#endif
             free(cur->key);
             cur->key = NULL;
         }
@@ -1721,6 +2047,7 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
             cur->data = NULL;
         }
 
+        /* A cursor on a temparray will not have `cur'. */
         if (cur->cur) {
             rc = cur->cur->c_close(cur->cur);
             if (rc) {
@@ -1813,7 +2140,10 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                                      int keylen, void *data, int dtalen,
                                      int *bdberr)
 {
-    int rc;
+    int rc, cmp, lo, hi, mid;
+    tmptbl_cmp cmpfn;
+    arr_elem_t *elem;
+    void *keycopy, *dtacopy;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         struct temp_list_node *c_node = malloc(sizeof(struct temp_list_node));
@@ -1851,6 +2181,72 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                 return -1;
             }
         }
+
+        return 0;
+    }
+
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+
+        /* Insert `key' into the sorted array.
+           If 1 or more elements of the same key already exist,
+           insert it after the last one of those elements. */
+
+        keycopy = malloc(keylen);
+        if (keycopy == NULL)
+            return -1;
+        dtacopy = malloc(dtalen);
+        if (dtacopy == NULL) {
+            free(keycopy);
+            return -1;
+        }
+        memcpy(keycopy, key, keylen);
+        memcpy(dtacopy, data, dtalen);
+
+        lo = 0;
+        hi = tbl->num_mem_entries - 1;
+        if (hi >= 0) {
+            cmpfn = tbl->cmpfunc;
+
+            while (lo <= hi) {
+                mid = (lo + hi) >> 1;
+                elem = &tbl->elements[mid];
+                cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
+
+                if (cmp < 0)
+                    lo = mid + 1;
+                else if (cmp > 0)
+                    hi = mid - 1;
+                else
+                    lo = mid + 1;
+            }
+
+            elem = &tbl->elements[lo];
+            memmove(elem + 1, elem,
+                    sizeof(arr_elem_t) * (tbl->num_mem_entries - lo));
+        }
+
+        elem = &tbl->elements[lo];
+        elem->keylen = keylen;
+        elem->key = keycopy;
+        elem->dtalen = dtalen;
+        elem->dta = dtacopy;
+
+        ++tbl->num_mem_entries;
+        tbl->inmemsz += (keylen + dtalen);
+
+        if (tbl->num_mem_entries == tbl->max_mem_entries ||
+            tbl->inmemsz > tbl->cachesz) {
+            gbl_temptable_spills++;
+            rc = bdb_array_copy_to_temp_db(bdb_state, tbl, bdberr);
+            if (unlikely(rc)) {
+                return -1;
+            }
+        }
+
+        if (keylen > tbl->maxkeylen)
+            tbl->maxkeylen = keylen;
+        if (dtalen > tbl->maxdatalen)
+            tbl->maxdatalen = dtalen;
 
         return 0;
     }
