@@ -90,7 +90,6 @@ int get_status(void **data, int *npoints)
             (cdb2_client_datetime_t *)&(sc_status_ents[i].lastupdated));
         sc_status_ents[i].status = strdup(status_num2str(status[i]->status));
 
-        struct schema_change_type *find_ongoing_alter(char *table);
         struct dbtable *db = get_dbtable_by_name(sc.tablename);
         if (db && db->doing_conversion)
             sc_status_ents[i].converted = db->sc_nrecs;

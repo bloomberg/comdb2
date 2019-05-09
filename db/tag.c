@@ -84,6 +84,9 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
 
+extern int offload_comm_send_upgrade_records(struct dbtable *,
+                                             unsigned long long);
+
 static inline void lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
@@ -3175,9 +3178,6 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     if (ver == db->schema_version) {
         goto done;
     }
-
-    extern int offload_comm_send_upgrade_records(struct dbtable *,
-                                                 unsigned long long);
 
     if (gbl_num_record_upgrades > 0 && genid != 0)
         offload_comm_send_upgrade_records(db, genid);

@@ -428,8 +428,8 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %td rtrs %u \"%s\"\n",
-                sess->rqid, sess->offhost, sess->end - sess->initstart,
+    reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %ld rtrs %u \"%s\"\n",
+                sess->rqid, sess->offhost, (long)sess->end - sess->initstart,
                 sess->retries, (sess->sql) ? sess->sql : "()");
 }
 

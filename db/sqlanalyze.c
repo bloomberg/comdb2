@@ -42,6 +42,8 @@
 static int analyze_thread_memory = 1048576;
 #endif
 
+extern void reset_aa_counter(char *tblname);
+
 /* global is-running flag */
 volatile int analyze_running_flag = 0;
 static int analyze_abort_requested = 0;
@@ -898,7 +900,6 @@ static void *table_thread(void *arg)
     if (0 == rc) {
         td->table_state = TABLE_COMPLETE;
         if (thedb->master == gbl_mynode) { // reset directly
-            void reset_aa_counter(char *tblname);
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
         } else {

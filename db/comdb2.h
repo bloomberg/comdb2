@@ -73,7 +73,7 @@ typedef long long tranid_t;
 #include <dlmalloc.h>
 #include <stdbool.h>
 
-#include "tag.h"
+#include "sqlinterfaces.h"
 #include "errstat.h"
 #include "comdb2_rcodes.h"
 #include "repl_wait.h"
@@ -315,8 +315,7 @@ enum BLOCK_OPS {
     BLOCK_MAXOPCODE
 
     /* Used for some condensed blockop stats; this should be the number of
-     * opcodes
-     * that there actually really are. */
+     * opcodes that there actually really are. */
     ,
     NUM_BLOCKOP_OPCODES = 45
 };

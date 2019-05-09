@@ -828,7 +828,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     rc = bdb_close_only_sc(old_bdb_handle, transac, &bdberr);
     if (rc) {
-        sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
+        sc_errf(s, "Failed closing old db, bdberr %d\n", bdberr);
         goto failed;
     }
     sc_printf(s, "Close old db ok\n");

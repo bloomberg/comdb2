@@ -31,6 +31,11 @@
   comdb2_keywords: list of keywords
 */
 
+// reach into sqlite innards a bit for these
+extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+extern int sqlite3ParserFallback(int iToken);
+
+
 typedef struct {
   sqlite3_vtab_cursor base; /* Base class - must be first */
   sqlite3_int64 rowid;      /* Row ID */
@@ -145,10 +150,6 @@ static int systblKeywordsColumn(
       }
     }
     case KEYWORDS_COLUMN_RESERVED: {
-        // reach into sqlite innards a bit for these
-        extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
-        extern int sqlite3ParserFallback(int iToken);
-
         int tok = 0;
         const char *zName;
         int nName;

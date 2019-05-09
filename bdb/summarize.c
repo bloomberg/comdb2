@@ -71,6 +71,7 @@
 
 #include "flibc.h"
 #include "logmsg.h"
+#include "analyze.h"
 
 extern volatile int gbl_schema_change_in_progress;
 static double analyze_headroom = 6;
@@ -330,7 +331,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             }
         }
 
-        int get_analyze_abort_requested();
         if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
             if (gbl_schema_change_in_progress) 
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "

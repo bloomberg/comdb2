@@ -143,6 +143,14 @@ void watchdog_set_alarm(int seconds);
 void watchdog_cancel_alarm(void);
 const char *get_sc_to_name(const char *name);
 
+extern void *lwm_printer_thd(void *p);
+unsigned int sc_get_logical_redo_lwm();
+/* Sorry - reaching into berkeley "internals" here.  This should
+ * probably be an environment method. */
+extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
+extern void *master_lease_thread(void *arg);
+extern void *coherency_lease_thread(void *arg);
+
 LISTC_T(struct checkpoint_list) ckp_lst;
 pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
@@ -2785,7 +2793,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     Pthread_attr_destroy(&attr);
 
     if (0) {
-        extern void *lwm_printer_thd(void *p);
         pthread_t lwm_printer_tid;
         rc = pthread_create(&lwm_printer_tid, NULL, lwm_printer_thd, bdb_state);
         if (rc) {
@@ -3458,7 +3465,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
 
     extern int gbl_logical_live_sc;
     if (gbl_logical_live_sc) {
-        unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
         if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
             lowfilenum = sc_logical_lwm;
@@ -3569,11 +3575,6 @@ low_headroom:
     }
 
     if (bdb_state->attr->use_recovery_start_for_log_deletion) {
-        /* Sorry - reaching into berkeley "internals" here.  This should
-         * probably
-         * be an environment method. */
-        extern int __db_find_recovery_start_if_enabled(DB_ENV * dbenv,
-                                                       DB_LSN * lsn);
 
         if ((rc = __db_find_recovery_start_if_enabled(bdb_state->dbenv,
                                                       &recovery_lsn)) != 0) {
@@ -5255,14 +5256,13 @@ int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
 int create_master_lease_thread(bdb_state_type *bdb_state)
 {
-	pthread_t tid;
-	pthread_attr_t attr;
-        Pthread_attr_init(&attr);
-        Pthread_attr_setstacksize(&attr, 128 * 1024);
-        extern void *master_lease_thread(void *arg);
-        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-        Pthread_attr_destroy(&attr);
-        return 0;
+    pthread_t tid;
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
+    pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+    Pthread_attr_destroy(&attr);
+    return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5271,7 +5271,6 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
-    extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
 }
