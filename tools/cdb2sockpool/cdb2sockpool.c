@@ -356,7 +356,7 @@ static int cdb2_get_progname_by_pid(pid_t pid, char *pname, int pnamelen)
     if (pname != NULL) {
         strncpy(pname, "???", pnamelen); /* call bb_get_pid_argv0 here? */
         pname[pnamelen - 1] = 0;
-        rc =  0;
+        rc = 0;
     }
     return rc;
 }

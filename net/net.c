@@ -3032,7 +3032,7 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x)
 
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x)
 {
-    if (x >= 0 && x <= 100) 
+    if (x >= 0 && x <= 100)
         netinfo_ptr->throttle_percent = x;
     else
         logmsg(LOGMSG_ERROR, 
@@ -4872,7 +4872,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
                                  "'%s': gethostbyname '%s' addr %x\n", __func__,
-                                 rephostname, (unsigned) addr->s_addr);
+                                 rephostname, (unsigned)addr->s_addr);
             }
             break;
         }

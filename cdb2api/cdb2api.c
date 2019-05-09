@@ -3404,7 +3404,8 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
         if (!currnode->incoherent)
             continue;
-        strncpy(valid_hosts[*num_valid_hosts], currnode->name, sizeof(valid_hosts[*num_valid_hosts]) - 1);
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name,
+                sizeof(valid_hosts[*num_valid_hosts]) - 1);
         if (currnode->has_port) {
             valid_ports[*num_valid_hosts] = currnode->port;
         } else {
