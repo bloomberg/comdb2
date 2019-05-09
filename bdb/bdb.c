@@ -49,7 +49,7 @@
 #include <locks_wrap.h>
 
 extern void berkdb_dumptrans(DB_ENV *);
-extern int __db_panic(DB_ENV * dbenv, int err);
+extern int __db_panic(DB_ENV *dbenv, int err);
 
 pthread_key_t bdb_key;
 pthread_key_t lock_key;

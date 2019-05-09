@@ -23,7 +23,7 @@
 
 #define BYTES_PER_WORD 4
 
-extern const uint8_t *osqlcomm_errstat_type_get(errstat_t * p_errstat_type,
+extern const uint8_t *osqlcomm_errstat_type_get(errstat_t *p_errstat_type,
                                                 const uint8_t *p_buf,
                                                 const uint8_t *p_buf_end);
 

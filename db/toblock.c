@@ -324,7 +324,7 @@ void toblock_init(void)
 #undef add_blockop
     /* a runtime assert to make sure we have the right size of blockop count
      * array */
-    if (index > NUM_BLOCKOP_OPCODES) {
+    if (index >= NUM_BLOCKOP_OPCODES) {
         logmsg(LOGMSG_FATAL, "%s: too many blockops defined!\n", __func__);
         logmsg(LOGMSG_FATAL, "%s: you need to increase NUM_BLOCKOP_OPCODES to %d\n",
                 __func__, index);
@@ -950,14 +950,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 if (!(p_fstblk_buf = (uint8_t *)buf_get(&(snapinfo_outrc), sizeof(snapinfo_outrc), 
                         p_fstblk_buf, p_fstblk_buf_end)))  {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
             }
 

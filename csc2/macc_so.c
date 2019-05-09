@@ -735,8 +735,8 @@ int get_case_size(int csn)
 {
     int cs = symb[csn].caseno, csize = 0, j, first = -1;
     for (j = 0; j < nsym; j++) {
-        if ((symb[csn].un_member == symb[j].un_member) && (symb[j].caseno == cs) &&
-            (symb[j].caseno != -1)) {
+        if ((symb[csn].un_member == symb[j].un_member) &&
+            (symb[j].caseno == cs) && (symb[j].caseno != -1)) {
             /*printf(" %s %d %d\n", symb[j].nm, symb[j].szof, symb[j].padb);*/
             csize += symb[j].szof;
             if (first != -1 && symb[j].padb != -1)
@@ -2849,18 +2849,18 @@ static int dyns_is_field_array_comn(char *tag, int fidx)
     return (numdim(tables[tidx].sym[fidx].dim) > 0);
 }
 
-int dyns_get_field_arr_dims(int fidx, int *dims, int ndims, int *nodims)
+int dyns_get_field_arr_dims(int fidx, int *ldims, int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(NULL, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(NULL, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *dims,
+int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *ldims,
                                   int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(tabletag, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(tabletag, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
+int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
                                  int *nodims)
 {
     int i = 0;
@@ -2874,7 +2874,7 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
     for (i = 0;
          tables[tidx].sym[fidx].dim[i] != -1 && i < ((6 > ndims) ? ndims : 6);
          i++) {
-        dims[i] = tables[tidx].sym[fidx].dim[i];
+        ldims[i] = tables[tidx].sym[fidx].dim[i];
         *nodims = *nodims + 1;
     }
     return 0;

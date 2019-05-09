@@ -147,10 +147,9 @@ extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
 
-
-extern int get_physical_transaction(
-        bdb_state_type * bdb_state, tran_type * logical_tran,
-        tran_type * *outtran, int force_commit);
+extern int get_physical_transaction(bdb_state_type *bdb_state,
+                                    tran_type *logical_tran,
+                                    tran_type **outtran, int force_commit);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
