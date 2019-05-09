@@ -113,12 +113,15 @@ static void *free_stack_thr(void *unused)
                         "%s:%d WARNING stack_list corrupted. could be a bug.\n",
                         __func__, __LINE__);
             else {
+                comdb2ma saved_ma;
                 stacksz = arg->stacksz;
+                saved_ma = arg->alloc;
+
                 comdb2_free(arg->memptr);
                 comdb2_free(arg);
+
                 // calling trim() at this point should always succeed
-                /* TODO: (NC) fixme */
-                comdb2_malloc_trim(arg->alloc, 0);
+                comdb2_malloc_trim(saved_ma, 0);
 #ifdef M_MMAP_THRESHOLD
                 if (comdb2ma_niceness() && /* Be nice. */
                     comdb2ma_mmap_threshold() == 0 && /* no user mmap thresh */
