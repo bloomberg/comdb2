@@ -3065,6 +3065,11 @@ void net_exiting(netinfo_type *netinfo_ptr)
     netinfo_ptr->exiting = 1;
 }
 
+int net_is_exiting(netinfo_type *netinfo_ptr)
+{
+    return netinfo_ptr->exiting;
+}
+
 typedef struct netinfo_node {
     LINKC_T(struct netinfo_node) lnk;
     netinfo_type *netinfo_ptr;
