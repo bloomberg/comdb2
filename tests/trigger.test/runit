@@ -8,6 +8,8 @@ if [[ -z $dbname ]] ; then
 fi
 
 for testreq in `ls t*.req` ; do
+  testname=`echo $testreq | cut -d "." -f 1`
+
   cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default &> $testname.output
   diff $testname.expected $testname.output
 
