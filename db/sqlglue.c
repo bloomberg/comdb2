@@ -10599,6 +10599,7 @@ int sqlite3BtreeCommitPhaseOne(Btree *p, const char *zMaster)
  */
 int sqlite3BtreeCommitPhaseTwo(Btree *p, int dummy)
 {
+    bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
     /* This is the real commit call. PhaseOne does nothing. */
     return sqlite3BtreeCommit(p);
 }
