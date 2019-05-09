@@ -472,7 +472,7 @@ static void *udp_reader(void *arg)
 
     repinfo_type *repinfo = bdb_state->repinfo;
     void *data;
-    uint8_t buff[1024];
+    uint8_t buff[1024] = {0};
     ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
 #ifdef UDP_DEBUG
