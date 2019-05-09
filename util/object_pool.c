@@ -197,7 +197,7 @@ static int opt_idle_time_ms(comdb2_objpool_t op, int value);
 /**********************************
 ** static return/borrow functions *
 ***********************************/
-static int objpool_signal_int(comdb2_objpool_t op);
+static int objpool_signal_unexhausted_int(comdb2_objpool_t op);
 static int objpool_notify_int(comdb2_objpool_t op, int force);
 static int objpool_return_int(comdb2_objpool_t op, void *obj);
 static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
@@ -671,7 +671,7 @@ static void *eviction_thread(void *arg)
     return NULL;
 }
 
-static int objpool_signal_int(comdb2_objpool_t op)
+static int objpool_signal_unexhausted_int(comdb2_objpool_t op)
 {
     assert(op != NULL);
     OP_DBG(op, "signal unexhausted");
@@ -686,7 +686,7 @@ static int objpool_notify_int(comdb2_objpool_t op, int force)
     OP_DBG(op, "notify pool");
     Pthread_mutex_lock(&op->data_mutex);
     if (force || (op->nborrowwaits != 0)) {
-        rc = objpool_signal_int(op);
+        rc = objpool_signal_unexhausted_int(op);
     } else {
         rc = EPERM;
     }
@@ -760,7 +760,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         }
 
         if (op->nborrowwaits != 0) {
-            objpool_signal_int(op);
+            objpool_signal_unexhausted_int(op);
         }
     }
 
