@@ -3221,7 +3221,7 @@ static int releaseTempTableRef(
                 ++pTbl->nRef; /* UNDO */
                 return SQLITE_INTERNAL;
             }
-            gbl_sql_temptable_count--;
+            ATOMIC_ADD(gbl_sql_temptable_count, -1);
         }
         /* pTbl->tbl = NULL; */
         free(pTbl);
@@ -5200,7 +5200,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
-        gbl_sql_temptable_count++;
+        ATOMIC_ADD(gbl_sql_temptable_count, 1);
         pNewTbl->tbl = tbl;
         pNewTbl->lk = NULL;
         pNewTbl->flags = flags;
@@ -5216,7 +5216,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
-        gbl_sql_temptable_count++;
+        ATOMIC_ADD(gbl_sql_temptable_count, 1);
         pNewTbl->tbl = tbl;
         pNewTbl->lk = tmptbl_lk;
         pNewTbl->flags = flags;

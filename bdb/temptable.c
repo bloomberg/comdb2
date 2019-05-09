@@ -160,6 +160,7 @@ struct temp_table {
     char filename[512];
     int tblid;
     unsigned long long rowid;
+    char *sql;
 
     unsigned long long num_mem_entries;
     int max_mem_entries;
@@ -378,9 +379,15 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     tbl = calloc(1, sizeof(struct temp_table));
     tbl->cmpfunc = key_memcmp;
 
+    if (gbl_debug_temptables) {
+        char *sql = pthread_getspecific(current_sql_query_key);
+        if (sql) tbl->sql = strdup(sql);
+    }
+
     rc = db_env_create(&dbenv_temp, 0);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt create temp table env\n");
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         tbl = NULL;
         goto done;
@@ -396,6 +403,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
                                           DB_ENCRYPT_AES)) != 0) {
             fprintf(stderr, "%s set_encrypt rc:%d\n", __func__, rc);
+            if (tbl->sql) free(tbl->sql);
             free(tbl);
             tbl = NULL;
             goto done;
@@ -406,6 +414,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     rc = dbenv_temp->set_is_tmp_tbl(dbenv_temp, 1);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt set property is_tmp_tbl\n");
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         tbl = NULL;
         goto done;
@@ -426,6 +435,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     rc = dbenv_temp->set_cachesize(dbenv_temp, gb, bytes, 1);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "invalid set_cache_size call: gb %d bytes %d\n", gb, bytes);
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         *bdberr = rc;
         tbl = NULL;
@@ -442,6 +452,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
                           DB_INIT_MPOOL | DB_CREATE | DB_PRIVATE, 0666);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt open temp table env\n");
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         tbl = NULL;
         goto done;
@@ -468,6 +479,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     rc = bdb_temp_table_init_temp_db(bdb_state, tbl, bdberr);
     if (rc) {
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         tbl = NULL;
         goto done;
@@ -479,15 +491,14 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
-        char *sql = pthread_getspecific(current_sql_query_key);
         char *zBacktrace = get_stack_backtrace();
         logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, %s\n",
-               tbl, rc, sql, zBacktrace);
+               tbl, rc, tbl ? tbl->sql : 0, zBacktrace);
         free(zBacktrace);
     }
 #endif
 
-    if (tbl != NULL) gbl_temptable_count++;
+    if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
 
 done:
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
@@ -1414,21 +1425,21 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
-        char *sql = pthread_getspecific(current_sql_query_key);
         char *zBacktrace = get_stack_backtrace();
         logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s, %s\n",
-               tbl, rc, sql, zBacktrace);
+               tbl, rc, tbl ? tbl->sql : 0, zBacktrace);
         free(zBacktrace);
     }
 #endif
 
     if (rc == 0) {
-        gbl_temptable_count--;
+        ATOMIC_ADD(gbl_temptable_count, -1);
     } else {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close(%p) rc %d\n",
                __func__, tbl, rc);
     }
 
+    if (tbl->sql) free(tbl->sql);
     free(tbl);
 
     dbgtrace(3, "temp_table_destroy_lru() = %d %s", rc, db_strerror(rc));
@@ -1927,7 +1938,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        struct temp_list_node *c_node = malloc(sizeof(struct temp_list_node));
+        struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
         void *list_data = malloc(dtalen);
         memcpy(list_data, data, dtalen);
         c_node->data = list_data;
