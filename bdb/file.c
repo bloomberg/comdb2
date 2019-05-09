@@ -5256,13 +5256,13 @@ int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
 int create_master_lease_thread(bdb_state_type *bdb_state)
 {
-	pthread_t tid;
-	pthread_attr_t attr;
-        Pthread_attr_init(&attr);
-        Pthread_attr_setstacksize(&attr, 128 * 1024);
-        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-        Pthread_attr_destroy(&attr);
-        return 0;
+    pthread_t tid;
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
+    pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+    Pthread_attr_destroy(&attr);
+    return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
