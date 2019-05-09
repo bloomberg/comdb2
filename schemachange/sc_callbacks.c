@@ -29,7 +29,7 @@
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
 
-extern void free_cached_idx(uint8_t * *cached_idx);
+extern void free_cached_idx(uint8_t **cached_idx);
 
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)

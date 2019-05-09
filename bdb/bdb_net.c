@@ -62,8 +62,8 @@
 
 extern void fsnapf(FILE *, void *, int);
 extern int db_is_stopped(void);
-extern int get_myseqnum(bdb_state_type * bdb_state, uint8_t * p_net_seqnum);
-extern int verify_master_leases_int(bdb_state_type * bdb_state,
+extern int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum);
+extern int verify_master_leases_int(bdb_state_type *bdb_state,
                                     const char **comlist, int comcount,
                                     const char *func, uint32_t line);
 

@@ -40,7 +40,7 @@
 #include <memory_sync.h>
 #include <logmsg.h>
 
-extern int __dbreg_get_name(DB_ENV * dbenv, u_int8_t * fid, char **);
+extern int __dbreg_get_name(DB_ENV *dbenv, u_int8_t *fid, char **);
 
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 {

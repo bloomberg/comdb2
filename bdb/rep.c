@@ -97,8 +97,8 @@ extern void osql_decom_node(char *decom_host);
 void *mymalloc(size_t size);
 void *myrealloc(void *ptr, size_t size);
 void reset_aa_counter(char *tblname);
-void create_coherency_lease_thread(bdb_state_type * bdb_state);
-void create_master_lease_thread(bdb_state_type * bdb_state);
+void create_coherency_lease_thread(bdb_state_type *bdb_state);
+void create_master_lease_thread(bdb_state_type *bdb_state);
 
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 

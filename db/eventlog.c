@@ -42,7 +42,7 @@
 #include "cson_amalgamation_core.h"
 
 extern int64_t comdb2_time_epochus(void);
-extern void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
+extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);

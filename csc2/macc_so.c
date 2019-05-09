@@ -735,8 +735,8 @@ int get_case_size(int csn)
 {
     int cs = symb[csn].caseno, csize = 0, j, first = -1;
     for (j = 0; j < nsym; j++) {
-        if ((symb[csn].un_member == symb[j].un_member) && (symb[j].caseno == cs) &&
-            (symb[j].caseno != -1)) {
+        if ((symb[csn].un_member == symb[j].un_member) &&
+            (symb[j].caseno == cs) && (symb[j].caseno != -1)) {
             /*printf(" %s %d %d\n", symb[j].nm, symb[j].szof, symb[j].padb);*/
             csize += symb[j].szof;
             if (first != -1 && symb[j].padb != -1)
