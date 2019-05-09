@@ -198,7 +198,7 @@ static int opt_idle_time_ms(comdb2_objpool_t op, int value);
 ** static return/borrow functions *
 ***********************************/
 static int objpool_signal_int(comdb2_objpool_t op);
-static int objpool_notify_int(comdb2_objpool_t op);
+static int objpool_notify_int(comdb2_objpool_t op, int force);
 static int objpool_return_int(comdb2_objpool_t op, void *obj);
 static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                               int force);
@@ -375,9 +375,9 @@ int comdb2_objpool_return(comdb2_objpool_t op, void *obj)
     return objpool_return_int(op, obj);
 }
 
-int comdb2_objpool_notify(comdb2_objpool_t op)
+int comdb2_objpool_notify(comdb2_objpool_t op, int force)
 {
-    return objpool_notify_int(op);
+    return objpool_notify_int(op, force);
 }
 
 int comdb2_objpool_borrow(comdb2_objpool_t op, void **objp)
@@ -679,13 +679,17 @@ static int objpool_signal_int(comdb2_objpool_t op)
     return 0;
 }
 
-static int objpool_notify_int(comdb2_objpool_t op)
+static int objpool_notify_int(comdb2_objpool_t op, int force)
 {
     int rc;
     assert(op != NULL);
     OP_DBG(op, "notify pool");
     Pthread_mutex_lock(&op->data_mutex);
-    rc = objpool_signal_int(op);
+    if (force || (op->nborrowwaits != 0)) {
+        rc = objpool_signal_int(op);
+    } else {
+        rc = EPERM;
+    }
     Pthread_mutex_unlock(&op->data_mutex);
     return rc;
 }
@@ -829,6 +833,25 @@ retry:
 
         while (1) {
             /*
+             ** first, issue a notification to the pool and
+             ** give it a chance to do something to prepare
+             ** for waiting -OR- to force object creation
+             ** -OR- cancel waiting and fail the request.
+             */
+            if (op->not_fn != NULL) {
+                int not_rc = op->not_fn(objp, op->not_arg);
+                if (not_rc == OP_FAIL_NOW) {
+                    OP_DBG(op, "canceled by not_fn()");
+                    Pthread_mutex_unlock(&op->data_mutex);
+                    return ECANCELED;
+                } else if (not_rc == OP_FORCE_NOW) {
+                    OP_DBG(op, "forced by not_fn()");
+                    force = 1;
+                    goto retry; /* mutex still held */
+                }
+            }
+
+            /*
              ** if pool is full and caller is willing to wait,
              ** make a condition wait on unexhausted
              */
@@ -863,19 +886,6 @@ retry:
                 OP_DBG(op, "intr by stop()");
                 Pthread_mutex_unlock(&op->data_mutex);
                 return EPERM;
-            }
-
-            if (op->not_fn != NULL) {
-                int not_rc = op->not_fn(objp, op->not_arg);
-                if (not_rc == OP_FAIL_NOW) {
-                    OP_DBG(op, "canceled by not_fn()");
-                    Pthread_mutex_unlock(&op->data_mutex);
-                    return ECANCELED;
-                } else if (not_rc == OP_FORCE_NOW) {
-                    OP_DBG(op, "forced by not_fn()");
-                    force = 1;
-                    goto retry; /* mutex still held */
-                }
             }
 
             if (!exhausted(op))

@@ -348,7 +348,7 @@ int comdb2_objpool_return(comdb2_objpool_t op, void *obj);
 ** EPERM  - the pool has no threads waiting to borrow
 ** Other  - failed to lock/unlock mutex
 */
-int comdb2_objpool_notify(comdb2_objpool_t op);
+int comdb2_objpool_notify(comdb2_objpool_t op, int force);
 
 /*
 ** Borrow an object from a pool.
