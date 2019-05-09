@@ -1,0 +1,18 @@
+[CREATE TABLE t1 (x INT)] rc 0
+(version='trigger_1')
+[CREATE LUA TRIGGER trigger_1 ON (TABLE t1 FOR INSERT AND UPDATE AND DELETE)] rc 0
+[BEGIN] rc 0
+[INSERT INTO t1 VALUES(1)] rc 0
+[INSERT INTO t1 VALUES(2)] rc 0
+[INSERT INTO t1 VALUES(3)] rc 0
+[COMMIT] rc 0
+[BEGIN] rc 0
+[UPDATE t1 SET x = x + 1 WHERE x < 2] rc 0
+[UPDATE t1 SET x = x + 1 WHERE x > 3] rc 0
+[UPDATE t1 SET x = x * 9 WHERE x = 1] rc 0
+[COMMIT] rc 0
+[BEGIN] rc 0
+[DELETE FROM t1 WHERE x = 1] rc 0
+[DELETE FROM t1 WHERE x = 9] rc 0
+[DELETE FROM t1] rc 0
+[COMMIT] rc 0
