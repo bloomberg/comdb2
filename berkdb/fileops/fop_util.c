@@ -600,8 +600,8 @@ done:	/*
 	 */
 	if (!truncating && tmpname != NULL && tmpname != name) {
 		__os_free(dbenv, tmpname);
-        tmpname = NULL; // this is passed to _fop_remove in case of error in CLOSE_HANDLE
-    }
+		tmpname = NULL; 
+	}
 	if (real_name != NULL)
 		__os_free(dbenv, real_name);
 	if (real_tmpname != NULL)
