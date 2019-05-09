@@ -51,6 +51,8 @@
 #include "bdb_int.h"
 #include "strbuf.h"
 
+extern int recover_deadlock_simple(bdb_state_type *bdb_state);
+
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
@@ -527,8 +529,12 @@ int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
 int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_arg;
-    int rc = bdb_temp_table_maybe_set_priority_thread(bdb_state);
-    return (rc == TMPTBL_PRIORITY) ? OP_FORCE_NOW : OP_WAIT_AGAIN;
+    int rc1 = recover_deadlock_simple(bdb_state);
+    if (rc1 != 0) {
+        logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc1);
+    }
+    int rc2 = bdb_temp_table_maybe_set_priority_thread(bdb_state);
+    return (rc2 == TMPTBL_PRIORITY) ? OP_FORCE_NOW : OP_WAIT_AGAIN;
 }
 
 /*

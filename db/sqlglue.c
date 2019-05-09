@@ -9701,6 +9701,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 
 int comdb2_cheapstack_char_array(char *str, int maxln);
 
+int recover_deadlock_simple(bdb_state_type *bdb_state)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    assert(thd != NULL);
+    return recover_deadlock(bdb_state, thd, NULL, 0);
+}
+
 int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
