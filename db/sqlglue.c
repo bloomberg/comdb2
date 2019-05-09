@@ -1691,21 +1691,17 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     }
 
     /* CHECK constraints */
-    int check_cons_count = 0;
     for (int i = 0; i < tbl->n_constraints; i++) {
         if (tbl->constraints[i].type != CT_CHECK) {
             continue;
         }
 
-        if ((check_cons_count == 0) && (schema->nmembers == 1)) {
-            strbuf_append(sql, ", ");
+        strbuf_append(sql, ",");
+        if (tbl->constraints[i].consname) {
+            strbuf_appendf(sql, " constraint '%s'",
+                           tbl->constraints[i].consname);
         }
-
-        strbuf_appendf(sql, "%sconstraint '%s' check (%s)",
-                       (check_cons_count > 0) ? ", " : "",
-                       tbl->constraints[i].consname,
-                       tbl->constraints[i].check_expr);
-        check_cons_count++;
+        strbuf_appendf(sql, " check (%s)", tbl->constraints[i].check_expr);
     }
 
     strbuf_append(sql, ");");
@@ -12412,8 +12408,8 @@ int run_check_constraints(struct dbtable *table, uint8_t *rec,
             continue;
         }
         strbuf_clear(sql);
-        /* TODO: (NC) Generate a unique name. */
-        strbuf_appendf(sql, "WITH \"temp\" (\"%s\"", sc->member[0].name);
+        strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", table->tablename,
+                       sc->member[0].name);
         for (int i = 1; i < sc->nmembers; ++i) {
             strbuf_appendf(sql, ", %s", sc->member[i].name);
         }
@@ -12421,8 +12417,8 @@ int run_check_constraints(struct dbtable *table, uint8_t *rec,
         for (int i = 1; i < sc->nmembers; ++i) {
             strbuf_appendf(sql, ", @%s", sc->member[i].name);
         }
-        strbuf_appendf(sql, ") SELECT 1 FROM \"temp\" WHERE %s",
-                       table->constraints[i].check_expr);
+        strbuf_appendf(sql, ") SELECT 1 FROM \"%s\" WHERE %s",
+                       table->tablename, table->constraints[i].check_expr);
 
         struct sqlclntstate clnt;
         struct schema_mem sm;

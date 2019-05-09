@@ -278,6 +278,11 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
     /* verify forward constraints first */
     for (i = 0; i < newdb->n_constraints; i++) {
         constraint_t *ct = &newdb->constraints[i];
+
+        if (ct->type == CT_CHECK) {
+            continue;
+        }
+
         rc = find_constraint(db, ct);
         if (rc == 0) {
             /* constraint not found!  will need to re-verify */
@@ -345,6 +350,10 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
 
     /* see if we removed constraints */
     for (i = 0; i < db->n_constraints; i++) {
+        if (db->constraints[i].type == CT_CHECK) {
+            continue;
+        }
+
         rc = find_constraint(newdb, &db->constraints[i]);
         /* as a kludge - for now verify.  technically, we don't need to */
         if (rc == 0) verify = 1;
@@ -1218,6 +1227,11 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
             for (int k = 0; k < newdb->constraints[j].nrules; k++) {
                 int ridx = 0;
                 int dupadd = 0;
+
+                if (newdb->constraints[j].type == CT_CHECK) {
+                    continue;
+                }
+
                 if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename))
                     continue;
                 for (ridx = 0; ridx < rdb->n_rev_constraints; ridx++) {
