@@ -161,6 +161,10 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         sqlite3_free(where);
         return NULL;
     }
+    if (!tbl && p->pSrc->nSrc) {
+        /* select 1 from tbl */
+        tbl = (const char*)p->pSrc->a[0].zName;
+    }
 
     if (unlikely(!tbl)) {
         select =
