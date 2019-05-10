@@ -76,6 +76,33 @@ int runtag(cdb2_hndl_tp *h, std::string &sql, std::vector<int> &types)
     return rc;
 }
 
+int get_row_count(cdb2_hndl_tp *h, std::string sql, int *row_count /* OUT */)
+{
+    int rc;
+
+    *row_count = 0;
+
+    rc = cdb2_run_statement(h, sql.c_str());
+    if (rc != 0) {
+        fprintf(stderr, "cdb2_run_statement failed: %d %s\n", rc,
+                cdb2_errstr(h));
+        return rc;
+    }
+
+    rc = cdb2_next_record(h);
+    while (rc == CDB2_OK) {
+        ++ (*row_count);
+        rc = cdb2_next_record(h);
+    }
+
+    if (rc == CDB2_OK_DONE)
+        rc = 0;
+    else
+        fprintf(stderr, "cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+    return rc;
+}
+
+#if 0
 void add_param(std::string &sp, std::string &sql, std::vector<int> &types, std::string name,
                std::string extra1 = "", std::string extra2 = "")
 {
@@ -83,6 +110,7 @@ void add_param(std::string &sp, std::string &sql, std::vector<int> &types, std::
     sql += comma + space + extra1 + at + name + extra2;
     types.push_back(CDB2_CSTRING);
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -282,7 +310,7 @@ int main(int argc, char *argv[])
         ss << "insert into " << table 
            << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym,   alltypes_intervalds,   alltypes_intervaldsus) values "
               "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym, @palltypes_intervalds, @palltypes_intervaldsus)" ;
-        
+
         //this works too?? runsql(db, s);
         printf("float param: %f\n", palltypes_float);
         printf("double param: %lf\n", palltypes_double);
@@ -291,6 +319,90 @@ int main(int argc, char *argv[])
             exit(1);
         }
         cdb2_clearbindings(db);
+    }
+
+    // Try binding empty values
+    {
+        std::ostringstream ss;
+        std::vector<int> types;
+        short s = 10000;
+        int i = 0;
+        char b[] = {0};
+        const char *c = "";
+
+        // Unique key
+        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &s, sizeof(s)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        // Must not be NULL
+        else if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &i, sizeof(i)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, (void *)b, 0))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        else if(cdb2_bind_param(db, "palltypes_cstring", CDB2_CSTRING, c, strlen(c)))
+            fprintf(stderr, "Error binding palltypes_cstring.\n");
+
+        ss << "insert into " << table
+           << "(  alltypes_short,   alltypes_int,   alltypes_cstring,   alltypes_blob  ) values "
+              "(  @palltypes_short, @palltypes_int, @palltypes_cstring, @palltypes_blob)" ;
+
+        std::string str = ss.str();
+        if(runtag(db, str, types) != 0) {
+            exit(1);
+        }
+        cdb2_clearbindings(db);
+
+        // Verify that the record has been inserted properly.
+        std::ostringstream select;
+        int row_count = 0;
+        select << "select * from " << table << " where alltypes_short = " << s
+               << " and alltypes_cstring = '' and alltypes_blob = x''";
+        rc = get_row_count(db, select.str(), &row_count);
+        // We must expect exactly one row.
+        if (rc != 0 || row_count != 1) {
+            exit(1);
+        }
+    }
+
+    // Try binding NULL values
+    {
+        std::ostringstream ss;
+        std::vector<int> types;
+        short s = 10001;
+        int i = 0;
+
+        // Unique key
+        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &s, sizeof(s)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        // Must not be NULL
+        else if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &i, sizeof(i)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        else if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, 0, 0) )
+            fprintf(stderr, "Error binding palltypes_float.\n");
+        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, (void *)0, 0))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        else if(cdb2_bind_param(db, "palltypes_cstring", CDB2_CSTRING, 0, 0))
+            fprintf(stderr, "Error binding palltypes_cstring.\n");
+
+        ss << "insert into " << table
+           << "(  alltypes_short,   alltypes_int,   alltypes_float,   alltypes_cstring,   alltypes_blob  ) values "
+              "(  @palltypes_short, @palltypes_int, @palltypes_float, @palltypes_cstring, @palltypes_blob)" ;
+
+        std::string str = ss.str();
+        if(runtag(db, str, types) != 0) {
+            exit(1);
+        }
+        cdb2_clearbindings(db);
+
+        // Verify that the record has been inserted properly.
+        std::ostringstream select;
+        int row_count = 0;
+        select << "select * from " << table << " where alltypes_short = " << s
+               << " and alltypes_cstring is null and alltypes_blob is null";
+        rc = get_row_count(db, select.str(), &row_count);
+        // We must expect exactly one row.
+        if (rc != 0 || row_count != 1) {
+            exit(1);
+        }
     }
 
     cdb2_close(db);
