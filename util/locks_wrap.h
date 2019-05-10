@@ -44,55 +44,26 @@
         LKDBG_TRACE(GOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
     } while (0)
 
-#define Pthread_mutex_init(a, b)    WRAP_PTHREAD(pthread_mutex_init, a, b)
-#define Pthread_mutex_destroy(a)    WRAP_PTHREAD(pthread_mutex_destroy, a)
-#define Pthread_mutex_lock(a)       WRAP_PTHREAD(pthread_mutex_lock, a)
-#define Pthread_mutex_unlock(a)     WRAP_PTHREAD(pthread_mutex_unlock, a)
-#define Pthread_rwlock_init(a, b)   WRAP_PTHREAD(pthread_rwlock_init, a, b)
-#define Pthread_rwlock_destroy(a)   WRAP_PTHREAD(pthread_rwlock_destroy, a)
-#define Pthread_rwlock_rdlock(a)    WRAP_PTHREAD(pthread_rwlock_rdlock, a)
-#define Pthread_rwlock_wrlock(a)    WRAP_PTHREAD(pthread_rwlock_wrlock, a)
-#define Pthread_rwlock_unlock(a)    WRAP_PTHREAD(pthread_rwlock_unlock, a)
-#define Pthread_cond_init(a, b)     WRAP_PTHREAD(pthread_cond_init, a, b)
-#define Pthread_cond_destroy(a)     WRAP_PTHREAD(pthread_cond_destroy, a)
-#define Pthread_cond_signal(a)      WRAP_PTHREAD(pthread_cond_signal, a)
-#define Pthread_cond_broadcast(a)   WRAP_PTHREAD(pthread_cond_broadcast, a)
-#define Pthread_cond_wait(a, b)     WRAP_PTHREAD(pthread_cond_wait, a, b)
-#define Pthread_attr_init(a)        WRAP_PTHREAD(pthread_attr_init, a)
-#define Pthread_attr_destroy(a)     WRAP_PTHREAD(pthread_attr_destroy, a)
-#define Pthread_key_create(a, b)    WRAP_PTHREAD(pthread_key_create, a, b)
-#define Pthread_key_delete(a)       WRAP_PTHREAD(pthread_key_delete, a)
-#define Pthread_setspecific(a, b)   WRAP_PTHREAD(pthread_setspecific, a, b)
-#define Pthread_attr_setstacksize(a, b)                                        \
-    WRAP_PTHREAD(pthread_attr_setstacksize, a, b)
-#define Pthread_attr_setdetachstate(a, b)                                      \
-    WRAP_PTHREAD(pthread_attr_setdetachstate, a, b)
-
-#define Pthread_mutex_alloc_and_init(a, b)                                     \
-    do {                                                                       \
-        pthread_mutex_t *pMutex = calloc(1, sizeof(pthread_mutex_t));          \
-        if (pMutex == NULL) {                                                  \
-            logmsg(LOGMSG_FATAL,                                               \
-                   "%s:%d OUT OF MEMORY thd:%p\n",                             \
-                   __func__, __LINE__, (void *)pthread_self());                \
-            abort();                                                           \
-        }                                                                      \
-        Pthread_mutex_init(pMutex, (b));                                       \
-        (a) = pMutex;                                                          \
-    } while (0)
-
-#define Pthread_mutex_destroy_and_free(a)                                      \
-    do {                                                                       \
-        pthread_mutex_t *pMutex = (a);                                         \
-        if (pMutex == NULL) {                                                  \
-            logmsg(LOGMSG_FATAL,                                               \
-                   "%s:%d INVALID_MUTEX thd:%p\n",                             \
-                   __func__, __LINE__, (void *)pthread_self());                \
-            abort();                                                           \
-        }                                                                      \
-        Pthread_mutex_destroy(pMutex);                                         \
-        free(pMutex);                                                          \
-        (a) = NULL;                                                            \
-    } while (0)
+#define Pthread_mutex_init(a, b)            WRAP_PTHREAD(pthread_mutex_init, a, b)
+#define Pthread_mutex_destroy(a)            WRAP_PTHREAD(pthread_mutex_destroy, a)
+#define Pthread_mutex_lock(a)               WRAP_PTHREAD(pthread_mutex_lock, a)
+#define Pthread_mutex_unlock(a)             WRAP_PTHREAD(pthread_mutex_unlock, a)
+#define Pthread_rwlock_init(a, b)           WRAP_PTHREAD(pthread_rwlock_init, a, b)
+#define Pthread_rwlock_destroy(a)           WRAP_PTHREAD(pthread_rwlock_destroy, a)
+#define Pthread_rwlock_rdlock(a)            WRAP_PTHREAD(pthread_rwlock_rdlock, a)
+#define Pthread_rwlock_wrlock(a)            WRAP_PTHREAD(pthread_rwlock_wrlock, a)
+#define Pthread_rwlock_unlock(a)            WRAP_PTHREAD(pthread_rwlock_unlock, a)
+#define Pthread_cond_init(a, b)             WRAP_PTHREAD(pthread_cond_init, a, b)
+#define Pthread_cond_destroy(a)             WRAP_PTHREAD(pthread_cond_destroy, a)
+#define Pthread_cond_signal(a)              WRAP_PTHREAD(pthread_cond_signal, a)
+#define Pthread_cond_broadcast(a)           WRAP_PTHREAD(pthread_cond_broadcast, a)
+#define Pthread_cond_wait(a, b)             WRAP_PTHREAD(pthread_cond_wait, a, b)
+#define Pthread_attr_init(a)                WRAP_PTHREAD(pthread_attr_init, a)
+#define Pthread_attr_destroy(a)             WRAP_PTHREAD(pthread_attr_destroy, a)
+#define Pthread_key_create(a, b)            WRAP_PTHREAD(pthread_key_create, a, b)
+#define Pthread_key_delete(a)               WRAP_PTHREAD(pthread_key_delete, a)
+#define Pthread_setspecific(a, b)           WRAP_PTHREAD(pthread_setspecific, a, b)
+#define Pthread_attr_setstacksize(a, b)     WRAP_PTHREAD(pthread_attr_setstacksize, a, b)
+#define Pthread_attr_setdetachstate(a, b)   WRAP_PTHREAD(pthread_attr_setdetachstate, a, b)
 
 #endif

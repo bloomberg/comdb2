@@ -83,7 +83,7 @@ pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
 struct tmptbl_info_t {
-    int rootpg;
+    struct temptable tbl;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
     pthread_mutex_t *lk;
@@ -2550,8 +2550,6 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
-    assert(clnt.temp_table_mtx == NULL || !clnt.own_temp_table_mtx);
-    clnt.temp_table_mtx = parent_clnt->temp_table_mtx;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
@@ -2597,7 +2595,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
             tmp2->lk = tmp1->lk;
-            tmp2->rootpg = atoi(text[1]);
+            tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);
             return 0;
@@ -5855,7 +5853,7 @@ static void clone_temp_tables(SP sp)
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         sp->clnt->skip_peer_chk = 1;
-        clone_temp_table(dest, src, strbuf_buf(sql), tmp->rootpg);
+        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
@@ -6380,7 +6378,6 @@ void *exec_trigger(trigger_reg_t *reg)
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
-    sqlengine_setup_temp_table_mtx(&clnt);
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
@@ -6442,7 +6439,6 @@ void *exec_trigger(trigger_reg_t *reg)
         force_unregister(L, reg);
     }
     put_curtran(thedb->bdb_env, &clnt);
-    sqlengine_cleanup_temp_table_mtx(&clnt);
     close_sp(&clnt);
     cleanup_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
