@@ -12,23 +12,11 @@ CREATE PROCEDURE trigger_1 VERSION 'trigger_1' {
       iold = event.old.i
       tbl:insert({i=iold})
     end
-    return db:exec("SELECT i, COUNT(*) FROM tbl GROUP BY i")
-  end
-}$$
-
-CREATE PROCEDURE consumer_1 VERSION 'trigger_1' {
-  local function main()
-    local consumer = db:consumer()
-    while true do
-      db:begin()
-      consumer:consume()
-      db:commit()
-    end
+    return 0
   end
 }$$
 
 CREATE LUA TRIGGER trigger_1 ON (TABLE t1 FOR INSERT AND UPDATE AND DELETE)
-CREATE LUA CONSUMER consumer_1 ON (TABLE t1 FOR INSERT AND UPDATE AND DELETE)
 
 BEGIN;
 INSERT INTO t1 VALUES(1);
@@ -68,5 +56,4 @@ COMMIT;
 
 SELECT x FROM t1 ORDER BY x;
 
-DROP LUA CONSUMER consumer_1
 DROP LUA TRIGGER trigger_1
