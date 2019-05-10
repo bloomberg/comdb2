@@ -193,7 +193,7 @@ enum comdb2_objpool_notify_result {
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
-** not_fn  - function to notify of availability
+** not_fn  - function to notify before waiting
 ** not_arg - argument of not_fn
 **
 ** Return Value
@@ -218,7 +218,7 @@ int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
-** not_fn  - function to notify of availability
+** not_fn  - function to notify before waiting
 ** not_arg - argument of not_fn
 **
 ** Return Value
@@ -243,7 +243,7 @@ int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
-** not_fn  - function to notify of availability
+** not_fn  - function to notify before waiting
 ** not_arg - argument of not_fn
 **
 ** Return Value
