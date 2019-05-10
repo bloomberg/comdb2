@@ -1007,7 +1007,6 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
             return -1;
     } else {
         strncpy0(my_hostname, connect_message.my_hostname, HOSTNAME_LEN);
-        my_hostname[HOSTNAME_LEN - 1] = 0;
     }
 
     if (connect_message.to_hostname[0] == '.') {
@@ -1022,7 +1021,6 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
             return -1;
     } else {
         strncpy0(to_hostname, connect_message.to_hostname, HOSTNAME_LEN);
-        to_hostname[HOSTNAME_LEN - 1] = 0;
     }
 
     if (strcmp(netinfo_ptr->myhostname, to_hostname) == 0)
@@ -1147,7 +1145,7 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
         append_to = 1;
     } else {
         strncpy0(connect_message.to_hostname, host_node_ptr->host,
-                sizeof(connect_message.to_hostname));
+                 sizeof(connect_message.to_hostname));
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
@@ -1164,7 +1162,7 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
         append_from = 1;
     } else {
         strncpy0(connect_message.my_hostname, netinfo_ptr->myhostname,
-                sizeof(connect_message.my_hostname));
+                 sizeof(connect_message.my_hostname));
     }
     if (netinfo_ptr->myport)
         connect_message.my_portnum =
@@ -4274,7 +4272,7 @@ static void *writer_thread(void *args)
                                  netinfo_ptr->myhostname_len);
                     } else {
                         strncpy0(tmp_wire_hdr.fromhost, netinfo_ptr->myhostname,
-                                sizeof(tmp_wire_hdr.fromhost));
+                                 sizeof(tmp_wire_hdr.fromhost));
                     }
                     tmp_wire_hdr.fromport = netinfo_ptr->myport;
                     tmp_wire_hdr.fromnode = 0;
@@ -4284,7 +4282,7 @@ static void *writer_thread(void *args)
                                  host_node_ptr->hostname_len);
                     } else {
                         strncpy0(tmp_wire_hdr.tohost, host_node_ptr->host,
-                                sizeof(tmp_wire_hdr.tohost));
+                                 sizeof(tmp_wire_hdr.tohost));
                     }
                     tmp_wire_hdr.toport = host_node_ptr->port;
                     tmp_wire_hdr.tonode = 0;

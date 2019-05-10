@@ -273,7 +273,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
              */
             generr.errval = ERR_INTERNAL;
             strncpy0(generr.errstr, "master cancelled transaction",
-                    sizeof(generr.errstr));
+                     sizeof(generr.errstr));
             xerr = &generr;
             error = 1;
             break;

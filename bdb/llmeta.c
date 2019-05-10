@@ -2847,7 +2847,7 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
     strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
 
@@ -3001,7 +3001,7 @@ int bdb_get_csc2_highest(tran_type *trans, /* transaction to use, may be NULL */
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
     strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
 
@@ -3158,7 +3158,7 @@ int bdb_get_csc2(tran_type *tran, /* transaction to use, may be NULL */
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
     strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
     /* zero this out for now */
@@ -4018,7 +4018,7 @@ static int bdb_set_high_genid_int(
     /* BTW- There's NO NULL BYTE!  So the stripe ends up using 3 bytes
        rather than 4 */
     strncpy0(high_genid_key_type.dbname, db_name,
-            sizeof(high_genid_key_type.dbname));
+             sizeof(high_genid_key_type.dbname));
     high_genid_key_type.dbname_len = strlen(high_genid_key_type.dbname);
 
     /* add stripe to key */
@@ -4192,7 +4192,7 @@ int bdb_get_high_genid(
     /* BTW- There's NO NULL BYTE!  So the stripe ends up using 3 bytes
        rather than 4 */
     strncpy0(high_genid_key_type.dbname, db_name,
-            sizeof(high_genid_key_type.dbname));
+             sizeof(high_genid_key_type.dbname));
     high_genid_key_type.dbname_len = strlen(high_genid_key_type.dbname);
 
     /* add stripe to key */
@@ -5266,10 +5266,10 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5388,10 +5388,10 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     tbl_access_data.command_type = command_type;
 
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5479,10 +5479,10 @@ int bdb_tbl_op_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
     tbl_access_data.file_type = LLMETA_TABLE_USER_OP;
     tbl_access_data.command_type = command_type;
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5516,10 +5516,10 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
     tbl_access_data.file_type = LLMETA_TABLE_USER_OP;
     tbl_access_data.command_type = command_type;
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5766,10 +5766,10 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5815,7 +5815,7 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
     tbl_access_data.file_type = LLMETA_TABLE_USER_SCHEMA;
 
     strncpy0(tbl_access_data.tablename, username,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     bzero(tbl_access_data.username, sizeof(tbl_access_data.username));
 
@@ -5844,7 +5844,7 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
             return -1;
         }
         strncpy0(userschema, tbl_access_data.username,
-                sizeof(tbl_access_data.username));
+                 sizeof(tbl_access_data.username));
         logmsg(LOGMSG_INFO, "User Schema for username %s is %s\n", username,
                 userschema);
     } else {
@@ -5881,10 +5881,10 @@ static int bdb_tbl_access_delete(bdb_state_type *bdb_state,
     }
 
     strncpy0(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+             sizeof(tbl_access_data.tablename));
 
     strncpy0(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -6588,7 +6588,7 @@ int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
 
     analyzecoverage_key.file_type = LLMETA_ANALYZECOVERAGE_TABLE;
     strncpy0(analyzecoverage_key.dbname, tbl_name,
-            sizeof(analyzecoverage_key.dbname));
+             sizeof(analyzecoverage_key.dbname));
     analyzecoverage_key.dbname_len = strlen(analyzecoverage_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -6677,7 +6677,7 @@ int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
 
     analyzecoverage_key.file_type = LLMETA_ANALYZECOVERAGE_TABLE;
     strncpy0(analyzecoverage_key.dbname, tbl_name,
-            sizeof(analyzecoverage_key.dbname));
+             sizeof(analyzecoverage_key.dbname));
     analyzecoverage_key.dbname_len = strlen(analyzecoverage_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -6827,7 +6827,7 @@ int bdb_get_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
 
     analyzethreshold_key.file_type = LLMETA_ANALYZETHRESHOLD_TABLE;
     strncpy0(analyzethreshold_key.dbname, tbl_name,
-            sizeof(analyzethreshold_key.dbname));
+             sizeof(analyzethreshold_key.dbname));
     analyzethreshold_key.dbname_len = strlen(analyzethreshold_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -7082,7 +7082,7 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
 
     analyzethreshold_key.file_type = LLMETA_ANALYZETHRESHOLD_TABLE;
     strncpy0(analyzethreshold_key.dbname, tbl_name,
-            sizeof(analyzethreshold_key.dbname));
+             sizeof(analyzethreshold_key.dbname));
     analyzethreshold_key.dbname_len = strlen(analyzethreshold_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -7351,7 +7351,7 @@ static int __llmeta_preop_alias(struct llmeta_tablename_alias_key *key,
 
     key->file_type = LLMETA_FDB_TABLENAME_ALIAS;
     strncpy0(key->tablename_alias, tablename_alias,
-            sizeof(key->tablename_alias));
+             sizeof(key->tablename_alias));
 
     if (llmeta_tablename_alias_key_put(key, (uint8_t *)key_buf,
                                        (uint8_t *)(key_buf + key_buf_len)) ==
@@ -7734,7 +7734,7 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     bzero(&schema_version, sizeof(schema_version));
     schema_version.file_type = LLMETA_TABLE_VERSION;
     strncpy0(schema_version.tblname, bdb_state->name,
-            sizeof(schema_version.tblname));
+             sizeof(schema_version.tblname));
 
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
@@ -7854,7 +7854,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     bzero(&schema_version, sizeof(schema_version));
     schema_version.file_type = LLMETA_TABLE_VERSION;
     strncpy0(schema_version.tblname, bdb_state->name,
-            sizeof(schema_version.tblname));
+             sizeof(schema_version.tblname));
 
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;

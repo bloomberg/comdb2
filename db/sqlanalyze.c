@@ -1087,7 +1087,8 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        strncpy0(td[idx].table, thedb->dbs[i]->tablename, sizeof(td[idx].table));
+        strncpy0(td[idx].table, thedb->dbs[i]->tablename,
+                 sizeof(td[idx].table));
 
         /* dispatch analyze table thread */
         rc = dispatch_table_thread(&td[idx]);
