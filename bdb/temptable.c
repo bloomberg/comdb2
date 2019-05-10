@@ -1563,15 +1563,14 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
-        struct temp_list_node *c_node = NULL;
-        do {
+        struct temp_list_node *c_node =
+            (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
+        while (c_node) {
+            if (c_node->data)
+                free(c_node->data);
+            free(c_node);
             c_node = (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
-            if (c_node) {
-                if (c_node->data)
-                    free(c_node->data);
-                free(c_node);
-            }
-        } while (c_node);
+        }
     } break;
 
     case TEMP_TABLE_TYPE_HASH: {

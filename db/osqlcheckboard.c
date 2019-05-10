@@ -157,6 +157,7 @@ retry:
             if (retry < 60) /* 60*500 = 30 seconds */
             {
                 poll(NULL, 0, 500);
+                retry++;
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "No master, failed to register request\n");

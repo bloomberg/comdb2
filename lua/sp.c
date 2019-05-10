@@ -3000,7 +3000,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
     Pthread_cond_init(&thd->lua_thread_cond, NULL);
 
-    strcpy(newsp->spname, sp->spname);
+    strncpy0(newsp->spname, sp->spname, sizeof(newsp->spname));
     newsp->spversion = sp->spversion;
     if (newsp->spversion.version_str)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
