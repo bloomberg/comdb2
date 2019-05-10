@@ -3612,7 +3612,8 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(usedb_uuid_rpl.hd.uuid, uuid);
         usedb_uuid_rpl.dt.tablenamelen = tablenamelen;
         usedb_uuid_rpl.dt.tableversion = tableversion;
-        strncpy0(usedb_uuid_rpl.dt.tablename, tablename,
+        /* tablename field needs to be NOT null terminated if larger than 4 chars */
+        strncpy(usedb_uuid_rpl.dt.tablename, tablename,
                 sizeof(usedb_uuid_rpl.dt.tablename));
 
         if (!(p_buf = osqlcomm_usedb_uuid_rpl_type_put(&usedb_uuid_rpl, p_buf,
@@ -3635,7 +3636,8 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         usedb_rpl.hd.sid = rqid;
         usedb_rpl.dt.tablenamelen = tablenamelen;
         usedb_rpl.dt.tableversion = tableversion;
-        strncpy0(usedb_rpl.dt.tablename, tablename,
+        /* tablename field needs to be NOT null terminated if larger than 4 chars */
+        strncpy(usedb_rpl.dt.tablename, tablename,
                 sizeof(usedb_rpl.dt.tablename));
 
         if (!(p_buf =
@@ -3653,6 +3655,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
+    /* tablename field is not null terminated -- send rest of tablename */
     if (tablenamelen > sent) {
         rc = offload_net_send_tail(tohost, type, &buf, msglen, 0,
                                    tablename + sent, tablenamelen - sent);
