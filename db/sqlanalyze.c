@@ -753,14 +753,17 @@ static int analyze_table_int(table_descriptor_t *td,
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
     int rc = run_internal_sql_clnt(&clnt, "BEGIN");
-    if (rc)
+    if (rc) {
+        snprintf(zErrTab, sizeof(zErrTab), "BEGIN");
         goto cleanup;
+    }
 
     char *sql = NULL;
     sql = sqlite3_mprintf(
              "delete from sqlite_stat1 where tbl='cdb2.%q.sav'", td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
     sqlite3_free(sql); sql = NULL;
 
     if (rc)
@@ -771,6 +774,7 @@ static int analyze_table_int(table_descriptor_t *td,
              td->table, td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
     sqlite3_free(sql); sql = NULL;
 
     if (rc)
@@ -781,6 +785,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  "delete from sqlite_stat2 where tbl='cdb2.%q.sav'", td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
         sqlite3_free(sql); sql = NULL;
 
         if (rc)
@@ -791,6 +796,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  td->table, td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
         sqlite3_free(sql); sql = NULL;
 
         if (rc)
@@ -802,6 +808,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  "delete from sqlite_stat4 where tbl='cdb2.%q.sav'", td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
         sqlite3_free(sql); sql = NULL;
 
         if (rc)
@@ -812,6 +819,7 @@ static int analyze_table_int(table_descriptor_t *td,
                  td->table, td->table);
         assert(sql != NULL);
         rc = run_internal_sql_clnt(&clnt, sql);
+        if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
         sqlite3_free(sql); sql = NULL;
 
         if (rc)
@@ -841,6 +849,7 @@ static int analyze_table_int(table_descriptor_t *td,
     sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
     assert(sql != NULL);
     rc = run_internal_sql_clnt(&clnt, sql);
+    if (rc) snprintf(zErrTab, sizeof(zErrTab), sql);
     sqlite3_free(sql); sql = NULL;
 
     clnt.is_analyze = 0;
@@ -848,6 +857,7 @@ static int analyze_table_int(table_descriptor_t *td,
         goto error;
 
     rc = run_internal_sql_clnt(&clnt, "COMMIT");
+    if (rc) snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
 
 cleanup:
     sbuf2flush(sb2);

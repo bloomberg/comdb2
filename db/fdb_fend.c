@@ -1005,6 +1005,11 @@ run:
                 logmsg(LOGMSG_ERROR, "remote required SSl, switching to SSL\n");
                 need_ssl = 1;
                 assert(fdb->server_version >= FDB_VER_SSL);
+                if (sql) {
+                    sqlite3_free(sql);
+                    sql = NULL;
+                }
+                fdbc->sql_hint = NULL;
                 goto run;
             }
 #endif
@@ -1014,6 +1019,11 @@ run:
             /* retry new version */
             fdb_cursor_close_on_open(cur, 0);
             rc = FDB_NOERR;
+            if (sql) {
+                sqlite3_free(sql);
+                sql = NULL;
+            }
+            fdbc->sql_hint = NULL;
             goto run;
 
         case IX_EMPTY:
