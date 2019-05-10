@@ -669,12 +669,16 @@ int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
 int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_arg;
-    int rc1 = recover_deadlock_simple(bdb_state);
-    if (rc1 != 0) {
-        logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc1);
+    int rc1 = bdb_temp_table_maybe_set_priority_thread(bdb_state);
+    if (rc1 == TMPTBL_PRIORITY) { /* Are we going to end up waiting? */
+        return OP_FORCE_NOW; /* No, we are forcing object creation. */
+    } else {
+        int rc2 = recover_deadlock_simple(bdb_state);
+        if (rc2 != 0) {
+            logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc2);
+        }
+        return OP_WAIT_AGAIN; /* Yes, and we give up locks. */
     }
-    int rc2 = bdb_temp_table_maybe_set_priority_thread(bdb_state);
-    return (rc2 == TMPTBL_PRIORITY) ? OP_FORCE_NOW : OP_WAIT_AGAIN;
 }
 
 /*
