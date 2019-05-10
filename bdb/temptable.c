@@ -617,18 +617,19 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         goto done;
     }
 
+done:
+
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
         char *zBacktrace = get_stack_backtrace();
         logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, %s\n",
-               tbl, rc, tbl ? tbl->sql : 0, zBacktrace);
+               tbl, tbl ? 0 : -1, tbl ? tbl->sql : 0, zBacktrace);
         free(zBacktrace);
     }
 #endif
 
     if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
 
-done:
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
     return tbl;
