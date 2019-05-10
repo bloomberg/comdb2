@@ -7367,9 +7367,9 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
             return ret;                                                        \
                                                                                \
         if (!cdt.tzname[0])                                                    \
-            strncpy0(cdt.tzname,                                                \
-                    ((struct field_conv_opts_tz *)outopts)->tzname,            \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)outopts)->tzname,           \
+                     sizeof(cdt.tzname));                                      \
         /* IF CLIENT THE TIMEZONELESS FIELD WAS STORED IN A DIFFERENT TIMEZONE \
          */                                                                    \
         /* THE PROVIDED CLIENT_DATETIME IS WRONG. THIS IS AS MUCH WE CAN DO */ \
@@ -7783,8 +7783,9 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         }                                                                      \
                                                                                \
         if (!cdt.tzname[0])                                                    \
-            strncpy0(cdt.tzname, ((struct field_conv_opts_tz *)inopts)->tzname, \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)inopts)->tzname,            \
+                     sizeof(cdt.tzname));                                      \
                                                                                \
         if (inopts)                                                            \
             memcpy(&tzopts, inopts, sizeof(*inopts));                          \
@@ -7823,8 +7824,9 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         }                                                                      \
         cdt.tm.tm_isdst = 1;                                                   \
         if (!cdt.tzname[0])                                                    \
-            strncpy0(cdt.tzname, ((struct field_conv_opts_tz *)inopts)->tzname, \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)inopts)->tzname,            \
+                     sizeof(cdt.tzname));                                      \
                                                                                \
         if (!(p_buf = client_##dt##_put(&cdt, cdt_buf, p_cdt_buf_end))) {      \
             return -1;                                                         \
@@ -13269,7 +13271,7 @@ void _setIntervalDSUS(intv_ds_t *ds, long long sec, int usec)
     fracdt frac;                                                               \
     bzero(opts, sizeof(*opts));                                                \
     opts->flags |= 2 /*FLD_CONV_TZONE*/;                                       \
-    strncpy0(opts->tzname, tz, sizeof(opts->tzname));                           \
+    strncpy0(opts->tzname, tz, sizeof(opts->tzname));                          \
     if (datetime_check_range(in->dttz_sec, in->dttz_frac))                     \
         return -1;                                                             \
     /* brr, ugly */                                                            \
@@ -13512,7 +13514,7 @@ int timespec_to_dttz(const struct timespec *ts, dttz_t *dt, int precision)
     if (little_endian)                                                         \
         optstz.flags |= FLD_CONV_LENDIAN;                                      \
                                                                                \
-    strncpy0(optstz.tzname, outtz, sizeof(optstz.tzname));                      \
+    strncpy0(optstz.tzname, outtz, sizeof(optstz.tzname));                     \
                                                                                \
     /* convert to a server datetime first */                                   \
     rc = CLIENT_##UDT##_to_SERVER_##UDT(in, sizeof(*in), 0, opts, NULL, &sdt,  \
