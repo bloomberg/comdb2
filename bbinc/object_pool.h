@@ -106,9 +106,12 @@ typedef int (*obj_del_fn)(void *, void *);
 
 /*
 ** Object availability notification function.  When this function is called,
-** an object MAY be available in the pool (i.e. the thread will be woken up
-** from a wait -AND- should re-check the state of the pool prior to waiting
-** again.
+** the object pool is about to wait for an object to become available.  The
+** called function should perform whatever actions are necessary to make the
+** thread ready to enter a wait state (e.g. give up locks, etc).  Also, it
+** may return a special value to indicate that the request for a pool object
+** should fail immediately -OR- that the force flag should be set and the
+** request for a pool object should be retried.
 */
 typedef int (*obj_not_fn)(void **, void *);
 
@@ -164,12 +167,14 @@ enum comdb2_objpool_option {
 /*
 ** Legal return codes from the notification function (i.e. obj_not_fn).
 **
-** OP_FAIL_NOW       - failure the borrow operation and return to caller.
+** OP_FAIL_NOW       - failure borrow operation immediately and return to
+**                     caller.
 **
 ** OP_WAIT_AGAIN     - wait again for an object to become available from the
 **                     pool.
 **
-** OP_FORCE_NOW      - set the force flag and retry the borrow operation.
+** OP_FORCE_NOW      - set the force flag and retry the borrow operation, do
+**                     not wait.
 */
 enum comdb2_objpool_notify_result {
     OP_FAIL_NOW,
@@ -336,9 +341,8 @@ int comdb2_objpool_setopt(comdb2_objpool_t op,
 int comdb2_objpool_return(comdb2_objpool_t op, void *obj);
 
 /*
-** Wakes up one thread waiting to borrow an object from a pool, calls its
-** configured notification function, if any, and then retries its attempt
-** to borrow an object from the pool.
+** Wakes up one thread waiting to borrow an object from a pool, and calls
+** its configured notification function, if any.
 **
 ** Parameters
 ** op - an object pool

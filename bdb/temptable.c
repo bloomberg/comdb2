@@ -649,12 +649,12 @@ int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
                        __func__, rc, bdberr);
             }
         }
-        return rc == 0;
+        return rc;
     } else {
         comdb2_objpool_t op = bdb_state->temp_table_pool;
-        if (op == NULL) return 0;
+        if (op == NULL) return EINVAL;
         comdb2_objpool_clear(op);
-        return 1;
+        return 0;
     }
 }
 

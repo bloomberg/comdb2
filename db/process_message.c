@@ -1367,12 +1367,12 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
-        int bSuccess = bdb_temp_table_clear_pool(thedb->bdb_env);
+        int rcp = bdb_temp_table_clear_pool(thedb->bdb_env);
         if (gbl_temptable_pool_capacity == 0) {
             logmsg(LOGMSG_USER, "Temptable list was %scleared.\n",
-                   bSuccess ? "" : "not ");
+                   (rcp == 0) ? "" : "not ");
         } else {
-            if (bSuccess) {
+            if (rcp == 0) {
                 logmsg(LOGMSG_USER, "Temptable pool was cleared.\n");
             } else {
                 logmsg(LOGMSG_USER, "Temptable pool was not available.\n");
