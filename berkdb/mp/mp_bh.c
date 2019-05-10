@@ -38,7 +38,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <locks_wrap.h>
 #include "comdb2_atomic.h"
 
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[], char outfile[], size_t outsz);
 extern int gbl_test_badwrite_intvl;
 
 static int __memp_pgwrite
@@ -574,7 +574,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	int filenum = 0;
 	struct dirent *ent;
 	char dir[PATH_MAX];
-	bdb_trans(dbenv->db_home, dir);
+	bdb_trans(dbenv->db_home, dir, sizeof(dir));
 
 	Pthread_mutex_lock(&verifylk);
 	d = opendir(dir);

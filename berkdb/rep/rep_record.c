@@ -3576,7 +3576,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 		goto done;
 	}
-	if (ret != 0 || cmp < 0 || (cmp == 0 && IS_SIMPLE(rectype))) {
+	if (ret != 0 || (cmp == 0 && IS_SIMPLE(rectype))) {
 		goto done;
 	}
 

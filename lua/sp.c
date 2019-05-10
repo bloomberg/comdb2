@@ -356,7 +356,7 @@ static char *csv_read_one_field(CSVReader *p)
                 free(p->z);
                 luabb_error(p->lua, NULL,
                             "CSV line:%d: unterminated %c-quoted field\n",
-                            p->nLine, startLine, cQuote);
+                            startLine, cQuote);
                 p->cTerm = 0;
                 break;
             }

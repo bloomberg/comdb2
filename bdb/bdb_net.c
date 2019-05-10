@@ -79,6 +79,13 @@ int bdb_udp_send(bdb_state_type *bdb_state, const char *to, size_t len,
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     netinfo_type *netinfo = repinfo->netinfo;
+
+    if (len < 0 || len > (64*1024)) {
+        ++fail_udp;
+        logmsg(LOGMSG_ERROR, "sz:%zu (out of range), to:%s\n", len, to);
+        return -1;
+    }
+
     ssize_t nsent = net_udp_send(repinfo->udp_fd, netinfo, to, len, data);
     if (nsent < 0) {
         if (nsent != -999) {
@@ -510,6 +517,17 @@ static void *udp_reader(void *arg)
         ++recd_udp;
 
         if (udp_recv(info, &nrecv) == 0) {
+            continue;
+        }
+
+        if (info->hdrsz >= sizeof(buff) || info->len >= sizeof(buff) ||
+                info->hdrsz + info->len > sizeof(buff)) {
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                        "%s:invalid udp packet size fields: hdrsz: %u len %u\n",
+                        __func__, (unsigned int) info->hdrsz, (unsigned int) info->hdrsz);
+                lastpr = now;
+            }
             continue;
         }
 

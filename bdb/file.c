@@ -1213,7 +1213,7 @@ int bdb_del_list_free(void *list, int *bdberr)
 
 bdb_state_type *gbl_bdb_state;
 
-char *bdb_trans(const char infile[], char outfile[])
+char *bdb_trans(const char infile[], char outfile[], size_t outsz)
 {
 #ifdef COMPILING_FOR_DB_TOOLS
     return strcpy(outfile, infile);
@@ -1236,12 +1236,22 @@ char *bdb_trans(const char infile[], char outfile[])
         return outfile;
     }
 
+    /* Return a blank string if we don't have room - this will make any incorrect upstream calls
+     * fail, and we expect those to check for errors. */
+
     /* Copy to outfile.  If leading with a XXX., strip this off and replace with
      * full path. */
     if (strncmp(infile, "XXX.", 4) == 0) {
-        sprintf(outfile, "%s/%s", bdb_state->dir, infile + 4);
+        int rc = snprintf(outfile, outsz, "%s/%s", bdb_state->dir, infile + 4);
+        if (rc >= outsz)
+            *outfile = 0;
     } else {
-        strcpy(outfile, infile);
+        if (strlen(infile) >= outsz) {
+            *outfile = 0;
+        }
+        else {
+            strcpy(outfile, infile);
+        }
     }
 
     /* Look for queue extents and correct them. */
@@ -4085,8 +4095,8 @@ deadlock_again:
 
                 if (create) {
                     char new[PATH_MAX];
-                    print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-                    unlink(bdb_trans(tmpname, new));
+                    print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+                    unlink(bdb_trans(tmpname, new, sizeof(new)));
                 }
 
                 rc = db_create(&dbp, bdb_state->dbenv, 0);
@@ -4228,8 +4238,8 @@ deadlock_again:
 
         if (create) {
             char new[PATH_MAX];
-            print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-            unlink(bdb_trans(tmpname, new));
+            print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+            unlink(bdb_trans(tmpname, new, sizeof(new)));
         }
 
         DB *dbp;
@@ -4319,8 +4329,8 @@ deadlock_again:
             if (create) {
                 char new[PATH_MAX];
 
-                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-                unlink(bdb_trans(tmpname, new));
+                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+                unlink(bdb_trans(tmpname, new, sizeof(new)));
             }
 
             /* Give indicies a 50% priority boost in the bufferpool. */
@@ -4589,7 +4599,7 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
             form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum,
                            1 /*isstriped*/, strnum, tmpname, sizeof(tmpname));
 
-            unlink(bdb_trans(tmpname, new));
+            unlink(bdb_trans(tmpname, new, sizeof(new)));
 
             rc = db_create(&dbp, bdb_state->dbenv, 0);
             if (rc != 0) {
@@ -6287,7 +6297,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
     DB_ENV *dbenv;
     DB *dbp;
     char transname[PATH_MAX];
-    char *pname = bdb_trans(filename, transname);
+    char *pname = bdb_trans(filename, transname, sizeof(transname));
     int rc = 0;
 
     if (bdb_state->parent)
@@ -6986,7 +6996,7 @@ uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
         return 0;
 
     form_indexfile_name(bdb_state, NULL, ixnum, bdbname, sizeof(bdbname));
-    bdb_trans(bdbname, physname);
+    bdb_trans(bdbname, physname, sizeof(physname));
 
     return mystat(physname);
 }
@@ -7006,7 +7016,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         char bdbname[PATH_MAX], physname[PATH_MAX];
         form_datafile_name(bdb_state, NULL, dtanum, stripenum, bdbname,
                            sizeof(bdbname));
-        bdb_trans(bdbname, physname);
+        bdb_trans(bdbname, physname, sizeof(physname));
         total += mystat(physname);
     }
 
@@ -7947,7 +7957,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     /* skip already deleted files */
     char path[PATH_MAX];
-    bdb_trans(munged_name, path);
+    bdb_trans(munged_name, path, sizeof(path));
     if (stat(path, &sb)) {
         free(munged_name);
         return 0;
@@ -8329,7 +8339,7 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
                 free(buf);
                 return -1;
             }
-            pname = bdb_trans(munged_name, transname);
+            pname = bdb_trans(munged_name, transname, sizeof(transname));
 
             if (db_create(&dbp, dbenv, 0) == 0 &&
                 dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666) == 0) {
