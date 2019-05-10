@@ -2249,10 +2249,11 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
     return lhs;
 }
 
+static __thread unsigned short rand_state[3] = {0};
+static __thread unsigned short do_once = 0;
+
 static int cdb2_random_int()
 {
-    static __thread unsigned short rand_state[3] = {0};
-    static __thread unsigned short do_once = 0;
     if (!do_once) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
