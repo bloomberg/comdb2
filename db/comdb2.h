@@ -1609,13 +1609,6 @@ extern int gbl_maxblobretries; /* max retries on deadlocks */
 extern int
     gbl_maxcontextskips; /* max records we will skip in a stable cursor */
 extern int gbl_elect_time_secs; /* overrides elect time if > 0 */
-extern int gbl_use_fstblk;
-extern int gbl_fstblk_vb;
-extern int gbl_fstblk_dbgtrans;
-extern size_t gbl_fstblk_bucket_sz; /* how many seqnums to drop in a bucket */
-extern size_t gbl_fstblk_bucket_gr; /* granularity, 0 for default */
-extern size_t gbl_fstblk_minq; /* min no of seqnums to queue before purge */
-extern size_t gbl_fstblk_maxq; /* max no of seqnums to queue              */
 extern int gbl_rtcpu_debug;    /* 1 to enable rtcpu debugging */
 extern int gbl_longblk_trans_purge_interval; /* long transaction purge check
                                                 interval. default 30 secs */
