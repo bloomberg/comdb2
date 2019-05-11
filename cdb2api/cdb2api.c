@@ -1561,7 +1561,6 @@ static struct sockpool_fd_list *sockpool_fds = NULL;
 static int sockpool_fd_count = 0;
 static int sockpool_generation = 0;
 
-
 struct sockaddr_sun {
     short sun_family;
     char sun_path[108];
@@ -1655,7 +1654,6 @@ static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
                 sp->sockpool_fd = -1;
             }
         }
-
     }
     sockpool_enabled = enabled;
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
@@ -1848,7 +1846,6 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         if (closeit)
             close(sockpool_fd);
     }
-
     return fd;
 }
 
