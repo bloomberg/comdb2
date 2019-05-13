@@ -1844,6 +1844,10 @@ tconsfk ::= constraint_opt FOREIGN KEY LP eidlist(FA) RP REFERENCES nm(T)
   comdb2DeferForeignKey(pParse, D);
 }
 
+tconscheck ::= constraint_opt CHECK LP scanpt(BW) expr(E) scanpt(AW) RP. {
+  comdb2AddCheckConstraint(pParse,E,BW,AW);
+}
+
 cmd ::= alter_table_csc2.
 cmd ::= alter_table alter_table_action_list. {comdb2AlterTableEnd(pParse);}
 
@@ -1897,6 +1901,7 @@ alter_table_add_fk ::= ADD tconsfk.
 alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
   comdb2DropForeignKey(pParse, &Y);
 }
+alter_table_add_check_cons ::= ADD tconscheck.
 alter_table_drop_cons ::= DROP CONSTRAINT nm(Y). {
   comdb2DropConstraint(pParse, &Y);
 }
@@ -1920,6 +1925,7 @@ alter_table_action ::= alter_table_add_pk.
 alter_table_action ::= alter_table_drop_pk.
 alter_table_action ::= alter_table_add_fk.
 alter_table_action ::= alter_table_drop_fk.
+alter_table_action ::= alter_table_add_check_cons.
 alter_table_action ::= alter_table_drop_cons.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
