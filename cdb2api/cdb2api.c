@@ -1098,7 +1098,8 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
-void cdb2_set_sockpool(const char *sp_path) {
+void cdb2_set_sockpool(const char *sp_path)
+{
     if (SOCKPOOL_OTHER_NAME)
         free(SOCKPOOL_OTHER_NAME);
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
@@ -1709,8 +1710,9 @@ static void sockpool_place_fd_in_pool(int fd)
             struct sockpool_fd_list *sp = &sockpool_fds[empty_ix];
             sp->sockpool_fd = fd;
         } else {
-            sockpool_fds = realloc(sockpool_fds, (sockpool_fd_count+1) *
-                    sizeof(struct sockpool_fd_list));
+            sockpool_fds =
+                realloc(sockpool_fds, (sockpool_fd_count + 1) *
+                                          sizeof(struct sockpool_fd_list));
             sockpool_fds[sockpool_fd_count].sockpool_fd = fd;
             sockpool_fds[sockpool_fd_count].in_use = 0;
             sockpool_fd_count++;
@@ -1730,7 +1732,6 @@ static void sockpool_remove_fd(int fd)
         }
     }
 }
-
 
 // cdb2_socket_pool_get_ll: low-level
 static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
@@ -1754,7 +1755,6 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         sockpool_fd = sockpool_get_from_pool();
     }
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
-    
 
     if (enabled != 1) {
         return -1;
