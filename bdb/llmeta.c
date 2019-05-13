@@ -5843,7 +5843,7 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
             *bdberr = BDBERR_BADARGS;
             return -1;
         }
-        strncpy(userschema, tbl_access_data.username,
+        strncpy0(userschema, tbl_access_data.username,
                 sizeof(tbl_access_data.username));
         logmsg(LOGMSG_INFO, "User Schema for username %s is %s\n", username,
                 userschema);
