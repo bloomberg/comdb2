@@ -3275,40 +3275,34 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
 }
 
 static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
-                                char *short_identifier, char **hint,
+                                int len, char *short_identifier, char **hint,
                                 char **query_hint)
 {
-    const char *sqlstr = cdb2_skipws(sqlquery);
-    const char *sql_start = sqlstr;
-    int len = strlen(sqlstr);
     int len_id = strlen(short_identifier);
     if (len_id > 128) {
         sprintf(hndl->errstr, "Short identifier is too long.");
         return -1;
     }
-
-    int fw_end = 1;
-    while (*sql_start != '\0' && *sql_start != ' ') {
-        fw_end++;
-        sql_start++;
+    const char *first = cdb2_skipws(sqlquery);
+    const char *tail = first;
+    while (*tail && !isspace(*tail)) {
+        ++tail;
     }
+    int first_len = tail - first;
+    char pfx[] = " /*+ RUNCOMDB2SQL ";
+    char sfx[] = " */";
+    size_t sz;
+    char *sql;
 
-    /* short string will be something like this
-       select <* RUNCOMDB2SQL <short_identifier> *>
-       */
-    *hint = malloc(fw_end + SQLCACHEHINTLENGTH + 4 + len_id + 1);
-    strncpy(*hint, sqlstr, fw_end);
-    /* Add the SQL HINT */
-    strncpy(*hint + fw_end, SQLCACHEHINT, SQLCACHEHINTLENGTH);
-    strncpy(*hint + fw_end + SQLCACHEHINTLENGTH, short_identifier, len_id);
-    strncpy(*hint + fw_end + SQLCACHEHINTLENGTH + len_id, " */ ", 5);
-    /* short string will be something like this
-       select <* RUNCOMDB2SQL <short_identifier> *> <rest of the sql>
-       */
-    *query_hint = malloc(len + SQLCACHEHINTLENGTH + 4 + len_id + 1);
-    strncpy(*query_hint, *hint, fw_end + SQLCACHEHINTLENGTH + 4 + len_id);
-    strcpy(*query_hint + fw_end + SQLCACHEHINTLENGTH + 4 + len_id,
-           sqlstr + fw_end);
+    sz = first_len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
+    sql = malloc(sz);
+    snprintf(sql, sz, "%.*s%s%s%s", first_len, first, pfx, short_identifier, sfx);
+    *hint = sql;
+
+    sz = len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
+    sql = malloc(sz);
+    snprintf(sql, sz, "%.*s%s%s%s%s", first_len, first, pfx, short_identifier, sfx, tail);
+    *query_hint = sql;
     return 0;
 }
 
@@ -3935,7 +3929,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
                 if ((rc = next_cnonce(hndl)) != 0)
                     PRINT_AND_RETURN(rc);
-                cdb2_query_with_hint(hndl, sql, hndl->cnonce.str, &hndl->hint,
+                cdb2_query_with_hint(hndl, sql, len, hndl->cnonce.str, &hndl->hint,
                                      &hndl->query_hint);
 
                 sql = hndl->query_hint;
