@@ -197,12 +197,78 @@ void test_02()
     test_close(hndl);
 }
 
+// Test to verify empty and NULL values bind as expected.
+void test_03()
+{
+    cdb2_hndl_tp *hndl = NULL;
+
+    char c1[] = {0};
+    const char *c2 = "";
+    int row_count;
+    int expected_row_count = 1;
+
+    const char *drop_table = "DROP TABLE IF EXISTS t1";
+    const char *create_table_cmd =
+        "CREATE TABLE t1 {schema {blob c1 null=yes cstring c2[10] null=yes}}";
+    const char *insert_cmd = "INSERT INTO t1 VALUES (@c1, @c2)";
+    const char *select_empty_cmd =
+        "SELECT COUNT(*) FROM t1 WHERE c1 = x'' AND c2 = ''";
+    const char *select_null_cmd =
+        "SELECT COUNT(*) FROM t1 WHERE c1 IS NULL AND c2 IS NULL";
+
+    test_open(&hndl, db);
+
+    test_exec(hndl, drop_table);
+    test_exec(hndl, create_table_cmd);
+
+    // Test empty values
+    test_bind_param(hndl, "c1", CDB2_BLOB, (void *)c1, 0);
+    test_bind_param(hndl, "c2", CDB2_CSTRING, c2, strlen(c2));
+
+    test_exec(hndl, insert_cmd);
+    cdb2_clearbindings(hndl);
+
+    test_exec(hndl, select_empty_cmd);
+    test_next_record(hndl);
+    // Check row count
+    row_count = (int)*((long long *)cdb2_column_value(hndl, 0));
+    if (row_count != expected_row_count) {
+        fprintf(stderr, "invalid row count, got: %d, expected: %d", row_count,
+                expected_row_count);
+        exit(1);
+    }
+
+    // Test NULL values
+    test_bind_param(hndl, "c1", CDB2_BLOB, (void *)0, 0);
+    test_bind_param(hndl, "c2", CDB2_CSTRING, 0, 0);
+
+    test_exec(hndl, insert_cmd);
+    cdb2_clearbindings(hndl);
+
+    test_exec(hndl, select_null_cmd);
+    test_next_record(hndl);
+    // Check row count
+    row_count = (int)*((long long *)cdb2_column_value(hndl, 0));
+    if (row_count != expected_row_count) {
+        fprintf(stderr, "invalid row count, got: %d, expected: %d", row_count,
+                expected_row_count);
+        exit(1);
+    }
+
+    // Cleanup
+    test_exec(hndl, drop_table);
+
+    // Close the handle
+    test_close(hndl);
+}
+
 int main(int argc, char *argv[])
 {
     db = argv[1];
 
     test_01();
     test_02();
+    test_03();
 
     return 0;
 }
