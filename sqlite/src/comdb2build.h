@@ -74,6 +74,7 @@ void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
 void comdb2DropForeignKey(Parse *, Token *);
+void comdb2DropConstraint(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
 void comdb2DropIndex(Parse *, Token *, Token *, int);
 void comdb2AlterDropIndex(Parse *, Token *);

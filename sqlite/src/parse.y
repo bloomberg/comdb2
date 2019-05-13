@@ -1897,6 +1897,9 @@ alter_table_add_fk ::= ADD tconsfk.
 alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
   comdb2DropForeignKey(pParse, &Y);
 }
+alter_table_drop_cons ::= DROP CONSTRAINT nm(Y). {
+  comdb2DropConstraint(pParse, &Y);
+}
 
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
                           with_opt(O) where_opt(W). {
@@ -1917,6 +1920,7 @@ alter_table_action ::= alter_table_add_pk.
 alter_table_action ::= alter_table_drop_pk.
 alter_table_action ::= alter_table_add_fk.
 alter_table_action ::= alter_table_drop_fk.
+alter_table_action ::= alter_table_drop_cons.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.

@@ -4778,7 +4778,7 @@ void comdb2AddDbpad(Parse *pParse, int dbpad)
 }
 
 static struct comdb2_constraint *
-find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
+find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons, int type)
 {
     struct comdb2_constraint *constraint;
     char *constraint_name;
@@ -4788,6 +4788,9 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
     {
         /* Ignore the dropped constraints. */
         if (constraint->flags & CONS_DELETED)
+            continue;
+
+        if ((constraint->type & type) == 0)
             continue;
 
         if (constraint->name == 0) {
@@ -5433,7 +5436,7 @@ static int set_constraint_name(Parse *pParse,
         sqlite3Dequote(constraint->name);
         constraint_name = constraint->name;
     }
-    if ((find_cons_by_name(ctx, constraint_name))) {
+    if ((find_cons_by_name(ctx, constraint_name, CONS_ALL))) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
                         constraint_name);
@@ -5672,9 +5675,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     return;
 }
 
-void comdb2DropForeignKey(Parse *pParse, /* Parser context */
-                          Token *pName   /* Foreign key name */
-)
+static void drop_constraint(Parse *pParse, Token *pName, int type)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -5696,18 +5697,18 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
         goto oom;
     sqlite3Dequote(name);
 
-    /* Check whether the FK exists. */
-    cons = find_cons_by_name(ctx, name);
+    /* Check whether the constraint exists. */
+    cons = find_cons_by_name(ctx, name, type);
     if (cons) {
-        /* Mark FK as dropped. */
+        /* Mark it as dropped. */
         cons->flags |= CONS_DELETED;
     } else {
         pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Foreign key '%s' not found.", name);
+        sqlite3ErrorMsg(pParse, "Constraint '%s' not found.", name);
         goto cleanup;
     }
 
-    /* Foreign key marked for removal. */
+    /* Constraint marked for removal. */
 
     return;
 
@@ -5716,6 +5717,22 @@ oom:
 
 cleanup:
     free_ddl_context(pParse);
+}
+
+void comdb2DropForeignKey(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_FKEY);
+    return;
+}
+
+void comdb2DropConstraint(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_ALL);
+    return;
 }
 
 /*

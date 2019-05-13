@@ -21,6 +21,6 @@ enum {
     CONS_CHECK = 1 << 2,
 };
 
-#define CONS_ALL = (CONS_FKEY | CONS_CHECK);
+#define CONS_ALL (CONS_FKEY | CONS_CHECK)
 
 #endif /* INCLUDED_CONSTRAINTS_H */
