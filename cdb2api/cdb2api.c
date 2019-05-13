@@ -153,7 +153,7 @@ static char *_ARGV0; /* ONE-TIME */
 #define MAX_STACK 512 /* Size of call-stack which opened the handle */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define MAX_SOCKPOOL_POOL 8
+#define MAX_SOCKPOOL_FDS 8
 
 #include <netdb.h>
 
@@ -1712,7 +1712,7 @@ static int sockpool_place_fd_in_pool(int fd)
             struct sockpool_fd_list *sp = &sockpool_fds[empty_ix];
             sp->sockpool_fd = fd;
             rc = 0;
-        } else if (sockpool_fd_count < MAX_SOCKPOOL_POOL) {
+        } else if (sockpool_fd_count < MAX_SOCKPOOL_FDS) {
             sockpool_fds =
                 realloc(sockpool_fds, (sockpool_fd_count + 1) *
                                           sizeof(struct sockpool_fd_list));
