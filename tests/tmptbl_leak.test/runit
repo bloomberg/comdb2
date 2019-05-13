@@ -35,43 +35,43 @@ cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t2(x,y) VALUES (4, 'four')
 N=200
 echo running $N SELECTs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i.out &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECT t1.x, t1.y FROM t1 UNION SELECT t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_${i}.out &
 done
 
 wait
 
 echo running $N SELECTVs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECTV t1.x, t1.y FROM t1 UNION SELECTV t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_$i_v.out &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "SELECTV t1.x, t1.y FROM t1 UNION SELECTV t2.x, t2.y FROM t2 LEFT OUTER JOIN t1 t1a ON t2.x = t1a.x ORDER BY t1.x, t1.y" &> q_${i}_v.out &
 done
 
 wait
 
 for i in `seq 1 $N` ; do
-  check_output $i
+  check_output ${i}
 done
 
 for i in `seq 1 $N` ; do
-  check_output $i_v
+  check_output ${i}_v
 done
 
 echo running $N INSERTs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (x, y) VALUES($i,'some text #' || CAST($i AS TEXT))" &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (x, y) VALUES(${i},'some text #' || CAST(${i} AS TEXT))" &
 done
 
 wait
 
 echo running $N UPDATEs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET y = 'other text #' || CAST($i AS TEXT) WHERE x = $i AND x > 4" &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET y = 'other text #' || CAST(${i} AS TEXT) WHERE x = ${i} AND x > 4" &
 done
 
 wait
 
 echo running $N DELETEs asynchronously...
 for i in `seq 1 $N` ; do
-  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DELETE FROM t1 WHERE x = $i AND x > 4" &
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm default "DELETE FROM t1 WHERE x = ${i} AND x > 4" &
 done
 
 wait
