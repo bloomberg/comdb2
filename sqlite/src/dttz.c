@@ -340,7 +340,6 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
    dttz_t dt;
    int precision = 0;
-   const unsigned char *msus;
    assert(context->pVdbe);
 
    if (argc == 0) {
@@ -356,7 +355,7 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
    else if (SQLITE_INTEGER == sqlite3_value_type(argv[0]))
        precision = sqlite3_value_int(argv[0]);
    else if (SQLITE_TEXT == sqlite3_value_type(argv[0])) {
-       msus = sqlite3_value_text(argv[0]);
+       const unsigned char *msus = sqlite3_value_text(argv[0]);
        DTTZ_TEXT_TO_PREC((char *)msus, precision, 0, goto err);
    }
 
