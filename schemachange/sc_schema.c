@@ -69,6 +69,10 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
 
     for (int ci = 0; ci < db->n_constraints; ci++) {
         constraint_t *ct = &(db->constraints[ci]);
+
+        if (ct->type == CT_CHECK)
+            continue;
+
         char lcl_tag[MAXTAGLEN];
         char lcl_key[MAXKEYLEN];
         int lcl_idx;
@@ -1183,6 +1187,13 @@ int compare_constraints(const char *table, struct dbtable *newdb)
     free(verifylist);
 
     if (nvlist > 0) return 1;
+
+    for (i = 0; i < newdb->n_constraints; i++) {
+        if (newdb->constraints[i].type == CT_CHECK) {
+            return 1;
+        }
+    }
+
     return 0;
 }
 

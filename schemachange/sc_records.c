@@ -546,6 +546,20 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     }
 
     assert(data->trans != NULL);
+
+    int check_status;
+    rc = run_check_constraints(data->iq.usedb, p_buf_data, data->wrblb, MAXBLOBS, 2, &check_status);
+    if (rc != 0) {
+        logmsg(LOGMSG_DEBUG, "%s:%d internal error during CHECK constraint\n",
+               __func__, __LINE__);
+        return ERR_CONSTR;
+    }
+    if (check_status != 0) {
+        logmsg(LOGMSG_DEBUG, "%s:%d CHECK constraint violation\n",
+               __func__, __LINE__);
+        return ERR_CONSTR;
+    }
+
     rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
                                   *dirty_keys, data->wrblb, MAXBLOBS,
                                   ".NEW..ONDISK", rebuild, 0);
