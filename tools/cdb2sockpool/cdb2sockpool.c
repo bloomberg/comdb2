@@ -353,9 +353,10 @@ static int cdb2_get_progname_by_pid(pid_t pid, char *pname, int pnamelen)
      * migrated into bb_get_pid_argv0() and this routine would call that one
      * unconditionally.
      **/
-    if (rc != 0 && pname != NULL) {
-        strncpy(pname, "???", pnamelen);
+    if (pname != NULL) {
+        strncpy(pname, "???", pnamelen); /* call bb_get_pid_argv0 here? */
         pname[pnamelen - 1] = 0;
+        rc = 0;
     }
     return rc;
 }

@@ -4572,7 +4572,7 @@ int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
     file_type_key.lua_vers = 0;
     if (file_type_key.spname_len > LLMETA_SPLEN)
         return -1;
-    strcpy(file_type_key.spname, sp_name);
+    strncpy0(file_type_key.spname, sp_name, LLMETA_SPLEN);
 
     int lua_ver;
     if (version == 0) {

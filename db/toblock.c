@@ -178,7 +178,7 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 
     if (!blobs[0].exists) {
         if (iq->debug)
-            reqprintf(iq, "EXPECTED ONE BLOB", cblob);
+            reqprintf(iq, "EXPECTED AT LEAST ONE BLOB");
         reqerrstr(iq, COMDB2_QADD_RC_BAD_BLOB_BUFF,
                   "expected one blob (internal api error)");
         return ERR_BADREQ;
