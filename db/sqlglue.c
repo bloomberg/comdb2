@@ -80,7 +80,6 @@
 #include <sqlite3.h>
 
 #include "dbinc/debug.h"
-#include "sqlconstraints.h"
 #include "sqlinterfaces.h"
 
 #include "osqlsqlthr.h"
