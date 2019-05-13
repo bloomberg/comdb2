@@ -25,6 +25,7 @@
 #include <shard_range.h>
 #include <logical_cron.h>
 #include "cdb2_constants.h"
+#include "constraints.h"
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
@@ -2572,13 +2573,6 @@ enum {
     CONS_DELETED = 1 << 2,
 };
 
-/* TODO: (NC) merge CONS_CHECK, CT_CHECK */
-/* Constraint types */
-enum {
-    CONS_FKEY,
-    CONS_CHECK,
-};
-
 struct comdb2_constraint {
     /* Name of the constraint. */
     char *name;
@@ -3386,7 +3380,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     char *ptr = (char *)buf;
     int end;
 
-    if (pConstraint->type == CT_CHECK) {
+    if (pConstraint->type == CONS_CHECK) {
         end = gen_check_constraint_name(pConstraint->check_expr, ptr,
                                         sizeof(buf));
     } else {
@@ -3403,7 +3397,7 @@ static int gen_fk_constraint_name2(struct comdb2_constraint *constraint,
     int pos = 0;
     struct comdb2_index_part *idx_part;
 
-    if (constraint->type == CT_CHECK) {
+    if (constraint->type == CONS_CHECK) {
         /* CHECK expression */
         SNPRINTF(buf, buf_sz, pos, "%s", constraint->check_expr);
     } else {
@@ -4143,7 +4137,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     /* Populate constraints list */
     for (int i = 0; i < table->n_constraints; i++) {
-        if (table->constraints[i].type == CT_FKEY) {
+        if (table->constraints[i].type == CONS_FKEY) {
             if ((retrieve_fk_constraint(pParse, ctx, &table->constraints[i])))
                 goto err;
         } else {

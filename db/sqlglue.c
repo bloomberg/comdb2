@@ -1691,7 +1691,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
     /* CHECK constraints */
     for (int i = 0; i < tbl->n_constraints; i++) {
-        if (tbl->constraints[i].type != CT_CHECK) {
+        if (tbl->constraints[i].type != CONS_CHECK) {
             continue;
         }
 
@@ -2019,7 +2019,7 @@ static int do_syntax_check(struct dbtable *tbl)
     int has_check_constraints = 0;
 
     for (int i = 0; i < tbl->n_constraints; i++) {
-        if (tbl->constraints[i].type == CT_CHECK) {
+        if (tbl->constraints[i].type == CONS_CHECK) {
             has_check_constraints = 1;
             break;
         }
@@ -12404,7 +12404,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     }
 
     for (int i = 0; i < table->n_constraints; i++) {
-        if (table->constraints[i].type != CT_CHECK) {
+        if (table->constraints[i].type != CONS_CHECK) {
             continue;
         }
         strbuf_clear(sql);

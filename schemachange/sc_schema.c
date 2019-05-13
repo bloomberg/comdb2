@@ -70,7 +70,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
     for (int ci = 0; ci < db->n_constraints; ci++) {
         constraint_t *ct = &(db->constraints[ci]);
 
-        if (ct->type == CT_CHECK)
+        if (ct->type == CONS_CHECK)
             continue;
 
         char lcl_tag[MAXTAGLEN];
@@ -283,7 +283,7 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
     for (i = 0; i < newdb->n_constraints; i++) {
         constraint_t *ct = &newdb->constraints[i];
 
-        if (ct->type == CT_CHECK) {
+        if (ct->type == CONS_CHECK) {
             continue;
         }
 
@@ -354,7 +354,7 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
 
     /* see if we removed constraints */
     for (i = 0; i < db->n_constraints; i++) {
-        if (db->constraints[i].type == CT_CHECK) {
+        if (db->constraints[i].type == CONS_CHECK) {
             continue;
         }
 
@@ -1189,7 +1189,7 @@ int compare_constraints(const char *table, struct dbtable *newdb)
     if (nvlist > 0) return 1;
 
     for (i = 0; i < newdb->n_constraints; i++) {
-        if (newdb->constraints[i].type == CT_CHECK) {
+        if (newdb->constraints[i].type == CONS_CHECK) {
             return 1;
         }
     }
@@ -1239,7 +1239,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                 int ridx = 0;
                 int dupadd = 0;
 
-                if (newdb->constraints[j].type == CT_CHECK) {
+                if (newdb->constraints[j].type == CONS_CHECK) {
                     continue;
                 }
 

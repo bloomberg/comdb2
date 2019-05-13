@@ -174,7 +174,7 @@ static int systblConstraintsColumn(
         break;
     }
     case STCON_TYPE: {
-        if (pConstraint->type == CT_FKEY) {
+        if (pConstraint->type == CONS_FKEY) {
             sqlite3_result_text(ctx, "FOREIGN KEY", -1, NULL);
         } else {
             sqlite3_result_text(ctx, "CHECK", -1, NULL);

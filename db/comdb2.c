@@ -1759,7 +1759,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->constraints[ii].check_expr =
                 (check_expr) ? strdup(check_expr) : 0;
 
-            if (tbl->constraints[ii].type != CT_FKEY) {
+            if (tbl->constraints[ii].type != CONS_FKEY) {
                 continue;
             }
 

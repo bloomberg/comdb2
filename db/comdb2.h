@@ -88,6 +88,7 @@ typedef long long tranid_t;
 #include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
+#include "constraints.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -469,11 +470,6 @@ enum CONSTRAINT_FLAGS {
     CT_UPD_CASCADE = 0x00000001,
     CT_DEL_CASCADE = 0x00000002,
     CT_BLD_SKIP = 0x00000004
-};
-
-enum {
-    CT_FKEY,
-    CT_CHECK,
 };
 
 enum {

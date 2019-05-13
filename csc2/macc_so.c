@@ -153,7 +153,7 @@ void add_constraint(char *tbl, char *key)
         return;
     }
     constraints[nconstraints].ncnstrts++;
-    constraints[nconstraints].type = CT_FKEY;
+    constraints[nconstraints].type = CONS_FKEY;
     constraints[nconstraints].table[cidx] = tbl;
     constraints[nconstraints].keynm[cidx] = key;
     constraints[nconstraints].check_expr = 0;
@@ -165,7 +165,7 @@ void add_check_constraint(char *expr)
 {
     int cidx = constraints[nconstraints].ncnstrts;
     constraints[nconstraints].ncnstrts++;
-    constraints[nconstraints].type = CT_CHECK;
+    constraints[nconstraints].type = CONS_CHECK;
     constraints[nconstraints].flags = 0;
     constraints[nconstraints].ncnstrts = 1;
     constraints[nconstraints].lclkey = 0;

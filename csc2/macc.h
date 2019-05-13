@@ -11,6 +11,7 @@
 
 #include "mem_csc2.h"
 #include "mem_override.h"
+#include "constraints.h"
 
 extern char *revision;
 
@@ -104,7 +105,6 @@ struct fieldopt {
 };
 
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
-enum constraint_type { CT_FKEY, CT_CHECK };
 
 extern struct constraint {
     char *consname;
