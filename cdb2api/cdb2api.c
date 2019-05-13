@@ -153,6 +153,7 @@ static char *_ARGV0; /* ONE-TIME */
 #define MAX_STACK 512 /* Size of call-stack which opened the handle */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define MAX_SOCKPOOL_POOL 8
 
 #include <netdb.h>
 
@@ -1688,15 +1689,16 @@ static int sockpool_get_from_pool(void)
 }
 
 /* The sockpool mutex must be locked at this point */
-static void sockpool_place_fd_in_pool(int fd)
+static int sockpool_place_fd_in_pool(int fd)
 {
-    int found = 0, empty_ix = -1;
+    int found = 0, empty_ix = -1, rc = -1;
     for (int i = 0; i < sockpool_fd_count; i++) {
         struct sockpool_fd_list *sp = &sockpool_fds[i];
         if (sp->sockpool_fd == fd) {
             assert(sp->in_use == 1);
             sp->in_use = 0;
             found = 1;
+            rc = 0;
             break;
         }
         if (sp->sockpool_fd < 0 && empty_ix == -1) {
@@ -1709,15 +1711,18 @@ static void sockpool_place_fd_in_pool(int fd)
         if (empty_ix != -1) {
             struct sockpool_fd_list *sp = &sockpool_fds[empty_ix];
             sp->sockpool_fd = fd;
-        } else {
+            rc = 0;
+        } else if (sockpool_fd_count < MAX_SOCKPOOL_POOL) {
             sockpool_fds =
                 realloc(sockpool_fds, (sockpool_fd_count + 1) *
                                           sizeof(struct sockpool_fd_list));
             sockpool_fds[sockpool_fd_count].sockpool_fd = fd;
             sockpool_fds[sockpool_fd_count].in_use = 0;
             sockpool_fd_count++;
+            rc = 0;
         }
     }
+    return rc;
 }
 
 static void sockpool_remove_fd(int fd)
@@ -1775,8 +1780,11 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     if (strlen(typestr) >= sizeof(msg.typestr)) {
         int closeit = 0;
         pthread_mutex_lock(&cdb2_sockpool_mutex);
-        if (sp_generation == sockpool_generation)
-            sockpool_place_fd_in_pool(sockpool_fd);
+        if (sp_generation == sockpool_generation) {
+            if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                closeit = 1;
+            }
+        }
         else {
             sockpool_remove_fd(sockpool_fd);
             closeit = 1;
@@ -1826,9 +1834,11 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     if (sockpool_fd != -1) {
         int closeit = 0;
         pthread_mutex_lock(&cdb2_sockpool_mutex);
-        if (sp_generation == sockpool_generation)
-            sockpool_place_fd_in_pool(sockpool_fd);
-        else {
+        if (sp_generation == sockpool_generation) {
+            if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                closeit = 1;
+            }
+        } else {
             sockpool_remove_fd(sockpool_fd);
             closeit = 1;
         }
@@ -1902,9 +1912,11 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
         if (sockpool_fd != -1) {
             pthread_mutex_lock(&cdb2_sockpool_mutex);
             int closeit = 0;
-            if (sp_generation == sockpool_generation)
-                sockpool_place_fd_in_pool(sockpool_fd);
-            else {
+            if (sp_generation == sockpool_generation) {
+                if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                    closeit = 1;
+                }
+            } else {
                 sockpool_remove_fd(sockpool_fd);
                 closeit = 1;
             }
