@@ -1327,7 +1327,7 @@ static int clear_csc2_files(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char fullfile[PATH_MAX];
+            char fullfile[PATH_MAX * 2];
             char *ptr;
 
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))

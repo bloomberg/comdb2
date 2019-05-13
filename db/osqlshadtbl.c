@@ -729,7 +729,7 @@ static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
         return -1;
     }
 
-    tbl->table = bdb_temp_table_create(bdb_env, bdberr);
+    tbl->table = bdb_temp_array_create(bdb_env, bdberr);
 
     if (!tbl->table) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed, bderr=%d\n",

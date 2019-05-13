@@ -6580,8 +6580,9 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int dtanum;
     for (dtanum = 1; dtanum < bdb_state->numdtafiles; dtanum++) {
+        char sfx[] = "s0";
         char oldname[100];
-        char newname[100];
+        char newname[sizeof(oldname) + sizeof(sfx)];
 
         /* form old (current) name */
         form_datafile_name(bdb_state, tran->tid, dtanum, 0 /*stripenum*/,
@@ -6602,7 +6603,7 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
           newname[ namelen ] = '0';
       }
 #else
-        snprintf(newname, sizeof newname, "%ss0", oldname);
+        snprintf(newname, sizeof newname, "%s%s", oldname, sfx);
 #endif
 
         if (0 !=

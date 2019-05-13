@@ -4572,7 +4572,7 @@ int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
     file_type_key.lua_vers = 0;
     if (file_type_key.spname_len > LLMETA_SPLEN)
         return -1;
-    strcpy(file_type_key.spname, sp_name);
+    strncpy0(file_type_key.spname, sp_name, LLMETA_SPLEN);
 
     int lua_ver;
     if (version == 0) {
@@ -5846,7 +5846,7 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
         strncpy0(userschema, tbl_access_data.username,
                  sizeof(tbl_access_data.username));
         logmsg(LOGMSG_INFO, "User Schema for username %s is %s\n", username,
-                userschema);
+               userschema);
     } else {
         rc = -1;
     }
@@ -9047,7 +9047,7 @@ int bdb_del_default_versioned_sp(tran_type *tran, char *name)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
-    strcpy(u.sp.name, name);
+    strncpy0(u.sp.name, name, sizeof(u.sp.name));
     int bdberr;
     int rc = kv_del(tran, &u, &bdberr);
     if (rc && bdberr == BDBERR_DEL_DTA)
