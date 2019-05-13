@@ -1693,19 +1693,13 @@ static void sockpool_place_fd_in_pool(int fd)
     for (int i = 0; i < sockpool_fd_count; i++) {
         struct sockpool_fd_list *sp = &sockpool_fds[i];
         if (sp->sockpool_fd == fd) {
-            if (sp->in_use != 1) {
-                fprintf(stderr, "%s replacing unused sockpool fd?\n", __func__);
-                abort();
-            }
+            assert(sp->in_use == 1);
             sp->in_use = 0;
             found = 1;
             break;
         }
         if (sp->sockpool_fd < 0 && empty_ix == -1) {
-            if (sp->in_use) {
-                fprintf(stderr, "%s negative sockpool fd in use?\n", __func__);
-                abort();
-            }
+            assert(sp->in_use == 0);
             empty_ix = i;
         }
     }
@@ -1729,11 +1723,7 @@ static void sockpool_remove_fd(int fd)
     for (int i = 0; i < sockpool_fd_count; i++) {
         struct sockpool_fd_list *sp = &sockpool_fds[i];
         if (sp->sockpool_fd == fd) {
-            if (sp->in_use != 0) {
-                fprintf(stderr, "%s removing non-in-use sockpool fd\n",
-                        __func__);
-                abort();
-            }
+            assert(sp->in_use == 1);
             sp->sockpool_fd = -1;
             sp->in_use = 0;
             break;
