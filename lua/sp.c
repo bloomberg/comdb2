@@ -1489,7 +1489,6 @@ static int db_db_debug(Lua lua)
     int finish_execute = 0;
     for (;;) {
         char buffer[250] = {0};
-        char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
             Pthread_cond_broadcast(&lua_debug_cond);
@@ -1513,10 +1512,11 @@ static int db_db_debug(Lua lua)
             i = atoi(&buffer[9]);
             sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
         } else if (strncmp(buffer, "print ", 6) == 0) {
+            char old_buffer[sizeof(buffer)];
             sprintf(old_buffer, "%s", buffer);
             int len = strlen(&old_buffer[6]);
             old_buffer[6 + len - 1] = '\0';
-            sprintf(buffer, "eval('%s')", &old_buffer[6]);
+            sprintf(buffer, "eval('%s')", old_buffer + 6);
         } else if (strncmp(buffer, "getinfo", 7) == 0) {
             sprintf(buffer, " %s", "_SP.getinfo(5)");
         } else if (strncmp(buffer, "HALT", 4) == 0) {
@@ -1525,10 +1525,10 @@ static int db_db_debug(Lua lua)
         } else if (strncmp(buffer, "where", 5) == 0) {
             sprintf(buffer, " %s", "_SP.where()");
         } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
-            strncpy(replace_from, "_SP.get_var", 11);
+            strncpy0(replace_from, "_SP.get_var", 11);
             replace_from = NULL;
         } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
-            strncpy(replace_from, "_SP.set_var", 11);
+            strncpy0(replace_from, "_SP.set_var", 11);
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */

@@ -923,7 +923,7 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     int irc = FDB_NOERR;
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    char sql[256];
+    char *sql = NULL;
     char *row;
     int rowlen;
     int versioned;
@@ -964,30 +964,30 @@ run:
     /* prepackaged select */
     if (versioned) {
         if (initial) {
-            snprintf(sql, sizeof(sql),
+            sql = sqlite3_mprintf(
                      "select *, table_version(tbl_name) from sqlite_master"
-                     " where tbl_name='%s' collate nocase or tbl_name="
+                     " where tbl_name='%q' collate nocase or tbl_name="
                      "'sqlite_stat1' or "
                      "tbl_name='sqlite_stat4'",
                      tbl->name);
         } else {
-            snprintf(sql, sizeof(sql),
+            sql = sqlite3_mprintf(
                      "select *, table_version(tbl_name) from sqlite_master"
-                     " where tbl_name='%s' collate nocase",
+                     " where tbl_name='%q' collate nocase",
                      tbl->name);
         }
     } else {
         /* fallback to old un-versioned implementation */
         if (initial) {
-            snprintf(sql, sizeof(sql),
+            sql = sqlite3_mprintf(
                      "select * from sqlite_master"
-                     " where tbl_name='%s' or tbl_name='sqlite_stat1' or "
+                     " where tbl_name='%q' or tbl_name='sqlite_stat1' or "
                      "tbl_name='sqlite_stat4' collate nocase",
                      tbl->name);
         } else {
-            snprintf(sql, sizeof(sql),
+            sql = sqlite3_mprintf(
                      "select * from sqlite_master"
-                     " where tbl_name='%s' collate nocase",
+                     " where tbl_name='%q' collate nocase",
                      tbl->name);
         }
     }
@@ -1005,6 +1005,11 @@ run:
                 logmsg(LOGMSG_ERROR, "remote required SSl, switching to SSL\n");
                 need_ssl = 1;
                 assert(fdb->server_version >= FDB_VER_SSL);
+                if (sql) {
+                    sqlite3_free(sql);
+                    sql = NULL;
+                }
+                fdbc->sql_hint = NULL;
                 goto run;
             }
 #endif
@@ -1014,6 +1019,11 @@ run:
             /* retry new version */
             fdb_cursor_close_on_open(cur, 0);
             rc = FDB_NOERR;
+            if (sql) {
+                sqlite3_free(sql);
+                sql = NULL;
+            }
+            fdbc->sql_hint = NULL;
             goto run;
 
         case IX_EMPTY:
@@ -1080,6 +1090,7 @@ close:
     }
 
 done:
+    sqlite3_free(sql);
     return rc;
 }
 
@@ -2597,16 +2608,12 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
     char *tableName = NULL;
-    char *sql;
-    int sqllen = 0;
+    char *sql = NULL;
     char *whereDesc = NULL;
-    int whereDescLen = 0;
     char *orderDesc = NULL;
-    int orderLen = 0;
     int hasCondition = 0;
     sqlite3 *sqlitedb = pCur->sqlite;
     char *columnsDesc = NULL;
-    int columnsDescLen = 0;
     int using_col_filter = 0;
 
     if (!fdbc->ent) {
@@ -2621,20 +2628,13 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
                 ncols, &hasCondition, &columnsDesc, bias, pCur->is_equality,
                 pCur->col_mask);
 
-            if (orderDesc) {
-                orderLen = strlen(orderDesc);
-            } else {
+            if (orderDesc == NULL) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: Failed to get order from sqlite, broken engine!\n",
                         __func__);
                 *error = 1;
                 return NULL;
             }
-
-            if (columnsDesc)
-                columnsDescLen = strlen(columnsDesc);
-            else
-                columnsDescLen = 0;
 
             using_col_filter = 1;
         } else {
@@ -2650,55 +2650,28 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
     }
 
     if (whereDesc || hasCondition) {
-        whereDescLen = strlen(" WHERE ") + (whereDesc ? strlen(whereDesc) : 0) +
-                       1 /*terminating 0*/;
-    } else {
-        whereDescLen = 1; /* terminating 0 */
-    }
-
-    if (using_col_filter) {
-        if (columnsDesc) {
-            sqllen = strlen("SELECT  FROM   , rowid") + columnsDescLen +
-                     strlen(tableName) + 1 /*space*/ + whereDescLen +
-                     5 /* possible " AND " */ + orderLen;
-        } else {
-            sqllen = strlen("SELECT rowid FROM   ") + strlen(tableName) +
-                     1 /*space*/ + whereDescLen + 5 /* possible " AND " */ +
-                     orderLen;
-        }
-    } else {
-        sqllen = strlen("SELECT * FROM  , rowid") + strlen(tableName) +
-                 1 /*space*/ + whereDescLen + 5 /* possible " AND " */ +
-                 orderLen;
-    }
-    sql = (char *)malloc(sqllen);
-    if (!sql) {
-        logmsg(LOGMSG_ERROR, "%s: malloc error %d bytes\n", __func__, sqllen);
-        goto done;
-    }
-
-    if (whereDesc || hasCondition) {
-        snprintf(sql, sqllen, "SELECT %s%srowid FROM %s WHERE %s%s%s",
+        sql = sqlite3_mprintf("SELECT %s%srowid FROM \"%w\" WHERE %s%s%s",
                  (columnsDesc) ? columnsDesc : ((using_col_filter) ? "" : "*"),
                  (columnsDesc) ? ", " : ((using_col_filter) ? "" : ", "),
                  tableName, whereDesc ? whereDesc : "",
                  (whereDesc != NULL && hasCondition) ? " AND " : "",
                  orderDesc ? orderDesc : "");
     } else {
-        snprintf(sql, sqllen, "SELECT %s%srowid FROM %s%s",
+        sql = sqlite3_mprintf("SELECT %s%srowid FROM \"%w\"%s",
                  (columnsDesc) ? columnsDesc : ((using_col_filter) ? "" : "*"),
                  (columnsDesc) ? ", " : ((using_col_filter) ? "" : ", "),
                  tableName, orderDesc ? orderDesc : "");
+    }
+
+    if (!sql) {
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_mprintf error\n", __func__);
+        goto done;
     }
 
     /* lets get the actual size here
      *p_sqllen = sqllen;
     */
     *p_sqllen = strlen(sql) + 1;
-    if (*p_sqllen > sqllen) {
-        logmsg(LOGMSG_ERROR, "%s %s:%d BUG alert! *p_sqllen =%d > sqllen =%d\n",
-                __func__, __FILE__, __LINE__, *p_sqllen, sqllen);
-    }
 
 done:
     if (columnsDesc) {
@@ -2714,7 +2687,7 @@ done:
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "Build [%d] \"%s\"\n", sqllen, sql);
+        logmsg(LOGMSG_USER, "Build \"%s\"\n", sql);
 
     return sql;
 }
@@ -3017,7 +2990,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                 NULL, flags, fdbc->isuuid, fdbc->fcon.sock.sb);
 
             if (fdbc->sql_hint != sql) {
-                free(sql);
+                sqlite3_free(sql);
             }
         }
 
@@ -3198,9 +3171,9 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                 abort();
             }
 
-            sql = (char *)malloc(256);
-            snprintf(sql, 256, "select *, rowid from %s where rowid = %lld",
-                     fdbc->ent->tbl->name, key->u.i);
+            sql = sqlite3_mprintf("select *, rowid from \"%w\" "
+                                  "where rowid = %lld",
+                                  fdbc->ent->tbl->name, key->u.i);
             sqllen = strlen(sql) + 1;
         } else {
             if (fdbc->sql_hint) {
@@ -3242,7 +3215,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
             fdbc->fcon.sock.sb);
 
         if (fdbc->sql_hint != sql) {
-            free(sql);
+            sqlite3_free(sql);
         }
 
         if (!rc) {
@@ -3990,7 +3963,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     return rc;
 }
 
-int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
+int fdb_trans_rollback(struct sqlclntstate *clnt)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
@@ -4900,7 +4873,7 @@ int fdb_get_remote_version(const char *dbname, const char *table,
                            enum mach_class class, int local,
                            unsigned long long *version)
 {
-    char sql[256];
+    char *sql = NULL;
     cdb2_hndl_tp *db;
     int rc;
     const char *location;
@@ -4914,13 +4887,15 @@ int fdb_get_remote_version(const char *dbname, const char *table,
         flags = 0;
     }
 
-    int tot = snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
-    if (tot >= sizeof(sql))
-        return FDB_ERR_FDB_TBL_NOTFOUND;
+    sql = sqlite3_mprintf("select table_version('%q')", table);
+    if (sql == NULL)
+        return FDB_ERR_MALLOC;
 
     rc = cdb2_open(&db, dbname, location, flags);
-    if (rc)
+    if (rc) {
+        sqlite3_free(sql);
         return FDB_ERR_GENERIC;
+    }
 
     rc = cdb2_run_statement(db, sql);
     if (rc) {
@@ -4944,6 +4919,8 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 
 done:
     cdb2_close(db);
+    sqlite3_free(sql);
+
     return rc;
 }
 

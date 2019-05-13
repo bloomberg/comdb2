@@ -1460,15 +1460,15 @@ static int get_host_by_name(const char *comdb2db_name,
                             char comdb2db_hosts[][64], int *num_hosts)
 {
     char tmp[8192];
-    int tmplen = 8192;
+    int tmplen = sizeof(tmp);
     int herr;
     struct hostent hostbuf, *hp = NULL;
-    char dns_name[256];
+    char dns_name[512];
 
     if (cdb2_default_cluster[0] == '\0') {
-        snprintf(dns_name, 256, "%s.%s", comdb2db_name, cdb2_dnssuffix);
+        snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name, cdb2_dnssuffix);
     } else {
-        snprintf(dns_name, 256, "%s-%s.%s", cdb2_default_cluster, comdb2db_name,
+        snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", cdb2_default_cluster, comdb2db_name,
                  cdb2_dnssuffix);
     }
 #ifdef __APPLE__
@@ -2212,24 +2212,11 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
     }
 }
 
-static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
+/* try to connect to range from 0 to max starting with begin */
+static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
 {
-    for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
-        int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
-        if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
-            try_node == hndl->connected_host ||
-            hndl->hosts_connected[try_node] == 1)
-            continue;
-        if (newsql_connect(hndl, try_node, 0, 100) == 0)
-            return 0;
-    }
-    return -1;
-}
-
-/* try to connect to range of hosts starting at begin stopping at end */
-static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
-{
-    for (int i = begin; i < end; i++) {
+    for (int j = 0; j < max; j++) {
+        int i = (begin + j) % max;
         hndl->node_seq = i + 1;
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
@@ -2249,10 +2236,11 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
     return lhs;
 }
 
+static __thread unsigned short rand_state[3] = {0};
+static __thread unsigned short do_once = 0;
+
 static int cdb2_random_int()
 {
-    static __thread unsigned short rand_state[3] = {0};
-    static __thread unsigned short do_once = 0;
     if (!do_once) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -2322,7 +2310,8 @@ retry_connect:
         hndl->node_seq =
             getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
-        if (0 == cdb2_try_on_same_room(hndl))
+        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq,
+                                        hndl->num_hosts_sameroom))
             return 0;
     }
 
@@ -2341,11 +2330,7 @@ retry_connect:
         }
     }
 
-    int start_seq = hndl->node_seq;
-    if (0 == cdb2_try_connect_range(hndl, start_seq, hndl->num_hosts))
-        return 0;
-
-    if (0 == cdb2_try_connect_range(hndl, 0, start_seq))
+    if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts))
         return 0;
 
     if (hndl->sb == NULL) {
@@ -3290,40 +3275,34 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
 }
 
 static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
-                                char *short_identifier, char **hint,
+                                int len, char *short_identifier, char **hint,
                                 char **query_hint)
 {
-    const char *sqlstr = cdb2_skipws(sqlquery);
-    const char *sql_start = sqlstr;
-    int len = strlen(sqlstr);
     int len_id = strlen(short_identifier);
     if (len_id > 128) {
         sprintf(hndl->errstr, "Short identifier is too long.");
         return -1;
     }
-
-    int fw_end = 1;
-    while (*sql_start != '\0' && *sql_start != ' ') {
-        fw_end++;
-        sql_start++;
+    const char *first = cdb2_skipws(sqlquery);
+    const char *tail = first;
+    while (*tail && !isspace(*tail)) {
+        ++tail;
     }
+    int first_len = tail - first;
+    char pfx[] = " /*+ RUNCOMDB2SQL ";
+    char sfx[] = " */";
+    size_t sz;
+    char *sql;
 
-    /* short string will be something like this
-       select <* RUNCOMDB2SQL <short_identifier> *>
-       */
-    *hint = malloc(fw_end + SQLCACHEHINTLENGTH + 4 + len_id + 1);
-    strncpy(*hint, sqlstr, fw_end);
-    /* Add the SQL HINT */
-    strncpy(*hint + fw_end, SQLCACHEHINT, SQLCACHEHINTLENGTH);
-    strncpy(*hint + fw_end + SQLCACHEHINTLENGTH, short_identifier, len_id);
-    strncpy(*hint + fw_end + SQLCACHEHINTLENGTH + len_id, " */ ", 5);
-    /* short string will be something like this
-       select <* RUNCOMDB2SQL <short_identifier> *> <rest of the sql>
-       */
-    *query_hint = malloc(len + SQLCACHEHINTLENGTH + 4 + len_id + 1);
-    strncpy(*query_hint, *hint, fw_end + SQLCACHEHINTLENGTH + 4 + len_id);
-    strcpy(*query_hint + fw_end + SQLCACHEHINTLENGTH + 4 + len_id,
-           sqlstr + fw_end);
+    sz = first_len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
+    sql = malloc(sz);
+    snprintf(sql, sz, "%.*s%s%s%s", first_len, first, pfx, short_identifier, sfx);
+    *hint = sql;
+
+    sz = len + sizeof(pfx) + sizeof(sfx) + len_id + 1;
+    sql = malloc(sz);
+    snprintf(sql, sz, "%.*s%s%s%s%s", first_len, first, pfx, short_identifier, sfx, tail);
+    *query_hint = sql;
     return 0;
 }
 
@@ -3950,7 +3929,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
                 if ((rc = next_cnonce(hndl)) != 0)
                     PRINT_AND_RETURN(rc);
-                cdb2_query_with_hint(hndl, sql, hndl->cnonce.str, &hndl->hint,
+                cdb2_query_with_hint(hndl, sql, len, hndl->cnonce.str, &hndl->hint,
                                      &hndl->query_hint);
 
                 sql = hndl->query_hint;
