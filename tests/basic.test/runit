@@ -409,9 +409,6 @@ if [[ "$out" == "0" ]]; then
     failexit "Inplace update should update updateid to nonzero"
 fi
 
-
-
-
 test_t1() {
 	INITNUMREC=100
 
