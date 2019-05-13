@@ -71,14 +71,14 @@ char *_views_create_delete_trigger_query(timepart_view_t *view,
     int i;
 
     ret_str =
-        sqlite3_mprintf("CREATE TRIGGER %s_%s INSTEAD OF DELETE ON %s BEGIN",
+        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF DELETE ON \"%w\" BEGIN",
                         view->name, TRIGGER_SUFFIX_DEL, view->name);
     if (!ret_str) {
         goto oom;
     }
     for (i = 0; i < view->nshards; i++) {
         tmp_str = sqlite3_mprintf(
-            "%s\nDELETE FROM \"%s\" where rowid=old.__hidden__rowid;", ret_str,
+            "%s\nDELETE FROM \"%w\" where rowid=old.__hidden__rowid;", ret_str,
             view->shards[i].tblname);
         sqlite3_free(ret_str);
         ret_str = tmp_str;
@@ -105,7 +105,7 @@ static char *_views_destroy_trigger_query(const char *view_name,
 {
     char *ret_str = NULL;
 
-    ret_str = sqlite3_mprintf("DROP TRIGGER %s_%s", view_name, suffix);
+    ret_str = sqlite3_mprintf("DROP TRIGGER \"%w_%w\"", view_name, suffix);
     if (!ret_str) {
         goto oom;
     }
@@ -140,7 +140,7 @@ char *_views_create_update_trigger_query(timepart_view_t *view,
     int i;
 
     ret_str =
-        sqlite3_mprintf("CREATE TRIGGER %s_%s INSTEAD OF UPDATE ON %s BEGIN",
+        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF UPDATE ON \"%w\" BEGIN",
                         view->name, TRIGGER_SUFFIX_UPD, view->name);
     if (!ret_str) {
         goto oom;
@@ -157,7 +157,7 @@ char *_views_create_update_trigger_query(timepart_view_t *view,
 
     for (i = 0; i < view->nshards; i++) {
         tmp_str = sqlite3_mprintf(
-            "%s\nUPDATE \"%s\" SET %s where rowid=old.__hidden__rowid;", ret_str,
+            "%s\nUPDATE \"%w\" SET \"%w\" where rowid=old.__hidden__rowid;", ret_str,
             view->shards[i].tblname, cols_str);
         sqlite3_free(ret_str);
         ret_str = tmp_str;
@@ -201,8 +201,8 @@ char *_views_create_insert_trigger_query(timepart_view_t *view,
     }
 
     ret_str =
-        sqlite3_mprintf("CREATE TRIGGER %s_%s INSTEAD OF INSERT ON %s BEGIN\n"
-                        "INSERT INTO \"%s\" VALUES ( %s );\n"
+        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF INSERT ON \"%w\" BEGIN\n"
+                        "INSERT INTO \"%w\" VALUES ( %s );\n"
                         "END;\n",
                         view->name, TRIGGER_SUFFIX_INS, view->name,
                         view->shards[0].tblname, cols_str);

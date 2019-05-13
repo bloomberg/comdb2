@@ -1462,22 +1462,29 @@ static char *_describe_row(const char *tblname, const char *prefix,
               gdb->schema->member[i].in_default))
 
         {
+            char *tmp_member_name = NULL;
+            if (op_type == VIEWS_TRIGGER_UPDATE) {
+                tmp_member_name = sqlite3_mprintf("\"%w\"",
+                                                  gdb->schema->member[i].name);
+            }
             tmp_str = sqlite3_mprintf(
-                "%s%s\"%s\"%s%s%s%s", cols_str,
+                "%s%s\"%w\"%s%s%s%s", cols_str,
                 (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
                 gdb->schema->member[i].name,
                 (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
-                (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
-                                                  : "",
+                tmp_member_name ? tmp_member_name : "",
                 (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
                 (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+            if (tmp_member_name != NULL) {
+                sqlite3_free(tmp_member_name);
+            }
         } else {
             in_default = sql_field_default_trans(&gdb->schema->member[i], 0);
             if (!in_default)
                 goto malloc;
 
             tmp_str =
-                sqlite3_mprintf("%scoalesce(new.\"%s\", %s)%s", cols_str,
+                sqlite3_mprintf("%scoalesce(new.\"%w\", %s)%s", cols_str,
                                 gdb->schema->member[i].name, in_default,
                                 (i < (gdb->schema->nmembers - 1)) ? ", " : "");
             sqlite3_free(in_default);

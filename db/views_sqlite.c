@@ -195,7 +195,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
    /* generate the column list */
    for(i=0;i<pTbl->nCol; i++)
    {
-      cols_str = sqlite3_mprintf("\"%s\"%s",
+      cols_str = sqlite3_mprintf("\"%w\"%s",
          pTbl->aCol[i].zName,
          (i<(pTbl->nCol-1))?", ":"");
       if(!cols_str)
@@ -222,7 +222,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     /* TODO: put conditions for shards */
     select_str = sqlite3_mprintf("");
     for (i = 0; i < view->nshards; i++) {
-        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%s\"", select_str,
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%w\"", select_str,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
                                   view->shards[i].tblname);
         sqlite3_free(select_str);
@@ -237,10 +237,10 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
 #if 0
    ONLY IN sqlite ver 3.9.0     
 
-   ret_str = sqlite3_mprintf("CREATE VIEW %s (%s) AS %s",
+   ret_str = sqlite3_mprintf("CREATE VIEW \"%w\" (%s) AS %s",
       view->name, cols_str, select_str);
 #endif
-    ret_str = sqlite3_mprintf("CREATE VIEW %s AS %s", view->name, select_str);
+    ret_str = sqlite3_mprintf("CREATE VIEW \"%w\" AS %s", view->name, select_str);
     if (!ret_str) {
         sqlite3_free(select_str);
         sqlite3_free(cols_str);
@@ -266,7 +266,7 @@ static char *_views_destroy_view_query(const char *view_name, sqlite3 *db,
 {
     char *ret_str = NULL;
 
-    ret_str = sqlite3_mprintf("DROP VIEW %s", view_name);
+    ret_str = sqlite3_mprintf("DROP VIEW \"%w\"", view_name);
     if (!ret_str) {
         goto malloc;
     }
