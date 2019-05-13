@@ -3561,9 +3561,9 @@ int release_locks_int(const char *trace, const char *func, int line);
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter);
-int run_check_constraints(struct dbtable *table, uint8_t *rec,
-                          blob_buffer_t *blobs, size_t maxblobs, int is_alter,
-                          int *check_status);
+int verify_check_constraints(struct dbtable *table, uint8_t *rec,
+                             blob_buffer_t *blobs, size_t maxblobs,
+                             int is_alter, int *check_status);
 /* Authentication types for users */
 enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 

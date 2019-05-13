@@ -378,8 +378,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     int check_status;
-    rc = run_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
-                               &check_status);
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
+                                  &check_status);
     if (rc != 0) {
         reqerrstrhdr(iq, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;
@@ -1141,8 +1141,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     int check_status;
-    rc = run_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
-                               &check_status);
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
+                                  &check_status);
     if (rc != 0) {
         reqerrstrhdr(iq, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;

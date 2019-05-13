@@ -12359,9 +12359,10 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     return *t;
 }
 
-int run_check_constraints(struct dbtable *table, uint8_t *rec,
-                          blob_buffer_t *blobs, size_t maxblobs, int is_alter,
-                          int *check_status /* 0 - Pass, 1 - Fail */)
+int verify_check_constraints(struct dbtable *table, uint8_t *rec,
+                             blob_buffer_t *blobs, size_t maxblobs,
+                             int is_alter,
+                             int *check_status /* 0 - Pass, 1 - Fail */)
 {
     struct schema *sc;
     strbuf *sql;

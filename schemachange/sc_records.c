@@ -548,7 +548,8 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     assert(data->trans != NULL);
 
     int check_status;
-    rc = run_check_constraints(data->iq.usedb, p_buf_data, data->wrblb, MAXBLOBS, 2, &check_status);
+    rc = verify_check_constraints(data->iq.usedb, p_buf_data, data->wrblb,
+                                  MAXBLOBS, 1, &check_status);
     if (rc != 0) {
         logmsg(LOGMSG_DEBUG, "%s:%d internal error during CHECK constraint\n",
                __func__, __LINE__);
