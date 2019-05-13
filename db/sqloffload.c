@@ -39,6 +39,7 @@
 #include "sqlinterfaces.h"
 #include "block_internal.h"
 #include "comdb2.h"
+#include "comdb2uuid.h"
 
 #include "osqlrepository.h"
 #include "osqlcheckboard.h"
@@ -60,6 +61,8 @@
 #define TEST_BLOCKSOCK
 #define TEST_RECOM
 #endif
+
+int scdone_abort_cleanup(struct ireq *iq);
 
 int gbl_master_swing_osql_verbose = 1;
 
@@ -153,18 +156,18 @@ int osql_open(struct dbenv *dbenv)
         return -2;
     }
 
+    rc = osql_blkseq_init();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failing to init blocksql blockseq module\n",
+               __func__);
+    }
+
     /* create comm endpoint and kickoff the communication */
     rc = osql_comm_init(dbenv);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to init network\n", __func__);
         osql_repository_destroy();
         return -2;
-    }
-
-    rc = osql_blkseq_init();
-    if (rc) {
-        fprintf(stderr, "%s failing to init blocksql blockseq module\n",
-                __func__);
     }
 
     g_osql_ready = 1;
@@ -308,7 +311,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
+    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
@@ -667,8 +670,10 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
-        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %lu\n", clnt,
-               clnt->osql.rqid, pthread_self());
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
+               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+               pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();
@@ -718,7 +723,7 @@ extern int gbl_readonly_sc;
 
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
-    int bdberr;
+    int bdberr = 0;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
@@ -730,10 +735,10 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             if (write_scdone) {
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
-                scdone_t type = -1;
+                scdone_t type = invalid;
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
-                    type = -1;
+                    type = invalid;
                 } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
@@ -744,7 +749,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = rename_table;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type < 0 || s->db == NULL) {
+                if (type == invalid || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
@@ -785,7 +790,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;

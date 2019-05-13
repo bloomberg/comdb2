@@ -51,7 +51,7 @@ struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
  * index.
  * This is required for sqlite_stat1
  */
-int analyze_get_nrecs(int iTable);
+int64_t analyze_get_nrecs(int iTable);
 
 /**
  * Retrieve the number of sampled (previously misnamed compressed) records in

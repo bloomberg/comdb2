@@ -31,7 +31,6 @@ static struct debug_switches {
     int verbose_deadlocks_log;
     int incoherent_nodes;
     int rep_delay;
-    int force_incoherent;
     int net_verbose;
     int use_blackout_list;
     int osql_force_local;
@@ -80,7 +79,6 @@ int init_debug_switches(void)
     debug_switches.verbose_deadlocks_log = 0;
     debug_switches.incoherent_nodes = 1;
     debug_switches.rep_delay = 0;
-    debug_switches.force_incoherent = 0;
     debug_switches.net_verbose = 0;
     debug_switches.use_blackout_list = 1;
     debug_switches.osql_force_local = 0;
@@ -131,8 +129,6 @@ int init_debug_switches(void)
     register_int_switch("incoherent_nodes", "incoherent_nodes",
                         &debug_switches.incoherent_nodes);
     register_int_switch("rep_delay", "rep_delay", &debug_switches.rep_delay);
-    register_int_switch("force_incoherent", "force_incoherent",
-                        &debug_switches.force_incoherent);
     register_int_switch("net_verbose", "net_verbose",
                         &debug_switches.net_verbose);
     register_int_switch("use_blackout_list", "use_blackout_list",
@@ -238,10 +234,6 @@ int debug_throttle_incoherent_nodes(void)
 int debug_switch_rep_delay(void)
 {
     return debug_switches.rep_delay;
-}
-int debug_switch_force_incoherent(void)
-{
-    return debug_switches.force_incoherent;
 }
 int debug_switch_net_verbose(void)
 {

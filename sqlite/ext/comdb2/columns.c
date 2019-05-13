@@ -235,9 +235,9 @@ static int systblColumnsFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)pVtabCursor;
-
   pCur->iTabId = 0;
   pCur->iColId = 0;
+  comdb2_next_allowed_table(&pCur->iTabId);
   return SQLITE_OK;
 }
 
@@ -273,6 +273,10 @@ const sqlite3_module systblColumnsModule = {
   0,                          /* xRollback */
   0,                          /* xFindMethod */
   0,                          /* xRename */
+  0,                          /* xSavepoint */
+  0,                          /* xRelease */
+  0,                          /* xRollbackTo */
+  0,                          /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

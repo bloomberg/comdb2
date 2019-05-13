@@ -594,32 +594,10 @@ int comdb2bma_destroy(comdb2bma ma);
 /* helpers { */
 /* functions for resolving deadlocks externally */
 
-/* tell the allocator that I will need to get priority back.
-   must be called before comdb2bma_transfer_priority() */
-int comdb2bma_pass_priority_back(comdb2bma ma);
-
-/* transfer priority to another thread. if there is currently no priority thread
-   or
-   the calling thread is not priority thread, this function is no-op */
-int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid);
-
 /* yield. if there is currently no priority thread or
    the calling thread is not priority thread, this function is no-op */
 int comdb2bma_yield(comdb2bma ma);
 
-/* yield all allocators. */
-int comdb2bma_yield_all(void);
-
-/* mark an external mutex locked. allocation and deallocation after will not
-   attempt to lock the external mutex. the calling thread must be holding the
-   external mutex.
-   if the allocator is created with an internal mutex, this function is no-op */
-int comdb2bma_mark_locked(comdb2bma ma);
-
-/* mark an external mutex unlocked. the calling thread must be holding the
-   external mutex.
-   if the allocator is created with an internal mutex, this function is no-op */
-int comdb2bma_mark_unlocked(comdb2bma ma);
 
 /* return the number of threads that are currently blocking on the allocator */
 int comdb2bma_nblocks(comdb2bma ma);
@@ -676,12 +654,7 @@ void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 #define comdb2bma_create(init, cap, name, plock) ((void *)1)
 #define comdb2bma_create_trace(init, cap, name, lock, file, func, line) ((void *)1)
 #define comdb2bma_destroy(ma) 0
-#define comdb2bma_pass_priority_back(ma) 0
-#define comdb2bma_transfer_priority(ma, tid) 0
 #define comdb2bma_yield(ma) 0
-#define comdb2bma_yield_all() 0
-#define comdb2bma_mark_locked(ma) 0
-#define comdb2bma_mark_unlocked(ma) 0
 #define comdb2bma_nblocks(ma) 0
 #define comdb2bma_priotid(ma) 0
 
@@ -710,6 +683,29 @@ void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 #define comdb2_bfree_nl(ma, ptr) free(ptr)
 
 #endif /* USE_SYS_ALLOC */
+
+/* tell the allocator that I will need to get priority back.
+   must be called before comdb2bma_transfer_priority() */
+int comdb2bma_pass_priority_back(comdb2bma ma);
+
+/* transfer priority to another thread. if there is currently no priority thread
+   or the calling thread is not priority thread, this function is no-op */
+int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid);
+
+/* yield all allocators. */
+int comdb2bma_yield_all(void);
+
+/* mark an external mutex locked. allocation and deallocation after will not
+   attempt to lock the external mutex. the calling thread must be holding the
+   external mutex.  if the allocator is created with an internal mutex, this
+   function is no-op */
+int comdb2bma_mark_locked(comdb2bma ma);
+
+/* mark an external mutex unlocked. the calling thread must be holding the
+   external mutex.  if the allocator is created with an internal mutex, this
+   function is no-op */
+int comdb2bma_mark_unlocked(comdb2bma ma);
+
 #endif /* COMDB2_OMIT_BMEM */
 
 #ifndef COMDB2MA_OMIT_DEBUG

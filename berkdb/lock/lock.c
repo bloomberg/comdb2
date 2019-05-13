@@ -809,6 +809,16 @@ init_latches(dbenv, lt)
 	return 0;
 }
 
+int __get_lockerid_from_lock(DB_ENV *dbenv, u_int32_t locker)
+{
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+	if (!lt)
+		return 0;
+	struct __db_lock *lp = (struct __db_lock *)R_ADDR(&lt->reginfo, locker);
+	if (lp && lp->holderp)
+		return lp->holderp->id;
+	return 0;
+}
 
 static inline int
 __find_latch_lockerid(DB_ENV *dbenv, u_int32_t locker,
@@ -1348,11 +1358,6 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 		case DB_LOCK_GET_TIMEOUT:
 			LF_SET(DB_LOCK_SET_TIMEOUT);
 		case DB_LOCK_GET:
-			if (IS_RECOVERING(dbenv) && (!IS_REP_CLIENT(dbenv) ||
-			    !LF_ISSET(DB_LOCK_LOGICAL))) {
-				LOCK_INIT(list[i].lock);
-				break;
-			}
 			ret = __lock_get_internal(dbenv->lk_handle,
 			    locker, NULL, flags, list[i].obj,
 			    list[i].mode, list[i].timeout, &list[i].lock);
@@ -1485,10 +1490,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				F_SET(sh_locker, DB_LOCKER_DELETED);
 
 			/* Now traverse the locks, releasing each one. */
-			lp = NULL;
-			for (sh_locker &&
-			    (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock));
-			    lp != NULL; lp = next_lock) {
+			lp = sh_locker ? SH_LIST_FIRST(&sh_locker->heldby, __db_lock) : NULL;
+			for ( ; lp != NULL; lp = next_lock) {
 				sh_obj = lp->lockobj;
 				next_lock = SH_LIST_NEXT(lp,
 				    locker_links, __db_lock);
@@ -1560,9 +1563,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				goto up_done;
 
 			/* Same loop but with latches */
-			latch = NULL;
-			for (latch_lockerid && (latch = latch_lockerid->head);
-			    latch;) {
+			latch = latch_lockerid ? latch_lockerid->head : NULL;
+			for ( ; latch ; ) {
 				lnode = latch->listhead;
 				while (lnode) {
 					nextlnode = lnode->next;
@@ -1913,12 +1915,6 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 {
 	int ret;
 
-	if (IS_RECOVERING(dbenv) && (!IS_REP_CLIENT(dbenv) ||
-		!LF_ISSET(DB_LOCK_LOGICAL))) {
-		LOCK_INIT(*lock);
-		return (0);
-	}
-
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	ret = __lock_get_internal(dbenv->lk_handle,
 	    locker, NULL, flags, obj, lock_mode, 0, lock);
@@ -2067,29 +2063,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	dbenv = lt->dbenv;
 	region = lt->reginfo.primary;
 
-#ifdef DEBUG_LOCKS
-	char desc[100];
-	DBT dbt = { 0 };
-	int idx, size = -1;
-	if (obj) {
-		dbt.data = obj->data;
-		size = dbt.size = obj->size;
-
-		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
-	} else {
-		snprintf(desc, sizeof(desc), "NULL OBJ LK");
-	}
-
-	Pthread_mutex_lock(&lblk);
-	idx = lbcounter;
-	lbcounter = (lbcounter + 1) % LKBUFMAX;
-	Pthread_mutex_unlock(&lblk);
-
-	threadid[idx] = pthread_self();
-	snprintf(lkbuffer[idx], LKBUFSZ, "%d get lid %x %s size=%d ",
-	    pthread_self(), locker, desc, size);
-#endif
-
 	/* Check if locks have been globally turned off. */
 	if (unlikely(F_ISSET(dbenv, DB_ENV_NOLOCKING)))
 		return (0);
@@ -2143,6 +2116,37 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		lock_locker_partition(region, sh_locker->partition);
 	}
 	lpartition = sh_locker->partition;
+
+#ifdef DEBUG_LOCKS
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+	logmsg(LOGMSG_ERROR, "%p Get (%c) locker lock %x (m %x)\n",
+			(void *)pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			mlockerp->id);
+	cheap_stack_trace();
+
+	char desc[100];
+	DBT dbt = { 0 };
+	int idx, size = -1;
+	if (obj) {
+		dbt.data = obj->data;
+		size = dbt.size = obj->size;
+
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
+	} else {
+		snprintf(desc, sizeof(desc), "NULL OBJ LK");
+	}
+
+	Pthread_mutex_lock(&lblk);
+	idx = lbcounter;
+	lbcounter = (lbcounter + 1) % LKBUFMAX;
+	Pthread_mutex_unlock(&lblk);
+
+	threadid[idx] = pthread_self();
+	snprintf(lkbuffer[idx], LKBUFSZ, " %p get lid %x %s size=%d ",
+			(void *)pthread_self(), locker, desc, size);
+	logmsg(LOGMSG_ERROR, "%p __lock_get_internal_int: get lid %x %s size=%d\n",
+	       (void *)pthread_self(), locker, desc, size);
+#endif
 
 	if (obj == NULL) {
 		DB_ASSERT(LOCK_ISSET(*lock));
@@ -2600,7 +2604,7 @@ upgrade:
 			__os_clock(dbenv, &now, NULL);
 
 			if ((now - conftime) > 1) {
-				logmsg(LOGMSG_USER, "st_nconflicts is %d\n",
+				logmsg(LOGMSG_USER, "st_nconflicts is %ld\n",
 				    region->stat.st_nconflicts);
 				conftime = now;
 			}
@@ -2963,9 +2967,6 @@ __lock_put(dbenv, lock)
 	int ret;
 	u_int32_t run_dd = 0;
 
-	if (IS_RECOVERING(dbenv))
-		return (0);
-
 	lt = dbenv->lk_handle;
 
 	LOCKREGION(dbenv, lt);
@@ -3147,34 +3148,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
-#ifdef DEBUG_LOCKS
-	{
-		char desc[100];
-		void *lk;
-		int idx;
-		u_int8_t *lockdata;
-		DBT dbt = { 0 };
-		sh_obj = lockp->lockobj;
-		lockdata = &sh_obj->lockobj;
-		lockdata += sh_obj->lockobj.off;
-
-		dbt.data = lockdata;
-		dbt.size = sh_obj->lockobj.size;
-
-		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
-
-		Pthread_mutex_lock(&lblk);
-		idx = lbcounter;
-		lbcounter = (lbcounter + 1) % LKBUFMAX;
-		Pthread_mutex_unlock(&lblk);
-
-		threadid[idx] = pthread_self();
-		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
-		    pthread_self(), desc, sh_obj->lockobj.size);
-	}
-#endif
-
-
 	region = lt->reginfo.primary;
 	ret = state_changed = 0;
 
@@ -3207,6 +3180,39 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	/* Get the object associated with this lock. */
 	sh_obj = lockp->lockobj;
 	partition = sh_obj->partition;
+
+
+#ifdef DEBUG_LOCKS
+	DB_LOCKER *sh_locker = lockp->holderp;
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
+			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			mlockerp->id);
+	cheap_stack_trace();
+
+	char desc[100];
+	int idx;
+	DBT dbt = { 0 };
+
+	dbt.data = sh_obj->lockobj.data;
+	dbt.size = sh_obj->lockobj.size;
+
+	bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
+
+	Pthread_mutex_lock(&lblk);
+	idx = lbcounter;
+	lbcounter = (lbcounter + 1) % LKBUFMAX;
+	Pthread_mutex_unlock(&lblk);
+
+	threadid[idx] = pthread_self();
+	snprintf(lkbuffer[idx], LKBUFSZ, "%p put lid %x %s size=%d",
+			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+	logmsg(LOGMSG_ERROR, "%p __lock_put_internal: put lid %x %s size=%d\n",
+			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+#endif
+
+
+
 
 	/* Remove this lock from its holders/waitlist. */
 	if (lockp->status != DB_LSTAT_HELD && lockp->status != DB_LSTAT_PENDING)
@@ -3811,17 +3817,14 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	 */
 	if (sh_locker == NULL && create) {
 		/* Create new locker and then insert it into hash table. */
-		if ((sh_locker =
-			SH_TAILQ_FIRST(&region->free_lockers[partition],
+		if ((sh_locker = SH_TAILQ_FIRST(&region->free_lockers[partition],
 			    __db_locker)) == NULL) {
 			unsigned i, num;
 			++region->nwlkr_scale[partition];
-			num = region->locker_p_size
-			    * region->nwlkr_scale[partition];
+			num = region->locker_p_size * region->nwlkr_scale[partition];
 			PRINTF(nwlkr_scale, "add lkr:%d part:%d sc:%d\n",
 			    num, partition, region->nwlkr_scale[partition]);
-			int ret = __os_malloc(dbenv,
-			    sizeof(DB_LOCKER) * num, &sh_locker);
+			int ret = __os_malloc(dbenv, sizeof(DB_LOCKER) * num, &sh_locker);
 			if (ret != 0) {
 				__db_err(dbenv, __db_lock_err,
 				    "locker entries");
@@ -3889,11 +3892,12 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		if (gbl_print_deadlock_cycles) {
 			extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 			if(osql_snap_info) sh_locker->snap_info = osql_snap_info;
+			else sh_locker->snap_info = NULL;
 		}
 	}
 
 	*retp = sh_locker;
-	return (0);
+	return 0;
 }
 
 /*
@@ -6072,10 +6076,6 @@ __lock_abort_logical_waiters_pp(dbenv, locker, flags)
 	ENV_REQUIRES_CONFIG(dbenv,
 	    dbenv->lk_handle, "DB_ENV->lock_abort_logical_waiters",
 	    DB_INIT_LOCK);
-
-	if (IS_RECOVERING(dbenv)) {
-		return (0);
-	}
 
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	ret = __lock_abort_logical_waiters(dbenv, locker, flags);

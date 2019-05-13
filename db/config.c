@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "fdb_whitelist.h"
 #include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -34,6 +35,7 @@
 #include "translistener.h"
 #include "rtcpu.h"
 #include "config.h"
+#include "phys_rep.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -62,7 +64,7 @@ static struct option long_options[] = {
     {"repopnewlrl", required_argument, NULL, 0},
     {"recovertotime", required_argument, NULL, 0},
     {"recovertolsn", required_argument, NULL, 0},
-    {"recoverylsn", required_argument, NULL, 0},
+    {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
     {"create", no_argument, &gbl_create_mode, 1},
@@ -338,7 +340,11 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "allow_negative_column_size",
                                  "osql_check_replicant_numops off",
                                  "reorder_socksql_no_deadlock off",
-                                 "disable_tpsc_tblvers"};
+                                 "disable_tpsc_tblvers",
+                                 "on disable_etc_services_lookup",
+                                 "off osql_odh_blob",
+                                 "legacy_schema on",
+                                 "online_recovery off"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -370,14 +376,11 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     if (tokcmp(tok, *ltok, "if") == 0) {
         enum mach_class my_class = get_my_mach_class();
         tok = segtok(line, line_len, st, ltok);
-        if (my_class == CLASS_TEST && tokcmp(tok, *ltok, "test") &&
-            tokcmp(tok, *ltok, "dev"))
+        char *label = strndup(tok, *ltok);
+        int value = mach_class_name2class(label);
+
+        if (my_class == CLASS_UNKNOWN || my_class != value)
             return 0;
-        if (my_class == CLASS_ALPHA && tokcmp(tok, *ltok, "alpha")) return 0;
-        if (my_class == CLASS_UAT && tokcmp(tok, *ltok, "uat")) return 0;
-        if (my_class == CLASS_BETA && tokcmp(tok, *ltok, "beta")) return 0;
-        if (my_class == CLASS_PROD && tokcmp(tok, *ltok, "prod")) return 0;
-        if (my_class == CLASS_UNKNOWN) return 0;
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;
@@ -437,8 +440,8 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     fclose(ff); /* lets get one fd back */
 }
 
-struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
-                                int required)
+static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
+                                       int required)
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
@@ -685,6 +688,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
         }
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist db1 db2 ...  */
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = fdb_add_dbname_to_whitelist(tok);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+        }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
         tok = segtok(line, len, &st, &ltok);
@@ -742,6 +754,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
             }
             dbenv->sibling_hostname[0] = gbl_mynode;
+        }
+    } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
+        int classval = 1;
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = mach_class_addclass(tok, classval);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+            classval++;
         }
     } else if (tokcmp(tok, ltok, "pagesize") == 0) {
         tok = segtok(line, len, &st, &ltok);
@@ -1033,6 +1055,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
+    } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
@@ -1055,6 +1080,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
     } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
@@ -1091,7 +1117,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_INFO, "sql default mode is %s\n",
                    (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
                                                                 : "blocksql");
-        } else if (ltok == 9 && !strncasecmp(tok, "blocksock", 9) ||
+        } else if ((ltok == 9 && !strncasecmp(tok, "blocksock", 9)) ||
                    tokcmp(tok, ltok, "default") == 0) {
             gbl_upgrade_blocksql_2_socksql = 1;
             if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
@@ -1234,6 +1260,75 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         /* Process here because can't pass to handle_lrl_tunable (where it is
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
+
+        /* 'replicate_from <dbname>
+         * <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
+    } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        cdb2_hndl_tp *hndl;
+        /* replicate_from <db_name> [dbs to query] */
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
+                                 "can only replicate from a single source\n");
+            return -1;
+        }
+
+        /* dbname */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate from\n");
+            exit(1);
+        }
+        char *dbname = tokdup(tok, ltok);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a type\n");
+            exit(1);
+        }
+        char *type = tokdup(tok, ltok);
+
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n", dbname,
+                   type, rc);
+            exit(1);
+        }
+
+        char *hosts[32];
+        int count;
+        cdb2_cluster_info(hndl, hosts, NULL, 32, &count);
+        count = (count < 32 ? count : 32);
+        for (ii = 0; ii < count; ii++) {
+            if (add_replicant_host(hosts[ii], dbname, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %s\n",
+                       hosts[ii]);
+            }
+            gbl_is_physical_replicant = 1;
+            free(hosts[ii]);
+        }
+        cdb2_close(hndl);
+        logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n",
+               dbname, type);
+        free(dbname);
+        free(type);
+        start_replication();
+
+    } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR,
+                   "Must specify # of seconds to wait for timestamp\n");
+            return -1;
+        }
+        gbl_deferred_phys_flag = 1;
+
+        char *wait = tokdup(tok, ltok);
+        gbl_deferred_phys_update = atol(wait);
+        logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
+               gbl_deferred_phys_update);
+        free(wait);
+
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;
@@ -1445,6 +1540,13 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
     if (!gbl_create_mode) {
         read_cmd_line_tunables(dbenv);
+
+        /* usenames is not supported with physical replication */
+        if (gbl_is_physical_replicant && !gbl_nonames) {
+            logmsg(LOGMSG_ERROR,
+                   "Cannot start a physical replicant under usenames\n");
+            return 1;
+        }
     }
 
     return 0;

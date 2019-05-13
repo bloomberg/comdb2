@@ -64,6 +64,7 @@ static const char revid[] = "$Id: db_meta.c,v 11.77 2003/09/09 16:42:06 ubell Ex
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <logmsg.h>
 
 
 /* definition in malloc.h clashes with dlmalloc */
@@ -111,7 +112,7 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
 	db_pgno_t last, pgno, newnext;
-	int extend, ret;
+	int ret;
 
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
@@ -127,20 +128,19 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 		ret = EINVAL;
 
 		goto err;
-	} else {
-		pgno = meta->free;
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
-			goto err;
-
-		/*
-		 * We want to take the first page off the free list and
-		 * then set meta->free to the that page's next_pgno, but
-		 * we need to log the change first.
-		 */
-		newnext = h->next_pgno;
-		lsn = h->lsn;
-		extend = 0;
 	}
+
+	pgno = meta->free;
+	if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
+		goto err;
+
+	/*
+	 * We want to take the first page off the free list and
+	 * then set meta->free to the that page's next_pgno, but
+	 * we need to log the change first.
+	 */
+	newnext = h->next_pgno;
+	lsn = h->lsn;
 
 	/*
 	 * Log the allocation before fetching the new page.  If we
@@ -157,14 +157,6 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 
 	meta->free = newnext;
 
-	if (extend == 1) {
-		if ((ret = __memp_fget(mpf, &pgno, DB_MPOOL_NEW, &h)) != 0)
-			goto err;
-		DB_ASSERT(last == pgno);
-		meta->last_pgno = pgno;
-		ZERO_LSN(h->lsn);
-		h->pgno = pgno;
-	}
 	LSN(h) = LSN(meta);
 
 	DB_ASSERT(TYPE(h) == P_INVALID);
@@ -620,10 +612,12 @@ __db_new_original(dbc, type, pagepp)
 			if (gbl_core_on_sparse_file) {
 				char cmd[100];
 
-				snprintf(cmd, sizeof(cmd), "gcore %d",
-				    getpid());
+				snprintf(cmd, sizeof(cmd), "gcore %d", getpid());
 				printf("%s\n", cmd);
-				system(cmd);
+				int lrc = system(cmd);
+                if (lrc) {
+                    logmsg(LOGMSG_ERROR, "%s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+				}
 				gbl_core_on_sparse_file = 0;
 			}
 		}

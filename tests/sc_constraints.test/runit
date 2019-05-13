@@ -59,8 +59,8 @@ function do_verify
 function do_alter
 {
     locnewtbl=$1
-    echo "do alter t2 -> ${locnewtbl}"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${locnewtbl}.csc2 ` }"
+    echo "do alter $tbl -> ${locnewtbl}"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table $tbl { `cat ${locnewtbl}.csc2 ` }"
 
     if [[ $? -ne 0 ]]; then
         touch failedalter
@@ -669,6 +669,81 @@ function run_ninth_test
     fi
 }
 
+function run_tenth_test
+{
+	echo "run_tenth_test: Make sure sc works with non-deferred key adds"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t10 { `cat t10.csc2 ` }"
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 600')"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1)"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t10 values (1, 1, x'aa')"
+
+    do_alter t10_1 &
+
+    sleep 2
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t1 set a = 2
+update t10 set a = 2, blb = x'aaaa'
+commit
+EOF
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t1 set a = 3
+update t10 set a = 3, blb = NULL
+commit
+EOF
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t1 set a = 4
+update t10 set a = 4, blb = x'1122334455'
+commit
+EOF
+
+    wait
+    if [ -f failedalter ] ; then
+        failexit "SC should not fail for t10.1"
+    fi
+    rm failedalter
+
+    echo "rebuild t10 and make sure we dont mistakenly fail schemachange"
+    do_alter t10_1 &
+    sleep 10
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t10 set a = 2, blb = x'aaaa'"
+    wait
+    if [ -f failedalter ] ; then
+        failexit "SC should not fail for rebuild t10.1"
+    fi
+    rm failedalter
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t10 { `cat t10.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"
+
+    do_alter t10_1 &
+
+    sleep 2
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t10 set blb = x''
+commit
+EOF
+
+    wait
+    if [ ! -f failedalter ] ; then
+        failexit "SC did not fail for 10.2 and thats an error in this case"
+    fi
+    rm failedalter
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 0')"
+}
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
@@ -793,6 +868,15 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreign
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
 
 run_ninth_test 1000
+flushall
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $foreigntbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreigntbl.csc2 ` }"
+
+tbl=t10
+run_tenth_test
+tbl=t2
 flushall
 
 echo "Success"

@@ -25,6 +25,10 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
 )
 
+if (COMDB2_EXTRA_PLUGINS)
+  include(${COMDB2_EXTRA_PLUGINS}/cdb2api/CMakeLists.txt)
+endif()
+
 # common obj files for .so/.dylib and .a
 add_definitions(-DSBUF2_SERVER=0)
 add_library(objlib OBJECT ${src})
@@ -46,6 +50,7 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
   if (NOT COMDB2_BUILD_STATIC)
     target_link_libraries(cdb2api_shared
       ${OPENSSL_LIBRARIES}
+      ${ZLIB_LIBRARIES}
       ${PROTOBUF_C_LIBRARY}
       ${UNWIND_LIBRARY}
     )

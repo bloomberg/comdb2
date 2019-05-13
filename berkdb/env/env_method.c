@@ -92,6 +92,14 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+            void*, int));
+size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
+int __dbenv_rep_verify_match __P((DB_ENV*, unsigned int, unsigned int, int));
+int __dbenv_mintruncate_lsn_timestamp __P((DB_ENV*, int file, DB_LSN *lsn, int32_t *timestamp));
+int __dbenv_dump_mintruncate_list __P((DB_ENV*));
+int __dbenv_clear_mintruncate_list __P((DB_ENV*));
+int __dbenv_build_mintruncate_list __P((DB_ENV*));
 
 /*
  * db_env_create --
@@ -210,6 +218,7 @@ __dbenv_init(dbenv)
 		dbenv->set_verbose = __dbcl_set_verbose;
 	} else {
 #endif
+        dbenv->apply_log = __dbenv_apply_log;
 		dbenv->close = __dbenv_close_pp;
 		dbenv->dbremove = __dbenv_dbremove_pp;
 		dbenv->dbrename = __dbenv_dbrename_pp;
@@ -263,6 +272,13 @@ __dbenv_init(dbenv)
 		dbenv->get_rep_verify_lsn = __dbenv_get_rep_verify_lsn;
 		dbenv->set_durable_lsn = __dbenv_set_durable_lsn;
 		dbenv->get_durable_lsn = __dbenv_get_durable_lsn;
+
+        dbenv->get_log_header_size = __dbenv_get_log_header_size;
+        dbenv->rep_verify_match = __dbenv_rep_verify_match;
+        dbenv->mintruncate_lsn_timestamp = __dbenv_mintruncate_lsn_timestamp;
+        dbenv->dump_mintruncate_list = __dbenv_dump_mintruncate_list;
+        dbenv->clear_mintruncate_list = __dbenv_clear_mintruncate_list;
+        dbenv->build_mintruncate_list = __dbenv_build_mintruncate_list;
 #ifdef	HAVE_RPC
 	}
 #endif
@@ -1270,6 +1286,7 @@ __dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
 
 pthread_mutex_t gbl_durable_lsn_lk = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t gbl_durable_lsn_cond = PTHREAD_COND_INITIALIZER;
+int gbl_abort_irregular_set_durable_lsn = 0;
 
 static void
 __dbenv_set_durable_lsn(dbenv, lsnp, generation)
@@ -1279,17 +1296,24 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 {
 	extern int gbl_durable_set_trace;
 
-	if (lsnp->file == 2147483647) {
-		logmsg(LOGMSG_FATAL, "huh? setting file to 2147483647?\n");
-		abort();
+	if (lsnp->file == 2147483647 || lsnp->file == 0) {
+		logmsg(LOGMSG_ERROR, "%s: invalid LSN file=2147483647?\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        return;
 	}
 
 	Pthread_mutex_lock(&gbl_durable_lsn_lk);
 
 	if (generation > dbenv->durable_generation &&
 	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
-		logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
-		abort();
+		logmsg(LOGMSG_ERROR, "%s: lower LSN from later generation\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+        return;
 	}
 
 	if (dbenv->durable_generation < generation ||
@@ -1304,12 +1328,6 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 			       dbenv->durable_lsn.file,
 			       dbenv->durable_lsn.offset,
 			       dbenv->durable_generation);
-		}
-
-		if (lsnp->file == 0) {
-			logmsg(LOGMSG_FATAL, "Aborting on attempt to set "
-					     "durable lsn file to 0\n");
-			abort();
 		}
 	} else {
 		/* This can happen if two commit threads can race against each

@@ -78,6 +78,8 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
                                       int *value_type, int *value_sz,
                                       void *valuebuf, int vbsz);
 
+int gbl_legacy_schema = 0;
+
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
 
@@ -313,22 +315,6 @@ char * sqltypetxt(int t, int size)
     };
 }
 #endif
-
-char *opertxt(int t)
-{
-    switch (t) {
-    case T_GT:
-        return " > ";
-    case T_LT:
-        return " < ";
-    case '(':
-        return "(";
-    case ')':
-        return ")";
-    default:
-        return ".?UNKNOWN OPERATOR?.";
-    }
-}
 
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
@@ -698,17 +684,17 @@ int get_union_size(int un)
     if (un == -1)
         return 0;
     for (i = 0; i < nsym; i++) {
-        if (sym[i].un_idx == un) {
-            if (sym[i].caseno == -1) {
-                if (sym[i].szof > largest)
-                    largest = sym[i].szof;
+        if (symb[i].un_idx == un) {
+            if (symb[i].caseno == -1) {
+                if (symb[i].szof > largest)
+                    largest = symb[i].szof;
             } else {
-                int cs = sym[i].caseno, csize = 0, j = 0, first = -1;
+                int cs = symb[i].caseno, csize = 0, j = 0, first = -1;
                 for (j = 0; j < nsym; j++) {
-                    if (sym[j].caseno == cs && sym[j].un_member == un) {
-                        csize += sym[j].szof;
+                    if (symb[j].caseno == cs && symb[j].un_member == un) {
+                        csize += symb[j].szof;
                         if (first != -1)
-                            csize += sym[j].padb;
+                            csize += symb[j].padb;
                         first = j;
                     }
                 }
@@ -724,19 +710,19 @@ int get_prev_sym(int idx)
 {
     int i;
     if (idx > 0) {
-        if (sym[idx - 1].un_member == -1)
+        if (symb[idx - 1].un_member == -1)
             return (idx - 1);
-        else if (sym[idx].un_member != -1 && sym[idx].caseno == -1) {
+        else if (symb[idx].un_member != -1 && symb[idx].caseno == -1) {
             int decr = idx - 1;
-            while (sym[decr].un_member == sym[idx].un_member && decr >= 0)
+            while (symb[decr].un_member == symb[idx].un_member && decr >= 0)
                 decr--;
             if (decr < 0)
                 return -1;
             return decr;
-        } else if (sym[idx].caseno != -1) {
+        } else if (symb[idx].caseno != -1) {
             for (i = idx; i >= 0; i--) {
-                if (sym[i].un_member == sym[idx].un_member &&
-                    sym[i].caseno == sym[idx].caseno && i != idx) {
+                if (symb[i].un_member == symb[idx].un_member &&
+                    symb[i].caseno == symb[idx].caseno && i != idx) {
                     return i;
                 }
             }
@@ -747,14 +733,14 @@ int get_prev_sym(int idx)
 
 int get_case_size(int csn)
 {
-    int cs = sym[csn].caseno, csize = 0, j, first = -1;
+    int cs = symb[csn].caseno, csize = 0, j, first = -1;
     for (j = 0; j < nsym; j++) {
-        if ((sym[csn].un_member == sym[j].un_member) && (sym[j].caseno == cs) &&
-            (sym[j].caseno != -1)) {
-            /*printf(" %s %d %d\n", sym[j].nm, sym[j].szof, sym[j].padb);*/
-            csize += sym[j].szof;
-            if (first != -1 && sym[j].padb != -1)
-                csize += sym[j].padb;
+        if ((symb[csn].un_member == symb[j].un_member) &&
+            (symb[j].caseno == cs) && (symb[j].caseno != -1)) {
+            /*printf(" %s %d %d\n", symb[j].nm, symb[j].szof, symb[j].padb);*/
+            csize += symb[j].szof;
+            if (first != -1 && symb[j].padb != -1)
+                csize += symb[j].padb;
             first = j;
         }
     }
@@ -798,7 +784,15 @@ void key_setprimary(void) { workkeyflag |= PRIMARY; }
 
 void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
-void key_setuniqnulls(void) { workkeyflag |= UNIQNULLS; }
+void key_setuniqnulls(void)
+{
+    if (gbl_legacy_schema) {
+        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+        any_errors++;
+        return;
+    }
+    workkeyflag |= UNIQNULLS;
+}
 
 void key_piece_clear() /* used by parser, clears work key */
 {
@@ -993,6 +987,12 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             current_line, tag, MAXIDXNAMELEN - 1);
     }
     if (where && strlen(where) != 0) {
+        if (gbl_legacy_schema) {
+            csc2_syntax_error(
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+            any_errors++;
+            return;
+        }
         keys[ii]->where = csc2_strdup(where);
     } else {
         keys[ii]->where = NULL;
@@ -1037,6 +1037,12 @@ void key_piece_add(char *buf,
     char *cp, *tag;
 
     if (is_expr) {
+        if (gbl_legacy_schema) {
+            csc2_syntax_error(
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+            any_errors++;
+            return;
+        }
         struct key *nk = (struct key *)csc2_malloc(sizeof(struct key));
         struct key *kp;
         int keyfields = 0;
@@ -1473,11 +1479,20 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                     return;
                 }
                 break;
+            case T_DATETIME:
+            case T_DATETIMEUS:
+                if (gbl_legacy_schema && (tables[ntables]
+                                              .sym[tables[ntables].nsym]
+                                              .fopts[i]
+                                              .opttype != FLDOPT_NULL)) {
+                    csc2_syntax_error(
+                        "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+                    any_errors++;
+                    return;
+                }
             case T_PSTR:
             case T_CSTR:
             case T_VUTF8:
-            case T_DATETIME:
-            case T_DATETIMEUS:
                 if (tables[ntables].sym[tables[ntables].nsym].fopts
                             [i].valtype != CLIENT_CSTR &&
                     tables[ntables].sym[tables[ntables].nsym].fopts
@@ -1957,7 +1972,7 @@ int calc_rng(int rng, int *ask)
     while (cr) {
         j = cr->sym;
         /* get offset of this var in rec*/
-        roff = sym[j].off + arroff(j, cr->el, cr->rg);
+        roff = symb[j].off + arroff(j, cr->el, cr->rg);
         /* set offset (bytes) in record */
         cr->rcoff = roff;
         sadj = offpad(roff, 2);          /* start's adjustment for hw align*/
@@ -2361,6 +2376,7 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
 
+    char VER[16];
     strcpy(VER, revision + 10); /* get my version               */
     ifn = strchr(VER, '$');     /* clean up version text        */
     if (ifn)
@@ -2833,18 +2849,18 @@ static int dyns_is_field_array_comn(char *tag, int fidx)
     return (numdim(tables[tidx].sym[fidx].dim) > 0);
 }
 
-int dyns_get_field_arr_dims(int fidx, int *dims, int ndims, int *nodims)
+int dyns_get_field_arr_dims(int fidx, int *ldims, int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(NULL, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(NULL, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *dims,
+int dyns_get_table_field_arr_dims(char *tabletag, int fidx, int *ldims,
                                   int ndims, int *nodims)
 {
-    return dyns_get_field_arr_dims_comn(tabletag, fidx, dims, ndims, nodims);
+    return dyns_get_field_arr_dims_comn(tabletag, fidx, ldims, ndims, nodims);
 }
 
-int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
+int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
                                  int *nodims)
 {
     int i = 0;
@@ -2858,7 +2874,7 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims, int ndims,
     for (i = 0;
          tables[tidx].sym[fidx].dim[i] != -1 && i < ((6 > ndims) ? ndims : 6);
          i++) {
-        dims[i] = tables[tidx].sym[fidx].dim[i];
+        ldims[i] = tables[tidx].sym[fidx].dim[i];
         *nodims = *nodims + 1;
     }
     return 0;

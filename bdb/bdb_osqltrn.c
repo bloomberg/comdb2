@@ -248,12 +248,11 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
  */
 bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                                       tran_type *shadow_tran, int trak,
-                                      int *bdberr, int epoch, int file,
-                                      int offset, int is_ha_retry)
+                                      int *bdberr, int epoch, uint32_t file,
+                                      uint32_t offset, int is_ha_retry)
 {
     bdb_osql_trn_t *trn = NULL;
     int rc = 0, durable_lsns = bdb_state->attr->durable_lsns;
-    bdb_state_type *parent;
     uint32_t durable_gen = 0;
     int backfill_required = 0;
     struct bfillhndl *bkfill_hndl = NULL;
@@ -264,11 +263,6 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                "is_retry=%d\n",
                __func__, __LINE__, epoch, file, offset, is_ha_retry);
     }
-
-    if (bdb_state->parent)
-        parent = bdb_state->parent;
-    else
-        parent = bdb_state;
 
     if (!is_ha_retry)
         file = 0;
@@ -283,6 +277,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
 
         /* Don't request an LSN if we're given one */
         if (epoch || file)
+            backfill_required = 1;
+
+        if (gbl_rowlocks)
             backfill_required = 1;
 
         /* Request our startpoint from the master */

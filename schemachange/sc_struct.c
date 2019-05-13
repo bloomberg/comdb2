@@ -25,7 +25,6 @@
 
 struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
 {
-    memset(sc, 0, sizeof(struct schema_change_type));
     sc->tran = NULL;
     sc->type = DBTYPE_TAGGED_TABLE;
     sc->sb = NULL;
@@ -45,14 +44,16 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
+    Pthread_mutex_init(&sc->livesc_mtx, NULL);
     return sc;
 }
 
 struct schema_change_type *new_schemachange_type()
 {
     struct schema_change_type *sc =
-        (struct schema_change_type *)malloc(sizeof(struct schema_change_type));
-    if (sc != NULL) sc = init_schemachange_type(sc);
+        calloc(1, sizeof(struct schema_change_type));
+    if (sc != NULL)
+        sc = init_schemachange_type(sc);
 
     return sc;
 }
@@ -74,19 +75,25 @@ static void free_dests(struct schema_change_type *s)
 
 void free_schema_change_type(struct schema_change_type *s)
 {
-    if (s) {
-        if (s->newcsc2) {
-            free(s->newcsc2);
-            s->newcsc2 = NULL;
-        }
+    if (!s)
+        return;
+    if (s->newcsc2) {
+        free(s->newcsc2);
+        s->newcsc2 = NULL;
+    }
+    if (s->sc_convert_done) {
+        free(s->sc_convert_done);
+        s->sc_convert_done = NULL;
+    }
 
-        free_dests(s);
-        Pthread_mutex_destroy(&s->mtx);
+    free_dests(s);
+    Pthread_mutex_destroy(&s->mtx);
+    Pthread_mutex_destroy(&s->livesc_mtx);
 
-        if (s->sb && s->must_close_sb) close_appsock(s->sb);
-        if (!s->onstack) {
-            free(s);
-        }
+    if (s->sb && s->must_close_sb)
+        close_appsock(s->sb);
+    if (!s->onstack) {
+        free(s);
     }
 }
 
@@ -124,7 +131,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
         sizeof(s->header_change) + sizeof(s->compress) +
         sizeof(s->compress_blobs) + sizeof(s->ip_updates) +
-        sizeof(s->instant_sc) + sizeof(s->doom) + sizeof(s->use_plan) +
+        sizeof(s->instant_sc) + sizeof(s->preempted) + sizeof(s->use_plan) +
         sizeof(s->commit_sleep) + sizeof(s->convert_sleep) +
         sizeof(s->same_schema) + sizeof(s->dbnum) + sizeof(s->flg) +
         sizeof(s->rebuild_index) + sizeof(s->index_to_rebuild) +
@@ -240,7 +247,7 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
 
-    p_buf = buf_put(&s->doom, sizeof(s->doom), p_buf, p_buf_end);
+    p_buf = buf_put(&s->preempted, sizeof(s->preempted), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
 
@@ -452,7 +459,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->instant_sc, sizeof(s->instant_sc), p_buf,
                                p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->doom, sizeof(s->doom), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->preempted, sizeof(s->preempted), p_buf,
+                               p_buf_end);
 
     p_buf =
         (uint8_t *)buf_get(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
@@ -571,7 +579,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 
     if (p_buf == NULL) {
 
-        if (s->tablename_len < 0) {
+        if (s->tablename_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of table in packed"
@@ -580,7 +588,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
             return -1;
         }
 
-        if (s->fname_len < 0) {
+        if (s->fname_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of fname in packed"
@@ -588,7 +596,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
                 "array in schema_change_type\n");
             return -1;
         }
-        if (s->aname_len < 0) {
+        if (s->aname_len == -1) { // is set to -1 on error
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of aname in packed"
@@ -598,7 +606,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
         }
     }
 
-    if (s->newcsc2 && s->newcsc2_len < 0) {
+    if (s->newcsc2 && s->newcsc2_len == -1) { // is set to -1 on error
         logmsg(LOGMSG_ERROR, "unpack_schema_change_type: length of newcsc2 in "
                              "packed data doesn't match specified length\n");
         return -1;
@@ -728,10 +736,10 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
                   (s->live ? "Live" : "Readonly"));
         break;
     case SCAN_STRIPES:
-        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        sc_printf(s, "Schema change running in stripes scan mode\n");
         break;
     case SCAN_OLDCODE:
-        sc_printf(s, "%s schema change running in oldcode mode\n");
+        sc_printf(s, "Schema change running in oldcode mode\n");
         break;
     }
 }
@@ -859,7 +867,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             table, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
+            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
@@ -869,8 +877,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
-            /* FIXME */
-            exit(1);
+            abort();
         }
 
         set_odh_options_tran(newdb, tran);
@@ -917,7 +924,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
+            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran, 0,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %p bdberr %d\n",

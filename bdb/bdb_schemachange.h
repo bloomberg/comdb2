@@ -24,6 +24,7 @@ extern volatile int gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
 typedef enum scdone {
+    invalid = -1,
     alter,
     fastinit,
     add = fastinit,
@@ -45,6 +46,7 @@ typedef enum scdone {
     lua_sfunc,
     lua_afunc,
     rename_table,
+    change_stripe
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

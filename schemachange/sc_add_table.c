@@ -25,6 +25,8 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 
+extern int gbl_is_physical_replicant;
+
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
@@ -55,7 +57,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
@@ -69,7 +71,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, trans, &bdberr);
+            newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
 
@@ -164,7 +166,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 
-    if (newdb->dbenv->master != gbl_mynode) {
+    /* must re add the dbs if you're a physical replicant */
+    if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
         /* This is a replicant calling scdone_callback */
         add_db(newdb);
     }
@@ -291,9 +294,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
     }
-
-    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
-        return rc;
 
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {

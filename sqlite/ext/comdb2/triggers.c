@@ -62,7 +62,7 @@ static int triggerConnect(
   if( rc == SQLITE_OK ){
     if( (*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0)
       return SQLITE_NOMEM;
-    memset(*ppVtab, 0, sizeof(*ppVtab));
+    memset(*ppVtab, 0, sizeof(sqlite3_vtab));
   }
   return rc;
 }
@@ -290,4 +290,8 @@ const sqlite3_module systblTriggersModule = {
   0,                 /* xRollback */
   0,                 /* xFindMethod */
   0,                 /* xRename */
+  0,                 /* xSavepoint */
+  0,                 /* xRelease */
+  0,                 /* xRollbackTo */
+  0,                 /* xShadowName */
 };

@@ -56,32 +56,17 @@ static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
 
 enum mach_class get_my_mach_class(void)
 {
+    if (gbl_machine_class)
+        return mach_class_name2class(gbl_machine_class);
     return get_mach_class(gbl_mynode);
 }
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
 
-const char *get_class_str(enum mach_class cls)
-{
-    switch (cls) {
-    default:
-        return "???";
-    case CLASS_TEST:
-        return "test";
-    case CLASS_ALPHA:
-        return "alpha";
-    case CLASS_BETA:
-        return "beta";
-    case CLASS_PROD:
-        return "prod";
-    case CLASS_UAT:
-        return "uat";
-    }
-}
 
 const char *get_mach_class_str(char *host)
 {
-    return get_class_str(get_mach_class(host));
+    return mach_class_class2name(get_mach_class(host));
 }
 
 static int disable_rmt_dbupdates(const char *mach)
@@ -166,7 +151,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_mach_class(host))
+        if (get_mach_class(host) <= get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -177,21 +162,11 @@ int allow_broadcast_to_remote(const char *host)
 static int parse_mach_or_group(char *tok, int ltok, char **mach,
                                enum mach_class *cls)
 {
+    char *name = strndup(tok, ltok);
     *mach = NULL;
-    *cls = CLASS_UNKNOWN;
-    if (tokcmp(tok, ltok, "test") == 0)
-        *cls = CLASS_TEST;
-    else if (tokcmp(tok, ltok, "dev") == 0)
-        *cls = CLASS_TEST;
-    else if (tokcmp(tok, ltok, "alpha") == 0)
-        *cls = CLASS_ALPHA;
-    else if (tokcmp(tok, ltok, "beta") == 0)
-        *cls = CLASS_BETA;
-    else if (tokcmp(tok, ltok, "prod") == 0)
-        *cls = CLASS_PROD;
-    else if (tokcmp(tok, ltok, "uat") == 0)
-        *cls = CLASS_UAT;
-    else {
+
+    *cls = mach_class_name2class(name);
+    if (!*cls) {
         char *m;
         m = tokdup(tok, ltok);
         *mach = intern(m);
@@ -320,17 +295,18 @@ int process_allow_command(char *line, int lline)
         if (allow == 1) {
             bset(&pol->explicit_allow_classes, cls);
             bclr(&pol->explicit_disallow_classes, cls);
-            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr, get_class_str(cls));
+            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr,
+                   mach_class_class2name(cls));
         } else if (allow == 0) {
             bset(&pol->explicit_disallow_classes, cls);
             bclr(&pol->explicit_allow_classes, cls);
             logmsg(LOGMSG_USER, "disallowing %s %s machines\n", pol->descr,
-                   get_class_str(cls));
+                   mach_class_class2name(cls));
         } else if (allow == -1) {
             bclr(&pol->explicit_disallow_classes, cls);
             bclr(&pol->explicit_allow_classes, cls);
-            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n", pol->descr,
-                   get_class_str(cls));
+            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n",
+                   pol->descr, mach_class_class2name(cls));
         }
     } else {
         goto bad;

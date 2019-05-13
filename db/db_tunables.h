@@ -32,11 +32,20 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_lua_exec_with_ddl",
+                 "Enable to allow use of SQL DDL commands from inside of Lua "
+                 "stored procedures (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl, NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_pragma",
+                 "Enable to allow use of the PRAGMA command (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_pragma,
+                 NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_negative_column_size",
                  "Allow negative column size in csc2 schema. Added mostly for "
                  "backwards compatibility. (Default: off)",
@@ -669,7 +678,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
@@ -1008,6 +1017,10 @@ REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
 REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
                  &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
                  NULL);
+REGISTER_TUNABLE("exec_sql_on_new_connect",
+                 "SQL command(s) to run for each new connection.",
+                 TUNABLE_RAW, &gbl_exec_sql_on_new_connect,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",
@@ -1304,6 +1317,13 @@ REGISTER_TUNABLE("req_all_threshold",
                  "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("req_all_time_threshold",
+                 "Use req_all if a replicant hasn't updated its "
+                 "lsn in more than this many ms.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_req_all_time_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("fill_throttle",
                  "Throttle fill-reqs to once per fill-throttle ms.  "
                  "(Default: 500ms)",
@@ -1530,9 +1550,129 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("disable_tpsc_tblvers",
+                 "Disable table version checks for time partition schema "
+                 "changes",
+                 TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
+                 "Abort incorrect calls to set_durable_lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("instrument_dblist",
+                 "Extended dblist-trace in berkley.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist,
+                 READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("match_on_ckp",
+                 "Allow rep_verify_match on ckp records.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_reconnect_penalty",
+                 "Physrep wait seconds before retry to the same node.  "
+                 "(Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_register_interval",
+                 "Interval for physical replicant re-registration.  "
+                 "(Default: 3600)",
+                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("blocking_physrep",
+                 "Physical replicant blocks on select.  "
+                 "(Default: false)",
+                 TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("logdelete_lock_trace",
+                 "Print trace getting and releasing the logdelete lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("flush_log_at_checkpoint",
+                 "Replicants flush the log at checkpoint records.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_set_sc_in_progress",
+                 "Prints a line of trace when sc_in_progress is set.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("send_failed_dispatch_message",
+                 "Send explicit failed-dispatch message to the api.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_send_failed_dispatch_message,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
+                 TUNABLE_BOOLEAN, &gbl_legacy_schema,
+                 EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("force_incoherent",
+                 "Force this node to be incoherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_force_incoherent,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ignore_coherency",
+                 "Force this node to be coherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_ignore_coherency,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_incoherent_writes",
+                 "Prevent writes against a node which was incoherent at "
+                 "transaction start.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("skip_catchup_logic",
+                 "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("abort_on_missing_osql_session",
+                 "Abort if we can't find an osql session in the repository.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("online_recovery",
+                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_remote_admin",
+                 "Forbid non-local admin requests.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
+                 NULL);
+
 REGISTER_TUNABLE(
-    "disable_tpsc_tblvers",
-    "Disable table version checks for time partition schema changes",
-    TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL, NULL, NULL);
+    "pbkdf2_iterations",
+    "Number of iterations of PBKDF2 algorithm for password hashing.",
+    TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
+    pbkdf2_iterations_update, NULL);
+
+REGISTER_TUNABLE("machine_class",
+                 "override for the machine class from this db perspective.",
+                 TUNABLE_STRING, &gbl_machine_class, READEARLY | READONLY, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

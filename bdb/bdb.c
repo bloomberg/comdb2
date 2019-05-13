@@ -48,6 +48,9 @@
 #include <logmsg.h>
 #include <locks_wrap.h>
 
+extern void berkdb_dumptrans(DB_ENV *);
+extern int __db_panic(DB_ENV *dbenv, int err);
+
 pthread_key_t bdb_key;
 pthread_key_t lock_key;
 
@@ -847,7 +850,6 @@ void bdb_lockspeed(bdb_state_type *bdb_state)
 
 void bdb_dumptrans(bdb_state_type *bdb_state)
 {
-    extern void berkdb_dumptrans(DB_ENV *);
     berkdb_dumptrans(bdb_state->dbenv);
 }
 
@@ -901,7 +903,6 @@ int bdb_recovery_start_lsn(bdb_state_type *bdb_state, char *lsnout, int lsnlen)
 
 int bdb_panic(bdb_state_type *bdb_state)
 {
-    extern int __db_panic(DB_ENV * dbenv, int err);
     __db_panic(bdb_state->dbenv, EINVAL);
     /* this shouldn't return!!! */
     return 0;

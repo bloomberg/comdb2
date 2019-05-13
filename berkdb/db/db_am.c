@@ -362,7 +362,7 @@ __db_cursor_ser_int(dbp, txn, dbcs, dbcp, flags)
 {
 	DBTYPE dbtype;
 	DBCS_INTERNAL *dbcsi;
-	DBC *dbc;
+	DBC *dbc = NULL;
 	DBC_INTERNAL *cp;
 	int ret;
 	int t_ret;

@@ -19,6 +19,12 @@ limitations under the License.
 
 #include "ast.h"
 
+struct params_info {
+    struct sqlclntstate *clnt;
+    int nparams;
+    struct param_data *params;
+};
+
 struct dohsql_node {
     enum ast_type type;
     char *sql;
@@ -27,6 +33,8 @@ struct dohsql_node {
     int nnodes;
     int order_size;
     int *order_dir;
+    int nparams;
+    struct params_info *params;
 };
 typedef struct dohsql_node dohsql_node_t;
 
@@ -81,5 +89,26 @@ void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt);
  *
  */
 void dohsql_stats(void);
+
+/**
+ * Return explain distribution information
+ *
+ */
+void explain_distribution(dohsql_node_t *node);
+
+/**
+ * Notify worker threads master is done
+ *
+ */
+void dohsql_signal_done(struct sqlclntstate *clnt);
+
+/**
+ * Bound parameters support
+ * Callback function that registers a parameters with the proper
+ * sqlite worker engine
+ *
+ */
+struct params_info *dohsql_params_append(struct params_info **pparams,
+                                         const char *name, int index);
 
 #endif

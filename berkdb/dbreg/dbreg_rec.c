@@ -100,13 +100,15 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		int i;
 		ft = &dbenv->fileid_track;
 		if (argp->fileid >= ft->numids) {
-			__os_realloc(dbenv, (argp->fileid+1) * 
-				     sizeof(lsn_range_list), &ft->ranges);
-			for (i = ft->numids; i < argp->fileid+1; i++) {
+			int dblsize = argp->fileid * 2 + 1;
+			if ((ret = __os_realloc(dbenv,
+					dblsize * sizeof(lsn_range_list), &ft->ranges)) != 0)
+				goto out;
+			for (i = ft->numids; i < dblsize; i++) {
 				listc_init(&ft->ranges[i], 
 					   offsetof(struct lsn_range, lnk));
 			}
-			ft->numids = argp->fileid+1;
+			ft->numids = dblsize;
 		}
 
 		/* Do we already have a record for this range?  Same
@@ -116,7 +118,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		if (prev && dbenv->attr.consolidate_dbreg_ranges &&
 		    strlen(prev->fname)+1 == argp->name.size &&
 		    strcmp(prev->fname, argp->name.data) == 0) {
-			/* do nothing */
+            DB_ASSERT(prev->end.file == 0);
+            DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 		} else {
 			__os_malloc(dbenv, sizeof(struct lsn_range), &r);
 			/* end is not defined until we get to the
@@ -135,6 +138,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 				/* the range ends here */
 				prev->end.file = lsnp->file;
 				prev->end.offset = lsnp->offset;
+                DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 			}
 			listc_abl(&ft->ranges[argp->fileid], r);
 		}

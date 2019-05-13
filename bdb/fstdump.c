@@ -488,6 +488,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
     return NULL;
 }
 
+#define UNUSED(x) ((void)(x))
 static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
                          void *sendrec, unsigned char **retkey_p)
 {
@@ -511,6 +512,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         unsigned char buffer[24 * 1024];
 
         DB_MULTIPLE_KEY_NEXT(p, data, retkey, retklen, retdata, retdlen);
+        UNUSED(retklen);
         if (p == NULL)
             break;
 
@@ -1104,6 +1106,7 @@ int bdb_dtadump_next(bdb_state_type *bdb_state, struct dtadump *dump,
 
         DB_MULTIPLE_KEY_NEXT(dump->p, &dump->dbt_dta, retkey, retklen, retdata,
                              retdlen);
+        UNUSED(retklen);
         if (dump->p == NULL) {
             dump->have_keys = 0;
             /* go back and do another find */
@@ -1279,9 +1282,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 {
     int retries = 0;
     int rc = 0;
-    bdb_state_type *bdb_state;
-
-    bdb_state = common->bdb_state;
 
     while (retries < gbl_maxretries) {
         if ((rc = fstdump->dbp->cursor(fstdump->dbp, NULL, dbcp, 0)) == 0) {
@@ -1290,9 +1290,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 
         if (!is_handled_rc(rc))
             break;
-
-        if (rc == DB_REP_HANDLE_DEAD) {
-        }
 
         if (++retries > deadlock_sleep_start)
             usleep(deadlock_sleep_amt);
@@ -1390,6 +1387,7 @@ int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr)
 
 again:
     DB_MULTIPLE_KEY_NEXT(dmp->p, &dmp->data, retkey, retklen, retdata, retdlen);
+    UNUSED(retklen);
 
     if (dmp->p == NULL) {
         rc = dmp->dbcp->c_get(dmp->dbcp, &dmp->key, &dmp->data,
@@ -1497,6 +1495,7 @@ int bdb_fstdumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
 
         for (DB_MULTIPLE_INIT(p, &data);;) {
             DB_MULTIPLE_KEY_NEXT(p, &data, retkey, retklen, retdata, retdlen);
+            UNUSED(retklen);
             if (p == NULL)
                 break;
 
@@ -1619,6 +1618,7 @@ int bdb_dumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
 
         for (DB_MULTIPLE_INIT(p, &data);;) {
             DB_MULTIPLE_KEY_NEXT(p, &data, retkey, retklen, retdata, retdlen);
+            UNUSED(retklen);
             if (p == NULL)
                 break;
 

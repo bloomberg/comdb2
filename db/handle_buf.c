@@ -31,12 +31,11 @@
 
 #include <epochlib.h>
 #include <list.h>
-#include <lockmacro.h>
 #include <pool.h>
 #include <time.h>
 
 #include "debug_switches.h"
-
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "block_internal.h"
 #include "util.h"
@@ -451,8 +450,7 @@ static void *thd_req(void *vthd)
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_index = NULL;
 
-    thdinfo->ct_add_table =
-        (void *)create_constraint_table(&thdinfo->ct_id_key);
+    thdinfo->ct_add_table = create_constraint_table();
     if (thdinfo->ct_add_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add table thd "
@@ -460,8 +458,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_del_table =
-        (void *)create_constraint_table(&thdinfo->ct_id_key);
+    thdinfo->ct_del_table = create_constraint_table();
     if (thdinfo->ct_del_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint delete table "
@@ -469,8 +466,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_add_index =
-        (void *)create_constraint_index_table(&thdinfo->ct_id_key);
+    thdinfo->ct_add_index = create_constraint_index_table();
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add index table "
@@ -661,7 +657,6 @@ static void *thd_req(void *vthd)
 static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 /* 040307dh: 64bits */
 {
-    int is_legacy_fstsnd = 1;
     if (thd || iq) {
         LOCK(&lock)
         {
@@ -686,13 +681,11 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     } else {
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                     }
-                    is_legacy_fstsnd = 0;
                 } else if (iq->is_sorese) {
                     if (iq->sorese.osqllog) {
                         sbuf2close(iq->sorese.osqllog);
                         iq->sorese.osqllog = NULL;
                     }
-                    is_legacy_fstsnd = 0;
                 }
                 pool_relablk(p_reqs, iq);
             }
@@ -922,6 +915,8 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
+    if (iq->origdb == NULL)
+        iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
     if (thedb->stopped) {
         errUNLOCK(&lock);
@@ -1120,7 +1115,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      * than limp onwards, we should just exit here.  Hand off
                      * masterness if possible. */
                     if (debug_exit_on_pthread_create_error()) {
-                        bdb_transfermaster(thedb->dbs[0]->handle);
+                        bdb_transfermaster(thedb->static_table.handle);
                         logmsg(LOGMSG_FATAL, 
                                 "%s:Exiting due to thread create errors\n",
                                 __func__);

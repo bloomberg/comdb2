@@ -58,7 +58,6 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
-deadlock_policy.test
 overflowblobs.test        -- timesout
 halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test
@@ -79,6 +78,7 @@ sigstopcluster.test
 cinsert_linearizable.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 restart_socksql.test      -- dont run this for now since masterbranch fails it
+phys_rep.test
 <END>
 
 # vim: set sw=4 ts=4 et:

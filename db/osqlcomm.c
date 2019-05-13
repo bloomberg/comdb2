@@ -41,13 +41,15 @@
 #include <flibc.h>
 #include <net_types.h>
 #include <errstat.h>
-#include <views_cron.h>
+#include "cron.h"
 #include <bpfunc.h>
 #include <strbuf.h>
 #include <logmsg.h>
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"
+#include <compat.h>
+#include <unistd.h>
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
@@ -3340,7 +3342,9 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
 void log_snap_info_key(snap_uid_t *snap_info)
 {
     if (snap_info)
-        logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
+        logmsg(LOGMSG_USER, "%*s", snap_info->keylen - 3, snap_info->key);
+    else
+        logmsg(LOGMSG_USER, "NO_CNONCE"); // ex. SC
 }
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
@@ -3444,8 +3448,8 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
 
         poke.tstamp = comdb2_time_epoch();
 
-        poke.from = 0;
-        poke.to = 0;
+        poke.from = gbl_mynodeid;
+        poke.to = nodenum(tohost);
         poke.rqid = rqid;
 
         if (!(p_buf = osqlcomm_poke_type_put(&poke, p_buf, p_buf_end))) {
@@ -3514,9 +3518,10 @@ int is_tablename_queue(const char * tablename, int len)
 int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
                        uint32_t start_gen, int type, SBUF2 *logsb)
 {
-    uint8_t buf[OSQLCOMM_STARTGEN_UUID_RPL_LEN > OSQLCOMM_STARTGEN_RPL_LEN
-                    ? OSQLCOMM_STARTGEN_UUID_RPL_LEN
-                    : OSQLCOMM_STARTGEN_RPL_LEN];
+    uint8_t
+        buf[(int)OSQLCOMM_STARTGEN_UUID_RPL_LEN > (int)OSQLCOMM_STARTGEN_RPL_LEN
+                ? OSQLCOMM_STARTGEN_UUID_RPL_LEN
+                : OSQLCOMM_STARTGEN_RPL_LEN];
     int msglen;
     int rc;
 
@@ -3524,7 +3529,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_startgen_uuid_rpl_t startgen_uuid_rpl = {0};
+        osql_startgen_uuid_rpl_t startgen_uuid_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_UUID_RPL_LEN);
         msglen = OSQLCOMM_STARTGEN_UUID_RPL_LEN;
@@ -3541,7 +3546,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
 
     } else {
-        osql_startgen_rpl_t startgen_rpl = {0};
+        osql_startgen_rpl_t startgen_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_RPL_LEN);
         msglen = OSQLCOMM_STARTGEN_RPL_LEN;
@@ -3587,7 +3592,8 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     int rc = 0;
     int sent;
 
-    uint8_t buf[OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN > OSQLCOMM_USEDB_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN >
+                        (int)OSQLCOMM_USEDB_RPL_TYPE_LEN
                     ? OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN
                     : OSQLCOMM_USEDB_RPL_TYPE_LEN];
 
@@ -3595,7 +3601,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_usedb_rpl_uuid_t usedb_uuid_rpl = {0};
+        osql_usedb_rpl_uuid_t usedb_uuid_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN);
 
@@ -3617,7 +3623,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_usedb_rpl_t usedb_rpl = {0};
+        osql_usedb_rpl_t usedb_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_USEDB_RPL_TYPE_LEN);
 
@@ -3657,6 +3663,13 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (rc)
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
                rc);
+
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_USEDB);
+    if (d_ms) {
+        logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_USEDB (%dms)\n",
+               d_ms);
+        usleep(1000 * d_ms);
+    }
 
     return rc;
 }
@@ -3700,7 +3713,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
     p_buf = buf;
     p_buf_end = (p_buf + totlen);
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_updcols_uuid_rpl_t rpl = {0};
+        osql_updcols_uuid_rpl_t rpl = {{0}};
 
         rpl.hd.type = OSQL_UPDCOLS;
         comdb2uuidcpy(rpl.hd.uuid, uuid);
@@ -3718,7 +3731,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
 
         type = osql_net_type_to_net_uuid_type(type);
     } else {
-        osql_updcols_rpl_t rpl = {0};
+        osql_updcols_rpl_t rpl = {{0}};
         rpl.hd.type = OSQL_UPDCOLS;
         rpl.hd.sid = rqid;
         rpl.dt.seq = seq;
@@ -3760,7 +3773,8 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
                     char *pData, int nData, int type, SBUF2 *logsb)
 {
     int msglen;
-    uint8_t buf[OSQLCOMM_INDEX_RPL_TYPE_LEN > OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_INDEX_RPL_TYPE_LEN >
+                        (int)OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN
                     ? OSQLCOMM_INDEX_RPL_TYPE_LEN
                     : OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN];
     int rc = 0;
@@ -3771,7 +3785,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_index_uuid_rpl_t index_uuid_rpl = {0};
+        osql_index_uuid_rpl_t index_uuid_rpl = {{0}};
 
         index_uuid_rpl.hd.type = isDelete ? OSQL_DELIDX : OSQL_INSIDX;
         comdb2uuidcpy(index_uuid_rpl.hd.uuid, uuid);
@@ -3792,7 +3806,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
         /* override message type */
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_index_rpl_t index_rpl = {0};
+        osql_index_rpl_t index_rpl = {{0}};
 
         index_rpl.hd.type = isDelete ? OSQL_DELIDX : OSQL_INSIDX;
         index_rpl.hd.sid = rqid;
@@ -3838,20 +3852,21 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
                     int datalen, SBUF2 *logsb)
 {
     int sent;
-    uint8_t buf[OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN > OSQLCOMM_QBLOB_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN >
+                        (int)OSQLCOMM_QBLOB_RPL_TYPE_LEN
                     ? OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN
                     : OSQLCOMM_QBLOB_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end;
     int rc = 0;
     int msgsz = 0;
-    osql_qblob_rpl_t rpl = {0};
+    osql_qblob_rpl_t rpl = {{0}};
 
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_qblob_uuid_rpl_t rpl_uuid = {0};
+        osql_qblob_uuid_rpl_t rpl_uuid = {{0}};
         p_buf_end = p_buf + OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN;
 
         rpl_uuid.hd.type = OSQL_QBLOB;
@@ -3918,7 +3933,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
 #if DEBUG_REORDER
     logmsg(
         LOGMSG_DEBUG,
-        "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n",
+        "REORDER: putting blob id=%d, seq=%lld, bloblen(datalen)=%d, sent=%d\n",
         blobid, seq, datalen, sent);
     if (datalen > 0) {
         char *tmpstr;
@@ -3948,15 +3963,16 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long del_keys, char *pData, int nData,
                      int type, SBUF2 *logsb)
 {
-    uint8_t buf[OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > OSQLCOMM_UPD_RPL_TYPE_LEN
-                    ? OSQLCOMM_UPD_UUID_RPL_TYPE_LEN
-                    : OSQLCOMM_UPD_RPL_TYPE_LEN];
+    uint8_t
+        buf[(int)OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > (int)OSQLCOMM_UPD_RPL_TYPE_LEN
+                ? OSQLCOMM_UPD_UUID_RPL_TYPE_LEN
+                : OSQLCOMM_UPD_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end;
     int rc = 0;
     int sent;
     int msgsz;
-    osql_upd_rpl_t upd_rpl = {0};
+    osql_upd_rpl_t upd_rpl = {{0}};
     int send_dk = 0;
 
     if (gbl_partial_indexes && ins_keys != -1ULL && del_keys != -1ULL)
@@ -3966,7 +3982,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_upd_uuid_rpl_t upd_uuid_rpl = {0};
+        osql_upd_uuid_rpl_t upd_uuid_rpl = {{0}};
 
         if (send_dk) {
             p_buf_end = buf + OSQLCOMM_UPD_UUID_RPL_TYPE_LEN;
@@ -4099,7 +4115,7 @@ int osql_close_connection(char *host)
 int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type)
 {
-    osql_dbglog_t req;
+    osql_dbglog_t req = {0};
     uint8_t buf[OSQLCOMM_DBGLOG_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = p_buf + OSQLCOMM_DBGLOG_TYPE_LEN;
@@ -4133,13 +4149,13 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,
                       int type, SBUF2 *logsb)
 {
-    osql_updstat_rpl_t updstat_rpl = {0};
-    osql_updstat_uuid_rpl_t updstat_rpl_uuid = {0};
+    osql_updstat_rpl_t updstat_rpl = {{0}};
+    osql_updstat_uuid_rpl_t updstat_rpl_uuid = {{0}};
 
-    uint8_t
-        buf[OSQLCOMM_UPDSTAT_RPL_TYPE_LEN > OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN
-                ? OSQLCOMM_UPDSTAT_RPL_TYPE_LEN
-                : OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN];
+    uint8_t buf[(int)OSQLCOMM_UPDSTAT_RPL_TYPE_LEN >
+                        (int)OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN
+                    ? OSQLCOMM_UPDSTAT_RPL_TYPE_LEN
+                    : OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = p_buf + sizeof(buf);
     int rc = 0;
@@ -4189,8 +4205,9 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     if (logsb) {
-        sbuf2printf(logsb, "[%llu] send OSQL_UPDSTATREC %llx (%lld)\n", rqid,
-                    seq, seq);
+        uuidstr_t us;
+        sbuf2printf(logsb, "[%llu %s] send OSQL_UPDSTATREC %llx (%lld)\n", rqid,
+                    comdb2uuidstr(uuid, us), seq, seq);
         sbuf2flush(logsb);
     }
 
@@ -4212,9 +4229,10 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      int upsert_flags)
 {
     int msglen;
-    uint8_t buf[OSQLCOMM_INS_RPL_TYPE_LEN > OSQLCOMM_INS_UUID_RPL_TYPE_LEN
-                    ? OSQLCOMM_INS_RPL_TYPE_LEN
-                    : OSQLCOMM_INS_UUID_RPL_TYPE_LEN];
+    uint8_t
+        buf[(int)OSQLCOMM_INS_RPL_TYPE_LEN > (int)OSQLCOMM_INS_UUID_RPL_TYPE_LEN
+                ? OSQLCOMM_INS_RPL_TYPE_LEN
+                : OSQLCOMM_INS_UUID_RPL_TYPE_LEN];
     int rc = 0;
     int sent;
     uint8_t *p_buf = buf;
@@ -4230,7 +4248,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (rqid == OSQL_RQID_USE_UUID) {
         int len = OSQLCOMM_INS_UUID_RPL_TYPE_LEN;
         int flags = 0;
-        osql_ins_uuid_rpl_t ins_uuid_rpl = {0};
+        osql_ins_uuid_rpl_t ins_uuid_rpl = {{0}};
 
         ins_uuid_rpl.hd.type = OSQL_INSERT;
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
@@ -4270,7 +4288,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         /* override message type */
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_ins_rpl_t ins_rpl = {0};
+        osql_ins_rpl_t ins_rpl = {{0}};
 
         if (send_dk || upsert_flags) {
             logmsg(LOGMSG_ERROR,
@@ -4324,7 +4342,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
     union {
         osql_uuid_dbq_consume_t uuid;
         osql_dbq_consume_t rqid;
-    } rpl = {0};
+    } rpl = {{{0}}};
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
     if (logsb) {
@@ -4360,10 +4378,10 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
                      int type, SBUF2 *logsb)
 {
-    uint8_t
-        buf[OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN > OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN
-                ? OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN
-                : OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN];
+    uint8_t buf[(int)OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN >
+                        (int)OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN
+                    ? OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN
+                    : OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end;
     int rc = 0;
@@ -4376,7 +4394,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_del_uuid_rpl_t del_uuid_rpl = {0};
+        osql_del_uuid_rpl_t del_uuid_rpl = {{0}};
         if (send_dk) {
             p_buf_end = p_buf + OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN;
             msgsz = OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN;
@@ -4399,7 +4417,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
         type = osql_net_type_to_net_uuid_type(type);
     } else {
-        osql_del_rpl_t del_rpl = {0};
+        osql_del_rpl_t del_rpl = {{0}};
         if (send_dk) {
             p_buf_end = p_buf + OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN;
             msgsz = OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN;
@@ -4503,7 +4521,7 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
     p_buf_end = (p_buf + b_sz);
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_serial_uuid_rpl_t serial_rpl = {0};
+        osql_serial_uuid_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
             (type == NET_OSQL_SERIAL_RPL || 
@@ -4544,7 +4562,7 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
 
     } else {
-        osql_serial_rpl_t serial_rpl = {0};
+        osql_serial_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
             (type == NET_OSQL_SERIAL_RPL ||
@@ -4593,8 +4611,8 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                      struct client_query_stats *query_stats,
                      snap_uid_t *snap_info)
 {
-    osql_done_rpl_t rpl_ok = {0};
-    osql_done_xerr_t rpl_xerr = {0};
+    osql_done_rpl_t rpl_ok = {{0}};
+    osql_done_xerr_t rpl_xerr = {{0}};
     int b_sz;
     int used_malloc = 0;
     int snap_info_length = 0;
@@ -4727,8 +4745,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info)
 {
-    osql_done_uuid_rpl_t rpl_ok = {0};
-    osql_done_xerr_uuid_t rpl_xerr = {0};
+    osql_done_uuid_rpl_t rpl_ok = {{0}};
+    osql_done_xerr_uuid_t rpl_xerr = {{0}};
     int b_sz;
     int used_malloc = 0;
     int snap_info_length = 0;
@@ -4831,10 +4849,12 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
+#ifndef NDEBUG
         uuidstr_t us;
-        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n",
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
                  rc, nops);
+#endif
         if (!osqlcomm_done_xerr_uuid_type_put(&rpl_xerr, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_done_xerr_type_put");
@@ -4874,7 +4894,7 @@ static void osql_blocksql_failed_dispatch(netinfo_type *netinfo_ptr,
                                           uuid_t uuid, int rc)
 {
 
-    osql_done_xerr_t rpl_xerr = {0};
+    osql_done_xerr_t rpl_xerr = {{0}};
     uint8_t buf[sizeof(rpl_xerr)];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = p_buf + sizeof(rpl_xerr);
@@ -5215,8 +5235,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
     if (sorese->host) {
         /* remote */
         if (sorese->rqid == OSQL_RQID_USE_UUID) {
-            osql_done_xerr_uuid_t rpl_xerr = {0};
-            osql_done_uuid_rpl_t rpl_ok = {0};
+            osql_done_xerr_uuid_t rpl_xerr = {{0}};
+            osql_done_uuid_rpl_t rpl_ok = {{0}};
 
             if (rc) {
                 uint8_t *p_buf = buf;
@@ -5255,8 +5275,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
             }
             type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         } else {
-            osql_done_xerr_t rpl_xerr = {0};
-            osql_done_rpl_t rpl_ok = {0};
+            osql_done_xerr_t rpl_xerr = {{0}};
+            osql_done_rpl_t rpl_ok = {{0}};
 
             if (rc) {
                 uint8_t *p_buf = buf;
@@ -5455,10 +5475,8 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
 static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp)
 {
-    uint8_t *p_buf = dtap;
-    uint8_t *p_buf_end = p_buf + dtalen;
     osql_poke_t poke;
-    int found = 0;
+    bool found = false;
     int rc = 0;
     uuid_t uuid;
 
@@ -5469,6 +5487,8 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
         return;
     }
 
+    uint8_t *p_buf = dtap;
+    uint8_t *p_buf_end = p_buf + dtalen;
     if (!(osqlcomm_poke_type_get(&poke, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: invalid data length\n", __func__);
         return;
@@ -5476,34 +5496,33 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     found = osql_chkboard_sqlsession_exists(poke.rqid, uuid, 1);
 
-    if (!found) {
+    /* TODO: we could send something back... but in tough times this will
+     * not make it nevertheless */
+    if (found)
+        return;
 
-        /* send a done with an error, lost request */
-        uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
-        uint8_t *p_buf = buf, *p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
-        osql_done_xerr_t rpl;
+    /* not found so send a done with an error, lost request */
+    uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
+    p_buf = buf;
+    p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
+    osql_done_xerr_t rpl;
 
-        rpl.hd.type = OSQL_XERR;
-        rpl.hd.sid = poke.rqid;
-        rpl.dt.errval = OSQL_NOOSQLTHR;
-        uuidstr_t us;
-        /* TODO:NOENV:uuid - should come from new msg type */
-        snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-                 "Missing sql session %llx %s on %s\n", poke.rqid,
-                 comdb2uuidstr(uuid, us), gbl_mynode);
+    rpl.hd.type = OSQL_XERR;
+    rpl.hd.sid = poke.rqid;
+    rpl.dt.errval = OSQL_NOOSQLTHR;
+    uuidstr_t us;
+    /* TODO:NOENV:uuid - should come from new msg type */
+    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
+             "Missing sql session %llx %s on %s\n", poke.rqid,
+             comdb2uuidstr(uuid, us), gbl_mynode);
 
-        osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
+    osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
 
-        if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf,
-                                   sizeof(buf), 1))) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: error writting record to master in offload mode rc=%d!\n",
-                    __func__, rc);
-        }
-
-    } else {
-        /* TODO: we could send something back... but in tough times this will
-         * not make it nevertheless */
+    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf, sizeof(buf),
+                               1))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error writting record to master in offload mode rc=%d!\n",
+               __func__, rc);
     }
 }
 
@@ -5514,7 +5533,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
     osql_poke_uuid_t poke;
-    int found = 0;
+    bool found = false;
     int rc = 0;
 
     if (thedb->exiting || thedb->stopped) {
@@ -5529,35 +5548,33 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
 
     found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid, 1);
 
-    if (!found) {
+    /* TODO: we could send something back... but in tough times this will
+     * not make it nevertheless */
+    if (found)
+        return;
 
-        /* send a done with an error, lost request */
-        uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
-        uint8_t *p_buf = buf,
-                *p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-        osql_done_xerr_uuid_t rpl;
+    /* not found so send a done with an error, lost request */
+    uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
+    p_buf = buf;
+    p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
+    osql_done_xerr_uuid_t rpl;
 
-        rpl.hd.type = OSQL_XERR;
-        comdb2uuidcpy(rpl.hd.uuid, poke.uuid);
-        rpl.dt.errval = OSQL_NOOSQLTHR;
-        uuidstr_t us;
+    rpl.hd.type = OSQL_XERR;
+    comdb2uuidcpy(rpl.hd.uuid, poke.uuid);
+    rpl.dt.errval = OSQL_NOOSQLTHR;
+    uuidstr_t us;
 
-        snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-                 "Missing sql session %s on %s\n", comdb2uuidstr(poke.uuid, us),
-                 gbl_mynode);
+    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
+             "Missing sql session %s on %s\n", comdb2uuidstr(poke.uuid, us),
+             gbl_mynode);
 
-        osqlcomm_done_xerr_uuid_type_put(&rpl, p_buf, p_buf_end);
+    osqlcomm_done_xerr_uuid_type_put(&rpl, p_buf, p_buf_end);
 
-        if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
-                                   sizeof(buf), 1))) {
-            logmsg(LOGMSG_ERROR, 
-                   "%s: error writting record to master in offload mode rc=%d!\n",
-                   __func__, rc);
-        }
-
-    } else {
-        /* TODO: we could send something back... but in tough times this will
-         * not make it nevertheless */
+    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
+                               sizeof(buf), 1))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error writting record to master in offload mode rc=%d!\n",
+               __func__, rc);
     }
 }
 
@@ -5567,7 +5584,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_t poke;
+    osql_poke_t poke = {0};
     osql_poke_uuid_t pokeuuid;
     int found = 0;
     int rc = 0;
@@ -5609,7 +5626,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
         if (rqid == OSQL_RQID_USE_UUID) {
             p_buf = bufuuid;
             p_buf_end = p_buf + OSQLCOMM_EXISTS_UUID_RPL_TYPE_LEN;
-            osql_exists_uuid_rpl_t rpl = {0};
+            osql_exists_uuid_rpl_t rpl = {{0}};
 
             rpl.hd.type = OSQL_EXISTS;
             comdb2uuidcpy(rpl.hd.uuid, uuid);
@@ -5631,7 +5648,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             p_buf_end = p_buf + OSQLCOMM_EXISTS_RPL_TYPE_LEN;
 
             /* send a done with an error, lost request */
-            osql_exists_rpl_t rpl = {0};
+            osql_exists_rpl_t rpl = {{0}};
 
             rpl.hd.type = OSQL_EXISTS;
             rpl.hd.sid = rqid;
@@ -5767,10 +5784,13 @@ static void *osql_heartbeat_thread(void *arg)
         osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
 
         osql_comm_t *comm = get_thecomm();
-        if (g_osql_ready && comm)
+        if (g_osql_ready && comm) {
             rc =
                 net_send_message(comm->handle_sibling, thedb->master,
                                  NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
+            if (rc && rc != NET_SEND_FAIL_SENDTOME)
+                logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
+        }
 
         poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
     }
@@ -6195,7 +6215,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 
 #ifdef TEST_OSQL
     fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
-            netrpl2req(type), ((osql_rpl_t *)dtap)->sid);
+            netrpl2req(usertype), ((osql_rpl_t *)dtap)->sid);
 #endif
 #if 0
     printf("NET RPL rqid=%llu tmp=%llu\n", ((osql_rpl_t*)dtap)->sid, osql_log_time());
@@ -6415,7 +6435,8 @@ static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
  * here *****/
 
 static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
-                             struct block_err *err, void *data, int idxerr)
+                             struct block_err *err, const char *tablename,
+                             int idxerr)
 {
     int ret = 0;
     /* TODO: maybe we want a more explicit error code ! */
@@ -6438,7 +6459,7 @@ static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
 
     case ERR_NO_SUCH_TABLE:
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL, "no such table \"%s\"",
-                  (char *)data);
+                  tablename);
         ret = rc;
         break;
 
@@ -6520,7 +6541,9 @@ int start_schema_change_tran_wrapper(const char *tblname,
     }
 
     rc = start_schema_change_tran(iq, sc->tran);
-    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+        sc->preempted == SC_ACTION_RESUME ||
+        sc->alteronly == SC_ALTER_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -6549,7 +6572,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
  *
  */
 int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
@@ -6560,6 +6583,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     int rc = 0;
     int type;
     uuidstr_t us;
+    char *msg = *pmsg;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -6634,7 +6658,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     if (!timepart_is_timepart(sc->tablename, 1)) {
         rc = start_schema_change_tran(iq, NULL);
-        if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+        if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+            sc->preempted == SC_ACTION_RESUME ||
+            sc->alteronly == SC_ALTER_PENDING) {
             iq->sc = NULL;
         } else {
             iq->sc->sc_next = iq->sc_pending;
@@ -6660,14 +6686,14 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
 /* get the table name part of the rpl request
  */
-const char *get_tablename_from_rpl(const char *rpl)
+const char *get_tablename_from_rpl(const uint8_t *rpl)
 {
     osql_usedb_t dt;
-    const char *p_buf = rpl + sizeof(osql_uuid_rpl_t);
-    const char *p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
+    const uint8_t *p_buf = rpl + sizeof(osql_uuid_rpl_t);
+    const uint8_t *p_buf_end = p_buf + sizeof(osql_usedb_t);
     const char *tablename;
 
-    tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+    tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
     return tablename;
 }
 
@@ -6675,8 +6701,9 @@ const char *get_tablename_from_rpl(const char *rpl)
  */
 int osql_get_replicant_numops(const char *rpl, int has_uuid)
 {
-    uint8_t *p_buf = rpl;
-    p_buf += (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    const uint8_t *p_buf =
+        (const uint8_t *)rpl +
+        (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
     osql_done_t dt = {0};
     const uint8_t *p_buf_end = p_buf + sizeof(osql_done_t);
     osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
@@ -6689,20 +6716,19 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid)
  *
  */
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                        void *trans, char *msg, int msglen, int *flags,
+                        void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
     int rc = 0;
-    int ii;
-    struct dbtable *db =
-        (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
+    struct dbtable *db = (iq->usedb) ? iq->usedb : &thedb->static_table;
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
     unsigned long long id;
+    char *msg = *pmsg;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -6788,7 +6814,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
-                return rc; // Change to failed schema change error;
+                return ERR_SC;
             }
             if (iq->sc->fastinit && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
@@ -6826,9 +6852,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_USEDB: {
         osql_usedb_t dt;
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
-        char *tablename;
+        const char *tablename;
 
-        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         // get table lock
         rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
@@ -6882,7 +6909,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // thus they will not need to check table version
         if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %llu\n",
                           dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
@@ -7177,7 +7204,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             ncols = (*updCols)[0];
 
             /* Make sure this is sane before sending to upd_record. */
-            for (ii = 0; ii < MAXBLOBS; ii++) {
+            for (int ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
                     int idx = get_schema_blob_field_idx(iq->usedb->tablename,
                                                         ".ONDISK", ii);
@@ -7247,7 +7274,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         (*receivedrows)++;
     } break;
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int i;
 
@@ -7343,8 +7370,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             int jj = 0;
             uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
-                        comdb2uuidstr(uuid, us), dt.ixnum,
-                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+                        comdb2uuidstr(uuid, us),
+                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
             for (jj = 0; jj < dt.nData; jj++)
                 sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -7372,10 +7399,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_QBLOB: {
         osql_qblob_t dt;
-        unsigned char *blob = NULL;
-        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t);
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t),
+                      *blob = osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+        int odhready = (dt.id & OSQL_BLOB_ODH_BIT);
 
-        blob = (uint8_t *)osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+        dt.id &= ~OSQL_BLOB_ODH_BIT;
 
         if (logsb) {
             int jj = 0;
@@ -7403,30 +7431,20 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             blobs[dt.id].collected = 1;
             blobs[dt.id].javasp_bytearray = NULL;
         } else {
+            if (odhready)
+                blobs[dt.id].odhind = (dt.id | OSQL_BLOB_ODH_BIT);
             blobs[dt.id].length = dt.bloblen;
 
             if (dt.bloblen >= 0) {
                 blobs[dt.id].exists = 1;
                 if (dt.bloblen > 0) {
-                    if (dt.bloblen > gbl_blob_sz_thresh_bytes)
-                        blobs[dt.id].data = comdb2_bmalloc(blobmem, dt.bloblen);
-                    else
-                        blobs[dt.id].data = malloc(dt.bloblen);
-                    if (!blobs[dt.id].data) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s failed to allocated a new blob, size %zu\n",
-                               __func__, blobs[dt.id].length);
-                        return conv_rc_sql2blkop(iq, step, -1, ERR_INTERNAL,
-                                                 err, NULL, 0);
-                    }
-
-                    /* finally copy the blob */
-                    memcpy(blobs[dt.id].data, blob, dt.bloblen);
-
+                    blobs[dt.id].qblob = msg;
+                    blobs[dt.id].data = (char *)blob;
                     blobs[dt.id].collected = dt.bloblen;
-
+                    /* Take ownership.
+                       It will be freed in free_blob_buffers(). */
+                    *pmsg = NULL;
                 } else {
-
                     blobs[dt.id].collected = 1;
                 }
 
@@ -7508,7 +7526,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
         osql_bpfunc_t *rpl = NULL;
-        char err[MSGERR_MAXLEN]; // TODO TO BE REMOVED
 
         const uint8_t *n_p_buf =
             osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
@@ -7521,7 +7538,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             info.iq = iq;
             int rst = bpfunc_prepare(&func, rpl->data_len, rpl->data, &info);
             if (!rst)
-                rc = func->exec(trans, func, err);
+                rc = func->exec(trans, func, &iq->errstat);
 
             if (rst || rc) {
                 free_bpfunc(func);
@@ -7766,7 +7783,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
-    osql_done_t done;
+    osql_done_t done = {0};
     struct errstat *xerr;
     uint8_t *p_buf = (uint8_t *)dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -8065,9 +8082,10 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_USEDB: {
         osql_usedb_t dt;
         p_buf_end = p_buf + sizeof(osql_usedb_t);
-        char *tablename;
+        const char *tablename;
 
-        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         sbuf2printf(logsb, "[%llx us] OSQL_USEDB \"%s\"\n", id, us, tablename);
     } break;
@@ -8123,9 +8141,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     case OSQL_STARTGEN: {
         osql_startgen_t dt = {0};
-        unsigned char *pData = NULL;
-        uint8_t *p_buf_end;
-        p_buf_end = p_buf + sizeof(osql_startgen_t);
+        uint8_t *p_buf_end = p_buf + sizeof(osql_startgen_t);
         osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
         sbuf2printf(logsb, "[%llx %s] %s start_gen = %u\n", id, us,
                     "OSQL_STARTGEN", dt.start_gen);
@@ -8163,7 +8179,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         // uint8_t         *p_buf= (uint8_t *)&((osql_updcols_rpl_t*)msg)->dt;
         uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int jj;
@@ -8236,8 +8252,8 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         lclgenid = bdb_genid_to_host_order(dt.seq);
-        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us, dt.ixnum,
-                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us,
+                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
         for (jj = 0; jj < dt.nData; jj++)
             sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -8333,7 +8349,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_recgenid_uuid_rpl_t recgenid_rpl = {0};
+        osql_recgenid_uuid_rpl_t recgenid_rpl = {{0}};
         uint8_t buf[OSQLCOMM_RECGENID_UUID_RPL_TYPE_LEN];
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = p_buf + OSQLCOMM_RECGENID_UUID_RPL_TYPE_LEN;
@@ -8358,7 +8374,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
         type = osql_net_type_to_net_uuid_type(type);
         offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0);
     } else {
-        osql_recgenid_rpl_t recgenid_rpl = {0};
+        osql_recgenid_rpl_t recgenid_rpl = {{0}};
         uint8_t buf[OSQLCOMM_RECGENID_RPL_TYPE_LEN];
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = p_buf + OSQLCOMM_RECGENID_RPL_TYPE_LEN;
@@ -8993,9 +9009,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 done:
     bdb_thread_event(thedb->bdb_env, 0);
     send_prefault_udp = 0;
-    if (req->record)
-        free(req->record);
-    free(req);
 }
 
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
@@ -9006,12 +9019,9 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         osqlpfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        if (req->record)
-            free(req->record);
-        free(req);
-        break;
     }
+    free(req->record);
+    free(req);
 }
 
 int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
@@ -9043,10 +9053,11 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_USEDB: {
         osql_usedb_t dt;
         p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
-        char *tablename;
+        const char *tablename;
         struct dbtable *db;
 
-        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         db = get_dbtable_by_name(tablename);
         if (db == NULL) {
@@ -9286,15 +9297,13 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     return p_buf_end;
 }
 
-static void *uprec_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                                struct errstat *err)
+static void *uprec_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
     logmsg(LOGMSG_INFO, "Starting upgrade record cron job\n");
     return NULL;
 }
 
-static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *arg3,
-                              struct errstat *err)
+static void *uprec_cron_event(struct cron_event *_, struct errstat *err)
 {
     int rc, nwakeups;
     struct buf_lock_t *p_slock;
@@ -9428,7 +9437,7 @@ static void uprec_sender_array_init(void)
     // kick off upgradetable cron
     uprec_sched =
         cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, &xerr);
+                       NULL, NULL, NULL, &xerr, NULL);
 
     if (uprec_sched == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
@@ -9471,7 +9480,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
                     uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
+                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr, NULL);
 
                 if (uprec_sched == NULL)
                     logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",
@@ -9583,5 +9592,21 @@ freemem:
     if (p_buf)
         free(p_buf);
 
+    return rc;
+}
+
+/* test osql stream sending a dummy uuid OSQL_DONE request */
+int osql_send_test(SBUF2 *sb)
+{
+    struct errstat xerr = {0};
+    int nettype = NET_OSQL_SOCK_RPL_UUID;
+    snap_uid_t snap_info = {{0}};
+    snap_info.replicant_can_retry = 0;
+    snap_info.uuid[0] = 1; // just assign dummy cnonce here
+    int rc;
+
+    rc = osql_send_commit_by_uuid(thedb->master, snap_info.uuid, 1 /*numops*/,
+                                  &xerr, nettype, sb /*logsb*/,
+                                  NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }

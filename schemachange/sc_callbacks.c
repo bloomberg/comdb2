@@ -29,6 +29,8 @@
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
 
+extern void free_cached_idx(uint8_t **cached_idx);
+
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)
 {
@@ -66,6 +68,8 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
         return -1;
     }
 
+    set_odh_options_tran(db, tran);
+    update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
     ++gbl_dbopen_gen;
@@ -78,6 +82,49 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0);
 
     return rc;
+}
+
+static int reload_stripe_info(bdb_state_type *bdb_state)
+{
+    void *tran = NULL;
+    int rc;
+    int bdberr = 0;
+    int stripes, blobstripe;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
+
+    if (close_all_dbs() != 0)
+        exit(1);
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve global stripe info\n",
+               __func__);
+        return -1;
+    }
+
+    apply_new_stripe_settings(stripes, blobstripe);
+
+    if (open_all_dbs_tran(tran) != 0)
+        exit(1);
+
+    fix_blobstripe_genids(tran);
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
+    if (rc)
+        logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n",
+               __func__, rc);
+
+    return 0;
 }
 
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
@@ -118,9 +165,33 @@ static int reload_rowlocks(bdb_state_type *bdb_state, scdone_t type)
  * that point */
 int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long genid,
-                                     unsigned long long stripe_ptr)
+                                     unsigned long long *sc_genids)
 {
-    return bdb_inplace_cmp_genids(bdb_state, genid, stripe_ptr) > 0;
+    int stripe = get_dtafile_from_genid(genid);
+    if (stripe < 0 || stripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
+               __func__, genid, stripe);
+        abort();
+    }
+    if (!sc_genids[stripe]) {
+        /* A genid of zero is invalid.  So, if the schema change cursor is at
+         * genid zero it means pretty conclusively that it hasn't done anything
+         * yet so we cannot possibly be behind the cursor. */
+        return 1;
+    }
+    return bdb_inplace_cmp_genids(bdb_state, genid, sc_genids[stripe]) > 0;
+}
+
+unsigned long long get_genid_stripe_pointer(unsigned long long genid,
+                                            unsigned long long *sc_genids)
+{
+    int stripe = get_dtafile_from_genid(genid);
+    if (stripe < 0 || stripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
+               __func__, genid, stripe);
+        abort();
+    }
+    return sc_genids[stripe];
 }
 
 /* delete from new btree when genid is older than schemachange position
@@ -143,7 +214,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
 
-    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs);
+    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         /* Leave this trace in.  We want to know if live schema change
@@ -167,19 +238,17 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
 }
 
 /* re-compute new partial/expressions indexes for new table */
-static unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
-                                                 uint8_t *new_dta,
-                                                 blob_buffer_t *blobs,
-                                                 size_t maxblobs)
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs, size_t maxblobs)
 {
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    void free_cached_idx(uint8_t * *cached_idx);
-    unsigned long long ins_keys = -1ULL;
+    int rebuild_keys = 0;
     if ((gbl_partial_indexes && db->ix_partial) ||
         (gbl_expressions_indexes && db->ix_expr)) {
         int ixnum;
-        int rebuild_keys = 0;
         if (!gbl_use_plan || !db->plan)
             rebuild_keys = 1;
         else {
@@ -203,7 +272,7 @@ static unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable
     }
 
     extern int gbl_partial_indexes;
-    if (gbl_partial_indexes && db->ix_partial)
+    if (gbl_partial_indexes && db->ix_partial && rebuild_keys)
         ins_keys = verify_indexes(db, new_dta, blobs, maxblobs, 0);
 
     return ins_keys;
@@ -219,8 +288,6 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              int od_len)
 {
     struct dbtable *usedb = iq->usedb;
-    blob_status_t oldblobs[MAXBLOBS];
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
@@ -231,23 +298,18 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
+    if (usedb->sc_live_logical) {
+        return 0;
+    }
+
 #ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);
 #endif
     /* need to check where the cursor is, even tho that check was done once in
      * post_update */
-    int stripe = get_dtafile_from_genid(newgenid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update_delayed_key_adds_int: newgenid 0x%llx "
-               "stripe %d out of range!\n",
-               newgenid, stripe);
-        return 0;
-    }
-
     int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, newgenid, usedb->sc_to->sc_genids[stripe]);
+        iq->usedb->handle, newgenid, usedb->sc_to->sc_genids);
     if (is_gen_gt_scptr) {
         if (iq->debug) {
             reqprintf(iq, "live_sc_post_update_delayed_key_adds_int: skip "
@@ -257,8 +319,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
     if (iq->usedb->sc_to->ix_blob) {
         rc =
             save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);
@@ -288,8 +350,9 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0; // should just fail SC
     }
 
-    ins_keys = revalidate_new_indexes(iq, usedb->sc_to, new_dta, add_idx_blobs,
-                                      add_idx_blobs ? MAXBLOBS : 0);
+    ins_keys =
+        revalidate_new_indexes(iq, usedb->sc_to, new_dta, ins_keys,
+                               add_idx_blobs, add_idx_blobs ? MAXBLOBS : 0);
 
     /* point to the new table */
     iq->usedb = usedb->sc_to;
@@ -301,7 +364,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
 
     rc = upd_new_record_add2indices(iq, trans, newgenid, new_dta,
                                     usedb->sc_to->lrl, ins_keys, 1,
-                                    add_idx_blobs);
+                                    add_idx_blobs, 0);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR,
@@ -358,8 +421,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         goto done; // should just fail SC
     }
 
-    ins_keys =
-        revalidate_new_indexes(iq, usedb->sc_to, new_dta, blobs, maxblobs);
+    ins_keys = revalidate_new_indexes(iq, usedb->sc_to, new_dta, ins_keys,
+                                      blobs, maxblobs);
 
     if ((origflags & RECFLAGS_NO_CONSTRAINTS) && usedb->sc_to->n_constraints) {
         int rebuild = usedb->sc_to->plan && usedb->sc_to->plan->dta_plan;
@@ -458,7 +521,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
-                        oldblobs, newblobs);
+                        oldblobs, newblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
@@ -501,7 +564,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
 
-    if (db == NULL)
+    if (db == NULL || db->handle == NULL)
         return;
 
     Pthread_mutex_lock(&gbl_sc_lock);
@@ -650,6 +713,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
         return reload_rename_table(bdb_state, table, (char *)arg);
+    case change_stripe:
+        return reload_stripe_info(bdb_state);
     default:
         break;
     }
@@ -747,7 +812,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type == add || type == drop || type == alter || type == fastinit) {
+    if (type == add || type == drop || type == alter || type == fastinit ||
+        type == bulkimport) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
                    "create_sqlmaster_records: error creating sqlite "

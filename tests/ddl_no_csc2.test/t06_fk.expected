@@ -39,11 +39,11 @@ keys
 ("transactional alter (bad case 1)"='transactional alter (bad case 1)')
 [alter table m drop index "COMDB2_PK"] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 2)"='transactional alter (bad case 2)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 3)"='transactional alter (bad case 3)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 4)"='transactional alter (bad case 4)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 
@@ -179,7 +179,7 @@ keys
 	}
 ')
 ("transactional alter & drop (bad case)"='transactional alter & drop (bad case)')
-[commit] failed with rc 203 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: foreign key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 
@@ -235,9 +235,9 @@ keys
 	}
 ')
 ("add self-referenced bad 1"='add self-referenced bad 1')
-[create table s (i int index, j int index, constraint sfk foreign key (k) references s(i))] failed with rc -3 Unknown column 'k'.
+[create table s (i int unique, j int, constraint sfk foreign key (k) references s(i))] failed with rc -3 Unknown column 'k'.
 ("add self-referenced bad 2"='add self-referenced bad 2')
-[create table s (i int index, j int index, constraint sfk foreign key (j) references s(k))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
+[create table s (i int, j int, constraint sfk foreign key (j) references s(k))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 's'.
 ("add self-referenced good"='add self-referenced good')
 (name='s', csc2='schema
 	{
@@ -246,12 +246,12 @@ keys
 	}
 keys
 	{
-		dup "$KEY_8884CA9B" = i 
+		uniqnulls "$KEY_3E4144AF" = i 
 		dup "$KEY_118D9B21" = j 
 	}
 constraints
 	{
-		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_3E4144AF"> 
 	}
 ')
 ("truncate self-referenced"='truncate self-referenced')
@@ -262,12 +262,12 @@ constraints
 	}
 keys
 	{
-		dup "$KEY_8884CA9B" = i 
+		uniqnulls "$KEY_3E4144AF" = i 
 		dup "$KEY_118D9B21" = j 
 	}
 constraints
 	{
-		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_3E4144AF"> 
 	}
 ')
 ("alter self-referenced drop constraints"='alter self-referenced drop constraints')
@@ -278,7 +278,7 @@ constraints
 	}
 keys
 	{
-		dup "$KEY_8884CA9B" = i 
+		uniqnulls "$KEY_3E4144AF" = i 
 		dup "$KEY_118D9B21" = j 
 	}
 ')
@@ -294,12 +294,12 @@ keys
 	}
 keys
 	{
-		dup "$KEY_8884CA9B" = i 
+		uniqnulls "$KEY_3E4144AF" = i 
 		dup "$KEY_118D9B21" = j 
 	}
 constraints
 	{
-		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_8884CA9B"> 
+		"sfk" = "$KEY_118D9B21" -> <"s":"$KEY_3E4144AF"> 
 	}
 ')
 ("drop self-referenced table"='drop self-referenced table')

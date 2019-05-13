@@ -182,6 +182,8 @@ static void *prefault_helper_thread(void *arg)
             rc = prefault_toblock(iq, blkstate, i,
                                   dbenv->prefault_helper.threads[i].seqnum,
                                   &(dbenv->prefault_helper.threads[i].abort));
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
 
             /*fprintf(stderr, "helper %d working for invalid2\n", i);*/
             thrman_where(thr_self, NULL);
@@ -190,6 +192,8 @@ static void *prefault_helper_thread(void *arg)
         case PREFAULT_READAHEAD:
             thrman_where(thr_self, "prefault_readahead");
             rc = prefault_readahead(db, ixnum, key, keylen, numreadahead);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
             thrman_where(thr_self, NULL);
             break;
         }
@@ -270,8 +274,12 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 {
     int i;
     int rc;
+    static int started = 0;
     prefault_helper_thread_arg_type *prefault_helper_thread_arg;
     pthread_attr_t attr;
+
+    if (started != 0)
+        return 0;
 
     dbenv->prefault_helper.numthreads = 0;
 
@@ -314,6 +322,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 
         dbenv->prefault_helper.numthreads++;
     }
+    started = 1;
 
     Pthread_attr_destroy(&attr);
 

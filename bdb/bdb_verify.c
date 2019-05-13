@@ -491,12 +491,14 @@ static int bdb_verify_ll(
                             locprint(sb, lua_callback, lua_params,
                                 "!%016llx blob %d null but found blob\n",
                                 genid_flipped, blobno);
+                            had_errors = 1;
                         } else if (blobsizes[blobno] == -2) {
                             ret = 1;
                             locprint(sb, lua_callback, lua_params, "!%016llx blob %d size %d expected "
                                             "none (inline vutf8)\n",
                                         genid_flipped, blobno,
                                         realblobsz[blobno]);
+                            had_errors = 1;
                         } else if (blobsizes[blobno] != -1 &&
                                    dbt_blob_data.size != blobsizes[blobno]) {
                             ret = 1;
@@ -549,8 +551,9 @@ static int bdb_verify_ll(
                                       ix, expected_keybuf, &keylen);
                 if (rc) {
                     ret = 1;
-                    locprint(sb, lua_callback, lua_params, "!%016llx ix %d formkey rc %d\n",
-                                genid_flipped, rc);
+                    locprint(sb, lua_callback, lua_params,
+                             "!%016llx ix %d formkey rc %d\n", genid_flipped,
+                             ix, rc);
                     ckey->c_close(ckey);
                     continue;
                 }
@@ -699,7 +702,7 @@ static int bdb_verify_ll(
             if (dbt_data.size < sizeof(unsigned long long)) {
                 ret = 1;
                 locprint(sb, lua_callback, lua_params,
-                         "!ix %d unexpected length %d\n", dbt_data.size);
+                         "!ix %d unexpected length %d\n", ix, dbt_data.size);
                 goto next_key;
             }
             memcpy(&genid, dbt_data.data, sizeof(unsigned long long));
@@ -812,7 +815,7 @@ static int bdb_verify_ll(
 
                         if (rc == 0) {
                             realblobsz[blobno] = dbt_blob_data.size;
-                            if (blobsizes[blobno] == -1 && rc != DB_NOTFOUND) {
+                            if (blobsizes[blobno] == -1) {
                                 sbuf2printf(
                                     sb,
                                     "!%016llx blob %d null but found blob\n",
@@ -927,7 +930,7 @@ static int bdb_verify_ll(
                     ret = 1;
                     locprint(sb, lua_callback, lua_params,
                              "!%016llx ix %d decimal payload wrong size "
-                             "expected %d got %d\n",
+                             "expected %zu got %d\n",
                              genid_flipped, ix,
                              sizeof(unsigned long long) +
                                  4 * bdb_state->ixcollattr[ix],

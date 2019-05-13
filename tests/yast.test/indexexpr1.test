@@ -129,8 +129,8 @@ do_execsql_test indexexpr1-210eqp {
   EXPLAIN QUERY PLAN
   SELECT b, c, '|' FROM t1 WHERE substr(a,1,12)=='and_the_Word' ORDER BY b, c;
 } {
-    0 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (10 rows)}
-    0 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    6 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (~10 rows)}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1a1/}
 do_execsql_test indexexpr1-220 {
@@ -140,8 +140,8 @@ do_execsql_test indexexpr1-220eqp {
   EXPLAIN QUERY PLAN
   SELECT b, c, '|' FROM t1 WHERE 'and_the_Word'==substr(a,1,12) ORDER BY b, c;
 } {
-    0 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (10 rows)}
-    0 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    6 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (~10 rows)}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1a1/}
 
@@ -153,7 +153,7 @@ do_execsql_test indexexpr1-230 {
 do_execsql_test indexexpr1-230eqp {
   EXPLAIN QUERY PLAN
   SELECT c FROM t1 WHERE b=1 AND substr(a,2,3)='nd_' ORDER BY c;
-} {0 0 0 {SEARCH TABLE t1 USING INDEX $T1BA_2C1C85D (b=? AND <expr>=?) (8 rows)}}
+} {6 0 0 {SEARCH TABLE t1 USING INDEX $T1BA_2C1C85D (b=? AND <expr>=?) (~8 rows)}}
 #{/USING INDEX t1ba/}
 
 do_execsql_test indexexpr1-240 {
@@ -168,8 +168,8 @@ do_execsql_test indexexpr1-241eqp {
   EXPLAIN QUERY PLAN
   SELECT id FROM t1 WHERE substr(a,b,3)<='and' ORDER BY +id;
 } {
-    0 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr><?) (262144 rows)}
-    0 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr><?) (~262144 rows)}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1abx/}
 do_execsql_test indexexpr1-242 {
@@ -183,9 +183,8 @@ do_execsql_test indexexpr1-250eqp {
   EXPLAIN QUERY PLAN
   SELECT id FROM t1 WHERE substr(a,b,3) IN ('and','l_t','xyz')
    ORDER BY +id;
-} {0 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (30 rows)}
-   0 0 0 {EXECUTE LIST SUBQUERY 1}
-   0 0 0 {USE TEMP B-TREE FOR ORDER BY}
+} {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)}
+   34 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1abx/}
 
@@ -201,7 +200,7 @@ do_execsql_test indexexpr1-260eqp {
   EXPLAIN QUERY PLAN
   SELECT id, b, c FROM t1
    WHERE substr(a,27,3)=='ord' AND d>=29;
-} {0 0 0 {SEARCH TABLE t1 USING INDEX $T1A2_654C9157 (<expr>=?) (9 rows)}}
+} {5 0 0 {SEARCH TABLE t1 USING INDEX $T1A2_654C9157 (<expr>=?) (~9 rows)}}
 #{/USING INDEX t1a2/}
 
 # ORDER BY using an indexed expression
@@ -214,7 +213,7 @@ do_execsql_test indexexpr1-270 {
 do_execsql_test indexexpr1-270eqp {
   EXPLAIN QUERY PLAN
   SELECT length(a) FROM t1 ORDER BY length(a);
-} {0 0 0 {SCAN TABLE t1 USING INDEX $T1ALEN_6DE19296 (1048576 rows)}}
+} {6 0 0 {SCAN TABLE t1 USING INDEX $T1ALEN_6DE19296 (~1048576 rows)}}
 #{/SCAN TABLE t1 USING INDEX t1alen/}
 do_execsql_test indexexpr1-271 {
   SELECT length(a) FROM t1 ORDER BY length(a) DESC;
@@ -222,7 +221,7 @@ do_execsql_test indexexpr1-271 {
 do_execsql_test indexexpr1-271eqp {
   EXPLAIN QUERY PLAN
   SELECT length(a) FROM t1 ORDER BY length(a) DESC;
-} {0 0 0 {SCAN TABLE t1 USING INDEX $T1ALEN_6DE19296 (1048576 rows)}}
+} {6 0 0 {SCAN TABLE t1 USING INDEX $T1ALEN_6DE19296 (~1048576 rows)}}
 #{/SCAN TABLE t1 USING INDEX t1alen/}
 
 do_catchsql_test indexexpr1-300 {
@@ -296,8 +295,8 @@ do_execsql_test indexexpr1-510 {
 do_execsql_test indexexpr1-510eqp {
   EXPLAIN QUERY PLAN
   SELECT substr(a,4,3) AS k FROM cnt, t5 WHERE k=printf('%03d',x);
-} {0 0 0 {SCAN TABLE cnt (1048576 rows)}
-   0 1 1 {SEARCH TABLE t5 USING INDEX $T5AX_26FA5786 (<expr>=?) (10 rows)}
+} {7 0 0 {SCAN TABLE cnt (~1048576 rows)}
+   9 0 0 {SEARCH TABLE t5 USING INDEX $T5AX_26FA5786 (<expr>=?) (~10 rows)}
 }
 #{/USING INDEX t5ax/}
 

@@ -39,7 +39,7 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 
 #include <ctrace.h>
 
@@ -392,6 +392,8 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
 
     /* Shouldn't fail */
     assert(0 == rc);
+    if (rc)
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Make sure this is NULL */
     assert(NULL == ltran->tid);
@@ -401,6 +403,8 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
 
     /* Shouldn't fail */
     assert(0 == rc);
+    if (rc)
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Invalid lockerid */
     ltran->logical_lid = 0;
@@ -720,6 +724,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
             *bdberr = BDBERR_READONLY;
             myfree(tran);
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
             return NULL;
         }
 
@@ -1013,7 +1018,7 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
 
     if (lsn->file && flags & DB_TXN_REP_ACK) {
         int timeoutms = -1;
-        seqnum_type seqnum = {0};
+        seqnum_type seqnum = {{0}};
         memcpy(&seqnum.lsn, lsn, sizeof(*lsn));
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
         bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &seqnum, 0,
@@ -1090,7 +1095,8 @@ int bdb_tran_abort_phys(bdb_state_type *bdb_state, tran_type *tran)
 
 static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
                                         tran_type *parent, int retries,
-                                        int tranclass, int *bdberr)
+                                        int tranclass, int *bdberr,
+                                        u_int32_t inflags)
 {
     tran_type *tran;
     int rc;
@@ -1111,6 +1117,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->threadid = pthread_self();
 
     tran->usrptr = 0;
+    int setThdTran = 0; /* was tran saved into thread local data? */
 
     /* comdb2 coding style:  "if parent" means "i am a child" */
     if (parent) {
@@ -1127,6 +1134,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
         tran->master = 1;
 
         Pthread_setspecific(bdb_state->seqnum_info->key, tran);
+        setThdTran = 1;
 
         /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
@@ -1139,6 +1147,11 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     flags = 0;
     if (!bdb_state->attr->synctransactions)
         flags |= DB_TXN_NOSYNC;
+
+    if (inflags & BDB_TRAN_RECOVERY)
+        flags |= DB_TXN_RECOVERY;
+
+    tran->flags |= (inflags & (BDB_TRAN_NOLOG | BDB_TRAN_RECOVERY));
 
     switch (tran->tranclass) {
     case TRANCLASS_SNAPISOL:
@@ -1162,6 +1175,10 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
             myfree(tran);
+            if (setThdTran){
+                Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+                setThdTran = 0;
+            }
             return NULL;
         } else {
             if (!parent) {
@@ -1187,12 +1204,12 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
 static tran_type *bdb_tran_begin_berk_int(bdb_state_type *bdb_state,
                                           tran_type *parent, int retries,
-                                          int *bdberr)
+                                          int *bdberr, u_int32_t flags)
 {
     tran_type *tran;
 
     tran = bdb_tran_begin_ll_int(bdb_state, parent, retries, TRANCLASS_BERK,
-                                 bdberr);
+                                 bdberr, flags);
 
     return tran;
 }
@@ -1220,7 +1237,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_ll_int(bdb_state, NULL, 0, tranclass, bdberr);
+    tran = bdb_tran_begin_ll_int(bdb_state, NULL, 0, tranclass, bdberr, 0);
 
     /* we do this for query isolation in socksql with row caching;
        snapshot/serializable will set this again while holding the trn_repo
@@ -1306,7 +1323,8 @@ static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
 }
 
 static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
-                                    tran_type *parent, int retries, int *bdberr)
+                                    tran_type *parent, int retries, int *bdberr,
+                                    u_int32_t flags)
 {
     tran_type *tran;
 
@@ -1316,7 +1334,7 @@ static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_berk_int(bdb_state, parent, retries, bdberr);
+    tran = bdb_tran_begin_berk_int(bdb_state, parent, retries, bdberr, flags);
     /* NOTE: we don't release this lock until commit/rollback time */
     if (!tran) {
         BDB_RELLOCK();
@@ -1378,7 +1396,15 @@ tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
                           int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr);
+    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, 0);
+    return tran;
+}
+
+tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_state, tran_type *parent,
+                                int *bdberr, u_int32_t flags)
+{
+    tran_type *tran;
+    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, flags);
     return tran;
 }
 
@@ -1387,7 +1413,7 @@ tran_type *bdb_tran_begin_set_retries(bdb_state_type *bdb_state,
                                       int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, retries, bdberr);
+    tran = bdb_tran_begin_pp(bdb_state, parent, retries, bdberr, 0);
     return tran;
 }
 
@@ -1443,6 +1469,38 @@ int free_pglogs_queue_cursors(void *obj, void *arg)
 void abort_at_exit(void) 
 {
     abort();
+}
+
+static int update_logical_redo_lsn(void *obj, void *arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)obj;
+    tran_type *tran = (tran_type *)arg;
+    if (bdb_state->logical_live_sc == 0)
+        return 0;
+    struct sc_redo_lsn *last = NULL;
+    struct sc_redo_lsn *redo = malloc(sizeof(struct sc_redo_lsn));
+    if (redo == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to malloc sc redo\n", __func__);
+        abort();
+    }
+    redo->lsn = tran->last_logical_lsn;
+    redo->txnid = tran->tid->txnid;
+    /* We must have table lock here and so the list will not go away */
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+
+    last = LISTC_BOT(&bdb_state->sc_redo_list);
+    /* Add in order */
+    if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
+        listc_abl(&bdb_state->sc_redo_list, redo);
+    else {
+        logmsg(LOGMSG_FATAL, "%s: logical commit lsn should be in order\n",
+               __func__);
+        abort();
+    }
+
+    Pthread_cond_signal(&bdb_state->sc_redo_wait);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+    return 0;
 }
 
 static int bdb_tran_commit_with_seqnum_int_int(
@@ -1527,7 +1585,10 @@ static int bdb_tran_commit_with_seqnum_int_int(
         bdb_osql_trn_repo_lock();
 
         /* only generate a log for PARENT transactions */
-        if (tran->parent == NULL && add_snapisol_logging(bdb_state)) {
+        if (tran->parent == NULL &&
+            (add_snapisol_logging(bdb_state, tran) ||
+             tran->force_logical_commit) &&
+            !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
             int iirc;
             int isabort;
@@ -1569,6 +1630,14 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 return -1;
+            }
+
+            if (!isabort && tran->committed_child &&
+                tran->force_logical_commit && tran->dirty_table_hash) {
+                hash_for(tran->dirty_table_hash, update_logical_redo_lsn, tran);
+                hash_clear(tran->dirty_table_hash);
+                hash_free(tran->dirty_table_hash);
+                tran->dirty_table_hash = NULL;
             }
         }
 
@@ -1654,7 +1723,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 logmsg(
                     LOGMSG_ERROR,
                     "%s:%d failed to commit physical tran rc %d, bdberr %d\n",
-                    __func__, __LINE__, rc, bdberr);
+                    __func__, __LINE__, rc, *bdberr);
                 outrc = -1;
                 goto cleanup;
             }
@@ -2022,7 +2091,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 
@@ -2341,7 +2410,7 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
+        hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
 
@@ -2440,16 +2509,16 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int flags = DB_LOCK_ID_READONLY;
+        unsigned int loc_flags = DB_LOCK_ID_READONLY;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)
-            flags |= DB_LOCK_ID_LOWPRI;
+            loc_flags |= DB_LOCK_ID_LOWPRI;
         if (gbl_track_curtran_locks)
-            flags |= DB_LOCK_ID_TRACK;
+            loc_flags |= DB_LOCK_ID_TRACK;
 
         rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv,
-                                             &curtran->lockerid, flags);
+                                             &curtran->lockerid, loc_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fail to get lock_id rc=%d\n", __func__, rc);
             *bdberr = (rc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : rc;

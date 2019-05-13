@@ -50,7 +50,6 @@
 #include <list.h>
 #include <segstr.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 
 #include <epochlib.h>
@@ -193,9 +192,13 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 struct tm tm;
                 out->lasttime = now;
                 localtime_r(&timet, &tm);
-                snprintf(out->timeprefix, sizeof(out->timeprefix),
-                         "%02d/%02d %02d:%02d:%02d: ", tm.tm_mon + 1,
-                         tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+                int rc = snprintf(out->timeprefix, sizeof(out->timeprefix),
+                                  "%02d/%02d %02d:%02d:%02d: ", tm.tm_mon + 1,
+                                  tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+                if (rc >= sizeof(out->timeprefix)) {
+                    snprintf(out->timeprefix, sizeof(out->timeprefix),
+                             "truncated-time");
+                }
             }
             iov[niov].iov_base = out->timeprefix;
             iov[niov].iov_len = sizeof(out->timeprefix) - 1;
@@ -224,7 +227,11 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
                        (char *)iov[i].iov_base);
         } else {
-            writev(out->fd, iov, niov);
+            ssize_t rc = writev(out->fd, iov, niov);
+            if (rc == -1) {
+                logmsg(LOGMSG_USER, "%s:%d writev returns rc=%zd\n", __FILE__,
+                       __LINE__, rc);
+            }
         }
         logger->dumplinepos = 0;
     }
@@ -1542,7 +1549,17 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               U2M(logger->durationus));
     }
-    dumpf(logger, out, "from %s rc %d\n", reqorigin(logger), logger->rc);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+        dumpf(logger, out, "for fingerprint %.*s", FINGERPRINTSZ * 2,
+                    expanded_fp);
+    }
+
+    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1555,8 +1572,8 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                   iq->txnsize, iq->reptimems, rate);
         }
 
-        dumpf(logger, out, "  nretries %d reply len %d\n", iq->retries,
-              iq->p_buf_out - iq->p_buf_out_start);
+        dumpf(logger, out, "  nretries %d reply len %td\n", iq->retries,
+              (ptrdiff_t)(iq->p_buf_out - iq->p_buf_out_start));
     }
 
     args.logger = logger;
@@ -1741,15 +1758,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
-    }
-
-    /* If fingerprinting is enabled and the logger has a fingerprint,
-       log the fingerprint as well. */
-    if (gbl_fingerprint_queries && logger->have_fingerprint) {
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s", FINGERPRINTSZ * 2,
-                    expanded_fp);
     }
 
     logger->in_request = 0;
@@ -2018,7 +2026,7 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int task_len, stack_len;
+    int task_len, stack_len, nclntstats;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
     nodestats_t *entry_chk = NULL;
@@ -2080,7 +2088,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 }
             }
             Pthread_mutex_lock(&clntlru_mtx);
-            while (hash_get_num_entries(clientstats) + 1 >
+            while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
                 old_entry = listc_rtl(&clntlru);
                 if (old_entry) {
@@ -2089,10 +2097,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: too many clientstats %d, max %d\n", __func__,
-                           hash_get_num_entries(clientstats) + 1,
-                           gbl_max_clientstats_cache);
+                    if (gbl_max_clientstats_cache &&
+                        (nclntstats % gbl_max_clientstats_cache == 1))
+                        logmsg(LOGMSG_ERROR,
+                               "%s: too many clientstats %d, max %d\n",
+                               __func__, nclntstats, gbl_max_clientstats_cache);
                     break;
                 }
             }
@@ -2407,6 +2416,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
 
         snap_nodestats_ll(nodestats, &snap, disp_rates);
 
+        summaries[ii].node = machine_num(nodestats->host);
         summaries[ii].host = nodestats->host;
         memcpy(&summaries[ii].addr, &(nodestats->addr), sizeof(struct in_addr));
         summaries[ii].task = strcmp(nodestats->task, UNKNOWN_NAME)
@@ -2620,14 +2630,13 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
         logmsgf(LOGMSG_USER, fh, "%sTOTAL REQUESTS SUMMARY\n", prefix);
     }
     logmsgf(LOGMSG_USER, fh,
-            "%snode | regular fstsnds                 |  blockops          "
-            "                                     | sql\n",
-            prefix);
+            "%s%5s | regular fstsnds                 |  blockops               "
+            "                                | sql\n",
+            prefix, "node");
     logmsgf(LOGMSG_USER, fh,
-            "%s     |   finds rngexts  writes   other |    adds    upds    "
-            "dels blk/sql   recom snapisl  serial | queries   steps    "
-            "rows\n",
-            prefix);
+            "%s%5s |   finds rngexts  writes   other |    adds    upds    dels "
+            "blk/sql   recom snapisl  serial | queries   steps    rows\n",
+            prefix, "");
 
     summaries = get_nodestats_summary(&max_clients, disp_rates);
     if (summaries == NULL)
@@ -2639,12 +2648,13 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
                 summaries[ii].task, summaries[ii].stack, summaries[ii].host,
                 inet_ntoa(summaries[ii].addr), summaries[ii].ref);
         logmsgf(LOGMSG_USER, fh,
-                "%s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
+                "%s%5d | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
                 "%7u %7u\n",
-                prefix, summaries[ii].finds, summaries[ii].rngexts,
-                summaries[ii].writes, summaries[ii].other_fstsnds,
-                summaries[ii].adds, summaries[ii].upds, summaries[ii].dels,
-                summaries[ii].bsql, summaries[ii].recom, summaries[ii].snapisol,
+                prefix, summaries[ii].node, summaries[ii].finds,
+                summaries[ii].rngexts, summaries[ii].writes,
+                summaries[ii].other_fstsnds, summaries[ii].adds,
+                summaries[ii].upds, summaries[ii].dels, summaries[ii].bsql,
+                summaries[ii].recom, summaries[ii].snapisol,
                 summaries[ii].serial, summaries[ii].sql_queries,
                 summaries[ii].sql_steps, summaries[ii].sql_rows);
     }
@@ -2681,6 +2691,15 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
     if (logger) logger->queuetimeus = timeus;
+}
+
+void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
+{
+    if (logger == NULL)
+        return;
+    size_t min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    memset(logger->fingerprint, 0, min);
+    logger->have_fingerprint = 1;
 }
 
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,

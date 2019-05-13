@@ -55,8 +55,6 @@
 int gbl_testcompr_percent = 10;
 int gbl_testcompr_max = 300000;
 
-static const size_t genidsz = sizeof(unsigned long long);
-
 typedef struct {
     SBUF2 *sb;
     const char *table;
@@ -404,6 +402,7 @@ static void *handle_comptest_thd(void *_arg)
     return NULL;
 }
 
+void set_schema_change_in_progress(const char *func, int line, int val);
 void handle_testcompr(SBUF2 *sb, const char *table)
 {
     CompArg arg;
@@ -416,7 +415,7 @@ void handle_testcompr(SBUF2 *sb, const char *table)
         return;
     }
 
-    gbl_schema_change_in_progress = 1;
+    set_schema_change_in_progress(__func__, __LINE__, 1);
     gbl_sc_abort = 0;
 
     arg.sb = sb;
@@ -424,7 +423,7 @@ void handle_testcompr(SBUF2 *sb, const char *table)
     arg.rc = 0;
     pthread_create(&t, NULL, handle_comptest_thd, &arg);
     pthread_join(t, &rc);
-    gbl_schema_change_in_progress = 0;
+    set_schema_change_in_progress(__func__, __LINE__, 0);
 
     if (arg.rc == 0) {
         sbuf2printf(sb, "SUCCESS\n");

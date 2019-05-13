@@ -41,6 +41,7 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 
 #include "llog_auto.h"
 #include "llog_ext.h"
@@ -51,6 +52,8 @@
 #include "bdb_schemachange.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+
+extern int sc_ready(void);
 
 /* bdb routines to support schema change */
 
@@ -73,7 +76,6 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
     else
         bdb_state = bdb_state_in;
 
-    extern int sc_ready(void);
     if (!sc_ready()) {
         logmsg(LOGMSG_INFO, "Skipping bdb_scdone, files not opened yet!\n");
         return 0;
@@ -320,17 +322,17 @@ extern int gbl_rowlocks;
 
 int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
+    // char *str;
     int rc;
 
     assert(type == rowlocks_on || type == rowlocks_off);
 
     if (type == rowlocks_on) {
         assert(!gbl_rowlocks);
-        str = "enable_rowlocks";
+        // str = "enable_rowlocks";
     } else {
         assert(gbl_rowlocks);
-        str = "disable_rowlocks";
+        // str = "disable_rowlocks";
     }
 
     if (type == rowlocks_on)
@@ -343,7 +345,7 @@ int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 
 int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
+    // char *str;
     int rc, format;
 
     assert(type == genid48_enable || type == genid48_disable);
@@ -352,11 +354,11 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
     if (type == genid48_enable) {
         assert(format == LLMETA_GENID_ORIGINAL);
         format = LLMETA_GENID_48BIT;
-        str = "enable_genid48";
+        // str = "enable_genid48";
     } else {
         assert(format == LLMETA_GENID_48BIT);
         format = LLMETA_GENID_ORIGINAL;
-        str = "disable_genid48";
+        // str = "disable_genid48";
     }
 
     bdb_genid_set_format(bdb_state, format);
@@ -366,24 +368,112 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 
 int bdb_reload_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
-
     assert(type == rowlocks_on || type == rowlocks_on_master_only ||
            type == rowlocks_off);
 
-    if (type == rowlocks_on) {
-        str = "enable_rowlocks";
-    } else {
+    if (type != rowlocks_on) {
         assert(gbl_rowlocks);
-        str = "disable_rowlocks";
     }
 
-    BDB_WRITELOCK(str);
     if (type == rowlocks_on)
         gbl_rowlocks = 1;
     else
         gbl_rowlocks = 0;
-    BDB_RELLOCK();
     return 0;
 }
 
+int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock)
+{
+    int rc = 0, bdberr = 0;
+    tran_type *trans = NULL;
+
+    if (bdb_state == NULL) {
+        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
+        return -1;
+    }
+
+    if (lock) {
+        trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
+        if (!trans) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction, bdberr=%d\n",
+                   __func__, bdberr);
+            return -1;
+        }
+        rc = bdb_lock_table_write(bdb_state, trans);
+        if (rc) {
+            bdb_tran_abort(bdb_state, trans, &bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to lock table, rc=%d\n", __func__,
+                   rc);
+            return -1;
+        }
+        // no one can write to this table at this point
+    }
+
+    bdb_state->logical_live_sc = 1;
+    Pthread_mutex_init(&(bdb_state->sc_redo_lk), NULL);
+    Pthread_cond_init(&(bdb_state->sc_redo_wait), NULL);
+    listc_init(&bdb_state->sc_redo_list, offsetof(struct sc_redo_lsn, lnk));
+
+    if (lock) {
+        rc = bdb_tran_abort(bdb_state, trans, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to abort trans, rc=%d, bdberr=%d\n", __func__,
+                   rc, bdberr);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
+{
+    int rc = 0, bdberr = 0;
+    tran_type *trans = NULL;
+    struct sc_redo_lsn *redo;
+
+    if (bdb_state == NULL) {
+        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
+        return -1;
+    }
+
+    if (bdb_state->logical_live_sc == 0)
+        return 0;
+
+    if (lock) {
+        trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
+        if (!trans) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction, bdberr=%d\n",
+                   __func__, bdberr);
+            return -1;
+        }
+        rc = bdb_lock_table_write(bdb_state, trans);
+        if (rc) {
+            bdb_tran_abort(bdb_state, trans, &bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to lock table, rc=%d\n", __func__,
+                   rc);
+            return -1;
+        }
+        // no one can write to this table at this point
+    }
+
+    bdb_state->logical_live_sc = 0;
+    Pthread_mutex_destroy(&(bdb_state->sc_redo_lk));
+    Pthread_cond_destroy(&(bdb_state->sc_redo_wait));
+    while ((redo = listc_rtl(&bdb_state->sc_redo_list)) != NULL) {
+        free(redo);
+    }
+
+    if (lock) {
+        rc = bdb_tran_abort(bdb_state, trans, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to abort trans, rc=%d, bdberr=%d\n", __func__,
+                   rc, bdberr);
+            return -1;
+        }
+    }
+
+    return 0;
+}

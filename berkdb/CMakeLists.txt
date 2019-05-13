@@ -272,8 +272,10 @@ include_directories(
   ${LZ4_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-  set_target_properties(db PROPERTIES COMPILE_FLAGS -Wno-knr-promoted-parameter)
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-knr-promoted-parameter -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 add_definitions(-DSTDC_HEADERS)
 add_dependencies(db mem)

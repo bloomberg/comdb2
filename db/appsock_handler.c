@@ -23,7 +23,7 @@
  * of this when doing appsock stuff!
  */
 
-#include <lockmacro.h>
+#include "lockmacros.h"
 #include "util.h"
 #include "comdb2.h"
 #include "comdb2_plugin.h"
@@ -180,7 +180,13 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    arg.tab = thedb->dbs[0];
+    if (!thedb->dbs) {
+        logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
+               __func__);
+        return 0;
+    }
+
+    arg.tab = &thedb->static_table;
     arg.conv_flags = 0;
 
     while (1) {

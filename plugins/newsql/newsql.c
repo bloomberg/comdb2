@@ -18,8 +18,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "comdb2_plugin.h"
 #include "pb_alloc.h"
 #include "sp.h"
@@ -191,7 +189,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                "durable-lsn request "
                                "returns %d snapshot_file=%d snapshot_offset=%d "
                                "is_hasql_retry=%d\n",
-                               clnt->snapshot_file, clnt->snapshot_offset,
+                               rc, clnt->snapshot_file, clnt->snapshot_offset,
                                clnt->is_hasql_retry);
                 rcode = -1;
             }
@@ -260,7 +258,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0;                                              \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
@@ -432,10 +430,14 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = column_type(clnt, stmt, col);
-    }
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+            type = column_type(clnt, stmt, col);
+            if (type == SQLITE_NULL) {
+                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            }
+        } else {
+            type = SQLITE_NULL;
+        }
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -742,7 +744,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
+                column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
@@ -998,6 +1001,12 @@ static int newsql_trace(struct sqlclntstate *clnt, char *info)
                                1);
 }
 
+static int newsql_cost(struct sqlclntstate *clnt)
+{
+    dump_client_query_stats(clnt->dbglog, clnt->query_stats);
+    return 0;
+}
+
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
@@ -1035,8 +1044,9 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return newsql_row_str(c, a, i);
     case RESPONSE_TRACE:
         return newsql_trace(c, a);
-    /* fastsql only messages */
     case RESPONSE_COST:
+        return newsql_cost(c);
+    /* fastsql only messages */
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
         return 0;
@@ -1047,7 +1057,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     int rc, r, w, timeout = 0;
     sbuf2gettimeout(clnt->sb, &r, &w);
     sbuf2settimeout(clnt->sb, 1000, w);
@@ -1061,7 +1071,7 @@ static int newsql_ping_pong(struct sqlclntstate *clnt)
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
         return -1;
     }
@@ -1191,6 +1201,16 @@ static int newsql_override_count(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     return appdata->sqlquery->n_types;
+}
+
+static int newsql_override_type(struct sqlclntstate *clnt, int i)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    int n = appdata->sqlquery->n_types;
+    if (n && i >= 0 && i < n) {
+        return appdata->sqlquery->types[i];
+    }
+    return 0;
 }
 
 static int newsql_clr_cnonce(struct sqlclntstate *clnt)
@@ -1519,6 +1539,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
+                        /* Re-authenticate the new user. */
+                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                            clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
@@ -1540,6 +1563,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
+                        /* Re-authenticate the new password. */
+                        if (clnt->authgen &&
+                            strcmp(clnt->password, sqlstr) != 0)
+                            clnt->authgen = 0;
                         strcpy(clnt->password, sqlstr);
                     }
                 }
@@ -1575,6 +1602,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->spversion.version_num = ver;
                 } else {
                     rc = ii + 1;
+                }
+            } else if (strncasecmp(sqlstr, "prepare_only", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->prepare_only = 0;
+                } else {
+                    clnt->prepare_only = 1;
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
@@ -1652,14 +1687,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 6;
                 sqlstr = skipws(sqlstr);
 
-                int rc = fdb_access_control_create(clnt, sqlstr);
-                if (rc) {
+                int fdbrc = fdb_access_control_create(clnt, sqlstr);
+                if (fdbrc) {
                     logmsg(
                         LOGMSG_ERROR,
                         "%s: failed to process remote access settings \"%s\"\n",
                         __func__, sqlstr);
+                    rc = ii + 1;
                 }
-                rc = ii + 1;
             } else if (strncasecmp(sqlstr, "getcost", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
@@ -1799,10 +1834,13 @@ static int do_query_on_master_check(struct dbenv *dbenv,
     return 0;
 }
 
+int gbl_send_failed_dispatch_message = 0;
+
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
+    CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
@@ -1810,7 +1848,7 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
-        if (was_timeout) {
+        if (was_timeout && gbl_send_failed_dispatch_message) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
         return NULL;
@@ -1893,12 +1931,12 @@ retry_read:
         return NULL;
     }
 
-    assert(errno == 0);
     char *p;
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
         while (1) { // big buffer. most certainly it is a huge blob.
+            errno = 0; /* precondition: well-defined before call that may set */
             p = comdb2_timedmalloc(blobmem, bytes, 1000);
 
             if (p != NULL || errno != ETIMEDOUT)
@@ -1934,9 +1972,8 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
-    assert(errno == 0); // precondition for the while loop
     while (1) {
+        errno = 0; /* precondition: well-defined before call that may set */
         query = cdb2__query__unpack(&pb_alloc, bytes, (uint8_t *)p);
         // errno can be set by cdb2__query__unpack
         // we retry malloc on out of memory condition
@@ -1963,13 +2000,16 @@ retry_read:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query || errno != 0) {
+    if (!query) return NULL;
+    if (errno != 0) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
 
     // one of dbinfo or sqlquery must be non-NULL
     if (unlikely(!query->dbinfo && !query->sqlquery)) {
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -2005,6 +2045,7 @@ retry_read:
             send_dbinforesponse(dbenv, sb);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -2032,6 +2073,7 @@ retry_read:
         if (client_supports_ssl) {
             newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL);
             cdb2__query__free_unpacked(query, &pb_alloc);
+            query = NULL;
             goto retry_read;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
@@ -2152,7 +2194,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
-    assert(query->sqlquery);
+#if 0
+    else
+        logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
+#endif
+    if (query->sqlquery == NULL) {
+        logmsg(LOGMSG_DEBUG, "Malformed SQL request.\n");
+        goto done;
+    }
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
@@ -2193,6 +2242,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
+#if 0
+        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;

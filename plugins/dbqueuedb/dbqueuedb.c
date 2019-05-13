@@ -64,8 +64,6 @@
 #include <trigger.h>
 #include <intern_strings.h>
 #include "logmsg.h"
-#include "views_cron.h"
-
 
 static void coalesce(struct dbenv *dbenv);
 static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
@@ -198,7 +196,6 @@ static int add_consumer_int(struct dbtable *db, int consumern,
                                     const char *method, int noremove,
                                     int checkonly)
 {
-    struct consumer *consumer;
     const char *opts;
     int rc = 0;
 
@@ -215,8 +212,8 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     }
 
     if (!checkonly && db && (db->dbtype != DBTYPE_QUEUEDB)) {
-        logmsg(LOGMSG_ERROR, "%d: %s is not a queue\n",
-               __func__, db->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s is not a queue\n", __func__,
+               db->tablename);
         rc = -1;
         goto done;
     }
@@ -243,13 +240,12 @@ static int add_consumer_int(struct dbtable *db, int consumern,
         }
     }
 
-    consumer = malloc(sizeof(struct consumer));
+    struct consumer *consumer = calloc(1, sizeof(struct consumer));
     if (!consumer) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed for consumer\n", __func__);
         rc = -1;
         goto done;
     }
-    bzero(consumer, sizeof(struct consumer));
     consumer->db = db;
     consumer->consumern = consumern;
     /* Find options and pull them out separately */
@@ -370,7 +366,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     void *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
-    uint8_t *open;
+    const uint8_t *open;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
 
@@ -484,8 +480,8 @@ static void admin(struct dbenv *dbenv, int type)
                             char *name = consumer->procedure_name;
                             char *host =
                                 net_get_osql_node(thedb->handle_sibling);
-                            if (host == NULL && thedb->nsiblings == 1) {
-                                trigger_start(name); // standalone
+                            if (host == NULL) {
+                                trigger_start(name);
                             } else {
                                 void *net = thedb->handle_sibling;
                                 net_send_message(net, host, NET_TRIGGER_START,
@@ -533,9 +529,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
     else {
-        int ii, rc;
+        int ii;
         struct ireq iq;
-        struct consumer_stat stats[MAXCONSUMERS];
+        struct consumer_stat stats[MAXCONSUMERS] = {{0}};
         int flags = 0;
         const struct bdb_queue_stats *bdbstats;
 
@@ -544,14 +540,13 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
         init_fake_ireq(db->dbenv, &iq);
         iq.usedb = db;
 
-        bzero(stats, sizeof(stats));
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
                db->tablename);
         if (!walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        rc = dbq_walk(&iq, flags, stat_callback, stats);
+        dbq_walk(&iq, flags, stat_callback, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -770,13 +765,12 @@ void flush_in_thread(struct dbtable *db, int consumern)
     Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
-    args = malloc(sizeof(struct flush_thd_data));
+    args = calloc(1, sizeof(struct flush_thd_data));
     if (!args) {
         Pthread_attr_destroy(&attr);
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return;
     }
-    bzero(args, sizeof(struct flush_thd_data));
     args->db = db;
     args->consumern = consumern;
 

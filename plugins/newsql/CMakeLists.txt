@@ -2,6 +2,11 @@ include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
 set(LIBNAME "newsql")
 
+include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
+add_definitions(
+  ${SQLITE_FLAGS}
+)
+
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
@@ -18,7 +23,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_SOURCE_DIR}/protobuf
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/db
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf

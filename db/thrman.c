@@ -38,10 +38,10 @@
 #include <time.h>
 
 #include <list.h>
-#include <lockmacro.h>
 #include <epochlib.h>
 #include <memory_sync.h>
 
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "util.h"
 #include "thrman.h"
@@ -351,6 +351,8 @@ const char *thrman_type2a(enum thrtype type)
         return "purge-old-files";
     case THRTYPE_TRIGGER:
         return "lua-trigger";
+    case THRTYPE_PGLOGS_ASOF:
+        return "pglogs-asof";
     default:
         return "??";
     }
@@ -464,7 +466,8 @@ static int thrman_check_threads_stopped_ll(void *context)
             thr_type_counts[THRTYPE_SQLPOOL] +
             thr_type_counts[THRTYPE_SQLENGINEPOOL] +
             thr_type_counts[THRTYPE_VERIFY] + thr_type_counts[THRTYPE_ANALYZE] +
-            thr_type_counts[THRTYPE_PURGEBLKSEQ])
+            thr_type_counts[THRTYPE_PURGEBLKSEQ] +
+            thr_type_counts[THRTYPE_PGLOGS_ASOF])
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */

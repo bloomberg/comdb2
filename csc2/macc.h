@@ -1,3 +1,6 @@
+#ifndef __macc_h
+#define __macc_h
+
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
@@ -10,7 +13,6 @@
 #include "mem_override.h"
 
 extern char *revision;
-extern char VER[16]; /* version info */
 
 #define ONDISKTAG ".ONDISK"
 #define DEFAULTTAG ".DEFAULT"
@@ -141,7 +143,7 @@ extern struct symbol {
     int dpth;
     int numfo; /* number of field options for this symbol */
     struct fieldopt fopts[FLDOPT_MAX]; /* field option structures */
-} sym[MAX];
+} symb[MAX];
 
 extern struct table {
     char table_tag[MAX_TAG_LEN + 1];
@@ -347,3 +349,5 @@ void rng_add(int i);
 void expr_assoc_name(char *name);
 void expr_clear();
 void expr_add_pc(char *sym, int op, int num);
+
+#endif

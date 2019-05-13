@@ -41,10 +41,13 @@
 
 #include "cson_amalgamation_core.h"
 
+extern int64_t comdb2_time_epochus(void);
+extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
+
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;
-static int eventlog_rollat = 1024 * 1024 * 1024;
+static int eventlog_nkeep = 2; // keep only last 2 event log files
+static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -84,8 +87,44 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
+static void eventlog_roll_cleanup()
+{
+    if (eventlog_nkeep == 0)
+        return;
+
+    char cmd[512] = {0};
+    const char postfix[] = ".events.";
+    char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
+
+    if (fname == NULL)
+        abort();
+
+    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
+    int len = strlen(fname);
+
+    // SANITY CHECK; last part of fname should match postfix
+    if (len < sizeof(postfix) ||
+        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+        abort();
+
+    // Delete all except the most recent files
+    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
+    // IN THE CALL TO ls IN NEXT LINE
+    snprintf(
+        cmd, sizeof(cmd) - 1,
+        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
+        fname, thedb->envname, eventlog_nkeep);
+    free(fname);
+
+    int rc = system(cmd);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
+    }
+}
+
 static gzFile eventlog_open()
 {
+    eventlog_roll_cleanup();
     char *fname = eventlog_fname(thedb->envname);
     gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
@@ -359,16 +398,20 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     for (int i = 0; i < logger->path->n_components; i++) {
         cson_value *component;
         component = cson_value_new_object();
-        cson_object *obj = cson_value_get_object(component);
+        cson_object *lobj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
         if (c->table[0])
-            cson_object_set(obj, "table",
+            cson_object_set(lobj, "table",
                             cson_value_new_string(c->table, strlen(c->table)));
-        if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
-        if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
-        if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
-        if (c->nwrite) cson_object_set(obj, "write", cson_new_int(c->nwrite));
+        if (c->ix != -1)
+            cson_object_set(lobj, "index", cson_new_int(c->ix));
+        if (c->nfind)
+            cson_object_set(lobj, "find", cson_new_int(c->nfind));
+        if (c->nnext)
+            cson_object_set(lobj, "next", cson_new_int(c->nnext));
+        if (c->nwrite)
+            cson_object_set(lobj, "write", cson_new_int(c->nwrite));
         cson_array_append(arr, component);
     }
     cson_object_set(obj, "path", components);
@@ -539,6 +582,7 @@ void eventlog_status(void)
 static void eventlog_roll(void)
 {
     eventlog_close();
+
     eventlog = eventlog_open();
 }
 
@@ -622,7 +666,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         else {
             logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
-        eventlog_nkeep = rollat;
+        eventlog_rollat = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {
         int every;
         tok = segtok(line, lline, toff, &ltok);
@@ -680,7 +724,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_object *obj = cson_value_get_object(dval);
 
     cson_value *dd_list = cson_value_new_array();
-    int64_t comdb2_time_epochus(void);
     uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
@@ -697,7 +740,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
 
-        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);

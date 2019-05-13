@@ -25,12 +25,14 @@ int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
+static void _save_params(Parse *pParse, dohsql_node_t *node);
 
-static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname);
+static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname,
+                           struct params_info **pParamsOut);
 
-static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
+static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
+                              struct params_info **pParamsOut)
 {
-    sqlite3 *db = v->db;
     char *cols = NULL;
     char *accum = NULL;
     Expr *expr = NULL;
@@ -41,9 +43,9 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
         *tbl = NULL;
     for (i = 0; i < c->nExpr; i++) {
         expr = c->a[i].pExpr;
-        if ((sExpr = _gen_col_expr(v, expr, tbl)) == NULL) {
+        if ((sExpr = _gen_col_expr(v, expr, tbl, pParamsOut)) == NULL) {
             if (cols)
-                sqlite3DbFree(db, cols);
+                sqlite3_free(cols);
             return NULL;
         }
         if (!cols)
@@ -56,10 +58,10 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
                                     (c->a[i].zName) ? " aS \"" : "",
                                     (c->a[i].zName) ? c->a[i].zName : "",
                                     (c->a[i].zName) ? "\" " : "");
-            sqlite3DbFree(db, cols);
+            sqlite3_free(cols);
             cols = accum;
         }
-        sqlite3DbFree(db, sExpr);
+        sqlite3_free(sExpr);
         if (!cols)
             return NULL;
     }
@@ -68,14 +70,14 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
 }
 
 static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
-                              int **order_dir)
+                              int **order_dir, struct params_info **pParamsOut)
 {
     char *ret;
     char *tmp;
     char *newterm;
     int i;
 
-    ret = sqlite3ExprDescribe(v, lst->a[0].pExpr);
+    ret = sqlite3ExprDescribeParams(v, lst->a[0].pExpr, pParamsOut);
     if (!ret)
         return NULL;
 
@@ -83,19 +85,19 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
     *order_size = lst->nExpr;
     *order_dir = (int *)malloc((*order_size) * sizeof(int));
     if (!*order_dir) {
-        sqlite3DbFree(v->db, ret);
+        sqlite3_free(ret);
         return NULL;
     }
 
     if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
         tmp = sqlite3_mprintf("%s DeSC", ret);
-        sqlite3DbFree(v->db, ret);
+        sqlite3_free(ret);
         ret = tmp;
     }
     for (i = 1; i < lst->nExpr; i++) {
-        newterm = sqlite3ExprDescribe(v, lst->a[i].pExpr);
+        newterm = sqlite3ExprDescribeParams(v, lst->a[i].pExpr, pParamsOut);
         if (!newterm) {
-            sqlite3DbFree(v->db, ret);
+            sqlite3_free(ret);
             if (*order_dir)
                 free(*order_dir);
             return NULL;
@@ -103,8 +105,8 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         tmp = sqlite3_mprintf(
             "%s, %s%s", ret, newterm,
             (((*order_dir)[i] = lst->a[i].sortOrder) != 0) ? " DeSC" : "");
-        sqlite3DbFree(v->db, newterm);
-        sqlite3DbFree(v->db, ret);
+        sqlite3_free(newterm);
+        sqlite3_free(ret);
         ret = tmp;
     }
 
@@ -112,13 +114,13 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
 }
 
 char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
-                              int *order_size, int **order_dir)
+                              int *order_size, int **order_dir,
+                              struct params_info **pParamsOut)
 {
     char *cols = NULL;
     const char *tbl = NULL;
     char *select = NULL;
     char *where = NULL;
-    sqlite3 *db = v->db;
     char *limit = NULL;
     char *offset = NULL;
     char *extra = NULL;
@@ -139,23 +141,24 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         return NULL; /* only union all */
 
     if (p->pWhere) {
-        where = sqlite3ExprDescribe(v, p->pWhere);
+        where = sqlite3ExprDescribeParams(v, p->pWhere, pParamsOut);
         if (!where)
             return NULL;
     }
 
     if (p->pOrderBy) {
-        orderby = describeExprList(v, p->pOrderBy, order_size, order_dir);
+        orderby =
+            describeExprList(v, p->pOrderBy, order_size, order_dir, pParamsOut);
         if (!orderby) {
-            sqlite3DbFree(db, where);
+            sqlite3_free(where);
             return NULL;
         }
     }
 
-    cols = generate_columns(v, p->pEList, &tbl);
+    cols = generate_columns(v, p->pEList, &tbl, pParamsOut);
     if (!cols) {
-        sqlite3DbFree(db, orderby);
-        sqlite3DbFree(db, where);
+        sqlite3_free(orderby);
+        sqlite3_free(where);
         return NULL;
     }
 
@@ -170,20 +173,21 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
     } else {
-        limit = sqlite3ExprDescribe(v, p->pLimit);
+        limit = sqlite3ExprDescribeParams(v, p->pLimit->pLeft, pParamsOut);
         if (!limit) {
-            sqlite3DbFree(db, orderby);
-            sqlite3DbFree(db, where);
-            sqlite3DbFree(db, cols);
+            sqlite3_free(orderby);
+            sqlite3_free(where);
+            sqlite3_free(cols);
             return NULL;
         }
-        if (p->pOffset) {
-            offset = sqlite3ExprDescribe(v, p->pOffset);
+        if (/* p->pLimit && */ p->pLimit->pRight) {
+            offset =
+                sqlite3ExprDescribeParams(v, p->pLimit->pRight, pParamsOut);
             if (!offset) {
-                sqlite3DbFree(db, limit);
-                sqlite3DbFree(db, orderby);
-                sqlite3DbFree(db, where);
-                sqlite3DbFree(db, cols);
+                sqlite3_free(limit);
+                sqlite3_free(orderby);
+                sqlite3_free(where);
+                sqlite3_free(cols);
                 return NULL;
             }
             select = sqlite3_mprintf(
@@ -200,12 +204,12 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 (where) ? " WHeRe " : "", (where) ? where : "",
                 (orderby) ? " oRDeR By " : "", (orderby) ? orderby : "", limit);
         } else {
-            extra = sqlite3ExprDescribe(v, extraRows);
+            extra = sqlite3ExprDescribeParams(v, extraRows, pParamsOut);
             if (!extra) {
-                sqlite3DbFree(db, limit);
-                sqlite3DbFree(db, orderby);
-                sqlite3DbFree(db, where);
-                sqlite3DbFree(db, cols);
+                sqlite3_free(limit);
+                sqlite3_free(orderby);
+                sqlite3_free(where);
+                sqlite3_free(cols);
                 return NULL;
             }
             select = sqlite3_mprintf(
@@ -220,17 +224,17 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         }
     }
 
-    sqlite3DbFree(db, cols);
+    sqlite3_free(cols);
     if (extra)
-        sqlite3DbFree(db, extra);
+        sqlite3_free(extra);
     if (offset)
-        sqlite3DbFree(db, offset);
+        sqlite3_free(offset);
     if (limit)
-        sqlite3DbFree(db, limit);
+        sqlite3_free(limit);
     if (orderby)
-        sqlite3DbFree(db, orderby);
+        sqlite3_free(orderby);
     if (where)
-        sqlite3DbFree(db, where);
+        sqlite3_free(where);
 
     return select;
 }
@@ -308,13 +312,18 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
 
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
-    node->sql = sqlite_struct_to_string(v, p, extraRows, order_size, order_dir);
+    node->sql = sqlite_struct_to_string(v, p, extraRows, order_size, order_dir,
+                                        &node->params);
     p->pPrior = prior;
     p->pNext = next;
 
     node->ncols = p->pEList->nExpr;
 
     if (!node->sql) {
+        if (node->params) {
+            free(node->params->params);
+            free(node->params);
+        }
         free(node);
         node = NULL;
     }
@@ -332,9 +341,15 @@ static void node_free(dohsql_node_t **pnode, sqlite3 *db)
         node_free(&node->nodes[i], db);
     }
 
+    /* params */
+    if ((*pnode)->params) {
+        free((*pnode)->params->params);
+        free((*pnode)->params);
+    }
+
     /* current node */
     if ((*pnode)->sql) {
-        sqlite3DbFree(db, (*pnode)->sql);
+        sqlite3_free((*pnode)->sql);
     }
     if ((*pnode)->order_dir) {
         free((*pnode)->order_dir);
@@ -348,6 +363,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     dohsql_node_t *node;
     dohsql_node_t **psub;
     Select *crt;
+    Expr *pLimitNoOffset = NULL;
     Expr *pLimit = NULL;
     Expr *pOffset = NULL;
 
@@ -366,7 +382,8 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     psub = node->nodes;
 
     pLimit = p->pLimit;
-    pOffset = p->pOffset;
+    pOffset = p->pLimit ? p->pLimit->pRight : NULL;
+
     /* syntax errors */
     crt = p->pPrior;
     while (crt) {
@@ -381,24 +398,31 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     crt = p;
     if (crt->pPrior) {
+        if (pLimit && pLimit->pRight) {
+            Expr *pSavedRight = pLimit->pRight;
+            pLimit->pRight = 0;
+            pLimitNoOffset = sqlite3ExprDup(v->db, pLimit, 0);
+            pLimit->pRight = pSavedRight;
+        } else {
+            pLimitNoOffset = pLimit;
+        }
 
         /* go from left to right */
         while (crt->pPrior) {
-            crt->pLimit = pLimit;
+            assert(crt == p || !crt->pLimit); /* can "restore" to NULL? */
+            crt->pLimit = pLimitNoOffset;
             crt = crt->pPrior;
         }
-        crt->pLimit = pLimit;
-        crt->pOffset = pOffset;
-        p->pOffset = NULL;
+        crt->pLimit = pLimit; /* we need this in the head */
     }
 
     /* generate queries */
     while (crt) {
+        assert(crt == p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
-        *psub = gen_oneselect(v, crt, (pOffset != p->pOffset) ? pOffset : NULL,
-                              &node->order_size, &node->order_dir);
+        *psub =
+            gen_oneselect(v, crt, pOffset, &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
-        crt->pOffset = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
 
@@ -409,7 +433,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         if (psub != node->nodes) {
             char *tmp =
                 sqlite3_mprintf("%s uNioN aLL %s", (*psub)->sql, node->sql);
-            sqlite3DbFree(v->db, node->sql);
+            sqlite3_free(node->sql);
             node->sql = tmp;
             if (!tmp) {
                 node_free(&node, v->db);
@@ -422,8 +446,28 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         psub++;
     }
 done:
+    crt = p;
+    while (crt) {
+        crt->pLimit = NULL;
+        crt = crt->pNext;
+    }
     p->pLimit = pLimit;
-    p->pOffset = pOffset;
+
+    if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
+        sqlite3ExprDelete(v->db, pLimitNoOffset);
+    }
+
+#ifdef SQLITE_DEBUG
+    crt = p;
+    while (crt->pPrior) {
+        if (crt->pLimit) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s: Select %p has Limit %p, orig %p, no offset %p\n",
+                   __func__, crt, crt->pLimit, pLimit, pLimitNoOffset);
+        }
+        crt = crt->pPrior;
+    }
+#endif
 
     return node;
 }
@@ -461,7 +505,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         crt->selFlags |= SF_ASTIncluded;
         span++;
         /* only handle union all */
-        if (crt->op != TK_SELECT && crt->op != TK_ALL)
+        if ((crt->op != TK_SELECT && crt->op != TK_ALL) || crt->recording)
             not_recognized = 1;
 
         /* skip certain tables */
@@ -591,8 +635,13 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+extern int comdb2IsPrepareOnly(Parse*);
+
 int comdb2_check_parallel(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;
@@ -613,8 +662,11 @@ int comdb2_check_parallel(Parse *pParse)
 
     node = (dohsql_node_t *)ast->stack[0].obj;
 
-    if (pParse->explain && pParse->explain != 3)
+    if (pParse->explain) {
+        if (pParse->explain == 3)
+            explain_distribution(node);
         return 0;
+    }
 
     if (node->type == AST_TYPE_SELECT) {
         if (gbl_dohast_verbose)
@@ -624,12 +676,23 @@ int comdb2_check_parallel(Parse *pParse)
     }
 
     if (node->type == AST_TYPE_UNION) {
+        _save_params(pParse, node);
+
         if (gbl_dohast_verbose) {
             logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
             for (i = 0; i < node->nnodes; i++) {
                 logmsg(LOGMSG_DEBUG, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
+                if (node->nodes[i]->params) {
+                    logmsg(LOGMSG_DEBUG, "\t\t Params %d:\n",
+                           node->nodes[i]->params->nparams);
+                    for (int j = 0; j < node->nodes[i]->params->nparams; j++) {
+                        logmsg(LOGMSG_DEBUG, "\t\t\t %d \"%s\" %d\n", j + 1,
+                               node->nodes[i]->params->params[j].name,
+                               node->nodes[i]->params->params[j].pos);
+                    }
+                }
             }
         }
 
@@ -650,7 +713,7 @@ static int _exprCallback(Walker *pWalker, Expr *pExpr)
     case TK_COLUMN:
         if (pWalker->pParse)
             return WRC_Abort;
-        pWalker->pParse = (Parse *)pExpr->pTab->zName;
+        pWalker->pParse = (Parse *)pExpr->y.pTab->zName;
     case TK_PLUS:
     case TK_MINUS:
     case TK_INTEGER:
@@ -665,7 +728,8 @@ static int _selectCallback(Walker *pWalker, Select *pSelect)
     return WRC_Continue;
 }
 
-static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
+static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname,
+                           struct params_info **pParamsOut)
 {
     Walker w = {0};
 
@@ -678,5 +742,19 @@ static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
     if (tblname && w.pParse)
         *tblname = (const char *)w.pParse;
 
-    return sqlite3ExprDescribe(v, expr);
+    return sqlite3ExprDescribeParams(v, expr, pParamsOut);
+}
+
+static void _save_params(Parse *pParse, dohsql_node_t *node)
+{
+    Vdbe *v = pParse->db->pVdbe;
+    if (!v)
+        return;
+
+    logmsg(LOGMSG_DEBUG, "%lx Caching bound parameters length %p\n",
+           pthread_self(), v->pVList);
+    sqlite3VListPrint(LOGMSG_DEBUG, v->pVList);
+
+    node->nparams = sqlite3_bind_parameter_count((sqlite3_stmt *)v);
+    /* we don't really need node->params for parent union at this point */
 }

@@ -101,7 +101,7 @@ struct schema_change_type {
     int compress_blobs; /* new blob com algorithm or -1 for no change */
     int ip_updates;     /* inplace updates or -1 for no change */
     int instant_sc;     /* 1 is enable, 0 disable, or -1 for no change */
-    int doom;
+    int preempted;
     int use_plan;         /* if we want to use a plan so we don't rebuild
                              everything needlessly. */
     int commit_sleep;     /* Used for testing; sleep a bit before committing
@@ -181,11 +181,22 @@ struct schema_change_type {
                            whole schema change (I will change this in the
                            future)*/
 
+    int sc_thd_failed;
+    int schema_change;
+
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
 
     int already_finalized;
+
+    int logical_livesc;
+    int *sc_convert_done;
+    unsigned int hitLastCnt;
+    int got_tablelock;
+
+    pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    void *curLsn;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -227,6 +238,10 @@ enum schema_change_rc {
     SC_TABLE_DOESNOT_EXIST,
     SC_TABLE_ALREADY_EXIST,
     SC_TRANSACTION_FAILED,
+    SC_PAUSED,
+    SC_ABORTED,
+    SC_PREEMPTED,
+    SC_DETACHED,
     SC_UNKNOWN_ERROR = -1,
     SC_CANT_SET_RUNNING = -99
 };
@@ -241,8 +256,28 @@ enum schema_change_views_rc {
 
 enum schema_change_resume {
     SC_NOT_RESUME = 0,
+    /* Non-transactional resume */
     SC_RESUME = 1,
-    SC_NEW_MASTER_RESUME = 2
+    /* New master resuming transactional sc (without finalizing) */
+    SC_NEW_MASTER_RESUME = 2,
+    /* OSQL (block processor) picking up sc resumed by the new master */
+    SC_OSQL_RESUME = 3,
+    /* Resume a paused sc */
+    SC_PREEMPT_RESUME = 4
+};
+
+enum schema_change_preempt {
+    SC_ACTION_NONE = 0,
+    SC_ACTION_PAUSE = 1,
+    SC_ACTION_RESUME = 2,
+    SC_ACTION_COMMIT = 3,
+    SC_ACTION_ABORT = 4
+};
+
+enum schema_alter_option {
+    SC_ALTER_NONE = 0,
+    SC_ALTER_ONLY = 1,
+    SC_ALTER_PENDING = 2
 };
 
 #include <bdb_schemachange.h>
@@ -321,6 +356,11 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len);
+
+int live_sc_disable_inplace_blobs(struct ireq *iq);
+
+int live_sc_delay_key_add(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
@@ -338,5 +378,14 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
+
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs,
+                                          size_t maxblobs);
+
+char *get_ddl_type_str(struct schema_change_type *s);
+char *get_ddl_csc2(struct schema_change_type *s);
 
 #endif

@@ -160,8 +160,8 @@ void cdb2sql_usage(int exit_val)
     exit(exit_val);
 }
 
-
-const char *words[] = {
+const char *level_one_words[] = {
+  "@",
   "ALTER", "ANALYZE",
   "BEGIN",
   "COMMIT",
@@ -175,12 +175,32 @@ const char *words[] = {
   "SELECT", "SELECTV", "SET",
   "TRUNCATE",
   "UPDATE",
-  "WITH", NULL, }; // must be terminated by NULL
+  "WITH", NULL,  // must be terminated by NULL
+};
 
+const char *char_atglyph_words[] = {
+    "desc", "ls", "send", NULL, // must be terminated by NULL
+};
 
+static char *char_atglyph_generator(const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { // if state is 0 get the length of text
+        list_index = 0;
+        len = strlen(text);
+    }
+    while ((name = char_atglyph_words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
+    }
+    return (NULL); // If no names matched, then return NULL.
+}
 
 // Generator function for word completion.
-char *level_one_generator (const char *text, int state)
+static char *level_one_generator(const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -188,16 +208,16 @@ char *level_one_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-    while ((name = words[list_index]) != NULL) {
+    while ((name = level_one_words[list_index]) != NULL) {
         list_index++;
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
         }
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
-char *db_generator (int state, const char *sql)
+static char *db_generator(int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -275,72 +295,107 @@ char *db_generator (int state, const char *sql)
         list_index++;
         return strdup(name);
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
-
-char *tunables_generator (const char *text, int state)
+static char *tunables_generator(const char *text, int state)
 {
     char sql[256];
     if (*text)
         //TODO: escape text
         snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+                "SELECT DISTINCT name FROM comdb2_tunables "
+                "WHERE name LIKE '%s%%'",
+                text);
     else
         snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables");
     return db_generator(state, sql);
 }
 
-char *generic_generator(const char *text, int state)
+static char *generic_generator_no_systables(const char *text, int state)
 {
     char sql[256];
-    //TODO: escape text
-    snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT candidate "
-            "FROM comdb2_completion('%s')", text);
+    snprintf(sql, sizeof(sql),
+             "SELECT DISTINCT candidate as c FROM comdb2_completion('%s') "
+             "where c not in (select name from comdb2_systables)",
+             text);
 
     return db_generator(state, sql);
 }
 
+static char *generic_generator(const char *text, int state)
+{
+    char sql[256];
+    //TODO: escape text
+    snprintf(sql, sizeof(sql),
+             "SELECT DISTINCT candidate FROM comdb2_completion('%s')", text);
 
+    return db_generator(state, sql);
+}
 
 // Custom completion function
+//
+// text is the last word entered or space,
+// start and end are the offsets of that last word in the rl_line_buffer
+// So if we are trying to complete in the middle of a word
+// text is the [partial] word, example:
+//  > select intcol^I
+//   rl_line_buffer='select intcol' text='intcol' start=8 end=13
+//
+// If we are completing after a space, word will be '' and start and end
+// will be the position of the [last] space in rl_line_buffer:
+// > select intcol  ^I
+// 'select intcol  ' text='' start=15 end=15
+//
 static char **my_completion (const char *text, int start, int end)
 {
     rl_attempted_completion_over = 1; // skip directory listing
+
+    if (start == 0) // input is blank
+        return rl_completion_matches(text, &level_one_generator);
+
     char *bgn = rl_line_buffer;
-    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+    while (*bgn && *bgn == ' ')
+        bgn++; // skip beginning spaces
+    // bgn now points to \0 or to the beginning of first word
 
     char *endptr = bgn;
-    while(*endptr) endptr++; //go to end
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    if (*bgn) { // we definitely have a word, find the end of the line
+        while (*endptr)
+            endptr++; // go to end, will point to \0
+        endptr--; // now point to the last character (can be space) in the line
 
-    endptr--;
-    // find last space (or will hit bgn)
-    while(endptr != bgn && *endptr != ' ') 
-        endptr--; 
+        // find last space (or will hit bgn)
+        while (endptr != bgn && *endptr != ' ')
+            endptr--;
+    }
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    // TODO: Detect if we are in multiline
+    if (endptr == bgn) { // we were in the middle of the first word
+        if (*bgn == '@')
+            return rl_completion_matches(text, &char_atglyph_generator);
+        else
+            return rl_completion_matches(text, &level_one_generator);
+    }
 
-    // find end of previous word
-    while(endptr != bgn && *endptr == ' ') 
+    // endptr points to a space, find end of previous word
+    while (*endptr == ' ')
         endptr--;
 
     char *lastw = endptr;
     // find begining of previous word
-    while(lastw != bgn && *lastw != ' ') 
+    while (lastw != bgn && *lastw != ' ')
         lastw--;
     lastw++;
 
-    int l = sizeof("TUNABLE") - 1;
-    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
-        return rl_completion_matches ((char *) text, &tunables_generator);
+    if (strncasecmp(lastw, "TUNABLE", sizeof("TUNABLE") - 1) == 0)
+        return rl_completion_matches(text, &tunables_generator);
+    else if (strncasecmp(lastw, "FROM", sizeof("FROM") - 1) == 0)
+        return rl_completion_matches(text, &generic_generator);
     else
-        return rl_completion_matches ((char *) text, &generic_generator);
+        return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
 
@@ -474,6 +529,31 @@ void *get_val(const char **sqlstr, int type, int *vallen)
 
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time);
+
+#ifndef ENABLE_COSTS
+#define ENABLE_COSTS NULL
+#else
+#if defined __cplusplus
+extern "C" {
+#endif
+extern void ENABLE_COSTS(void);
+#if defined __cplusplus
+}
+#endif
+#endif
+#ifndef REPORT_COSTS
+#define REPORT_COSTS NULL
+#else
+#if defined __cplusplus
+extern "C" {
+#endif
+extern void REPORT_COSTS(void);
+#if defined __cplusplus
+}
+#endif
+#endif
+static void (*enable_costs)(void) = ENABLE_COSTS;
+static void (*report_costs)(void) = REPORT_COSTS;
 
 static int process_escape(const char *cmdstr)
 {
@@ -636,39 +716,39 @@ static int process_escape(const char *cmdstr)
     return 0;
 }
 
-static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
+static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
 {
     void *val;
 
     assert((printmode & DISP_TABULAR) == 0);
 
-    val = cdb2_column_value(cdb2h, col);
+    val = cdb2_column_value(hndl, col);
 
     if (val == NULL) {
         if (printmode & DISP_CLASSIC) {
-            fprintf(f, "%s=NULL", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=NULL", cdb2_column_name(hndl, col));
         } else {
             fprintf(f, "NULL");
         }
         return;
     }
 
-    switch (cdb2_column_type(cdb2h, col)) {
+    switch (cdb2_column_type(hndl, col)) {
     case CDB2_INTEGER:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
+            fprintf(f, "%s=%lld", cdb2_column_name(hndl, col),
                     *(long long *)val);
         else
             fprintf(f, "%lld", *(long long *)val);
         break;
     case CDB2_REAL:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, doublefmt, *(double *)val);
         break;
     case CDB2_CSTRING:
         if (printmode & DISP_CLASSIC) {
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
             dumpstring(f, (char *)val, 1, 0);
         } else if (printmode & DISP_TABS)
             dumpstring(f, (char *)val, 0, 0);
@@ -677,10 +757,10 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
         break;
     case CDB2_BLOB:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         if (string_blobs) {
             char *c = (char *) val;
-            int len = cdb2_column_size(cdb2h, col);
+            int len = cdb2_column_size(hndl, col);
             fputc('\'', stdout);
             while (len > 0) {
                 if (isprint(*c) || *c == '\n' || *c == '\t') {
@@ -694,11 +774,13 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             fputc('\'', stdout);
         } else {
             if (printmode & DISP_BINARY) {
-                write(1, val, cdb2_column_size(cdb2h, col));
+                int rc = write(1, val, cdb2_column_size(hndl, col));
+                if (rc == -1)
+                    std::cerr << "write() returns rc = " << rc << std::endl;
                 exit(0);
             } else {
                 fprintf(f, "x'");
-                hexdump(f, val, cdb2_column_size(cdb2h, col));
+                hexdump(f, val, cdb2_column_size(hndl, col));
                 fprintf(f, "'");
             }
         }
@@ -706,7 +788,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_DATETIME: {
         cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->msec,
@@ -716,7 +798,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_DATETIMEUS: {
         cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->usec,
@@ -726,7 +808,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALYM: {
         cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
                 ym->months);
         break;
@@ -734,7 +816,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALDS: {
         cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->msec);
@@ -743,7 +825,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     case CDB2_INTERVALDSUS: {
         cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->usec);
@@ -981,7 +1063,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int rc;
     int ncols;
     int col;
-    int cost;
     FILE *out = stdout;
     char cmd[60];
     int startms = now_ms();
@@ -1050,16 +1131,15 @@ static int run_statement(const char *sql, int ntypes, int *types,
             length = snprintf(cmd, sizeof(cmd), "set user %s",
                               getenv("COMDB2_USER"));
 
-            if (length > sizeof(cmd)) {
+            if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_USER too long, ignored\n");
+            } else if ((length < 0) ||
+                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
+                fprintf(stderr, "Failed to set user using COMDB2_USER, "
+                                "exiting\n");
+                return 1;
             } else {
-                if ((length < 0) || ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                    fprintf(stderr, "Failed to set user using COMDB2_USER, "
-                                    "exiting\n");
-                    return 1;
-                } else {
-                    printf("Set user using COMDB2_USER\n");
-                }
+                printf("Set user using COMDB2_USER\n");
             }
         }
 
@@ -1067,16 +1147,15 @@ static int run_statement(const char *sql, int ntypes, int *types,
             length = snprintf(cmd, sizeof(cmd), "set password %s",
                               getenv("COMDB2_PASSWORD"));
 
-            if (length > sizeof(cmd)) {
+            if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
+            } else if ((length < 0) ||
+                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
+                fprintf(stderr, "Failed to set password using "
+                                "COMDB2_PASSWORD, exiting\n");
+                return 1;
             } else {
-                if ((length < 0) || ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                    fprintf(stderr, "Failed to set password using "
-                                    "COMDB2_PASSWORD, exiting\n");
-                    return 1;
-                } else {
-                    printf("Set password using COMDB2_PASSWORD\n");
-                }
+                printf("Set password using COMDB2_PASSWORD\n");
             }
         }
     }
@@ -1099,8 +1178,15 @@ static int run_statement(const char *sql, int ntypes, int *types,
             int length;
             void *value = get_val(&sql, type, &length);
 
-            rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-            /* we have to leak parameter here -- freeing breaks the bind */
+            if (isdigit(parameter[0])) {
+                int index = atoi(parameter);
+                if (index <= 0)
+                    return -1;
+                rc = cdb2_bind_index(cdb2h, index, type, value, length);
+            } else {
+                rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+                /* we have to leak parameter here -- freeing breaks the bind */
+            }
         } else
             rc = process_escape(sql);
         return rc;
@@ -1234,10 +1320,12 @@ static void process_line(char *sql, int ntypes, int *types)
     int len;
 
     verbose_print("processing line sql '%.30s...'\n", sql);
-    /* Trim whitespace and then ignore comments */
+    /* Trim whitespace and then ignore comments and empty lines. */
     while (isspace(*sqlstr))
         sqlstr++;
-    if (sqlstr[0] == '#' || sqlstr[0] == '\0')
+
+    if (sqlstr[0] == '#' || sqlstr[0] == '\0' ||
+        (sqlstr[0] == '-' && sqlstr[1] == '-'))
         return;
 
     /* Lame hack - strip trailing ; so that we can understand the
@@ -1267,7 +1355,7 @@ static void process_line(char *sql, int ntypes, int *types)
         }
     }
 
-    if (docost && !rc) {
+    if (docost && !rc && report_costs == NULL) {
         int saved_printmode = printmode;
         printmode = DISP_TABS | DISP_STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
@@ -1357,7 +1445,7 @@ static char *get_multi_line_statement(char *line)
     char *nl = (char *) ""; // new-line
     int n = 0;     // len of nl
 
-    char tmp_prompt[sizeof(main_prompt)];
+    char tmp_prompt[sizeof(main_prompt) + 4];
     int spaces = strlen(dbname) - 3, dots = 3;
     if (spaces < 0) {
         dots += spaces;
@@ -1386,15 +1474,20 @@ static char *get_multi_line_statement(char *line)
 
 static inline int dbtype_valid(char *type)
 {
-    if (type && (type[0] == '@' || strcasecmp(type, "dev") == 0 ||
-        strcasecmp(type, "uat") == 0 ||
-        strcasecmp(type, "default") == 0 ||
-        strcasecmp(type, "alpha") == 0 ||
-        strcasecmp(type, "beta") == 0 ||
-        strcasecmp(type, "local") == 0 ||
-        strcasecmp(type, "prod") == 0)) {
-        return 1;
+    static const char *dbtypes[] = {"default", "local", "dev",
+                                    "restore", "fuzz",  "alpha",
+                                    "beta",    "uat",   "prod"};
+
+    if (type) {
+        if (type[0] == '@') // @host[:port]
+            return 1;
+        else
+            for (size_t i = 0, len = sizeof(dbtypes) / sizeof(dbtypes[0]);
+                 i != len; ++i)
+                if (strcasecmp(type, dbtypes[i]) == 0)
+                    return 1;
     }
+
     return 0;
 }
 
@@ -1551,9 +1644,15 @@ int main(int argc, char *argv[])
         setvbuf(stderr, 0, _IOLBF, 0);
     }
 
+    if (getenv("CDB2_DISABLE_SOCKPOOL")) {
+        cdb2_disable_sockpool();
+    }
+
     if (getenv("COMDB2_SQL_COST"))
         docost = 1;
 
+    if (docost && enable_costs != NULL)
+        (*enable_costs)();
     if (exponent) {
         if (precision > 0) {
             snprintf(doublefmt, sizeof(doublefmt), "%%.%dg", precision);
@@ -1600,6 +1699,10 @@ int main(int argc, char *argv[])
             cdb2_close(cdb2h);
         }
         verbose_print("process_line error=%d\n", error);
+
+        if (report_costs != NULL)
+            (*report_costs)();
+
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
@@ -1621,7 +1724,7 @@ int main(int argc, char *argv[])
     if (istty) {
         rl_attempted_completion_function = my_completion;
         load_readline_history();
-        struct sigaction sact;
+        struct sigaction sact = {0};
         sact.sa_handler = int_handler;
         sigaction(SIGINT, &sact, NULL);
     }
@@ -1643,6 +1746,9 @@ int main(int argc, char *argv[])
         cdb2_close(cdb2h);
         cdb2h = NULL;
     }
+
+    if (report_costs != NULL)
+        (*report_costs)();
 
     return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

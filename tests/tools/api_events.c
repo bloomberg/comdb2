@@ -34,13 +34,20 @@ static cdb2_event *init_once_event;
 
 static void register_once(void)
 {
+    static int inited = 0;
+
+    if (inited)
+        return;
+
     init_once_event = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "HELLO", 0);
+
+    inited = 1;
 }
 
 static int TEST_init_once_registration(const char *db, const char *tier)
 {
-    extern void (*cdb2_init)(void);
-    cdb2_init = register_once;
+    extern void (*cdb2_install)(void);
+    cdb2_install = register_once;
     return 0;
 }
 
@@ -94,6 +101,7 @@ static int TEST_simple_register_unregister(const char *db, const char *tier)
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
     if (rc != CDB2_OK_DONE)
         return 1;
+    cdb2_unregister_event(hndl, e7);
     cdb2_close(hndl);
     return 0;
 }
@@ -108,6 +116,7 @@ static int TEST_arg_events(const char *db, const char *tier)
     e = cdb2_register_event(hndl, CDB2_BEFORE_SEND_QUERY, 0, my_arg_hook, NULL, 1, CDB2_SQL);
     cdb2_run_statement(hndl, "SELECT 1");
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+    cdb2_unregister_event(hndl, e);
     cdb2_close(hndl);
     if (rc != CDB2_OK_DONE)
         return 1;
@@ -193,6 +202,8 @@ static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
     e2 = cdb2_register_event(h, CDB2_AT_EXIT_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
     cdb2_run_statement(h, "SELECT \"You may say I'm a dreamer, but I'm not the only one.\"");
     while ((rc = cdb2_next_record(h)) == CDB2_OK);
+    cdb2_unregister_event(h, e1);
+    cdb2_unregister_event(h, e2);
     cdb2_close(h);
     return 0;
 }

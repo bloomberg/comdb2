@@ -40,7 +40,6 @@
 #include <epochlib.h>
 #include "marshal.h"
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 
@@ -56,6 +55,7 @@
 #include <quantize.h>
 #include <sockpool.h>
 
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "sql.h"
 
@@ -156,8 +156,6 @@ static void *watchdog_thread(void *arg)
     char master_curlsn[64];
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
     int sockpool_timeout;
-
-    Pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
 
     Pthread_attr_init(&gbl_pthread_joinable_attr);
     Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
@@ -393,7 +391,11 @@ void comdb2_die(int aborat)
         sizeof(pstack_cmd)) {
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
     } else {
-        system(pstack_cmd);
+        int lrc = system(pstack_cmd);
+        if (lrc) {
+            logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
+                   __FILE__,__LINE__, lrc);
+        }
     }
 
     if (aborat)

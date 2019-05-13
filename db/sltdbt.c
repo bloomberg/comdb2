@@ -23,7 +23,6 @@
 #include "translistener.h"
 #include "sltpck.h"
 #include <poll.h>
-#include <lockmacro.h>
 
 #include "socket_interfaces.h"
 #include "sqloffload.h"
@@ -297,8 +296,8 @@ int handle_ireq(struct ireq *iq)
     } else {
         /* SNDBAK RESPONSE */
         if (iq->debug) {
-            reqprintf(iq, "iq->reply_len=%d RC %d\n",
-                      iq->p_buf_out - iq->p_buf_out_start, rc);
+            reqprintf(iq, "iq->reply_len=%td RC %d\n",
+                      (ptrdiff_t) (iq->p_buf_out - iq->p_buf_out_start), rc);
         }
 
         /* pack data at tail of reply */
@@ -328,8 +327,9 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->debug) {
                 uuidstr_t us;
-                reqprintf(iq, "sorese returning rqid=%llu %s node=%s type=%d "
-                              "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
+                reqprintf(iq,
+                          "sorese returning rqid=%llu uuid=%s node=%s type=%d "
+                          "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
                           iq->sorese.host, iq->sorese.type, iq->sorese.nops,
                           iq->sorese.rcout, iq->sorese.osql_retry, rc,
@@ -370,6 +370,7 @@ int handle_ireq(struct ireq *iq)
                     rc = offload_comm_send_blockreply(
                         iq->frommach, iq->rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
+                    free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {
                     /* The tag request is handled locally.
                        We know for sure `request_data' is a `buf_lock_t'. */

@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -91,6 +90,7 @@
 
 #include "views.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -147,7 +147,9 @@ extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
 
-static void fix_blobstripe_genids(void);
+extern int get_physical_transaction(bdb_state_type *bdb_state,
+                                    tran_type *logical_tran,
+                                    tran_type **outtran, int force_commit);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
@@ -296,9 +298,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(
-                bdb_state_type * bdb_state, tran_type * logical_tran,
-                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
             if (rc) {
@@ -975,8 +974,11 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen, isnull);
+    int rc;
+    ACCUMULATE_TIMING(CHR_IXADDK,
+                      rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
+                                         genid, rrn, dta, dtalen, isnull););
+    return rc;
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
@@ -1116,7 +1118,8 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
 
 int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    unsigned long long oldgenid, void *newdta, int newlen,
-                   int blobno, int rrn, unsigned long long newgenid)
+                   int blobno, int rrn, unsigned long long newgenid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -1128,7 +1131,7 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return -2; /*only support offset 0 for now */
     iq->gluewhere = "bdb_prim_add_upd_genid";
     rc = bdb_prim_add_upd_genid(bdb_handle, trans, blobno + 1, newdta, newlen,
-                                rrn, oldgenid, newgenid, 0, &bdberr);
+                                rrn, oldgenid, newgenid, 0, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_add_upd_genid done";
     if (rc == 0)
         return 0;
@@ -1150,10 +1153,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
 
 int blob_upv(struct ireq *iq, void *trans, int vptr,
              unsigned long long oldgenid, void *newdta, int newlen, int blobno,
-             int rrn, unsigned long long newgenid)
+             int rrn, unsigned long long newgenid, int odhready)
 {
     return blob_upv_auxdb(AUXDB_NONE, iq, trans, vptr, oldgenid, newdta, newlen,
-                          blobno, rrn, newgenid);
+                          blobno, rrn, newgenid, odhready);
 }
 
 int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
@@ -1235,7 +1238,13 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
 int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
-    return dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    int rc;
+
+    ACCUMULATE_TIMING(CHR_DATADD,
+                      rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen,
+                                         genid, out_rrn););
+
+    return rc;
 }
 
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
@@ -1249,7 +1258,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, 0 /*blobno*/, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, 0);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)
@@ -1265,14 +1274,15 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
 }
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
-             size_t length, int rrn, unsigned long long genid)
+             size_t length, int rrn, unsigned long long genid, int odhready)
 {
     return blob_add_auxdb(AUXDB_NONE, iq, trans, blobno, data, length, rrn,
-                          genid);
+                          genid, odhready);
 }
 
 int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid)
+                   void *data, size_t length, int rrn, unsigned long long genid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int bdberr;
@@ -1282,7 +1292,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, blobno + 1, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)
@@ -2444,9 +2454,9 @@ retry:
         iq->gluewhere = "bdb_fetch_next_nodta_genid_nl_ser done";
     } else {
         iq->gluewhere = req = "bdb_fetch_next_nodta_genid";
-        ixrc = bdb_fetch_next_nodta_genid(bdb_handle, key, ixnum, keylen,
-                                          curlast, lastrrn, lastgenid, fndkey,
-                                          fndrrn, genid, args, &bdberr);
+        ixrc = bdb_fetch_next_nodta_genid_tran(
+            bdb_handle, key, ixnum, keylen, curlast, lastrrn, lastgenid, fndkey,
+            fndrrn, genid, trans, args, &bdberr);
         iq->gluewhere = "bdb_fetch_next_nodta_genid done";
     }
     if (ixrc == -1) {
@@ -3413,7 +3423,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
     struct net_morestripe_msg *msg;
     msg = dtap;
 
-    if (dtalen < sizeof(struct net_morestripe_msg)) {
+    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
         logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
                 dtalen);
         net_ack_message(hndl, 1);
@@ -3428,7 +3438,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
         return;
     }
 
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(NULL);
     net_ack_message(hndl, 0);
 }
 
@@ -3458,7 +3468,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
     char *ptr;
     int rc;
 
-    if (dtalen < offsetof(struct new_procedure_op_msg, text)) {
+    if (dtap == NULL || dtalen < offsetof(struct new_procedure_op_msg, text)) {
         net_ack_message(hndl, 1);
         return;
     }
@@ -3579,6 +3589,7 @@ static void net_authentication_check(void *hndl, void *uptr, char *fromhost,
                              uint8_t is_tcp)
 {
     gbl_check_access_controls = 1;
+    ++gbl_bpfunc_auth_gen;
 }
 
 
@@ -3688,16 +3699,6 @@ int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
 int broadcast_sc_ok(void)
 {
     return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
-}
-
-int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe)
-{
-    struct net_morestripe_msg msg;
-    bzero(&msg, sizeof(msg));
-    msg.newdtastripe = newdtastripe;
-    msg.newblobstripe = newblobstripe;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_MORESTRIPE_OPEN_DBS,
-                             MSGWAITTIME);
 }
 
 int broadcast_procedure_op(int op, const char *name, const char *param)
@@ -3818,7 +3819,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
         /* see if we have a lite meta table - if so use that.  otherwise
          * fallback on a heavy meta table. */
         db->meta = bdb_open_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                      0, db->dbenv->bdb_env, &bdberr);
+                                      0, db->dbenv->bdb_env, NULL, 0, &bdberr);
         if (!db->meta) {
             if (gbl_meta_lite)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
@@ -3994,10 +3995,6 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_handler(dbenv->handle_sibling, NET_CLOSE_ALL_DBS,
                                  "close_all_dbs", net_close_all_dbs))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_MORESTRIPE_OPEN_DBS,
-                                 "morestripe_and_open_all_dbs",
-                                 net_morestripe_and_open_all_dbs))
-            return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CHECK_SC_OK,
                                  "check_sc_ok", net_check_sc_ok))
             return -1;
@@ -4087,9 +4084,9 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
 }
 
 static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
-                           int *datacopy_odh)
+                           int *datacopy_odh, tran_type *tran)
 {
-    if (get_db_odh(d, &d->odh) != 0 || d->odh == 0) {
+    if (get_db_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
         // couldn't find odh in llmeta or odh off
         *compr = 0;
         *compr_blobs = 0;
@@ -4100,23 +4097,24 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
         return 0;
     }
 
-    get_db_compress(d, compr);
-    get_db_compress_blobs(d, compr_blobs);
-    get_db_instant_schema_change(d, &d->instant_schema_change);
-    get_db_inplace_updates(d, &d->inplace_updates);
-    get_db_datacopy_odh(d, datacopy_odh);
+    get_db_compress_tran(d, compr, tran);
+    get_db_compress_blobs_tran(d, compr_blobs, tran);
+    get_db_instant_schema_change_tran(d, &d->instant_schema_change, tran);
+    get_db_inplace_updates_tran(d, &d->inplace_updates, tran);
+    get_db_datacopy_odh_tran(d, datacopy_odh, tran);
 
     return 0;
 }
 
-static void get_disable_skipscan(struct dbtable *tbl)
+static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
         tbl->dbtype != DBTYPE_TAGGED_TABLE)
         return;
 
     char *str = NULL;
-    int rc = bdb_get_table_parameter(tbl->tablename, "disableskipscan", &str);
+    int rc = bdb_get_table_parameter_tran(tbl->tablename, "disableskipscan",
+                                          &str, tran);
     if (rc != 0) {
         tbl->disableskipscan = 0;
         return;
@@ -4134,14 +4132,14 @@ void get_disable_skipscan_all()
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d);
+        get_disable_skipscan(d, NULL);
     }
 }
  
 
 
 /* open the db files, etc */
-int backend_open(struct dbenv *dbenv)
+int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 {
     int bdberr, ii;
     struct dbtable *db = NULL;
@@ -4157,12 +4155,12 @@ int backend_open(struct dbenv *dbenv)
         else
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
-        db->handle =
-            bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
-                          (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-                          db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
-                          db->numblobs + 1, /* main record + n blobs */
-                          dbenv->bdb_env, &bdberr);
+        db->handle = bdb_open_more_tran(
+            db->tablename, dbenv->basedir, db->lrl, db->nix,
+            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
+            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+            db->numblobs + 1, /* main record + n blobs */
+            dbenv->bdb_env, tran, flags, &bdberr);
 
         if (db->handle == NULL) {
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
@@ -4208,7 +4206,8 @@ int backend_open(struct dbenv *dbenv)
 
         db->handle = bdb_open_more_queue(
             db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
-            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, tran,
+            &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
@@ -4236,7 +4235,7 @@ int backend_open(struct dbenv *dbenv)
 
         dbenv->meta = bdb_open_more_lite(metadbname, dbenv->basedir, 0,
                                          sizeof(struct metahdr2), 0,
-                                         dbenv->bdb_env, &bdberr);
+                                         dbenv->bdb_env, tran, flags, &bdberr);
     }
 
     if (!dbenv->meta) {
@@ -4253,7 +4252,7 @@ int backend_open(struct dbenv *dbenv)
 
     /* now that meta is open, get the blobstripe conversion genids for each
      * table so that we can find pre-blobstripe blobs */
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(tran);
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
@@ -4273,17 +4272,17 @@ int backend_open(struct dbenv *dbenv)
             }
             bthashsz = gbl_init_with_bthash;
         } else {
-            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh) !=
-                0) {
+            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh,
+                                tran) != 0) {
                 logmsg(LOGMSG_ERROR, "fetch odh from llmeta failed\n");
                 return -1;
             }
 
-            if (get_db_bthash(d, &bthashsz) != 0) {
+            if (get_db_bthash_tran(d, &bthashsz, tran) != 0) {
                 bthashsz = 0;
             }
 
-            get_disable_skipscan(d);
+            get_disable_skipscan(d, tran);
         }
 
         if (bthashsz) {
@@ -4328,7 +4327,7 @@ int backend_open(struct dbenv *dbenv)
         }
     } else {
         int rlstate;
-        if ((rc = bdb_get_rowlocks_state(&rlstate, &bdberr)) != 0) {
+        if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
             logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
@@ -4365,9 +4364,12 @@ int backend_open(struct dbenv *dbenv)
     return 0; /*success */
 }
 
+int backend_open(struct dbenv *dbenv)
+{
+    return backend_open_tran(dbenv, NULL, 0);
+}
 
-
-static void fix_blobstripe_genids(void)
+void fix_blobstripe_genids(tran_type *tran)
 {
     int ii, rc;
     struct dbtable *db;
@@ -4375,7 +4377,7 @@ static void fix_blobstripe_genids(void)
     if (gbl_blobstripe) {
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             db = dbenv->dbs[ii];
-            rc = get_blobstripe_genid(db, &db->blobstripe_genid);
+            rc = get_blobstripe_genid_tran(db, &db->blobstripe_genid, tran);
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
@@ -4501,84 +4503,6 @@ void backend_thread_event(struct dbenv *dbenv, int event)
     bdb_thread_event(dbenv->bdb_env, event);
 }
 
-/* Form all keys, add a record.  buf is assumed to be
-   in ondisk format */
-int load_record(struct dbtable *db, void *buf)
-{
-#if 0
-    int i;
-    char key[MAXKEYLEN];
-    char tag[MAXTAGLEN];
-    int rc;
-    unsigned long long genid;
-    struct ireq iq = {0};
-    void *trans;
-    int rrn;
-    int bdberr;
-    int need_to_retry = 0;
-    int nretries = 0;
-
-    init_fake_ireq(db->dbenv, &iq);
-    iq.usedb = db;
-
-retry:
-    nretries++;
-    if (nretries == gbl_maxretries)
-        return -1;
-
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        fprintf(stderr, "add_record:bdb_tran_begin rc %d bdberr %d\n", rc, bdberr);
-        return -1;
-    }
-    
-    /* add data */
-    rc = dat_add(&iq, trans, buf, db->lrl, &genid, &rrn);
-    if (rc) {
-        if (rc == RC_INTERNAL_RETRY)
-            need_to_retry = 1;
-        else
-            fprintf(stderr, "add_record:dat_add rc %d\n", rc);
-        goto backout;
-    }
-
-    for (i = 0; i < db->nix; i++) {
-        snprintf(tag, MAXTAGLEN, ".ONDISK_ix_%d", i);
-        rc = stag_to_stag_buf(db->tablename, ".ONDISK", buf, tag, key, NULL);
-        if (rc) {
-            if (rc == RC_INTERNAL_RETRY)
-                need_to_retry = 1;
-            else
-                fprintf(stderr, "add_record:stag_to_stag_buf ix %d rc %d\n", i, rc);
-            goto backout;
-        }
-
-        rc = ix_addk(&iq, trans, key, i, genid, rrn, buf, db->lrl, ix_isnullk(iq.usedb, key, i));
-        if (rc) {
-            if (rc == RC_INTERNAL_RETRY)
-                need_to_retry = 1;
-            else
-                fprintf(stderr, "add_record:ix_addk rrn %d genid %016llx rc %d\n", rrn, genid, rc);
-            goto backout;
-        }
-    }
-
-    /* commit */
-    rc = trans_commit(&iq, trans, gbl_mynode);
-    if (rc)
-        fprintf(stderr, "add_record:trans_commit rc %d\n", rc);
-    return 0;
-
-backout:
-    rc = trans_abort(&iq, trans);
-    if (rc)
-        fprintf(stderr, "add_record:trans_abort rc %d\n", rc);
-    if (need_to_retry)
-        goto retry;
-    return -1;
-#endif
-    return -1;
-}
 
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
@@ -4709,14 +4633,20 @@ int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long geni
     return rc;
 }
 
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
+                              tran_type *tran)
 {
     struct metahdr hdr;
     int rc;
     hdr.rrn = META_BLOBSTRIPE_GENID_RRN;
     hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)genid, sizeof(*genid));
+    rc = meta_get_tran(tran, db, &hdr, (void *)genid, sizeof(*genid));
     return rc;
+}
+
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+{
+    return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
 #define get_put_db(x, y)                                                       \
@@ -5702,8 +5632,6 @@ void compr_print_stats()
     int ii;
     int odh, compr, blob_compr;
 
-    const char *bdb_compr_alg_2a(int alg);
-
     logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
     logmsg(LOGMSG_USER, "These apply to new records only!\n");
 
@@ -5839,7 +5767,7 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
 extern int gbl_use_fastseed_for_comdb2_seqno;
 long long get_unique_longlong(struct dbenv *env)
 {
-    long long id;
+    long long id = 0;
 
     if (gbl_use_fastseed_for_comdb2_seqno) {
         uint64_t uid;
@@ -5850,7 +5778,7 @@ long long get_unique_longlong(struct dbenv *env)
     } else {
         struct ireq iq;
         init_fake_ireq(env, &iq);
-        iq.usedb = env->dbs[0];
+        iq.usedb = &env->static_table;
         get_context(&iq, (unsigned long long *)&id);
     }
 
@@ -6037,6 +5965,49 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
         return 1;
     if (rc == IX_NOTFND)
         return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/*  Returns 0 if not found, 1 if found / found newer, -1 if error */
+int ix_check_update_genid(struct ireq *iq, void *trans,
+                          unsigned long long genid, int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+    unsigned long long foundgenid = 0ULL;
+    unsigned long long lastgenid = genid;
+    int fndrrn = 0;
+    void *bdb_state = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+    *bdberr = 0;
+    rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
+                                       0, trans);
+    if (rc == IX_FND) {
+        *bdberr = IX_FND;
+        return 1;
+    }
+    if (rc == IX_NOTFND) {
+        rc = ix_next_trans(iq, trans, -1, &genid, sizeof(unsigned long long),
+                           &lastgenid, 2, genid, NULL, &fndrrn, &foundgenid,
+                           NULL, NULL, 0, 0);
+        if (rc == 1 || rc == 2) {
+            if (bdb_inplace_cmp_genids(bdb_state, genid, foundgenid) == 0 &&
+                (get_updateid_from_genid(bdb_state, genid) <=
+                 get_updateid_from_genid(bdb_state, foundgenid))) {
+                rc = 1;
+                *bdberr = IX_FNDMORE;
+            } else
+                rc = 0;
+            return rc;
+        } else if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get next genid, rc = %d\n",
+                   __func__, rc);
+            return 0;
+        } else {
+            return 0;
+        }
+    }
     *bdberr = rc;
     return -1;
 }

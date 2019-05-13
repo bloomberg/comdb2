@@ -30,6 +30,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "locks_wrap.h"
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE
@@ -201,6 +202,14 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     int rc;
     if (sb == 0)
         return -1;
+
+    if (sb->wbuf == NULL) {
+        /* lazily establish write buffer */
+        sb->wbuf = malloc(sb->lbuf);
+        if (sb->wbuf == NULL)
+            return -1;
+    }
+
     if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
         rc = sbuf2flush(sb);
         if (rc < 0)
@@ -242,6 +251,12 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
+    if (sb->wbuf == NULL) {
+        /* lazily establish write buffer */
+        sb->wbuf = malloc(sb->lbuf);
+        if (sb->wbuf == NULL)
+            return -1;
+    }
     off = 0;
     left = nbytes;
     while (left > 0) {
@@ -308,6 +323,12 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
     if (sb == 0)
         return -1;
 
+    if (sb->rbuf == NULL) {
+        /* lazily establish read buffer */
+        sb->rbuf = malloc(sb->lbuf);
+        if (sb->rbuf == NULL)
+            return -1;
+    }
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
         sb->ungetc_buf_len--;
@@ -391,6 +412,13 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
 {
     int need = size * nitems;
     int done = 0;
+
+    if (sb->rbuf == NULL) {
+        /* lazily establish read buffer */
+        sb->rbuf = malloc(sb->lbuf);
+        if (sb->rbuf == NULL)
+            return -1;
+    }
 
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -531,7 +559,7 @@ static int swrite(SBUF2 *sb, const char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = write(sb->fd, cc, len);
 #else
@@ -542,7 +570,7 @@ ssl_downgrade:
         ERR_clear_error();
         n = SSL_write(sb->ssl, cc, len);
         if (n <= 0) {
-            ioerr = SSL_get_error(sb->ssl, n);
+            int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
                 errno = EAGAIN;
@@ -612,7 +640,7 @@ static int sread(SBUF2 *sb, char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = read(sb->fd, cc, len);
 #else
@@ -623,7 +651,7 @@ ssl_downgrade:
         ERR_clear_error();
         n = SSL_read(sb->ssl, cc, len);
         if (n <= 0) {
-            ioerr = SSL_get_error(sb->ssl, n);
+            int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
                 errno = EAGAIN;
@@ -697,22 +725,12 @@ int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
 {
     if (size < 1024)
         size = 1024;
-    if (sb->rbuf)
-        free(sb->rbuf);
-    if (sb->wbuf)
-        free(sb->wbuf);
+    free(sb->rbuf);
+    free(sb->wbuf);
     sb->rbuf = sb->wbuf = 0;
     sb->rhd = sb->rtl = 0;
     sb->whd = sb->wtl = 0;
     sb->lbuf = size;
-    sb->rbuf = malloc(size);
-    sb->wbuf = malloc(size);
-    if (sb->rbuf == NULL || sb->wbuf == NULL) {
-        free(sb->rbuf);
-        free(sb->wbuf);
-        free(sb);
-        return ENOMEM;
-    }
     return 0;
 }
 
@@ -750,7 +768,7 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
 
 #if SBUF2_UNGETC
     sb->ungetc_buf_len = 0;
-    memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
+    memset(sb->ungetc_buf, EOF, sizeof(sb->ungetc_buf));
 #endif
     /* default writer/reader */
     sb->write = swrite;
@@ -830,7 +848,7 @@ void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
 }
 
 #if SBUF2_SERVER
-#include <lockmacro.h> /* LOCK & UNLOCK */
+#include <lockmacros.h> /* LOCK & UNLOCK */
 #include <plhash.h>    /* hash_t */
 #include <logmsg.h>    /* logmsg */
 #define logi(...) logmsg(LOGMSG_INFO, ##__VA_ARGS__)
@@ -865,12 +883,9 @@ struct peer_info {
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 {
     int fd;
-    struct sockaddr_in peeraddr;
-    socklen_t len = sizeof(peeraddr);
-    char *host;
+    char *host = NULL;
 #if SBUF2_SERVER
     struct peer_info *info;
-    struct peer_info key;
     char *funcname;
 #else
     void *info = NULL;
@@ -884,7 +899,8 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     if (fd == -1)
         return "???";
 
-    bzero(&peeraddr, sizeof(peeraddr));
+    struct sockaddr_in peeraddr = {0};
+    socklen_t len = sizeof(peeraddr);
     if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
         loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
              strerror(errno));
@@ -892,9 +908,8 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     }
 
 #if SBUF2_SERVER
-    bzero(&key, offsetof(struct peer_info, host));
+    struct peer_info key = {.family = peeraddr.sin_family};
     memcpy(&key.addr, &peeraddr.sin_addr, sizeof(key.addr));
-    key.family = peeraddr.sin_family;
 #endif
 
     LOCK(&peer_lk)

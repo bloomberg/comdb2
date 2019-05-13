@@ -67,17 +67,17 @@ undone.
 
 ### INSERT/REPLACE
 
-**Insert:**
+#### insert
 
-![INSERT](images/insert-stmt.gif)
+![insert](images/insert-stmt.gif)
 
-**Replace:**
+#### replace
 
-![REPLACE](images/replace-stmt.gif)
+![replace](images/replace-stmt.gif)
 
-**Upsert clause:**
+#### upsert-clause
 
-![UPSERT CLAUSE](images/upsert-clause.gif)
+![upsert-clause](images/upsert-clause.gif)
 
 
 The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
@@ -98,7 +98,13 @@ See also:
 
 [expr](#expr)
 
+[index-column-list](#index-column-list)
+
+[qualified-table-name](#qualified-table-name)
+
 [select-stmt](#select-statement)
+
+[with-clause](#with-clause)
 
 ### UPDATE
 
@@ -111,11 +117,11 @@ made. A ```WHERE``` clause can be used to restrict which rows are updated.
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ### DELETE
 
@@ -130,11 +136,11 @@ statement, but has the advantage that it will work on tables with foreign key co
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ## Querying data
 
@@ -240,19 +246,19 @@ See also:
 
 [common-table-expression](#common-table-expression)
 
-[result-column](#result-column)
+[compound-operator](#compound-operator)
 
-[table-or-subquery](#table-or-subquery)
-    
+[expr](#expr)
+
 [join-clause](#join-clause)
 
 [join-operator](#join-operator)
 
-[expr](#expr)
-
-[compound-operator](#compound-operator)
-
 [ordering-term](#ordering-term)
+
+[result-column](#result-column)
+
+[table-or-subquery](#table-or-subquery)
 
 ## Stored procedures
 
@@ -285,33 +291,33 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
-**CREATE TABLE (I):**
+#### create-table-csc2
 
-![CREATE TABLE](images/create-table.gif)
+![create-table-csc2](images/create-table.gif)
 
-**CREATE TABLE (II, Version R7 and above):**
+#### create-table-ddl
 
-![CREATE TABLE](images/create-table-ddl.gif)
+![create-table-ddl](images/create-table-ddl.gif)
 
-**Index column list:**
+#### index-column-list
 
-![INDEX COLUMN LIST](images/index-column-list.gif)
+![index-column-list](images/index-column-list.gif)
 
-**Column constraint:**
+#### column-constraint
 
-![COLUMN CONSTRAINT](images/column-constraint.gif)
+![column-constraint](images/column-constraint.gif)
 
-**Table constraint:**
+#### table-constraint
 
-![TABLE CONSTRAINT](images/table-constraint.gif)
+![table-constraint](images/table-constraint.gif)
 
-**Foreign key definition:**
+#### foreign-key-def
 
-![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
+![foreign-key-def](images/foreign-key-def.gif)
 
-**Table options:**
+#### table-options
 
-![TABLE OPTIONS](images/table-options.gif)
+![table-options](images/table-options.gif)
 
 The ```CREATE TABLE``` statement creates a new table. If the table already
 exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
@@ -323,9 +329,8 @@ found on the [table schema](table_schema.html) page).
 
 The second approach, added in **version R7**, follows the usual standard data
 definition language syntax supported by other relational database systems.
-A primary key created using ```CREATE TABLE (II)``` implicitly creates a
-```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
-```NOT NULL```.
+A primary key created using this syntax implicitly creates a ```UNIQUE``` index
+named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
 
 Comdb2 allows creation of indexes only on fields with fixed-sized types. For
 instance, an attempt to create index on a blob or vutf8 field would result in
@@ -393,13 +398,13 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
-**ALTER TABLE (I):**
+#### alter-table-csc2
 
-![ALTER](images/alter-table.gif)
+![alter-table-csc2](images/alter-table.gif)
 
-**ALTER TABLE (II, Version R7 and above):**
+#### alter-table-ddl
 
-![ALTER](images/alter-table-ddl.gif)
+![alter-table-ddl](images/alter-table-ddl.gif)
 
 _**Schema changes in Comdb2 are live by default**. The database will not acquire
 long duration table locks during the change and may be freely read from and
@@ -435,9 +440,21 @@ silently removed from the referring keys and constraints definitions. ```RENAME 
 option renames a table.  This option cannot be combined with other ```ALTER TABLE```
 options.
 
+```SET COMMIT PENDING``` detaches the schema change from the current transaction
+and schema changes that use this option will keep running until an explicit
+commit/abort command is issued. Also see [```SCHEMACHANGE```](#schemachange).
+
 See also:
 
+[column-constraint](#column-constraint)
+
+[foreign-key-def](#foreign-key-def)
+
+[index-column-list](#index-column-list)
+
 [table-options](#table-options)
+
+[table-schema](table_schema.html)
 
 ### CREATE TIME PARTITION
 
@@ -522,6 +539,7 @@ The settings currently available to ```PUT``` are:
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
   * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; only increasing retention is supported currently
+  * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
 
@@ -563,6 +581,17 @@ ever run ```REBUILD```:
 The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
 Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
 rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
+
+### SCHEMACHANGE
+
+![SCHEMACHANGE](images/schemachange.gif)
+
+```SCHEMACHANGE``` is an operational command to preempt ongoing schema changes:
+
+  * ```PAUSE``` ongoing schema changes.
+  * ```RESUME``` already paused schema changes. NOTE: Resumed schema changes will not commit until an explicit commit is issued.
+  * ```COMMIT``` ongoing schema changes. This command also resumes paused schema changes and commits after all records are converted.
+  * ```ABORT``` ongoing schema changes.
 
 ## Built-in functions
 

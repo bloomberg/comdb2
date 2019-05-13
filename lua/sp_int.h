@@ -47,6 +47,8 @@ struct stored_proc {
     int bufsz;
     int num_instructions;
     int max_num_instructions;
+    int had_allow_lua_exec_with_ddl;
+    int had_allow_lua_dynamic_libs;
     uint8_t *buf;
     char *error;
     int  rc;
@@ -57,6 +59,7 @@ struct stored_proc {
     char **clntname; //parent only
     int *clnttype; //parent only
     dbthread_type *parent_thd; //child only
+    struct sqlthdstate *parent_sqlthd; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
@@ -111,6 +114,6 @@ void dttz_to_datetime_t(const dttz_t *, const char *tz, datetime_t *);
 
 int db_csvcopy(Lua lua);
 
-char* find_syssp(const char *);
+char* find_syssp(const char *, char **override);
 
 #endif

@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_fingerprint.c
   db_metrics.c
   db_tunables.c
   db_util.c
@@ -27,6 +28,7 @@ set(src
   glue.c
   handle_buf.c
   history.c
+  indices.c
   localrep.c
   lrucache.c
   marshal.c
@@ -40,6 +42,7 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
+  phys_rep.c
   plugin_handler.c
   prefault.c
   prefault_helper.c
@@ -77,15 +80,18 @@ set(src
   trans.c
   translistener.c
   trigger.c
+  truncate_log.c
   utf8.c
   verify.c
   views.c
-  views_cron.c
+  cron.c
+  logical_cron.c
   views_persist.c
   watchdog.c
   shard_range.c
   dohsql.c
   dohast.c
+  machclass.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
@@ -186,7 +192,8 @@ include_directories(
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
   ${PROJECT_SOURCE_DIR}/sockpool
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/expert
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
@@ -216,6 +223,7 @@ target_link_libraries(comdb2
   net
   sockpool
   sqlite
+  util
   tz
   m
   ${CMAKE_DL_LIBS}

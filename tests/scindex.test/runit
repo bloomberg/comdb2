@@ -153,22 +153,23 @@ function gent1insert
     return 0
 }
 
+
+hexarr=(0 1 2 3 4 5 6 7 8 9 A B C D E F)
+
 # Create a random blob 
 function randbl
 {
     typeset sz=$1
-
-    for i in $(seq 1 $sz); do
-
-        echo -n $(echo "obase=16; $(($RANDOM % 16))" | bc);
-
-    done;
-
-    echo
+    local i=0
+    res=""
+    while [ $i -lt $sz ] ; do
+        res="$res${hexarr[$((RANDOM % 16))]}"
+        let i=i+1
+    done
+    echo $res
 
     return 0
 }
-
 # Insert a random record into t1
 function insert_rand_t1
 {
@@ -435,6 +436,8 @@ function randomwrites
 
         # Delete a record from t1
         [[ "1" == "$del_t1" ]] && delete_rand_t1 $dbnm
+
+        sleep 0.3
 
     done
 

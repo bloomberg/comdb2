@@ -38,7 +38,11 @@
 #include <logmsg.h>
 
 /* amount of thread-memory initialized for this thread */
+#ifndef PER_THREAD_MALLOC
 static int analyze_thread_memory = 1048576;
+#endif
+
+extern void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
 volatile int analyze_running_flag = 0;
@@ -448,13 +452,14 @@ struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
 }
 
 /* Called from sqlite.  Return the number of records for a sampled table */
-int analyze_get_nrecs(int iTable)
+int64_t analyze_get_nrecs(int iTable)
 {
     struct sql_thread *thd;
     struct sqlclntstate *client;
     struct dbtable *db;
     sampled_idx_t *s_ix;
     int ixnum;
+    unsigned long long n_recs;
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
@@ -473,14 +478,15 @@ int analyze_get_nrecs(int iTable)
         return -1;
     }
 
+    /* grab actual number of records */
+    n_recs = s_ix->n_recs;
+
     /* boundry check return code */
-    if (s_ix->n_recs > INT_MAX) {
-        return INT_MAX;
-    }
+    assert( n_recs>=0 );
+    assert( n_recs<=LLONG_MAX );
+
     /* return actual number of records */
-    else {
-        return (int)s_ix->n_recs;
-    }
+    return (int64_t)n_recs;
 }
 
 /* Return the number of records sampled for an index */
@@ -488,6 +494,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
 {
     struct sql_thread *thd;
     struct sqlclntstate *client;
+    unsigned long long n_sampled_recs;
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
@@ -499,7 +506,16 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
     }
 
     assert(0 <= ixnum && ixnum < client->n_cmp_idx);
-    return client->sampled_idx_tbl[ixnum].n_sampled_recs;
+
+    /* grab actual number of sampled records */
+    n_sampled_recs = client->sampled_idx_tbl[ixnum].n_sampled_recs;
+
+    /* boundry check return code */
+    assert( n_sampled_recs>=0 );
+    assert( n_sampled_recs<=LLONG_MAX );
+
+    /* return actual number of sampled records */
+    return (int64_t)n_sampled_recs;
 }
 
 /* Return 1 if we have this sampled index, 0 otherwise */
@@ -597,7 +613,7 @@ done:
 
 /* get tbl sampling threshold, if NOT -1 set it
  */
-static void get_sampling_threshold(char *table, long long *sampling_threshold)
+static void get_sampling_threshold(char *table, long long *sampling_thresh)
 {
     int bdberr = 0;
     long long threshold = 0;
@@ -609,12 +625,12 @@ static void get_sampling_threshold(char *table, long long *sampling_threshold)
 #endif
 
     if (threshold > 0) {
-        *sampling_threshold = threshold;
+        *sampling_thresh = threshold;
 #ifdef DEBUG
-        printf("Using llmetasaved threshold %d\n", *sampling_threshold);
+        printf("Using llmetasaved threshold %d\n", *sampling_thresh);
     }
     else {
-        printf("Using default threshold %d\n", *sampling_threshold);
+        printf("Using default threshold %d\n", *sampling_thresh);
 #endif
     }
 }
@@ -860,7 +876,6 @@ static void *table_thread(void *arg)
     if (0 == rc) {
         td->table_state = TABLE_COMPLETE;
         if (thedb->master == gbl_mynode) { // reset directly
-            void reset_aa_counter(char *tblname);
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
         } else {

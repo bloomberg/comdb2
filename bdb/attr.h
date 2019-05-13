@@ -146,7 +146,7 @@ DEF_ATTR(SQLBULKSZ, sqlbulksz, BYTES, 2 * 1024 * 1024,
 DEF_ATTR(
     ZLIBLEVEL, zlib_level, QUANTITY, 6,
     "If zlib compression is enabled, this determines the compression level.")
-DEF_ATTR(ZTRACE, ztrace, QUANTITY, 0, NULL)
+DEF_ATTR(ZTRACE, ztrace, BOOLEAN, 0, NULL)
 DEF_ATTR(PANICLOGSNAP, paniclogsnap, BOOLEAN, 1, NULL)
 DEF_ATTR(UPDATEGENIDS, updategenids, BOOLEAN, 0, NULL)
 DEF_ATTR(ROUND_ROBIN_STRIPES, round_robin_stripes, BOOLEAN, 0,
@@ -455,6 +455,8 @@ DEF_ATTR(SC_RESTART_SEC, sc_restart_sec, QUANTITY, 0,
          "startup/new master election.")
 DEF_ATTR(INDEXREBUILD_SAVE_EVERY_N, indexrebuild_save_every_n, QUANTITY, 1,
          "Save schema change state to every n-th row for index only rebuilds.")
+DEF_ATTR(SC_LOGICAL_SAVE_LSN_EVERY_N, sc_logical_save_lsn_every_n, QUANTITY, 10,
+         "Save schema change redo lsn to llmeta every n-th transactions.")
 DEF_ATTR(SC_DECREASE_THRDS_ON_DEADLOCK, sc_decrease_thrds_on_deadlock, BOOLEAN,
          1, "Decrease number of schema change threads on deadlock - way to "
             "have schema change backoff.")
@@ -533,7 +535,7 @@ DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 600,
          "Maximum time in seconds to let 'old' transactions live.")
 DEF_ATTR(PRIVATE_BLKSEQ_MAXTRAVERSE, private_blkseq_maxtraverse, QUANTITY, 4,
          NULL)
-DEF_ATTR(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 1,
+DEF_ATTR(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
          "Number of stripes for the blkseq table.")
 DEF_ATTR(PRIVATE_BLKSEQ_ENABLED, private_blkseq_enabled, BOOLEAN, 1,
          "Sets whether dupe detection is enabled.")
@@ -646,9 +648,29 @@ DEF_ATTR(DEBUG_TIMEPART_CRON, dbg_timepart_cron, BOOLEAN, 0, NULL)
 DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
 DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_writes_in_record_c, MSECS, 0, NULL)
+DEF_ATTR(DELAY_AFTER_SAVEOP_DONE, delay_after_saveop_done, MSECS, 0, NULL)
+DEF_ATTR(DELAY_AFTER_SAVEOP_USEDB, delay_after_saveop_usedb, MSECS, 0, NULL)
 
+DEF_ATTR(CRON_IDLE_SECS, cron_idle_secs, SECS, 30,
+         "Set the default sleep time"
+         " before the cron scheduler checks again the queue for events")
+DEF_ATTR(CRON_LOGICAL_IDLE_SECS, cron_logical_idle_secs, SECS, 1,
+         "Set the"
+         " default sleep time before the logical cron scheduler checks again"
+         " the queue for events")
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")
+
+DEF_ATTR(
+    VIEWS_DFT_PREEMPT_ROLL_SECS, views_dft_preempt_roll_secs, SECS, 1800,
+    "Amount of seconds to run phase 1 of time partition rollout before phase 2")
+DEF_ATTR(
+    VIEWS_DFT_ROLL_DELETE_LAG_SECS, views_dft_roll_delete_lag_secs, SECS, 5,
+    "Amount of seconds to run phase 3 of time partition rollout after phase 2")
+DEF_ATTR(
+    AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
+    "Print a message to stdout instead of performing auto-analyze ourselves")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

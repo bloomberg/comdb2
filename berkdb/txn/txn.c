@@ -84,16 +84,17 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #ifndef TESTSUITE
 #include <thread_util.h>
 void bdb_get_writelock(void *bdb_state,
-    const char *idstr, const char *funcname, int line);
+	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
+extern int gbl_is_physical_replicant;
 
-#define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
+#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
+#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
 
 #else
 
@@ -103,30 +104,32 @@ void ctrace(char *format, ...);
 #endif
 
 
-static int
-
-__txn_begin_int_set_retries(DB_TXN *txn, int internal, u_int32_t retries,
-    DB_LSN *we_start_at_this_lsn);
+static int __txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
+	DB_LSN *we_start_at_this_lsn, u_int32_t flags);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
-    int *priority);
+	int *priority);
+extern int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
+	int inrecovery);
+extern int dumptxn(DB_ENV *, DB_LSN *);
+extern void fsnapf(FILE * fil, const void *buf, int len);
 
 #define	SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags) \
 	do {								\
 		lflags = DB_LOG_COMMIT;			\
-        if (ltranflags & DB_TXN_LOGICAL_COMMIT) \
-            lflags |= DB_LOG_PERM; \
+		if (ltranflags & DB_TXN_LOGICAL_COMMIT) \
+			lflags |= DB_LOG_PERM; \
 		if (F_ISSET(txnp, TXN_SYNC))				\
 			lflags |= DB_FLUSH;				\
 		else if (!F_ISSET(txnp, TXN_NOSYNC) &&			\
-		    !F_ISSET(dbenv, DB_ENV_TXN_NOSYNC)) {		\
+			!F_ISSET(dbenv, DB_ENV_TXN_NOSYNC)) {		\
 			if (F_ISSET(dbenv, DB_ENV_TXN_WRITE_NOSYNC))	\
 				lflags |= DB_LOG_WRNOSYNC;		\
 			else						\
 				lflags |= DB_FLUSH;			\
 		}							\
-        if (LF_ISSET(DB_TXN_REP_ACK))       \
-            lflags |= DB_LOG_REP_ACK; \
+		if (LF_ISSET(DB_TXN_REP_ACK))	   \
+			lflags |= DB_LOG_REP_ACK; \
 	} while (0)
 
 
@@ -136,14 +139,14 @@ extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
 		if (F_ISSET(txnp, TXN_SYNC))				\
 			lflags |= DB_FLUSH;				\
 		else if (!F_ISSET(txnp, TXN_NOSYNC) &&			\
-		    !F_ISSET(dbenv, DB_ENV_TXN_NOSYNC)) {		\
+			!F_ISSET(dbenv, DB_ENV_TXN_NOSYNC)) {		\
 			if (F_ISSET(dbenv, DB_ENV_TXN_WRITE_NOSYNC))	\
 				lflags |= DB_LOG_WRNOSYNC;		\
 			else						\
 				lflags |= DB_FLUSH;			\
 		}							\
-        if (LF_ISSET(DB_TXN_REP_ACK))       \
-            lflags |= DB_LOG_REP_ACK; \
+		if (LF_ISSET(DB_TXN_REP_ACK))	   \
+			lflags |= DB_LOG_REP_ACK; \
 	} while (0)
 
 /*
@@ -159,7 +162,7 @@ typedef enum {
 } txnop_t;
 
 static int __txn_abort_pp __P((DB_TXN *));
-static int __txn_begin_int __P((DB_TXN *, int));
+static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
@@ -190,12 +193,13 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->tx_handle, "txn_begin", DB_INIT_TXN);
 
 	if ((ret = __db_fchk(dbenv,
-	    "txn_begin", flags,
-	    DB_DIRTY_READ | DB_TXN_NOWAIT |
-	    DB_TXN_NOSYNC | DB_TXN_SYNC)) != 0)
+		"txn_begin", flags,
+		DB_DIRTY_READ | DB_TXN_NOWAIT |
+		DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
+		DB_TXN_INTERNAL)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
-	    "txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
+		"txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
 		return (ret);
 
 	if (parent == NULL) {
@@ -236,9 +240,9 @@ __txn_begin_set_retries_pp(dbenv, parent, txnpp, flags, retries)
 }
 
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
-    pthread_mutex_t * mutexp);
+	pthread_mutex_t * mutexp);
 int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
-    pthread_mutex_t * mutexp);
+	pthread_mutex_t * mutexp);
 
 /*
  * __txn_begin --
@@ -292,8 +296,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_NOWAIT);
 
 	if ((ret =
-		__txn_begin_int_set_retries(txn, 0, retries,
-		    &we_start_at_this_lsn)) != 0)
+		__txn_begin_int_set_retries(txn, retries,
+			&we_start_at_this_lsn, flags)) != 0)
 		goto err;
 
 	if (!parent) {
@@ -307,7 +311,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		region = ((DB_LOCKTAB *)dbenv->lk_handle)->reginfo.primary;
 		if (parent != NULL) {
 			ret = __lock_inherit_timeout(dbenv,
-			    parent->txnid, txn->txnid);
+				parent->txnid, txn->txnid);
 			/* No parent locker set yet. */
 			if (ret == EINVAL) {
 				parent = NULL;
@@ -324,7 +328,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		 */
 		if (parent == NULL && region->tx_timeout != 0)
 			if ((ret = __lock_set_timeout(dbenv, txn->txnid,
-			    region->tx_timeout, DB_SET_TXN_TIMEOUT)) != 0)
+				region->tx_timeout, DB_SET_TXN_TIMEOUT)) != 0)
 				goto err;
 	}
 
@@ -341,7 +345,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		   begin LSN. Do not rush to get the begin LSN as
 		   it may not be needed (eg, readonly txn's). */
 		if (pthread_getspecific(txn_key) == NULL)
-		    Pthread_setspecific(txn_key, (void *)txn);
+			Pthread_setspecific(txn_key, (void *)txn);
 	}
 	return (0);
 
@@ -430,7 +434,7 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
 
 	*txnpp = txn;
-	return (__txn_begin_int(txn, 1));
+	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
 /*
@@ -438,11 +442,11 @@ __txn_compensate_begin(dbenv, txnpp)
  *	Normal DB version of txn_begin.
  */
 static int
-__txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
 	DB_ENV *dbenv;
 	DB_LSN begin_lsn, null_lsn;
@@ -452,6 +456,8 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	size_t off;
 	u_int32_t id, *ids;
 	int nids, ret;
+	int internal = LF_ISSET(DB_TXN_INTERNAL);
+	int recovery = LF_ISSET(DB_TXN_RECOVERY);
 
 
 	/*
@@ -487,6 +493,9 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
+	if (!recovery)
+		Pthread_rwlock_rdlock(&dbenv->recoverlk);
+
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
 		__db_err(dbenv, "operation not permitted during recovery");
@@ -497,7 +506,7 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	/* Make sure that we aren't still recovering prepared transactions. */
 	if (!internal && region->stat.st_nrestores != 0) {
 		__db_err(dbenv,
-    "recovery of prepared but not yet committed transactions is incomplete");
+	"recovery of prepared but not yet committed transactions is incomplete");
 		ret = EINVAL;
 		goto err;
 	}
@@ -507,28 +516,28 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	 * the maximum valid value, so check for it and wrap manually.
 	 */
 	if (region->last_txnid == TXN_MAXIMUM &&
-	    region->cur_maxid != TXN_MAXIMUM)
+		region->cur_maxid != TXN_MAXIMUM)
 		region->last_txnid = TXN_MINIMUM - 1;
 
 	if (region->last_txnid == region->cur_maxid) {
 		if ((ret = __os_malloc(dbenv,
-		    sizeof(u_int32_t) * region->maxtxns, &ids)) != 0)
+			sizeof(u_int32_t) * region->maxtxns, &ids)) != 0)
 			goto err;
 		nids = 0;
 		for (td = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
-		    td != NULL;
-		    td = SH_TAILQ_NEXT(td, links, __txn_detail))
+			td != NULL;
+			td = SH_TAILQ_NEXT(td, links, __txn_detail))
 			ids[nids++] = td->txnid;
 		region->last_txnid = TXN_MINIMUM - 1;
 		region->cur_maxid = TXN_MAXIMUM;
 		if (nids != 0)
 			__db_idspace(ids, nids,
-			    &region->last_txnid, &region->cur_maxid);
+				&region->last_txnid, &region->cur_maxid);
 		__os_free(dbenv, ids);
 		if (DBENV_LOGGING(dbenv) &&
-		    (ret = __txn_recycle_log(dbenv, NULL,
-			    &null_lsn, 0, region->last_txnid,
-			    region->cur_maxid)) != 0)
+			(ret = __txn_recycle_log(dbenv, NULL,
+				&null_lsn, 0, region->last_txnid,
+				region->cur_maxid)) != 0)
 			 goto err;
 	}
 
@@ -538,9 +547,9 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 #else
 	if ((ret =
 		__db_shalloc(mgr->reginfo.addr, sizeof(TXN_DETAIL), 0,
-		    &td)) != 0) {
+			&td)) != 0) {
 		__db_err(dbenv,
-		    "Unable to allocate memory for transaction detail");
+			"Unable to allocate memory for transaction detail");
 		goto err;
 	}
 #endif
@@ -580,13 +589,16 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
 
+	if (!recovery)
+		F_SET(txn, TXN_RECOVER_LOCK);
+
 	/*
 	 * If this is a transaction family, we must link the child to the
 	 * maximal grandparent in the lock table for deadlock detection.
 	 */
 	if (txn->parent != NULL && LOCKING_ON(dbenv))
 		if ((ret = __lock_addfamilylocker_set_retries(dbenv,
-			    txn->parent->txnid, txn->txnid, retries)) != 0)
+				txn->parent->txnid, txn->txnid, retries)) != 0)
 			return (ret);
 
 	if (F_ISSET(txn, TXN_MALLOC)) {
@@ -597,50 +609,53 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 
 	return (0);
 
-err:	R_UNLOCK(dbenv, &mgr->reginfo);
+err:
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	if (!recovery)
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
 
 static int
-__txn_begin_int(txn, internal)
+__txn_begin_int(txn, flags)
 	DB_TXN *txn;
-	int internal;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, 0, NULL);
+	return __txn_begin_int_int(txn, 0, NULL, flags);
 }
 
 static int
-__txn_begin_int_set_retries(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_set_retries(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, retries,
-	    we_start_at_this_lsn);
+	return __txn_begin_int_int(txn, retries,
+		we_start_at_this_lsn, flags);
 }
 
 int
 
 __txn_regop_log_commit(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
-    u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
-    int32_t timestamp, const DBT *locks, void *usr_ptr);
+	u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
+	int32_t timestamp, const DBT *locks, void *usr_ptr);
 
 int
 
 __txn_regop_gen_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
-    u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
-    u_int32_t generation, u_int64_t timestamp, const DBT *locks, void *usr_ptr);
+	u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
+	u_int32_t generation, u_int64_t timestamp, const DBT *locks, void *usr_ptr);
 
 
 int
 
 __txn_regop_rowlocks_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
-    u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
-    u_int64_t ltranid, DB_LSN *begin_lsn, DB_LSN *last_commit_lsn,
-    u_int64_t timestamp, u_int32_t lflags, u_int32_t generation,
-    const DBT *locks, const DBT *rowlocks, void *usr_ptr);
+	u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
+	u_int64_t ltranid, DB_LSN *begin_lsn, DB_LSN *last_commit_lsn,
+	u_int64_t timestamp, u_int32_t lflags, u_int32_t generation,
+	const DBT *locks, const DBT *rowlocks, void *usr_ptr);
 
 static int
 __txn_check_applied_lsns(DB_ENV *dbenv, DB_TXN *txnp)
@@ -657,13 +672,10 @@ __txn_check_applied_lsns(DB_ENV *dbenv, DB_TXN *txnp)
 	if (ret) {
 		/* this should probably also be fatal? */
 		__db_err(dbenv,
-		    "Unable to collect log records for txn %x, lsn " PR_LSN
-		    "\n", txnp->txnid, PARM_LSN(lsn));
+			"Unable to collect log records for txn %x, lsn " PR_LSN
+			"\n", txnp->txnid, PARM_LSN(lsn));
 	} else {
 		/* collected log records successfully - now check that they've been applied */
-
-		int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
-		    int inrecovery);
 		ret = __rep_check_applied_lsns(dbenv, &lc, 0);
 	}
 
@@ -722,10 +734,10 @@ __txn_ltrans_find_lowest_lsn(dbenv, lsnp)
 
 int
 __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
-    DB_ENV *dbenv;
-    unsigned long long ltranid;
-    DB_LSN *begin_lsn;
-    LTDESC **rlt;
+	DB_ENV *dbenv;
+	unsigned long long ltranid;
+	DB_LSN *begin_lsn;
+	LTDESC **rlt;
 {
 	LTDESC *lt = NULL;
 	int ret = 0;
@@ -776,13 +788,15 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 {
 	int ret, idx, count;
 	LTDESC *lt, *lttemp;
-	DB_LTRAN *list;
+	DB_LTRAN *list = NULL;
 
 	ret = idx = 0;
-	*rlist = NULL;
 
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	count = listc_size(&dbenv->active_ltrans);
+	if (count == 0)
+		goto done;
+
 	if ((ret = __os_malloc(dbenv, count * sizeof(DB_LTRAN), &list)) != 0)
 		goto err;
 
@@ -793,6 +807,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 		idx++;
 	}
 
+done:
 	*rlist = list;
 	*rcount = count;
 
@@ -845,9 +860,9 @@ __txn_deallocate_ltrans(dbenv, lt)
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl, 
-    pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
-    unsigned long long logical_tranid, int32_t timestamp,
-    unsigned long long context);
+	pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
+	unsigned long long logical_tranid, int32_t timestamp,
+	unsigned long long context);
 int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t lockid);
 
 /* This prevents dbreg logs from being logged between the LOCK_PUT_READ and
@@ -862,7 +877,7 @@ extern pthread_rwlock_t gbl_dbreg_log_lock;
  */
 static int
 __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
-    nrlocks, begin_lsn, lsn_out, usr_ptr)
+	nrlocks, begin_lsn, lsn_out, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -883,12 +898,12 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
 	u_int64_t context = 0;
-	int ret, t_ret, iszero = 0, elect_highest_committed_gen;
+	int ret, t_ret, elect_highest_committed_gen;
 
 	dbenv = txnp->mgrp->dbenv;
 
@@ -965,12 +980,14 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * abort (if its parent aborts), and otherwise its parent or ultimate
 	 * ancestor will write synchronously.
 	 */
+#ifndef NDEBUG
+	int iszero = 0;
 	if (IS_ZERO_LSN(txnp->last_lsn)) {
 		/* Put a breakpoint here */
 		iszero = 1;
 	}
+#endif
 
-	extern int dumptxn(DB_ENV *, DB_LSN *);
 	extern int gbl_dumptxn_at_commit;
 
 	if (gbl_dumptxn_at_commit)
@@ -989,7 +1006,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			 */
 			if ((ret =
 				__txn_doevents(dbenv, txnp, TXN_PREPARE,
-				    1)) != 0) {
+					1)) != 0) {
 				goto err;
 			}
 
@@ -1001,12 +1018,12 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;
 				if (IS_REP_MASTER(dbenv) &&
-				    !IS_ZERO_LSN(txnp->last_lsn)) {
+					!IS_ZERO_LSN(txnp->last_lsn)) {
 					memset(&list_dbt, 0, sizeof(list_dbt));
 					request.obj = &list_dbt;
 				}
 				ret = __lock_vec(dbenv,
-				    txnp->txnid, 0, &request, 1, NULL);
+					txnp->txnid, 0, &request, 1, NULL);
 
 				assert(ret == 0);
 			}
@@ -1015,30 +1032,30 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				if(ltranid != 0) {
 					int ignore = 0;
 					ltranflags = (flags & 
-						      (DB_TXN_LOGICAL_BEGIN |
-						       DB_TXN_LOGICAL_COMMIT |
-						       DB_TXN_SCHEMA_LOCK));
+							  (DB_TXN_LOGICAL_BEGIN |
+							   DB_TXN_LOGICAL_COMMIT |
+							   DB_TXN_SCHEMA_LOCK));
 
 					SET_LOG_FLAGS_ROWLOCKS(dbenv,
-							       txnp,
-							       ltranflags,
-							       lflags);
+								   txnp,
+								   ltranflags,
+								   lflags);
 
 					if ((ltranflags &
-					     DB_TXN_LOGICAL_BEGIN) &&
-					    (ltranflags &
-					     DB_TXN_LOGICAL_COMMIT))
+						 DB_TXN_LOGICAL_BEGIN) &&
+						(ltranflags &
+						 DB_TXN_LOGICAL_COMMIT))
 						ignore = 1;
 
 					if (!ignore &&
-					    (ltranflags &
-					     DB_TXN_LOGICAL_BEGIN)) {
+						(ltranflags &
+						 DB_TXN_LOGICAL_BEGIN)) {
 						if ((ret = 
-						     __txn_allocate_ltrans(
-							     dbenv, 
-							     ltranid,
-							     begin_lsn,
-							     &lt)) != 0) {
+							 __txn_allocate_ltrans(
+								 dbenv, 
+								 ltranid,
+								 begin_lsn,
+								 &lt)) != 0) {
 							Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
@@ -1046,7 +1063,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 					else if (!ignore && (ret =
 						__txn_find_ltrans(dbenv,
-						    ltranid, &lt)) != 0) {
+							ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
 						Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
@@ -1059,29 +1076,29 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 					if (elect_highest_committed_gen) {
 						MUTEX_LOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 						ltranflags |= DB_TXN_LOGICAL_GEN;
 					} else
 						gen = 0;
 
 					ret =
-					    __txn_regop_rowlocks_log(dbenv,
-					    txnp, lsn_out, &context, lflags,
-					    TXN_COMMIT, ltranid, begin_lsn,
-					    last_commit_lsn, timestamp,
-					    ltranflags, gen, request.obj,
-					    &list_dbt_rl, usr_ptr);
+						__txn_regop_rowlocks_log(dbenv,
+						txnp, lsn_out, &context, lflags,
+						TXN_COMMIT, ltranid, begin_lsn,
+						last_commit_lsn, timestamp,
+						ltranflags, gen, request.obj,
+						&list_dbt_rl, usr_ptr);
 
 					if (elect_highest_committed_gen) {
 						MUTEX_LOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 						rep->committed_gen = gen;
-                        rep->committed_lsn = txnp->last_lsn;
+						rep->committed_lsn = txnp->last_lsn;
 						MUTEX_UNLOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 					}
 
 					txnp->last_lsn = *lsn_out;
@@ -1090,7 +1107,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						lt->last_lsn = txnp->last_lsn;
 
 						if (ltranflags &
-						    DB_TXN_LOGICAL_COMMIT) {
+							DB_TXN_LOGICAL_COMMIT) {
 							__txn_deallocate_ltrans(
 								dbenv, lt);
 						}
@@ -1102,39 +1119,39 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					if (elect_highest_committed_gen) {
 
 						MUTEX_LOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 
 						ret =
-						    __txn_regop_gen_log(dbenv,
-						    txnp, &txnp->last_lsn,
-						    &context, lflags,
-						    TXN_COMMIT, gen, timestamp,
-						    request.obj, usr_ptr);
+							__txn_regop_gen_log(dbenv,
+							txnp, &txnp->last_lsn,
+							&context, lflags,
+							TXN_COMMIT, gen, timestamp,
+							request.obj, usr_ptr);
 
 						MUTEX_LOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 						rep->committed_gen = gen;
-                        rep->committed_lsn = txnp->last_lsn;
+						rep->committed_lsn = txnp->last_lsn;
 						MUTEX_UNLOCK(dbenv,
-						    db_rep->rep_mutexp);
+							db_rep->rep_mutexp);
 					} else {
 						ret =
-						    __txn_regop_log_commit
-						    (dbenv, txnp,
-						    &txnp->last_lsn, &context,
-						    lflags, TXN_COMMIT,
-						    timestamp, request.obj,
-						    usr_ptr);
+							__txn_regop_log_commit
+							(dbenv, txnp,
+							&txnp->last_lsn, &context,
+							lflags, TXN_COMMIT,
+							timestamp, request.obj,
+							usr_ptr);
 					}
 
 					if (lsn_out) {
 						lsn_out->file = 
-						    txnp->last_lsn.file;
+							txnp->last_lsn.file;
 						lsn_out->offset =
-						    txnp->last_lsn.offset;
+							txnp->last_lsn.offset;
 					}
 				}
 				Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
@@ -1142,20 +1159,20 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {
 						DB_ASSERT(
-						    F_ISSET(
+							F_ISSET(
 							txnp. TXN_COMPENSATE));
 					} else {
 						bdb_transfer_txn_pglogs(
-						    dbenv->app_private,
-						    txnp->pglogs_hashtbl,
-						    &txnp->pglogs_mutex,
-						    txnp->last_lsn,
-						    (flags & 
-						     (DB_TXN_LOGICAL_COMMIT |
-						      DB_TXN_DONT_GET_REPO_MTX
-							     )),
-						    ltranid, timestamp,
-						    context);
+							dbenv->app_private,
+							txnp->pglogs_hashtbl,
+							&txnp->pglogs_mutex,
+							txnp->last_lsn,
+							(flags & 
+							 (DB_TXN_LOGICAL_COMMIT |
+							  DB_TXN_DONT_GET_REPO_MTX
+								 )),
+							ltranid, timestamp,
+							context);
 					}
 				}
 			}
@@ -1173,9 +1190,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			/* Log the commit in the parent! */
 			timestamp = comdb2_time_epoch();
 			if (!IS_ZERO_LSN(txnp->last_lsn) &&
-			    (ret = __txn_child_log(dbenv,
-				    txnp->parent, &txnp->parent->last_lsn,
-				    0, txnp->txnid, &txnp->last_lsn)) != 0) {
+				(ret = __txn_child_log(dbenv,
+					txnp->parent, &txnp->parent->last_lsn,
+					0, txnp->txnid, &txnp->last_lsn)) != 0) {
 				goto err;
 			}
 
@@ -1184,21 +1201,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				txnp->parent->txnid, txnp->txnid) != 0)
 				abort();
 
-			if (gbl_new_snapisol) {     
-				if (!txnp->pglogs_hashtbl) {        
+			if (gbl_new_snapisol) {	 
+				if (!txnp->pglogs_hashtbl) {		
 					DB_ASSERT(F_ISSET(txnp. 
 							  TXN_COMPENSATE));
 				} else {
 					uint32_t fl = 
-					    (flags & DB_TXN_DONT_GET_REPO_MTX) |
-					    DB_TXN_LOGICAL_COMMIT;
+						(flags & DB_TXN_DONT_GET_REPO_MTX) |
+						DB_TXN_LOGICAL_COMMIT;
 					bdb_transfer_txn_pglogs(
-					    dbenv->app_private,
-					    txnp->pglogs_hashtbl,       
-					    &txnp->pglogs_mutex,
-					    txnp->parent->last_lsn,
-					    fl, 0, timestamp, 0);
-				}      
+						dbenv->app_private,
+						txnp->pglogs_hashtbl,	   
+						&txnp->pglogs_mutex,
+						txnp->parent->last_lsn,
+						fl, 0, timestamp, 0);
+				}	  
 			}
 
 
@@ -1232,7 +1249,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 */
 	if (txnp->txn_list != NULL) {
 		t_ret = __db_do_the_limbo(dbenv,
-		      NULL, txnp, txnp->txn_list, LIMBO_NORMAL);
+			  NULL, txnp, txnp->txn_list, LIMBO_NORMAL);
 		__db_txnlist_end(dbenv, txnp->txn_list);
 		txnp->txn_list = NULL;
 		if (t_ret != 0 && ret == 0)
@@ -1241,6 +1258,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	if (ret != 0) {
 		goto err;
+	}
+
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
 	/* This is OK because __txn_end can only fail with a panic. */
@@ -1270,7 +1292,7 @@ __txn_commit(txnp, flags)
 	u_int32_t flags;
 {
 	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL,
-	    NULL, NULL);
+		NULL, NULL);
 }
 
 
@@ -1289,8 +1311,8 @@ __txn_commit_pp(txnp, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-	    __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
-	    NULL);
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
+		NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 	return (ret);
@@ -1316,8 +1338,8 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-	    __txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, NULL,
-	    lsn_out, usr_ptr);
+		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, NULL,
+		lsn_out, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1326,7 +1348,7 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 
 static int
 __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
-    lks, nrlocks, begin_lsn, lsn_out, usr_ptr)
+	lks, nrlocks, begin_lsn, lsn_out, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -1346,7 +1368,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	not_child = txnp->parent == NULL;
 
 	ret = __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn,
-	    rlocks, lks, nrlocks, begin_lsn, lsn_out, usr_ptr);
+		rlocks, lks, nrlocks, begin_lsn, lsn_out, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1388,7 +1410,7 @@ __txn_abort(txnp)
 	DB_ENV *dbenv;
 	DB_LOCKREQ request;
 	DB_TXN *kid;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags;
 	int flags = 0;
 	int ret;
@@ -1433,17 +1455,17 @@ __txn_abort(txnp)
 
 		/* Turn off timeouts. */
 		if ((ret = __lock_set_timeout(dbenv,
-		    txnp->txnid, 0, DB_SET_TXN_TIMEOUT)) != 0)
+			txnp->txnid, 0, DB_SET_TXN_TIMEOUT)) != 0)
 			return (__db_panic(dbenv, ret));
 
 		if ((ret = __lock_set_timeout(dbenv,
-		    txnp->txnid, 0, DB_SET_LOCK_TIMEOUT)) != 0)
+			txnp->txnid, 0, DB_SET_LOCK_TIMEOUT)) != 0)
 			return (__db_panic(dbenv, ret));
 
 		request.op = DB_LOCK_UPGRADE_WRITE;
 		request.obj = NULL;
 		if ((ret = __lock_vec(
-		    dbenv, txnp->txnid, 0, &request, 1, NULL)) != 0)
+			dbenv, txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (__db_panic(dbenv, ret));
 	}
 	if ((ret = __txn_undo(txnp)) != 0)
@@ -1458,9 +1480,14 @@ __txn_abort(txnp)
 	SET_LOG_FLAGS(dbenv, txnp, lflags);
 
 	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
-	    (ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
-		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
+		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
+			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
+
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
 
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));
@@ -1532,7 +1559,7 @@ __txn_discard(txnp, flags)
 	}
 
 	if (dbenv->tx_perfect_ckp)
-        Pthread_setspecific(txn_key, NULL);
+		Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -1552,7 +1579,7 @@ __txn_prepare(txnp, gid)
 	DB_ENV *dbenv;
 	DB_LOCKREQ request;
 	DB_TXN *kid;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags;
 	int ret;
 
@@ -1569,8 +1596,8 @@ __txn_prepare(txnp, gid)
 			return (ret);
 
 	if (txnp->txn_list != NULL  &&
-	    (ret = __db_do_the_limbo(dbenv,
-	    NULL, txnp, txnp->txn_list, LIMBO_PREPARE)) != 0)
+		(ret = __db_do_the_limbo(dbenv,
+		NULL, txnp, txnp->txn_list, LIMBO_PREPARE)) != 0)
 		return (ret);
 	/*
 	 * In XA, the global transaction ID in the txn_detail structure is
@@ -1586,19 +1613,19 @@ __txn_prepare(txnp, gid)
 	if (LOCKING_ON(dbenv)) {
 		request.op = DB_LOCK_PUT_READ;
 		if (IS_REP_MASTER(dbenv) &&
-		    IS_ZERO_LSN(txnp->last_lsn)) {
+			IS_ZERO_LSN(txnp->last_lsn)) {
 			memset(&list_dbt, 0, sizeof(list_dbt));
 			request.obj = &list_dbt;
 		}
 		if ((ret = __lock_vec(dbenv,
-		    txnp->txnid, 0, &request, 1, NULL)) != 0)
+			txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (ret);
 
 	}
 	if (DBENV_LOGGING(dbenv)) {
 		memset(&xid, 0, sizeof(xid));
 		if (td->xa_status != TXN_XA_ENDED &&
-		    td->xa_status != TXN_XA_SUSPENDED)
+			td->xa_status != TXN_XA_SUSPENDED)
 			/* Regular prepare; fill in the gid. */
 			memcpy(td->xid, gid, sizeof(td->xid));
 
@@ -1607,10 +1634,10 @@ __txn_prepare(txnp, gid)
 
 		lflags = DB_LOG_COMMIT | DB_LOG_PERM | DB_FLUSH;
 		if ((ret = __txn_xa_regop_log(dbenv, txnp, &txnp->last_lsn,
-		    lflags, TXN_PREPARE, &xid, td->format, td->gtrid, td->bqual,
-		    &td->begin_lsn, request.obj)) != 0) {
+			lflags, TXN_PREPARE, &xid, td->format, td->gtrid, td->bqual,
+			&td->begin_lsn, request.obj)) != 0) {
 			__db_err(dbenv, "DB_TXN->prepare: log_write failed %s",
-			    db_strerror(ret));
+				db_strerror(ret));
 		}
 		if (request.obj != NULL && request.obj->data != NULL)
 			__os_free(dbenv, request.obj->data);
@@ -1654,7 +1681,7 @@ __txn_set_timeout(txnp, timeout, op)
 		return (__db_ferr(txnp->mgrp->dbenv, "DB_TXN->set_timeout", 0));
 
 	return (__lock_set_timeout(
-	    txnp->mgrp->dbenv, txnp->txnid, timeout, op));
+		txnp->mgrp->dbenv, txnp->txnid, timeout, op));
 }
 
 /*
@@ -1676,9 +1703,9 @@ __txn_isvalid(txnp, tdp, op)
 
 	/* Check for recovery. */
 	if (!F_ISSET(txnp, TXN_COMPENSATE) &&
-	    F_ISSET(region, TXN_IN_RECOVERY)) {
+		F_ISSET(region, TXN_IN_RECOVERY)) {
 		__db_err(mgrp->dbenv,
-		    "operation not permitted during recovery");
+			"operation not permitted during recovery");
 		goto err;
 	}
 
@@ -1710,7 +1737,7 @@ __txn_isvalid(txnp, tdp, op)
 		 * restored transaction.
 		 */
 		if (tp->status != TXN_PREPARED &&
-		    !F_ISSET(tp, TXN_DTL_RESTORED)) {
+			!F_ISSET(tp, TXN_DTL_RESTORED)) {
 			__db_err(mgrp->dbenv, "not a restored transaction");
 			return (__db_panic(mgrp->dbenv, EINVAL));
 		}
@@ -1726,7 +1753,7 @@ __txn_isvalid(txnp, tdp, op)
 			 * someone doing it.
 			 */
 			__db_err(mgrp->dbenv,
-			    "Prepare disallowed on child transactions");
+				"Prepare disallowed on child transactions");
 			return (EINVAL);
 		}
 		break;
@@ -1754,7 +1781,7 @@ __txn_isvalid(txnp, tdp, op)
 	case TXN_COMMITTED:
 	default:
 		__db_err(mgrp->dbenv, "transaction already %s",
-		    tp->status == TXN_COMMITTED ? "committed" : "aborted");
+			tp->status == TXN_COMMITTED ? "committed" : "aborted");
 		goto err;
 	}
 
@@ -1784,17 +1811,15 @@ __txn_end(txnp, is_commit)
 	DB_TXNREGION *region;
 	TXN_DETAIL *tp;
 	int do_closefiles, ret;
-	void *bdb_state;
 
 	mgr = txnp->mgrp;
 	dbenv = mgr->dbenv;
-	bdb_state = dbenv->app_private;
 	region = mgr->reginfo.primary;
 	do_closefiles = 0;
 
 	/* Process commit events. */
 	if ((ret = __txn_doevents(dbenv,
-	    txnp, is_commit ? TXN_COMMIT : TXN_ABORT, 0)) != 0)
+		txnp, is_commit ? TXN_COMMIT : TXN_ABORT, 0)) != 0)
 		return (__db_panic(dbenv, ret));
 
 	/*
@@ -1808,10 +1833,10 @@ __txn_end(txnp, is_commit)
 	 */
 	if (LOCKING_ON(dbenv)) {
 		request.op = txnp->parent == NULL ||
-		    is_commit == 0 ? DB_LOCK_PUT_ALL : DB_LOCK_INHERIT;
+			is_commit == 0 ? DB_LOCK_PUT_ALL : DB_LOCK_INHERIT;
 		request.obj = NULL;
 		if ((ret = __lock_vec(dbenv,
-		    txnp->txnid, 0, &request, 1, NULL)) != 0)
+			txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (__db_panic(dbenv, ret));
 	}
 
@@ -1843,7 +1868,7 @@ __txn_end(txnp, is_commit)
 	 * if any.
 	 */
 	if (LOCKING_ON(dbenv) && (ret =
-	    __lock_freefamilylocker(dbenv->lk_handle, txnp->txnid)) != 0)
+		__lock_freefamilylocker(dbenv->lk_handle, txnp->txnid)) != 0)
 		return (__db_panic(dbenv, ret));
 	if (txnp->parent != NULL)
 		TAILQ_REMOVE(&txnp->parent->kids, txnp, klinks);
@@ -1876,7 +1901,7 @@ __txn_end(txnp, is_commit)
 	}
 
 	if (dbenv->tx_perfect_ckp)
-        Pthread_setspecific(txn_key, NULL);
+		Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -1905,12 +1930,12 @@ __txn_getpriority(txnp, priority)
 
 	if (LOCKING_ON(dbenv) && (ret =
 		__lock_locker_getpriority(dbenv->lk_handle, txnp->txnid,
-		    priority)) != 0)
+			priority)) != 0)
 		return (__db_panic(dbenv, ret));
 
 #ifdef TEST_DEADLOCKS
 	printf("%d %s:%d lockerid %x has priority %d\n",
-	    pthread_self(), __FILE__, __LINE__, txnp->txnid, *priority);
+		pthread_self(), __FILE__, __LINE__, txnp->txnid, *priority);
 #endif
 
 	return (0);
@@ -1927,13 +1952,13 @@ __txn_dispatch_undo(dbenv, txnp, rdbt, key_lsn, txnlist)
 	int ret;
 
 	ret = __db_dispatch(dbenv, dbenv->recover_dtab,
-	    dbenv->recover_dtab_size, rdbt, key_lsn, DB_TXN_ABORT, txnlist);
+		dbenv->recover_dtab_size, rdbt, key_lsn, DB_TXN_ABORT, txnlist);
 	if (F_ISSET(txnp, TXN_CHILDCOMMIT))
 		(void)__db_txnlist_lsnadd(dbenv,
-		    txnlist, key_lsn, 0);
+			txnlist, key_lsn, 0);
 	if (ret == DB_SURPRISE_KID) {
 		if ((ret = __db_txnlist_lsninit(
-		    dbenv, txnlist, key_lsn)) == 0)
+			dbenv, txnlist, key_lsn)) == 0)
 			F_SET(txnp, TXN_CHILDCOMMIT);
 	}
 
@@ -1992,7 +2017,7 @@ __txn_undo(txnp)
 		ptxn->txn_list = txnlist;
 
 	if (F_ISSET(txnp, TXN_CHILDCOMMIT) &&
-	    (ret = __db_txnlist_lsninit(dbenv, txnlist, &txnp->last_lsn)) != 0)
+		(ret = __db_txnlist_lsninit(dbenv, txnlist, &txnp->last_lsn)) != 0)
 		return (ret);
 
 	/*
@@ -2000,16 +2025,16 @@ __txn_undo(txnp)
 	 * then from the log.
 	 */
 	for (lr = STAILQ_FIRST(&txnp->logs);
-	    lr != NULL; lr = STAILQ_NEXT(lr, links)) {
+		lr != NULL; lr = STAILQ_NEXT(lr, links)) {
 		rdbt.data = lr->data;
 		rdbt.size = 0;
 		LSN_NOT_LOGGED(key_lsn);
 		ret =
-		    __txn_dispatch_undo(dbenv, txnp, &rdbt, &key_lsn, txnlist);
+			__txn_dispatch_undo(dbenv, txnp, &rdbt, &key_lsn, txnlist);
 		if (ret != 0) {
 			__db_err(dbenv,
-			    "DB_TXN->abort: In-memory log undo failed: %s",
-			    db_strerror(ret));
+				"DB_TXN->abort: In-memory log undo failed: %s",
+				db_strerror(ret));
 			goto err;
 		}
 	}
@@ -2017,7 +2042,7 @@ __txn_undo(txnp)
 	key_lsn = txnp->last_lsn;
 
 	if (!IS_ZERO_LSN(key_lsn) &&
-	     (ret = __log_cursor(dbenv, &logc)) != 0)
+		 (ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
 	while (!IS_ZERO_LSN(key_lsn)) {
@@ -2027,11 +2052,11 @@ __txn_undo(txnp)
 		 */
 		if ((ret = __log_c_get(logc, &key_lsn, &rdbt, DB_SET)) == 0) {
 			if ((ret = __txn_dispatch_undo(dbenv,
-				    txnp, &rdbt, &key_lsn, txnlist)) != 0) {
+					txnp, &rdbt, &key_lsn, txnlist)) != 0) {
 				__db_err(dbenv,
-				    "DB_TXN->abort: txn-undo failed for LSN: %lu %lu: %s",
-				    (u_long) key_lsn.file,
-				    (u_long) key_lsn.offset, db_strerror(ret));
+					"DB_TXN->abort: txn-undo failed for LSN: %lu %lu: %s",
+					(u_long) key_lsn.file,
+					(u_long) key_lsn.offset, db_strerror(ret));
 				goto err;
 			}
 		}
@@ -2039,8 +2064,8 @@ __txn_undo(txnp)
 		if (ret != 0) {
 			__db_err(dbenv,
 		"DB_TXN->abort: undo failure in log_c_get for LSN: %lu %lu: %s",
-			    (u_long) key_lsn.file, (u_long) key_lsn.offset,
-			    db_strerror(ret));
+				(u_long) key_lsn.file, (u_long) key_lsn.offset,
+				db_strerror(ret));
 			goto err;
 		}
 	}
@@ -2060,7 +2085,7 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
  *	DB_ENV->txn_checkpoint pre/post processing.
  *
  * PUBLIC: int __txn_checkpoint_pp
- * PUBLIC:     __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
+ * PUBLIC:	 __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
  */
 int
 __txn_checkpoint_pp(dbenv, kbytes, minutes, flags)
@@ -2073,7 +2098,7 @@ __txn_checkpoint_pp(dbenv, kbytes, minutes, flags)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-	    dbenv->tx_handle, "txn_checkpoint", DB_INIT_TXN);
+		dbenv->tx_handle, "txn_checkpoint", DB_INIT_TXN);
 
 	/*
 	 * On a replication client, all transactions are read-only; therefore,
@@ -2113,6 +2138,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	DB_ENV *dbenv;
 	u_int32_t kbytes, minutes, flags;
 {
+	struct mintruncate_entry *mt, *newmt;
 	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav;
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
@@ -2133,8 +2159,8 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	if (IS_REP_CLIENT(dbenv)) {
 		if (MPOOL_ON(dbenv) && (ret = __memp_sync(dbenv, NULL)) != 0) {
 			__db_err(dbenv,
-		    "txn_checkpoint: failed to flush the buffer cache %s",
-			    db_strerror(ret));
+			"txn_checkpoint: failed to flush the buffer cache %s",
+				db_strerror(ret));
 			return (ret);
 		} else
 			return (0);
@@ -2162,7 +2188,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 		 * last checkpoint.
 		 */
 		if (kbytes != 0 &&
-		    mbytes * 1024 + bytes / 1024 >= (u_int32_t)kbytes)
+			mbytes * 1024 + bytes / 1024 >= (u_int32_t)kbytes)
 			goto do_ckp;
 
 		if (minutes != 0) {
@@ -2184,7 +2210,13 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 			return (0);
 	}
 
-do_ckp:	/*
+do_ckp:	
+	Pthread_rwlock_rdlock(&dbenv->recoverlk);
+
+	/* Retrieve lsn again after locking */
+	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
+
+	/*
 	 * Find the oldest active transaction and figure out its "begin" LSN.
 	 * This is the lowest LSN we can checkpoint, since any record written
 	 * after it may be involved in a transaction and may therefore need
@@ -2192,38 +2224,44 @@ do_ckp:	/*
 	 */
 	R_LOCK(dbenv, &mgr->reginfo);
 	for (txnp = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
-	    txnp != NULL;
-	    txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail))
+		txnp != NULL;
+		txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail))
 		if (!IS_ZERO_LSN(txnp->begin_lsn) &&
-		    log_compare(&txnp->begin_lsn, &ckp_lsn) < 0)
+			log_compare(&txnp->begin_lsn, &ckp_lsn) < 0)
 			ckp_lsn = txnp->begin_lsn;
 
 	__txn_ltrans_find_lowest_lsn(dbenv, &ltrans_ckp_lsn);
 	R_UNLOCK(dbenv, &mgr->reginfo);
 
 	if (!IS_ZERO_LSN(ltrans_ckp_lsn) &&
-	    log_compare(&ltrans_ckp_lsn, &ckp_lsn) < 0)
+		log_compare(&ltrans_ckp_lsn, &ckp_lsn) < 0)
 		ckp_lsn = ltrans_ckp_lsn;
 
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
+	ckp_lsn_sav = ckp_lsn;
 	/* If flag is DB_FORCE, don't run perfect checkpoints. */
 	if (MPOOL_ON(dbenv) &&
 			(ret = __memp_sync_restartable(dbenv,
-			       (LF_ISSET(DB_FORCE) ? NULL : &ckp_lsn), 0, 0)) != 0) {
+				   (LF_ISSET(DB_FORCE) ? NULL : &ckp_lsn), 0, 0)) != 0) {
 		__db_err(dbenv,
-		    "txn_checkpoint: failed to flush the buffer cache %s",
-		    db_strerror(ret));
+			"txn_checkpoint: failed to flush the buffer cache %s",
+			db_strerror(ret));
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		return (ret);
 	}
+
+	if (log_compare(&ckp_lsn_sav, &ckp_lsn)<0)
+		ckp_lsn = ckp_lsn_sav;
 
 	/*
 	 * Because we can't be a replication client here, and because
 	 * recovery (somewhat unusually) calls txn_checkpoint and expects
 	 * it to write a log message, LOGGING_ON is the correct macro here.
 	 */
-	if (LOGGING_ON(dbenv)) {
+	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant &&
+			!LF_ISSET(DB_RECOVER_NOCKP)) {
 		DB_LSN debuglsn;
 		DBT op = { 0 };
 		int debugtype;
@@ -2255,8 +2293,10 @@ do_ckp:	/*
 		 * However, it does break the assumption that every successful
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
-		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0)
+		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
+			Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (0);
+		}
 
 		if (REP_ON(dbenv))
 			__rep_get_gen(dbenv, &gen);
@@ -2273,13 +2313,28 @@ do_ckp:	/*
 		op.size = sizeof(int);
 		debugtype = htonl(2);
 		ret =
-		    __db_debug_log(dbenv, NULL, &debuglsn, DB_LOG_DONT_LOCK,
-		    &op, -1, NULL, NULL, 0);
+			__db_debug_log(dbenv, NULL, &debuglsn, DB_LOG_DONT_LOCK,
+			&op, -1, NULL, NULL, 0);
 		if (ret) {
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+			Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
+
+		Pthread_mutex_lock(&dbenv->mintruncate_lk);
+		if (dbenv->last_mintruncate_dbreg_start.file < debuglsn.file) {
+			newmt = malloc(sizeof(*newmt));
+#ifdef MINTRUNCATE_DEBUG
+			newmt->func = __func__;
+#endif
+			newmt->type = MINTRUNCATE_DBREG_START;
+			newmt->timestamp = 0;
+			newmt->lsn = dbenv->last_mintruncate_dbreg_start = debuglsn;
+			ZERO_LSN(newmt->ckplsn);
+			listc_atl(&dbenv->mintruncate, newmt);
+		}
+		Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
 		/*
 		 * Put out records for the open files before we log
@@ -2293,27 +2348,46 @@ do_ckp:	/*
 		timestamp = (int32_t)time(NULL);
 
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
-		    (ret = __txn_ckp_log(dbenv, NULL,
-			    &ckp_lsn,
-			    DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
-			    DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
-			    gen)) != 0) {
+			(ret = __txn_ckp_log(dbenv, NULL,
+				&ckp_lsn,
+				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
+				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
+				gen)) != 0) {
 			__db_err(dbenv,
-			    "txn_checkpoint: log failed at LSN [%ld %ld] %s",
-			    (long)ckp_lsn.file, (long)ckp_lsn.offset,
-			    db_strerror(ret));
+				"txn_checkpoint: log failed at LSN [%ld %ld] %s",
+				(long)ckp_lsn.file, (long)ckp_lsn.offset,
+				db_strerror(ret));
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+			Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (ret);
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
+		Pthread_mutex_lock(&dbenv->mintruncate_lk);
+		if (ckp_lsn_sav.file > dbenv->last_mintruncate_ckplsn.file) {
+			newmt = malloc(sizeof(*newmt));
+#ifdef MINTRUNCATE_DEBUG
+			newmt->func = __func__;
+#endif
+			newmt->type = MINTRUNCATE_CHECKPOINT;
+			newmt->timestamp = timestamp;
+			newmt->lsn = ckp_lsn;
+			newmt->ckplsn = ckp_lsn_sav;
+			listc_atl(&dbenv->mintruncate, newmt);
+			if (dbenv->mintruncate_first.file == 0)
+				dbenv->mintruncate_first = ckp_lsn;
+			dbenv->last_mintruncate_ckplsn = ckp_lsn_sav;
+		}
+		Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+
 		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp);
 		if (ret) {
 			logmsg(LOGMSG_ERROR, 
-                "%s: failed to push to checkpoint list, ret %d\n",
-			    __func__, ret);
+				"%s: failed to push to checkpoint list, ret %d\n",
+				__func__, ret);
+			Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2321,6 +2395,7 @@ do_ckp:	/*
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
+	Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
@@ -2417,7 +2492,7 @@ __txn_force_abort(dbenv, buffer)
 		key = db_cipher->mac_key;
 		sum_len = DB_MAC_KEY;
 		if ((ret = db_cipher->decrypt(dbenv, db_cipher->data,
-		    &hdr->iv[0], buffer + hdrsize, rec_len)) != 0)
+			&hdr->iv[0], buffer + hdrsize, rec_len)) != 0)
 			return (__db_panic(dbenv, ret));
 	} else {
 		key = NULL;
@@ -2428,8 +2503,8 @@ __txn_force_abort(dbenv, buffer)
 	memcpy(bp, &opcode, sizeof(opcode));
 
 	if (CRYPTO_ON(dbenv) &&
-	    (ret = db_cipher->encrypt(dbenv,
-	    db_cipher->data, &hdr->iv[0], buffer + hdrsize, rec_len)) != 0)
+		(ret = db_cipher->encrypt(dbenv,
+		db_cipher->data, &hdr->iv[0], buffer + hdrsize, rec_len)) != 0)
 		return (__db_panic(dbenv, ret));
 
 	__db_chksum(buffer + hdrsize, rec_len, key, chksum);
@@ -2460,8 +2535,8 @@ __txn_preclose(dbenv)
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (region != NULL &&
-	    region->stat.st_nrestores
-	    <= mgr->n_discards && mgr->n_discards != 0)
+		region->stat.st_nrestores
+		<= mgr->n_discards && mgr->n_discards != 0)
 		do_closefiles = 1;
 	R_UNLOCK(dbenv, &mgr->reginfo);
 	if (do_closefiles) {
@@ -2492,12 +2567,16 @@ __txn_reset(dbenv)
 	DB_LSN scrap;
 	DB_TXNREGION *region;
 
+	/* physical replicants cannot log the reset */
+	if (gbl_is_physical_replicant)
+		return 0;
+
 	region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 	region->last_txnid = TXN_MINIMUM;
 
 	DB_ASSERT(LOGGING_ON(dbenv));
 	return (__txn_recycle_log(dbenv,
-	    NULL, &scrap, 0, TXN_MINIMUM, TXN_MAXIMUM));
+		NULL, &scrap, 0, TXN_MINIMUM, TXN_MAXIMUM));
 }
 
 /*
@@ -2536,7 +2615,7 @@ __txn_updateckp(dbenv, lsnp)
 		region->last_ckp = *lsnp;
 		(void)time(&region->time_ckp);
 		ctrace("DBENV->region last_ckp = %d:%d\n", lsnp->file,
-		    lsnp->offset);
+			lsnp->offset);
 	}
 	if (IS_ZERO_LSN(region->last_ckp))
 		logmsg(LOGMSG_INFO, "%s:%d last_ckp is 0:0\n", __FILE__, __LINE__);
@@ -2548,8 +2627,8 @@ __txn_updateckp(dbenv, lsnp)
 int
 cmp_by_lsn(const void *pp1, const void *pp2)
 {
-	const struct logrecord *p1 = (struct logrecord *)p1;
-	const struct logrecord *p2 = (struct logrecord *)p2;
+	const struct logrecord *p1 = (struct logrecord *)pp1;
+	const struct logrecord *p2 = (struct logrecord *)pp2;
 
 	return log_compare(&p1->lsn, &p2->lsn);
 }
@@ -2568,11 +2647,11 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 
 	dbt.flags |= DB_DBT_REALLOC;
 	ret =
-	    __rep_collect_txn(dbenv, lsnp, &lc, &had_serializable_records,
-	    NULL);
+		__rep_collect_txn(dbenv, lsnp, &lc, &had_serializable_records,
+		NULL);
 	if (ret) {
 		__db_err(dbenv, "can't find logs for txn at " PR_LSN "\n",
-		    PARM_LSNP(lsnp));
+			PARM_LSNP(lsnp));
 		goto done;
 	}
 	// qsort(lc.array, lc.nlsns, sizeof(struct logrecord), cmp_by_lsn);
@@ -2594,8 +2673,8 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 		ret = __log_c_get(logc, &lc.array[i].lsn, &dbt, DB_SET);
 		if (ret) {
 			__db_err(dbenv,
-			    "can't fetch log record at " PR_LSN " ret %d\n",
-			    PARM_LSN(lc.array[i].lsn), ret);
+				"can't fetch log record at " PR_LSN " ret %d\n",
+				PARM_LSN(lc.array[i].lsn), ret);
 			goto done;
 		}
 		LOGCOPY_32(&type, dbt.data);
@@ -2610,8 +2689,8 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			}
 
 			ret =
-			    __dbreg_id_to_db(dbenv, NULL, &db, a->fileid, 0,
-			    &lc.array[i].lsn, 0);
+				__dbreg_id_to_db(dbenv, NULL, &db, a->fileid, 0,
+				&lc.array[i].lsn, 0);
 			if (ret == DB_DELETED)
 				name = "deleted";
 			else if (ret)
@@ -2621,14 +2700,12 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 
 			if (a->opcode == DB_ADD_DUP) {
 				logmsg(LOGMSG_USER, "addrem: " PR_LSN " %s ",
-				    PARM_LSN(lc.array[i].lsn), name);
-				void fsnapf(FILE * fil, const void *buf,
-				    int len);
+					PARM_LSN(lc.array[i].lsn), name);
 				fsnapf(stdout, a->dbt.data, a->dbt.size);
 			}
 		} else if (type == 10019) {
 			logmsg(LOGMSG_USER, "blkseq: " PR_LSN "\n",
-			    PARM_LSN(lc.array[i].lsn));
+				PARM_LSN(lc.array[i].lsn));
 		}
 	}
 	logmsg(LOGMSG_USER, "} commit at " PR_LSN "\n", PARM_LSNP(lsnpp));

@@ -442,8 +442,6 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 
 */
 
-#include "dlmalloc_config.h"
-
 #ifndef WIN32
 #ifdef _WIN32
 #define WIN32 1
@@ -583,6 +581,8 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 #else
 #define DEFAULT_MMAP_THRESHOLD_MAX ((size_t)4U * (size_t)1024U * (size_t)1024U * sizeof(long))
 #endif
+
+#include "dlmalloc_config.h"
 
 /*
   mallopt tuning options.  SVID/XPG defines four standard parameter

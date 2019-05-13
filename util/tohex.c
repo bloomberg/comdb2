@@ -18,6 +18,11 @@
 #include <stdlib.h>
 #include <alloca.h>
 
+#ifndef BUILDING_TOOLS
+#include <mem_util.h>
+#include <mem_override.h>
+#endif
+
 static inline char hex(unsigned char a)
 {
     if (a < 10)
@@ -25,7 +30,7 @@ static inline char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
-void hexdumpbuf(char *key, int keylen, char **buf)
+void hexdumpbuf(const char *key, int keylen, char **buf)
 {
     char *mem;
     char *output;
@@ -53,7 +58,7 @@ char *util_tohex(char *out, const char *in, size_t len)
     return beginning;
 }
 
-void hexdump(loglvl lvl, unsigned char *key, int keylen)
+void hexdump(loglvl lvl, const char *key, int keylen)
 {
     char *mem;
     char *output;
@@ -86,7 +91,7 @@ void hexdumpdbt(DBT *dbt)
     }
 }
 
-void hexdumpfp(FILE *fp, unsigned char *key, int keylen)
+void hexdumpfp(FILE *fp, const unsigned char *key, int keylen)
 {
     int i = 0;
     for (i = 0; i < keylen; i++) {

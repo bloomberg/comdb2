@@ -27,8 +27,8 @@
 #include <sys/resource.h>
 
 struct comdb2_metrics_store {
-    int64_t bpool_hits;
-    int64_t bpool_misses;
+    int64_t cache_hits;
+    int64_t cache_misses;
     double  cache_hit_rate;
     int64_t commits;
     int64_t connections;
@@ -82,6 +82,9 @@ struct comdb2_metrics_store {
     int64_t rep_deadlocks;
     int64_t rw_evicts;
     int64_t standing_queue_time;
+    int64_t minimum_truncation_file;
+    int64_t minimum_truncation_offset;
+    int64_t minimum_truncation_timestamp;
 };
 
 static struct comdb2_metrics_store stats;
@@ -91,10 +94,11 @@ static struct comdb2_metrics_store stats;
   Please keep'em sorted.
 */
 comdb2_metric gbl_metrics[] = {
-    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.bpool_hits, NULL},
-    {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     STATISTIC_INTEGER, &stats.bpool_misses, NULL},
+    {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits, NULL},
+    {"cache_misses", "Buffer pool misses",
+     (int64_t)STATISTIC_COLLECTION_TYPE_CUMULATIVE, (int64_t)STATISTIC_INTEGER,
+     &stats.cache_misses, NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER,
@@ -197,27 +201,35 @@ comdb2_metric gbl_metrics[] = {
     {"denied_appsocks", "Number of denied appsock connections",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.denied_appsock_connections, NULL},
-    {"locks", "Number of currently held locks",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.locks, NULL},
-    {"temptable_spills", "Number of temptables that had to be spilled to disk-backed tables",
+    {"locks", "Number of currently held locks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.locks, NULL},
+    {"temptable_spills",
+     "Number of temptables that had to be spilled to disk-backed tables",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.temptable_spills, NULL},
-    {"net_drops", "Number of packets that didn't fit on network queue and were dropped",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.net_drops, NULL},
-    {"net_queue_size", "Size of largest outgoing net queue", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.net_queue_size, NULL},
-    {"rep_deadlocks", "Replication deadlocks", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rep_deadlocks, NULL},
-    {"rw_evictions", "Dirty page evictions", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rw_evicts, NULL},
-    {"standing_queue_time", "How long the database has had a standing queue", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.standing_queue_time, NULL}
+    {"net_drops",
+     "Number of packets that didn't fit on network queue and were dropped",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.net_drops,
+     NULL},
+    {"net_queue_size", "Size of largest outgoing net queue", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.net_queue_size, NULL},
+    {"rep_deadlocks", "Replication deadlocks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_deadlocks, NULL},
+    {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts, NULL},
+    {"standing_queue_time", "How long the database has had a standing queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.standing_queue_time, NULL},
+#if 0
+    {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
+    {"minimum_truncation_offset", "Minimum truncation offset",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_offset, NULL},
+    {"minimum_truncation_timestamp", "Minimum truncation timestamp",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_timestamp, NULL},
+#endif
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -293,6 +305,10 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
+#if 0
+    int min_file, min_offset;
+    int32_t min_timestamp;
+#endif
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -313,8 +329,8 @@ int refresh_metrics(void)
         return 1;
     }
 
-    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
-                                &stats.bpool_misses, &stats.rw_evicts);
+    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits,
+                                &stats.cache_misses, &stats.rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -353,11 +369,17 @@ int refresh_metrics(void)
     FILE *f = fopen("/proc/self/stat", "r");
     if (f) {
         char line[1024];
-        fgets(line, sizeof(line), f);
+        char *tmp = fgets(line, sizeof(line), f);
+        if (!tmp) {
+            logmsg(LOGMSG_ERROR, "failed to read from /proc/self/stat\n");
+        }
         fclose(f);
         long num_threads;
         unsigned long vmsize;
-        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &num_threads, &vmsize);
+        rc = sscanf(line,
+                    "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u "
+                    "%*u %*d %*d %*d %*d %ld %*d %*u %lu",
+                    &num_threads, &vmsize);
         if (rc == 2) {
             stats.threads = num_threads;
             stats.memory_usage = vmsize / (1024*1024);
@@ -420,6 +442,12 @@ int refresh_metrics(void)
 
     stats.standing_queue_time = metrics_standing_queue_time();
 
+#if 0
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
+    stats.minimum_truncation_file = min_file;
+    stats.minimum_truncation_offset = min_offset;
+    stats.minimum_truncation_timestamp = min_timestamp;
+#endif
     return 0;
 }
 
@@ -476,11 +504,16 @@ static void update_cpu_percent(void)
    FILE *f = fopen("/proc/self/stat", "r");
    if (f) {
       char line[1024];
-      fgets(line, sizeof(line), f);
+      char *tmp = fgets(line, sizeof(line), f);
+      if (!tmp) {
+          logmsg(LOGMSG_ERROR, "failed to read from /proc/self/stat\n");
+      }
       fclose(f);
       unsigned long utime, stime;
       /* usertime=14 systemtime=15 */
-      int rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
+      int rc = sscanf(
+          line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
+          &utime, &stime);
       if (rc == 2) {
          if (last_time == 0) {
             cpu_percent = 0;

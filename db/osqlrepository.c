@@ -96,11 +96,13 @@ void osql_repository_destroy(void)
     theosql_obj = NULL;
 }
 
+#ifdef TRACK_OSQL_SESSIONS
 #define MAX_UUID_LIST 1000000
 static uuid_t add_uuid_list[MAX_UUID_LIST];
 static unsigned long long add_uuid_order[MAX_UUID_LIST];
 static unsigned long long total_ordering = 0;
 static int add_current_uuid = 0;
+#endif
 
 static char hex(unsigned char a)
 {
@@ -198,18 +200,22 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
         logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n",
                __func__);
         rc = -2;
-    } else {
+    }
+#ifdef TRACK_OSQL_SESSIONS
+    else {
         memcpy(add_uuid_list[add_current_uuid], sess->uuid,
                sizeof(add_uuid_list[0]));
         add_uuid_order[add_current_uuid] = total_ordering++;
         add_current_uuid = ((add_current_uuid + 1) % MAX_UUID_LIST);
     }
+#endif
 
     Pthread_rwlock_unlock(&theosql->hshlck);
 
     return rc;
 }
 
+int gbl_abort_on_missing_osql_session = 0;
 
 /**
  * Remove an osql session from the repository
@@ -233,6 +239,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
         rc = hash_del(theosql->rqs, sess);
     }
 
+#ifdef TRACK_OSQL_SESSIONS
     static uuid_t uuid_list[MAX_UUID_LIST];
     static const char *uuid_func[MAX_UUID_LIST];
     static const char *uuid_callfunc[MAX_UUID_LIST];
@@ -240,12 +247,14 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     static unsigned long long uuid_order[MAX_UUID_LIST];
     static int current_uuid = 0;
     int found_uuid = 0;
+#endif
 
     if (rc) {
-        char *p = alloca(64);
-        p = (char *)util_tohex(p, (char *)sess->uuid, 16);
         logmsg(LOGMSG_ERROR, "%s: Unable to hash_del the new request\n",
                __func__);
+#ifdef TRACK_OSQL_SESSIONS
+        char *p = alloca(64);
+        p = (char *)util_tohex(p, (char *)sess->uuid, 16);
         for (int i=0; i<MAX_UUID_LIST;i++) {
 
             if (!memcmp(sess->uuid, add_uuid_list[i], sizeof(add_uuid_list[0]))) {
@@ -269,13 +278,18 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
             logmsg(LOGMSG_ERROR, "%s found %s %d times in tracking array\n", __func__, 
                     p, found_uuid);
         }
+#endif
 
         if (lock) {
             Pthread_rwlock_unlock(&theosql->hshlck);
+            lock = 0;
         }
 
-        abort();
+        /* This can happen legitimately on master swing */
+        if (gbl_abort_on_missing_osql_session)
+            abort();
     }
+#ifdef TRACK_OSQL_SESSIONS
     else {
         memcpy(uuid_list[current_uuid], sess->uuid, sizeof(uuid_list[0]));
         uuid_func[current_uuid] = func;
@@ -284,6 +298,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
         uuid_order[current_uuid] = total_ordering++;
         current_uuid = ((current_uuid + 1) % MAX_UUID_LIST);
     }
+#endif
 
     if (lock) {
         Pthread_rwlock_unlock(&theosql->hshlck);
@@ -320,6 +335,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid,
         osql_sess_addclient(sess);
     }
 
+    /* NB: if session was not found we unlock */
     if (!(sess && keep_repository_lock)) {
         Pthread_rwlock_unlock(&theosql->hshlck);
     }
@@ -390,14 +406,13 @@ int osql_repository_printcrtsessions(void)
     logmsg(LOGMSG_USER, "Begin osql session info:\n");
     if ((rc = hash_for(stat->rqs, osql_sess_getcrtinfo, NULL))) {
         logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
-        Pthread_rwlock_unlock(&stat->hshlck);
-        return -1;
-    }
-    logmsg(LOGMSG_USER, "Done osql info.\n");
+        rc = -1;
+    } else
+        logmsg(LOGMSG_USER, "Done osql info.\n");
 
     Pthread_rwlock_unlock(&stat->hshlck);
 
-    return 0;
+    return rc;
 }
 
 /**
@@ -508,7 +523,7 @@ int osql_repository_cancelled(void)
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
+bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 {
     osql_repository_t *theosql = get_theosql();
     if (theosql == NULL) {

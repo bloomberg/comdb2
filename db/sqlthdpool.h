@@ -17,31 +17,9 @@
 #ifndef __SQLTHDPOOL_H__
 #define __SQLTHDPOOL_H__
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
-#include <stddef.h>
-#include <pthread.h>
-
-#include <plhash.h>
-#include <segstr.h>
-
-#include <list.h>
-#include <queue.h>
-
 #include <sbuf2.h>
-#include <bdb_api.h>
-
-#include "comdb2.h"
-#include "types.h"
-#include "tag.h"
-
-#include <dynschematypes.h>
-#include <dynschemaload.h>
-
-#include <sqlite3.h>
-#include "sqlinterfaces.h"
+#include <pthread.h>
+#include <queue.h>
 
 typedef struct sqlpool {
     int curnthd; /* current number of threads in

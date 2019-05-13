@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
+#include <alloca.h>
 
 #include "plhash.h"
 #include "intern_strings.h"
@@ -75,11 +76,15 @@ char *internn(const char *str, int len)
 {
     char *s;
     char *out;
-    s = malloc(len + 1);
+    if (len > 1024)
+        s = malloc(len + 1);
+    else
+        s = alloca(len + 1);
     memcpy(s, str, len);
     s[len] = 0;
     out = intern(s);
-    free(s);
+    if (len > 1024)
+        free(s);
     return out;
 }
 
@@ -113,4 +118,17 @@ void cleanup_interned_strings()
     hash_free(interned_strings);
     interned_strings = NULL;
     Pthread_mutex_destroy(&intern_lk);
+}
+
+static int intern_dump(void *ptr, void *unused)
+{
+    struct interned_string *obj = ptr;
+    logmsg(LOGMSG_USER, "%s: str=%s %p (obj %p)\n", __func__, obj->str,
+           obj->str, obj);
+    return 0;
+}
+
+void dump_interned_strings()
+{
+    hash_for(interned_strings, intern_dump, NULL);
 }

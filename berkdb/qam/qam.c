@@ -506,7 +506,7 @@ __qam_c_del(dbc)
 {
 	DB *dbp;
 	DBT data;
-	DB_LOCK lock, metalock;
+	DB_LOCK lock = {0}, metalock;
 	DB_MPOOLFILE *mpf;
 	PAGE *pagep;
 	QAMDATA *qp;

@@ -6,7 +6,7 @@ set -x
 assertres ()
 {
     if [ $# != 2 ] ; then 
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2
@@ -21,8 +21,9 @@ failexit()
 }
 
 function waitfordb() {
-	sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
+    sleep 1
     local count=0
+	sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
 	while [[ "$sel" != "1" ]] && [[ $count -lt 60 ]] ; do
 		sleep 1
 	    sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
@@ -92,12 +93,13 @@ getmembers()
     echo $1 | sed -e 's/[{}]/''/g' | awk -v k="text" '{n=split($0,a,","); for (i=1; i<=n; i++) print a[i]}' | grep "fingerprint\|error" | sed 's/[^:]*: //; s/^"//; s/"$//; s/\\"/"/g'
 }
 
+SAVIFS=$IFS
 echo check all .*sql entries for fingerprint
-echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
+echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
@@ -105,11 +107,11 @@ done
 
 
 echo check all .*sql entries for fingerprint
-echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
+echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
     getmembers $line > out.txt
-#    echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
@@ -120,7 +122,7 @@ echo '00000000000000000000000000000000' > exp.txt
 grep 'sql","sql": "nonsense"' $logflunziped | while read line ;
 do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -132,17 +134,17 @@ near "nonsense": syntax error
 00000000000000000000000000000000' > exp.txt
 line=`grep '"sql","sql": "nonsense"' $logflunziped`
 getmembers $line > out.txt
-#grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+#grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi
 
 echo check all .*sql entries for fingerprint
-echo 'e95d2065e6ee80006932de9fe9dbbb42' > exp.txt
+echo '00000000000000000000000000000000' > exp.txt
 grep 'sql","sql": "select \* from nonexistent"' $logflunziped | while read line ; 
 do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -151,13 +153,54 @@ done
 echo check the sql parameter now
 echo '1
 no such table: nonexistent
-e95edba146dfbbff622bc2b94f1de9a6' > exp.txt
+00000000000000000000000000000000' > exp.txt
 line=`grep '"sql","sql": "select \* from nonexistent"' $logflunziped`
 getmembers $line > out.txt
-#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi
 
+
+mv $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.2
+
+NKEEP=4
+IFS=$SAVIFS
+
+echo "start db again, make sure that we keep only $((NKEEP+1)) event log files of size ~2000 bytes"
+$DEBUGGER ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+
+waitfordb $DBNAME
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events detailed on')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events keep $NKEEP')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events rollat 4000')"
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1(i int)"
+
+for i in `seq 1 2000` ; do 
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t1 values($i)"
+done
+
+sleep 3
+
+COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+
+find $TESTDIR/var/log/cdb2/ | grep $DBNAME | grep '.events.' > logfls.txt
+echo logfls
+cat logfls.txt
+
+logflcnt=$(wc -l logfls.txt | cut -f1 -d' ')
+
+echo make sure we have $((NKEEP+1)) as per the lrl option
+assertres $logflcnt $((NKEEP+1))
+
+echo "make sure string 'insert into t1 values(2000)' is in the last 2 eventlog files:"
+cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
+echo lastfls 
+cat lastfls.txt
+
+res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep -c '"type": "sql"')
+assertres $res 1
 
 exit 0

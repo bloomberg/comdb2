@@ -8,6 +8,9 @@ TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
+elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 10 + 2))m
 fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
@@ -23,10 +26,11 @@ export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
 source $TESTSROOTDIR/setup.common
 export PATH="${paths}/:${PATH}"
 export pmux_port=${PMUXPORT:-5105}  # assign to 5105 if it was not set as a make parameter
+TEST_LOG=${TESTDIR}/test.log
 successful=0
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
-echo Starting $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+echo Starting $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 mkdir -p ${TESTDIR}/logs/
 
 call_unsetup() {
@@ -96,6 +100,7 @@ find_cores() {
         echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
         ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
         which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
         ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
         echo $cr # this is the return value of the function
         echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
@@ -120,6 +125,7 @@ find_cores() {
             echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
             cp ${cr} $LCLDBDIR
             which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
             ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
             echo $cr # this is the return value of the function
             echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
@@ -152,6 +158,7 @@ find_cores() {
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
                 echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
                 echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
+                echo 't a a bt full' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace_long.$node.txt
                 ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
                 echo "    see $LCLDBDIR/core_stacktrace.$node.txt"
             fi
@@ -181,13 +188,12 @@ call_setup() {
 
 
     if [[ -n "$cr" ]] ; then
-        echo "!$TESTCASE: setup failed with core dumped ($cr)"
-        echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
         call_unsetup
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
-        echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TEST_LOG}
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
         sleep 0.1
@@ -220,20 +226,45 @@ check_db_at_finish() {
     done
 }
 
+verify_db_at_finish() {
+    local LCLDBNM="$1"
+    local LCLCONFIG="$2"
+    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+
+    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select * from comdb2_tables')
+    for t in $tables ; do 
+        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
+        if ! grep "Verify succeeded." verify.out > /dev/null ; then
+            echo "Table $t"
+            return
+        fi
+    done
+}
 
 
 # start the testing: setup, runit, check cores, unsetup
 
 call_setup
 
-echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo "!$TESTCASE: started running with timeout ${TEST_TIMEOUT} at $DATETIME"
+
+if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+    callgrind_control -i on
+fi
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+rc=${PIPESTATUS[0]}
+
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo "!$TESTCASE: finished running with timeout ${TEST_TIMEOUT} at $DATETIME"
 
 # get the return code from the first phase of the pipe
-rc=${PIPESTATUS[0]}
 sleep 1
 
+if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+    callgrind_control -i off
+fi
 
 cr=`find_cores ${DBNAME} $DBDIR`
 
@@ -241,7 +272,9 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
-if [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
+if [[ -n "$cr" ]] ; then
+    CHECK_DB_AT_FINISH=0
+elif [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
    if [[ "$COMDB2_UNITTEST" != 1 ]] ; then
        CHECK_DB_AT_FINISH=1
    else
@@ -257,27 +290,34 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
         dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
+
+    if [[ -z "$dbdown" ]] ; then
+        verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
+        if [[ -z "$verify_ret" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+            verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
+        fi
+    fi
 fi
 
 
 
 if [[ -n "$cr" ]] ; then
-    echo "!$TESTCASE: failed with core dumped ($cr)"
-    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed with core dumped ($cr)" | tee -a ${TEST_LOG}
 elif [[ -n "$dbdown" ]] ; then
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown)"
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
+elif [[ -n "$verify_ret" ]] ; then
+    echo "!$TESTCASE: failed verify ($verify_ret)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then
     echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 
 trap - INT EXIT
@@ -285,7 +325,7 @@ trap - INT EXIT
 call_unsetup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
-echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
 exit $rc

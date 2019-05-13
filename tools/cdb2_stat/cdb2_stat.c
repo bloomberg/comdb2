@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -1058,11 +1058,12 @@ txn_stats(dbenv, flags)
 	    "No checkpoint LSN." : "File/offset for last checkpoint LSN.";
 	printf("%lu/%lu\t%s\n",
 	    (u_long)sp->st_last_ckp.file, (u_long)sp->st_last_ckp.offset, p);
+    char my_buf[30];
 	if (sp->st_time_ckp == 0)
 		printf("0\tNo checkpoint timestamp.\n");
 	else
 		printf("%.24s\tCheckpoint timestamp.\n",
-		    ctime(&sp->st_time_ckp));
+		    ctime_r(&sp->st_time_ckp, my_buf));
 	printf("%lx\tLast transaction ID allocated.\n",
 	    (u_long)sp->st_last_txnid);
 	dl("Maximum number of active transactions configured.\n",

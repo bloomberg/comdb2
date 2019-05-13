@@ -31,9 +31,6 @@
 
 #include <uuid/uuid.h>
 
-int gbl_osql_sess_max_retries =
-    10; /* set how many times we are willing to retry a session */
-
 static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
 static int clear_messages(osql_sess_t *sess);
@@ -297,9 +294,6 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
 
     sess->completed = rqid;
     comdb2uuidcpy(sess->completed_uuid, uuid);
-    if (sess->terminate != OSQL_TERMINATE) {
-        osql_bplog_session_is_done(sess->iq);
-    }
     Pthread_mutex_unlock(&sess->completed_lock);
 
     return 0;
@@ -389,7 +383,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
  * if this is still in progress
  *
  */
-int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
+int osql_sess_test_slow(osql_sess_t *sess)
 {
     int rc = 0;
     time_t crttime = time(NULL);
@@ -404,9 +398,6 @@ int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
                     __func__, (unsigned long long)sess->rqid,
                     comdb2uuidstr(sess->uuid, us), sess->offhost);
             sess->terminate = OSQL_TERMINATE;
-
-            /* wake up the block processor */
-            rc = osql_bplog_signal(tran);
 
             if (bdb_lock_desired(thedb->bdb_env))
                 return ERR_NOMASTER;
@@ -437,8 +428,8 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %u rtrs %u \"%s\"\n",
-                sess->rqid, sess->offhost, sess->end - sess->initstart,
+    reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %ld rtrs %u \"%s\"\n",
+                sess->rqid, sess->offhost, (long)sess->end - sess->initstart,
                 sess->retries, (sess->sql) ? sess->sql : "()");
 }
 
@@ -620,9 +611,6 @@ int osql_session_testterminate(void *obj, void *arg)
         Pthread_mutex_lock(&sess->completed_lock);
         sess->terminate = OSQL_TERMINATE;
         if (!sess->completed) {
-            if (sess->iq)
-                osql_bplog_session_is_done(sess->iq);
-
             /* NOTE: here we have to do a bit more;
                if this is a sorese transaction, transaction
                has not received done yet, chances are
@@ -632,10 +620,6 @@ int osql_session_testterminate(void *obj, void *arg)
             need_clean = osql_session_is_sorese(sess);
         }
         Pthread_mutex_unlock(&sess->completed_lock);
-
-        /* this request might be waiting to be dispatched */
-        if (sess->iq)
-            osql_bplog_signal(sess->iq->blocksql_tran);
 
         /* wake up the block processor waiting for this request */
 
@@ -681,12 +665,7 @@ int osql_session_testterminate(void *obj, void *arg)
 #endif
 
             /* no one will work on this; need to clear it */
-            rc = osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
-            /* NOTE: sess is clear here! */
-            if (rc) {
-                fprintf(stderr, "%s: error in bplog_free rc=%d\n", __func__,
-                        rc);
-            }
+            osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
         }
     }
     return 0;
@@ -694,8 +673,6 @@ int osql_session_testterminate(void *obj, void *arg)
 
 static int osql_poke_replicant(osql_sess_t *sess)
 {
-
-    int rc = 0;
     uuidstr_t us;
 
     ctrace("Poking %s from %s for rqid %llx %s\n", sess->offhost, gbl_mynode,
@@ -703,39 +680,25 @@ static int osql_poke_replicant(osql_sess_t *sess)
 
     if (sess->offhost) {
 
-        rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
-                                 NET_OSQL_POKE);
-
+        int rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
+                                     NET_OSQL_POKE);
         return rc;
     }
 
     /* checkup local listings */
-    if ((rc = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1)) ==
-        0) {
+    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
 
-        if (!sess->xerr.errval) {
-            /* ideally this should never happen, i.e.
-               a local request should be either dispatch
-               successfully or reported as failure, not disappear
-               JIC, here we mark it MIA
-             */
-            uuidstr_t us;
-            sess->xerr.errval = OSQL_NOOSQLTHR;
-            snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
-                     "Missing sql session %llx %s in local mode", sess->rqid,
-                     comdb2uuidstr(sess->uuid, us));
-            rc = -1;
-        }
+    if (found || sess->xerr.errval)
+        return 0;
 
-        /* TODO: clean this up -- this does nothing */
-        /* Decrement throttle for retry */
-        osql_bplog_session_is_done(sess->iq);
-
-    } else if (rc == 1) {
-        rc = 0; /* session exists */
-    }
-
-    return rc;
+    /* ideally this should never happen, i.e.  a local request should be
+     * either dispatch successfully or reported as failure, not disappear
+     * JIC, here we mark it MIA */
+    sess->xerr.errval = OSQL_NOOSQLTHR;
+    snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
+             "Missing sql session %llx %s in local mode", sess->rqid,
+             comdb2uuidstr(sess->uuid, us));
+    return -1;
 }
 
 /**
@@ -766,17 +729,23 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
-    fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,
-            comdb2uuidstr(uuid, us));
+    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
+           comdb2uuidstr(uuid, us));
 #endif
 
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
-        fprintf(stderr, "%s:unable to allocate %zu bytes\n", __func__,
-                sizeof(*sess));
+        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
+               sizeof(*sess));
         return NULL;
     }
+#if DEBUG_REORDER
+    uuidstr_t us;
+    comdb2uuidstr(uuid, us);
+    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
+           sql, sess, us);
+#endif
 
     /* init sync fields */
     Pthread_mutex_init(&sess->clients_mtx, NULL);
@@ -849,6 +818,7 @@ int osql_sess_type(osql_sess_t *sess) { return sess->type; }
 
 int osql_sess_queryid(osql_sess_t *sess) { return sess->queryid; }
 
+// get sess->uuid into uuid as destination
 void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
 {
     comdb2uuidcpy(uuid, sess->uuid);
@@ -917,10 +887,6 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 {
     int rc = 0;
     sess->terminate = OSQL_TERMINATE;
-    if (sess->iq) {
-        osql_bplog_session_is_done(sess->iq);
-        osql_bplog_signal(sess->iq->blocksql_tran);
-    }
     rc = osql_repository_rem(sess, 0, __func__, NULL,
                              __LINE__); /* already have exclusive lock */
     if (rc) {
@@ -932,12 +898,7 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 
     assert(!sess->completed && !sess->dispatched);
     /* no one will work on this; need to clear it */
-    rc = osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
-    /* NOTE: sess is clear here! */
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error in bplog_free rc=%d\n", __func__, rc);
-    }
-
+    osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
     return rc;
 }
 

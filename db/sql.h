@@ -60,14 +60,28 @@ enum transaction_level {
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
+struct fingerprint_track {
+    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    int64_t count;   /* Cumulative number of times executed */
+    int64_t cost;    /* Cumulative cost */
+    int64_t time;    /* Cumulative execution time */
+    int64_t rows;    /* Cumulative number of rows selected */
+    char *zNormSql;  /* The normalized SQL query */
+    size_t nNormSql; /* Length of normalized SQL query */
+};
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    char fingerprint[FINGERPRINTSZ];
     //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
+
+struct sql_authorizer_state {
+    int denyDdl;                       /* non-zero if DDL is forbidden */
+    int numDdls;                       /* number of DDL statements found */
+};
 
 /* Thread specific sql state */
 struct sqlthdstate {
@@ -75,6 +89,7 @@ struct sqlthdstate {
     struct sql_thread *sqlthd;
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
+    struct sql_authorizer_state authState; /* SQL authorizer state info */
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
@@ -85,7 +100,6 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
-    int started_backend;
 };
 
 typedef struct osqltimings {
@@ -175,6 +189,9 @@ typedef struct osqlstate {
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
     bool is_reorder_on : 1;
+
+    /* set to 1 if we have already called osql_sock_start in socksql mode */
+    bool sock_started : 1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -231,7 +248,6 @@ typedef struct sqlclntstate_fdb {
     int trim_keylen; /* lenght of the trim key */
     fdb_access_t *access; /* access control */
     int version;          /* version of the remote-cached object */
-    errstat_t err;        /* remote execution specific error */
     char *dbname;  /* if err is set, this indicate which fdb is responsible, if
                       any */
     char *tblname; /* if err is set, this indicate which tablename is
@@ -343,6 +359,7 @@ typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *
 typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
+typedef int(override_type_func)(struct sqlclntstate *, int);
 
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -363,6 +380,7 @@ struct plugin_callbacks {
 
     // run_statement_typed
     plugin_func *override_count; /* newsql_override_count */
+    override_type_func *override_type; /* newsql_override_type */
 
     plugin_func *has_cnonce; /* newsql_has_cnonce */
     plugin_func *set_cnonce; /* newsql_set_cnonce */
@@ -421,6 +439,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, param_index);                         \
         make_plugin_callback(clnt, name, param_value);                         \
         make_plugin_callback(clnt, name, override_count);                      \
+        make_plugin_callback(clnt, name, override_type);                       \
         make_plugin_callback(clnt, name, has_cnonce);                          \
         make_plugin_callback(clnt, name, set_cnonce);                          \
         make_plugin_callback(clnt, name, clr_cnonce);                          \
@@ -457,6 +476,7 @@ int param_count(struct sqlclntstate *);
 int param_index(struct sqlclntstate *, const char *, int64_t *);
 int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
+int override_type(struct sqlclntstate *, int);
 int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
 int has_parallel_sql(struct sqlclntstate *);
@@ -494,6 +514,7 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
+    char *zNormSql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -553,6 +574,8 @@ struct sqlclntstate {
     struct spversion_t spversion;
     int n_lua_stmt;
     int max_lua_stmt;
+    pthread_mutex_t *temp_table_mtx; /* for "sp.c" temp table subsystem */
+    int own_temp_table_mtx; /* this client should free temp_table_mtx */
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
@@ -568,6 +591,7 @@ struct sqlclntstate {
 
     struct query_effects effects;
     struct query_effects log_effects;
+    int64_t nsteps;
 
     int have_user;
     char user[MAX_USERNAME_LEN];
@@ -576,6 +600,8 @@ struct sqlclntstate {
 
     int have_password;
     char password[MAX_PASSWORD_LEN];
+
+    int authgen;
 
     int no_transaction;
 
@@ -596,9 +622,12 @@ struct sqlclntstate {
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
+    int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
+    int step_rc;    /* last value returned from sqlite3_step() */
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
+    int prepare_only;
     int verify_retries; /* how many verify retries we've borne */
     int verifyretry_off;
     int pageordertablescan;
@@ -672,7 +701,6 @@ struct sqlclntstate {
     uint8_t queue_me;
     uint8_t fail_dispatch;
 
-    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 
@@ -708,6 +736,8 @@ struct sqlclntstate {
     pthread_t recover_deadlock_thd;
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
+    struct sqlthdstate *thd;
+    int had_lease_at_begin;
 };
 
 /* Query stats. */
@@ -722,15 +752,6 @@ struct query_path_component {
     LINKC_T(struct query_path_component) lnk;
 };
 
-struct temptable {
-    struct temp_cursor *cursor;
-    struct temp_table *tbl;
-    int flags;
-    char *name;
-    Btree *owner;
-    pthread_mutex_t *lk;
-};
-
 struct Btree {
     /* for debugging */
     int btreeid;
@@ -742,10 +763,11 @@ struct Btree {
 
     /* temp table stuff */
     int is_temporary;
-    /* number and array of temp tables under this btree (generally 1) */
-    int num_temp_tables;
-    struct temptable *temp_tables;
-    int tempid;
+
+    /* hash table of temp tables, keyed on root page number and its mutex */
+    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
+    Hash temp_tables;
+    int next_temp_root_pg;
 
     int is_hashtable;
 
@@ -939,6 +961,7 @@ struct sql_thread {
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
+    int selective_rootpages;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 
@@ -1024,8 +1047,10 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
-void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
+void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
+                      int rootpg);
+void sqlengine_setup_temp_table_mtx(struct sqlclntstate *);
+void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
@@ -1043,17 +1068,24 @@ enum cache_status {
     CACHE_FOUND_STMT = 2,
     CACHE_FOUND_STR = 4,
 };
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_DDL = 2,
+    PREPARE_IGNORE_ERR = 4
+};
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *);
+                      struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *);
+                               struct sql_state *, struct errstat *, int);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
@@ -1072,6 +1104,10 @@ int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
+int sqlite3_is_success(int);
+int sqlite3_is_prepare_only(struct sqlclntstate *);
+int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
+int sqlite3_can_get_column_type_and_data(struct sqlclntstate *, sqlite3_stmt *);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
     ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -1099,5 +1135,11 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
+                     struct reqlogger *);
+
+long long run_sql_return_ll(const char *query, struct errstat *err);
+long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
+                                struct errstat *err);
 
 #endif

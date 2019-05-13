@@ -420,7 +420,7 @@ constraints
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons1', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(name='mycons2', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='mycons2', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (csc2='
 	tag ondisk {
@@ -586,5 +586,112 @@ tag "tag1"
 		blob alltypes_blob_2 
 		vutf8 alltypes_vutf8_1 
 		vutf8 alltypes_vutf8_2[16] 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 0 null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 0 
+	}
+')
+[ALTER TABLE t1 DROP COLUMN j, ADD COLUMN j int] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+[ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i] failed with rc -3 Table must have at least one column.
+[ALTER TABLE t1 ALTER COLUMN i] failed with rc -3 incomplete input
+[ALTER TABLE t1 ALTER COLUMN ii] failed with rc -3 incomplete input
+[ALTER TABLE t1 ALTER COLUMN ii INT] failed with rc -3 near "INT": syntax error
+[ALTER TABLE t1 ALTER COLUMN ii TYPE INT] failed with rc -3 Column 'ii' not found.
+[ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i, ADD COLUMN i INT] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+(csc2='schema
+	{
+		short i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+[ALTER TABLE t1 ALTER ADD j INT, ALTER COLUMN j TYPE SHORT] failed with rc -3 near "j": syntax error
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 1000 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 1000 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+		dup "$KEY_934DF3B1" = j 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
+	}
+')
+(csc2='schema
+	{
+		vutf8 json[128] null = yes 
+		cstring v[10] null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_4084D7CF" = (int)" json_extract ( json, '$.a' ) " 
+		uniqnulls "$KEY_E1DFD69F" = (cstring[10])" json_extract ( json, '$.b' ) " 
+		uniqnulls "IDX1" = (cstring[10])"( v || 'aaa' )" 
+		dup "IDX2" = (cstring[10])"( v || 'aaa' )" 
+		dup "idx3" = (cstring[10])"( v || '\"aaa\"' )" 
 	}
 ')

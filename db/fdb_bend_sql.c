@@ -248,22 +248,32 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         strbuf_append(new_sql, ");");
 
     len = strlen(strbuf_buf(new_sql));
-    if (pMem->zMalloc == pMem->z) {
-        pMem->zMalloc = pMem->z =
-            sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
-        pMem->szMalloc = pMem->n = len;
-    } else {
-        pMem->z = sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
-        pMem->n = len;
-    }
-    if (!pMem->z) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
-    } else {
-        memcpy(pMem->z, strbuf_buf(new_sql), len);
+    sqlite3 *sqldb = stmt ? ((Vdbe *)stmt)->db : 0;
+    char *zNew = sqlite3DbMallocWithMutex(sqldb, len, 1);
+
+    if (zNew) {
+        memcpy(zNew, strbuf_buf(new_sql), len);
         /*
-        pMem->z[pMem->n-2] ='\0';
-        pMem->z[pMem->n-1] ='\0';
+        zNew[len-2] ='\0';
+        zNew[len-1] ='\0';
         */
+        if (pMem->zMalloc == pMem->z) {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->zMalloc);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
+            pMem->zMalloc = pMem->z = zNew;
+            pMem->szMalloc = pMem->n = len;
+        } else {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->z);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
+            pMem->z = zNew;
+            pMem->n = len;
+        }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
     }
 
     /*
@@ -299,11 +309,25 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
                         struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *clnt = NULL;
+    unsigned long long rqid;
     int rc = 0;
 
-    assert(seq == 0);
+    *pclnt = NULL;
 
-    *pclnt = clnt = malloc(sizeof(struct sqlclntstate));
+    /* A malicious user could set seq to anything. */
+    if (seq != 0) {
+        logmsg(LOGMSG_ERROR, "%s: unexpected sequence number %d\n", __func__,
+               seq);
+        return -1;
+    }
+
+    memcpy(&rqid, tid, sizeof(clnt->osql.rqid));
+    if (isuuid == 0 && rqid == 0) {
+        logmsg(LOGMSG_ERROR, "%s: invalid rqid\n", __func__);
+        return -1;
+    }
+
+    *pclnt = clnt = calloc(1, sizeof(struct sqlclntstate));
     if (!clnt) {
         return -1;
     }
@@ -325,15 +349,17 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else
-        memcpy(&clnt->osql.rqid, tid, sizeof(clnt->osql.rqid));
+        clnt->osql.rqid = rqid;
+
     if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
         logmsg(LOGMSG_ERROR, "%s: unable to register blocksql thread %llx\n",
                 __func__, clnt->osql.rqid);
     }
 
-    rc = initialize_shadow_trans(clnt, thd);
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+        return rc;
 
-    return rc;
+    return osql_sock_start_deferred(clnt);
 }
 
 /**
@@ -601,9 +627,17 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
     /* retrieve the table involved */
     if (tblname) {
         pCur->db = get_dbtable_by_name(tblname);
+        if (pCur->db == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: invalid table %s?\n", __func__, tblname);
+            return NULL;
+        }
         pCur->ixnum = -1;
     } else {
         pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+        if (pCur->db == NULL) {
+            logmsg(LOGMSG_ERROR, "%s failed\n", __func__);
+            return NULL;
+        }
     }
     pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
 

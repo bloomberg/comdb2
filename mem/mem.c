@@ -107,6 +107,11 @@
 #define COMDB2MA_MEMCHK(m, sz)
 #endif
 
+
+#if defined(M_TRIM_THRESHOLD)
+extern int malloc_trim (size_t pad);
+#endif
+
 // macros$
 
 static comdb2ma COMDB2_STATIC_MAS[COMDB2MA_COUNT];
@@ -581,7 +586,7 @@ int comdb2ma_nice(int niceness)
             if (root.mspace_max == INT_MAX)
                 mallopt(M_ARENA_MAX, 1);
             else {
-                narena = root.mspace_max >> niceness - NICE_MODERATE;
+                narena = root.mspace_max >> (niceness - NICE_MODERATE);
                 mallopt(M_ARENA_MAX, narena == 0 ? 1 : narena);
             }
         }
@@ -640,7 +645,6 @@ int comdb2ma_release(void)
 #if defined(M_GRANULARITY)
 #error "The function must be defined after comdb2ma_nice."
 #elif defined(M_TRIM_THRESHOLD)
-    extern int malloc_trim (size_t pad);
     malloc_trim(0);
 #endif
 #endif
@@ -1129,8 +1133,7 @@ char *comdb2_strndup_static(int indx, const char *s, size_t n)
 
 struct mallinfo comdb2_mallinfo_static(int indx)
 {
-    struct mallinfo empty = {0};
-    STATIC_RANGE_CHECK(indx, empty);
+    STATIC_RANGE_CHECK(indx, (struct mallinfo){0});
     return comdb2_mallinfo(get_area(indx));
 }
 
@@ -2795,6 +2798,27 @@ void comdb2_bfree(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 1); }
 void comdb2_bfree_nl(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 0); }
 /* } free */
 /* } COMDB2 BLOCKING MEMORY ALLOCATOR */
+#else /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
+int comdb2bma_pass_priority_back(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
+{
+    return 0;
+}
+int comdb2bma_yield_all(void)
+{
+    return 0;
+}
+int comdb2bma_mark_locked(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_mark_unlocked(comdb2bma ma)
+{
+    return 0;
+}
 #endif /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */

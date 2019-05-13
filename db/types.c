@@ -4026,7 +4026,7 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
     }
 
     float from_4 = 0;
-    double from_8;
+    double from_8 = 0;
 
     unsigned long to_4;
     unsigned long long to_8;
@@ -4176,7 +4176,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
-    if (inlen > outlen - 1) {
+    if ((unsigned int)inlen > (unsigned int)outlen - 1) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
             inlen = outlen - 1;
         } else {
@@ -4188,7 +4188,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     memset(out + inlen, 0, outlen - inlen);
     *outdtsz = inlen;
 
-    if (olen > outlen - 1) {
+    if ((unsigned int)olen > (unsigned int)outlen - 1) {
         // Can't just set truncate bit
         // 1. aaa
         // 2. zzz
@@ -9480,7 +9480,7 @@ static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9530,7 +9530,7 @@ static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order OUT:\n");
-        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (const char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9577,7 +9577,7 @@ static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9681,7 +9681,7 @@ static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order out (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9698,7 +9698,7 @@ static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9750,7 +9750,7 @@ static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order OUT:\n");
-        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9768,7 +9768,7 @@ static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9860,7 +9860,7 @@ static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order out (exponent %d %x):\n",
                 *exponent, *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9904,7 +9904,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
     if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
         logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n",
                 __func__, exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec32, sizeof(*pdec32));
+        hexdump(LOGMSG_USER, (const char *)pdec32, sizeof(*pdec32));
         logmsg(LOGMSG_USER, "\n");
         exponent ^= 0x080;
     }
@@ -9942,7 +9942,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
             comdb2_int2 tmp;
             logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n",
                     __func__, exponent);
-            hexdump(LOGMSG_ERROR, (unsigned char *)pdec64, sizeof(*pdec64));
+            hexdump(LOGMSG_ERROR, (const char *)pdec64, sizeof(*pdec64));
             logmsg(LOGMSG_ERROR, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -9982,7 +9982,7 @@ static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
             comdb2_int2 tmp;
             logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n",
                     __func__, exponent);
-            hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+            hexdump(LOGMSG_USER, (const char *)pdec128, sizeof(*pdec128));
             logmsg(LOGMSG_USER, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -12183,7 +12183,6 @@ static TYPES_INLINE int SERVER_INTVDSUS_to_SERVER_INTVDS(S2S_FUNKY_ARGS)
         intv_dsus, INTVDSUS, 6, usec, unsigned int, /* from */
         intv_ds, INTVDS, 3, msec, unsigned short /* to   */);
 }
-/*FIXME TODO XXX*/
 
 static TYPES_INLINE int SERVER_BCSTR_to_SERVER_VUTF8(S2S_FUNKY_ARGS)
 {

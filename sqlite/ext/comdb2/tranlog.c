@@ -24,6 +24,7 @@
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
 #include "comdb2systbl.h"
+#include "parse_lsn.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -123,7 +124,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
   struct sql_thread *thd = NULL;
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   DB_LSN durable_lsn = {0};
-  int durable_gen=0, rc, getflags;
+  uint32_t durable_gen=0, rc, getflags;
   bdb_state_type *bdb_state = thedb->bdb_env;
 
   if (pCur->notDurable || pCur->hitLast)
@@ -136,6 +137,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                   __func__, __LINE__, rc);
           return SQLITE_INTERNAL;
       }
+      pCur->logc->setflags(pCur->logc, DB_LOG_SILENT_ERR);
       pCur->openCursor = 1;
       pCur->data.flags = DB_DBT_REALLOC;
 
@@ -197,7 +199,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       } while (1);
   }
 
-  if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
+  if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags)) != 0) {
       if (getflags != DB_NEXT && getflags != DB_PREV) {
           return SQLITE_INTERNAL;
       }
@@ -222,7 +224,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                   if (sleepms > 10000)
                       sleepms = 10000;
               }
-          } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
+          } while ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT)));
           rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
                   &pCur->data, DB_NEXT) != 0;
       } else {
@@ -242,48 +244,13 @@ static inline void tranlog_lsn_to_str(char *st, DB_LSN *lsn)
     sprintf(st, "{%d:%d}", lsn->file, lsn->offset);
 }
 
-static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
+static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
 {
-    const char *p = lsnstr;
-    int file, offset;
-    while (*p != '\0' && *p == ' ') p++;
-    skipws(p);
+    unsigned int file, offset;
 
-    /* Parse opening '{' */
-    if (*p != '{')
+    if (char_to_lsn((char *)lsnstr, &file, &offset)) {
         return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse file */
-    file = atoi(p);
-    while( isnum(p) )
-        p++;
-    skipws(p);
-    if ( *p != ':' )
-        return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse offset */
-    offset = atoi(p);
-    while( isnum(p) )
-        p++;
-
-    skipws(p);
-
-    /* Parse closing '}' */
-    if (*p != '}')
-        return -1;
-    p++;
-
-    skipws(p);
-    if (*p != '\0')
-        return -1;
+    }
 
     lsn->file = file;
     lsn->offset = offset;
@@ -337,6 +304,41 @@ static u_int32_t get_generation_from_ckp_record(char *data)
     u_int32_t generation;
     LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
     return generation;
+}
+
+u_int64_t get_timestamp_from_matchable_record(char *data)
+{
+    u_int32_t rectype = 0;
+    u_int32_t dood = 0;
+    if (data)
+    {
+        LOGCOPY_32(&rectype, data); 
+        dood = *(uint32_t *)(data);
+        logmsg(LOGMSG_DEBUG, "%s rec: %u, dood: %u\n", __func__, rectype,
+                dood);
+    }
+    else
+    {
+        logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
+    }
+
+    if (rectype == DB___txn_regop_gen){
+        return get_timestamp_from_regop_gen_record(data);
+    }
+
+    if (rectype == DB___txn_regop_rowlocks) {
+        return get_timestamp_from_regop_rowlocks_record(data);
+    }
+
+    if (rectype == DB___txn_regop) {
+        return get_timestamp_from_regop_record(data);
+    }
+
+    if (rectype == DB___txn_ckp) {
+        return get_timestamp_from_ckp_record(data);
+    }
+
+    return -1;
 }
 
 /*
@@ -482,14 +484,14 @@ static int tranlogFilter(
 
   bzero(&pCur->minLsn, sizeof(pCur->minLsn));
   if( idxNum & 1 ){
-    const char *minLsn = sqlite3_value_text(argv[i++]);
+    const unsigned char *minLsn = sqlite3_value_text(argv[i++]);
     if (minLsn && parse_lsn(minLsn, &pCur->minLsn)) {
         return SQLITE_CONV_ERROR;
     }
   }
   bzero(&pCur->maxLsn, sizeof(pCur->maxLsn));
   if( idxNum & 2 ){
-    const char *maxLsn = sqlite3_value_text(argv[i++]);
+    const unsigned char *maxLsn = sqlite3_value_text(argv[i++]);
     if (maxLsn && parse_lsn(maxLsn, &pCur->maxLsn)) {
         return SQLITE_CONV_ERROR;
     }
@@ -565,26 +567,30 @@ static int tranlogBestIndex(
 ** generate_series virtual table.
 */
 sqlite3_module systblTransactionLogsModule = {
-  0,                         /* iVersion */
-  0,                         /* xCreate */
-  tranlogConnect,            /* xConnect */
-  tranlogBestIndex,          /* xBestIndex */
-  tranlogDisconnect,         /* xDisconnect */
-  0,                         /* xDestroy */
-  tranlogOpen,               /* xOpen - open a cursor */
-  tranlogClose,              /* xClose - close a cursor */
-  tranlogFilter,             /* xFilter - configure scan constraints */
-  tranlogNext,               /* xNext - advance a cursor */
-  tranlogEof,                /* xEof - check for end of scan */
-  tranlogColumn,             /* xColumn - read data */
-  tranlogRowid,              /* xRowid - read data */
-  0,                         /* xUpdate */
-  0,                         /* xBegin */
-  0,                         /* xSync */
-  0,                         /* xCommit */
-  0,                         /* xRollback */
-  0,                         /* xFindMethod */
-  0,                         /* xRename */
+  0,                 /* iVersion */
+  0,                 /* xCreate */
+  tranlogConnect,    /* xConnect */
+  tranlogBestIndex,  /* xBestIndex */
+  tranlogDisconnect, /* xDisconnect */
+  0,                 /* xDestroy */
+  tranlogOpen,       /* xOpen - open a cursor */
+  tranlogClose,      /* xClose - close a cursor */
+  tranlogFilter,     /* xFilter - configure scan constraints */
+  tranlogNext,       /* xNext - advance a cursor */
+  tranlogEof,        /* xEof - check for end of scan */
+  tranlogColumn,     /* xColumn - read data */
+  tranlogRowid,      /* xRowid - read data */
+  0,                 /* xUpdate */
+  0,                 /* xBegin */
+  0,                 /* xSync */
+  0,                 /* xCommit */
+  0,                 /* xRollback */
+  0,                 /* xFindMethod */
+  0,                 /* xRename */
+  0,                 /* xSavepoint */
+  0,                 /* xRelease */
+  0,                 /* xRollbackTo */
+  0,                 /* xShadowName */
   .access_flag = CDB2_ALLOW_USER
 };
 

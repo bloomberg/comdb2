@@ -113,6 +113,10 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
         if (fld->blob_index == -1)
             sz += fld->len;
         else {
+            rc = unodhfy_blob_buffer(iq->usedb, blobs + fld->blob_index,
+                                     fld->blob_index);
+            if (rc != 0)
+                goto err;
             /* vutf8 and fits in inline portion */
             if (fld->type == CLIENT_VUTF8 &&
                 blobs[fld->blob_index].exists == 0) {
@@ -392,15 +396,12 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     int odsz, clsz;
     int rc;
     int using_newblobs = 0;
-    blob_status_t newblobs[MAXBLOBS] = {0};
+    blob_status_t newblobs[MAXBLOBS] = {{0}};
     uint8_t *lim;
 
     /* NOTE: 80% of this routine is a copy-and-paste job from
      * local_replicant_log_add.
      * One day, when there's nothing better to do, fix that. */
-
-    if (!iq->usedb->do_local_replication)
-        return 0;
 
     if (!iq->usedb->do_local_replication)
         return 0;
@@ -655,7 +656,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     uint8_t buf[OPREC_SIZE] = {0};
     unsigned long long genid = 0;
     struct oprec rec;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct dbtable *db;
     struct ireq aiq;
 
@@ -728,7 +729,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     int err, fix;
     int rrn;
     unsigned long long genid = 0;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct commitrec rec;
 
     struct dbtable *db;

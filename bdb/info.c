@@ -22,7 +22,6 @@
 #include <time.h>
 
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include "net.h"
 #include "bdb_int.h"
@@ -44,7 +43,11 @@
 #include "logmsg.h"
 #include <compat.h>
 
-char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
+extern void __test_last_checkpoint(DB_ENV *dbenv);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
@@ -71,6 +74,7 @@ int __latch_dump_region __P((DB_ENV *, FILE *));
 void __dbenv_heap_dump __P((DB_ENV * dbenv));
 int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
+int __lock_dump_active_locks(DB_ENV *, FILE *);
 int __db_cprint(DB *dbp);
 char *bdb_coherent_state_string(const char *host);
 
@@ -82,6 +86,11 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
 #define prn_statstr(x) logmsgf(LOGMSG_USER, out, #x ": %s\n", stats->x)
 
 extern int gbl_namemangle_loglevel;
+extern int __db_dump_freepages(DB *dbp, FILE *out);
+extern int __memp_dump_region(DB_ENV *dbenv, const char *area, FILE *fp);
+extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz,
+                                      int maxins);
+extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
 static void printf_wrapper(void *userptr, const char *fmt, ...)
 {
@@ -436,7 +445,6 @@ static char *genid_format_str(int format)
 void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state)
 {
-    extern int __db_dump_freepages(DB * dbp, FILE * out);
     if (ixnum == -1 && datafile == -1 && stripe == -1) {
         int ix, df, st;
         for (ix = 0; ix < bdb_state->numix; ix++) {
@@ -1003,7 +1011,7 @@ void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out)
     extern u_int32_t gbl_rep_lockid;
     fprintf(out, "Replication locker: %x\n", gbl_rep_lockid);
 #endif
-    __lock_dump_region_int(bdb_state->dbenv, "o", out, 1);
+    __lock_dump_active_locks(bdb_state->dbenv, out);
 }
 
 void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out)
@@ -1012,8 +1020,6 @@ void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out)
         bdb_state = gbl_bdb_state;
     __lock_dump_region_int(bdb_state->dbenv, "t", out, 0);
 }
-
-extern int __memp_dump_region(DB_ENV *dbenv, const char *area, FILE *fp);
 
 void bdb_dump_cache(bdb_state_type *bdb_state, FILE *out)
 {
@@ -1589,7 +1595,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "temptbltest") == 0) {
         //@send bdb temptbltest 200 1000
         logmsg(LOGMSG_USER, "Testing temp tables\n");
-        extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins);
         int recsz = 20;
         int maxins = 10000;
 
@@ -1712,7 +1717,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "dblist") == 0) {
         __bb_dbreg_print_dblist(bdb_state->dbenv, printf_wrapper, out);
     } else if (tokcmp(tok, ltok, "dbs") == 0) {
-        extern void bdb_dump_table_dbregs(bdb_state_type * bdb_state);
         bdb_dump_table_dbregs(bdb_state);
     }
 #ifdef BERKDB_46
@@ -1820,13 +1824,13 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             free(lsn);
     } else if (tokcmp(tok, ltok, "dumpqext") == 0) {
         int i;
-        bdb_state_type *st;
+        bdb_state_type *chld;
         for (i = 0; i < bdb_state->numchildren; i++) {
-            st = bdb_state->children[i];
-            if (st) {
-                if (st->bdbtype == BDBTYPE_QUEUE) {
-                    logmsgf(LOGMSG_USER, out, "queue %s\n", st->name);
-                    bdb_queue_extent_info(out, st, st->name);
+            chld = bdb_state->children[i];
+            if (chld) {
+                if (chld->bdbtype == BDBTYPE_QUEUE) {
+                    logmsgf(LOGMSG_USER, out, "queue %s\n", chld->name);
+                    bdb_queue_extent_info(out, chld, chld->name);
                 }
             }
         }
@@ -1838,7 +1842,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     } else if (tokcmp(tok, ltok, "curcount") == 0) {
         bdb_dump_cursor_count(bdb_state, out);
     } else if (tokcmp(tok, ltok, "testckp") == 0) {
-        extern void __test_last_checkpoint(DB_ENV * dbenv);
         __test_last_checkpoint(bdb_state->dbenv);
     } else if (tokcmp(tok, ltok, "repworkers") == 0 ||
                tokcmp(tok, ltok, "repprocs") == 0) {
@@ -1867,7 +1870,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgdump(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgdump(bdb_state->dbenv, fileid, pgno);
     } else if (tokcmp(tok, ltok, "pgtrash") == 0) {
         int fileid, pgno;
@@ -1880,7 +1882,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgtrash(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgtrash(bdb_state->dbenv, fileid, pgno);
     } else {
         logmsg(LOGMSG_ERROR, "backend engine unknown cmd <%.*s>. try help\n", ltok,
@@ -1957,7 +1958,6 @@ void all_locks(bdb_state_type *x)
     __lock_dump_region(x->dbenv, parm, stdout);
 }
 
-extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
                                   char *name)

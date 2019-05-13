@@ -322,6 +322,8 @@ static int del_record_prefault(struct ireq *iq, void *primkey,
     rc = enque_pfault_olddata_oldkeys(iq->usedb, genid, blkpos, helper_thread,
                                       seqnum, gbl_prefault_toblock_bcast,
                                       gbl_prefault_toblock_local, flush);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
 
     /* success */
     retrc = 0;

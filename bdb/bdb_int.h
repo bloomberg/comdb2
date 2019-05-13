@@ -253,44 +253,30 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
-#ifdef NEWSI_ASOF_USE_TEMPTABLE
 typedef struct pglogs_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN commit_lsn;
     DB_LSN lsn;
 } pglogs_tmptbl_key;
-typedef struct {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    struct temp_table *tmptbl;
-    struct temp_cursor *tmpcur;
-    pthread_mutex_t mtx;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-} logfile_pglog_hashkey;
 
 typedef struct relinks_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN lsn;
     db_pgno_t inh;
 } relinks_tmptbl_key;
-typedef logfile_pglog_hashkey logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#else
-typedef struct pglogs_logical_key logfile_pglog_hashkey;
-typedef struct pglogs_relink_key logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE                                                  \
-    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
-#endif
-
-#define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
-#define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 
 struct logfile_pglogs_entry {
     u_int32_t filenum;
-    pthread_mutex_t pglogs_mutex;
-    hash_t *pglogs_hashtbl;
-    hash_t *relinks_hashtbl;
+
+    pthread_mutex_t pglogs_lk;
+    struct temp_table *pglogs_tbl;
+    struct temp_cursor *pglogs_cur;
+
+    pthread_mutex_t relinks_lk;
+    struct temp_table *relinks_tbl;
+    struct temp_cursor *relinks_cur;
 };
 
 struct checkpoint_list {
@@ -396,6 +382,8 @@ struct tran_tag {
      */
     unsigned long long startgenid;
 
+    unsigned int trigger_epoch;
+
     /* For logical transactions: a logical transaction may have a (one and
        only one) physical transaction in flight.  Latch it here for debugging
        and sanity checking */
@@ -449,6 +437,11 @@ struct tran_tag {
     int schema_change_txn;
     struct tran_tag *sc_parent_tran;
 
+    /* Set to 1 if this txn touches a logical live sc table */
+    int force_logical_commit;
+    /* Tables that this tran touches (for logical redo sc) */
+    hash_t *dirty_table_hash;
+
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;
     unsigned long long *table_version_cache;
@@ -470,6 +463,7 @@ struct tran_tag {
 
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
+    u_int32_t flags;
 };
 
 struct seqnum_t {
@@ -795,6 +789,12 @@ struct seen_blkseq {
 
 struct temp_table;
 
+struct sc_redo_lsn {
+    DB_LSN lsn;
+    u_int32_t txnid;
+    LINKC_T(struct sc_redo_lsn) lnk;
+};
+
 struct bdb_state_tag {
     pthread_attr_t pthread_attr_detach;
     seqnum_info_type *seqnum_info;
@@ -1019,7 +1019,8 @@ struct bdb_state_tag {
     DB **blkseq[2];
     time_t blkseq_last_roll_time;
     DB_LSN *blkseq_last_lsn[2];
-    LISTC_T(struct seen_blkseq) blkseq_log_list[2];
+    listc_t *blkseq_log_list;
+    int pvt_blkseq_stripes;
     uint32_t genid_format;
 
     /* we keep a per bdb_state copy to enhance locality */
@@ -1030,6 +1031,11 @@ struct bdb_state_tag {
     uint16_t *fld_hints;
 
     int hellofd;
+
+    int logical_live_sc;
+    pthread_mutex_t sc_redo_lk;
+    pthread_cond_t sc_redo_wait;
+    LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
 /* define our net user types */
@@ -1075,7 +1081,8 @@ enum {
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN
+    USER_TYPE_REQ_START_LSN,
+    USER_TYPE_TRUNCATE_LOG
 };
 
 void print(bdb_state_type *bdb_state, char *format, ...);
@@ -1230,7 +1237,7 @@ int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
 int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
                    DBT *data, uint8_t *ver, u_int32_t flags);
 int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
-                 DBT *key, DBT *data, u_int32_t flags);
+                 DBT *key, DBT *data, u_int32_t flags, int odhready);
 
 int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
                   DBT *data, u_int32_t flags);
@@ -1256,6 +1263,11 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
+
+/* This is used by */
+int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
+                         size_t fromlen, void *to, size_t tolen,
+                         struct odh *odh, void **freeptr);
 
 int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
                           size_t fromlen);
@@ -1312,17 +1324,19 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long genid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data);
 int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                tran_type *tran, int dtafile, int dtastripe, DBT *dbt_key,
-               DBT *dbt_data, int flags);
+               DBT *dbt_data, int flags, int odhready);
 
 int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                unsigned long long *newgenid, DB *dbp, tran_type *tran,
                int dtafile, int dtastripe, int participantstripid,
-               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out);
+               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out,
+               int odhready);
 
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
                     unsigned long long oldgenid, unsigned long long newgenid,
                     DB *dbp, tran_type *tran, int dtafile,
-                    int participantstripid, int use_new_genid, DBT *dta);
+                    int participantstripid, int use_new_genid, DBT *dta,
+                    int odhready);
 
 int ll_dta_upd_blob_w_opt(bdb_state_type *bdb_state, int rrn,
                           unsigned long long oldgenid,
@@ -1346,20 +1360,20 @@ int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
                    DB *dbp, tran_type *tran, int dtafile, int dtastripe,
                    DBT *dta);
 
-int add_snapisol_logging(bdb_state_type *bdb_state);
+int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran);
 int phys_key_add(bdb_state_type *bdb_state, tran_type *tran,
                  unsigned long long genid, int ixnum, DBT *dbt_key,
                  DBT *dbt_data);
 int phys_dta_add(bdb_state_type *bdb_state, tran_type *tran,
                  unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
-                 DBT *dbt_key, DBT *dbt_data);
+                 DBT *dbt_key, DBT *dbt_data, int odhready);
 
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
                              tran_type **outtran, int force_commit);
 int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  unsigned long long oldgenid, unsigned long long *newgenid,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
-                 DBT *verify_dta, DBT *dta);
+                 DBT *verify_dta, DBT *dta, int odhready);
 
 int phys_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                  unsigned long long oldgenid, unsigned long long genid,
@@ -1415,8 +1429,6 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 int ll_checkpoint(bdb_state_type *bdb_state, int force);
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn);
-
-int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      unsigned long long tranid, int trak,
@@ -1782,6 +1794,8 @@ uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
                                    uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
@@ -1825,6 +1839,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
 
 void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 struct ack_info_t;
@@ -1875,4 +1890,7 @@ void osql_cleanup_netinfo(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
+int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
+                                  DBT *data, DBT *data2, int updateid,
+                                  void **freeptr, void *stackbuf, int odhready);
 #endif /* __bdb_int_h__ */

@@ -71,6 +71,7 @@
 
 #include "flibc.h"
 #include "logmsg.h"
+#include "analyze.h"
 
 extern volatile int gbl_schema_change_in_progress;
 static double analyze_headroom = 6;
@@ -205,7 +206,9 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     }
     pgsz = dbp->pgsize;
     page = malloc(pgsz);
+#ifndef NDEBUG
     uint8_t *max = (uint8_t *)page + pgsz;
+#endif
     rc = lseek(fd, 0, SEEK_SET);
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't rewind to start of file\n");
@@ -328,7 +331,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             }
         }
 
-        int get_analyze_abort_requested();
         if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
             if (gbl_schema_change_in_progress) 
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "

@@ -975,6 +975,7 @@ int bdb_osql_log_destroy(bdb_osql_log_t *log)
 
     LISTC_FOR_EACH_SAFE(&log->impl->recs, rec, tmp, lnk)
     {
+        listc_rfl(&log->impl->recs, rec);
         if (rec->comprec) {
             if (rec->comprec->table)
                 free(rec->comprec->table);
@@ -1288,7 +1289,7 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "INSERTED DT[%d:%d]:\n\tkeylen=%zu\n\tkey=\"",
                        rec->dbnum, tableid, sizeof(genid));
-                hexdump(LOGMSG_USER, (unsigned char *)&genid, sizeof(genid));
+                hexdump(LOGMSG_USER, (char *)&genid, sizeof(genid));
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtalen);
                 hexdump(LOGMSG_USER, dta, dtalen);
                 logmsg(LOGMSG_USER, "\"\n");
@@ -1338,6 +1339,10 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             int newkeylen = dtalen + sizeof(genid);
             char *use_data;
             int use_datalen;
+            if (newkeylen < 0) {
+                logmsg(LOGMSG_WARN, "invalid dtalen %d\n", dtalen);
+                return -1;
+            }
 
             /* index */
             cur =
@@ -1354,6 +1359,11 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             if (bdb_keycontainsgenid(bdb_state, tableid)) {
                 newkeylen -= sizeof(genid);
                 dtalen -= sizeof(genid);
+
+                if (newkeylen < 0 || dtalen < 0) {
+                    logmsg(LOGMSG_WARN, "invalid dtalen %d or keylen %d\n", dtalen, newkeylen);
+                    return -1;
+                }
 
                 /*
                  * For the dup-key case:
@@ -1393,9 +1403,9 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                        rec->dbnum, tableid,
                        (bdb_state->ixdups[tableid]) ? "dupd" : "uniq",
                        newkeylen);
-                hexdump(LOGMSG_USER, (unsigned char *)newkey, newkeylen);
+                hexdump(LOGMSG_USER, newkey, newkeylen);
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", use_datalen);
-                hexdump(LOGMSG_USER, (unsigned char *)use_data, use_datalen);
+                hexdump(LOGMSG_USER, use_data, use_datalen);
                 logmsg(LOGMSG_USER, "\"\n");
             }
 
@@ -1614,6 +1624,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     DBT logdta;
     DB_LSN lsn;
     u_int32_t rectype;
+    u_int32_t txnid = 0;
     bdb_osql_log_t *undolog = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
@@ -1680,6 +1691,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
             free(commit);
             return NULL;
         }
+        txnid = commit->txnid->txnid;
         free(commit);
         commit = NULL;
         goto next;
@@ -2119,6 +2131,8 @@ done:
         return NULL;
     }
 
+    if (undolog)
+        undolog->txnid = txnid;
     return undolog;
 }
 
@@ -3530,7 +3544,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
         /* Reconstruct the delete. */
         rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL,
-                                    0, dtabuf, dtalen, NULL);
+                                    sizeof(genid_t), dtabuf, dtalen, NULL);
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
                 abort();
@@ -3642,6 +3656,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete ix\n", __FILE__,
                     __LINE__);
             free(keybuf);
+            free(dtabuf);
             if (free_ptr)
                 free(free_ptr);
             goto done;
@@ -3657,12 +3672,13 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         if (free_ptr)
             free(free_ptr);
         free(keybuf);
+        free(dtabuf);
     } break;
 
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk: {
         unsigned long long genid;
-        short dtastripe, dtafile;
+        short dtafile;
 
         if (rec->type == DB_llog_undo_add_dta_lk) {
             if (llog_dta) {
@@ -3677,7 +3693,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
             genid = add_dta_lk->genid;
             dtafile = add_dta_lk->dtafile;
-            dtastripe = add_dta_lk->dtastripe;
         } else {
             if (llog_dta) {
                 add_dta = llog_dta;
@@ -3691,7 +3706,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
             genid = add_dta->genid;
             dtafile = add_dta->dtafile;
-            dtastripe = add_dta->dtastripe;
         }
 
         if (dtafile == 0) {
@@ -4115,8 +4129,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
             ptr = dtabuf;
         }
 
-        rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0, ptr,
-                                    del_dta->dtalen, NULL);
+        rc =
+            bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                   sizeof(genid_t), ptr, del_dta->dtalen, NULL);
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
                 abort();
@@ -4168,8 +4183,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
                 bdb_state, lsn, ptr, &updlen, NULL, NULL, &offset, NULL, NULL);
 
         } else {
-            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0,
-                                        ptr, upd_dta->old_dta_len, NULL);
+            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                        sizeof(genid_t), ptr,
+                                        upd_dta->old_dta_len, NULL);
         }
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
@@ -4321,6 +4337,314 @@ int bdb_osql_log_undo_required(tran_type *tran, bdb_osql_log_t *log)
     }
 
     return 0;
+}
+
+extern bdb_state_type *gbl_bdb_state;
+
+static int is_commit(u_int32_t rectype)
+{
+    switch (rectype) {
+    case DB___txn_regop:
+    case DB___txn_regop_gen:
+    case DB___txn_regop_rowlocks:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
+{
+    bdb_state_type *bdb_state = gbl_bdb_state;
+    DB_ENV *dbenv = bdb_state->dbenv;
+    __txn_regop_args *txn_args;
+    __txn_regop_gen_args *txn_gen_args;
+    __txn_regop_rowlocks_args *txn_rl_args;
+    int rc;
+
+    switch (rectype) {
+    case DB___txn_regop:
+        if ((rc = __txn_regop_read(dbenv, data->data, &txn_args)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop read returns %d for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, lsn->file, lsn->offset);
+            return 1;
+        }
+        if (txn_args->opcode != TXN_COMMIT) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop opcode not commit, %d "
+                   "for %d:%d\n",
+                   __func__, __LINE__, txn_args->opcode, lsn->file,
+                   lsn->offset);
+            free(txn_args);
+            return 1;
+        }
+        *lsn = txn_args->prev_lsn;
+        free(txn_args);
+        break;
+
+    case DB___txn_regop_gen:
+        if ((rc = __txn_regop_gen_read(dbenv, data->data, &txn_gen_args)) !=
+            0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop_gen read returns %d for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, lsn->file, lsn->offset);
+            return 1;
+        }
+        if (txn_gen_args->opcode != TXN_COMMIT) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop_gen opcode not commit, "
+                   "%d for %d:%d\n",
+                   __func__, __LINE__, txn_gen_args->opcode, lsn->file,
+                   lsn->offset);
+            free(txn_gen_args);
+            return 1;
+        }
+        *lsn = txn_gen_args->prev_lsn;
+        free(txn_gen_args);
+        break;
+
+    case DB___txn_regop_rowlocks:
+        if ((rc = __txn_regop_rowlocks_read(dbenv, data->data, &txn_rl_args)) !=
+            0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop_rl opcode failed read, "
+                   "%d for %d:%d\n",
+                   __func__, __LINE__, rc, lsn->file, lsn->offset);
+            free(txn_rl_args);
+            return 1;
+        }
+
+        if (txn_rl_args->opcode != TXN_COMMIT ||
+            !(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop_rl opcode not commit, %d"
+                   "for %d:%d\n",
+                   __func__, __LINE__, txn_rl_args->opcode, lsn->file,
+                   lsn->offset);
+            free(txn_rl_args);
+            return 1;
+        }
+        *lsn = txn_rl_args->prev_lsn;
+        free(txn_rl_args);
+        break;
+
+    default:
+        abort();
+    }
+    return 0;
+}
+
+static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
+                                  DBT *data, u_int32_t rectype)
+{
+    bdb_state_type *bdb_state = gbl_bdb_state;
+    int rc, bdberr = 0;
+    DB_LOGC *logc;
+    DB_LSN lsn;
+
+    if ((rc = retrieve_start_lsn(data, rectype, &lsn)) != 0)
+        return rc;
+
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s line %d cannot allocate log-cursor\n",
+               __func__, __LINE__);
+        return -1;
+    }
+
+    if ((pCur->log = parse_log_for_snapisol(bdb_state, logc, &lsn, 0,
+                                            &bdberr)) == NULL) {
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG,
+               "%s line %d parse_log_for_shadows failed for "
+               "%d:%d\n",
+               __func__, __LINE__, lsn.file, lsn.offset);
+#endif
+        logc->close(logc, 0);
+        return 1;
+    }
+
+    logc->close(logc, 0);
+    pCur->subop = -1;
+    return 0;
+}
+
+static int bdb_llog_cursor_move(bdb_llog_cursor *pCur)
+{
+    u_int32_t rectype = 0;
+    int rc = 0;
+
+again:
+    do {
+        if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
+                                  pCur->getflags)) != 0) {
+            pCur->hitLast = 1;
+        } else
+            pCur->hitLast = 0;
+        pCur->getflags = DB_NEXT;
+        if (pCur->data.data)
+            LOGCOPY_32(&rectype, pCur->data.data);
+        else
+            rectype = 0;
+        if (pCur->maxLsn.file > 0 &&
+            log_compare(&pCur->curLsn, &pCur->maxLsn) > 0) {
+            /* traverse upto maxLsn */
+            return 0;
+        }
+    } while (!pCur->hitLast && !is_commit(rectype));
+
+    if (!pCur->hitLast) {
+        /* Can happen if we're missing the beginning of the transaction */
+        switch (rc = create_logical_payload(pCur, pCur->curLsn, &pCur->data,
+                                            rectype)) {
+        /* Reconstructed logical log */
+        case 0:
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d couldn't create payload for %d:%d\n", __func__,
+                   __LINE__, pCur->curLsn.file, pCur->curLsn.offset);
+            assert(pCur->log != NULL);
+#endif
+            break;
+            /* Go to next */
+        case 1:
+            pCur->getflags = DB_NEXT;
+            goto again;
+            break;
+        /* Other error */
+        default:
+            pCur->hitLast = 1;
+            break;
+        }
+    }
+    return 0;
+}
+
+int bdb_llog_cursor_first(bdb_llog_cursor *pCur)
+{
+    if (!pCur->openCursor) {
+        bdb_llog_cursor_open(pCur);
+    } else {
+        if (pCur->data.data) {
+            free(pCur->data.data);
+            pCur->data.data = NULL;
+            pCur->data.size = 0;
+        }
+        if (pCur->log) {
+            bdb_osql_log_destroy(pCur->log);
+            pCur->log = NULL;
+        }
+        if (pCur->minLsn.file == 0) {
+            pCur->getflags = DB_FIRST;
+        } else {
+            pCur->curLsn = pCur->minLsn;
+            pCur->getflags = DB_SET;
+        }
+    }
+
+    return bdb_llog_cursor_move(pCur);
+}
+
+int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
+{
+    int rc = 0;
+    if (!pCur->openCursor) {
+        rc = bdb_llog_cursor_open(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to open llog cursor rc=%d\n",
+                   __func__, __LINE__, rc);
+            return rc;
+        }
+    } else {
+        pCur->getflags = DB_NEXT;
+    }
+
+    return bdb_llog_cursor_move(pCur);
+}
+
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
+{
+    int rc = 0;
+    if (!pCur->openCursor) {
+        rc = bdb_llog_cursor_open(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to open llog cursor rc=%d\n",
+                   __func__, __LINE__, rc);
+            return rc;
+        }
+    }
+
+    pCur->minLsn = *lsn;
+    pCur->curLsn = pCur->minLsn;
+    pCur->getflags = DB_SET;
+
+    return bdb_llog_cursor_move(pCur);
+}
+
+void bdb_llog_cursor_reset(bdb_llog_cursor *pCur)
+{
+    bdb_llog_cursor_close(pCur);
+    bzero(pCur, sizeof(bdb_llog_cursor));
+}
+
+int bdb_llog_cursor_open(bdb_llog_cursor *pCur)
+{
+    bdb_state_type *bdb_state = gbl_bdb_state;
+    int rc = 0;
+    if (pCur->openCursor) {
+        logmsg(LOGMSG_ERROR, "%s:%d trying to reopen active cursor %p\n",
+               __func__, __LINE__, pCur);
+        return -1;
+    }
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0)) !=
+        0) {
+        logmsg(LOGMSG_ERROR, "%s line %d error getting log-cursor rc=%d\n",
+               __func__, __LINE__, rc);
+        return -1;
+    }
+    pCur->openCursor = 1;
+    pCur->data.flags = DB_DBT_REALLOC;
+
+    if (pCur->minLsn.file == 0) {
+        pCur->getflags = DB_FIRST;
+    } else {
+        pCur->curLsn = pCur->minLsn;
+        pCur->getflags = DB_SET;
+    }
+    return 0;
+}
+
+void bdb_llog_cursor_close(bdb_llog_cursor *pCur)
+{
+    if (pCur->logc != NULL) {
+        pCur->logc->close(pCur->logc, 0);
+        pCur->logc = NULL;
+    }
+    pCur->openCursor = 0;
+    if (pCur->data.data) {
+        free(pCur->data.data);
+        pCur->data.data = NULL;
+        pCur->data.size = 0;
+    }
+    if (pCur->log) {
+        bdb_osql_log_destroy(pCur->log);
+        pCur->log = NULL;
+    }
+}
+
+void bdb_llog_cursor_cleanup(bdb_llog_cursor *pCur)
+{
+    if (pCur->data.data) {
+        free(pCur->data.data);
+        pCur->data.data = NULL;
+        pCur->data.size = 0;
+    }
+    if (pCur->log) {
+        bdb_osql_log_destroy(pCur->log);
+        pCur->log = NULL;
+    }
 }
 /*
 vi ts=3:sw=3
