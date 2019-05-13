@@ -1460,15 +1460,15 @@ static int get_host_by_name(const char *comdb2db_name,
                             char comdb2db_hosts[][64], int *num_hosts)
 {
     char tmp[8192];
-    int tmplen = 8192;
+    int tmplen = sizeof(tmp);
     int herr;
     struct hostent hostbuf, *hp = NULL;
-    char dns_name[256];
+    char dns_name[512];
 
     if (cdb2_default_cluster[0] == '\0') {
-        snprintf(dns_name, 256, "%s.%s", comdb2db_name, cdb2_dnssuffix);
+        snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name, cdb2_dnssuffix);
     } else {
-        snprintf(dns_name, 256, "%s-%s.%s", cdb2_default_cluster, comdb2db_name,
+        snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", cdb2_default_cluster, comdb2db_name,
                  cdb2_dnssuffix);
     }
 #ifdef __APPLE__

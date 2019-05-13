@@ -1499,7 +1499,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     struct field *m;
     int offset;
     char altname[MAXTAGLEN];
-    char tmptagname[MAXTAGLEN];
+    char tmptagname[MAXTAGLEN + sizeof(".NEW.")];
     char *where;
     char *expr;
     int rc;
