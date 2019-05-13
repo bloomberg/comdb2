@@ -2212,24 +2212,11 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
     }
 }
 
-static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
+/* try to connect to range from 0 to max starting with begin */
+static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
 {
-    for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
-        int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
-        if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
-            try_node == hndl->connected_host ||
-            hndl->hosts_connected[try_node] == 1)
-            continue;
-        if (newsql_connect(hndl, try_node, 0, 100) == 0)
-            return 0;
-    }
-    return -1;
-}
-
-/* try to connect to range of hosts starting at begin stopping at end */
-static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
-{
-    for (int i = begin; i < end; i++) {
+    for (int j = 0; j < max; j++) {
+        int i = (begin + j) % max;
         hndl->node_seq = i + 1;
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
@@ -2323,7 +2310,8 @@ retry_connect:
         hndl->node_seq =
             getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
-        if (0 == cdb2_try_on_same_room(hndl))
+        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq,
+                                        hndl->num_hosts_sameroom))
             return 0;
     }
 
@@ -2342,11 +2330,7 @@ retry_connect:
         }
     }
 
-    int start_seq = hndl->node_seq;
-    if (0 == cdb2_try_connect_range(hndl, start_seq, hndl->num_hosts))
-        return 0;
-
-    if (0 == cdb2_try_connect_range(hndl, 0, start_seq))
+    if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts))
         return 0;
 
     if (hndl->sb == NULL) {
