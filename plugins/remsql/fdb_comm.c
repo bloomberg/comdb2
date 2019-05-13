@@ -1073,6 +1073,9 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             rc = sbuf2fread((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))
                 return FDB_ERR_WRITE_IO;
+            msg->cc.seq = htonl(tmp);
+        } else {
+            msg->cc.seq = 0;
         }
 
         break;
@@ -1740,7 +1743,7 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int isuuid;
     char prf[512];
 
-    snprintf(prf, sizeof(prf), "%llu%s%s",
+    snprintf(prf, sizeof(prf), "%lx: %llu%s%s", pthread_self(),
              (unsigned long long)gettimeofday_ms(), (prefix) ? " " : "",
              (prefix) ? prefix : "");
     prefix = prf;
@@ -1758,9 +1761,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_COMMIT:
     case FDB_MSG_TRAN_ROLLBACK:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s\n", prefix,
-               __req_2_str(msg->hd.type), *(unsigned long long *)msg->tr.tid,
-               msg->tr.flags, __tran_2_str(msg->tr.lvl));
+        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s seq=%d\n",
+               prefix, __req_2_str(msg->hd.type),
+               *(unsigned long long *)msg->tr.tid, msg->tr.flags,
+               __tran_2_str(msg->tr.lvl), msg->tr.seq);
         break;
 
     case FDB_MSG_TRAN_RC:
@@ -1773,9 +1777,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_CURSOR_OPEN:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
+               "XXXX: %s %llu sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
                "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
-               t, prefix, sb, *(unsigned long long *)msg->co.cid,
+               prefix, t, sb, *(unsigned long long *)msg->co.cid,
                *(unsigned long long *)msg->co.tid, msg->co.flags,
                msg->co.rootpage, msg->co.version, msg->co.seq, msg->co.srcpid,
                (msg->co.srcname) ? msg->co.srcname : "(unknown)");
@@ -1784,46 +1788,47 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_CURSOR_CLOSE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_CLOSE cid=%llx\n", t, prefix,
-               *(unsigned long long *)msg->cc.cid);
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_CLOSE cid=%llx seq=%d\n",
+               prefix, t, *(unsigned long long *)msg->cc.cid, msg->cc.seq);
         break;
 
     case FDB_MSG_CURSOR_FIRST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_FIRST cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_FIRST cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_LAST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_LAST cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_LAST cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_NEXT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_NEXT cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_NEXT cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_PREV:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_PREV cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_PREV cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_DATA_ROW:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s DATA_ROW cid=%llx rc=%d genid=%llx "
-                            "datalen=%d datacpylen=%d\n",
-               t, prefix, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu DATA_ROW cid=%llx rc=%d genid=%llx "
+               "datalen=%d datacpylen=%d\n",
+               prefix, t, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
                msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
         break;
 
     case FDB_MSG_CURSOR_FIND:
     case FDB_MSG_CURSOR_FIND_LAST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s %s cid=%llx key[%d]=\"", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu %s cid=%llx key[%d]=\"", prefix, t,
                (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
                                                      : "CURSOR_FIND_LAST",
                *(unsigned long long *)msg->cf.cid, msg->cf.keylen);
@@ -1835,9 +1840,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_RUN_SQL:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s RUN_SQL cid=%llx version=%d flags=%x "
+               "XXXX: %s %llu RUN_SQL cid=%llx version=%d flags=%x "
                "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
-               t, prefix, *(unsigned long long *)msg->sq.cid, msg->sq.version,
+               prefix, t, *(unsigned long long *)msg->sq.cid, msg->sq.version,
                msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
                (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
         break;
@@ -1845,9 +1850,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
-                            "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->in.cid,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p INSERT cid=%llx rootp=%d "
+               "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
+               prefix, t, sb, *(unsigned long long *)msg->in.cid,
                msg->in.rootpage, msg->in.version, msg->in.genid,
                msg->in.datalen, msg->in.seq,
                (msg->in.tblname) ? " tblname=" : "",
@@ -1857,9 +1863,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_DELETE_PI:
     case FDB_MSG_DELETE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p DELETE cid=%llx rootp=%d "
-                            "version=%d genid=%llx seq=%d%s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p DELETE cid=%llx rootp=%d "
+               "version=%d genid=%llx seq=%d%s%s\n",
+               prefix, t, sb, *(unsigned long long *)msg->up.cid,
                msg->de.rootpage, msg->de.version, msg->de.genid, msg->de.seq,
                (msg->de.tblname) ? " tblname=" : "",
                (msg->de.tblname) ? msg->de.tblname : "");
@@ -1869,9 +1876,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_UPDATE:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p UPDATE cid=%llx rootp=%d "
+               "XXXX: %s %llu sb=%p UPDATE cid=%llx rootp=%d "
                "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d %s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+               prefix, t, sb, *(unsigned long long *)msg->up.cid,
                msg->up.rootpage, msg->up.version, msg->up.oldgenid,
                msg->up.genid, msg->up.datalen, msg->up.seq,
                (msg->up.tblname) ? " tblname=" : "",
@@ -1880,9 +1887,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_INDEX:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INDEX cid=%llx rootp=%d version=%d "
-                            "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
-               t, prefix, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu INDEX cid=%llx rootp=%d version=%d "
+               "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
+               prefix, t, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
                msg->ix.version, msg->ix.genid, msg->ix.is_delete, msg->ix.ixnum,
                msg->ix.ixlen);
         fsnapf(stderr, msg->ix.ix, msg->ix.ixlen);
@@ -1890,8 +1898,8 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_HBEAT:
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
-               prefix, sb, *(unsigned long long *)msg->hb.tid,
+               "XXXX: %s %llu sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n",
+               prefix, t, sb, *(unsigned long long *)msg->hb.tid,
                msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
         break;
 
@@ -2048,9 +2056,9 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         int haveid;
 
         if (msg->hd.type & FD_MSG_FLAGS_ISUUID)
-            haveid = !comdb2uuid_is_zero((unsigned char *)msg->co.tid);
+            haveid = !comdb2uuid_is_zero((unsigned char *)msg->cc.tid);
         else
-            haveid = *(unsigned long long *)msg->co.tid != 0;
+            haveid = *(unsigned long long *)msg->cc.tid != 0;
 
         if (haveid) {
             tmp = htonl(msg->cc.seq);
