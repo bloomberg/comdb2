@@ -572,10 +572,6 @@ struct sqlclntstate {
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
-    int n_lua_stmt;
-    int max_lua_stmt;
-    pthread_mutex_t *temp_table_mtx; /* for "sp.c" temp table subsystem */
-    int own_temp_table_mtx; /* this client should free temp_table_mtx */
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
@@ -752,6 +748,15 @@ struct query_path_component {
     LINKC_T(struct query_path_component) lnk;
 };
 
+struct temptable {
+    int rootpage;
+    struct temp_cursor *cursor;
+    struct temp_table *tbl;
+    int flags;
+    Btree *owner;
+    pthread_mutex_t *lk;
+};
+
 struct Btree {
     /* for debugging */
     int btreeid;
@@ -761,17 +766,12 @@ struct Btree {
 
     LISTC_T(BtCursor) cursors;
 
-    /* temp table stuff */
-    int is_temporary;
+    unsigned is_temporary : 1;
+    unsigned is_hashtable : 1;
+    unsigned is_remote : 1;
 
-    /* hash table of temp tables, keyed on root page number and its mutex */
-    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
-    Hash temp_tables;
-    int next_temp_root_pg;
-
-    int is_hashtable;
-
-    int is_remote;
+    hash_t *temp_tables;
+    int num_temp_tables;
 
     void *schema;
     void (*free_schema)(void *);
@@ -1047,10 +1047,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg);
-void sqlengine_setup_temp_table_mtx(struct sqlclntstate *);
-void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *);
+struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
