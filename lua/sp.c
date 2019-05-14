@@ -3084,7 +3084,7 @@ static int dbthread_join(Lua lua1)
     Lua lua2 = thd->lua;
     SP sp2 = thd->sp;
     int num_returns = copy_state_stacks(lua2, lua1, 0);
-    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error));
+    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error) - 1);
     close_sp_int(sp2, 1);
     return num_returns;
 }

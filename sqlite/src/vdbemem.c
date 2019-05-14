@@ -27,6 +27,7 @@
 #include <util.h>
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "str0.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_DEBUG
@@ -2941,7 +2942,7 @@ static int _dttz_to_native_datetime(cdb2_client_datetime_t * cdt, const Mem *inp
     bzero(&tzopts, sizeof(tzopts));
     tzopts.flags |= 2 /*FLD_CONV_TZONE*/;
     if( !inp->tz ) return SQLITE_ERROR;
-    strncpy(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
+    strncpy0(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
 
     /* ugly, arghh */
     bzero(tmp, sizeof(tmp));
@@ -2988,7 +2989,7 @@ static int _dttz_to_native_datetimeus(cdb2_client_datetimeus_t * cdt, const Mem 
     bzero(&tzopts, sizeof(tzopts));
     tzopts.flags |= 2 /*FLD_CONV_TZONE*/;
     if(!inp->tz) return SQLITE_ERROR;
-    strncpy(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
+    strncpy0(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
 
     /* ugly, arghh */
     bzero(tmp, sizeof(tmp));

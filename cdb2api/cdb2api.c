@@ -1582,7 +1582,7 @@ static int open_sockpool_ll(void)
 
     struct sockaddr_sun addr = {0};
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path));
+    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         close(fd);
@@ -1943,7 +1943,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
             hndl->sess_list->list = p;
 
             for (i = 0; i != hndl->num_hosts; ++i, ++p) {
-                strncpy(p->host, hndl->hosts[i], sizeof(p->host));
+                strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
                 p->host[sizeof(p->host) - 1] = '\0';
                 p->sess = NULL;
             }
@@ -5669,7 +5669,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
         return ENOMEM;
 
     for (i = 0, p = r; i != hndl->num_hosts; ++i, ++p) {
-        strncpy(p->host, hndl->hosts[i], sizeof(p->host));
+        strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
         p->host[sizeof(p->host) - 1] = '\0';
         p->sess = NULL;
         for (j = 0, q = arg->list; j != arg->n; ++q) {

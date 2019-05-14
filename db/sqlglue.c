@@ -996,7 +996,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
      * conversion */
     if (f->type == SERVER_DATETIME || f->type == SERVER_DATETIMEUS) {
         if (convopts && tzname && tzname[0]) {
-            strncpy(convopts->tzname, tzname, sizeof(convopts->tzname));
+            strncpy0(convopts->tzname, tzname, sizeof(convopts->tzname));
             convopts->flags |= FLD_CONV_TZONE;
         }
     }
@@ -12620,7 +12620,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     long long ret = LLONG_MIN;
 
     reset_clnt(&client, NULL, 1);
-    strncpy(client.tzname, "UTC", sizeof(client.tzname));
+    strncpy0(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = (char *)query;

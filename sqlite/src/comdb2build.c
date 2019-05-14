@@ -138,7 +138,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         char* username = strchr(table_name, '@');
         if (username) {
             /* Do nothing. */
-            strncpy(dst, table_name, MAXTABLELEN);
+            strncpy0(dst, table_name, MAXTABLELEN);
         } else { /* Add user nmame. */
             /* Make it part of user schema. */
             char userschema[MAXTABLELEN];
@@ -168,7 +168,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             }
         }
     } else {
-       strncpy(dst, table_name, MAXTABLELEN);
+       strncpy0(dst, table_name, MAXTABLELEN);
     }
 
     // Check whether the user is allowed perform this schema change.
@@ -306,7 +306,7 @@ static inline int chkAndCopyPartitionTokens(Parse *pParse, char *dst, Token *t1,
         goto cleanup;
     }
 
-    strncpy(dst, table_name, MAXTABLELEN);
+    strncpy0(dst, table_name, MAXTABLELEN);
 
 cleanup:
     free(table_name);
@@ -2441,7 +2441,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->nothrevent = 1;
     sc->live = 1;
     sc->rename = 1;
-    strncpy(sc->newtable, newTable, sizeof(sc->newtable));
+    strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                         (vdbeFuncArgFree)&free_schema_change_type);

@@ -409,9 +409,6 @@ if [[ "$out" == "0" ]]; then
     failexit "Inplace update should update updateid to nonzero"
 fi
 
-
-
-
 test_t1() {
 	INITNUMREC=100
 
@@ -446,15 +443,15 @@ test_t1() {
 
 
 test_bulk() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table mytable6 (i int unique, j int, k int)"
     CNT=5000
-    echo -n "insert into t6 values(1,1,1)" > gg.in
+    echo -n "insert into mytable6 values(1,1,1)" > gg.in
     for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
 
     for j in `seq 1 2` ; do
         cdb2sql -s ${CDB2_OPTIONS} $dbnm default -f gg.in
-        assertcnt t6 $CNT
-        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
+        assertcnt mytable6 $CNT
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from mytable6 where 1"
     done
 }
 
