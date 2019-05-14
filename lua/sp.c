@@ -1525,10 +1525,12 @@ static int db_db_debug(Lua lua)
         } else if (strncmp(buffer, "where", 5) == 0) {
             sprintf(buffer, " %s", "_SP.where()");
         } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
-            strncpy0(replace_from, "_SP.get_var", 11);
+            char *arguments = replace_from + strlen("getvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.get_var%s", arguments);
             replace_from = NULL;
         } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
-            strncpy0(replace_from, "_SP.set_var", 11);
+            char *arguments = replace_from + strlen("setvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.set_var%s", arguments);
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
