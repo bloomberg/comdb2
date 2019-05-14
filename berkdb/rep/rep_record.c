@@ -71,6 +71,7 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
+extern int gbl_dumptxn_at_commit;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -122,6 +123,12 @@ static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
 static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t, int));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
 static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
+
+extern void bdb_set_seqnum(void *);
+extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
+extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
+extern void wait_for_sc_to_stop(const char *operation);
+extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -554,7 +561,6 @@ static void *apply_thread(void *arg)
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
-					void bdb_set_seqnum(void *);
 					bdb_set_seqnum(dbenv->app_private);
 
 					if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
@@ -2505,7 +2511,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		break;
 
 	case REP_PGDUMP_REQ:{
-			extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 			logmsg(LOGMSG_USER, "pgdump request from %s\n", *eidp);
 			__pgdump_reprec(dbenv, rec);
 			break;
@@ -3634,10 +3639,6 @@ gap_check:		max_lsn_dbtp = NULL;
 	case DB___txn_regop_rowlocks:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
-		;
-		extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-		extern int gbl_dumptxn_at_commit;
-
 		if (gbl_dumptxn_at_commit)
 			dumptxn(dbenv, &rp->lsn);
 		if (!F_ISSET(rep, REP_F_LOGSONLY)) {
@@ -5556,12 +5557,18 @@ bad_resize:	;
 			(desired = (gbl_force_serial_on_writelock &&
 			 bdb_the_lock_desired()))) {
 
-		if (txn_args)
+		if (txn_args) {
 			__os_free(dbenv, txn_args);
-		if (txn_gen_args)
+			txn_args = NULL;
+		}
+		if (txn_gen_args) {
 			__os_free(dbenv, txn_gen_args);
-		if (txn_rl_args)
+			txn_gen_args = NULL;
+		}
+		if (txn_rl_args) {
 			__os_free(dbenv, txn_rl_args);
+			txn_rl_args = NULL;
+		}
 
 		ret = wait_for_running_transactions(dbenv);
 		if (ret) {
@@ -6461,7 +6468,6 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		void wait_for_sc_to_stop(const char *operation);
 		wait_for_sc_to_stop("log-truncate");
 	}
 
@@ -6624,7 +6630,6 @@ restart:
 
 err:
 	if (i_am_master) {
-		void allow_sc_to_run(void);
 		allow_sc_to_run();
 		assert(truncate_count == 1);
 		truncate_count--;
@@ -6722,7 +6727,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				}
 
 				if (txn_rl_args->timestamp < epoch) {
-					__os_free(dbenv, txn_rl_args);
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
 											"break-loop because timestamp "
@@ -6731,6 +6735,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
 					}
+					__os_free(dbenv, txn_rl_args);
 					done = 1;
 					break;
 				}

@@ -167,6 +167,8 @@ int gbl_bpfunc_auth_gen = 1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
+void rcache_init(size_t, size_t);
+void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
@@ -4724,7 +4726,6 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     start_sql_thread();
 
     thd->sqlthd = pthread_getspecific(query_info_key);
-    void rcache_init(size_t, size_t);
     rcache_init(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_COUNT),
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
 }
@@ -4733,7 +4734,6 @@ int gbl_abort_invalid_query_info_key;
 
 void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 {
-    void rcache_destroy(void);
     rcache_destroy();
     struct sql_thread *sqlthd;
     if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {

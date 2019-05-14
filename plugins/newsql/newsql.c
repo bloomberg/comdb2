@@ -1187,13 +1187,25 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
-    if ((val->has_isnull && val->isnull) || val->value.data == NULL) {
+
+    void *p = val->value.data;
+
+    if (val->has_isnull && val->isnull) {
         param->null = 1;
         return 0;
     }
-    int little = appdata->sqlquery->little_endian;
-    void *p = val->value.data;
+
+    if (val->value.data == NULL) {
+        if (param->type != CLIENT_BLOB) {
+            param->null = 1;
+            return 0;
+        }
+        p = (void *)"";
+    }
+
     int len = val->value.len;
+    int little = appdata->sqlquery->little_endian;
+
     return get_type(param, p, len, param->type, clnt->tzname, little);
 }
 
@@ -1510,7 +1522,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             } else if (strncasecmp(sqlstr, "timezone", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
-                strncpy(clnt->tzname, sqlstr, sizeof(clnt->tzname));
+                strncpy0(clnt->tzname, sqlstr, sizeof(clnt->tzname));
             } else if (strncasecmp(sqlstr, "datetime", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
@@ -1582,8 +1594,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 }
                 *sqlstr = 0;
                 if ((sqlstr - spname) < MAX_SPNAME) {
-                    strncpy(clnt->spname, spname, MAX_SPNAME);
-                    clnt->spname[MAX_SPNAME] = '\0';
+                    strncpy0(clnt->spname, spname, MAX_SPNAME);
                 } else {
                     rc = ii + 1;
                 }
@@ -2264,7 +2275,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.stop_this_statement = 0;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
-            strncpy(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
+            strncpy0(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
 
         if (sql_query->dbname && dbenv->envname &&
             strcasecmp(sql_query->dbname, dbenv->envname)) {

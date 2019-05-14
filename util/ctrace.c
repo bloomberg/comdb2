@@ -202,7 +202,7 @@ static void ctrace_openlog_taskname_lk(const char *directory,
 
     snprintf(logfilename, sizeof(logfilename), "%s/%s.trc.c", directory,
              taskname);
-    strncpy(savetaskname, taskname, sizeof(savetaskname));
+    strncpy(savetaskname, taskname, sizeof(savetaskname) - 1);
 
     CTRACE_TIMER_START(IOLIMIT_SLOW);
     {

@@ -72,6 +72,7 @@
 #include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
+#include "str0.h"
 
 #include <inttypes.h>
 
@@ -96,6 +97,9 @@ extern void osql_decom_node(char *decom_host);
 
 void *mymalloc(size_t size);
 void *myrealloc(void *ptr, size_t size);
+void reset_aa_counter(char *tblname);
+void create_coherency_lease_thread(bdb_state_type *bdb_state);
+void create_master_lease_thread(bdb_state_type *bdb_state);
 
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 
@@ -1522,7 +1526,7 @@ static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
-char *print_permslsn(DB_LSN lsn, char str[])
+static char *print_permslsn(DB_LSN lsn, char str[])
 {
     int *lognum;
     int *seqnum;
@@ -4364,7 +4368,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
         return;
     }
 
-    strncpy(coherency_master, from_host, sizeof(coherency_master));
+    strncpy0(coherency_master, from_host, sizeof(coherency_master));
 
     /* Choose most conservative possible expiration: the lessor of
      * 'mytime + leasetime' and 'mastertime + leasetime' */
@@ -4440,7 +4444,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
-    if (size > PGCOMPMAXLEN || size < 0 || ((sizeof(pgcomp_rcv_t) + size) < size)) {
+    if (size > PGCOMPMAXLEN || ((sizeof(pgcomp_rcv_t) + size) < size)) {
         logmsg(LOGMSG_WARN, "%s %d: page compaction invalid size: %u.\n",
                __FILE__, __LINE__, size);
         return E2BIG;
@@ -4755,7 +4759,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         char tblname[MAXTABLELEN + 1] = {0};
         memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
-        void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
     } break;
 
@@ -5202,7 +5205,6 @@ void *watcher_thread(void *arg)
     int done = 0;
     char *rep_master = 0;
     int list_start;
-    int last_list_start = 0;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5275,12 +5277,10 @@ void *watcher_thread(void *arg)
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {
-            void create_coherency_lease_thread(bdb_state_type * bdb_state);
             create_coherency_lease_thread(bdb_state);
         }
 
         if (bdb_state->attr->master_lease && !bdb_state->master_lease_thread) {
-            void create_master_lease_thread(bdb_state_type * bdb_state);
             create_master_lease_thread(bdb_state);
         }
 
@@ -5419,7 +5419,7 @@ void *watcher_thread(void *arg)
 
         list_start = gbl_lock_get_list_start;
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
-            list_start != last_list_start && (time(NULL) - list_start) >= 3) {
+            (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
             lock_info_lockers(stdout, bdb_state);
         }

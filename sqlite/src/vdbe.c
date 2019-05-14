@@ -35,6 +35,9 @@ void print_cooked_access(BtCursor *pCur, int col);
 void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
+extern void comdb2_handle_limit(Vdbe*,Mem*);
+extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
+extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
 
 #define cur_is_raw(pCur)                               \
     (pCur ?                                            \
@@ -1733,7 +1736,6 @@ case OP_IntCopy: {            /* out2 */
   pOut = &aMem[pOp->p2];
   sqlite3VdbeMemSetInt64(pOut, pIn1->u.i);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  extern void comdb2_handle_limit(Vdbe*,Mem*);
   comdb2_handle_limit(p, pIn1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   break;
@@ -4485,7 +4487,6 @@ case OP_ColumnsUsed: {
   assert( pC->eCurType==CURTYPE_BTREE );
   pC->maskUsed = *(u64*)pOp->p4.pI64;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
   sqlite3BtreeCursorSetFieldUsed(pC->uc.pCursor, pC->maskUsed);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   break;
@@ -5171,7 +5172,6 @@ case OP_NewRowid: {           /* out2 */
   {
     UNUSED_PARAMETER2(res, cnt);
     UNUSED_PARAMETER2(pMem, pFrame);
-    extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
     v = sqlite3BtreeNewRowid(pC->uc.pCursor);
   }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -996,7 +996,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
      * conversion */
     if (f->type == SERVER_DATETIME || f->type == SERVER_DATETIMEUS) {
         if (convopts && tzname && tzname[0]) {
-            strncpy(convopts->tzname, tzname, sizeof(convopts->tzname));
+            strncpy0(convopts->tzname, tzname, sizeof(convopts->tzname));
             convopts->flags |= FLD_CONV_TZONE;
         }
     }
@@ -3272,10 +3272,13 @@ int sqlite3BtreeClose(Btree *pBt)
         // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
-        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem;
-                pElem=sqliteHashNext(pElem)){
+        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem; ){
             /* internally this will close cursors open on the table */
             struct temptable_entry *pEntry = pElem->data;
+
+            /* releaseTempTableRef may free pElem. So we get the next element
+               now before invoking releaseTempTableRef(). */
+            pElem=sqliteHashNext(pElem);
 
             if (pEntry != NULL) {
                 assert( pEntry->value );
@@ -5402,6 +5405,7 @@ cursor_find_remote(BtCursor *pCur,            /* The cursor to be moved */
 
         if (rc == IX_FND /*last record */) {
             switch (bias) {
+            case OP_SeekRowid:
             case OP_IfNoHope:
             case OP_NotFound:
             case OP_Found:
@@ -5630,7 +5634,8 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         /* filter the supported operations */
         if (bias != OP_SeekLT && bias != OP_SeekLE && bias != OP_SeekGE &&
             bias != OP_SeekGT && bias != OP_NotExists && bias != OP_Found &&
-            bias != OP_IfNoHope && bias != OP_NotFound && bias != OP_IdxDelete) {
+            bias != OP_IfNoHope && bias != OP_NotFound &&
+            bias != OP_IdxDelete && bias != OP_SeekRowid) {
             logmsg(LOGMSG_ERROR, "%s: unsupported remote cursor operation op=%d\n",
                     __func__, bias);
             rc = SQLITE_INTERNAL;
@@ -7908,6 +7913,9 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 
     cur->cursor_class = CURSORCLASS_REMOTE;
     cur->cursor_move = cursor_move_remote;
+
+    /* Reset previous fdb error (if any). */
+    clnt->fdb_state.xerr.errval = 0;
 
     if (clnt->intrans) {
         int rc = osql_sock_start_deferred(clnt);
@@ -11155,8 +11163,12 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     dataoffset = hdrsz;
     hdroffset +=
         sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
-    assert(type == 6);
-    assert(hdroffset == dataoffset);
+
+    /* Sanity checks */
+    if (type != 6 || hdroffset != dataoffset) {
+        return -1;
+    }
+
     sqlite3VdbeSerialGet((unsigned char *)key + dataoffset, type, &m);
     *outlen = sizeof(m.u.i);
     memcpy(outbuf, &m.u.i, *outlen);
@@ -12608,7 +12620,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     long long ret = LLONG_MIN;
 
     reset_clnt(&client, NULL, 1);
-    strncpy(client.tzname, "UTC", sizeof(client.tzname));
+    strncpy0(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = (char *)query;

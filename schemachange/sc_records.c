@@ -2801,7 +2801,7 @@ static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
     case DB_llog_undo_upd_dta_lk:
         return 1;
     default:
-        return 0;
+        break;
     }
     return 0;
 }

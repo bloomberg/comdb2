@@ -43,7 +43,11 @@
 #include "logmsg.h"
 #include <compat.h>
 
-char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
+extern void __test_last_checkpoint(DB_ENV *dbenv);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
@@ -1713,7 +1717,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "dblist") == 0) {
         __bb_dbreg_print_dblist(bdb_state->dbenv, printf_wrapper, out);
     } else if (tokcmp(tok, ltok, "dbs") == 0) {
-        extern void bdb_dump_table_dbregs(bdb_state_type * bdb_state);
         bdb_dump_table_dbregs(bdb_state);
     }
 #ifdef BERKDB_46
@@ -1839,7 +1842,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     } else if (tokcmp(tok, ltok, "curcount") == 0) {
         bdb_dump_cursor_count(bdb_state, out);
     } else if (tokcmp(tok, ltok, "testckp") == 0) {
-        extern void __test_last_checkpoint(DB_ENV * dbenv);
         __test_last_checkpoint(bdb_state->dbenv);
     } else if (tokcmp(tok, ltok, "repworkers") == 0 ||
                tokcmp(tok, ltok, "repprocs") == 0) {
@@ -1868,7 +1870,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgdump(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgdump(bdb_state->dbenv, fileid, pgno);
     } else if (tokcmp(tok, ltok, "pgtrash") == 0) {
         int fileid, pgno;
@@ -1881,7 +1882,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgtrash(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgtrash(bdb_state->dbenv, fileid, pgno);
     } else {
         logmsg(LOGMSG_ERROR, "backend engine unknown cmd <%.*s>. try help\n", ltok,
@@ -2148,7 +2148,7 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
 
     for (i = 0; i != nnodes; ++i) {
         pos = rv + i;
-        strncpy(pos->host, nodes[i].host, sizeof(pos->host));
+        strncpy0(pos->host, nodes[i].host, sizeof(pos->host));
         host = nodes[i].host;
 
         /* net_get_nodes_info() returns all nodes. Exclude myself. */

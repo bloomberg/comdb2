@@ -30,6 +30,7 @@
 #include <net_types.h>
 #include "comdb2uuid.h"
 #include "logmsg.h"
+#include "str0.h"
 
 extern int g_osql_max_trans;
 extern int gbl_partial_indexes;
@@ -440,7 +441,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 
     tbl->seq = 0;
     tbl->env = env;
-    strncpy(tbl->tablename, db->tablename, sizeof(tbl->tablename));
+    strncpy0(tbl->tablename, db->tablename, sizeof(tbl->tablename));
     tbl->tableversion = db->tableversion;
     tbl->nix = db->nix;
     tbl->ix_expr = db->ix_expr;
@@ -728,7 +729,7 @@ static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
         return -1;
     }
 
-    tbl->table = bdb_temp_table_create(bdb_env, bdberr);
+    tbl->table = bdb_temp_array_create(bdb_env, bdberr);
 
     if (!tbl->table) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed, bderr=%d\n",
@@ -2775,7 +2776,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
@@ -2819,7 +2820,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     }
 
     key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
@@ -2895,7 +2896,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                         __func__, __LINE__);
                 return SQLITE_INTERNAL;
             }
-            strncpy(old_tablename, key.tablename, MAXTABLELEN);
+            strncpy0(old_tablename, key.tablename, MAXTABLELEN);
         }
 
 #if 0

@@ -64,6 +64,7 @@
 #include "comdb2uuid.h"
 #include "bpfunc.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 #define DEBUG_REORDER 0
 
@@ -105,6 +106,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
+extern const char *get_tablename_from_rpl(const char *rpl);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -120,8 +122,8 @@ static int req2blockop(int reqtype);
  *
  * key will compare by rqid, uuid, table, stripe, genid, is_rec, then sequence
  */
-static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
-                              int key2len, const void *key2)
+int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
+                       int key2len, const void *key2)
 {
     assert(sizeof(oplog_key_t) == key1len);
     assert(sizeof(oplog_key_t) == key2len);
@@ -212,7 +214,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
     /* init temporary table and cursor */
-    tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+    tran->db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
     if (!tran->db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
                __func__, bdberr);
@@ -223,7 +225,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
 
     if (sess->is_reorder_on) {
-        tran->db_ins = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
         if (!tran->db_ins) {
             // We can stll work without a INS table
             logmsg(LOGMSG_ERROR,
@@ -272,8 +274,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             /* this is socksql, recom, snapisol or serial; no retry here
              */
             generr.errval = ERR_INTERNAL;
-            strncpy(generr.errstr, "master cancelled transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "master cancelled transaction",
+                     sizeof(generr.errstr));
             xerr = &generr;
             error = 1;
             break;
@@ -490,9 +492,9 @@ char *osql_get_tran_summary(struct ireq *iq)
 
             osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
 
-            min_tottm = (min_tottm < crt_tottm) ? min_tottm : crt_tottm;
+            min_tottm = crt_tottm;
             max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
-            min_rtt = (min_rtt < crt_rtt) ? min_rtt : crt_rtt;
+            min_rtt = crt_rtt;
             max_rtt = (max_rtt > crt_rtt) ? max_rtt : crt_rtt;
             min_rtrs = (min_rtrs < crt_rtrs) ? min_rtrs : crt_rtrs;
             max_rtrs = (max_rtrs > crt_rtrs) ? max_rtrs : crt_rtrs;
@@ -612,11 +614,10 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        extern const char *get_tablename_from_rpl(const char *rpl);
         const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
             sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
@@ -706,7 +707,7 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     sorese_info.type = -1; /* I don't need it */
 
     generr.errval = errval;
-    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+    strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
     int rc =
         osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
@@ -794,8 +795,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     DEBUG_PRINT_TMPBL_SAVING();
 
-    rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
-                               rplen, NULL, &bdberr);
+    ACCUMULATE_TIMING(CHR_TMPSVOP,
+                      rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
+                                                 sizeof(key), rpl, rplen, NULL,
+                                                 &bdberr););
+
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
                __func__, sess->seq, rc_op, bdberr);

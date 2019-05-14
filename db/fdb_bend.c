@@ -419,8 +419,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
        review
        when adding critical cursor termination */
-    if (cur) {
-        assert(cur->bdbc != NULL);
+    if (cur && cur->bdbc) {
         /* TODO: handle bdberr-s, mainly BDBERR_DEADLOCK */
         do {
             switch (type) {
@@ -465,6 +464,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
     } else {
         logmsg(LOGMSG_ERROR, "%s: unknown cursor id %llx\n", __func__,
                 *(unsigned long long *)cid);
+        rc = -1;
     }
     return rc;
 }
@@ -1113,6 +1113,7 @@ static int fdb_convert_data(svc_cursor_t *cur, unsigned long long *genid,
                               (void **)&outdata, &ver);
 
     /*convert this to sqlite */
+    /* TODO: (NC) Where do we alloc cur->outbuf ? */
     rc = fdb_ondisk_to_packed_sqlite_tz(db, sc, outdata, *genid, cur->outbuf,
                                         cur->outbuflen, &reqlen, cur);
     if (rc == -2) {
@@ -1181,7 +1182,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
     if (cur) {
         if (cur->ixnum < 0) {
             rc = fdb_packedsqlite_extract_genid(key, &use_keylen, cur->outbuf);
-            if (rc <= 0) {
+            if (rc < 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d: failed to convert key rc=%d\n",
                         __func__, __LINE__, rc);
                 return -1;
@@ -1260,6 +1261,17 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
+    if (lvl == TRANLEVEL_SOSQL || lvl == TRANLEVEL_RECOM ||
+        lvl == TRANLEVEL_SERIAL || lvl == TRANLEVEL_SNAPISOL) {
+        trans->mode = lvl;
+    } else {
+        trans->mode = TRANLEVEL_INVALID;
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        logmsg(LOGMSG_ERROR, "%s: invalid transaction isolation level (%d)!\n",
+               __func__, lvl);
+        return -1;
+    }
+
     trans->dtran = (fdb_distributed_tran_t *)calloc(
         1, sizeof(fdb_distributed_tran_t) + sizeof(fdb_tran_t));
     if (!trans->dtran) {
@@ -1282,8 +1294,6 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     }
     listc_atl(&trans->dtran->fdb_trans, fdb_tran);
     listc_init(&fdb_tran->cursors, offsetof(svc_cursor_t, lnk));
-
-    trans->mode = lvl;
 
     /* explicit bump of sequence number, waiting for this */
     fdb_tran->seq++;

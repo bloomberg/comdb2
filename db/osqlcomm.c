@@ -3613,6 +3613,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(usedb_uuid_rpl.hd.uuid, uuid);
         usedb_uuid_rpl.dt.tablenamelen = tablenamelen;
         usedb_uuid_rpl.dt.tableversion = tableversion;
+        /* tablename field needs to be NOT null-terminated if > than 4 chars */
         strncpy(usedb_uuid_rpl.dt.tablename, tablename,
                 sizeof(usedb_uuid_rpl.dt.tablename));
 
@@ -3636,6 +3637,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         usedb_rpl.hd.sid = rqid;
         usedb_rpl.dt.tablenamelen = tablenamelen;
         usedb_rpl.dt.tableversion = tableversion;
+        /* tablename field needs to be NOT null-terminated if > than 4 chars */
         strncpy(usedb_rpl.dt.tablename, tablename,
                 sizeof(usedb_rpl.dt.tablename));
 
@@ -3654,6 +3656,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
+    /* tablename field is not null-terminated -- send rest of tablename */
     if (tablenamelen > sent) {
         rc = offload_net_send_tail(tohost, type, &buf, msglen, 0,
                                    tablename + sent, tablenamelen - sent);
@@ -4904,8 +4907,8 @@ static void osql_blocksql_failed_dispatch(netinfo_type *netinfo_ptr,
     rpl_xerr.hd.sid = rqid;
 
     rpl_xerr.dt.errval = rc;
-    strncpy(rpl_xerr.dt.errstr, "cannot dispatch sql request",
-            sizeof(rpl_xerr.dt.errstr));
+    strncpy0(rpl_xerr.dt.errstr, "cannot dispatch sql request",
+             sizeof(rpl_xerr.dt.errstr));
 
     if (!(osqlcomm_done_xerr_type_put(&rpl_xerr, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
@@ -5017,7 +5020,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         req_uuid.sqlqlen = sqlen;
 
         if (tzname)
-            strncpy(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
+            strncpy0(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
 
         p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
         r_uuid_ptr->rqlen = rqlen;
@@ -5049,7 +5052,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         r_ptr->rqlen = rqlen;
 
         if (tzname)
-            strncpy(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
+            strncpy0(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
     }
 
     p_buf = buf_no_net_put(sql, sqlen, p_buf, p_buf_end);
@@ -6677,10 +6680,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
         return 0;
-    else
-        return ERR_SC;
 
-    return 0;
+    return ERR_SC;
 }
 
 /* get the table name part of the rpl request
@@ -7756,11 +7757,11 @@ done:
 
         generr.errval = ERR_TRAN_FAILED;
         if (rc == -4) {
-            strncpy(generr.errstr, "fail to create block processor log",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "fail to create block processor log",
+                     sizeof(generr.errstr));
         } else {
-            strncpy(generr.errstr, "failed to create transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "failed to create transaction",
+                     sizeof(generr.errstr));
         }
 
         rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,

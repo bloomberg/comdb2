@@ -149,7 +149,7 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
         if (iq->debug)
             reqprintf(iq, "NAME TOO LONG %u>%zu", buf->qnamelen,
                       sizeof(qname) - 1);
-        reqerrstr(iq, COMDB2_CUST_RC_NAME_SZ, "queue name to long %d>%d",
+        reqerrstr(iq, COMDB2_CUST_RC_NAME_SZ, "queue name to long %d>%zu",
                   buf->qnamelen, sizeof(qname) - 1);
         return ERR_BADREQ;
     }
@@ -179,7 +179,7 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 
     if (!blobs[0].exists) {
         if (iq->debug)
-            reqprintf(iq, "EXPECTED ONE BLOB", cblob);
+            reqprintf(iq, "EXPECTED AT LEAST ONE BLOB");
         reqerrstr(iq, COMDB2_QADD_RC_BAD_BLOB_BUFF,
                   "expected one blob (internal api error)");
         return ERR_BADREQ;
@@ -325,7 +325,7 @@ void toblock_init(void)
 #undef add_blockop
     /* a runtime assert to make sure we have the right size of blockop count
      * array */
-    if (index > NUM_BLOCKOP_OPCODES) {
+    if (index >= NUM_BLOCKOP_OPCODES) {
         logmsg(LOGMSG_FATAL, "%s: too many blockops defined!\n", __func__);
         logmsg(LOGMSG_FATAL, "%s: you need to increase NUM_BLOCKOP_OPCODES to %d\n",
                 __func__, index);
@@ -951,14 +951,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 if (!(p_fstblk_buf = (uint8_t *)buf_get(&(snapinfo_outrc), sizeof(snapinfo_outrc), 
                         p_fstblk_buf, p_fstblk_buf_end)))  {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
             }
 

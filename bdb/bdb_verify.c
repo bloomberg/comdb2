@@ -816,7 +816,7 @@ static int bdb_verify_ll(
 
                         if (rc == 0) {
                             realblobsz[blobno] = dbt_blob_data.size;
-                            if (blobsizes[blobno] == -1 && rc != DB_NOTFOUND) {
+                            if (blobsizes[blobno] == -1) {
                                 sbuf2printf(
                                     sb,
                                     "!%016llx blob %d null but found blob\n",

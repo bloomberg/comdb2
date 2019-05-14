@@ -34,7 +34,9 @@
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
+int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
+extern int comdb2_check_parallel(Parse*);
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -269,7 +271,6 @@ void sqlite3FinishCoding(Parse *pParse){
     pParse->rc = SQLITE_DONE;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pParse->ast ){
-      extern int comdb2_check_parallel(Parse*);
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;
@@ -439,7 +440,11 @@ retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         assert( sqlite3SchemaMutexHeld(db, j, 0) );
         p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, zName);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( p && i<=1 ) return p;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         if( p ) return p;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
     /* Not found.  If the name we were looking for was temp.sqlite_master
@@ -467,6 +472,16 @@ retry_after_fdb_creation:
 
   /* so we found the table, we are done */
   if( likely(p) ){
+    if( unlikely(zDatabase) && !db->init.busy ){
+      /* we need to validate class here, before
+         shortcutting to "local table" mode */
+      if( fdb_validate_existing_table(zDatabase) ){
+        logmsg(LOGMSG_USER,
+               "Remote db table exists and class mismatches \"%s:%s\"\n",
+               fqDbname, zName);
+        p = NULL;
+      }
+    }
     goto done;
   }
 
@@ -5307,9 +5322,14 @@ void sqlite3WithDelete(sqlite3 *db, With *pWith){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "vdbeInt.h"
-char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
-{
-  char *value = NULL;
+static char *getIndexCond(
+  sqlite3 *db,
+  const char *left,
+  const char *op,
+  Mem *m,
+  int leftIsCol
+){
+  char *right = NULL;
   char *ret;
   char *hex = "0123456789ABCDEF";
 
@@ -5319,11 +5339,11 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
   flgs &= MEM_TypeMask;
 
   if( flgs == MEM_Int ){
-    value = sqlite3_mprintf("%lld", m->u.i);
+    right = sqlite3_mprintf("%lld", m->u.i);
   }else if( flgs == MEM_Real ){
-    value = sqlite3_mprintf("%lf", m->u.r);
+    right = sqlite3_mprintf("%lf", m->u.r);
   }else if( flgs & MEM_Str ){
-    value = sqlite3_mprintf("\'%.*q\'", m->n, m->z);
+    right = sqlite3_mprintf("'%.*q'", m->n, m->z);
   }else if( flgs & MEM_Blob ){
     char * key = alloca(2*m->n+1);
     int  i;
@@ -5334,24 +5354,24 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
     }
     key[2*m->n] = '\0';
 
-    value = sqlite3_mprintf("x'%s'", key);
+    right = sqlite3_mprintf("x'%q'", key);
   }else if( flgs & MEM_Datetime ){
-    value = sqlite3_mprintf("cast(%llu.%.*u as datetime)",
+    right = sqlite3_mprintf("cast(%llu.%.*u as datetime)",
                  m->du.dt.dttz_sec, m->du.dt.dttz_prec, m->du.dt.dttz_frac);
   }else if( flgs & MEM_Interval ){
     if (m->du.tv.type == INTV_YM_TYPE){
-      value = sqlite3_mprintf("cast(\"%s%u-%2.2u\" as intervalym)",
+      right = sqlite3_mprintf("cast('%s%u-%2.2u' as intervalym)",
                (m->du.tv.sign==-1)?"- ":"",
                m->du.tv.u.ym.years, m->du.tv.u.ym.months);
     }else if( m->du.tv.type == INTV_DS_TYPE ){
-      value = sqlite3_mprintf("cast(\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\" "
+      right = sqlite3_mprintf("cast('%s%u %2.2u:%2.2u:%2.2u.%3.3u' "
               "as intervalds)" ,
                (m->du.tv.sign==-1)?"- ":"",
                m->du.tv.u.ds.days,
                m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
                m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
     }else if( m->du.tv.type == INTV_DSUS_TYPE ){
-      value = sqlite3_mprintf("cast(\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\" "
+      right = sqlite3_mprintf("cast('%s%u %2.2u:%2.2u:%2.2u.%6.6u' "
                "as intervaldsus)" ,
                (m->du.tv.sign==-1)?"- ":"",
                m->du.tv.u.ds.days,
@@ -5367,10 +5387,10 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
         return NULL;
       }
 
-      value = sqlite3_mprintf("cast(\"%s\" as decimal)", tmp);
+      right = sqlite3_mprintf("cast('%q' as decimal)", tmp);
     }
   }else if( flgs == MEM_Null ){
-    value = sqlite3_mprintf("NULL");
+    right = sqlite3_mprintf("NULL");
     if( op[0] == '>' && op[1] == '\0' /*OP_SeekGT*/ ){
       op = "IS NOT";
     }else{
@@ -5378,13 +5398,16 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
     }
   }
 
-  if( !value ){
+  if( !right ){
     abort();
   }
 
-  ret = sqlite3_mprintf("(%s) %s %s", colName, op, value);
-
-  sqlite3_free(value);
+  if( leftIsCol ){
+    ret = sqlite3_mprintf("\"%w\" %s (%s)", left, op, right);
+  }else {
+    ret = sqlite3_mprintf("(%s) %s (%s)", left, op, right);
+  }
+  sqlite3_free(right);
 
   return ret;
 }
@@ -5496,21 +5519,29 @@ char *sqlite3DescribeIndexOrder(
      }
      isExpr = 1;
   }
-  ret = sqlite3_mprintf("(%s)%s",
-    isExpr?pExprDesc:pTbl->aCol[pIdx->aiColumn[0]].zName, pDesc);
-
+  if( isExpr ){
+    ret = sqlite3_mprintf("(%s) %s", pExprDesc, pDesc);
+  }else{
+    ret = sqlite3_mprintf("\"%w\" %s",
+                          pTbl->aCol[pIdx->aiColumn[0]].zName, pDesc);
+  }
   if( (colMask & (1ULL<<63)) || (colMask&1ULL) || isExpr ){
-    ret_cols = sqlite3_mprintf("(%s)",
-      isExpr?pExprDesc:pTbl->aCol[pIdx->aiColumn[0]].zName);
+    if( isExpr ){
+      ret_cols = sqlite3_mprintf("(%s)", pExprDesc);
+    }else{
+      ret_cols = sqlite3_mprintf("\"%w\"",
+                                 pTbl->aCol[pIdx->aiColumn[0]].zName);
+    }
   }else{
     ret_cols = sqlite3_mprintf("NULL");  /* default for no columns */
   }
 
 
   if( m && nfields ){
-    retCond = getIndexCond(db,
-      isExpr?pExprDesc:pTbl->aCol[pIdx->aiColumn[0]].zName,
-      (nfields == 1)?pOperLast:"=", m);
+    retCond = getIndexCond(db, isExpr ? pExprDesc :
+                           pTbl->aCol[pIdx->aiColumn[0]].zName,
+                           (nfields==1) ? pOperLast : "=", m,
+                           !isExpr);
     *hasCondition = 1;
   }else{
     *hasCondition = 0;
@@ -5539,8 +5570,12 @@ char *sqlite3DescribeIndexOrder(
 	((pIdx->aSortOrder[i])?"":" DESC"):
 	((pIdx->aSortOrder[i])?" DESC":"");
 
-      ret2 = sqlite3_mprintf("%s, (%s)%s", ret,
-        isExpr?pExprDesc:colName, pDesc);
+      if( isExpr ){
+        ret2 = sqlite3_mprintf("%s, (%s) %s", ret, pExprDesc, pDesc);
+      }else{
+        ret2 = sqlite3_mprintf("%s, \"%w\" %s", ret, colName, pDesc);
+      }
+
       sqlite3_free(ret);
       ret = ret2;
     }
@@ -5548,8 +5583,11 @@ char *sqlite3DescribeIndexOrder(
     ** only, if filter is NOT disabled && if the field bit is set
     */
     if( (colMask & (1ULL<<63)) || ((i<64) && (colMask&(1ULL<<i))) || isExpr ){
-      ret_cols2 = sqlite3_mprintf("%s, (%s)", ret_cols,
-        isExpr?pExprDesc:colName);
+      if( isExpr ){
+        ret_cols2 = sqlite3_mprintf("%s, (%s)", ret_cols, pExprDesc);
+      }else{
+        ret_cols2 = sqlite3_mprintf("%s, \"%w\"", ret_cols, colName);
+      }
     }else{
       ret_cols2 = sqlite3_mprintf("%s, NULL", ret_cols);
     }
@@ -5558,8 +5596,9 @@ char *sqlite3DescribeIndexOrder(
 
     if( !done_key ){
       if( (*hasCondition) && i < nfields ){
-        retCond2 = getIndexCond(db, isExpr?pExprDesc:colName,
-         (i==(nfields-1))?pOperLast:"=", &m[i]);
+        retCond2 = getIndexCond(db, isExpr ? pExprDesc : colName,
+                                (i==(nfields-1)) ? pOperLast : "=",
+                                &m[i], !isExpr);
 
         retCond3 = sqlite3_mprintf("%s AND %s", retCond, retCond2);
 

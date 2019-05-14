@@ -50,6 +50,9 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
 extern int bdb_update_startlwm_berk(void *statearg, unsigned long long ltranid,
     DB_LSN *firstlsn);
+extern int bdb_commitdelay(void *arg);
+extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, 
+	uint32_t generation, unsigned long long ltranid, int push);
 
 
 static int __log_encrypt_record __P((DB_ENV *, DBT *, HDR *, u_int32_t));
@@ -386,8 +389,6 @@ err:
 	if (need_free)
 		__os_free(dbenv, dbt->data);
 
-    int bdb_commitdelay(void *arg);
-
 	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
 			(delay = bdb_commitdelay(dbenv->app_private))) {
 		static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
@@ -701,8 +702,6 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	/* we have the log lsn value, can get context */
 	if (off_context >= 0) {
 		unsigned long long ltid = 0, *ltranid = &ltid;
-		extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, 
-				uint32_t generation, unsigned long long ltranid, int push);
 		int pushlog = 1;
 
 		assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||

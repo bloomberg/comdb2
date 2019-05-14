@@ -1489,7 +1489,6 @@ static int db_db_debug(Lua lua)
     int finish_execute = 0;
     for (;;) {
         char buffer[250] = {0};
-        char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
             Pthread_cond_broadcast(&lua_debug_cond);
@@ -1513,10 +1512,11 @@ static int db_db_debug(Lua lua)
             i = atoi(&buffer[9]);
             sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
         } else if (strncmp(buffer, "print ", 6) == 0) {
+            char old_buffer[sizeof(buffer)];
             sprintf(old_buffer, "%s", buffer);
             int len = strlen(&old_buffer[6]);
             old_buffer[6 + len - 1] = '\0';
-            sprintf(buffer, "eval('%s')", &old_buffer[6]);
+            sprintf(buffer, "eval('%s')", old_buffer + 6);
         } else if (strncmp(buffer, "getinfo", 7) == 0) {
             sprintf(buffer, " %s", "_SP.getinfo(5)");
         } else if (strncmp(buffer, "HALT", 4) == 0) {
@@ -1525,10 +1525,12 @@ static int db_db_debug(Lua lua)
         } else if (strncmp(buffer, "where", 5) == 0) {
             sprintf(buffer, " %s", "_SP.where()");
         } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
-            strncpy(replace_from, "_SP.get_var", 11);
+            char *arguments = replace_from + strlen("getvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.get_var%s", arguments);
             replace_from = NULL;
         } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
-            strncpy(replace_from, "_SP.set_var", 11);
+            char *arguments = replace_from + strlen("setvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.set_var%s", arguments);
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
@@ -3000,7 +3002,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
     Pthread_cond_init(&thd->lua_thread_cond, NULL);
 
-    strcpy(newsp->spname, sp->spname);
+    strncpy0(newsp->spname, sp->spname, sizeof(newsp->spname));
     newsp->spversion = sp->spversion;
     if (newsp->spversion.version_str)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
@@ -3082,7 +3084,7 @@ static int dbthread_join(Lua lua1)
     Lua lua2 = thd->lua;
     SP sp2 = thd->sp;
     int num_returns = copy_state_stacks(lua2, lua1, 0);
-    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error));
+    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error) - 1);
     close_sp_int(sp2, 1);
     return num_returns;
 }
@@ -6380,6 +6382,7 @@ void *exec_trigger(trigger_reg_t *reg)
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
+    sqlengine_setup_temp_table_mtx(&clnt);
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
@@ -6441,6 +6444,7 @@ void *exec_trigger(trigger_reg_t *reg)
         force_unregister(L, reg);
     }
     put_curtran(thedb->bdb_env, &clnt);
+    sqlengine_cleanup_temp_table_mtx(&clnt);
     close_sp(&clnt);
     cleanup_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
