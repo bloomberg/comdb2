@@ -32,6 +32,7 @@
 #include "str0.h"
 
 #include <sys/time.h>
+#include <str0.h>
 
 extern int gbl_maxretries;
 
@@ -4332,7 +4333,7 @@ static int make_sp_key(uint8_t *key, const char *name, int version)
     luakey.lua_vers = version;
     if (luakey.spname_len > LLMETA_SPLEN)
         return -1;
-    strcpy(luakey.spname, name);
+    strncpy0(luakey.spname, name, sizeof(luakey.spname));
     uint8_t *key_end = key + LLMETA_IXLEN;
     if (llmeta_file_type_spname_lua_vers_key_put(&luakey, key, key_end) == NULL)
         return -1;

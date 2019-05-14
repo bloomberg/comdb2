@@ -2928,7 +2928,6 @@ void __berkdb_count_freeepages_abort(void);
 int get_committed_lsns(DB_ENV *dbenv, DB_LSN **lsns, int *n_lsns,
 	int epoch, int file, int offset);
 
-unsigned long long get_current_context(DB_ENV *dbenv);
 int get_lsn_context_from_timestamp(DB_ENV *dbenv, int32_t timestamp,
 	DB_LSN *ret_lsn, unsigned long long *ret_context);
 int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
