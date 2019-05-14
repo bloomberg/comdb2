@@ -569,6 +569,8 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_stripes(s);
     else if (s->add_view)
         rc = do_add_view(iq, s, trans);
+    else if (s->drop_view)
+        rc = finalize_drop_view(iq, s, trans);
 
     if (rc == SC_MASTER_DOWNGRADE) {
         while (s->logical_livesc) {

@@ -18,6 +18,7 @@
 #include "comdb2.h"
 
 int add_view(struct dbview *view);
+void delete_view(char *view_name);
 int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
                             char *view_def, int view_version, int *bdberr);
 int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
@@ -122,18 +123,16 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
                        tran_type *tran)
 {
     int rc = 0;
+    int bdberr = 0;
 
-    if ((rc = bdb_llmeta_del_view_def(tran, s->tablename, 0, 0)) != 0) {
+    if ((rc = bdb_llmeta_del_view_def(tran, s->tablename, 0, &bdberr)) != 0) {
         return rc;
     }
 
-/* TODO (NC): Do we need this for views? */
-#if 0
     if ((rc = llmeta_set_views(tran, thedb)) != 0) {
         sc_errf(s, "Failed to set view names in low level meta\n");
         return rc;
     }
-#endif
 
     if (s->finalize) {
         if (create_sqlmaster_records(tran)) {
@@ -142,18 +141,11 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
         }
         create_sqlite_master();
     }
-
-        // live_sc_off(db);
-
-#if 0
-    if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename,
-               db->tableversion);
-    }
-#endif
+    delete_view(s->tablename);
 
 /* TODO (NC): study */
 #if 0
+    live_sc_off(db);
     if (gbl_replicate_local)
         local_replicant_write_clear(iq, tran, db);
 #endif

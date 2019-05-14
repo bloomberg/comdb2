@@ -19,4 +19,6 @@
 int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran);
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran);
+int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
+                       tran_type *tran);
 #endif

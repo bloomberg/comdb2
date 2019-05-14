@@ -5657,7 +5657,7 @@ int add_view(struct dbview *view)
 {
     Pthread_rwlock_wrlock(&thedb_lock);
 
-    if (hash_find_readonly(thedb->view_hash, view) != 0) {
+    if (hash_find_readonly(thedb->view_hash, &view->view_name) != 0) {
         Pthread_rwlock_unlock(&thedb_lock);
         return -1;
     }
@@ -5671,10 +5671,14 @@ int add_view(struct dbview *view)
 
 void delete_view(char *view_name)
 {
+    struct dbview *view;
     Pthread_rwlock_wrlock(&thedb_lock);
 
-    /* Remove the view from hash. */
-    hash_delk(thedb->view_hash, view_name);
+    view = hash_find_readonly(thedb->view_hash, &view_name);
+    if (view) {
+        /* Remove the view from hash. */
+        hash_del(thedb->view_hash, view);
+    }
 
     Pthread_rwlock_unlock(&thedb_lock);
 }
