@@ -1652,7 +1652,8 @@ static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
         for (int i = 0; i < sockpool_fd_count; i++) {
             struct sockpool_fd_list *sp = &sockpool_fds[i];
             if (sp->in_use == 0) {
-                close(sp->sockpool_fd);
+                if (sp->sockpool_fd > -1)
+                    close(sp->sockpool_fd);
                 sp->sockpool_fd = -1;
             }
         }
@@ -1679,7 +1680,7 @@ static int sockpool_get_from_pool(void)
     int fd = -1;
     for (int i = 0; i < sockpool_fd_count; i++) {
         struct sockpool_fd_list *sp = &sockpool_fds[i];
-        if (sp->in_use == 0) {
+        if (sp->in_use == 0 && sp->sockpool_fd > -1) {
             fd = sp->sockpool_fd;
             sp->in_use = 1;
             break;
@@ -1710,6 +1711,7 @@ static int sockpool_place_fd_in_pool(int fd)
     if (found == 0) {
         if (empty_ix != -1) {
             struct sockpool_fd_list *sp = &sockpool_fds[empty_ix];
+            sp->in_use = 0;
             sp->sockpool_fd = fd;
             rc = 0;
         } else if (sockpool_fd_count < MAX_SOCKPOOL_FDS) {
