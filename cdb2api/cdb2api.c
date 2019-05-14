@@ -1784,8 +1784,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
             if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
                 closeit = 1;
             }
-        }
-        else {
+        } else {
             sockpool_remove_fd(sockpool_fd);
             closeit = 1;
         }
