@@ -75,7 +75,6 @@ static int defered_index_key_cmp(void *usermem, int key1len,
     CMP_KEY_MEMBER(k1, k2, usedb);
     CMP_KEY_MEMBER(k1, k2, ixnum);
     MEMCMP_KEY_MEMBER(k1, k2, ixkey, sizeof(k1->ixkey));
-    //CMP_KEY_MEMBER(k1, k2, counter);
     CMP_KEY_MEMBER(k1, k2, type);
     CMP_KEY_MEMBER(k1, k2, genid);
     return 0;
@@ -86,7 +85,7 @@ static inline void *create_defered_index_table()
 {
     int bdberr = 0;
     struct temp_table *newtbl =
-        (struct temp_table *)bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        (struct temp_table *)bdb_temp_array_create(thedb->bdb_env, &bdberr);
     if (newtbl == NULL || bdberr != 0) {
         logmsg(LOGMSG_ERROR, "failed to create temp table err %d\n", bdberr);
         return NULL;
