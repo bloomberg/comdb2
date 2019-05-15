@@ -1671,7 +1671,7 @@ REGISTER_TUNABLE(
     pbkdf2_iterations_update, NULL);
 
 REGISTER_TUNABLE("kafka_topic", NULL, TUNABLE_STRING, &gbl_kafka_topic,
-                 READONLY|READEARLY, NULL, NULL, NULL, NULL);
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("kafka_brokers", NULL, TUNABLE_STRING, &gbl_kafka_brokers,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);

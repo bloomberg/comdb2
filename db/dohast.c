@@ -163,7 +163,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
     if (!tbl && p->pSrc->nSrc) {
         /* select 1 from tbl */
-        tbl = (const char*)p->pSrc->a[0].zName;
+        tbl = (const char *)p->pSrc->a[0].zName;
     }
 
     if (unlikely(!tbl)) {
