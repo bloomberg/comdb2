@@ -75,11 +75,12 @@ extern int __berkdb_read_alarm_ms;
 #include "crc32c.h"
 #include "ssl_bend.h"
 #include "dohsql.h"
+#include "fdb_whitelist.h"
 
-#include <trigger.h>
-#include <sc_stripes.h>
-#include <sc_global.h>
-#include <logmsg.h>
+#include "trigger.h"
+#include "sc_stripes.h"
+#include "sc_global.h"
+#include "logmsg.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -140,6 +141,18 @@ extern unsigned long long get_genid(bdb_state_type *bdb_state,
                                     unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
+void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
+                       bdb_state_type *bdb_state);
+extern void delete_log_files(bdb_state_type *bdb_state);
+void malloc_stats();
+extern int get_blkmax(void);
+void set_analyze_abort_requested();
+extern void dump_log_event_counts(void);
+extern void bdb_dumptrans(bdb_state_type *bdb_state);
+const char *deadlock_policy_str(int policy);
+void bdb_locker_summary(void *_bdb_state);
+extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
+                    int endfile, int endoff);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -561,8 +574,6 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
     return 0;
 }
 
-int sql_testrun(char *sql, int sqllen);
-
 void fastcount(char *tablename);
 
 /* Seem to need this all over the place. */
@@ -604,8 +615,11 @@ void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
-static void *clean_exit_thd(void *unused)
+void *clean_exit_thd(void *unused)
 {
+    if (!gbl_ready)
+        return NULL;
+
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
         Pthread_mutex_unlock(&exiting_lock);
@@ -650,7 +664,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_t thd_attr;
 
         Pthread_attr_init(&thd_attr);
-        Pthread_attr_setstacksize(&thd_attr, 128 * 1024);
+        /* Stack overflows with 128KiB stack size in Debug build.
+           Slightly bump it up. */
+        Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
         int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
@@ -748,8 +764,6 @@ clipper_usage:
         int datafile = -1;
         int stripe = -1;
         int index = -1;
-        void bdb_dump_freelist(FILE * out, int datafile, int stripe, int ixnum,
-                               bdb_state_type *bdb_state);
         init_fake_ireq(dbenv, &iq);
 
         tok = segtok(line, lline, &st, &ltok);
@@ -851,7 +865,6 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
     } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
         logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
-        extern void delete_log_files(bdb_state_type *bdb_state);
         delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
@@ -1155,7 +1168,6 @@ clipper_usage:
         /* This is defined in malloc.h, as is struct mallinfo.  Including
          * malloc.h
          * causes a clash between mallinfo there and in dlmalloc.h. */
-        void malloc_stats();
         malloc_stats();
 #endif
     } else if (tokcmp(tok, ltok, "deletehints") == 0) {
@@ -1347,7 +1359,6 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
-        extern int get_blkmax(void);
         int blkmax = get_blkmax();
         logmsg(LOGMSG_USER, 
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
@@ -2550,6 +2561,30 @@ clipper_usage:
         dbgflag = toknum(tok, ltok);
         gbl_time_osql = dbgflag;
         logmsg(LOGMSG_USER, "sqllogtime %s\n", (gbl_time_osql) ? "enabled" : "disabled");
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist add db1 */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected action\n");
+            return -1;
+        }
+        if (tokcmp(tok, ltok, "add") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "add: expected db name\n");
+                return -1;
+            }
+            fdb_add_dbname_to_whitelist(tok);
+        } else if (tokcmp(tok, ltok, "del") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "del: expected db name\n");
+                return -1;
+            }
+            fdb_del_dbname_from_whitelist(tok);
+        } else if (tokcmp(tok, ltok, "dump") == 0) {
+            fdb_dump_whitelist();
+        }
     } else if (tokcmp(tok, ltok, "fdblogtime") == 0) {
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);
@@ -2770,8 +2805,6 @@ clipper_usage:
            logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
-        } else if (tokcmp(tok, ltok, "testrun") == 0) {
-            sql_testrun(&line[st], lline - st);
         } else if (tokcmp(tok, ltok, "debug") == 0) {
             extern int gbl_debug_sql_opcodes;
             on_off_trap(line, lline, &st, &ltok, "SQL debug mode", "sql debug",
@@ -2867,7 +2900,6 @@ clipper_usage:
             }
 
             logmsg(LOGMSG_USER, "Abort ongoing analyze\n");
-            void set_analyze_abort_requested();
             set_analyze_abort_requested();
         } else {
             logmsg(LOGMSG_ERROR, "unknown command <%.*s>\n", ltok, tok);
@@ -3913,7 +3945,6 @@ clipper_usage:
                100000000 / (end - start) * 1000);
         bdb_lockspeed(dbenv->bdb_env);
     } else if (tokcmp(tok, ltok, "logevents") == 0) {
-        extern void dump_log_event_counts(void);
         dump_log_event_counts();
     } else if (tokcmp(tok, ltok, "abort_on_in_use_rqid") == 0) {
         gbl_abort_on_clear_inuse_rqid = 1;
@@ -4147,7 +4178,6 @@ clipper_usage:
                    db->do_local_replication ? "YES" : "NO");
         }
     } else if (tokcmp(tok, ltok, "transtat") == 0) {
-        extern void bdb_dumptrans(bdb_state_type * bdb_state);
         bdb_dumptrans(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "ddlk") == 0) {
         extern unsigned gbl_ddlk;
@@ -4346,7 +4376,6 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             gbl_deadlock_policy_override = toknum(tok, ltok);
-            const char *deadlock_policy_str(int policy);
             logmsg(LOGMSG_USER, "Set deadlock policy to %s\n",
                    deadlock_policy_str(gbl_deadlock_policy_override));
         } else {
@@ -4375,7 +4404,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {
-        void bdb_locker_summary(void *_bdb_state);
         bdb_locker_summary(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "mempget_timeout") == 0) {
         extern int __gbl_max_mpalloc_sleeptime;
@@ -4476,8 +4504,6 @@ clipper_usage:
             } else
                 endfile = toknum(tok, ltok);
         }
-        extern int printlog(bdb_state_type * bdb_state, int startfile,
-                            int startoff, int endfile, int endoff);
         printlog(thedb->bdb_env, startfile, startoff, endfile, endoff);
 #ifdef _LINUX_SOURCE
     } else if (tokcmp(tok, ltok, "rcache") == 0) {

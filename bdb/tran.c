@@ -39,7 +39,7 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <lockmacro.h>
+#include <lockmacros.h>
 
 #include <ctrace.h>
 
@@ -724,6 +724,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
             *bdberr = BDBERR_READONLY;
             myfree(tran);
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
             return NULL;
         }
 
@@ -1116,6 +1117,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->threadid = pthread_self();
 
     tran->usrptr = 0;
+    int setThdTran = 0; /* was tran saved into thread local data? */
 
     /* comdb2 coding style:  "if parent" means "i am a child" */
     if (parent) {
@@ -1132,6 +1134,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
         tran->master = 1;
 
         Pthread_setspecific(bdb_state->seqnum_info->key, tran);
+        setThdTran = 1;
 
         /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
@@ -1172,6 +1175,10 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
             myfree(tran);
+            if (setThdTran){
+                Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+                setThdTran = 0;
+            }
             return NULL;
         } else {
             if (!parent) {
@@ -2502,16 +2509,16 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int flags = DB_LOCK_ID_READONLY;
+        unsigned int loc_flags = DB_LOCK_ID_READONLY;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)
-            flags |= DB_LOCK_ID_LOWPRI;
+            loc_flags |= DB_LOCK_ID_LOWPRI;
         if (gbl_track_curtran_locks)
-            flags |= DB_LOCK_ID_TRACK;
+            loc_flags |= DB_LOCK_ID_TRACK;
 
         rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv,
-                                             &curtran->lockerid, flags);
+                                             &curtran->lockerid, loc_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fail to get lock_id rc=%d\n", __func__, rc);
             *bdberr = (rc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : rc;

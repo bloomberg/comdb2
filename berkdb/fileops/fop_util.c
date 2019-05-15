@@ -598,8 +598,10 @@ done:	/*
 	 * exact same string, so we need to make sure that we do not
 	 * free twice.
 	 */
-	if (!truncating && tmpname != NULL && tmpname != name)
+	if (!truncating && tmpname != NULL && tmpname != name) {
 		__os_free(dbenv, tmpname);
+		tmpname = NULL; 
+	}
 	if (real_name != NULL)
 		__os_free(dbenv, real_name);
 	if (real_tmpname != NULL)

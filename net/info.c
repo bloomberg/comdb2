@@ -33,7 +33,7 @@
 
 struct timebuf {
     struct tm tm;
-    char s[15];
+    char s[64];
 };
 
 static char *fmt_time(struct timebuf *b, int epochtime)

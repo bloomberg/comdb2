@@ -5,13 +5,13 @@
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
  */
 
 #include <poll.h>
@@ -112,7 +112,6 @@ struct dohsql {
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
 };
-typedef struct dohsql dohsql_t;
 
 struct dohsql_stats {
     long long num_reqs;
@@ -163,9 +162,9 @@ void handle_child_error(struct sqlclntstate *clnt, int errcode)
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
 
     if (conn) {
-        pthread_mutex_lock(&conn->mtx);
+        Pthread_mutex_lock(&conn->mtx);
         conn->rc = -1;
-        pthread_mutex_unlock(&conn->mtx);
+        Pthread_mutex_unlock(&conn->mtx);
     }
 }
 
@@ -227,11 +226,16 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
-static int inner_type(sqlite3_stmt *stmt, int col)
+static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
-    int type = sqlite3_column_type(stmt, col);
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+    int type;
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+        type = sqlite3_column_type(stmt, col);
+        if (type == SQLITE_NULL) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
+    } else {
+        type = SQLITE_NULL;
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -254,7 +258,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = inner_type(stmt, i);
+        conn->cols[i].type = inner_type(clnt, stmt, i);
     }
     return 0;
 }
@@ -311,9 +315,9 @@ cleanup:
         if (conn->queue_size > gbl_dohsql_max_queued_kb_highwm * 1000) {
             if ((conn->queue_size > gbl_dohsql_max_queued_kb_lowwm * 1000) &&
                 conn->status != DOH_MASTER_DONE) {
-                pthread_mutex_unlock(&conn->mtx);
+                Pthread_mutex_unlock(&conn->mtx);
                 poll(NULL, 0, gbl_dohsql_full_queue_poll_msec);
-                pthread_mutex_lock(&conn->mtx);
+                Pthread_mutex_lock(&conn->mtx);
                 goto cleanup;
             }
         }
@@ -344,7 +348,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     row_t *oldrow;
 
     oldrow = NULL;
-    pthread_mutex_lock(&conn->mtx);
+    Pthread_mutex_lock(&conn->mtx);
 
     if (conn->status == DOH_MASTER_DONE) {
         if (gbl_dohsql_verbose)
@@ -358,7 +362,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
         conn->rc = SQLITE_DONE; /* signal master this is clear */
 
-        pthread_mutex_unlock(&conn->mtx);
+        Pthread_mutex_unlock(&conn->mtx);
 
         return SQLITE_DONE; /* any != 0 will do, this impersonates a normal end
                              */
@@ -371,13 +375,13 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
                    __func__);
         oldrow = queue_next(conn->que_free);
     }
-    pthread_mutex_unlock(&conn->mtx);
+    Pthread_mutex_unlock(&conn->mtx);
 
     row = sqlite3CloneResult(stmt, oldrow, &row_size);
     if (!row)
         return SHARD_ERR_GENERIC;
 
-    pthread_mutex_lock(&conn->mtx);
+    Pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
     if (queue_add(conn->que, row))
         abort();
@@ -388,7 +392,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
     _que_limiter(conn, stmt, row_size);
 
-    pthread_mutex_unlock(&conn->mtx);
+    Pthread_mutex_unlock(&conn->mtx);
 
     return SHARD_NOERR;
 }
@@ -397,9 +401,9 @@ static int inner_row_last(struct sqlclntstate *clnt)
 {
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
 
-    pthread_mutex_lock(&conn->mtx);
+    Pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_DONE;
-    pthread_mutex_unlock(&conn->mtx);
+    Pthread_mutex_unlock(&conn->mtx);
 
     return SHARD_NOERR;
 }
@@ -449,8 +453,8 @@ static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
     return &conns->row[i];
 }
 
-#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
-#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
+#define Q_LOCK(x) Pthread_mutex_lock(&conns->conns[x].mtx)
+#define Q_UNLOCK(x) Pthread_mutex_unlock(&conns->conns[x].mtx)
 
 static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
                                     sqlite3_stmt *stmt, const char **errstr)
@@ -500,11 +504,11 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
     if (conns->row && conns->row_src) {
         /* put the used row in the free list */
         if (i != conns->row_src)
-            pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
+            Pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
         if (i != conns->row_src)
-            pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
+            Pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
     }
     /* new row */
     conns->row = row;
@@ -523,14 +527,14 @@ static void _signal_children_master_is_done(dohsql_t *conns)
     int child_num;
 
     for (child_num = 1; child_num < conns->nconns; child_num++) {
-        pthread_mutex_lock(&conns->conns[child_num].mtx);
+        Pthread_mutex_lock(&conns->conns[child_num].mtx);
         if (conns->conns[child_num].status != DOH_CLIENT_DONE) {
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "%s: signalling client done, ignoring\n",
                        __func__);
             conns->conns[child_num].status = DOH_MASTER_DONE;
         }
-        pthread_mutex_unlock(&conns->conns[child_num].mtx);
+        Pthread_mutex_unlock(&conns->conns[child_num].mtx);
     }
 }
 
@@ -586,10 +590,10 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = sqlite3_step(stmt);
+    rc = sqlite3_maybe_step(clnt, stmt);
 
     if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
+        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
             logmsg(LOGMSG_DEBUG,
@@ -703,7 +707,7 @@ wait_for_others:
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
-        rc = sqlite3_step(stmt);
+        rc = sqlite3_maybe_step(clnt, stmt);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
@@ -1046,7 +1050,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
         conn->clnt = NULL;
         return SHARD_ERR_MALLOC;
     }
-    pthread_mutex_init(&conn->mtx, NULL);
+    Pthread_mutex_init(&conn->mtx, NULL);
 
     comdb2uuid(conn->clnt->osql.uuid);
     conn->clnt->appsock_id = getarchtid();
@@ -1082,13 +1086,14 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     if (conn->cols)
         free(conn->cols);
 
+    free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
-    pthread_mutex_destroy(&clnt->wait_mutex);
-    pthread_cond_destroy(&clnt->wait_cond);
-    pthread_mutex_destroy(&clnt->write_lock);
-    pthread_mutex_destroy(&clnt->dtran_mtx);
+    Pthread_mutex_destroy(&clnt->wait_mutex);
+    Pthread_cond_destroy(&clnt->wait_cond);
+    Pthread_mutex_destroy(&clnt->write_lock);
+    Pthread_mutex_destroy(&clnt->dtran_mtx);
     free(clnt);
 }
 
@@ -1207,13 +1212,13 @@ int dohsql_distribute(dohsql_node_t *node)
         if (gbl_dohsql_stats_dirty.max_distribution < conns->nconns)
             gbl_dohsql_stats_dirty.max_distribution = conns->nconns;
 
-        pthread_mutex_lock(&dohsql_stats_mtx);
+        Pthread_mutex_lock(&dohsql_stats_mtx);
         if (gbl_dohsql_max_queued_kb_lowwm > gbl_dohsql_max_queued_kb_highwm)
             gbl_dohsql_max_queued_kb_lowwm =
                 (gbl_dohsql_max_queued_kb_highwm / 2)
                     ? gbl_dohsql_max_queued_kb_highwm / 2
                     : 1;
-        pthread_mutex_unlock(&dohsql_stats_mtx);
+        Pthread_mutex_unlock(&dohsql_stats_mtx);
     }
 
     return SHARD_NOERR;
@@ -1228,22 +1233,22 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
         return SHARD_NOERR;
 
     if (conns->row && conns->row_src) {
-        pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
+        Pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
-        pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
+        Pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
         conns->row = NULL;
         conns->row_src = 0;
     }
 
     for (i = 1; i < conns->nconns; i++) {
-        pthread_mutex_lock(&conns->conns[i].mtx);
+        Pthread_mutex_lock(&conns->conns[i].mtx);
         while (conns->conns[i].status != DOH_CLIENT_DONE) {
-            pthread_mutex_unlock(&conns->conns[i].mtx);
+            Pthread_mutex_unlock(&conns->conns[i].mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&conns->conns[i].mtx);
+            Pthread_mutex_lock(&conns->conns[i].mtx);
         }
-        pthread_mutex_unlock(&conns->conns[i].mtx);
+        Pthread_mutex_unlock(&conns->conns[i].mtx);
     }
 
     for (i = 0; i < conns->nconns; i++) {
@@ -1264,7 +1269,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
         _shard_disconnect(&conns->conns[i]);
     }
     if (likely(gbl_dohsql_track_stats)) {
-        pthread_mutex_lock(&dohsql_stats_mtx);
+        Pthread_mutex_lock(&dohsql_stats_mtx);
         gbl_dohsql_stats.num_reqs++;
         if (gbl_dohsql_stats.max_distribution < conns->nconns)
             gbl_dohsql_stats.max_distribution = conns->nconns;
@@ -1276,7 +1281,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
                 conns->stats.max_free_queue_len;
         if (gbl_dohsql_stats.max_queue_bytes < conns->stats.max_queue_bytes)
             gbl_dohsql_stats.max_queue_bytes = conns->stats.max_queue_bytes;
-        pthread_mutex_unlock(&dohsql_stats_mtx);
+        Pthread_mutex_unlock(&dohsql_stats_mtx);
     }
 
     if (logger) {
@@ -1310,14 +1315,14 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 
     conn = clnt->plugin.state;
 
-    pthread_mutex_lock(&conn->mtx);
+    Pthread_mutex_lock(&conn->mtx);
 
     /* wait if run ended ok, master is not done, and there are cached rows */
     if (!clnt->query_rc) {
         while (conn->status == DOH_RUNNING && queue_count(conn->que) > 0) {
-            pthread_mutex_unlock(&conn->mtx);
+            Pthread_mutex_unlock(&conn->mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&conn->mtx);
+            Pthread_mutex_lock(&conn->mtx);
         }
     }
 
@@ -1330,7 +1335,7 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
     structure conn->status = DOH_CLIENT_DONE;
     */
 
-    pthread_mutex_unlock(&conn->mtx);
+    Pthread_mutex_unlock(&conn->mtx);
 }
 
 const char *dohsql_get_sql(struct sqlclntstate *clnt, int index)
@@ -1876,6 +1881,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         /* clnt parameters are incorrect, fallback to single thread to err */
         free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     /* found, add it to the node->params array */
@@ -1889,5 +1895,6 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
+    free(newparam);
     return *pparams = params;
 }

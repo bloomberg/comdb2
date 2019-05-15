@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "fdb_whitelist.h"
 #include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -375,14 +376,11 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     if (tokcmp(tok, *ltok, "if") == 0) {
         enum mach_class my_class = get_my_mach_class();
         tok = segtok(line, line_len, st, ltok);
-        if (my_class == CLASS_TEST && tokcmp(tok, *ltok, "test") &&
-            tokcmp(tok, *ltok, "dev"))
+        char *label = strndup(tok, *ltok);
+        int value = mach_class_name2class(label);
+
+        if (my_class == CLASS_UNKNOWN || my_class != value)
             return 0;
-        if (my_class == CLASS_ALPHA && tokcmp(tok, *ltok, "alpha")) return 0;
-        if (my_class == CLASS_UAT && tokcmp(tok, *ltok, "uat")) return 0;
-        if (my_class == CLASS_BETA && tokcmp(tok, *ltok, "beta")) return 0;
-        if (my_class == CLASS_PROD && tokcmp(tok, *ltok, "prod")) return 0;
-        if (my_class == CLASS_UNKNOWN) return 0;
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;
@@ -442,8 +440,8 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     fclose(ff); /* lets get one fd back */
 }
 
-struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
-                                int required)
+static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
+                                       int required)
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
@@ -690,6 +688,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
         }
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist db1 db2 ...  */
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = fdb_add_dbname_to_whitelist(tok);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+        }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
         tok = segtok(line, len, &st, &ltok);
@@ -747,6 +754,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
             }
             dbenv->sibling_hostname[0] = gbl_mynode;
+        }
+    } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
+        int classval = 1;
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = mach_class_addclass(tok, classval);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+            classval++;
         }
     } else if (tokcmp(tok, ltok, "pagesize") == 0) {
         tok = segtok(line, len, &st, &ltok);

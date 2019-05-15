@@ -122,7 +122,7 @@ void sqlite3MaterializeView(
   sqlite3 *db = pParse->db;
   int iDb = sqlite3SchemaToIndex(db, pView->pSchema);
   pWhere = sqlite3ExprDup(db, pWhere, 0);
-  pFrom = sqlite3SrcListAppend(db, 0, 0, 0);
+  pFrom = sqlite3SrcListAppend(pParse, 0, 0, 0);
   if( pFrom ){
     assert( pFrom->nSrc==1 );
     pFrom->a[0].zName = sqlite3DbStrDup(db, pView->zName);
@@ -199,6 +199,7 @@ limit_where_cleanup:
   **     SELECT rowid FROM table_a WHERE col1=1 ORDER BY col2 LIMIT 1 OFFSET 1
   **   );
   */
+
   pTab = pSrc->a[0].pTab;
   if( HasRowid(pTab) ){
     pLhs = sqlite3PExpr(pParse, TK_ROW, 0, 0);
@@ -325,7 +326,6 @@ void sqlite3DeleteFrom(
 # undef isView
 # define isView 0
 #endif
-    
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   v = sqlite3GetVdbe(pParse);
   if( v==0 ){
@@ -542,7 +542,7 @@ void sqlite3DeleteFrom(
     /* If this DELETE cannot use the ONEPASS strategy, this is the 
     ** end of the WHERE loop */
     if( eOnePass!=ONEPASS_OFF ){
-      addrBypass = sqlite3VdbeMakeLabel(v);
+      addrBypass = sqlite3VdbeMakeLabel(pParse);
     }else{
       sqlite3WhereEnd(pWInfo);
     }
@@ -737,7 +737,7 @@ void sqlite3GenerateRowDelete(
   /* Seek cursor iCur to the row to delete. If this row no longer exists 
   ** (this can happen if a trigger program has already deleted it), do
   ** not attempt to delete it or fire any DELETE triggers.  */
-  iLabel = sqlite3VdbeMakeLabel(v);
+  iLabel = sqlite3VdbeMakeLabel(pParse);
   opSeek = HasRowid(pTab) ? OP_NotExists : OP_NotFound;
   if( eMode==ONEPASS_OFF ){
     sqlite3VdbeAddOp4Int(v, opSeek, iDataCur, iLabel, iPk, nPk);
@@ -881,7 +881,6 @@ void sqlite3GenerateRowIndexDelete(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if ( !has_comdb2_index_for_sqlite(pTab) ) return;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   v = pParse->pVdbe;
   pPk = HasRowid(pTab) ? 0 : sqlite3PrimaryKeyIndex(pTab);
   for(i=0, pIdx=pTab->pIndex; pIdx; i++, pIdx=pIdx->pNext){
@@ -947,7 +946,7 @@ int sqlite3GenerateIndexKey(
 
   if( piPartIdxLabel ){
     if( pIdx->pPartIdxWhere ){
-      *piPartIdxLabel = sqlite3VdbeMakeLabel(v);
+      *piPartIdxLabel = sqlite3VdbeMakeLabel(pParse);
       pParse->iSelfTab = iDataCur + 1;
       sqlite3ExprIfFalseDup(pParse, pIdx->pPartIdxWhere, *piPartIdxLabel, 
                             SQLITE_JUMPIFNULL);

@@ -35,7 +35,9 @@ typedef struct Vdbe Vdbe;
 ** The names of the following types declared in vdbeInt.h are required
 ** for the VdbeOp definition.
 */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 typedef struct sqlite3_value Mem;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef struct SubProgram SubProgram;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -190,12 +192,11 @@ typedef struct VdbeOpList VdbeOpList;
 #endif
 
 /*
-** The following macro converts a relative address in the p2 field
-** of a VdbeOp structure into a negative number so that 
-** sqlite3VdbeAddOpList() knows that the address is relative.  Calling
-** the macro again restores the address.
+** The following macro converts a label returned by sqlite3VdbeMakeLabel()
+** into an index into the Parse.aLabel[] array that contains the resolved
+** address of that label.
 */
-#define ADDR(X)  (-1-(X))
+#define ADDR(X)  (~(X))
 
 /*
 ** The makefile scans the vdbe.c source file and creates the "opcodes.h"
@@ -249,6 +250,12 @@ VdbeOp *sqlite3VdbeAddOpList(Vdbe*, int nOp, VdbeOpList const *aOp,int iLineno);
 # define ExplainQueryPlan(P)
 # define ExplainQueryPlanPop(P)
 # define ExplainQueryPlanParent(P) 0
+# define sqlite3ExplainBreakpoint(A,B) /*no-op*/
+#endif
+#if defined(SQLITE_DEBUG) && !defined(SQLITE_OMIT_EXPLAIN)
+  void sqlite3ExplainBreakpoint(const char*,const char*);
+#else
+# define sqlite3ExplainBreakpoint(A,B) /*no-op*/
 #endif
 void sqlite3VdbeAddParseSchemaOp(Vdbe*,int,char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -267,7 +274,7 @@ void sqlite3VdbeAppendP4(Vdbe*, void *pP4, int p4type);
 void sqlite3VdbeSetP4KeyInfo(Parse*, Index*);
 void sqlite3VdbeUsesBtree(Vdbe*, int);
 VdbeOp *sqlite3VdbeGetOp(Vdbe*, int);
-int sqlite3VdbeMakeLabel(Vdbe*);
+int sqlite3VdbeMakeLabel(Parse*);
 void sqlite3VdbeRunOnlyOnce(Vdbe*);
 void sqlite3VdbeReusable(Vdbe*);
 void sqlite3VdbeDelete(Vdbe*);
@@ -291,6 +298,10 @@ void sqlite3VdbeCountChanges(Vdbe*);
 sqlite3 *sqlite3VdbeDb(Vdbe*);
 u8 sqlite3VdbePrepareFlags(Vdbe*);
 void sqlite3VdbeSetSql(Vdbe*, const char *z, int n, u8);
+#ifdef SQLITE_ENABLE_NORMALIZE
+void sqlite3VdbeAddDblquoteStr(sqlite3*,Vdbe*,const char*);
+int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*);
+#endif
 void sqlite3VdbeSwap(Vdbe*,Vdbe*);
 VdbeOp *sqlite3VdbeTakeOpArray(Vdbe*, int*, int*);
 sqlite3_value *sqlite3VdbeGetBoundValue(Vdbe*, int, u8);
@@ -298,7 +309,6 @@ void sqlite3VdbeSetVarmask(Vdbe*, int);
 #ifndef SQLITE_OMIT_TRACE
   char *sqlite3VdbeExpandSql(Vdbe*, const char*);
 #endif
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -309,12 +319,10 @@ static inline
 int sqlite3BlobCompare(const Mem*, const Mem*);
 
 void sqlite3VdbeRecordUnpack(KeyInfo*,int,const void*,UnpackedRecord*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeRecordCompare(int,const void*,UnpackedRecord*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

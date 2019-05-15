@@ -235,9 +235,7 @@ static void hold_sigpipe_ll(int on)
 static int open_sockpool_ll(void)
 {
 
-    struct sockaddr_un addr;
     int fd;
-    struct sockpool_hello hello;
     const char *ptr;
     size_t bytesleft;
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -246,9 +244,8 @@ static int open_sockpool_ll(void)
         return -1;
     }
 
-    bzero(&addr, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path));
+    struct sockaddr_un addr = {.sun_family = AF_UNIX};
+    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         fprintf(stderr, "%s:connect(%s): %d %s\n", __func__,
@@ -258,10 +255,9 @@ static int open_sockpool_ll(void)
     }
 
     /* Connected - write hello message */
+    struct sockpool_hello hello = {
+        .protocol_version = 0, .pid = getpid(), .slot = 0};
     memcpy(hello.magic, "SQLP", 4);
-    hello.protocol_version = 0;
-    hello.pid = getpid();
-    hello.slot = 0;
 
     ptr = (const char *)&hello;
     bytesleft = sizeof(hello);
@@ -307,13 +303,10 @@ static void default_destructor(enum socket_pool_event event,
                 }
             }
             if (sockpool_fd != -1) {
-                struct sockpool_msg_vers0 msg;
                 int rc;
-                bzero(&msg, sizeof(msg));
-                msg.request = SOCKPOOL_DONATE;
-                msg.dbnum = dbnum;
-                msg.timeout = ttl;
-                strncpy(msg.typestr, typestr, sizeof(msg.typestr));
+                struct sockpool_msg_vers0 msg = {
+                    .request = SOCKPOOL_DONATE, .dbnum = dbnum, .timeout = ttl};
+                strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
                 msg.typestr[sizeof(msg.typestr) - 1] = 0;
 
                 errno = 0;
@@ -613,16 +606,13 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
             }
         }
         if (sockpool_fd != -1) {
-            struct sockpool_msg_vers0 msg;
             int rc;
+            struct sockpool_msg_vers0 msg = {.request = SOCKPOOL_REQUEST,
+                                             .dbnum = dbnum};
+
+            strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
             /* Please may I have a file descriptor */
-            bzero(&msg, sizeof(msg));
-            msg.request = SOCKPOOL_REQUEST;
-            msg.dbnum = dbnum;
-            strncpy(msg.typestr, typestr, sizeof(msg.typestr));
-            msg.typestr[sizeof(msg.typestr) - 1] = 0;
-
             errno = 0;
             rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
             if (rc != PASSFD_SUCCESS) {

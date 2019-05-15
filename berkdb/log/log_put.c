@@ -50,6 +50,9 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
 extern int bdb_update_startlwm_berk(void *statearg, unsigned long long ltranid,
     DB_LSN *firstlsn);
+extern int bdb_commitdelay(void *arg);
+extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, 
+	uint32_t generation, unsigned long long ltranid, int push);
 
 
 static int __log_encrypt_record __P((DB_ENV *, DBT *, HDR *, u_int32_t));
@@ -170,6 +173,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	dbt = &t;
 	t = *udbt;
 	u_int8_t *pp;
+    int adjsize = 0;
 
 	lock_held = need_free = 0;
 	flags &= (~(DB_LOG_DONT_LOCK | DB_LOG_DONT_INFLATE));
@@ -206,8 +210,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	 * to clients.
 	 */
 	if (!LF_ISSET(DB_LOG_NOCOPY) || IS_REP_MASTER(dbenv)) {
-		if (CRYPTO_ON(dbenv))
-			t.size += db_cipher->adj_size(udbt->size);
+		if (CRYPTO_ON(dbenv)) {
+            adjsize = db_cipher->adj_size(udbt->size);
+			t.size += adjsize;
+        }
 
 		if (t.size > 4096) {
 			if ((ret = __os_calloc(dbenv, 1, t.size, &t.data)) != 0)
@@ -217,6 +223,13 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 			t.data = alloca(t.size);
 
 		memcpy(t.data, udbt->data, udbt->size);
+
+        if (adjsize) {
+            assert(adjsize < 16);
+            uint8_t *pad = (uint8_t*) t.data + (t.size - adjsize);
+            for (int i = 0; i < adjsize; i++)
+                pad[i] = adjsize;
+        }
 	}
 	unsigned long long ltranid = 0;
 	if (10006 == rectype) {
@@ -375,8 +388,6 @@ err:
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, dbt->data);
-
-    int bdb_commitdelay(void *arg);
 
 	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
 			(delay = bdb_commitdelay(dbenv->app_private))) {
@@ -691,8 +702,6 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	/* we have the log lsn value, can get context */
 	if (off_context >= 0) {
 		unsigned long long ltid = 0, *ltranid = &ltid;
-		extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, 
-				uint32_t generation, unsigned long long ltranid, int push);
 		int pushlog = 1;
 
 		assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||

@@ -27,6 +27,7 @@
 #include <util.h>
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "str0.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_DEBUG
@@ -70,7 +71,7 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
               ((p->flags&MEM_Static)!=0 ? 1 : 0) <= 1 );
 
       /* No other bits set */
-      assert( (p->flags & ~(MEM_Null|MEM_Term|MEM_Subtype
+      assert( (p->flags & ~(MEM_Null|MEM_Term|MEM_Subtype|MEM_FromBind
                            |MEM_Dyn|MEM_Ephem|MEM_Static))==0 );
     }else{
       /* A pure NULL might have other flags, such as MEM_Static, MEM_Dyn,
@@ -200,8 +201,7 @@ int sqlite3VdbeChangeEncoding(Mem *pMem, int desiredEnc){
 }
 
 /*
-** Make sure pMem->z points to a writable allocation of at least 
-** min(n,32) bytes.
+** Make sure pMem->z points to a writable allocation of at least n bytes.
 **
 ** If the bPreserve argument is true, then copy of the content of
 ** pMem->z into the new allocation.  pMem must be either a string or
@@ -222,7 +222,6 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
   assert( pMem->szMalloc==0
        || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) );
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( n<32 ) n = 32;
   if( pMem->szMalloc>0 && bPreserve && pMem->z==pMem->zMalloc ){
     pMem->z = pMem->zMalloc = sqlite3DbReallocOrFree(pMem->db, pMem->z, n);
     bPreserve = 0;
@@ -277,7 +276,7 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
 ** if unable to complete the resizing.
 */
 int sqlite3VdbeMemClearAndResize(Mem *pMem, int szNew){
-  assert( szNew>0 );
+  assert( CORRUPT_DB || szNew>0 );
   assert( (pMem->flags & MEM_Dyn)==0 || pMem->szMalloc==0 );
   if( pMem->szMalloc<szNew ){
     return sqlite3VdbeMemGrow(pMem, szNew, 0);
@@ -338,13 +337,15 @@ int sqlite3VdbeMemMakeWriteable(Mem *pMem){
 int sqlite3VdbeMemExpandBlob(Mem *pMem){
   int nByte;
   assert( pMem->flags & MEM_Zero );
-  assert( pMem->flags&MEM_Blob );
+  assert( (pMem->flags&MEM_Blob)!=0 || MemNullNochng(pMem) );
+  testcase( sqlite3_value_nochange(pMem) );
   assert( !sqlite3VdbeMemIsRowSet(pMem) );
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
 
   /* Set nByte to the number of bytes required to store the expanded blob. */
   nByte = pMem->n + pMem->u.nZero;
   if( nByte<=0 ){
+    if( (pMem->flags & MEM_Blob)==0 ) return SQLITE_OK;
     nByte = 1;
   }
   if( sqlite3VdbeMemGrow(pMem, nByte, 1) ){
@@ -1309,7 +1310,6 @@ int sqlite3VdbeMemSetStr(
     assert( enc!=0 );
     if( enc==SQLITE_UTF8 ){
       nByte = 0x7fffffff & (int)strlen(z);
-      if( nByte>iLimit ) nByte = iLimit+1;
     }else{
       for(nByte=0; nByte<=iLimit && (z[nByte] | z[nByte+1]); nByte+=2){}
     }
@@ -1321,29 +1321,30 @@ int sqlite3VdbeMemSetStr(
   ** management (one of MEM_Dyn or MEM_Static).
   */
   if( xDel==SQLITE_TRANSIENT ){
-    int nAlloc = nByte;
+    u32 nAlloc = nByte;
     if( flags&MEM_Term ){
       nAlloc += (enc==SQLITE_UTF8?1:2);
     }
     if( nByte>iLimit ){
-      return SQLITE_TOOBIG;
+      return sqlite3ErrorToParser(pMem->db, SQLITE_TOOBIG);
     }
     testcase( nAlloc==0 );
     testcase( nAlloc==31 );
     testcase( nAlloc==32 );
-    if( sqlite3VdbeMemClearAndResize(pMem, MAX(nAlloc,32)) ){
+    if( sqlite3VdbeMemClearAndResize(pMem, (int)MAX(nAlloc,32)) ){
       return SQLITE_NOMEM_BKPT;
     }
     memcpy(pMem->z, z, nAlloc);
-  }else if( xDel==SQLITE_DYNAMIC ){
-    sqlite3VdbeMemRelease(pMem);
-    pMem->zMalloc = pMem->z = (char *)z;
-    pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
   }else{
     sqlite3VdbeMemRelease(pMem);
     pMem->z = (char *)z;
-    pMem->xDel = xDel;
-    flags |= ((xDel==SQLITE_STATIC)?MEM_Static:MEM_Dyn);
+    if( xDel==SQLITE_DYNAMIC ){
+      pMem->zMalloc = pMem->z;
+      pMem->szMalloc = sqlite3DbMallocSize(pMem->db, pMem->zMalloc);
+    }else{
+      pMem->xDel = xDel;
+      flags |= ((xDel==SQLITE_STATIC)?MEM_Static:MEM_Dyn);
+    }
   }
 
   pMem->n = nByte;
@@ -1428,6 +1429,9 @@ static SQLITE_NOINLINE int vdbeMemFromBtreeResize(
 ){
   int rc;
   pMem->flags = MEM_Null;
+  if( sqlite3BtreeMaxRecordSize(pCur)<offset+amt ){
+    return SQLITE_CORRUPT_BKPT;
+  }
   if( SQLITE_OK==(rc = sqlite3VdbeMemClearAndResize(pMem, amt+1)) ){
     rc = sqlite3BtreePayload(pCur, offset, amt, pMem->z);
     if( rc==SQLITE_OK ){
@@ -1751,7 +1755,6 @@ static int valueFromExpr(
   /* first in list, we dont support more than one vdbe on a db */
   Vdbe *p = db->pVdbe;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   assert( pExpr!=0 );
   while( (op = pExpr->op)==TK_UPLUS || op==TK_SPAN ) pExpr = pExpr->pLeft;
 #if defined(SQLITE_ENABLE_STAT3_OR_STAT4)
@@ -1834,7 +1837,7 @@ static int valueFromExpr(
   }else if( op==TK_NULL ){
     pVal = valueNew(db, pCtx);
     if( pVal==0 ) goto no_mem;
-    sqlite3VdbeMemNumerify(pVal);
+    sqlite3VdbeMemSetNull(pVal);
   }
 #ifndef SQLITE_OMIT_BLOB_LITERAL
   else if( op==TK_BLOB ){
@@ -1856,9 +1859,11 @@ static int valueFromExpr(
   }
 #endif
   else if( op==TK_TRUEFALSE ){
-     pVal = valueNew(db, pCtx);
-     pVal->flags = MEM_Int;
-     pVal->u.i = pExpr->u.zToken[4]==0;
+    pVal = valueNew(db, pCtx);
+    if( pVal ){
+      pVal->flags = MEM_Int;
+      pVal->u.i = pExpr->u.zToken[4]==0;
+    }
   }
 
   *ppVal = pVal;
@@ -2326,16 +2331,14 @@ int sqlite3VdbeMemDatetimefyTz(Mem *pMem, const char *tz){
      &pMem->du.dt, pMem->dtprec) != 0) {
       return SQLITE_ERROR;
     }
-    pMem->flags = MEM_Datetime;
-    /* all is good, get rid of the string, which is user-provided and partial
-       many times */
-    if( pMem->flags & MEM_Dyn ){
-        sqlite3DbFree(pMem->db, pMem->z);
+    if( pMem->szMalloc ){
+      sqlite3DbFreeNN(pMem->db, pMem->zMalloc);
+      pMem->szMalloc = 0;
     }
     pMem->n = 0;
     pMem->z = 0;
     /*no MEM_Blob here*/
-    pMem->flags &= ~(MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
+    pMem->flags = MEM_Datetime;
   }
   return SQLITE_OK;
 }
@@ -2939,7 +2942,7 @@ static int _dttz_to_native_datetime(cdb2_client_datetime_t * cdt, const Mem *inp
     bzero(&tzopts, sizeof(tzopts));
     tzopts.flags |= 2 /*FLD_CONV_TZONE*/;
     if( !inp->tz ) return SQLITE_ERROR;
-    strncpy(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
+    strncpy0(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
 
     /* ugly, arghh */
     bzero(tmp, sizeof(tmp));
@@ -2986,7 +2989,7 @@ static int _dttz_to_native_datetimeus(cdb2_client_datetimeus_t * cdt, const Mem 
     bzero(&tzopts, sizeof(tzopts));
     tzopts.flags |= 2 /*FLD_CONV_TZONE*/;
     if(!inp->tz) return SQLITE_ERROR;
-    strncpy(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
+    strncpy0(tzopts.tzname, inp->tz, sizeof(tzopts.tzname));
 
     /* ugly, arghh */
     bzero(tmp, sizeof(tmp));

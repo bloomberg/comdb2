@@ -62,6 +62,8 @@
 #define TEST_RECOM
 #endif
 
+int scdone_abort_cleanup(struct ireq *iq);
+
 int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
@@ -154,18 +156,18 @@ int osql_open(struct dbenv *dbenv)
         return -2;
     }
 
+    rc = osql_blkseq_init();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failing to init blocksql blockseq module\n",
+               __func__);
+    }
+
     /* create comm endpoint and kickoff the communication */
     rc = osql_comm_init(dbenv);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to init network\n", __func__);
         osql_repository_destroy();
         return -2;
-    }
-
-    rc = osql_blkseq_init();
-    if (rc) {
-        fprintf(stderr, "%s failing to init blocksql blockseq module\n",
-                __func__);
     }
 
     g_osql_ready = 1;
@@ -309,7 +311,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
+    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
@@ -326,33 +328,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
         goto goback;
     }
-
-    // This can incorrectly return serial-error on retry by conflicting 
-    // against itself: cut-1 solution: disable this serial_check (we 
-    // handle this case correctly on the master).  cut-2 solution might
-    // be to add a blkseq check here & return the correct rcode.
-#if 0
-    if (!usedb_only) {
-        if (clnt->arr)
-            currangearr_build_hash(clnt->arr);
-
-        if (clnt->arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
-                                  &(clnt->arr->offset), 0)) {
-
-            if (gbl_extended_sql_debug_trace) {
-                fprintf(stderr, "td=%u %s line %d returning SQLITE_ABORT for serial_check failure\n", 
-                        pthread_self(), __func__, __LINE__);
-            }
-
-            rc = SQLITE_ABORT;
-            clnt->osql.xerr.errval = ERR_NOTSERIAL;
-            errstat_cat_str(&(clnt->osql.xerr),
-                            "transaction is not serializable");
-            goto goback;
-        }
-    }
-#endif
 
     clnt->osql.timings.commit_prep = osql_log_time();
 
@@ -419,7 +394,6 @@ goback:
     if (clnt->osql.xerr.errval == ERR_VERIFY &&
         clnt->dbtran.mode == TRANLEVEL_RECOM &&
         clnt->osql.replay != OSQL_RETRY_LAST) {
-        /*fprintf(stderr, "Received rc=%d=ERR_VERIFY\n", rc);*/
     } else {
         /* CLOSE the temporary tables */
         osql_shadtbl_close(clnt);
@@ -464,6 +438,16 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
 int recom_abort(struct sqlclntstate *clnt)
 {
+    int rc;
+
+    /* temp hook for sql transactions */
+    if (clnt->dbtran.dtran) {
+        rc = fdb_trans_rollback(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__,
+                   rc);
+        }
+    }
 
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
@@ -721,7 +705,7 @@ extern int gbl_readonly_sc;
 
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
-    int bdberr;
+    int bdberr = 0;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
@@ -733,10 +717,10 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             if (write_scdone) {
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
-                scdone_t type = -1;
+                scdone_t type = invalid;
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
-                    type = -1;
+                    type = invalid;
                 } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
@@ -747,7 +731,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = rename_table;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type < 0 || s->db == NULL) {
+                if (type == invalid || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
@@ -788,7 +772,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;

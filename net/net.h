@@ -392,6 +392,7 @@ int net_get_queue_size(netinfo_type *netinfo_type, const char *host, int *limit,
                        int *usage);
 
 void net_exiting(netinfo_type *netinfo_ptr);
+int net_is_exiting(netinfo_type *netinfo_ptr);
 
 void net_trace(netinfo_type *netinfo_ptr, int on);
 

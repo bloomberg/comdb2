@@ -6,6 +6,7 @@
 #include "comdb2systblInt.h"
 #include "ezsystables.h"
 #include "cdb2api.h"
+#include "str0.h"
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
@@ -50,13 +51,13 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->page_isnull = 0;
     }
     if (object)
-        strncpy(l->object_str, object, sizeof(l->object_str));
+        strncpy0(l->object_str, object, sizeof(l->object_str));
     else
         l->object_str[0] = '\0';
     l->object = l->object_str;
 
     if (rectype)
-        strncpy(l->type_str, rectype, sizeof(l->type_str));
+        strncpy0(l->type_str, rectype, sizeof(l->type_str));
     else 
         l->type_str[0] = '\0';
     l->type = l->type_str;

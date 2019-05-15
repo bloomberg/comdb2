@@ -40,7 +40,6 @@
 #include <epochlib.h>
 #include "marshal.h"
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 
@@ -56,6 +55,7 @@
 #include <quantize.h>
 #include <sockpool.h>
 
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "sql.h"
 

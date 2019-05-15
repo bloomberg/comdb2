@@ -58,7 +58,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include <list.h>
 #include <mem.h>
@@ -129,6 +128,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_atomic.h"
 #include "cron.h"
 #include "metrics.h"
+#include "time_accounting.h"
 #include <build/db.h>
 
 #define QUOTE_(x) #x
@@ -149,6 +149,7 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
+int gbl_allow_lua_exec_with_ddl = 0;
 int gbl_allow_lua_dynamic_libs = 0;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
@@ -166,6 +167,12 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
+extern int has_low_headroom(const char *path, int headroom, int debug);
+extern void *clean_exit_thd(void *unused);
+extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
+extern void update_metrics(void);
+extern void *timer_thread(void *);
+void init_lua_dbtypes(void);
 static int put_all_csc2();
 
 static void *purge_old_blkseq_thread(void *arg);
@@ -291,6 +298,7 @@ struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
 char *gbl_myhostname; /* added for now to merge fdb source id */
 pid_t gbl_mypid;      /* my pid */
+char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
@@ -711,6 +719,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
@@ -761,7 +770,7 @@ int register_db_tunables(struct dbenv *tbl);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
-int run_init_plugins(void);
+int run_init_plugins(int phase);
 
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -828,6 +837,34 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
+
+    return p_db;
+}
+
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
+{
+    struct dbtable *p_db = NULL;
+    int rc = 0;
+
+    if (!tran)
+        return get_dbtable_by_name(p_name);
+
+    Pthread_rwlock_rdlock(&thedb_lock);
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
+        p_db = &thedb->static_table;
+    if (!p_db) {
+        rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
+    } else {
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+    }
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
+               __func__, rc);
+        return NULL;
+    }
 
     return p_db;
 }
@@ -1290,7 +1327,7 @@ static int clear_csc2_files(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char fullfile[PATH_MAX];
+            char fullfile[PATH_MAX * 2];
             char *ptr;
 
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
@@ -1340,7 +1377,6 @@ int comdb2_tmpdir_space_low() {
     int reqfree = bdb_attr_get(thedb->bdb_attr, 
             BDB_ATTR_SQLITE_SORTER_TEMPDIR_REQFREE);
     
-    int has_low_headroom(const char * path, int headroom, int debug);
     return has_low_headroom(path, 100 - reqfree, 1);
 }
 
@@ -1373,8 +1409,12 @@ int clear_temp_tables(void)
 }
 
 void clean_exit_sigwrap(int signum) {
-   signal(SIGTERM, SIG_DFL);
-   clean_exit();
+    signal(SIGTERM, SIG_DFL);
+    logmsg(LOGMSG_WARN, "Received SIGTERM...exiting\n");
+
+    /* Call the wrapper which checks the exit flag
+       to avoid multiple clean-exit's. */
+    clean_exit_thd(NULL);
 }
 
 static void free_sqlite_table(struct dbenv *dbenv)
@@ -1406,6 +1446,7 @@ void clean_exit(void)
        here in a second, so letting new reads in would be bad. */
     no_new_requests(thedb);
 
+    print_all_time_accounting();
     wait_for_sc_to_stop("exit");
 
     /* let the lower level start advertising high lsns to go non-coherent
@@ -1621,12 +1662,6 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->nix = dyns_get_idx_count();
     if (tbl->nix > MAXINDEX) {
         logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", tbl->nix,
-                tblname);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
-    if (tbl->nix < 0) {
-        logmsg(LOGMSG_ERROR, "too few indices %d in csc schema %s\n", tbl->nix,
                 tblname);
         cleanup_newdb(tbl);
         return NULL;
@@ -2881,7 +2916,7 @@ static void clear_queue_extents(void)
             q = malloc(sizeof(ExtentsQueue));
             q->count = 0;
             LIST_INIT(&q->head);
-            strncpy(q->name, name, sizeof(q->name));
+            strncpy0(q->name, name, sizeof(q->name));
             hash_add(hash_table, q);
         }
         ExtentsEntry *e = malloc(sizeof(ExtentsEntry));
@@ -3218,6 +3253,11 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
+    if (mach_class_init()) {
+        logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
+        exit(1);
+    }
+
     handle_cmdline_options(argc, argv, &lrlname);
 
     if (gbl_create_mode) {        /*  10  */
@@ -3246,6 +3286,9 @@ static int init(int argc, char **argv)
         return -1;
     }
     strcpy(gbl_dbname, dbname);
+    char tmpuri[1024];
+    snprintf(tmpuri, sizeof(tmpuri), "%s@%s", gbl_dbname, gbl_myhostname);
+    gbl_myuri = intern(tmpuri);
 
     if (optind < argc && isdigit((int)argv[optind][0])) {
         cacheszkb = atoi(argv[optind]);
@@ -3342,6 +3385,8 @@ static int init(int argc, char **argv)
     rc = schema_init();
     if (rc)
         return -1;
+
+    run_init_plugins(COMDB2_PLUGIN_INITIALIZER_PRE);
 
     /* open database environment, and all dbs */
     thedb = newdbenv(dbname, lrlname);
@@ -3861,7 +3906,6 @@ static int init(int argc, char **argv)
     if (!gbl_exit && !gbl_create_mode &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
         thedb->nsiblings == 1) {
-        extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
         bdb_durable_lsn_for_single_node(thedb->bdb_env);
     }
 
@@ -4269,7 +4313,6 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        extern void update_metrics(void);
         if (count % 5 == 0)
             update_metrics();
 
@@ -4594,8 +4637,7 @@ static void iomap_off(void *p)
 
 /* Global cron job scheduler for time-insensitive, lightweight jobs. */
 cron_sched_t *gbl_cron;
-static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
-                                struct errstat *err)
+static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
 {
     int tm;
     void *rc;
@@ -4616,8 +4658,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     return NULL;
 }
 
-static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
-                                  void *arg4, struct errstat *err)
+static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 {
 
     int tm;
@@ -4988,6 +5029,9 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("verbose_normalized_queries",
+                        "For new fingerprints, show normalized queries.",
+                        &gbl_verbose_normalized_queries);
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
@@ -5267,7 +5311,6 @@ int main(int argc, char **argv)
 
     llmeta_dump_mapping(thedb);
 
-    void init_lua_dbtypes(void);
     init_lua_dbtypes();
 
     comdb2_timprm(clean_mins, TMEV_PURGE_OLD_LONGTRN);
@@ -5282,7 +5325,7 @@ int main(int argc, char **argv)
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
 
-    if (run_init_plugins()) {
+    if (run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST)) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
         exit(1);
     }
@@ -5290,7 +5333,6 @@ int main(int argc, char **argv)
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
 
-    extern void *timer_thread(void *);
     pthread_t timer_tid;
     pthread_attr_t timer_attr;
     Pthread_attr_init(&timer_attr);

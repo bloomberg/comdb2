@@ -221,7 +221,7 @@ int recvall(int fd, void *bufp, int len)
     while (bytesleft) {
         rc = recv(fd, buf + off, bytesleft, MSG_WAITALL);
         if (rc == -1) {
-            if (rc == EINTR || rc == EAGAIN)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return -1;
         } else if (rc == 0) /* EOF before entire message read */
@@ -353,16 +353,16 @@ static int cdb2_get_progname_by_pid(pid_t pid, char *pname, int pnamelen)
      * migrated into bb_get_pid_argv0() and this routine would call that one
      * unconditionally.
      **/
-    if (rc != 0 && pname != NULL) {
-        strncpy(pname, "???", pnamelen);
+    if (pname != NULL) {
+        strncpy(pname, "???", pnamelen); /* call bb_get_pid_argv0 here? */
         pname[pnamelen - 1] = 0;
+        rc = 0;
     }
     return rc;
 }
 
 void *client_thd(void *voidarg)
 {
-    struct client clnt;
     int rc, fd = (intptr_t)voidarg;
     struct sockpool_hello hello;
     ssize_t nbytes;
@@ -396,10 +396,8 @@ void *client_thd(void *voidarg)
         return NULL;
     }
 
+    struct client clnt = {.fd = fd, .pid = hello.pid, .slot = hello.slot};
     bzero(&clnt.stats, sizeof(clnt.stats));
-    clnt.fd = fd;
-    clnt.pid = hello.pid;
-    clnt.slot = hello.slot;
 
     rc = cdb2_get_progname_by_pid(clnt.pid, clnt.progname,
                                   sizeof(clnt.progname));
@@ -1056,7 +1054,6 @@ static void increase_file_descriptor_limit()
 
 static int cdb2_waitft()
 {
-    char rec[1000];
     char *fifo = NULL;
     fifo = getenv("MSGTRAP_SOCKPOOL");
     if (fifo == NULL) {
@@ -1074,7 +1071,7 @@ static int cdb2_waitft()
     while (1) {
         int i = 0;
         int rc;
-        bzero(rec, 1000);
+        char rec[1000] = {0};
         fd = open(fifo, O_RDONLY | O_NONBLOCK);
 
         fd_set set;
@@ -1116,7 +1113,7 @@ int main(int argc, char *argv[])
 
     int c;
     int listenfd;
-    struct sockaddr_un serv_addr;
+    struct sockaddr_un serv_addr = {.sun_family = AF_UNIX};
 
     sigignore(SIGPIPE);
 #ifndef LOG_PERROR
@@ -1186,8 +1183,6 @@ int main(int argc, char *argv[])
                strerror(errno));
     }
 
-    bzero(&serv_addr, sizeof(serv_addr));
-    serv_addr.sun_family = AF_UNIX;
     strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,

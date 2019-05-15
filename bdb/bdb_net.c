@@ -62,6 +62,10 @@
 
 extern void fsnapf(FILE *, void *, int);
 extern int db_is_stopped(void);
+extern int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum);
+extern int verify_master_leases_int(bdb_state_type *bdb_state,
+                                    const char **comlist, int comcount,
+                                    const char *func, uint32_t line);
 
 static unsigned int sent_udp = 0;
 static unsigned int fail_udp = 0;
@@ -468,7 +472,7 @@ static void *udp_reader(void *arg)
 
     repinfo_type *repinfo = bdb_state->repinfo;
     void *data;
-    uint8_t buff[1024];
+    uint8_t buff[1024] = {0};
     ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
 #ifdef UDP_DEBUG
@@ -728,7 +732,6 @@ void handle_tcp_timestamp_ack(bdb_state_type *bdb_state, ack_info *info)
 
 int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 {
-    int get_myseqnum(bdb_state_type * bdb_state, uint8_t * p_net_seqnum);
     ack_info *info;
     uint8_t *p_buf;
     int rc = 0;
@@ -830,9 +833,6 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
     /* Check our master-lease */
     if (bdb_state->attr->master_lease) {
-        int verify_master_leases_int(bdb_state_type * bdb_state,
-                                     const char **comlist, int comcount,
-                                     const char *func, uint32_t line);
         master_is_coherent = verify_master_leases_int(
             bdb_state, comlist, comcount, __func__, __LINE__);
     } else
@@ -974,7 +974,7 @@ out:
     return rc;
 }
 
-int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
+int send_truncate_to_master(bdb_state_type *bdb_state, unsigned file, unsigned offset)
 {
     int timeout = 10 * 1000, rc;
     uint8_t buf[sizeof(DB_LSN)];

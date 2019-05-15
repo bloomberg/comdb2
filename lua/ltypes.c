@@ -545,7 +545,7 @@ static int l_datetime_change_timezone(lua_State *lua)
     newtimezone = lua_tostring(lua,2);
     sdt.sec = db_struct2time(d->val.tzname, &(d->val.tm));
     if( db_time2struct(newtimezone, &sdt.sec, &(newtm)) == 0) {
-        strncpy(d->val.tzname, newtimezone, sizeof(d->val.tzname));
+        strncpy(d->val.tzname, newtimezone, sizeof(d->val.tzname) - 1);
         d->val.tm = newtm;
         lua_pushinteger(lua, 0);
         return 1;
@@ -618,8 +618,8 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
         } else {
             strcpy(ret->tzname, "US/Eastern");
         }
-        struct tm *t = localtime(&temp_t);
-        ret->tm = *t; /* Correct it, if table doesn't have correct values. */
+        /* Correct it, if table doesn't have correct values. */
+        localtime_r(&temp_t, &ret->tm);
         return;
     case DBTYPES_DATETIME:
         *ret = ((lua_datetime_t *)lua_topointer(lua, idx))->val;

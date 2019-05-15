@@ -235,9 +235,9 @@ static int systblColumnsFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)pVtabCursor;
-
   pCur->iTabId = 0;
   pCur->iColId = 0;
+  comdb2_next_allowed_table(&pCur->iTabId);
   return SQLITE_OK;
 }
 

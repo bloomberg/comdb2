@@ -1150,6 +1150,7 @@ void *convert_records_thd(struct convert_record_data *data)
         Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
+    int prev_preempted = data->s->preempted;
     /* convert each record */
     while (rc > 0) {
         if (data->cmembers->is_decrease_thrds &&
@@ -1169,6 +1170,12 @@ void *convert_records_thd(struct convert_record_data *data)
 
         if (stopsc) { // set from downgrade
             data->outrc = SC_MASTER_DOWNGRADE;
+            goto cleanup_no_msg;
+        }
+        if (prev_preempted != data->s->preempted) {
+            logmsg(LOGMSG_INFO, "%s schema change preempted %d\n", __func__,
+                   data->s->preempted);
+            data->outrc = SC_PREEMPTED;
             goto cleanup_no_msg;
         }
     }
@@ -2796,7 +2803,7 @@ static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
     case DB_llog_undo_upd_dta_lk:
         return 1;
     default:
-        return 0;
+        break;
     }
     return 0;
 }

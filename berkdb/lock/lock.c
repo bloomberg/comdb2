@@ -809,6 +809,16 @@ init_latches(dbenv, lt)
 	return 0;
 }
 
+int __get_lockerid_from_lock(DB_ENV *dbenv, u_int32_t locker)
+{
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+	if (!lt)
+		return 0;
+	struct __db_lock *lp = (struct __db_lock *)R_ADDR(&lt->reginfo, locker);
+	if (lp && lp->holderp)
+		return lp->holderp->id;
+	return 0;
+}
 
 static inline int
 __find_latch_lockerid(DB_ENV *dbenv, u_int32_t locker,
@@ -2053,29 +2063,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	dbenv = lt->dbenv;
 	region = lt->reginfo.primary;
 
-#ifdef DEBUG_LOCKS
-	char desc[100];
-	DBT dbt = { 0 };
-	int idx, size = -1;
-	if (obj) {
-		dbt.data = obj->data;
-		size = dbt.size = obj->size;
-
-		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
-	} else {
-		snprintf(desc, sizeof(desc), "NULL OBJ LK");
-	}
-
-	Pthread_mutex_lock(&lblk);
-	idx = lbcounter;
-	lbcounter = (lbcounter + 1) % LKBUFMAX;
-	Pthread_mutex_unlock(&lblk);
-
-	threadid[idx] = pthread_self();
-	snprintf(lkbuffer[idx], LKBUFSZ, "%d get lid %x %s size=%d ",
-	    pthread_self(), locker, desc, size);
-#endif
-
 	/* Check if locks have been globally turned off. */
 	if (unlikely(F_ISSET(dbenv, DB_ENV_NOLOCKING)))
 		return (0);
@@ -2129,6 +2116,37 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		lock_locker_partition(region, sh_locker->partition);
 	}
 	lpartition = sh_locker->partition;
+
+#ifdef DEBUG_LOCKS
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+	logmsg(LOGMSG_ERROR, "%p Get (%c) locker lock %x (m %x)\n",
+			(void *)pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			mlockerp->id);
+	cheap_stack_trace();
+
+	char desc[100];
+	DBT dbt = { 0 };
+	int idx, size = -1;
+	if (obj) {
+		dbt.data = obj->data;
+		size = dbt.size = obj->size;
+
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
+	} else {
+		snprintf(desc, sizeof(desc), "NULL OBJ LK");
+	}
+
+	Pthread_mutex_lock(&lblk);
+	idx = lbcounter;
+	lbcounter = (lbcounter + 1) % LKBUFMAX;
+	Pthread_mutex_unlock(&lblk);
+
+	threadid[idx] = pthread_self();
+	snprintf(lkbuffer[idx], LKBUFSZ, " %p get lid %x %s size=%d ",
+			(void *)pthread_self(), locker, desc, size);
+	logmsg(LOGMSG_ERROR, "%p __lock_get_internal_int: get lid %x %s size=%d\n",
+	       (void *)pthread_self(), locker, desc, size);
+#endif
 
 	if (obj == NULL) {
 		DB_ASSERT(LOCK_ISSET(*lock));
@@ -3130,34 +3148,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
-#ifdef DEBUG_LOCKS
-	{
-		char desc[100];
-		void *lk;
-		int idx;
-		u_int8_t *lockdata;
-		DBT dbt = { 0 };
-		sh_obj = lockp->lockobj;
-		lockdata = &sh_obj->lockobj;
-		lockdata += sh_obj->lockobj.off;
-
-		dbt.data = lockdata;
-		dbt.size = sh_obj->lockobj.size;
-
-		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
-
-		Pthread_mutex_lock(&lblk);
-		idx = lbcounter;
-		lbcounter = (lbcounter + 1) % LKBUFMAX;
-		Pthread_mutex_unlock(&lblk);
-
-		threadid[idx] = pthread_self();
-		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
-		    pthread_self(), desc, sh_obj->lockobj.size);
-	}
-#endif
-
-
 	region = lt->reginfo.primary;
 	ret = state_changed = 0;
 
@@ -3190,6 +3180,39 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	/* Get the object associated with this lock. */
 	sh_obj = lockp->lockobj;
 	partition = sh_obj->partition;
+
+
+#ifdef DEBUG_LOCKS
+	DB_LOCKER *sh_locker = lockp->holderp;
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
+	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
+			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			mlockerp->id);
+	cheap_stack_trace();
+
+	char desc[100];
+	int idx;
+	DBT dbt = { 0 };
+
+	dbt.data = sh_obj->lockobj.data;
+	dbt.size = sh_obj->lockobj.size;
+
+	bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
+
+	Pthread_mutex_lock(&lblk);
+	idx = lbcounter;
+	lbcounter = (lbcounter + 1) % LKBUFMAX;
+	Pthread_mutex_unlock(&lblk);
+
+	threadid[idx] = pthread_self();
+	snprintf(lkbuffer[idx], LKBUFSZ, "%p put lid %x %s size=%d",
+			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+	logmsg(LOGMSG_ERROR, "%p __lock_put_internal: put lid %x %s size=%d\n",
+			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+#endif
+
+
+
 
 	/* Remove this lock from its holders/waitlist. */
 	if (lockp->status != DB_LSTAT_HELD && lockp->status != DB_LSTAT_PENDING)

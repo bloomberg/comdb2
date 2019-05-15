@@ -352,22 +352,21 @@ struct sqlite3_value {
 #define MEM_Real      0x0008   /* Value is a real number */
 #define MEM_Blob      0x0010   /* Value is a BLOB */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define MEM_Datetime  0x0020   /* Value is a datetime */
-#define MEM_Interval  0x0040   /* Value is an interval/decimal */
-#define MEM_Small     0x0080   /* Value is a small float */
-#define MEM_AffMask   0x00ff   /* Mask of affinity bits */
-#define MEM_RowSet    0x0100   /* Value is a RowSet object */
-#define MEM_Frame     0x0200   /* Value is a VdbeFrame object */
-#define MEM_Undefined 0x0400   /* Value is undefined */
-#define MEM_Cleared   0x0800   /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0x0fff   /* Mask of type bits */
+#define MEM_Datetime  0x00020  /* Value is a datetime */
+#define MEM_Interval  0x00040  /* Value is an interval/decimal */
+#define MEM_Small     0x00080  /* Value is a small float */
+#define MEM_AffMask   0x000ff  /* Mask of affinity bits */
+#define MEM_FromBind  0x00100  /* Value originates from sqlite3_bind() */
+#define MEM_Undefined 0x00200  /* Value is undefined */
+#define MEM_Cleared   0x00400  /* NULL set by OP_Null, not from data */
+#define MEM_TypeMask  0x306ff  /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
-/* Available          0x0020   */
+#define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
 /* Available          0x0040   */
 #define MEM_Undefined 0x0080   /* Value is undefined */
 #define MEM_Cleared   0x0100   /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0xc1ff   /* Mask of type bits */
+#define MEM_TypeMask  0xc1df   /* Mask of type bits */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
@@ -377,15 +376,15 @@ struct sqlite3_value {
 ** string is \000 or \u0000 terminated
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define MEM_Term      0x001000 /* String in Mem.z is zero terminated */
-#define MEM_Dyn       0x002000 /* Need to call Mem.xDel() on Mem.z */
-#define MEM_Static    0x004000 /* Mem.z points to a static string */
-#define MEM_Ephem     0x008000 /* Mem.z points to an ephemeral string */
-#define MEM_Agg       0x010000 /* Mem.z points to an agg function context */
-#define MEM_Zero      0x020000 /* Mem.i contains count of 0s appended to blob */
+#define MEM_Term      0x000800 /* String in Mem.z is zero terminated */
+#define MEM_Dyn       0x001000 /* Need to call Mem.xDel() on Mem.z */
+#define MEM_Static    0x002000 /* Mem.z points to a static string */
+#define MEM_Ephem     0x004000 /* Mem.z points to an ephemeral string */
+#define MEM_Agg       0x008000 /* Mem.z points to an agg function context */
+#define MEM_Zero      0x010000 /* Mem.i contains count of 0s appended to blob */
+#define MEM_Subtype   0x020000 /* Mem.eSubtype is valid */
 #define MEM_Xor       0x040000 /* Mem.z needs XOR; <DESCEND> keys */
 #define MEM_OpFunc    0x080000 /* Mem.u is a custom function */
-#define MEM_Subtype   0x100000 /* Mem.eSubtype is valid */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_Term      0x0200   /* String in Mem.z is zero terminated */
 #define MEM_Dyn       0x0400   /* Need to call Mem.xDel() on Mem.z */
@@ -411,6 +410,12 @@ struct sqlite3_value {
 */
 #define MemSetTypeFlag(p, f) \
    ((p)->flags = ((p)->flags&~(MEM_TypeMask|MEM_Zero))|f)
+
+/*
+** True if Mem X is a NULL-nochng type.
+*/
+#define MemNullNochng(X) \
+  ((X)->flags==(MEM_Null|MEM_Zero) && (X)->n==0 && (X)->u.nZero==0)
 
 /*
 ** Return true if a memory cell is not marked as invalid.  This macro
@@ -465,6 +470,9 @@ struct sqlite3_context {
 */
 typedef unsigned bft;  /* Bit Field Type */
 
+/* The ScanStatus object holds a single value for the
+** sqlite3_stmt_scanstatus() interface.
+*/
 typedef struct ScanStatus ScanStatus;
 struct ScanStatus {
   int addrExplain;                /* OP_Explain for loop */
@@ -473,6 +481,19 @@ struct ScanStatus {
   int iSelectID;                  /* The "Select-ID" for this loop */
   LogEst nEst;                    /* Estimated output rows per loop */
   char *zName;                    /* Name of table or index */
+};
+
+/* The DblquoteStr object holds the text of a double-quoted
+** string for a prepared statement.  A linked list of these objects
+** is constructed during statement parsing and is held on Vdbe.pDblStr.
+** When computing a normalized SQL statement for an SQL statement, that
+** list is consulted for each double-quoted identifier to see if the
+** identifier should really be a string literal.
+*/
+typedef struct DblquoteStr DblquoteStr;
+struct DblquoteStr {
+  DblquoteStr *pNextStr;   /* Next string literal in the list */
+  char z[8];               /* Dequoted value for the string */
 };
 
 /*
@@ -494,28 +515,29 @@ struct Vdbe {
   int pc;                 /* The program counter */
   int rc;                 /* Value to return */
   int nChange;            /* Number of db changes made since last reset */
-  int iStatement;         /* Statement number (or 0 if has not opened stmt) */
+  int iStatement;         /* Statement number (or 0 if has no opened stmt) */
   i64 iCurrentTime;       /* Value of julianday('now') for this statement */
   i64 nFkConstraint;      /* Number of imm. FK constraints this VM */
   i64 nStmtDefCons;       /* Number of def. constraints when stmt started */
   i64 nStmtDefImmCons;    /* Number of def. imm constraints when stmt started */
+  Mem *aMem;              /* The memory locations */
+  Mem **apArg;            /* Arguments to currently executing user function */
+  VdbeCursor **apCsr;     /* One element of this array for each open cursor */
+  Mem *aVar;              /* Values for the OP_Variable opcode. */
 
   /* When allocating a new Vdbe object, all of the fields below should be
   ** initialized to zero or NULL */
 
   Op *aOp;                /* Space to hold the virtual machine's program */
-  Mem *aMem;              /* The memory locations */
-  Mem **apArg;            /* Arguments to currently executing user function */
+  int nOp;                /* Number of instructions in the program */
+  int nOpAlloc;           /* Slots allocated for aOp[] */
   Mem *aColName;          /* Column names to return */
   Mem *pResultSet;        /* Pointer to an array of results */
   char *zErrMsg;          /* Error message written here */
-  VdbeCursor **apCsr;     /* One element of this array for each open cursor */
-  Mem *aVar;              /* Values for the OP_Variable opcode. */
   VList *pVList;          /* Name of variables */
 #ifndef SQLITE_OMIT_TRACE
   i64 startTime;          /* Time when query started - used for profiling */
 #endif
-  int nOp;                /* Number of instructions in the program */
 #ifdef SQLITE_DEBUG
   int rcApp;              /* errcode set by sqlite3_result_error_code() */
   u32 nWrite;             /* Number of write operations that have occurred */
@@ -541,6 +563,7 @@ struct Vdbe {
   char *zSql;             /* Text of the SQL statement that generated this */
 #ifdef SQLITE_ENABLE_NORMALIZE
   char *zNormSql;         /* Normalization of the associated SQL statement */
+  DblquoteStr *pDblStr;   /* List of double-quoted string literals */
 #endif
   void *pFree;            /* Free this when deleting the vdbe */
   VdbeFrame *pFrame;      /* Parent frame */
@@ -632,13 +655,11 @@ void sqlite3VdbeMemMove(Mem*, Mem*);
 int sqlite3VdbeMemNulTerminate(Mem*);
 int sqlite3VdbeMemSetStr(Mem*, const char*, int, u8, void(*)(void*));
 void sqlite3VdbeMemSetInt64(Mem*, i64);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemSetDatetime(Mem*, dttz_t*, const char *tz);
 int sqlite3VdbeMemSetInterval(Mem *pMem, intv_t *tv);
 int sqlite3VdbeMemSetDecimal(Mem*, decQuad*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_OMIT_FLOATING_POINT
 # define sqlite3VdbeMemSetDouble sqlite3VdbeMemSetInt64
 #else
@@ -667,7 +688,6 @@ int sqlite3VdbeMemCast(Vdbe *, Mem*,u8,u8);
 void sqlite3VdbeMemCast(Mem*,u8,u8);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeMemFromBtree(BtCursor*,u32,u32,Mem*);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemDatetimefy(Mem*);
 int sqlite3VdbeMemDatetimefyTz(Mem*, const char*);
@@ -680,7 +700,6 @@ int sqlite3VdbeMemDatetimeAndDatetime(const Mem *first, const Mem *secnd, int op
 int sqlite3VdbeMemDatetimeAndInterval(const Mem *a, const Mem *b, int op, Mem * res);
 int sqlite3VdbeMemIntervalAndDatetime(const Mem *a, const Mem *b, int op, Mem * res);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 void sqlite3VdbeMemRelease(Mem *p);
 int sqlite3VdbeMemFinalize(Mem*, FuncDef*);
 #ifndef SQLITE_OMIT_WINDOWFUNC
@@ -775,7 +794,6 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
-#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)==SQLITE_MAX_U32 || (t)==(SQLITE_MAX_U32-1) )
+#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)==SQLITE_MAX_U32 || ((unsigned int)t)==(SQLITE_MAX_U32-1) )
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #endif /* !defined(SQLITE_VDBEINT_H) */

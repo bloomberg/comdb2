@@ -104,13 +104,15 @@ extern int gbl_is_physical_replicant;
 #endif
 
 
-static int
-
-__txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
+static int __txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
 	DB_LSN *we_start_at_this_lsn, u_int32_t flags);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
 	int *priority);
+extern int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
+	int inrecovery);
+extern int dumptxn(DB_ENV *, DB_LSN *);
+extern void fsnapf(FILE * fil, const void *buf, int len);
 
 #define	SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags) \
 	do {								\
@@ -674,9 +676,6 @@ __txn_check_applied_lsns(DB_ENV *dbenv, DB_TXN *txnp)
 			"\n", txnp->txnid, PARM_LSN(lsn));
 	} else {
 		/* collected log records successfully - now check that they've been applied */
-
-		int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
-			int inrecovery);
 		ret = __rep_check_applied_lsns(dbenv, &lc, 0);
 	}
 
@@ -789,13 +788,15 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 {
 	int ret, idx, count;
 	LTDESC *lt, *lttemp;
-	DB_LTRAN *list;
+	DB_LTRAN *list = NULL;
 
 	ret = idx = 0;
-	*rlist = NULL;
 
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	count = listc_size(&dbenv->active_ltrans);
+	if (count == 0)
+		goto done;
+
 	if ((ret = __os_malloc(dbenv, count * sizeof(DB_LTRAN), &list)) != 0)
 		goto err;
 
@@ -806,6 +807,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 		idx++;
 	}
 
+done:
 	*rlist = list;
 	*rcount = count;
 
@@ -986,7 +988,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	}
 #endif
 
-	extern int dumptxn(DB_ENV *, DB_LSN *);
 	extern int gbl_dumptxn_at_commit;
 
 	if (gbl_dumptxn_at_commit)
@@ -2700,8 +2701,6 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			if (a->opcode == DB_ADD_DUP) {
 				logmsg(LOGMSG_USER, "addrem: " PR_LSN " %s ",
 					PARM_LSN(lc.array[i].lsn), name);
-				void fsnapf(FILE * fil, const void *buf,
-					int len);
 				fsnapf(stdout, a->dbt.data, a->dbt.size);
 			}
 		} else if (type == 10019) {

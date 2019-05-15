@@ -143,6 +143,14 @@ void watchdog_set_alarm(int seconds);
 void watchdog_cancel_alarm(void);
 const char *get_sc_to_name(const char *name);
 
+extern void *lwm_printer_thd(void *p);
+unsigned int sc_get_logical_redo_lwm();
+/* Sorry - reaching into berkeley "internals" here.  This should
+ * probably be an environment method. */
+extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
+extern void *master_lease_thread(void *arg);
+extern void *coherency_lease_thread(void *arg);
+
 LISTC_T(struct checkpoint_list) ckp_lst;
 pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
@@ -500,7 +508,7 @@ static int form_file_name_ex(
 
         p_file_version_num_type.version_num = version_num;
         p_buf = (uint8_t *)&pr_vers;
-        p_buf_end = (uint8_t *)(&pr_vers + sizeof(pr_vers));
+        p_buf_end = p_buf + sizeof(pr_vers);
         bdb_file_version_num_put(&(p_file_version_num_type), p_buf, p_buf_end);
 
         offset = snprintf(outbuf, buflen, "_%016llx.%s", pr_vers, file_ext);
@@ -2785,7 +2793,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     Pthread_attr_destroy(&attr);
 
     if (0) {
-        extern void *lwm_printer_thd(void *p);
         pthread_t lwm_printer_tid;
         rc = pthread_create(&lwm_printer_tid, NULL, lwm_printer_thd, bdb_state);
         if (rc) {
@@ -3458,7 +3465,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
 
     extern int gbl_logical_live_sc;
     if (gbl_logical_live_sc) {
-        unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
         if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
             lowfilenum = sc_logical_lwm;
@@ -3569,11 +3575,6 @@ low_headroom:
     }
 
     if (bdb_state->attr->use_recovery_start_for_log_deletion) {
-        /* Sorry - reaching into berkeley "internals" here.  This should
-         * probably
-         * be an environment method. */
-        extern int __db_find_recovery_start_if_enabled(DB_ENV * dbenv,
-                                                       DB_LSN * lsn);
 
         if ((rc = __db_find_recovery_start_if_enabled(bdb_state->dbenv,
                                                       &recovery_lsn)) != 0) {
@@ -4828,22 +4829,15 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
                                                bdb_state->repinfo->master_host);
 }
 
-static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
-                             int *downgraded)
+static inline void bdb_set_read_only(bdb_state_type *bdb_state)
 {
-    int rc;
-    int outrc;
     bdb_state_type *child;
     int i;
 
-    outrc = 0;
-    if (downgraded)
-        *downgraded = 0;
-
     if (!bdb_state->repinfo->upgrade_allowed) {
-        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                             "completed yet)\n");
-        return 0;
+        logmsg(LOGMSG_DEBUG,
+               "%s: not allowed (bdb_open has not completed yet)\n", __func__);
+        return;
     }
 
     /* if we were passed a child, find his parent */
@@ -4860,6 +4854,29 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         }
     }
     Pthread_mutex_unlock(&(bdb_state->children_lock));
+}
+
+static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
+                             int *downgraded)
+{
+    int rc;
+    int outrc;
+
+    outrc = 0;
+    if (downgraded)
+        *downgraded = 0;
+
+    if (!bdb_state->repinfo->upgrade_allowed) {
+        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
+                             "completed yet)\n");
+        return 0;
+    }
+
+    /* if we were passed a child, find his parent */
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    bdb_set_read_only(bdb_state);
 
     /* now become a client of the replication group */
     logmsg(LOGMSG_USER, "%s line %d calling rep_start as client with egen 0\n",
@@ -5037,6 +5054,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     if (op != UPGRADE) {
         wait_for_sc_to_stop("downgrade");
+        bdb_set_read_only(bdb_state);
     }
 
     watchdog_set_alarm(timeout);
@@ -5238,14 +5256,13 @@ int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
 int create_master_lease_thread(bdb_state_type *bdb_state)
 {
-	pthread_t tid;
-	pthread_attr_t attr;
-        Pthread_attr_init(&attr);
-        Pthread_attr_setstacksize(&attr, 128 * 1024);
-        extern void *master_lease_thread(void *arg);
-        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-        Pthread_attr_destroy(&attr);
-        return 0;
+    pthread_t tid;
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
+    pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+    Pthread_attr_destroy(&attr);
+    return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5254,7 +5271,6 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
     Pthread_attr_setstacksize(&attr, 128 * 1024);
-    extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
     Pthread_attr_destroy(&attr);
 }
@@ -6564,8 +6580,9 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int dtanum;
     for (dtanum = 1; dtanum < bdb_state->numdtafiles; dtanum++) {
+        char sfx[] = "s0";
         char oldname[100];
-        char newname[100];
+        char newname[sizeof(oldname) + sizeof(sfx)];
 
         /* form old (current) name */
         form_datafile_name(bdb_state, tran->tid, dtanum, 0 /*stripenum*/,
@@ -6586,7 +6603,7 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
           newname[ namelen ] = '0';
       }
 #else
-        snprintf(newname, sizeof newname, "%ss0", oldname);
+        snprintf(newname, sizeof newname, "%s%s", oldname, sfx);
 #endif
 
         if (0 !=

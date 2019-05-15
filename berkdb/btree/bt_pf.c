@@ -447,10 +447,8 @@ start_loading_async_pp(struct thdpool *pool, void *work, void *thddata, int op)
 	case THD_RUN:
 		start_loading_async_cb(job);
 		break;
-	case THD_FREE:
-		btpf_free_job(&job);
-		break;
 	}
+    btpf_free_job(&job);
 
 }
 

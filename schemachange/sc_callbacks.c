@@ -29,6 +29,8 @@
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
 
+extern void free_cached_idx(uint8_t **cached_idx);
+
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)
 {
@@ -243,7 +245,6 @@ unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
 {
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
-    void free_cached_idx(uint8_t * *cached_idx);
     int rebuild_keys = 0;
     if ((gbl_partial_indexes && db->ix_partial) ||
         (gbl_expressions_indexes && db->ix_expr)) {
@@ -287,8 +288,6 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              int od_len)
 {
     struct dbtable *usedb = iq->usedb;
-    blob_status_t oldblobs[MAXBLOBS];
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
@@ -320,8 +319,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
     if (iq->usedb->sc_to->ix_blob) {
         rc =
             save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);

@@ -161,6 +161,10 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         sqlite3_free(where);
         return NULL;
     }
+    if (!tbl && p->pSrc->nSrc) {
+        /* select 1 from tbl */
+        tbl = (const char*)p->pSrc->a[0].zName;
+    }
 
     if (unlikely(!tbl)) {
         select =
@@ -320,6 +324,10 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
     node->ncols = p->pEList->nExpr;
 
     if (!node->sql) {
+        if (node->params) {
+            free(node->params->params);
+            free(node->params);
+        }
         free(node);
         node = NULL;
     }
@@ -335,6 +343,12 @@ static void node_free(dohsql_node_t **pnode, sqlite3 *db)
     /* children */
     for (i = 0; i < node->nnodes && node->nodes[i]; i++) {
         node_free(&node->nodes[i], db);
+    }
+
+    /* params */
+    if ((*pnode)->params) {
+        free((*pnode)->params->params);
+        free((*pnode)->params);
     }
 
     /* current node */
@@ -495,7 +509,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         crt->selFlags |= SF_ASTIncluded;
         span++;
         /* only handle union all */
-        if (crt->op != TK_SELECT && crt->op != TK_ALL)
+        if ((crt->op != TK_SELECT && crt->op != TK_ALL) || crt->recording)
             not_recognized = 1;
 
         /* skip certain tables */
@@ -625,8 +639,13 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+extern int comdb2IsPrepareOnly(Parse*);
+
 int comdb2_check_parallel(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;
