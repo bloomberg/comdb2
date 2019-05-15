@@ -1266,6 +1266,13 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
                 conns->stats.max_queue_bytes =
                     conns->conns[i].stats.max_queue_bytes;
         }
+        if (conns->conns[i].clnt) {
+            sqlengine_cleanup_temp_table_mtx(conns->conns[i].clnt);
+            if (conns->conns[i].clnt->zNormSql) {
+                free(conns->conns[i].clnt->zNormSql);
+                conns->conns[i].clnt->zNormSql = NULL;
+            }
+        }
         _shard_disconnect(&conns->conns[i]);
     }
     if (likely(gbl_dohsql_track_stats)) {
