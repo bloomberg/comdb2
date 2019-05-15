@@ -3937,10 +3937,9 @@ static int kafka_publish(Lua lua)
 
     SP sp = getsp(lua);
 
-    if (!gbl_kafka_topic || !gbl_kafka_brokers)
+    if (!gbl_kafka_topic || !gbl_kafka_brokers) {
         return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
-    else 
-        fprintf(stderr, "TOPIC %s Brokers%s Dta %s Dta_len %d\n", gbl_kafka_topic, gbl_kafka_brokers, (char*)dta, dta_len);
+    }
 
      /*
      * Create Kafka client configuration place-holder
@@ -3950,13 +3949,13 @@ static int kafka_publish(Lua lua)
         conf = rd_kafka_conf_new();
         if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
                              errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-               fprintf(stderr, "%s\n", errstr);
+               logmsg(LOGMSG_ERROR,"%s\n", errstr);
                return 1;
         }
         rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
 
         if (!rk_p) {
-                fprintf(stderr,
+                logmsg(LOGMSG_ERROR,
                         "%% Failed to create new producer: %s\n", errstr);
                 return 1;
         }
@@ -3965,7 +3964,7 @@ static int kafka_publish(Lua lua)
     if (!rkt_p)  {
         rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
         if (!rkt_p) {
-                fprintf(stderr, "%% Failed to create topic object: %s\n",
+                logmsg(LOGMSG_ERROR,"%% Failed to create topic object: %s\n",
                         rd_kafka_err2str(rd_kafka_last_error()));
                 rd_kafka_destroy(rk_p);
                 return 1;
@@ -3991,26 +3990,10 @@ retry:
         /**
          * Failed to *enqueue* message for producing.
          */
-        fprintf(stderr,
+        logmsg(LOGMSG_ERROR,
                 "%% Failed to produce to topic %s: %s\n",
                 rd_kafka_topic_name(rkt_p),
                 rd_kafka_err2str(rd_kafka_last_error()));
-         /* Poll to handle delivery reports */
-        if (rd_kafka_last_error() ==
-            RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-                /* If the internal queue is full, wait for
-                 * messages to be delivered and then retry.
-                 * The internal queue represents both
-             * messages to be sent and messages that have
-                 * been sent or failed, awaiting their
-                 * delivery report callback to be called.
-                 *
-                 * The internal queue is limited by the
-                 * configuration property
-                 * queue.buffering.max.messages */
-                rd_kafka_poll(rk_p, 1000/*block for max 1000ms*/);
-            goto retry;
-        }
     }
     return 0;
 }
