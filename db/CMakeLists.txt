@@ -226,14 +226,17 @@ target_link_libraries(comdb2
   m
   ${CMAKE_DL_LIBS}
   ${LZ4_LIBRARY}
-  ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
+if(WITH_RDKAFKA)
+  ${RDKAFKA_LIBRARY}
+endif()
 )
+
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(
   TARGET comdb2 POST_BUILD

@@ -54,7 +54,7 @@ if(WITH_TCL)
   find_package(Tcl REQUIRED)
 endif()
 
-option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" ON)
+option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" OFF)
 if(WITH_RDKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_RDKAFKA)
