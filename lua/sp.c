@@ -3924,8 +3924,8 @@ char *gbl_kafka_topic = NULL;
 
 #ifdef WITH_RDKAFKA
 
-rd_kafka_topic_t *rkt_p = NULL;
-rd_kafka_t *rk_p = NULL;
+static rd_kafka_topic_t *rkt_p = NULL;
+static rd_kafka_t *rk_p = NULL;
 
 static int kafka_publish(Lua lua)
 {
@@ -3941,37 +3941,29 @@ static int kafka_publish(Lua lua)
         return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
     }
 
-     /*
-     * Create Kafka client configuration place-holder
-     */
-
     if (!rk_p) {
         conf = rd_kafka_conf_new();
         if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
                              errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-               logmsg(LOGMSG_ERROR,"%s\n", errstr);
-               return 1;
+               return luabb_error(lua, sp, "%s\n", errstr);
         }
+
         rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
 
         if (!rk_p) {
-                logmsg(LOGMSG_ERROR,
+                return luabb_error(lua, sp,
                         "%% Failed to create new producer: %s\n", errstr);
-                return 1;
         }
 
     }
     if (!rkt_p)  {
         rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
         if (!rkt_p) {
-                logmsg(LOGMSG_ERROR,"%% Failed to create topic object: %s\n",
+                return luabb_error(lua, sp, "%% Failed to create topic object: %s\n",
                         rd_kafka_err2str(rd_kafka_last_error()));
-                rd_kafka_destroy(rk_p);
-                return 1;
         }
     }
 
-retry:
     if (rd_kafka_produce(
             /* Topic object */
             rkt_p,
@@ -3990,7 +3982,7 @@ retry:
         /**
          * Failed to *enqueue* message for producing.
          */
-        logmsg(LOGMSG_ERROR,
+        return luabb_error(lua, sp,
                 "%% Failed to produce to topic %s: %s\n",
                 rd_kafka_topic_name(rkt_p),
                 rd_kafka_err2str(rd_kafka_last_error()));
