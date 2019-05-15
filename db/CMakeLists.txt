@@ -234,9 +234,7 @@ target_link_libraries(comdb2
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
-if(WITH_RDKAFKA)
   ${RDKAFKA_LIBRARY}
-endif()
 )
 
 configure_file(copycomdb2 copycomdb2 @ONLY)
