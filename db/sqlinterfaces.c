@@ -4930,7 +4930,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     osql_clean_sqlclntstate(clnt);
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
-    clnt->origin = intern(get_origin_mach_by_buf(sb));
+    if (sb)
+        clnt->origin = intern(get_origin_mach_by_buf(sb));
+    else
+        clnt->origin = "<internal>";
 
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
