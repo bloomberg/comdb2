@@ -72,6 +72,7 @@
 #include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
+#include "str0.h"
 
 #include <inttypes.h>
 
@@ -4367,7 +4368,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
         return;
     }
 
-    strncpy(coherency_master, from_host, sizeof(coherency_master));
+    strncpy0(coherency_master, from_host, sizeof(coherency_master));
 
     /* Choose most conservative possible expiration: the lessor of
      * 'mytime + leasetime' and 'mastertime + leasetime' */

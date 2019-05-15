@@ -258,7 +258,7 @@ static int process_escape(const char *cmdstr)
 
     int len = strlen(cmdstr);
 
-    strncpy(copy, cmdstr, sizeof(copy));
+    strncpy(copy, cmdstr, sizeof(copy) - 1);
     copy[len] = '\0';
 
     /* get first token, skip @ */

@@ -36,6 +36,7 @@
 #include <comdb2_atomic.h>
 #include <ctrace.h>
 #include <logmsg.h>
+#include "str0.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -259,7 +260,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
     struct temp_table *tmptbl = NULL;
 
     /* cache the tablename for sqlglue */
-    strncpy(s_ix->name, tbl->tablename, sizeof(s_ix->name));
+    strncpy0(s_ix->name, tbl->tablename, sizeof(s_ix->name));
 
     /* ask bdb to put a summary of this into a temp-table */
     rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &tmptbl,
@@ -1062,7 +1063,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     td.sb = sb;
     td.scale = scale;
     td.override_llmeta = override_llmeta;
-    strncpy(td.table, table, sizeof(td.table));
+    strncpy0(td.table, table, sizeof(td.table));
 
     /* dispatch */
     int rc = dispatch_table_thread(&td);
@@ -1120,7 +1121,8 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        strncpy(td[idx].table, thedb->dbs[i]->tablename, sizeof(td[idx].table));
+        strncpy0(td[idx].table, thedb->dbs[i]->tablename,
+                 sizeof(td[idx].table));
 
         /* dispatch analyze table thread */
         rc = dispatch_table_thread(&td[idx]);

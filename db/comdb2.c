@@ -2916,7 +2916,7 @@ static void clear_queue_extents(void)
             q = malloc(sizeof(ExtentsQueue));
             q->count = 0;
             LIST_INIT(&q->head);
-            strncpy(q->name, name, sizeof(q->name));
+            strncpy0(q->name, name, sizeof(q->name));
             hash_add(hash_table, q);
         }
         ExtentsEntry *e = malloc(sizeof(ExtentsEntry));

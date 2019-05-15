@@ -272,8 +272,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             /* this is socksql, recom, snapisol or serial; no retry here
              */
             generr.errval = ERR_INTERNAL;
-            strncpy(generr.errstr, "master cancelled transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "master cancelled transaction",
+                     sizeof(generr.errstr));
             xerr = &generr;
             error = 1;
             break;
@@ -615,7 +615,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
             sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
@@ -703,7 +703,7 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     sorese_info.type = -1; /* I don't need it */
 
     generr.errval = errval;
-    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+    strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
     int rc =
         osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
