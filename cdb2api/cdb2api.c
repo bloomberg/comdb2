@@ -33,6 +33,7 @@
 #include <limits.h>
 
 #include "cdb2api.h"
+#include <sockpool_p.h>
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
@@ -155,6 +156,7 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #include <netdb.h>
 
+int sockpool_msg_ver = 0;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
@@ -563,7 +565,8 @@ static int recv_fd(int sockfd, void *data, size_t nbytes, int *fd_recvd)
     return rc;
 }
 
-static int send_fd_to(int sockfd, const void *data, size_t nbytes,
+static int send_fd_to(int sockfd, const void *hdr, size_t nbytes,
+                      const void *data, size_t datalen,
                       int fd_to_send, int timeoutms)
 {
     ssize_t rc;
@@ -580,7 +583,7 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
 #endif
 
     bytesleft = nbytes;
-    cdata = data;
+    cdata = hdr;
 
     while (bytesleft > 0) {
         if (timeoutms > 0) {
@@ -644,14 +647,19 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
 
         cdata += rc;
         bytesleft -= rc;
+        if (bytesleft == 0 && datalen > 0) {
+            cdata = data;
+            bytesleft = datalen;
+            datalen = 0;
+        }
     }
 
     return PASSFD_SUCCESS;
 }
 
-static int send_fd(int sockfd, const void *data, size_t nbytes, int fd_to_send)
+static int send_fd(int sockfd, const void *hdr, size_t nbytes, const void *data, size_t datalen, int fd_to_send)
 {
-    return send_fd_to(sockfd, data, nbytes, fd_to_send, 0);
+    return send_fd_to(sockfd, hdr, nbytes, data, datalen, fd_to_send, 0);
 }
 
 static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
@@ -1239,6 +1247,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     strcpy(cdb2_comdb2dbname, tok);
+            } else if (strcasecmp("sockpool_msg_ver", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    sockpool_msg_ver = atoi(tok);
             } else if (strcasecmp("tcpbufsz", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1552,6 +1564,7 @@ struct sockaddr_sun {
     char sun_path[108];
 };
 
+#if 0
 struct sockpool_hello {
     char magic[4];
     int protocol_version;
@@ -1566,8 +1579,7 @@ struct sockpool_msg_vers0 {
     int timeout;
     char typestr[48];
 };
-
-enum { SOCKPOOL_DONATE = 0, SOCKPOOL_REQUEST = 1 };
+#endif
 
 static int open_sockpool_ll(void)
 {
@@ -1591,7 +1603,7 @@ static int open_sockpool_ll(void)
 
     /* Connected - write hello message */
     memcpy(hello.magic, "SQLP", 4);
-    hello.protocol_version = 0;
+    hello.protocol_version = sockpool_msg_ver;
     hello.pid = _PID;
     hello.slot = 0;
 
@@ -1653,6 +1665,9 @@ static void reset_sockpool(void)
 // cdb2_socket_pool_get_ll: lockless
 static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 {
+    struct sockpool_msg_vers0 msg0 = {0};
+    struct sockpool_msg_vers1 msg1 = {0};
+
     if (sockpool_enabled == 0) {
         time_t current_time = time(NULL);
         /* Check every 10 seconds. */
@@ -1674,17 +1689,33 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
     }
 
-    struct sockpool_msg_vers0 msg = {0};
-    if (strlen(typestr) >= sizeof(msg.typestr)) {
+    void *msg = NULL;
+    int msg_len = 0;
+    int data_len = 0;
+
+    if (sockpool_msg_ver == 0) {
+        msg = &msg0;
+        msg_len = sizeof(msg0);
+        if (strlen(typestr) >= sizeof(msg0.typestr)) {
+            return -1;
+        }
+        /* Please may I have a file descriptor */
+        msg0.request = SOCKPOOL_REQUEST;
+        msg0.dbnum = dbnum;
+        strncpy(msg0.typestr, typestr, sizeof(msg0.typestr) - 1);
+    } else if (sockpool_msg_ver == 1) {
+        msg_len = sizeof(msg1);
+        msg1.request = SOCKPOOL_REQUEST;
+        data_len = msg1.typestrlen = strlen(typestr) + 1;
+    } else {
+        sockpool_enabled = 0;
+        sockpool_fail_time = time(NULL);
+        fprintf(stderr, "%s Invalid sockpool version %d\n", __func__,sockpool_msg_ver);
         return -1;
     }
-    /* Please may I have a file descriptor */
-    msg.request = SOCKPOOL_REQUEST;
-    msg.dbnum = dbnum;
-    strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
     errno = 0;
-    int rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
+    int rc = send_fd(sockpool_fd, msg, msg_len, typestr, data_len, -1);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -1697,7 +1728,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     /* Read reply from server.  It can legitimately not send
      * us a file descriptor. */
     errno = 0;
-    rc = recv_fd(sockpool_fd, &msg, sizeof(msg), &fd);
+    rc = recv_fd(sockpool_fd, &msg0, sizeof(msg0), &fd);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -1707,7 +1738,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     }
     if (fd == -1 && port) {
         short gotport;
-        memcpy((char *)&gotport, (char *)&msg.padding[1], 2);
+        memcpy((char *)&gotport, (char *)&msg0.padding[1], 2);
         *port = ntohs(gotport);
     }
     return fd;
@@ -1742,16 +1773,35 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
             }
         }
 
-        struct sockpool_msg_vers0 msg = {0};
-        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr))) {
+        struct sockpool_msg_vers0 msg0 = {0};
+        struct sockpool_msg_vers1 msg1 = {0};
+
+        if (sockpool_fd != -1 && (sockpool_msg_ver != 0 || (strlen(typestr) < sizeof(msg0.typestr)))) {
+            void *msg = NULL;
+            int msg_len = 0;
+            int data_len = 0;
             int rc;
-            msg.request = SOCKPOOL_DONATE;
-            msg.dbnum = dbnum;
-            msg.timeout = ttl;
-            strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
+
+            if (sockpool_msg_ver == 0) {
+                msg = &msg0;
+                msg_len = sizeof(msg0);
+                msg0.request = SOCKPOOL_DONATE;
+                msg0.dbnum = dbnum;
+                msg0.timeout = ttl;
+                strncpy(msg0.typestr, typestr, sizeof(msg0.typestr) - 1);
+            } else if (sockpool_msg_ver == 1) {
+                msg = &msg1;
+                msg_len = sizeof(msg1);
+                msg1.request = SOCKPOOL_DONATE;
+                msg1.timeout = ttl;
+                data_len = msg1.typestrlen = strlen(msg0.typestr) + 1;
+            } else {
+                fprintf(stderr, "%s Invalid sockpool version %d\n", __func__,sockpool_msg_ver);
+                goto done;
+            }
 
             errno = 0;
-            rc = send_fd(sockpool_fd, &msg, sizeof(msg), fd);
+            rc = send_fd(sockpool_fd, msg, msg_len, typestr, data_len, fd);
             if (rc != PASSFD_SUCCESS) {
                 fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
                         errno, strerror(errno));
@@ -1761,6 +1811,7 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
         }
     }
 
+done:
     if (close(fd) == -1) {
         fprintf(stderr, "%s: close error for '%s' fd %d: %d %s\n", __func__,
                 typestr, fd, errno, strerror(errno));
