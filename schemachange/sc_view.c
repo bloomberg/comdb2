@@ -15,6 +15,7 @@
  */
 
 #include "schemachange.h"
+#include "bdb_schemachange.h"
 #include "comdb2.h"
 
 int add_view(struct dbview *view);
@@ -24,6 +25,7 @@ int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
 int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
                             int view_version, int *bdberr);
 
+/*
 int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
     int rc;
@@ -65,6 +67,7 @@ int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     return 0;
 }
+*/
 
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran)
@@ -102,22 +105,27 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     s->addonly = SC_DONE_ADD;
     gbl_sc_commit_count++;
 
-    if (s->finalize) {
-        if (create_sqlmaster_records(tran)) {
-            sc_errf(s, "create_sqlmaster_records failed\n");
-            return -1;
-        }
-        create_sqlite_master();
+    if (create_sqlmaster_records(tran)) {
+        sc_errf(s, "create_sqlmaster_records failed\n");
+        return -1;
+    }
+    create_sqlite_master();
+
+    rc = bdb_llog_view(thedb->bdb_env, user_view, 1, &bdberr);
+    if (rc != 0) {
+        return rc;
     }
 
     sc_printf(s, "Schema change ok\n");
     return 0;
 }
 
+/*
 int do_drop_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
     return SC_OK;
 }
+*/
 
 int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
                        tran_type *tran)
@@ -129,19 +137,23 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+    delete_view(s->tablename);
+
     if ((rc = llmeta_set_views(tran, thedb)) != 0) {
         sc_errf(s, "Failed to set view names in low level meta\n");
         return rc;
     }
 
-    if (s->finalize) {
-        if (create_sqlmaster_records(tran)) {
-            sc_errf(s, "create_sqlmaster_records failed\n");
-            return -1;
-        }
-        create_sqlite_master();
+    if (create_sqlmaster_records(tran)) {
+        sc_errf(s, "create_sqlmaster_records failed\n");
+        return -1;
     }
-    delete_view(s->tablename);
+    create_sqlite_master();
+
+    rc = bdb_llog_view(thedb->bdb_env, user_view, 1, &bdberr);
+    if (rc != 0) {
+        return rc;
+    }
 
 /* TODO (NC): study */
 #if 0

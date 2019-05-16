@@ -568,7 +568,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
     else if (s->add_view)
-        rc = do_add_view(iq, s, trans);
+        rc = finalize_add_view(iq, s, trans);
     else if (s->drop_view)
         rc = finalize_drop_view(iq, s, trans);
 
@@ -700,7 +700,9 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
     else if (s->add_view)
-        rc = do_finalize(finalize_add_view, iq, s, trans, add);
+        rc = finalize_add_view(iq, s, trans);
+    else if (s->drop_view)
+        rc = finalize_drop_view(iq, s, trans);
 
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);

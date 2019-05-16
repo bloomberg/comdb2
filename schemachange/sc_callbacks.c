@@ -751,7 +751,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type != drop) {
+    if (type != drop && type != user_view) {
         if (get_csc2_file_tran(table, -1, &csc2text, NULL, tran)) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
                    table);
@@ -783,7 +783,13 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                    __func__, table);
             exit(1);
         }
-    } else if (type == bulkimport) {
+    }else if (type == user_view) {
+        int llmeta_load_views(struct dbenv *, void *);
+        rc = llmeta_load_views(thedb, tran);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
+        }
+    }else if (type == bulkimport) {
         logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", table);
         reload_after_bulkimport(db, tran);
     } else {
@@ -813,7 +819,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     }
 
     if (type == add || type == drop || type == alter || type == fastinit ||
-        type == bulkimport) {
+        type == bulkimport || type == user_view) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
                    "create_sqlmaster_records: error creating sqlite "
@@ -823,7 +829,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
         create_sqlite_master(); /* create sql statements */
         ++gbl_dbopen_gen;
-        if (type == drop)
+        if (type == drop || type == user_view)
             goto done;
     }
 
@@ -888,6 +894,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 done:
     if (tran) {
         bdb_set_tran_lockerid(tran, lid);
+        /* TODO: (NC) Why abort? */
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",

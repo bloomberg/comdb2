@@ -383,6 +383,12 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
     return rc;
 }
 
+
+int bdb_llog_view(bdb_state_type *bdb_state, scdone_t type, int wait, int *bdberr)
+{
+    return do_llog(bdb_state, type, bdb_state->name, wait, bdberr);
+}
+
 int bdb_reload_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
     assert(type == rowlocks_on || type == rowlocks_on_master_only ||

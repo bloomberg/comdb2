@@ -2097,7 +2097,7 @@ static int llmeta_load_queues(struct dbenv *dbenv)
     return 0;
 }
 
-static int llmeta_load_views(struct dbenv *dbenv, void *tran)
+int llmeta_load_views(struct dbenv *dbenv, void *tran)
 {
     int rc = 0;
     int bdberr = 0;
