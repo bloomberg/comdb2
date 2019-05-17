@@ -452,8 +452,6 @@ ccons ::= INDEX onconf(R).       {
     comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_DUPKEY, 0);
 }
-ccons ::= CHECK LP scanpt(BW) expr(X) scanpt(AW) RP.
-                                 {comdb2AddCheckConstraint(pParse,X,BW,AW);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= UNIQUE onconf(R).      {sqlite3CreateIndex(pParse,0,0,0,0,R,0,0,0,0,
