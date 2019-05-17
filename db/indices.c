@@ -41,7 +41,9 @@ typedef enum { DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC} di
 typedef struct {
     struct dbtable *usedb; //consider not storing usedb and processing each usedb separately
     short ixnum;
+    short ixlen;
     char ixkey[MAXKEYLEN]; //consider storing up to the largest key
+                           //for dups genid is appended to end of key
     dit_t type;
     unsigned long long genid;
     unsigned long long newgenid; // new genid used for update
@@ -74,7 +76,8 @@ static int defered_index_key_cmp(void *usermem, int key1len,
 
     CMP_KEY_MEMBER(k1, k2, usedb);
     CMP_KEY_MEMBER(k1, k2, ixnum);
-    MEMCMP_KEY_MEMBER(k1, k2, ixkey, sizeof(k1->ixkey));
+    assert(k1->ixlen == k2->ixlen);
+    MEMCMP_KEY_MEMBER(k1, k2, ixkey, k1->ixlen);
     CMP_KEY_MEMBER(k1, k2, type);
     CMP_KEY_MEMBER(k1, k2, genid);
     return 0;
@@ -153,6 +156,7 @@ void delete_defered_index_tbl()
         close_defered_index_tbl_cursor();
 
     delete_constraint_table(defered_index_tbl);
+    defered_index_tbl = NULL;
 }
 
 
@@ -299,6 +303,12 @@ int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
     return 0;
 }
 
+static inline void append_genid_to_key(dtikey_t *ditk, int ixkeylen) 
+{
+    ditk->ixlen = ixkeylen + sizeof(ditk->genid);
+    memcpy(&ditk->ixkey[ixkeylen], &ditk->genid, sizeof(ditk->genid));
+}
+
 int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        size_t maxblobs, int *opfailcode, int *ixfailnum,
                        int *rrn, unsigned long long *genid,
@@ -393,6 +403,9 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                 datalen = od_tail_len;
             }
             ditk.ixnum = ixnum;
+            ditk.ixlen = ixkeylen;
+            if (iq->usedb->ix_dupes[ixnum] != 0)
+                append_genid_to_key(&ditk, ixkeylen);
             int err = 0;
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
@@ -404,7 +417,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                        __func__, rc);
                 goto done;
             }
-            memset(ditk.ixkey, 0, ixkeylen);
+            memset(ditk.ixkey, 0, ditk.ixlen);
         } else {
             int isnullk = ix_isnullk(iq->usedb, key, ixnum);
 
@@ -686,6 +699,10 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 ditk.genid = vgenid;
                 ditk.newgenid = *newgenid;
                 ditk.ixnum = ixnum;
+                ditk.ixlen = keysize;
+
+                if (iq->usedb->ix_dupes[ixnum] != 0)
+                    append_genid_to_key(&ditk, keysize);
                 int err = 0;
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
@@ -697,7 +714,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                             rc);
                     goto done;
                 }
-                memset(ditk.ixkey, 0, keysize);
+                memset(ditk.ixkey, 0, ditk.ixlen);
             }
             else {
                 rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
@@ -733,6 +750,9 @@ logmsg(LOGMSG_DEBUG, "AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", 
                     int datalen = 0;
                     delditk.genid = vgenid;
                     delditk.ixnum = ixnum;
+                    delditk.ixlen = keysize;
+                    if (iq->usedb->ix_dupes[ixnum] != 0)
+                        append_genid_to_key(&delditk, keysize);
                     int err = 0;
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
@@ -744,7 +764,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n"
                                 rc);
                         goto done;
                     }
-                    memset(delditk.ixkey, 0, keysize);
+                    memset(delditk.ixkey, 0, delditk.ixlen);
                 }
                 else {
                     rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
@@ -791,6 +811,9 @@ logmsg(LOGMSG_DEBUG, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n",
                     ditk.type = DIT_ADD;
                     ditk.genid = *newgenid;
                     ditk.ixnum = ixnum;
+                    ditk.ixlen = keysize;
+                    if (iq->usedb->ix_dupes[ixnum] != 0)
+                        append_genid_to_key(&ditk, keysize);
                     int err = 0;
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
@@ -802,7 +825,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                                 rc);
                         goto done;
                     }
-                    memset(ditk.ixkey, 0, keysize);
+                    memset(ditk.ixkey, 0, ditk.ixlen);
                 } else { //TODO: will also need add here for constraint checking purpose
                     rc = add_key(iq, trans, ixnum, ins_keys, rrn, *newgenid, od_dta,
                             od_len, opcode, blkpos, opfailcode, newkey,
@@ -910,6 +933,9 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             void *data = NULL;
             int datalen = 0;
             delditk.ixnum = ixnum;
+            delditk.ixlen = keysize;
+            if (iq->usedb->ix_dupes[ixnum] != 0)
+                append_genid_to_key(&delditk, keysize);
             int err = 0;
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
@@ -922,7 +948,7 @@ logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                         rc);
                 goto done;
             }
-            memset(delditk.ixkey, 0, keysize); // clear it for next round
+            memset(delditk.ixkey, 0, delditk.ixlen); // clear it for next round
         }
         else {
             /* delete the key */

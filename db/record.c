@@ -490,7 +490,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
         if (has_constraint(flags)) { /* if NOT no constraints */
             if (!is_event_from_sc(flags)) {
-                /* enqueue the add of the key for constaint checking purposes */
+                /* enqueue the add of the key for constraint checking purpose */
                 rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys,
                                    blkpos, rec_flags);
                 if (rc != 0) {
