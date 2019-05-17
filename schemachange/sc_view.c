@@ -25,50 +25,6 @@ int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
 int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
                             int view_version, int *bdberr);
 
-/*
-int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
-{
-    int rc;
-    int bdberr;
-    struct dbview *view;
-
-    view = malloc(sizeof(struct dbview));
-    if (view == 0) {
-        return -1;
-    }
-
-    view->view_name = strdup(s->tablename);
-    if (view->view_name == 0) {
-        return -1;
-    }
-    view->view_def = strdup(s->newcsc2);
-    if (view->view_def == 0) {
-        return -1;
-    }
-
-    rc = bdb_llmeta_put_view_def(tran, s->tablename, s->newcsc2, 0, &bdberr);
-    if (rc != 0) {
-        return rc;
-    }
-
-    add_view(view);
-
-    if (llmeta_set_views(tran, thedb)) {
-        sc_errf(s, "Failed to set table names in low level meta\n");
-        return -1;
-    }
-
-    if (create_sqlmaster_records(tran)) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        return -1;
-    }
-    create_sqlite_master();
-    ++gbl_dbopen_gen;
-
-    return 0;
-}
-*/
-
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran)
 {
@@ -115,17 +71,11 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
+    gbl_user_views_gen++;
 
     sc_printf(s, "Schema change ok\n");
     return 0;
 }
-
-/*
-int do_drop_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
-{
-    return SC_OK;
-}
-*/
 
 int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
                        tran_type *tran)
@@ -154,6 +104,7 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
+    gbl_user_views_gen++;
 
 /* TODO (NC): study */
 #if 0

@@ -361,6 +361,8 @@ unsigned int gbl_masterrejects = 0;
 volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
+volatile int gbl_user_views_gen = 0;
+
 int gbl_sqlhistsz = 25;
 int gbl_lclpooled_buffers = 32;
 
