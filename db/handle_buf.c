@@ -1207,51 +1207,51 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
     LOCK(&lock)
     {
         iq = (struct ireq *)pool_getablk(p_reqs);
-#if 0
-        fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
-#endif
-        if (iq == NULL) {
-            logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
-            errUNLOCK(&lock);
-        }
-        rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
-                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
-        if (rc)
-            /* init_ireq unlocks on error */
-            return NULL;
-
-        iq->sorese = *sorese;
-        iq->is_sorese = 1;
-        iq->use_handle = thedb->bdb_env;
+    }
+    UNLOCK(&lock);
 
 #if 0
-        printf("Mapping sorese %llu\n", osql_log_time());
+    fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-        /* this creates the socksql/recom/serial local log (temp table) */
-        snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
-                 iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
-                 iq->sorese.rqid);
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
+    }
+    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
+                   NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    if (rc)
+        /* init_ireq unlocks on error */
+        return NULL;
 
-        /* enable logging, if any */
-        if (gbl_enable_osql_logging) {
-            int ffile = 0;
-            char filename[128];
-            static unsigned long long fcounter = 0;
+    iq->sorese = *sorese;
+    iq->is_sorese = 1;
+    iq->use_handle = thedb->bdb_env;
 
-            snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
+#if 0
+    printf("Mapping sorese %llu\n", osql_log_time());
+#endif
+    /* this creates the socksql/recom/serial local log (temp table) */
+    snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
+             iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
+             iq->sorese.rqid);
 
-            ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (ffile == -1) {
-                logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
-            } else {
-                iq->sorese.osqllog = sbuf2open(ffile, 0);
-                if (!iq->sorese.osqllog) {
-                    close(ffile);
-                }
+    /* enable logging, if any */
+    if (gbl_enable_osql_logging) {
+        int ffile = 0;
+        char filename[128];
+        static unsigned long long fcounter = 0;
+
+        snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
+
+        ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (ffile == -1) {
+            logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
+        } else {
+            iq->sorese.osqllog = sbuf2open(ffile, 0);
+            if (!iq->sorese.osqllog) {
+                close(ffile);
             }
         }
     }
-    UNLOCK(&lock);
 
     return iq;
 }
