@@ -783,13 +783,13 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                    __func__, table);
             exit(1);
         }
-    }else if (type == user_view) {
+    } else if (type == user_view) {
         int llmeta_load_views(struct dbenv *, void *);
         rc = llmeta_load_views(thedb, tran);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
         }
-    }else if (type == bulkimport) {
+    } else if (type == bulkimport) {
         logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", table);
         reload_after_bulkimport(db, tran);
     } else {

@@ -524,8 +524,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf =
         (uint8_t *)buf_get(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
-    p_buf =
-        (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf,
+                               p_buf_end);
 
     return p_buf;
 }
