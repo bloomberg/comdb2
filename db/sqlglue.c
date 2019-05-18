@@ -11891,6 +11891,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         pTo->n = 0;
         pTo->z = NULL;
         pTo->flags &= ~MEM_Dyn;
+        /* This would allow us to check the column type. */
+        if (psm->min) psm->min->flags = pFrom->flags;
         if (pFrom->flags & (MEM_Blob | MEM_Str)) {
             if (pFrom->zMalloc && pFrom->szMalloc) {
                 pTo->szMalloc = pFrom->szMalloc;
@@ -11910,6 +11912,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
                 pTo->zMalloc[pFrom->n] = 0;
                 pTo->z = pTo->zMalloc;
             }
+        } else if (pFrom->flags & MEM_Int) {
+            pTo->u.i = pFrom->u.i;
         }
     }
     return 0;
@@ -12365,10 +12369,11 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 {
     struct schema *sc;
     strbuf *sql;
-    Mem *m;
+    Mem *m = NULL;
+    Mem mout = {{0}};
     int rc;
 
-    *check_status = 0;
+    *check_status = 1;
     rc = 0;
 
     if (!rec) {
@@ -12417,14 +12422,15 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         for (int i = 1; i < sc->nmembers; ++i) {
             strbuf_appendf(sql, ", @%s", sc->member[i].name);
         }
-        strbuf_appendf(sql, ") SELECT 1 FROM \"%s\" WHERE %s",
-                       table->tablename, table->constraints[i].check_expr);
+        strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
+                       table->constraints[i].check_expr, table->tablename);
 
         struct sqlclntstate clnt;
         struct schema_mem sm;
+
         sm.sc = sc;
         sm.min = m;
-        sm.mout = NULL;
+        sm.mout = &mout;
 
         start_internal_sql_clnt(&clnt);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
@@ -12433,9 +12439,23 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         clnt.schema_mems = &sm;
 
         rc = dispatch_sql_query(&clnt);
-        if (!clnt.has_sqliterow) {
-            *check_status = 1;
+
+        /* CHECK constraint has passed if we get 1 or NULL. */
+        assert(clnt.has_sqliterow);
+        if (sm.min->flags & MEM_Int) {
+            if (sm.mout->u.i == 0) {
+                /* Failed */
+                *check_status = 1;
+            } else {
+                /* Passed */
+                *check_status = 0;
+            }
+        } else {
+            assert(sm.min->flags & MEM_Null);
+            /* Passed */
+            *check_status = 0;
         }
+
         clnt_reset_cursor_hints(&clnt);
         osql_clean_sqlclntstate(&clnt);
 
