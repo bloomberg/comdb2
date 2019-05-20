@@ -4837,7 +4837,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    sqlengine_cleanup_temp_table_mtx(clnt);
     if (clnt->zNormSql) {
         free(clnt->zNormSql);
         clnt->zNormSql = NULL;
