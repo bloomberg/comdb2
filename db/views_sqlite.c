@@ -130,8 +130,10 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
                            struct errstat *err)
 {
     int rc;
+    u32 mDbFlags;
 
     sqlite3_mutex_enter(sqlite3_db_mutex(db));
+    mDbFlags = db->mDbFlags;
 
 #ifdef COMDB2_UPDATEABLE_VIEWS
     rc = _views_destroy_triggers(view_name, db, err);
@@ -154,6 +156,7 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
 
     sqlite3UnlinkAndDeleteTable(db, 0 /*main*/, view_name);
 
+    db->mDbFlags = mDbFlags;
     sqlite3_mutex_leave(sqlite3_db_mutex(db));
 
     return rc;
