@@ -152,11 +152,11 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
     sqlite3_free(stmt_str);
 #endif
 
-  sqlite3UnlinkAndDeleteTable(db, 0/*main*/, view_name);
+    sqlite3UnlinkAndDeleteTable(db, 0 /*main*/, view_name);
 
-  sqlite3_mutex_leave(sqlite3_db_mutex(db));
+    sqlite3_mutex_leave(sqlite3_db_mutex(db));
 
-  return rc;
+    return rc;
 }
 
 /**
@@ -362,21 +362,20 @@ static int _views_create_triggers(timepart_view_t *view, sqlite3 *db,
 static int _views_drop_trigger(sqlite3 *db, const char *view_name,
                                const char *suffix, struct errstat *err)
 {
-  char *triggerName;
+    char *triggerName;
 
-  triggerName = sqlite3_mprintf("%s_%s", view_name, suffix);
-  if (!triggerName) {
-    errstat_set_rcstrf(err, VIEW_ERR_MALLOC,
-            "%s malloc drop %s_%s!\n", __func__,
-            view_name, TRIGGER_SUFFIX_DEL);
-    return VIEW_ERR_MALLOC;
-  }
-   
-  sqlite3UnlinkAndDeleteTrigger(db, 0/*main*/, triggerName);
+    triggerName = sqlite3_mprintf("%s_%s", view_name, suffix);
+    if (!triggerName) {
+        errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "%s malloc drop %s_%s!\n",
+                           __func__, view_name, TRIGGER_SUFFIX_DEL);
+        return VIEW_ERR_MALLOC;
+    }
 
-  sqlite3_free(triggerName);
+    sqlite3UnlinkAndDeleteTrigger(db, 0 /*main*/, triggerName);
 
-  return VIEW_NOERR;
+    sqlite3_free(triggerName);
+
+    return VIEW_NOERR;
 }
 
 static int _views_destroy_triggers(const char *view_name, sqlite3 *db,
@@ -416,19 +415,19 @@ static int _views_destroy_triggers(const char *view_name, sqlite3 *db,
     return VIEW_NOERR;
 #endif
 
-  int rc;
+    int rc;
 
-  rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_DEL, err);
-  if(rc)
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_DEL, err);
+    if (rc)
+        return rc;
+
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_UPD, err);
+    if (rc)
+        return rc;
+
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_INS, err);
+
     return rc;
-
-  rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_UPD, err);
-  if(rc)
-    return rc;
-
-  rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_INS, err);
-
-  return rc;
 }
 
 static void dbg_verbose_sqlite(const char *fmt, ...)
