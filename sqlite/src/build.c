@@ -5647,9 +5647,13 @@ char *sqlite3DescribeIndexOrder(
 void sqlite3ResetFdbSchemas(sqlite3 *db){
   int i;
 
+  sqlite3_mutex_enter(sqlite3_db_mutex(db));
+
   for( i=2; i<db->nDb; i++ ){
     comdb2_dynamic_detach(db, i);
   }
+
+  sqlite3_mutex_leave(sqlite3_db_mutex(db));
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
