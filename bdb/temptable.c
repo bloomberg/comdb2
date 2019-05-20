@@ -1328,14 +1328,15 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
         struct temp_list_node *c_node = NULL;
+        int not_the_end;
         do {
             c_node = (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
+            not_the_end = c_node != NULL;
             if (c_node) {
-                if (c_node->data)
-                    free(c_node->data);
+                free(c_node->data);
                 free(c_node);
             }
-        } while (c_node);
+        } while (not_the_end);
     } break;
 
     case TEMP_TABLE_TYPE_HASH:

@@ -489,8 +489,10 @@ __db_new(dbc, type, pagepp)
 	(void)__memp_fput(mpf, (PAGE *)meta, DB_MPOOL_DIRTY);
 
 	(void)__TLPUT(dbc, metalock);
-	if (pagebuf)
+	if (pagebuf) {
 		free(pagebuf);
+        pagebuf = NULL;
+    }
 
 	/*
 	 * If dirty reads are enabled and we are in a transaction, we could
