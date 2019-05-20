@@ -188,6 +188,8 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW1}" >> $OUT 2>&1
+
 #wait for the new trigger to complete
 sleep 180
 
