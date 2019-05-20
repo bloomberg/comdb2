@@ -18,14 +18,15 @@ for required in $vars; do
 done
 
 #generate testscripts in new files
-files=`ls *.req.src`
+files=`ls *.src`
 for file in $files ; do
    newfile=${file%%.src}
    sed "/^insert /!s/ t$/ LOCAL_$DBNAME.t/g" $file > $newfile.tmp
-   sed "/^insert /!s/ t / LOCAL_$DBNAME.t /g" $newfile.tmp > $newfile
+   sed "/^insert /!s/ t / LOCAL_$DBNAME.t /g" $newfile.tmp > $newfile.tmp2
+   sed "s/ t\]/ LOCAL_$DBNAME.t\]/g" $newfile.tmp2 > $newfile
    rm $newfile.tmp
+   rm $newfile.tmp2
 done
-
 
 if [[ $DBNAME == *"whitelistgenerated"* ]] ; then
     node=`cdb2sql --tabs -s ${CDB2_OPTIONS} $DBNAME default "select comdb2_host()"`
