@@ -12166,7 +12166,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                __func__, rc, f->name, mout.flags, f->type);
         goto done;
     }
-    if (mout.zMalloc) free(mout.zMalloc);
+    if (mout.zMalloc)
+        free(mout.zMalloc);
 done:
     strbuf_free(sql);
     if (rc)
@@ -12371,10 +12372,23 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     strbuf *sql;
     Mem *m = NULL;
     Mem mout = {{0}};
-    int rc;
+    int rc = 0;
+    int has_check_cons = 0;
+
+    /* Skip if there are no CHECK constraints. */
+    for (int i = 0; i < table->n_constraints; i++) {
+        if (table->constraints[i].type == CONS_CHECK) {
+            has_check_cons = 1;
+            break;
+        }
+    }
+
+    if (has_check_cons == 0) {
+        *check_status = 0;
+        return rc;
+    }
 
     *check_status = 1;
-    rc = 0;
 
     if (!rec) {
         logmsg(LOGMSG_ERROR, "%s: invalid input\n", __func__);
