@@ -307,7 +307,7 @@ int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
 }
 
 int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
-                     const char *origtable, int *bdberr)
+                             const char *origtable, int *bdberr)
 {
     ++gbl_dbopen_gen;
     return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);

@@ -735,8 +735,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
-                    rc = bdb_llog_scdone_origname(s->db->handle, type, 1, s->tablename,
-                            &bdberr);
+                    rc = bdb_llog_scdone_origname(s->db->handle, type, 1,
+                                                  s->tablename, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible
                          * mode. For R7 or later, use SC_DONE_SAME_TRAN.
