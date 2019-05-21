@@ -67,9 +67,9 @@
 (tablename='t3', keyname='UUID1', columnnumber=0, columnname='uuid', isdescending='N')
 (tablename='t4', keyname='UUID1', columnnumber=0, columnname='uuid', isdescending='N')
 [select * from comdb2_keycomponents order by tablename] rc 0
-(name='$CONSTRAINT_54A220D', tablename='t2', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='N')
-(name='$CONSTRAINT_54A220D', tablename='t3', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='Y', iscascadingupdate='N')
-(name='$CONSTRAINT_54A220D', tablename='t4', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='Y')
+(name='$CONSTRAINT_54A220D', type='FOREIGN KEY', tablename='t2', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='$CONSTRAINT_54A220D', type='FOREIGN KEY', tablename='t3', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='Y', iscascadingupdate='N', expr=NULL)
+(name='$CONSTRAINT_54A220D', type='FOREIGN KEY', tablename='t4', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='Y', expr=NULL)
 [select * from comdb2_constraints order by tablename] rc 0
 (tablename='alltypes', bytes=2162688)
 (tablename='dummy', bytes=65536)
