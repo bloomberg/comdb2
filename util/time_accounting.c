@@ -28,6 +28,7 @@ unsigned long long totalcount;
 typedef struct {
     const char *name;
     unsigned long long utime;
+    unsigned long long worstutime;
     unsigned long long count;
 } name_time_pair_t;
 
@@ -58,11 +59,13 @@ void accumulate_time(const char *name, int us)
         ptr = malloc(sizeof(name_time_pair_t));
         ptr->name = iptr;
         ptr->utime = 0;
+        ptr->worstutime = 0;
         ptr->count = 0;
         hash_add(htimes, ptr);
     }
     ptr->utime += us;
     ptr->count++;
+    if (ptr->worstutime < us) ptr->worstutime = us;
     pthread_mutex_unlock(&hlock);
 }
 
@@ -76,6 +79,7 @@ void reset_time_accounting(const char *name)
     name_time_pair_t *ptr;
     if ((ptr = hash_find_readonly(htimes, &iptr)) != 0) {
         ptr->utime = 0;
+        ptr->worstutime = 0;
         ptr->count = 0;
     }
     pthread_mutex_unlock(&hlock);
@@ -84,6 +88,7 @@ static int reset_time(void *obj, void *unused)
 {
     name_time_pair_t *ptr = obj;
     ptr->utime = 0;
+    ptr->worstutime = 0;
     ptr->count = 0;
     return 0;
 
@@ -115,7 +120,7 @@ void print_time_accounting(const char *name)
 static int print_name_time_pair(void *obj, void *unused)
 {
     name_time_pair_t *ptr = obj;
-    logmsg(LOGMSG_USER, "name=%s time=%lluus count=%llu\n", ptr->name, ptr->utime, ptr->count);
+    logmsg(LOGMSG_USER, "name=%s time=%lluus count=%llu worst=%llu, avg=%llu \n", ptr->name, ptr->utime, ptr->count, ptr->worstutime, ptr->utime/ptr->count);
     totaltime += ptr->utime;
     totalcount += ptr->count;
     return 0;
