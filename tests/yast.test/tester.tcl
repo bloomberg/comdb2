@@ -1011,6 +1011,16 @@ proc show_memstats {} {
   }
 }
 
+proc create_table_ddl {origquery} {
+  regexp -nocase {^CREATE TABLE ([[:alnum:]]+) (.*)$} $origquery _ dest
+
+  set rc [catch {do_cdb2_defquery "$origquery"} output]
+  if {$rc != 0} {
+    puts "add table failed for $table rc: $rc $output"
+  }
+  delay_for_schema_change
+}
+
 proc create_table_as {origquery} {
   global cluster
 
@@ -1057,6 +1067,10 @@ proc create_table {origquery} {
 
   if {[string match -nocase "CREATE TABLE * AS *" $origquery]} {
     return [create_table_as $origquery]
+  }
+
+  if {[string match -nocase "CREATE TABLE *CHECK*" $origquery]} {
+    return [create_table_ddl $origquery]
   }
 
   set uniquekey ""
