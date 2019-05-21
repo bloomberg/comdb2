@@ -129,12 +129,18 @@ int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
 int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
                            struct errstat *err)
 {
-    char *stmt_str;
     int rc;
+    u32 mDbFlags;
+
+    sqlite3_mutex_enter(sqlite3_db_mutex(db));
+    mDbFlags = db->mDbFlags;
 
 #ifdef COMDB2_UPDATEABLE_VIEWS
     rc = _views_destroy_triggers(view_name, db, err);
 #endif
+
+#if 0
+    char *stmt_str;
 
     /* create the statement */
     stmt_str = _views_destroy_view_query(view_name, db, err);
@@ -146,6 +152,12 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
 
     /* free the statement */
     sqlite3_free(stmt_str);
+#endif
+
+    sqlite3UnlinkAndDeleteTable(db, 0 /*main*/, view_name);
+
+    db->mDbFlags = mDbFlags;
+    sqlite3_mutex_leave(sqlite3_db_mutex(db));
 
     return rc;
 }
@@ -178,32 +190,6 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
         return NULL;
     }
     table0name = view->shards[0].tblname;
-
-#if 0
-   This is not ready yet, let us use the struct dbtable instead 
-   /* extract schema from first table */
-   Table *pTbl;
-   pTbl = sqlite3FindTableCheckOnly(db, table0name, NULL);
-   if(!pTbl)
-   {
-      err->errval = VIEW_ERR_BUG;
-      snprintf(err->errstr, sizeof(err->errstr), "View %s has missing shard %s???\n",
-            view->name, table0name);
-      return NULL;
-   }
- 
-   /* generate the column list */
-   for(i=0;i<pTbl->nCol; i++)
-   {
-      cols_str = sqlite3_mprintf("\"%s\"%s",
-         pTbl->aCol[i].zName,
-         (i<(pTbl->nCol-1))?", ":"");
-      if(!cols_str)
-      {
-         goto malloc;
-      }
-   }
-#endif
 
     cols_str = sqlite3_mprintf("rowid as __hidden__rowid, ");
     if (!cols_str) {
@@ -376,9 +362,29 @@ static int _views_create_triggers(timepart_view_t *view, sqlite3 *db,
     return VIEW_NOERR;
 }
 
+static int _views_drop_trigger(sqlite3 *db, const char *view_name,
+                               const char *suffix, struct errstat *err)
+{
+    char *triggerName;
+
+    triggerName = sqlite3_mprintf("%s_%s", view_name, suffix);
+    if (!triggerName) {
+        errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "%s malloc drop %s_%s!\n",
+                           __func__, view_name, TRIGGER_SUFFIX_DEL);
+        return VIEW_ERR_MALLOC;
+    }
+
+    sqlite3UnlinkAndDeleteTrigger(db, 0 /*main*/, triggerName);
+
+    sqlite3_free(triggerName);
+
+    return VIEW_NOERR;
+}
+
 static int _views_destroy_triggers(const char *view_name, sqlite3 *db,
                                    struct errstat *err)
 {
+#if 0
     typedef char *(*PFUNC)(const char *, struct errstat *);
 
     PFUNC funcs[3] = {(PFUNC)&_views_destroy_delete_trigger_query,
@@ -410,6 +416,21 @@ static int _views_destroy_triggers(const char *view_name, sqlite3 *db,
         clearClientSideRow(NULL);
     }
     return VIEW_NOERR;
+#endif
+
+    int rc;
+
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_DEL, err);
+    if (rc)
+        return rc;
+
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_UPD, err);
+    if (rc)
+        return rc;
+
+    rc = _views_drop_trigger(db, view_name, TRIGGER_SUFFIX_INS, err);
+
+    return rc;
 }
 
 static void dbg_verbose_sqlite(const char *fmt, ...)
