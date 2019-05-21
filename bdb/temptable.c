@@ -389,6 +389,11 @@ static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
     unsigned int hash_cur_buk;
     char *data;
 
+    if (tbl->dbenv_temp == NULL &&
+        create_temp_db_env(bdb_state, tbl, bdberr) != 0) {
+        bdb_temp_table_destroy_pool_wrapper(tbl, bdb_state);
+    }
+
     /* copy the hash to a btree */
     data = hash_first(tbl->temp_hash_tbl, &hash_cur, &hash_cur_buk);
     while (data) {
