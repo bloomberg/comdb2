@@ -2117,4 +2117,3 @@ int populate_reverse_constraints(struct dbtable *db)
 
     return n_errors;
 }
-

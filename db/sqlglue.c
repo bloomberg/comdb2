@@ -11892,7 +11892,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         pTo->z = NULL;
         pTo->flags &= ~MEM_Dyn;
         /* This would allow us to check the column type. */
-        if (psm->min) psm->min->flags = pFrom->flags;
+        if (psm->min)
+            psm->min->flags = pFrom->flags;
         if (pFrom->flags & (MEM_Blob | MEM_Str)) {
             if (pFrom->zMalloc && pFrom->szMalloc) {
                 pTo->szMalloc = pFrom->szMalloc;

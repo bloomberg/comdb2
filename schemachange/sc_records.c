@@ -556,8 +556,8 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
         return ERR_CONSTR;
     }
     if (check_status != 0) {
-        logmsg(LOGMSG_DEBUG, "%s:%d CHECK constraint violation\n",
-               __func__, __LINE__);
+        logmsg(LOGMSG_DEBUG, "%s:%d CHECK constraint violation\n", __func__,
+               __LINE__);
         return ERR_CONSTR;
     }
 
