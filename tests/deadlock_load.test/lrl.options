@@ -1,0 +1,18 @@
+nowatch
+logmsg level info
+enable_new_snapshot
+enable_snapshot_isolation
+berkattr abort_on_replicant_log_write 1
+init_with_genid48
+logdelete_lock_trace
+verbose_set_sc_in_progress on
+#setattr REP_PROCESSORS 0
+#setattr REP_WORKERS 0
+online_recovery on
+ack_trace
+
+reorder_socksql_no_deadlock on
+reorder_idx_writes on
+
+#reorder_socksql_no_deadlock off
+#reorder_idx_writes off

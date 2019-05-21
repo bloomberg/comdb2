@@ -967,7 +967,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                                            od_len, trans);
         if (iq->debug)
             reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
-                          "DTALEN %zu FNDLEN %u RC %d",
+                          "DTALEN %zu FNDLEN %d RC %d",
                       rrn, vgenid, od_len, fndlen, rc);
         // solutions: 
         // 1. get this read record done under a write lock

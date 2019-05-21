@@ -486,7 +486,7 @@ static int bdb_verify_ll(
 
                     if (rc == 0) {
                         realblobsz[blobno] = dbt_blob_data.size;
-                        if (blobsizes[blobno] == -1 && rc != DB_NOTFOUND) {
+                        if (blobsizes[blobno] == -1) {
                             ret = 1;
                             locprint(sb, lua_callback, lua_params,
                                 "!%016llx blob %d null but found blob\n",

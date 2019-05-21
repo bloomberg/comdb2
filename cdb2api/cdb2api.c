@@ -46,6 +46,7 @@
 */
 
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
+static char *SOCKPOOL_OTHER_NAME = NULL;
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
 #define MAX_BUFSIZE_ONSTACK 8192
@@ -152,6 +153,7 @@ static char *_ARGV0; /* ONE-TIME */
 #define MAX_STACK 512 /* Size of call-stack which opened the handle */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define MAX_SOCKPOOL_FDS 8
 
 #include <netdb.h>
 
@@ -1097,6 +1099,13 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
+void cdb2_set_sockpool(const char *sp_path)
+{
+    if (SOCKPOOL_OTHER_NAME)
+        free(SOCKPOOL_OTHER_NAME);
+    SOCKPOOL_OTHER_NAME = strdup(sp_path);
+}
+
 static inline int get_char(FILE *fp, const char *buf, int *chrno)
 {
     int ch;
@@ -1545,7 +1554,14 @@ static int sockpool_enabled = SOCKPOOL_ENABLED_DEFAULT;
 #define SOCKPOOL_FAIL_TIME_DEFAULT 0
 static time_t sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 
-static int sockpool_fd = -1;
+struct sockpool_fd_list {
+    int sockpool_fd;
+    int in_use;
+};
+
+static struct sockpool_fd_list *sockpool_fds = NULL;
+static int sockpool_fd_count = 0;
+static int sockpool_generation = 0;
 
 struct sockaddr_sun {
     short sun_family;
@@ -1582,7 +1598,10 @@ static int open_sockpool_ll(void)
 
     struct sockaddr_sun addr = {0};
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
+    if (SOCKPOOL_OTHER_NAME)
+        strncpy(addr.sun_path, SOCKPOOL_OTHER_NAME, sizeof(addr.sun_path) - 1);
+    else
+        strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         close(fd);
@@ -1628,10 +1647,15 @@ static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     /* Close sockpool fd */
-    if (forceClose || (sockpool_enabled == 1)) {
-        if (sockpool_fd != -1) {
-            close(sockpool_fd);
-            sockpool_fd = -1;
+    if (forceClose || (sockpool_enabled != -1)) {
+        sockpool_generation++;
+        for (int i = 0; i < sockpool_fd_count; i++) {
+            struct sockpool_fd_list *sp = &sockpool_fds[i];
+            if (sp->in_use == 0) {
+                if (sp->sockpool_fd > -1)
+                    close(sp->sockpool_fd);
+                sp->sockpool_fd = -1;
+            }
         }
     }
     sockpool_enabled = enabled;
@@ -1650,9 +1674,81 @@ static void reset_sockpool(void)
     sockpool_fail_time = SOCKPOOL_FAIL_TIME_DEFAULT;
 }
 
-// cdb2_socket_pool_get_ll: lockless
+/* The sockpool mutex must be locked at this point */
+static int sockpool_get_from_pool(void)
+{
+    int fd = -1;
+    for (int i = 0; i < sockpool_fd_count; i++) {
+        struct sockpool_fd_list *sp = &sockpool_fds[i];
+        if (sp->in_use == 0 && sp->sockpool_fd > -1) {
+            fd = sp->sockpool_fd;
+            sp->in_use = 1;
+            break;
+        }
+    }
+    return fd;
+}
+
+/* The sockpool mutex must be locked at this point */
+static int sockpool_place_fd_in_pool(int fd)
+{
+    int found = 0, empty_ix = -1, rc = -1;
+    for (int i = 0; i < sockpool_fd_count; i++) {
+        struct sockpool_fd_list *sp = &sockpool_fds[i];
+        if (sp->sockpool_fd == fd) {
+            assert(sp->in_use == 1);
+            sp->in_use = 0;
+            found = 1;
+            rc = 0;
+            break;
+        }
+        if (sp->sockpool_fd < 0 && empty_ix == -1) {
+            assert(sp->in_use == 0);
+            empty_ix = i;
+        }
+    }
+
+    if (found == 0) {
+        if (empty_ix != -1) {
+            struct sockpool_fd_list *sp = &sockpool_fds[empty_ix];
+            sp->in_use = 0;
+            sp->sockpool_fd = fd;
+            rc = 0;
+        } else if (sockpool_fd_count < MAX_SOCKPOOL_FDS) {
+            sockpool_fds =
+                realloc(sockpool_fds, (sockpool_fd_count + 1) *
+                                          sizeof(struct sockpool_fd_list));
+            sockpool_fds[sockpool_fd_count].sockpool_fd = fd;
+            sockpool_fds[sockpool_fd_count].in_use = 0;
+            sockpool_fd_count++;
+            rc = 0;
+        }
+    }
+    return rc;
+}
+
+static void sockpool_remove_fd(int fd)
+{
+    for (int i = 0; i < sockpool_fd_count; i++) {
+        struct sockpool_fd_list *sp = &sockpool_fds[i];
+        if (sp->sockpool_fd == fd) {
+            assert(sp->in_use == 1);
+            sp->sockpool_fd = -1;
+            sp->in_use = 0;
+            break;
+        }
+    }
+}
+
+// cdb2_socket_pool_get_ll: low-level
 static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 {
+    int sockpool_fd = -1;
+    int enabled = 0;
+    int sp_generation = -1;
+    int fd = -1;
+
+    pthread_mutex_lock(&cdb2_sockpool_mutex);
     if (sockpool_enabled == 0) {
         time_t current_time = time(NULL);
         /* Check every 10 seconds. */
@@ -1660,22 +1756,43 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
             sockpool_enabled = 1;
         }
     }
+    enabled = sockpool_enabled;
+    if (enabled == 1) {
+        sp_generation = sockpool_generation;
+        sockpool_fd = sockpool_get_from_pool();
+    }
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
 
-    if (sockpool_enabled != 1) {
+    if (enabled != 1) {
         return -1;
     }
 
     if (sockpool_fd == -1) {
         sockpool_fd = open_sockpool_ll();
         if (sockpool_fd == -1) {
+            pthread_mutex_lock(&cdb2_sockpool_mutex);
             sockpool_enabled = 0;
             sockpool_fail_time = time(NULL);
+            pthread_mutex_unlock(&cdb2_sockpool_mutex);
             return -1;
         }
     }
 
     struct sockpool_msg_vers0 msg = {0};
     if (strlen(typestr) >= sizeof(msg.typestr)) {
+        int closeit = 0;
+        pthread_mutex_lock(&cdb2_sockpool_mutex);
+        if (sp_generation == sockpool_generation) {
+            if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                closeit = 1;
+            }
+        } else {
+            sockpool_remove_fd(sockpool_fd);
+            closeit = 1;
+        }
+        pthread_mutex_unlock(&cdb2_sockpool_mutex);
+        if (closeit)
+            close(sockpool_fd);
         return -1;
     }
     /* Please may I have a file descriptor */
@@ -1688,12 +1805,14 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
+        pthread_mutex_lock(&cdb2_sockpool_mutex);
+        sockpool_remove_fd(sockpool_fd);
+        pthread_mutex_unlock(&cdb2_sockpool_mutex);
         close(sockpool_fd);
         sockpool_fd = -1;
         return -1;
     }
 
-    int fd;
     /* Read reply from server.  It can legitimately not send
      * us a file descriptor. */
     errno = 0;
@@ -1701,6 +1820,9 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
+        pthread_mutex_lock(&cdb2_sockpool_mutex);
+        sockpool_remove_fd(sockpool_fd);
+        pthread_mutex_unlock(&cdb2_sockpool_mutex);
         close(sockpool_fd);
         sockpool_fd = -1;
         fd = -1;
@@ -1710,6 +1832,21 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         memcpy((char *)&gotport, (char *)&msg.padding[1], 2);
         *port = ntohs(gotport);
     }
+    if (sockpool_fd != -1) {
+        int closeit = 0;
+        pthread_mutex_lock(&cdb2_sockpool_mutex);
+        if (sp_generation == sockpool_generation) {
+            if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                closeit = 1;
+            }
+        } else {
+            sockpool_remove_fd(sockpool_fd);
+            closeit = 1;
+        }
+        pthread_mutex_unlock(&cdb2_sockpool_mutex);
+        if (closeit)
+            close(sockpool_fd);
+    }
     return fd;
 }
 
@@ -1718,9 +1855,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
  * success. */
 int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
 {
-    pthread_mutex_lock(&cdb2_sockpool_mutex);
     int rc = cdb2_socket_pool_get_ll(typestr, dbnum, port);
-    pthread_mutex_unlock(&cdb2_sockpool_mutex);
     if (log_calls)
         fprintf(stderr, "%s(%s,%d): fd=%d\n", __func__, typestr, dbnum, rc);
     return rc;
@@ -1730,14 +1865,27 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
                                  int dbnum, int flags, void *destructor,
                                  void *voidarg)
 {
+    int enabled = 0;
+    int sockpool_fd = -1;
+    int sp_generation = -1;
+
     pthread_mutex_lock(&cdb2_sockpool_mutex);
-    if (sockpool_enabled == 1) {
+    enabled = sockpool_enabled;
+    if (enabled == 1) {
+        sockpool_fd = sockpool_get_from_pool();
+        sp_generation = sockpool_generation;
+    }
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+
+    if (enabled == 1) {
         /* Donate this socket to the global socket pool.  We know that the
          * mutex is held. */
         if (sockpool_fd == -1) {
             sockpool_fd = open_sockpool_ll();
             if (sockpool_fd == -1) {
+                pthread_mutex_lock(&cdb2_sockpool_mutex);
                 sockpool_enabled = 0;
+                pthread_mutex_unlock(&cdb2_sockpool_mutex);
                 fprintf(stderr, "\n Sockpool not present");
             }
         }
@@ -1755,9 +1903,28 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
             if (rc != PASSFD_SUCCESS) {
                 fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
                         errno, strerror(errno));
+                pthread_mutex_lock(&cdb2_sockpool_mutex);
+                sockpool_remove_fd(sockpool_fd);
+                pthread_mutex_unlock(&cdb2_sockpool_mutex);
                 close(sockpool_fd);
                 sockpool_fd = -1;
             }
+        }
+        if (sockpool_fd != -1) {
+            pthread_mutex_lock(&cdb2_sockpool_mutex);
+            int closeit = 0;
+            if (sp_generation == sockpool_generation) {
+                if ((sockpool_place_fd_in_pool(sockpool_fd)) != 0) {
+                    closeit = 1;
+                }
+            } else {
+                sockpool_remove_fd(sockpool_fd);
+                closeit = 1;
+            }
+            pthread_mutex_unlock(&cdb2_sockpool_mutex);
+            if (closeit)
+                close(sockpool_fd);
+            sockpool_fd = -1;
         }
     }
 
@@ -1765,7 +1932,6 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
         fprintf(stderr, "%s: close error for '%s' fd %d: %d %s\n", __func__,
                 typestr, fd, errno, strerror(errno));
     }
-    pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
 /* SOCKPOOL CODE ENDS */
@@ -3356,7 +3522,10 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (currnode->incoherent)
             continue;
 
-        strcpy(valid_hosts[*num_valid_hosts], currnode->name);
+        if (strlen(currnode->name) >= 64)
+            continue;
+
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name, 64);
         if (currnode->has_port) {
             valid_ports[*num_valid_hosts] = currnode->port;
         } else {
