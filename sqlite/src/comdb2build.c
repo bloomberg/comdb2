@@ -3798,6 +3798,18 @@ oom:
     return 1;
 }
 
+static void escape_expr(struct strbuf *out, const char *expr)
+{
+    while (*expr) {
+        if (*expr == '"') {
+            strbuf_append(out, "\\\"");
+        } else {
+            strbuf_appendf(out, "%c", *expr);
+        }
+        ++expr;
+    }
+}
+
 static int retrieve_check_constraint(Parse *pParse,
                                      struct comdb2_ddl_context *ctx,
                                      constraint_t *cons)
@@ -3815,6 +3827,8 @@ static int retrieve_check_constraint(Parse *pParse,
     constraint->check_expr = comdb2_strdup(ctx->mem, cons->check_expr);
     if (constraint->check_expr == 0)
         goto oom;
+
+    /* TODO: (NC) escape quotes? */
 
     /* Name */
     if (cons->consname) {
@@ -4064,7 +4078,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (schema->ix[i]->member[j].isExpr) {
                 struct strbuf *csc2_expr;
                 struct comdb2_column expr_col;
-                char *c;
 
                 /* field.idx is the index of column in the table. It's -1
                  * for index on expression. */
@@ -4083,18 +4096,12 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                 if (expr_col.len > 0) {
                     strbuf_appendf(csc2_expr, "[%d]", expr_col.len);
                 }
+
                 strbuf_append(csc2_expr, ")\"");
 
                 /* Expression */
-                c = schema->ix[i]->member[j].name;
-                while(*c) {
-                    if (*c == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *c);
-                    }
-                    ++c;
-                }
+                escape_expr(csc2_expr, schema->ix[i]->member[j].name);
+
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -4986,15 +4993,7 @@ static void comdb2AddIndexInt(
 
                 /* Expression */
                 strbuf_append(csc2_expr, "\"");
-                ptr = expr;
-                while(*ptr) {
-                    if (*ptr == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *ptr);
-                    }
-                    ++ptr;
-                }
+                escape_expr(csc2_expr, expr);
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -6456,6 +6455,8 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
     constraint->check_expr = comdb2_strndup(ctx->mem, zStart, check_expr_sz);
     if (constraint->check_expr == 0)
         goto oom;
+
+    /* TODO: (NC) escape quotes? */
 
     if ((set_constraint_name(pParse, constraint)) != 0) {
         goto cleanup;
