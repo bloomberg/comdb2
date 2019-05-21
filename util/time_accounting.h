@@ -14,14 +14,11 @@
    limitations under the License.
  */
 
-#ifndef _TIME_ACCOUNTING_H
-#define _TIME_ACCOUNTING_H
-
-#include <sys/time.h>
+#ifndef _time_accounting_h
+#define _time_accounting_h
 
 #ifndef NDEBUG
-
-enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX } CHR_ENUM;
+#include <sys/time.h>
 
 /* NB: this construct is ment to encompass a function call like this:
  * ACCUMULATE_TIMING(CHR_FUNCTOMEASURE
@@ -33,22 +30,28 @@ enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX } CHR_ENUM;
  * To print accumulated time for that function then you can
  * call print_time_accounting(CHR_FUNCTOMEASURE);
  */
+extern int gbl_ready;
 
 #define ACCUMULATE_TIMING(NAME, CODE)                                          \
     do {                                                                       \
         struct timeval __tv1;                                                  \
         gettimeofday(&__tv1, NULL);                                            \
         CODE;                                                                  \
+        extern __thread int already_timing; \
+        if(gbl_ready && !already_timing) { \
+        already_timing = 1; \
         struct timeval __tv2;                                                  \
         gettimeofday(&__tv2, NULL);                                            \
         int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;              \
         int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                     \
-        accumulate_time(NAME, __sec_part + __usec_part);                       \
+        accumulate_time(#NAME, __sec_part + __usec_part);                       \
+        already_timing = 0; \
+        } \
     } while (0);
 
-void accumulate_time(int el, int us);
+void accumulate_time(const char *name, int us);
 
-void print_time_accounting(int el);
+void print_time_accounting(const char *name);
 void print_all_time_accounting();
 
 #else
@@ -57,12 +60,11 @@ void print_all_time_accounting();
     do {                                                                       \
         CODE;                                                                  \
     } while (0);
-#define print_all_time_accounting()                                            \
-    do {                                                                       \
-    } while (0);
-#define print_time_accounting(el)                                              \
-    do {                                                                       \
-    } while (0);
+#define print_all_time_accounting()                                            
+#define print_time_accounting(el)                                              
+
 #endif
+
+
 
 #endif
