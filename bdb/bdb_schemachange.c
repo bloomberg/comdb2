@@ -230,7 +230,6 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
         bzero(dtbl, sizeof(DBT));
         dtbl->data = tbl;
         dtbl->size = strlen(tbl) + 1;
-        dtbl->size = strlen(bdb_state->name) + 1;
         if (sctype == rename_table) {
             assert(origtable);
             int origlen = strlen(origtable) + 1;
