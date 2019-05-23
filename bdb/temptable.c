@@ -72,6 +72,8 @@ extern void backtrace_symbols_fd(void *const *, int, int);
     } while (0)
 
 extern char *gbl_crypto;
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 struct hashobj {
@@ -610,6 +612,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         }
     }
 #endif
+    ++gbl_temptable_created;
 
 done:
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
@@ -640,6 +643,8 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     extern pthread_key_t query_info_key;
     void *sql_thread;
     int action;
+
+    ++gbl_temptable_create_reqs;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;

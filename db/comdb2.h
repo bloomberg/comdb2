@@ -3604,6 +3604,8 @@ const char *thrman_get_where(struct thr_handle *thr);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;
