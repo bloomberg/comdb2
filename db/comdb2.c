@@ -757,7 +757,10 @@ int gbl_early_verify = 1;
 int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
-int64_t gbl_temptable_spills = 0;
+int64_t gbl_temptable_created;
+int64_t gbl_temptable_create_reqs;
+int64_t gbl_temptable_spills;
+
 int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
