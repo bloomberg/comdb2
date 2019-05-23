@@ -364,13 +364,13 @@ do_test view-7.6 {
 #  db close
 #  sqlite3 db test.db
   execsql {
-    DROP VIEW test;
     SELECT * FROM test;
   }
 } {1 2 3}
 
 do_test view-8.1 {
   execsql {
+    DROP VIEW test;
     CREATE VIEW v6 AS SELECT pqr, xyz FROM v1;
     SELECT * FROM v6 ORDER BY xyz;
   }
