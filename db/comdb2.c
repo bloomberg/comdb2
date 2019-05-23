@@ -411,7 +411,7 @@ int gbl_dump_sql_dispatched = 0; /* dump all sql strings dispatched */
 int gbl_time_osql = 0;           /* dump timestamps for osql steps */
 int gbl_time_fdb = 0;            /* dump timestamps for remote sql */
 
-int gbl_goslow = 0; /* set to disable "gofast" */
+int gbl_goslow = 1; /* set to disable "gofast" */
 
 int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
