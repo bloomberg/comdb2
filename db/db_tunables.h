@@ -1669,6 +1669,11 @@ REGISTER_TUNABLE("forbid_remote_admin",
                  TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("abort_on_dta_lookup_error",
+                 "Abort on dta lookup lost the race.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dta_lookup_error,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "pbkdf2_iterations",
     "Number of iterations of PBKDF2 algorithm for password hashing.",
