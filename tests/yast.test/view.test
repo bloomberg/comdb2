@@ -364,6 +364,7 @@ do_test view-7.6 {
 #  db close
 #  sqlite3 db test.db
   execsql {
+    DROP VIEW test;
     SELECT * FROM test;
   }
 } {1 2 3}
