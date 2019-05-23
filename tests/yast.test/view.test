@@ -118,10 +118,10 @@ do_test view-2.1 {
   execsql {
     CREATE VIEW v2 AS SELECT * FROM t1 WHERE a>5
   };  # No semicolon
-  execsql {
+  execsql2 {
     SELECT * FROM v2;
   }
-} {7 8 9 10}
+} {x 7 a 8 b 9 c 10}
 do_test view-2.2 {
   catchsql {
     INSERT INTO v2 VALUES(1,2,3,4);
@@ -152,36 +152,35 @@ do_test view-2.6 {
 
 # Test that column name of views are generated correctly.
 #
-#TODO: (NC) fix execsql2
 do_test view-3.1 {
-  execsql {
+  execsql2 {
     SELECT * FROM v1 LIMIT 1
   }
-} {2 3}
+} {a 2 b 3}
 do_test view-3.2 {
-  execsql {
+  execsql2 {
     SELECT * FROM v2 LIMIT 1
   }
-} {7 8 9 10}
+} {x 7 a 8 b 9 c 10}
 do_test view-3.3.1 {
-  execsql {
+  execsql2 {
     DROP VIEW v1;
     CREATE VIEW v1 AS SELECT a AS 'xyz', b+c AS 'pqr', c-b FROM t1;
     SELECT * FROM v1 LIMIT 1
   }
-} {2 7 1}
+} {xyz 2 pqr 7 c-b 1}
 do_test view-3.3.2 {
-  execsql {
+  execsql2 {
     CREATE VIEW v1b AS SELECT t1.a, b+c, t1.c FROM t1;
     SELECT * FROM v1b LIMIT 1
   }
-} {2 7 4}
+} {a 2 b+c 7 c 4}
 do_test view-3.3.3 {
-  execsql {
+  execsql2 {
     CREATE VIEW v1c(x,y,z) AS SELECT a, b+c, c-b FROM t1;
     SELECT * FROM v1c LIMIT 1;
   }
-} {2 7 1}
+} {x 2 y 7 z 1}
 #TODO: (NC) fixme
 #do_catchsql_test view-3.3.4 {
 #  CREATE VIEW v1err(x,y DESC,z) AS SELECT a, b+c, c-b FROM t1;
@@ -199,13 +198,13 @@ do_catchsql_test view-3.3.6 {
 
 ifcapable compound {
 do_test  view-3.4 {
-  execsql {
+  execsql2 {
     CREATE VIEW v3 AS SELECT a FROM t1 UNION SELECT b FROM t1 ORDER BY b;
     SELECT * FROM v3 LIMIT 4;
   }
-} {2 3 5 6}
+} {a 2 a 3 a 5 a 6}
 do_test view-3.5 {
-  execsql {
+  execsql2 {
     CREATE VIEW v4 AS 
       SELECT a, b FROM t1 
       UNION
@@ -213,7 +212,7 @@ do_test view-3.5 {
       ORDER BY x, y;
     SELECT b FROM v4 ORDER BY b LIMIT 4;
   }
-} {2 3 5 6}
+} {b 2 b 3 b 5 b 6}
 } ;# ifcapable compound
 
 
