@@ -790,7 +790,7 @@ static void comdb2SemVerFunc(
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
   char zBuf[128];
-  strncat(zBuf, gbl_db_semver);
+  strncat(zBuf, gbl_db_semver, sizeof(zBuf));
   sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
 }
 
