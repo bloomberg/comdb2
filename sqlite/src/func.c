@@ -23,8 +23,9 @@
 #include <memcompare.c>
 #include "comdb2.h"
 #include "bdb_int.h"
-extern const char *const gbl_db_build_name;
-extern const char * const gbl_db_release_name;
+extern const char gbl_db_build_name[];
+extern const char gbl_db_release_name[];
+extern const char gbl_db_semver[];
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -782,6 +783,17 @@ static void comdb2VersionFunc(
   char zBuf[128];
   sqlite3_snprintf(sizeof(zBuf), zBuf,
     "%s (%s.%s)", gbl_db_release_name, gbl_db_release_name, gbl_db_build_name);
+  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
+}
+
+static void comdb2SemVerFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  char zBuf[128];
+  strncat(zBuf, gbl_db_semver);
   sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
 }
 
@@ -2532,6 +2544,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
     FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
     FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
+    FUNCTION(comdb2_semver,         0, 0, 0, comdb2SemVerFunc),
     FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,        2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,           0, 0, 0, comdb2HostFunc),
