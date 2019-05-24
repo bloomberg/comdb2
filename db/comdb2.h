@@ -1516,8 +1516,9 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
-extern const char *const gbl_db_build_name;
-extern const char *const gbl_db_release_name;
+extern const char gbl_db_build_name[];
+extern const char gbl_db_release_name[];
+extern const char gbl_db_semver[];
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_verbose_toblock_backouts;

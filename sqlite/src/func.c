@@ -23,9 +23,6 @@
 #include <memcompare.c>
 #include "comdb2.h"
 #include "bdb_int.h"
-extern const char gbl_db_build_name[];
-extern const char gbl_db_release_name[];
-extern const char gbl_db_semver[];
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
