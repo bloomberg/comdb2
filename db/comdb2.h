@@ -2157,6 +2157,9 @@ int ix_find_by_rrn_and_genid_prefault(struct ireq *iq, int rrn,
 int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                   unsigned long long genid, void *fnddta,
                                   int *fndlen, int maxlen, void *trans);
+int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans);
 int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                       unsigned long long genid, void *fnddta,
                                       int *fndlen, int maxlen, void *trans,
