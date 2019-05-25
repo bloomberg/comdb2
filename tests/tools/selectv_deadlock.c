@@ -133,7 +133,7 @@ void *run_test(void *x)
         }
         if ((rc = cdb2_run_statement(hndl, "selectv i.rqstid from schedule s "
                         "join jobinstance i on i.instid = s.instid "
-                        "join request r on r.rqstid = i.rqstid "
+                        "join request r on r.instid = i.instid "
                         "order by s.start limit 15")) != 0) {
             fprintf(stderr, "%s error running BEGIN: %d\n", __func__,
                     rc);
@@ -417,7 +417,7 @@ void create_request_table(void)
 
     if ((rc = cdb2_run_statement(hndl,
                     "CREATE TABLE request("
-                    "rqstid INTEGER)"))              /* (NUMRECS / 40) values */
+                    "instid INTEGER)"))              /* (NUMRECS / 40) values */
             != 0) {
         fprintf(stderr, "%s error creating table, %d\n",
                 __func__, rc);
@@ -428,7 +428,7 @@ void create_request_table(void)
 
     if ((rc = cdb2_run_statement(hndl, 
                     "CREATE INDEX jobrqstid on request("
-                    "'rqstid')")) 
+                    "'instid')")) 
             != 0) {
         fprintf(stderr, "%s error creating index, %d\n",
                 __func__, rc);
@@ -518,22 +518,19 @@ void populate_tables(void)
             while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
             assert(rc == CDB2_OK_DONE);
 
-            if (!(rowcount % 40)) {
+            cdb2_clearbindings(hndl);
 
-                cdb2_clearbindings(hndl);
+            rc = cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
+            assert(rc == 0);
 
-                rc = cdb2_bind_param(hndl, "rqstid", CDB2_INTEGER, &rqstid, sizeof(rqstid));
-                assert(rc == 0);
-
-                if ((rc = cdb2_run_statement(hndl, "INSERT INTO request "
-                                "(rqstid) VALUES (@rqstid)")) != 0) {
-                    fprintf(stderr, "%s error running insert into request, %d, %s\n",
-                            __func__, rc, cdb2_errstr(hndl));
-                    EXIT(__func__, __LINE__, 1);
-                }
-                while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
-                assert(rc == CDB2_OK_DONE);
+            if ((rc = cdb2_run_statement(hndl, "INSERT INTO request "
+                            "(instid) VALUES (@instid)")) != 0) {
+                fprintf(stderr, "%s error running insert into request, %d, %s\n",
+                        __func__, rc, cdb2_errstr(hndl));
+                EXIT(__func__, __LINE__, 1);
             }
+            while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+            assert(rc == CDB2_OK_DONE);
         }
 
         if ((rc = cdb2_run_statement(hndl, "COMMIT")) != 0) {
