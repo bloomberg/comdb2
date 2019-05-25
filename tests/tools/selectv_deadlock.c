@@ -86,6 +86,7 @@ void *run_test(void *x)
     int success = 0;
     int total = 0;
     int rc;
+    int64_t machine = td;
 
     if ((rc = cdb2_open(&hndl, dbname, cltype, 0)) != 0) {
         fprintf(stderr, "%s error opening handle to %s stage %s\n",
@@ -131,9 +132,13 @@ void *run_test(void *x)
                     rc);
             EXIT(__func__, __LINE__, 1);
         }
+
+        cdb2_clearbindings(hndl);
+        cdb2_bind_param(hndl, "machine", CDB2_INTEGER, &machine, sizeof(machine));
         if ((rc = cdb2_run_statement(hndl, "selectv i.rqstid from schedule s "
                         "join jobinstance i on i.instid = s.instid "
                         "join request r on r.instid = i.instid "
+                        "where r.machine = @machine "
                         "order by s.start limit 15")) != 0) {
             fprintf(stderr, "%s error running BEGIN: %d\n", __func__,
                     rc);
@@ -417,8 +422,7 @@ void create_request_table(void)
 
     if ((rc = cdb2_run_statement(hndl,
                     "CREATE TABLE request("
-                    "instid INTEGER)"))              /* (NUMRECS / 40) values */
-            != 0) {
+                    "instid INTEGER, machine INTEGER)")) != 0) {
         fprintf(stderr, "%s error creating table, %d\n",
                 __func__, rc);
         EXIT(__func__, __LINE__, 1);
@@ -436,6 +440,18 @@ void create_request_table(void)
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
     assert(rc == CDB2_OK_DONE);
+
+    if ((rc = cdb2_run_statement(hndl, 
+                    "CREATE INDEX machine on request("
+                    "'machine')")) 
+            != 0) {
+        fprintf(stderr, "%s error creating index, %d\n",
+                __func__, rc);
+        EXIT(__func__, __LINE__, 1);
+    }
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
+    assert(rc == CDB2_OK_DONE);
+
 
     cdb2_close(hndl);
 }
@@ -471,6 +487,7 @@ void populate_tables(void)
             int64_t instid = rowcount;
             int64_t rqstid = rowcount / update_density;
             int64_t state = rowcount % 5;
+            int64_t machine = rowcount % numthds;
 
             cdb2_clearbindings(hndl);
 
@@ -498,6 +515,7 @@ void populate_tables(void)
             instid = rowcount;
             rqstid = rowcount / update_density;
             state = rowcount % 5;
+            machine = rowcount % numthds;
 
             rc = cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
             assert(rc == 0);
@@ -523,8 +541,11 @@ void populate_tables(void)
             rc = cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
             assert(rc == 0);
 
+            rc = cdb2_bind_param(hndl, "machine", CDB2_INTEGER, &machine, sizeof(machine));
+            assert(rc == 0);
+
             if ((rc = cdb2_run_statement(hndl, "INSERT INTO request "
-                            "(instid) VALUES (@instid)")) != 0) {
+                            "(instid, machine) VALUES (@instid, @machine)")) != 0) {
                 fprintf(stderr, "%s error running insert into request, %d, %s\n",
                         __func__, rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
