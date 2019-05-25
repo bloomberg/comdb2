@@ -196,14 +196,14 @@ void *run_test(void *x)
                         rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
             }
-            fprintf(stderr, "%s error running COMMIT: %d, %s - CONTINUING\n",
-                    __func__, rc, cdb2_errstr(hndl));
+            fprintf(stderr, "%s error running COMMIT line %d: %d, %s - CONTINUING\n",
+                    __func__, __LINE__, rc, cdb2_errstr(hndl));
         }
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
         if (rc != CDB2_OK_DONE) {
-            if (rc != -103 && rc != 4 && rc != 2) { 
-                fprintf(stderr, "%s error running COMMIT: %d, %s\n", __func__,
-                        rc, cdb2_errstr(hndl));
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210) { 
+                fprintf(stderr, "%s error running COMMIT line %d: %d, %s\n",
+                        __func__, __LINE__, rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
             }
         } else {
