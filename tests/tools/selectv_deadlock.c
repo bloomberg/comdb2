@@ -150,16 +150,17 @@ void *run_test(void *x)
         assert(cnt == 15);
 
         int64_t r;
-        for (int i = 0; i < 15; i++) {
+        for (int i = 1; i < 15; i++) {
             r = rqstid[i];
             if (verbose)
                 printf("checking rqstid %"PRId64"\n", r);
             cdb2_clearbindings(hndl);
             cdb2_bind_param(hndl, "rqst", CDB2_INTEGER, &r, sizeof(r));
-            if ((rc = cdb2_run_statement(hndl, "selectv instid from jobinstance "
-                            "where rqstid = @rqst")) != 0) {
-                fprintf(stderr, "%s error selectv on jobinstance: %d\n", __func__,
-                        rc);
+            if ((rc = cdb2_run_statement(hndl, "selectv j.instid from jobinstance j "
+                            "join schedule s on j.instid = s.instid "
+                            "where j.rqstid = @rqst")) != 0) {
+                fprintf(stderr, "%s error selectv on jobinstance: %d, %s\n",
+                        __func__, rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
             }
             count = 0;
@@ -169,14 +170,6 @@ void *run_test(void *x)
             if (verbose)
                 printf("inner select returns %d records\n", count);
 
-            cdb2_clearbindings(hndl);
-            cdb2_bind_param(hndl, "rqst", CDB2_INTEGER, &r, sizeof(r));
-            if ((rc = cdb2_run_statement(hndl, "selectv instid from jobinstance "
-                            "where rqstid = @rqst")) != 0) {
-                fprintf(stderr, "%s error selectv on jobinstance: %d\n", __func__,
-                        rc);
-                EXIT(__func__, __LINE__, 1);
-            }
 
             if ((rc = cdb2_run_statement(hndl, "update schedule "
                             "set start = now() where rqstid = @rqst")) != 0) {
@@ -501,6 +494,10 @@ void populate_tables(void)
             assert(rc == CDB2_OK_DONE);
 
             cdb2_clearbindings(hndl);
+
+            instid = rowcount;
+            rqstid = rowcount / update_density;
+            state = rowcount % 5;
 
             rc = cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
             assert(rc == 0);
