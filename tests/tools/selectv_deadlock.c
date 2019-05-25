@@ -191,11 +191,13 @@ void *run_test(void *x)
         /* Update a single one of these in the schedule table randomly */
         cdb2_clearbindings(hndl);
         if ((rc = cdb2_run_statement(hndl, "COMMIT")) != 0) {
-            if (rc != -103 && rc != 4 && rc != 2) { 
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210) { 
                 fprintf(stderr, "%s error running COMMIT: %d, %s\n", __func__,
                         rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
             }
+            fprintf(stderr, "%s error running COMMIT: %d, %s - CONTINUING\n",
+                    __func__, rc, cdb2_errstr(hndl));
         }
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
         if (rc != CDB2_OK_DONE) {
