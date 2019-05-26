@@ -140,8 +140,8 @@ void *run_test(void *x)
                         "join request r on r.instid = i.instid "
                         "where r.machine = @machine "
                         "order by s.start limit 15")) != 0) {
-            fprintf(stderr, "%s error running BEGIN: %d\n", __func__,
-                    rc);
+            fprintf(stderr, "%s error running selectv: %d, %s\n", __func__,
+                    rc, cdb2_errstr(hndl));
             EXIT(__func__, __LINE__, 1);
         }
 
@@ -171,7 +171,11 @@ void *run_test(void *x)
             count = 0;
             while ((rc = cdb2_next_record(hndl)) == CDB2_OK)
                 count++;
-            assert(rc == CDB2_OK_DONE);
+            if (rc != CDB2_OK_DONE) {
+                fprintf(stderr, "%s error retriving selectv results, %d, %s\n",
+                        __func__, rc, cdb2_errstr(hndl));
+                EXIT(__func__, __LINE__, 1);
+            }
             if (verbose)
                 printf("inner select returns %d records\n", count);
 
@@ -191,7 +195,7 @@ void *run_test(void *x)
         /* Update a single one of these in the schedule table randomly */
         cdb2_clearbindings(hndl);
         if ((rc = cdb2_run_statement(hndl, "COMMIT")) != 0) {
-            if (rc != -103 && rc != 4 && rc != 2 && rc != 210) { 
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1) { 
                 fprintf(stderr, "%s error running COMMIT: %d, %s\n", __func__,
                         rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
@@ -201,7 +205,7 @@ void *run_test(void *x)
         }
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
         if (rc != CDB2_OK_DONE) {
-            if (rc != -103 && rc != 4 && rc != 2 && rc != 210) { 
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1) { 
                 fprintf(stderr, "%s error running COMMIT line %d: %d, %s\n",
                         __func__, __LINE__, rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
