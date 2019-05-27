@@ -23,6 +23,7 @@ static char *argv0;
 char *dbname = NULL;
 char *cltype = "default";
 int iterations = 1000000;
+int more_contention = 0;
 int update_density = 600; 
 int numthds = 10;
 int records = 600;
@@ -41,6 +42,7 @@ void usage(FILE *f)
     fprintf(f, "        -d <update-density> - update 1/x of every rqstid\n");
     fprintf(f, "        -R <initial-recs>   - initial database record count\n");
     fprintf(f, "        -c <cdb2cfg>        - set cdb2cfg file\n");
+    fprintf(f, "        -m                  - more contention\n");
     fprintf(f, "        -h                  - this menu\n");
     fprintf(f, "        -D                  - enable debug trace\n");
 }
@@ -86,7 +88,7 @@ void *run_test(void *x)
     int success = 0;
     int total = 0;
     int rc;
-    int64_t machine = td;
+    int64_t machine = more_contention ? 0 : td;
 
     if ((rc = cdb2_open(&hndl, dbname, cltype, 0)) != 0) {
         fprintf(stderr, "%s error opening handle to %s stage %s\n",
@@ -586,10 +588,13 @@ int main(int argc, char *argv[])
     pthread_t *thds = NULL;
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:T:t:i:r:c:hR:Dv:")) != EOF) {
+    while ((c = getopt(argc, argv, "d:T:t:i:r:c:hR:Dv:m")) != EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
+                break;
+            case 'm':
+                more_contention = 1;
                 break;
             case 'v':
                 verbose = 1;

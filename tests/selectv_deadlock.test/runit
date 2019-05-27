@@ -37,7 +37,7 @@ function run_tests
 {
     typeset func="run_tests"
     start=$(date +%s)
-    $selectv_deadlock -d $DBNAME -T $threads -r $records -i $iterations -c $CDB2_CONFIG
+    $selectv_deadlock -d $DBNAME -T $threads -r $records -i $iterations -m -c $CDB2_CONFIG
     export r=$?
     stop=$(date +%s)
     [[ $r != 0 ]] && failexit $func "selectv_deadlock test failed"
