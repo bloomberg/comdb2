@@ -6,7 +6,7 @@ export debug=1
 
 export myhost=$(hostname)
 export selectv_deadlock=${TESTSBUILDDIR}/selectv_deadlock
-export threads=10
+export threads=7
 export records=500
 export iterations=10000
 

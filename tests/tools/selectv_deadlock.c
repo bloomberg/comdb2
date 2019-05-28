@@ -182,8 +182,15 @@ void *run_test(void *x)
                 printf("inner select returns %d records\n", count);
 
 
-            if ((rc = cdb2_run_statement(hndl, "update schedule "
-                            "set start = now() where rqstid = @rqst")) != 0) {
+            if (more_contention) {
+                rc = cdb2_run_statement(hndl, "update schedule "
+                        "set start = start where rqstid = @rqst");
+            } else {
+                rc = cdb2_run_statement(hndl, "update schedule "
+                        "set start = now() where rqstid = @rqst");
+            }
+
+            if (rc) {
                 fprintf(stderr, "%s error update schedule: %d\n", __func__,
                         rc);
                 EXIT(__func__, __LINE__, 1);
