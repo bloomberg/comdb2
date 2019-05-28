@@ -777,10 +777,7 @@ static void comdb2VersionFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[128];
-  sqlite3_snprintf(sizeof(zBuf), zBuf,
-    "%s (%s.%s)", gbl_db_release_name, gbl_db_release_name, gbl_db_build_name);
-  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, gbl_db_version, -1, SQLITE_STATIC);
 }
 
 static void comdb2SemVerFunc(
@@ -789,10 +786,7 @@ static void comdb2SemVerFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[128];
-  strncpy(zBuf, gbl_db_semver, sizeof(zBuf) - 1);
-  zBuf[sizeof(zBuf) - 1] = '\0';
-  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, gbl_db_semver, -1, SQLITE_STATIC);
 }
 
 extern char * comdb2_get_prev_query_cost();
@@ -817,7 +811,6 @@ static void comdb2HostFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  extern char *gbl_myhostname;
   sqlite3_result_text(context, gbl_myhostname, -1, SQLITE_STATIC);
 }
 
