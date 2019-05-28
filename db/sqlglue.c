@@ -3294,7 +3294,6 @@ int sqlite3BtreeOpen(
         logmsg(LOGMSG_USER, "XXXXXXXXXXXXX Opening \"%s\"\n",
                (zFilename) ? zFilename : "NULL");
 
-    thd = pthread_getspecific(query_info_key);
     logger = thrman_get_reqlogger(thrman_self());
 
     bt = calloc(1, sizeof(Btree));
@@ -3327,11 +3326,14 @@ int sqlite3BtreeOpen(
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
-        thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
         }
+        thd = pthread_getspecific(query_info_key);
+        Pthread_mutex_lock(&thd->lk);
+        thd->bttmp = bt;
+        Pthread_mutex_unlock(&thd->lk);
         *ppBtree = bt;
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
