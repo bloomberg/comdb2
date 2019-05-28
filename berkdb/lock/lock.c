@@ -2296,8 +2296,10 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 				}
 				goto done;
 			} else {
-                if (lock_mode == DB_LOCK_WRITE)
+                if (lock_mode == DB_LOCK_WRITE) {
                     locker_is_holding = 1;
+                    fprintf(stderr, "set locker_is_holding flag\n");
+                }
 				ihold = 1;
 				if (lock_mode == DB_LOCK_WRITE &&
 				    lp->mode == DB_LOCK_WWRITE)
@@ -2349,6 +2351,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 						ADD_TO_HOLDARR(lp->holderp->id);
                         if (lp->mode == DB_LOCK_WRITE) {
                             writelock_is_ahead_on_waitlist = 1;
+                            fprintf(stderr, "set locker_is_ahead flag\n");
                         }
 					}
 				}
@@ -2381,6 +2384,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 						ADD_TO_HOLDARR(lp->holderp->id);
                         if (lp->mode == DB_LOCK_WRITE) {
                             writelock_is_ahead_on_waitlist = 1;
+                            fprintf(stderr, "set locker_is_ahead flag 2\n");
                         }
 						if (!firstlp) {
 							firstlp = lp;

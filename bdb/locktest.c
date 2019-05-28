@@ -472,6 +472,43 @@ static int lock_get(u_int32_t locker_id, int obj, db_lockmode_t mode,
     return ret;
 }
 
+static int lock_put(DB_LOCK *lock);
+static void *t1(void *arg)
+{
+    int rc;
+    uint32_t lkr;
+    lock_id(&lkr);
+    DB_LOCK l0, l1;
+
+    printf("Locker:%u getting rdlk\n", lkr);
+    rc = lock_get(lkr, 592, DB_LOCK_READ, &l0);
+    printf("Locker:%u rdlk rc:%d\n", lkr, rc);
+
+    sleep(2);
+
+    printf("Locker:%u getting wrlk\n", lkr);
+    rc = lock_get(lkr, 592, DB_LOCK_WRITE, &l1);
+    printf("Locker:%u wrlk rc:%d\n", lkr, rc);
+    lock_put(&l0);
+    if (rc == 0) {
+        lock_put(&l1);
+    }
+    return NULL;
+}
+
+static int test_foo()
+{
+    puts(__func__);
+    pthread_t a, b;
+    pthread_create(&a, NULL, t1, NULL);
+    sleep(1);
+    pthread_create(&b, NULL, t1, NULL);
+    void *r;
+    pthread_join(a, &r);
+    pthread_join(b, &r);
+    return 0;
+}
+
 static int lock_put(DB_LOCK *lock)
 {
     int ret;
@@ -928,15 +965,16 @@ static void locvec_test()
 static void *locktest(void *f)
 {
     io_override_set_std(f);
-    TIME_IT(berkdb_tester);
-    TIME_IT(sprint);
-    TIME_IT(stripe);
-    TIME_IT(collisionA);
-    TIME_IT(collisionB);
-    TIME_IT(collisionC);
+    //TIME_IT(berkdb_tester);
+    //TIME_IT(sprint);
+    //TIME_IT(stripe);
+    //TIME_IT(collisionA);
+    //TIME_IT(collisionB);
+    //TIME_IT(collisionC);
     // locks_per_sec();
     // mytester();
-    TIME_IT(locvec_test);
+    //TIME_IT(locvec_test);
+    test_foo();
     return NULL;
 }
 
@@ -993,6 +1031,7 @@ void bdb_locktest(void *_bdb_state)
     bdb_state_type *bdb_state = _bdb_state;
     dbenv = bdb_state->dbenv;
 #endif
+    puts(__func__);
     Pthread_attr_init(&locktest_attr);
     Pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
     void *ret;
