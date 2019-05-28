@@ -64,7 +64,6 @@ static unsigned long long total_appsock_conns = 0;
 static unsigned long long num_bad_toks = 0;
 static unsigned long long total_toks = 0;
 static unsigned long long total_appsock_rejections = 0;
-static pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
@@ -72,11 +71,7 @@ static void appsock_thd_end(struct thdpool *pool, void *thddata);
 void close_appsock(SBUF2 *sb)
 {
     net_end_appsock(sb);
-    LOCK(&appsock_conn_lk)
-    {
-        active_appsock_conns--;
-    }
-    UNLOCK(&appsock_conn_lk);
+    ATOMIC_ADD(active_appsock_conns, -1);
 }
 
 int appsock_init(void)
@@ -384,11 +379,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     total_appsock_conns++;
-    LOCK(&appsock_conn_lk)
-    {
-        active_appsock_conns++;
-    }
-    UNLOCK(&appsock_conn_lk);
+    ATOMIC_ADD(active_appsock_conns, 1);
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
         logmsg(LOGMSG_WARN,
