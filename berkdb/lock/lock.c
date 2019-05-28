@@ -2045,6 +2045,9 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	extern int gbl_lock_get_verbose_waiter;
 	int verbose_waiter = gbl_lock_get_verbose_waiter;;
 	int grant_dirty, no_dd, ret, t_ret;
+    int locker_is_holding = 0;
+    int writelock_is_ahead_on_waitlist = 0;
+    int did_abort = 0;
 	extern int gbl_locks_check_waiters;
 
 	/*
@@ -2293,6 +2296,8 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 				}
 				goto done;
 			} else {
+                if (lock_mode == DB_LOCK_WRITE)
+                    locker_is_holding = 1;
 				ihold = 1;
 				if (lock_mode == DB_LOCK_WRITE &&
 				    lp->mode == DB_LOCK_WWRITE)
@@ -2342,6 +2347,9 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 						lock_mode) &&
 					    locker != lp->holderp->id) {
 						ADD_TO_HOLDARR(lp->holderp->id);
+                        if (lp->mode == DB_LOCK_WRITE) {
+                            writelock_is_ahead_on_waitlist = 1;
+                        }
 					}
 				}
 				lp = firstlp;
@@ -2371,6 +2379,9 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 					if (gbl_locks_check_waiters &&
 					    lock_mode != DB_LOCK_DIRTY) {
 						ADD_TO_HOLDARR(lp->holderp->id);
+                        if (lp->mode == DB_LOCK_WRITE) {
+                            writelock_is_ahead_on_waitlist = 1;
+                        }
 						if (!firstlp) {
 							firstlp = lp;
 						}
@@ -2716,8 +2727,18 @@ upgrade:
 		 * We are about to wait; before waiting, see if the deadlock
 		 * detector should be run.
 		 */
-		if (region->detect != DB_LOCK_NORUN && !no_dd)
-			__lock_detect(dbenv, region->detect, NULL);
+		if (region->detect != DB_LOCK_NORUN && !no_dd) {
+			__lock_detect(dbenv, region->detect, &did_abort);
+            if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort) {
+                fprintf(stderr, "???? obvious self deadlock ????\n");
+                abort();
+            }
+        }
+        if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort) {
+            fprintf(stderr, "???? should have deadlocked but we were asked not to run dd ????\n");
+            abort();
+        }
+
 
 		if (gbl_bb_berkdb_enable_lock_timing) {
 			x1 = bb_berkdb_fasttime();
