@@ -2045,9 +2045,10 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	extern int gbl_lock_get_verbose_waiter;
 	int verbose_waiter = gbl_lock_get_verbose_waiter;;
 	int grant_dirty, no_dd, ret, t_ret;
-    int locker_is_holding = 0;
-    int writelock_is_ahead_on_waitlist = 0;
-    int did_abort = 0;
+	int locker_is_holding = 0;
+	int writelock_is_ahead_on_waitlist = 0;
+	int abort_count = 0;
+	int did_abort = 0;
 	extern int gbl_locks_check_waiters;
 
 	/*
@@ -2292,14 +2293,14 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 						__os_free(dbenv, oldlist);
 					}
 					sh_locker->tracked_locklist[sh_locker->
-					    ntrackedlocks++] = lp;
+						ntrackedlocks++] = lp;
 				}
 				goto done;
 			} else {
-                if (lock_mode == DB_LOCK_WRITE) {
-                    locker_is_holding = 1;
-                    fprintf(stderr, "set locker_is_holding flag\n");
-                }
+				if (lock_mode == DB_LOCK_WRITE) {
+					locker_is_holding = 1;
+					fprintf(stderr, "set locker_is_holding flag\n");
+				}
 				ihold = 1;
 				if (lock_mode == DB_LOCK_WRITE &&
 				    lp->mode == DB_LOCK_WWRITE)
@@ -2343,16 +2344,17 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 				firstlp = lp;
 				for (lp =
 				    SH_TAILQ_FIRST(&sh_obj->waiters, __db_lock);
-				    lp != NULL;
-				    lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
+					lp != NULL;
+					lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 					if (CONFLICTS(lt, region, lp->mode,
 						lock_mode) &&
-					    locker != lp->holderp->id) {
+						locker != lp->holderp->id) {
 						ADD_TO_HOLDARR(lp->holderp->id);
-                        if (lp->mode == DB_LOCK_WRITE) {
-                            writelock_is_ahead_on_waitlist = 1;
-                            fprintf(stderr, "set locker_is_ahead flag\n");
-                        }
+						if (lp->mode == DB_LOCK_WRITE) {
+							writelock_is_ahead_on_waitlist = 1;
+							abort_count = region->stat.st_ndeadlocks;
+							fprintf(stderr, "set locker_is_ahead flag\n");
+						}
 					}
 				}
 				lp = firstlp;
@@ -2377,15 +2379,16 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 			    lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 				if (CONFLICTS(lt, region, lp->mode,
 					lock_mode) &&
-				    locker != lp->holderp->id) {
+					locker != lp->holderp->id) {
 					/* DB_LOCK_DIRTY goes to head */
 					if (gbl_locks_check_waiters &&
-					    lock_mode != DB_LOCK_DIRTY) {
+						lock_mode != DB_LOCK_DIRTY) {
 						ADD_TO_HOLDARR(lp->holderp->id);
-                        if (lp->mode == DB_LOCK_WRITE) {
-                            writelock_is_ahead_on_waitlist = 1;
-                            fprintf(stderr, "set locker_is_ahead flag 2\n");
-                        }
+						if (lp->mode == DB_LOCK_WRITE) {
+							writelock_is_ahead_on_waitlist = 1;
+							abort_count = region->stat.st_ndeadlocks;
+							fprintf(stderr, "set locker_is_ahead flag 2\n");
+						}
 						if (!firstlp) {
 							firstlp = lp;
 						}
@@ -2711,16 +2714,16 @@ upgrade:
 				    locker_ndx);
 				if ((ret =
 					__lock_getlocker(lt, holdarr[ii],
-					    locker_ndx, 0, GETLOCKER_KEEP_PART,
-					    &holder_locker)) == 0 &&
-				    holder_locker != NULL) {
+						locker_ndx, 0, GETLOCKER_KEEP_PART,
+						&holder_locker)) == 0 &&
+					holder_locker != NULL) {
 					if (verbose_waiter)
 						logmsg(LOGMSG_USER, 
-                               "Set waitflag for lockid %u\n",
-						    holdarr[ii]);
+							   "Set waitflag for lockid %u\n",
+							holdarr[ii]);
 					holder_locker->has_waiters = 1;
 					unlock_locker_partition(region,
-					    holder_locker->partition);
+						holder_locker->partition);
 				}
 			}
 			__os_free(dbenv, holdarr);
@@ -2733,15 +2736,19 @@ upgrade:
 		 */
 		if (region->detect != DB_LOCK_NORUN && !no_dd) {
 			__lock_detect(dbenv, region->detect, &did_abort);
-            if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort) {
-                fprintf(stderr, "???? obvious self deadlock ????\n");
-                abort();
-            }
-        }
-        if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort) {
-            fprintf(stderr, "???? should have deadlocked but we were asked not to run dd ????\n");
-            abort();
-        }
+			if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort &&
+					abort_count == region->stat.st_ndeadlocks) {
+				fprintf(stderr, "???? obvious self deadlock ????\n");
+				__lock_dump_active_locks(dbenv, stderr);
+				abort();
+			}
+		}
+		if (locker_is_holding && writelock_is_ahead_on_waitlist && !did_abort &&
+					abort_count == region->stat.st_ndeadlocks) {
+			fprintf(stderr, "???? should have deadlocked but we were asked not to run dd ????\n");
+			__lock_dump_active_locks(dbenv, stderr);
+			abort();
+		}
 
 
 		if (gbl_bb_berkdb_enable_lock_timing) {
