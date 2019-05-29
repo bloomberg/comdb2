@@ -384,7 +384,7 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
 {
     SP sp = getsp(L);
 
-    if (thedb->stopped) {
+    if (db_is_stopped()) {
         luabb_error(L, sp, "database exiting");
         return -1;
     }

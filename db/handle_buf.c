@@ -918,7 +918,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     if (iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
-    if (thedb->stopped) {
+    if (db_is_stopped()) {
         errUNLOCK(&lock);
         return reterr(curswap, NULL, iq, ERR_REJECTED);
     }

@@ -472,7 +472,7 @@ static int thrman_check_threads_stopped_ll(void *context)
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
-    if (thedb->stopped && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
+    if (db_is_stopped() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
         all_gone = 0;
 
     if (self)

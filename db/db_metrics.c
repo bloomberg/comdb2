@@ -319,7 +319,7 @@ int refresh_metrics(void)
 #endif
 
     /* Check whether the server is exiting. */
-    if (thedb->stopped)
+    if (db_is_stopped())
         return 1;
 
     stats.commits = n_commits;
