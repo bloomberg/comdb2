@@ -3177,6 +3177,10 @@ int sqlite3BtreeClose(Btree *pBt)
         hash_for(pBt->temp_tables, temptable_free, pBt);
         hash_free(pBt->temp_tables);
         pBt->temp_tables = NULL;
+        if (thd) {
+            assert(thd->bttmp == pBt);
+            thd->bttmp = NULL;
+        }
     } else {
         if (thd)
             thd->bt = NULL;
