@@ -3613,4 +3613,6 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+extern int gbl_thread_count;
+
 #endif /* !INCLUDED_COMDB2_H */

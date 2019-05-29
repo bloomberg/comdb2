@@ -16,44 +16,22 @@
 
 /* the helper threads that work behind the scenes */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <sys/poll.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/socketvar.h>
-#include <sys/uio.h>
 #include <unistd.h>
-#include <stddef.h>
-#include <str0.h>
-
-#include <build/db.h>
-#include <epochlib.h>
-
 #include <ctrace.h>
-
-#include <net.h>
+#include <memory_sync.h>
 #include "bdb_int.h"
 #include "locks.h"
-#include <locks_wrap.h>
-
-#include <memory_sync.h>
-#include <autoanalyze.h>
-#include <logmsg.h>
+#include "locks_wrap.h"
+#include "autoanalyze.h"
+#include "logmsg.h"
+#include "comdb2_atomic.h"
 
 extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
+extern int gbl_thread_count;
 
 void *udp_backup(void *arg)
 {
@@ -404,6 +382,7 @@ void *checkpoint_thread(void *arg)
         Pthread_mutex_unlock(&lk);
         return NULL;
     }
+    ATOMIC_ADD(gbl_thread_count, 1);
     have_checkpoint_thd = 1;
     Pthread_mutex_unlock(&lk);
 
@@ -463,7 +442,9 @@ void *checkpoint_thread(void *arg)
         total_sleep_msec = 1000 * (checkpointtime + (rand() % checkpointrand));
 
         if (broken) {
-            sleep(total_sleep_msec / 1000);
+            int ss = total_sleep_msec / 1000;
+            for (int i = 0; i < ss && !db_is_stopped(); i++)
+                sleep(1);
         } else {
             if (checkpointtimepoll > total_sleep_msec) {
                 checkpointtimepoll = total_sleep_msec;
@@ -496,6 +477,7 @@ void *checkpoint_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
     bdb_thread_event(bdb_state, 0);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 

@@ -633,6 +633,7 @@ int gbl_use_fastseed_for_comdb2_seqno = 0;
 int gbl_disable_stable_for_ipu = 1;
 
 int gbl_disable_exit_on_thread_error = 0;
+int gbl_thread_count = 0; // count threads running; wait for them on clean exit
 
 int gbl_berkdb_iomap = 1;
 int gbl_check_dbnum_conflicts = 1;
@@ -1516,9 +1517,6 @@ void clean_exit(void)
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
-
-    logmsg(LOGMSG_USER, "goodbye\n");
-    exit(0);
 }
 
 int get_elect_time_microsecs(void)
@@ -5143,6 +5141,10 @@ static void handle_resume_sc()
     }
 }
 
+static void goodbye()
+{
+    logmsg(LOGMSG_USER, "goodbye\n");
+}
 
 #define TOOL(x) #x,
 
@@ -5341,24 +5343,17 @@ int main(int argc, char **argv)
     logmsg(LOGMSG_WARN, "I AM READY.\n");
 
     pthread_t timer_tid;
-    pthread_attr_t timer_attr;
-    Pthread_attr_init(&timer_attr);
-    Pthread_attr_setstacksize(&timer_attr, DEFAULT_THD_STACKSZ);
-    Pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_JOINABLE);
-    rc = pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
-    Pthread_attr_destroy(&timer_attr);
+    extern pthread_attr_t gbl_pthread_attr_detached;
+    rc = pthread_create(&timer_tid, &gbl_pthread_attr_detached, timer_thread, NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "Can't create timer thread %d %s\n", rc, strerror(rc));
         return 1;
     }
-    void *ret;
-    rc = pthread_join(timer_tid, &ret);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "Can't wait for timer thread %d %s\n", rc,
-                strerror(rc));
-        return 1;
-    }
 
+    while (gbl_thread_count > 0) 
+        sleep(1);
+
+    goodbye();
     return 0;
 }
 

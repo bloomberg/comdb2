@@ -81,6 +81,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -629,7 +630,10 @@ void *clean_exit_thd(void *unused)
     Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+
+    ATOMIC_ADD(gbl_thread_count, 1);
     clean_exit();
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 

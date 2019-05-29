@@ -15,72 +15,16 @@
  */
 
 #include <pthread.h>
-#include <sys/resource.h>
-#include <sys/utsname.h>
-
-#include <alloca.h>
-#include <ctype.h>
-#include <errno.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <time.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <netdb.h>
-
-#include <epochlib.h>
-#include "marshal.h"
-#include <segstr.h>
-
-#include <list.h>
-
-#include <str0.h>
-#include <rtcpu.h>
-#include <ctrace.h>
-
-#include <memory_sync.h>
-
-#include <net.h>
-#include <bdb_api.h>
-#include <sbuf2.h>
-#include <quantize.h>
 #include <sockpool.h>
-
 #include "lockmacros.h"
 #include "comdb2.h"
 #include "sql.h"
-
-#include "comdb2_trn_intrl.h"
-#include "history.h"
-#include "tag.h"
-#include "types.h"
-#include "timer.h"
-#include <plhash.h>
-#include <dynschemaload.h>
-#include "translistener.h"
-#include "util.h"
-#include "verify.h"
-#include "switches.h"
-#include "sqloffload.h"
-#include "osqlblockproc.h"
 #include "fdb_fend.h"
-
-#include <sqliteInt.h>
-
-#include "thdpool.h"
-#include "memdebug.h"
-#include "bdb_access.h"
 #include "views.h"
-#include <logmsg.h>
+#include "logmsg.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_watcher_thread_ran;
 
@@ -142,6 +86,7 @@ int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
 static void *watchdog_thread(void *arg)
 {
+    ATOMIC_ADD(gbl_thread_count, 1);
     void *ptr;
     pthread_t dummy_tid;
     int rc;
@@ -352,6 +297,7 @@ static void *watchdog_thread(void *arg)
 
         sleep(1);
     }
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
