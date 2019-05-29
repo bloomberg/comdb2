@@ -291,6 +291,8 @@ extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
 
+int gbl_debug_tmptbl_memset_before_free;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
