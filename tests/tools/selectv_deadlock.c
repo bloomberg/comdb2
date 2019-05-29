@@ -268,8 +268,8 @@ void create_schedule_table(void)
                     "tztag CSTRING(128) NULL, "     /* SAME VALUE PROLLY NULL */
                     "state INTEGER)"))              /* (4) different values */
             != 0) {
-        fprintf(stderr, "%s error creating table, %d\n",
-                __func__, rc);
+        fprintf(stderr, "%s error creating table, %d, %s\n",
+                __func__, rc, cdb2_errstr(hndl));
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
