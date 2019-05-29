@@ -30,6 +30,7 @@ int records = 600;
 int verbose = 0;
 int debug_trace = 0;
 int numrecs = 100000;
+int do_insert = 0;
 
 void usage(FILE *f)
 {
@@ -37,6 +38,7 @@ void usage(FILE *f)
     fprintf(f, "        -d <dbname>         - set name of the test database\n");
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
     fprintf(f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
+    fprintf(f, "        -I                  - do initial insert\n");
     fprintf(f, "        -i <iterations>     - run this many iterations\n");
     fprintf(f, "        -r <records>        - records per iteration\n");
     fprintf(f, "        -d <update-density> - update 1/x of every rqstid\n");
@@ -595,10 +597,13 @@ int main(int argc, char *argv[])
     pthread_t *thds = NULL;
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:T:t:i:r:c:hR:Dv:m")) != EOF) {
+    while ((c = getopt(argc, argv, "d:T:t:i:Ir:c:hR:Dv:m")) != EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
+                break;
+            case 'I':
+                do_insert = 1;
                 break;
             case 'm':
                 more_contention = 1;
@@ -644,9 +649,12 @@ int main(int argc, char *argv[])
     }
 
     srand(time(NULL));
-    drop_tables();
-    create_tables();
-    populate_tables();
+
+    if (do_insert) {
+        drop_tables();
+        create_tables();
+        populate_tables();
+    }
 
     thds = (pthread_t *)calloc(numthds, sizeof(pthread_t));
     for(int i = 0; i < numthds; i++) {
