@@ -184,9 +184,12 @@ int clear_temp_tables(void);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
-const char *const gbl_db_release_name = QUOTE(COMDB2_RELEASE);
-const char *const gbl_db_build_name = QUOTE(COMDB2_BUILD);
 const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERSION_SHA);
+
+const char gbl_db_version[] = QUOTE(COMDB2_BUILD_VERSION);
+const char gbl_db_semver[] = QUOTE(COMDB2_SEMVER);
+const char gbl_db_codename[] = QUOTE(COMDB2_CODENAME);
+
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
@@ -757,7 +760,10 @@ int gbl_early_verify = 1;
 int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
-int64_t gbl_temptable_spills = 0;
+int64_t gbl_temptable_created;
+int64_t gbl_temptable_create_reqs;
+int64_t gbl_temptable_spills;
+
 int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */

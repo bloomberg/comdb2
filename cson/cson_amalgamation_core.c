@@ -1394,7 +1394,7 @@ int JSON_parser_is_legal_white_space_string(const char* s)
     for (; *s; ++s) {
         c = *s;
 
-        if (c < 0 || c >= 128) {
+        if (c < 0 /*|| c >= 128*/) {
             return false;
         }
 

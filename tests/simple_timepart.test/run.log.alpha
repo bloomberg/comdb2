@@ -5018,6 +5018,7 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_time
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
 (name='AddShard', arg1='testview1', arg2=NULL, arg3=NULL)
 cdb2sql ${CDB2_OPTIONS} dorintdb default DROP TIME PARTITION testview1
+[select * from testview1] failed with rc -3 no such table: testview1
 cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 []
 
