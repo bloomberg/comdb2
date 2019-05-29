@@ -5485,7 +5485,7 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (thedb->stopped) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5539,7 +5539,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     bool found = false;
     int rc = 0;
 
-    if (thedb->exiting || thedb->stopped) {
+    if (thedb->stopped) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5598,7 +5598,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (thedb->stopped) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5693,7 +5693,7 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (thedb->stopped) {
         /* don't do anything, we're going down */
         return;
     }

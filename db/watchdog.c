@@ -165,7 +165,7 @@ static void *watchdog_thread(void *arg)
     while (!gbl_ready)
         sleep(1);
 
-    while (!thedb->exiting) {
+    while (!thedb->stopped) {
         gbl_epoch_time = comdb2_time_epoch();
 
         if (!gbl_nowatch) {
@@ -409,9 +409,9 @@ static void *watchdog_watcher_thread(void *arg)
     extern int gbl_watchdog_watch_threshold;
     int failed_once = 0;
 
-    while (!thedb->exiting) {
+    while (!thedb->stopped) {
         sleep(10);
-        if (gbl_nowatch || thedb->exiting)
+        if (gbl_nowatch || thedb->stopped)
             continue;
 
         int tmstmp = comdb2_time_epoch();

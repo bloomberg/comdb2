@@ -943,7 +943,6 @@ struct dbenv {
     /* stupid - is the purge_old_blkseq thread running? */
     int purge_old_blkseq_is_running;
     int purge_old_files_is_running;
-    int exiting; /* are we exiting? */
     int stopped; /* if set, drop requests */
     int no_more_sql_connections;
 

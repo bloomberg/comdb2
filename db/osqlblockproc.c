@@ -290,7 +290,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     }
 
     /* please stop !!! */
-    if (thedb->stopped || thedb->exiting) {
+    if (thedb->stopped) {
         if (stop_time == 0) {
             stop_time = comdb2_time_epoch();
         } else {
