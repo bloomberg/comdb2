@@ -18,8 +18,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "comdb2_plugin.h"
 #include "pb_alloc.h"
 #include "sp.h"
@@ -191,7 +189,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                "durable-lsn request "
                                "returns %d snapshot_file=%d snapshot_offset=%d "
                                "is_hasql_retry=%d\n",
-                               clnt->snapshot_file, clnt->snapshot_offset,
+                               rc, clnt->snapshot_file, clnt->snapshot_offset,
                                clnt->is_hasql_retry);
                 rcode = -1;
             }
@@ -260,7 +258,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0;                                              \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
@@ -432,10 +430,14 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = column_type(clnt, stmt, col);
-    }
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+            type = column_type(clnt, stmt, col);
+            if (type == SQLITE_NULL) {
+                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            }
+        } else {
+            type = SQLITE_NULL;
+        }
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -742,7 +744,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
+                column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
@@ -1054,7 +1057,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     int rc, r, w, timeout = 0;
     sbuf2gettimeout(clnt->sb, &r, &w);
     sbuf2settimeout(clnt->sb, 1000, w);
@@ -1068,7 +1071,7 @@ static int newsql_ping_pong(struct sqlclntstate *clnt)
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
         return -1;
     }
@@ -1184,13 +1187,25 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
-    if ((val->has_isnull && val->isnull) || val->value.data == NULL) {
+
+    void *p = val->value.data;
+
+    if (val->has_isnull && val->isnull) {
         param->null = 1;
         return 0;
     }
-    int little = appdata->sqlquery->little_endian;
-    void *p = val->value.data;
+
+    if (val->value.data == NULL) {
+        if (param->type != CLIENT_BLOB) {
+            param->null = 1;
+            return 0;
+        }
+        p = (void *)"";
+    }
+
     int len = val->value.len;
+    int little = appdata->sqlquery->little_endian;
+
     return get_type(param, p, len, param->type, clnt->tzname, little);
 }
 
@@ -1507,7 +1522,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             } else if (strncasecmp(sqlstr, "timezone", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
-                strncpy(clnt->tzname, sqlstr, sizeof(clnt->tzname));
+                strncpy0(clnt->tzname, sqlstr, sizeof(clnt->tzname));
             } else if (strncasecmp(sqlstr, "datetime", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
@@ -1579,8 +1594,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 }
                 *sqlstr = 0;
                 if ((sqlstr - spname) < MAX_SPNAME) {
-                    strncpy(clnt->spname, spname, MAX_SPNAME);
-                    clnt->spname[MAX_SPNAME] = '\0';
+                    strncpy0(clnt->spname, spname, MAX_SPNAME);
                 } else {
                     rc = ii + 1;
                 }
@@ -1599,6 +1613,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     clnt->spversion.version_num = ver;
                 } else {
                     rc = ii + 1;
+                }
+            } else if (strncasecmp(sqlstr, "prepare_only", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->prepare_only = 0;
+                } else {
+                    clnt->prepare_only = 1;
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
@@ -1828,7 +1850,7 @@ int gbl_send_failed_dispatch_message = 0;
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
-    struct newsqlheader hdr;
+    struct newsqlheader hdr = {0};
     CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;
@@ -2187,7 +2209,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
 #endif
-    assert(query->sqlquery);
+    if (query->sqlquery == NULL) {
+        logmsg(LOGMSG_DEBUG, "Malformed SQL request.\n");
+        goto done;
+    }
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
@@ -2245,7 +2270,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.stop_this_statement = 0;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
-            strncpy(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
+            strncpy0(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
 
         if (sql_query->dbname && dbenv->envname &&
             strcasecmp(sql_query->dbname, dbenv->envname)) {

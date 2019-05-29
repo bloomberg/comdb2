@@ -7,6 +7,7 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_fingerprint.c
   db_metrics.c
   db_tunables.c
   db_util.c
@@ -90,6 +91,7 @@ set(src
   shard_range.c
   dohsql.c
   dohast.c
+  machclass.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
@@ -109,14 +111,6 @@ endif()
 
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
-endif()
-
-if(NOT DEFINED COMDB2_RELEASE)
-    set(COMDB2_RELEASE "R7")
-endif()
-
-if(NOT DEFINED COMDB2_BUILD)
-    set(COMDB2_BUILD "pre")
 endif()
 
 IF(EXISTS ${PROJECT_SOURCE_DIR}/.git)
@@ -146,11 +140,12 @@ IF(EXISTS ${PROJECT_SOURCE_DIR}/.git)
   ENDIF()
 ENDIF()
 
-
 set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
-  COMDB2_RELEASE=${COMDB2_RELEASE}
-  COMDB2_BUILD=${COMDB2_BUILD}
   COMDB2_GIT_VERSION_SHA=${COMDB2_GIT_VERSION_SHA}
+
+  COMDB2_BUILD_VERSION=${COMDB2_BUILD_VERSION}
+  COMDB2_CODENAME=${COMDB2_CODENAME}
+  COMDB2_SEMVER=${COMDB2_SEMVER}
 )
 
 add_executable(comdb2 ${src})

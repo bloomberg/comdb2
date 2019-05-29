@@ -138,13 +138,14 @@ oom:
 }
 
 static void _set_event(cron_event_t *event, int epoch, FCRON func, void *arg1,
-                       void *arg2, void *arg3)
+                       void *arg2, void *arg3, cron_sched_t *sched)
 {
     event->epoch = epoch;
     event->func = func;
     event->arg1 = arg1;
     event->arg2 = arg2;
     event->arg3 = arg3;
+    event->schedif = &sched->impl;
 }
 
 static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
@@ -205,7 +206,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     }
 
     /* A new event is born */
-    _set_event(event, epoch, func, arg1, arg2, arg3);
+    _set_event(event, epoch, func, arg1, arg2, arg3, sched);
 
     if (source_id) {
         comdb2uuidcpy(event->source_id, *source_id);
@@ -272,8 +273,7 @@ static void *_cron_runner(void *arg)
                    */
                 sched->running = 1;
                 Pthread_mutex_unlock(&sched->mtx);
-                event->func(event->source_id, event->arg1, event->arg2,
-                            event->arg3, &xerr);
+                event->func(event, &xerr);
                 Pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;
 
@@ -344,7 +344,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
         if (comdb2uuidcmp(event->source_id, source_id) == 0) {
 
             /* we can process this */
-            _set_event(event, epoch, func, arg1, arg2, arg3);
+            _set_event(event, epoch, func, arg1, arg2, arg3, sched);
 
             /* remote the event, and reinsert it in the new position */
             listc_rfl(&sched->events, event);
@@ -428,7 +428,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
     cron_sched_t *sched;
     int narr = 0;
     int nsize = 0;
-    int rc;
+    int rc = 0;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
     LISTC_FOR_EACH(&crons.scheds, sched, lnk)
@@ -440,6 +440,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
                 logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
                        sizeof(systable_cron_scheds_t) * nsize);
                 cron_systable_schedulers_free(arr, narr);
+                arr = NULL;
                 narr = 0;
                 rc = -1;
                 goto done;
@@ -611,4 +612,56 @@ void time_cron_create(sched_if_t *intf, char *(*describe)(sched_if_t *),
     intf->describe = describe;
     intf->event_describe = event_describe;
     intf->state = NULL;
+}
+
+/**
+ * Returns a scheduler with name "name", if any
+ * NOTE: scheduler is not locked
+ *
+ */
+cron_sched_t *cron_sched_byname(const char *name)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    {
+        if (!strncasecmp(sched->impl.name, name, strlen(name) + 1)) {
+            break;
+        }
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+
+    return sched;
+}
+
+/**
+ * Signal all linked schedulers
+ */
+void cron_signal_all(void)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    {
+        cron_signal_worker(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+}
+
+/**
+ * Clear all the queues events
+ *
+ */
+void cron_clear_queue_all(void)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    {
+        cron_clear_queue(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
 }

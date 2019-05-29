@@ -23,6 +23,7 @@ enum {
     SHARD_ERR_GENERIC = -1,
     SHARD_ERR_EXIST = -2,
     SHARD_ERR_MALLOC = -3,
+    SHARD_ERR_PARAMS = -4,
 };
 
 struct Expr;

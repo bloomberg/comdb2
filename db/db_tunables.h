@@ -32,6 +32,11 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_lua_exec_with_ddl",
+                 "Enable to allow use of SQL DDL commands from inside of Lua "
+                 "stored procedures (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl, NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
@@ -444,8 +449,8 @@ REGISTER_TUNABLE("exitalarmsec", NULL, TUNABLE_INTEGER, &gbl_exit_alarm_sec,
 REGISTER_TUNABLE("exit_on_internal_failure", NULL, TUNABLE_BOOLEAN,
                  &gbl_exit_on_internal_error, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, READONLY,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, 0, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
@@ -673,7 +678,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
@@ -1649,9 +1654,30 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("online_recovery",
+                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_remote_admin",
+                 "Forbid non-local admin requests.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("abort_on_dta_lookup_error",
+                 "Abort on dta lookup lost the race.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dta_lookup_error,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "pbkdf2_iterations",
     "Number of iterations of PBKDF2 algorithm for password hashing.",
     TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
     pbkdf2_iterations_update, NULL);
+
+REGISTER_TUNABLE("machine_class",
+                 "override for the machine class from this db perspective.",
+                 TUNABLE_STRING, &gbl_machine_class, READEARLY | READONLY, NULL,
+                 NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

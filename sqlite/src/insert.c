@@ -14,9 +14,7 @@
 */
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-
 #include "cdb2_constants.h"
-
 int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int noConflict);
 int is_comdb2_index_unique(const char *tbl, char *idx);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -342,6 +340,7 @@ void sqlite3AutoincrementBegin(Parse *pParse){
     aOp[7].p2 = memId+2;
     aOp[7].p1 = memId;
     aOp[10].p2 = memId;
+    if( pParse->nTab==0 ) pParse->nTab = 1;
   }
 }
 
@@ -633,12 +632,10 @@ void sqlite3Insert(
   */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto insert_cleanup;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( onError==OE_Ignore ) comdb2SetIgnore(v);
   else if( onError==OE_Replace ) comdb2SetReplace(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pSelect || pTrigger, iDb);
 
@@ -863,6 +860,11 @@ void sqlite3Insert(
   }
 #ifndef SQLITE_OMIT_UPSERT
   if( pUpsert ){
+    if( IsVirtual(pTab) ){
+      sqlite3ErrorMsg(pParse, "UPSERT not implemented for virtual table \"%s\"",
+              pTab->zName);
+      goto insert_cleanup;
+    }
     pTabList->a[0].iCursor = iDataCur;
     pUpsert->pUpsertSrc = pTabList;
     pUpsert->regData = regData;
@@ -916,7 +918,7 @@ void sqlite3Insert(
 
   /* Run the BEFORE and INSTEAD OF triggers, if there are any
   */
-  endOfLoop = sqlite3VdbeMakeLabel(v);
+  endOfLoop = sqlite3VdbeMakeLabel(pParse);
   if( tmask & TRIGGER_BEFORE ){
     int regCols = sqlite3GetTempRange(pParse, pTab->nCol+1);
 
@@ -998,16 +1000,12 @@ void sqlite3Insert(
       }else if( pSelect ){
         sqlite3VdbeAddOp2(v, OP_Copy, regFromSelect+ipkColumn, regRowid);
       }else{
-        VdbeOp *pOp;
-        sqlite3ExprCode(pParse, pList->a[ipkColumn].pExpr, regRowid);
-        pOp = sqlite3VdbeGetOp(v, -1);
-        assert( pOp!=0 );
-        if( pOp->opcode==OP_Null && !IsVirtual(pTab) ){
+        Expr *pIpk = pList->a[ipkColumn].pExpr;
+        if( pIpk->op==TK_NULL && !IsVirtual(pTab) ){
+          sqlite3VdbeAddOp3(v, OP_NewRowid, iDataCur, regRowid, regAutoinc);
           appendFlag = 1;
-          pOp->opcode = OP_NewRowid;
-          pOp->p1 = iDataCur;
-          pOp->p2 = regRowid;
-          pOp->p3 = regAutoinc;
+        }else{
+          sqlite3ExprCode(pParse, pList->a[ipkColumn].pExpr, regRowid);
         }
       }
       /* If the PRIMARY KEY expression is NULL, then use OP_NewRowid
@@ -1375,7 +1373,6 @@ void sqlite3GenerateConstraintChecks(
     return;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   isUpdate = regOldData!=0;
   db = pParse->db;
   v = sqlite3GetVdbe(pParse);
@@ -1421,7 +1418,20 @@ void sqlite3GenerateConstraintChecks(
     }
     assert( onError==OE_Rollback || onError==OE_Abort || onError==OE_Fail
         || onError==OE_Ignore || onError==OE_Replace );
+    addr1 = 0;
     switch( onError ){
+      case OE_Replace: {
+        assert( onError==OE_Replace );
+        addr1 = sqlite3VdbeMakeLabel(pParse);
+        sqlite3VdbeAddOp2(v, OP_NotNull, regNewData+1+i, addr1);
+          VdbeCoverage(v);
+        sqlite3ExprCode(pParse, pTab->aCol[i].pDflt, regNewData+1+i);
+        sqlite3VdbeAddOp2(v, OP_NotNull, regNewData+1+i, addr1);
+          VdbeCoverage(v);
+        onError = OE_Abort;
+        /* Fall through into the OE_Abort case to generate code that runs
+        ** if both the input and the default value are NULL */
+      }
       case OE_Abort:
         sqlite3MayAbort(pParse);
         /* Fall through */
@@ -1434,19 +1444,13 @@ void sqlite3GenerateConstraintChecks(
         sqlite3VdbeAppendP4(v, zMsg, P4_DYNAMIC);
         sqlite3VdbeChangeP5(v, P5_ConstraintNotNull);
         VdbeCoverage(v);
-        break;
-      }
-      case OE_Ignore: {
-        sqlite3VdbeAddOp2(v, OP_IsNull, regNewData+1+i, ignoreDest);
-        VdbeCoverage(v);
+        if( addr1 ) sqlite3VdbeResolveLabel(v, addr1);
         break;
       }
       default: {
-        assert( onError==OE_Replace );
-        addr1 = sqlite3VdbeAddOp1(v, OP_NotNull, regNewData+1+i);
-           VdbeCoverage(v);
-        sqlite3ExprCode(pParse, pTab->aCol[i].pDflt, regNewData+1+i);
-        sqlite3VdbeJumpHere(v, addr1);
+        assert( onError==OE_Ignore );
+        sqlite3VdbeAddOp2(v, OP_IsNull, regNewData+1+i, ignoreDest);
+        VdbeCoverage(v);
         break;
       }
     }
@@ -1469,7 +1473,7 @@ void sqlite3GenerateConstraintChecks(
         ** updated so there is no point it verifying the check constraint */
         continue;
       }
-      allOk = sqlite3VdbeMakeLabel(v);
+      allOk = sqlite3VdbeMakeLabel(pParse);
       sqlite3VdbeVerifyAbortable(v, onError);
       sqlite3ExprIfTrue(pParse, pExpr, allOk, SQLITE_JUMPIFNULL);
       if( onError==OE_Ignore ){
@@ -1536,7 +1540,7 @@ void sqlite3GenerateConstraintChecks(
   ** exist in the table.
   */
   if( pkChng && pPk==0 ){
-    int addrRowidOk = sqlite3VdbeMakeLabel(v);
+    int addrRowidOk = sqlite3VdbeMakeLabel(pParse);
 
     /* Figure out what action to take in case of a rowid collision */
     onError = pTab->keyConf;
@@ -1693,7 +1697,7 @@ void sqlite3GenerateConstraintChecks(
       VdbeComment((v, "Skip upsert subroutine"));
       sqlite3VdbeJumpHere(v, upsertJump);
     }else{
-      addrUniqueOk = sqlite3VdbeMakeLabel(v);
+      addrUniqueOk = sqlite3VdbeMakeLabel(pParse);
     }
     if( bAffinityDone==0 && (pUpIdx==0 || pUpIdx==pIdx) ){
       sqlite3TableAffinity(v, pTab, regNewData+1);
@@ -1737,7 +1741,9 @@ void sqlite3GenerateConstraintChecks(
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regIdx, pIdx->nColumn, aRegIdx[ix]);
     VdbeComment((v, "for %s", pIdx->zName));
 #ifdef SQLITE_ENABLE_NULL_TRIM
-    if( pIdx->idxType==2 ) sqlite3SetMakeRecordP5(v, pIdx->pTable);
+    if( pIdx->idxType==SQLITE_IDXTYPE_PRIMARYKEY ){
+      sqlite3SetMakeRecordP5(v, pIdx->pTable);
+    }
 #endif
 
     /* In an UPDATE operation, if this index is the PRIMARY KEY index 
@@ -1788,7 +1794,11 @@ void sqlite3GenerateConstraintChecks(
     **   (3) There are no secondary indexes on the table
     **   (4) No delete triggers need to be fired if there is a conflict
     **   (5) No FK constraint counters need to be updated if a conflict occurs.
-    */ 
+    **
+    ** This is not possible for ENABLE_PREUPDATE_HOOK builds, as the row
+    ** must be explicitly deleted in order to ensure any pre-update hook
+    ** is invoked.  */ 
+#ifndef SQLITE_ENABLE_PREUPDATE_HOOK
     if( (ix==0 && pIdx->pNext==0)                   /* Condition 3 */
      && pPk==pIdx                                   /* Condition 2 */
      && onError==OE_Replace                         /* Condition 1 */
@@ -1800,6 +1810,7 @@ void sqlite3GenerateConstraintChecks(
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;
     }
+#endif /* ifndef SQLITE_ENABLE_PREUPDATE_HOOK */
 
     /* Check to see if the new index entry will be unique */
     sqlite3VdbeVerifyAbortable(v, onError);
@@ -1924,7 +1935,7 @@ void sqlite3GenerateConstraintChecks(
 
   /* If the IPK constraint is a REPLACE, run it last */
   if( ipkTop ){
-    sqlite3VdbeGoto(v, ipkTop+1);
+    sqlite3VdbeGoto(v, ipkTop);
     VdbeComment((v, "Do IPK REPLACE"));
     sqlite3VdbeJumpHere(v, ipkBottom);
   }
@@ -2016,10 +2027,13 @@ void sqlite3CompleteInsertion(
       pik_flags |= (update_flags & OPFLAG_SAVEPOSITION);
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
       if( update_flags==0 ){
-        sqlite3VdbeAddOp4(v, OP_InsertInt, 
-            iIdxCur+i, aRegIdx[i], 0, (char*)pTab, P4_TABLE
+        int r = sqlite3GetTempReg(pParse);
+        sqlite3VdbeAddOp2(v, OP_Integer, 0, r);
+        sqlite3VdbeAddOp4(v, OP_Insert, 
+            iIdxCur+i, aRegIdx[i], r, (char*)pTab, P4_TABLE
         );
         sqlite3VdbeChangeP5(v, OPFLAG_ISNOOP);
+        sqlite3ReleaseTempReg(pParse, r);
       }
 #endif
     }
@@ -2039,7 +2053,11 @@ void sqlite3CompleteInsertion(
   if( !bAffinityDone ){
     sqlite3TableAffinity(v, pTab, 0);
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pParse->nested && !pParse->preserve_update ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pParse->nested ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pik_flags = 0;
   }else{
     pik_flags = OPFLAG_NCHANGE;
@@ -2327,7 +2345,8 @@ static int xferOptimization(
   if( pSrc==0 ){
     return 0;   /* FROM clause does not contain a real table */
   }
-  if( pSrc==pDest ){
+  if( pSrc->tnum==pDest->tnum && pSrc->pSchema==pDest->pSchema ){
+    testcase( pSrc!=pDest ); /* Possible due to bad sqlite_master.rootpage */
     return 0;   /* tab1 and tab2 may not be the same table */
   }
   if( HasRowid(pDest)!=HasRowid(pSrc) ){
@@ -2387,6 +2406,13 @@ static int xferOptimization(
     }
     if( pSrcIdx==0 ){
       return 0;    /* pDestIdx has no corresponding index in pSrc */
+    }
+    if( pSrcIdx->tnum==pDestIdx->tnum && pSrc->pSchema==pDest->pSchema
+         && sqlite3FaultSim(411)==SQLITE_OK ){
+      /* The sqlite3FaultSim() call allows this corruption test to be
+      ** bypassed during testing, in order to exercise other corruption tests
+      ** further downstream. */
+      return 0;   /* Corrupt schema - two indexes on the same btree */
     }
   }
 #ifndef SQLITE_OMIT_CHECK
@@ -2465,7 +2491,7 @@ static int xferOptimization(
       sqlite3RowidConstraint(pParse, onError, pDest);
       sqlite3VdbeJumpHere(v, addr2);
       autoIncStep(pParse, regAutoinc, regRowid);
-    }else if( pDest->pIndex==0 ){
+    }else if( pDest->pIndex==0 && !(db->mDbFlags & DBFLAG_VacuumInto) ){
       addr1 = sqlite3VdbeAddOp2(v, OP_NewRowid, iDest, regRowid);
     }else{
       addr1 = sqlite3VdbeAddOp2(v, OP_Rowid, iSrc, regRowid);
@@ -2528,7 +2554,7 @@ static int xferOptimization(
         sqlite3VdbeAddOp1(v, OP_SeekEnd, iDest);
       }
     }
-    if( !HasRowid(pSrc) && pDestIdx->idxType==2 ){
+    if( !HasRowid(pSrc) && pDestIdx->idxType==SQLITE_IDXTYPE_PRIMARYKEY ){
       idxInsFlags |= OPFLAG_NCHANGE;
     }
     sqlite3VdbeAddOp2(v, OP_IdxInsert, iDest, regData);

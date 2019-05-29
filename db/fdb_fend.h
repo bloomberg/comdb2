@@ -133,6 +133,8 @@ enum fdb_errors {
     FDB_ERR_INDEX_DESCRIBE = -24 /* failed to describe index */
     ,
     FDB_ERR_SSL = -25 /* SSL configuration error */
+    ,
+    FDB_ERR_ACCESS = -26 /* Access error */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
@@ -308,7 +310,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
                                     char *ptid, int use_ssl);
 fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
 int fdb_trans_commit(struct sqlclntstate *clnt);
-int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans);
+int fdb_trans_rollback(struct sqlclntstate *clnt);
 char *fdb_trans_id(fdb_tran_t *trans);
 
 char *fdb_get_alias(const char **p_tablename);

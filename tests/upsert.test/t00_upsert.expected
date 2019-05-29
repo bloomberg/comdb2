@@ -117,6 +117,6 @@
 (part='---------------------------------- PART #25 ----------------------------------')
 (rows inserted=1)
 (rows inserted=1)
-[COMMIT] failed with rc 3 verify key constraint cannot cascade update table 'c' rrn 2
+[COMMIT] failed with rc 3 verify key constraint cannot cascade update table 'c' rc 2
 (tbl='p', i=1)
 (tbl='c', i=1)

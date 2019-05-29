@@ -53,7 +53,6 @@
 /* <sys/types.h> does not include <inttypes.h> on some systems. */
 #include <inttypes.h>
 #include <stdio.h>
-#endif
 
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
@@ -1103,6 +1102,10 @@ extern char *db_eid_invalid;
 #define	DB_REP_CLIENT		0x001
 #define	DB_REP_LOGSONLY		0x002
 #define	DB_REP_MASTER		0x004
+
+/* rep truncate flags */
+#define DB_REP_TRUNCATE_MASTER 0x001
+#define DB_REP_TRUNCATE_ONLINE 0x002
 
 /* Replication statistics. */
 struct __db_rep_stat {
@@ -2540,8 +2543,8 @@ struct __db_env {
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
-	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
-	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, int is_master);
+	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, uint32_t flags)));
+	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, uint32_t flags);
 	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
 	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
 	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
@@ -2925,7 +2928,6 @@ void __berkdb_count_freeepages_abort(void);
 int get_committed_lsns(DB_ENV *dbenv, DB_LSN **lsns, int *n_lsns,
 	int epoch, int file, int offset);
 
-unsigned long long get_current_context(DB_ENV *dbenv);
 int get_lsn_context_from_timestamp(DB_ENV *dbenv, int32_t timestamp,
 	DB_LSN *ret_lsn, unsigned long long *ret_context);
 int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
@@ -2954,3 +2956,5 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 }
 #endif
 #endif				/* !_DB_EXT_PROT_IN_ */
+
+#endif

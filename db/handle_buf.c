@@ -31,12 +31,11 @@
 
 #include <epochlib.h>
 #include <list.h>
-#include <lockmacro.h>
 #include <pool.h>
 #include <time.h>
 
 #include "debug_switches.h"
-
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "block_internal.h"
 #include "util.h"
@@ -451,7 +450,7 @@ static void *thd_req(void *vthd)
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_index = NULL;
 
-    thdinfo->ct_add_table = (void *)create_constraint_table();
+    thdinfo->ct_add_table = create_constraint_table();
     if (thdinfo->ct_add_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add table thd "
@@ -459,8 +458,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_del_table =
-        (void *)create_constraint_table(&thdinfo->ct_id_key);
+    thdinfo->ct_del_table = create_constraint_table();
     if (thdinfo->ct_del_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint delete table "
@@ -468,7 +466,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_add_index = (void *)create_constraint_index_table();
+    thdinfo->ct_add_index = create_constraint_index_table();
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add index table "

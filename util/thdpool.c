@@ -22,6 +22,7 @@
  */
 
 #include "limit_fortify.h"
+#include <assert.h>
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
@@ -35,9 +36,9 @@
 #include <unistd.h>
 
 #include <epochlib.h>
-#include <lockmacro.h>
 #include <segstring.h>
 
+#include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
 #include "mem_util.h"
@@ -615,6 +616,7 @@ static inline void free_work_persistent_info(struct thd *thd,
 
 static void *thdpool_thd(void *voidarg)
 {
+    int check_exit = 0;
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
     void *thddata = NULL;
@@ -631,6 +633,8 @@ static void *thdpool_thd(void *voidarg)
 
     if (pool->per_thread_data_sz > 0) {
         thddata = alloca(pool->per_thread_data_sz);
+        assert(thddata != NULL);
+        memset(thddata, 0, pool->per_thread_data_sz);
     }
 
     init_fn = pool->init_fn;
@@ -650,6 +654,11 @@ static void *thdpool_thd(void *voidarg)
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
+
+            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > pool->maxnthd)
+                check_exit = 1;
+            else
+                check_exit = 0;
 
             if (pool->wait && pool->waiting_for_thread)
                 Pthread_cond_signal(&pool->wait_for_thread);
@@ -725,6 +734,21 @@ static void *thdpool_thd(void *voidarg)
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
+        if (check_exit) {
+            LOCK(&pool->mutex)
+            {
+                if (pool->maxnthd > 0 &&
+                    listc_size(&pool->thdlist) > pool->maxnthd) {
+                    listc_rfl(&pool->thdlist, thd);
+                    if (thd->on_freelist)
+                        abort();
+                    pool->num_exits++;
+                    errUNLOCK(&pool->mutex);
+                    goto thread_exit;
+                }
+            }
+            UNLOCK(&pool->mutex);
+        }
 
         // before acquiring next request, yield
         comdb2bma_yield_all();
@@ -755,6 +779,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
+
+    /* If queue_override is true, try to enqueue unless hitting maxqoverride;
+       If force_queue is true, enqueue regardless. */
+    int force_queue = (flags & THDPOOL_FORCE_QUEUE);
+
     time_t crt_dump;
 
     LOCK(&pool->mutex)
@@ -865,10 +894,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_passed++;
         } else {
             if (listc_size(&pool->queue) >= pool->maxqueue) {
-                if (queue_override &&
-                    (enqueue_front || !pool->maxqueueoverride ||
-                     listc_size(&pool->queue) <
-                         (pool->maxqueue + pool->maxqueueoverride))) {
+                if (force_queue ||
+                    (queue_override &&
+                     (enqueue_front || !pool->maxqueueoverride ||
+                      listc_size(&pool->queue) <
+                          (pool->maxqueue + pool->maxqueueoverride)))) {
                     if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
                         int now = comdb2_time_epoch();
 

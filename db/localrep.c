@@ -22,6 +22,7 @@
 #include "localrep.h"
 #include "endian_core.h"
 #include <flibc.h>
+#include "str0.h"
 
 typedef struct {
     char name[32];    /* name of field as a \0 terminated string */
@@ -793,7 +794,7 @@ int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
         return 0;
     }
 
-    strncpy(table, db->tablename, sizeof(table));
+    strncpy0(table, db->tablename, sizeof(table));
 
     table[31] = 0;
 

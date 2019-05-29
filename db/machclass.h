@@ -14,17 +14,25 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_LOCKMACRO
-#define INCLUDED_LOCKMACRO
+#ifndef INCLUDED_MACHCLASS_H
+#define INCLUDED_MACHCLASS_H
 
-/*LOCK MACRO FOR PTHREAD_MUTEX_LOCK*/
-#ifndef __LOCK_H__
-#define __LOCK_H__
+/* order is important; custom defined classes are indexed from 1 to
+  < CLASS_DENIED
+*/
+enum mach_class {
+    CLASS_UNKNOWN = 0,
+    CLASS_TEST = 1,
+    CLASS_ALPHA = 2,
+    CLASS_UAT = 3,
+    CLASS_BETA = 4,
+    CLASS_PROD = 5,
+    CLASS_DENIED = 255
+};
 
-/* As part of the great prototype cleanup, the canonical header for this stuff
- * is now lockmacros.h - please include it directly rather than this file. */
-#include <lockmacros.h>
-
-#endif
+int mach_class_init(void);
+int mach_class_addclass(const char *name, int value);
+int mach_class_name2class(const char *name);
+const char *mach_class_class2name(int value);
 
 #endif

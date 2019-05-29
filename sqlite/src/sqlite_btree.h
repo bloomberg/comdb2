@@ -296,9 +296,6 @@ struct BtreePayload {
 int sqlite3BtreeInsert(BtCursor*, const BtreePayload *pPayload,
                        int bias, int seekResult, int flags);
 int sqlite3BtreeFirst(BtCursor*, int *pRes);
-#ifndef SQLITE_OMIT_WINDOWFUNC
-void sqlite3BtreeSkipNext(BtCursor*);
-#endif
 int sqlite3BtreeLast(BtCursor*, int *pRes);
 int sqlite3BtreeNext(BtCursor*, int);
 int sqlite3BtreeEof(BtCursor*);
@@ -310,6 +307,7 @@ const void *sqlite3BtreeDataFetch(BtCursor*, u32 *pAmt);
 int sqlite3BtreePayload(BtCursor*, u32 offset, u32 amt, void*);
 const void *sqlite3BtreePayloadFetch(BtCursor*, u32 *pAmt);
 u32 sqlite3BtreePayloadSize(BtCursor*);
+sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor*);
 int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
 
 /*

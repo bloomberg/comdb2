@@ -382,6 +382,8 @@ struct tran_tag {
      */
     unsigned long long startgenid;
 
+    unsigned int trigger_epoch;
+
     /* For logical transactions: a logical transaction may have a (one and
        only one) physical transaction in flight.  Latch it here for debugging
        and sanity checking */
@@ -1017,7 +1019,8 @@ struct bdb_state_tag {
     DB **blkseq[2];
     time_t blkseq_last_roll_time;
     DB_LSN *blkseq_last_lsn[2];
-    LISTC_T(struct seen_blkseq) blkseq_log_list[2];
+    listc_t *blkseq_log_list;
+    int pvt_blkseq_stripes;
     uint32_t genid_format;
 
     /* we keep a per bdb_state copy to enhance locality */
@@ -1836,6 +1839,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
 
 void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 struct ack_info_t;

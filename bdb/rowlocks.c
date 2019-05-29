@@ -15,7 +15,6 @@
  */
 
 #include <segstr.h>
-#include <lockmacro.h>
 #include <list.h>
 #include <plhash.h>
 #include <fsnap.h>
@@ -979,6 +978,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 if (off == 0) {
                     foundit = 1;
                     __os_free(bdb_state->dbenv, big_rec);
+                    big_rec = NULL;
                     if (ovcur == origd && newd != NULL) {
                         ovlen = NULL;
                         ovcur = NULL;
@@ -4120,7 +4120,7 @@ int handle_commit_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                             DB_LSN *lsn, db_recops op)
 {
     bdb_state_type *bdb_state;
-    int rc;
+    int rc = 0;
     bdb_state = dbenv->app_private;
 
     if (bdb_state->parent)

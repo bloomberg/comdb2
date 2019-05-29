@@ -98,7 +98,6 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
                sizeof(systable_timepartshard_t) * narr);
-        timepart_systable_timepartshards_free(arr, narr);
         narr = 0;
         rc = -1;
         goto done;

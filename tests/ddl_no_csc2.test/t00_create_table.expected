@@ -1121,7 +1121,7 @@ constraints
 	}
 keys
 	{
-		uniqnulls "$KEY_5E2A9750" = (cstring[10])"( v || 'aaa' )" 
+		uniqnulls "$KEY_205C1037" = (cstring[10])"( \"v\" || 'aaa' )" 
 	}
 ')
 [CREATE TABLE t1(json vutf8(128), UNIQUE (json_extract(json, '$.a')))] failed with rc -3 Invalid index column list
@@ -1131,11 +1131,25 @@ keys
 	}
 keys
 	{
-		uniqnulls "$KEY_4084D7CF" = (int)" json_extract ( json, '$.a' ) " 
-		uniqnulls "$KEY_E1DFD69F" = (cstring[10])" json_extract ( json, '$.b' ) " 
+		uniqnulls "$KEY_36C983CE" = (int)" json_extract ( \"json\", '$.a' ) " 
+		uniqnulls "$KEY_693B3817" = (cstring[10])" json_extract ( \"json\", '$.b' ) " 
 	}
 ')
 (rows inserted=2)
-[INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}')] failed with rc 299 add key constraint duplicate key '$KEY_4084D7CF' on table 't1' index 0
+[INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}')] failed with rc 299 add key constraint duplicate key '$KEY_36C983CE' on table 't1' index 0
 (json='{"a":0,"b":"zero"}')
 (json='{"a":1,"b":"one"}')
+(part='---------------------------------- PART #60 ----------------------------------')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+	}
+constraints
+	{
+		"mycons1" = "$KEY_A44A20B" -> <"t1":"COMDB2_PK"> on update cascade on delete cascade 
+	}
+')

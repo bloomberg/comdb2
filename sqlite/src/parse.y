@@ -241,9 +241,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 // improve performance and reduce the executable size.  The goal here is
 // to get the "jump" operations in ISNULL through ESCAPE to have numeric
 // values that are early enough so that all jump operations are clustered
-// at the beginning, but also so that the comparison tokens NE through GE
-// are as large as possible so that they are near to FUNCTION, which is a
-// token synthesized by addopcodes.tcl.
+// at the beginning.
 //
 %token ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST.
 %token CONFLICT DATABASE DEFERRED DESC DETACH EACH END EXCLUSIVE EXPLAIN FAIL.
@@ -272,6 +270,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_OMIT_WINDOWFUNC
   CURRENT FOLLOWING PARTITION PRECEDING RANGE UNBOUNDED
+  EXCLUDE GROUPS OTHERS TIES
 %endif SQLITE_OMIT_WINDOWFUNC
 %ifdef SQLITE_OMIT_WINDOWFUNC
   RANGE
@@ -281,12 +280,12 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
-  CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE
+  CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
-  PAGEORDER PASSWORD PERIOD PROCEDURE PUT
-  REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE ROWLOCKS
+  PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
+  REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
@@ -603,9 +602,6 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintSelect(pParse->db, X);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Select(pParse, X, &dest);
   sqlite3SelectDelete(pParse->db, X);
 }
@@ -746,7 +742,6 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   if( A ){
-    A->op = TK_SELECTV;
     A->recording = 1;
   }
 }
@@ -756,7 +751,6 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
   if( A ){
-    A->op = TK_SELECTV;
     A->recording = 1;
     A->pWinDefn = R;
   }else{
@@ -859,6 +853,12 @@ seltablist(A) ::= stl_prefix(A) nm(Y) dbnm(D) LP exprlist(E) RP as(Z)
         pNew->zName = pOld->zName;
         pNew->zDatabase = pOld->zDatabase;
         pNew->pSelect = pOld->pSelect;
+        if( pOld->fg.isTabFunc ){
+          pNew->u1.pFuncArg = pOld->u1.pFuncArg;
+          pOld->u1.pFuncArg = 0;
+          pOld->fg.isTabFunc = 0;
+          pNew->fg.isTabFunc = 1;
+        }
         pOld->zName = pOld->zDatabase = 0;
         pOld->pSelect = 0;
       }
@@ -879,13 +879,13 @@ dbnm(A) ::= DOT nm(X). {A = X;}
 %type fullname {SrcList*}
 %destructor fullname {sqlite3SrcListDelete(pParse->db, $$);}
 fullname(A) ::= nm(X).  {
-  A = sqlite3SrcListAppend(pParse->db,0,&X,0);
+  A = sqlite3SrcListAppend(pParse,0,&X,0);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT && A ) sqlite3RenameTokenMap(pParse, A->a[0].zName, &X);
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 fullname(A) ::= nm(X) DOT nm(Y). {
-  A = sqlite3SrcListAppend(pParse->db,0,&X,&Y);
+  A = sqlite3SrcListAppend(pParse,0,&X,&Y);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT && A ) sqlite3RenameTokenMap(pParse, A->a[0].zName, &Y);
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -894,15 +894,15 @@ fullname(A) ::= nm(X) DOT nm(Y). {
 %type xfullname {SrcList*}
 %destructor xfullname {sqlite3SrcListDelete(pParse->db, $$);}
 xfullname(A) ::= nm(X).  
-   {A = sqlite3SrcListAppend(pParse->db,0,&X,0); /*A-overwrites-X*/}
+   {A = sqlite3SrcListAppend(pParse,0,&X,0); /*A-overwrites-X*/}
 xfullname(A) ::= nm(X) DOT nm(Y).  
-   {A = sqlite3SrcListAppend(pParse->db,0,&X,&Y); /*A-overwrites-X*/}
+   {A = sqlite3SrcListAppend(pParse,0,&X,&Y); /*A-overwrites-X*/}
 xfullname(A) ::= nm(X) DOT nm(Y) AS nm(Z).  {
-   A = sqlite3SrcListAppend(pParse->db,0,&X,&Y); /*A-overwrites-X*/
+   A = sqlite3SrcListAppend(pParse,0,&X,&Y); /*A-overwrites-X*/
    if( A ) A->a[0].zAlias = sqlite3NameFromToken(pParse->db, &Z);
 }
 xfullname(A) ::= nm(X) AS nm(Z). {  
-   A = sqlite3SrcListAppend(pParse->db,0,&X,0); /*A-overwrites-X*/
+   A = sqlite3SrcListAppend(pParse,0,&X,0); /*A-overwrites-X*/
    if( A ) A->a[0].zAlias = sqlite3NameFromToken(pParse->db, &Z);
 }
 
@@ -1019,18 +1019,16 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+  sqlite3ExprListDelete(pParse->db, O); O = 0;
+  sqlite3ExprDelete(pParse->db, L); L = 0;
+#endif
   sqlite3DeleteFrom(pParse,X,W,O,L);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintDelete(pParse->db, X, W);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
 %endif
@@ -1048,9 +1046,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
 }
 %endif
@@ -1059,9 +1054,6 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
 }
 %endif
@@ -1088,16 +1080,10 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, S, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, S, F, R, U);
 }
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, 0, F, pParse->pWith);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
 
@@ -1166,8 +1152,7 @@ idlist(A) ::= nm(Y).
       memcpy(p->u.zToken, t.z, t.n);
       p->u.zToken[t.n] = 0;
       if( sqlite3Isquote(p->u.zToken[0]) ){
-        if( p->u.zToken[0]=='"' ) p->flags |= EP_DblQuoted;
-        sqlite3Dequote(p->u.zToken);
+        sqlite3DequoteExpr(p);
       }
 #if SQLITE_MAX_EXPR_DEPTH>0
       p->nHeight = 1;
@@ -1398,8 +1383,10 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
       ** simplify to constants 0 (false) and 1 (true), respectively,
       ** regardless of the value of expr1.
       */
-      sqlite3ExprDelete(pParse->db, A);
-      A = sqlite3ExprAlloc(pParse->db, TK_INTEGER,&sqlite3IntTokens[N],1);
+      if( IN_RENAME_OBJECT==0 ){
+        sqlite3ExprDelete(pParse->db, A);
+        A = sqlite3ExprAlloc(pParse->db, TK_INTEGER,&sqlite3IntTokens[N],1);
+      }
     }else if( Y->nExpr==1 ){
       /* Expressions of the form:
       **
@@ -1448,7 +1435,7 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
     if( N ) A = sqlite3PExpr(pParse, TK_NOT, A, 0);
   }
   expr(A) ::= expr(A) in_op(N) nm(Y) dbnm(Z) paren_exprlist(E). [IN] {
-    SrcList *pSrc = sqlite3SrcListAppend(pParse->db, 0,&Y,&Z);
+    SrcList *pSrc = sqlite3SrcListAppend(pParse, 0,&Y,&Z);
     Select *pSelect = sqlite3SelectNew(pParse, 0,pSrc,0,0,0,0,0,0);
     if( E )  sqlite3SrcListFuncArgs(pParse, pSelect ? pSrc : 0, E);
     A = sqlite3PExpr(pParse, TK_IN, A, 0);
@@ -1520,7 +1507,7 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
-                    sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
+                    sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
                      &S, W, BW, AW, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF,
                      O, T);
 }
@@ -1529,7 +1516,7 @@ cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP where_opt(W). {
   sqlite3CreateIndex(pParse, &X, &D, 
-                     sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
+                     sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
                       &S, W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT && pParse->pNewIndex ){
@@ -1542,6 +1529,7 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 %type uniqueflag {int}
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
+
 
 // The eidlist non-terminal (Expression Id List) generates an ExprList
 // from a list of identifiers.  The identifier names are in ExprList.a[].zName.
@@ -1630,8 +1618,12 @@ cmd ::= DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
 //
 %ifndef SQLITE_OMIT_VACUUM
 %ifndef SQLITE_OMIT_ATTACH
-cmd ::= VACUUM.                {sqlite3Vacuum(pParse,0);}
-cmd ::= VACUUM nm(X).          {sqlite3Vacuum(pParse,&X);}
+%type vinto {Expr*}
+%destructor vinto {sqlite3ExprDelete(pParse->db, $$);}
+cmd ::= VACUUM vinto(Y).                {sqlite3Vacuum(pParse,0,Y);}
+cmd ::= VACUUM nm(X) vinto(Y).          {sqlite3Vacuum(pParse,&X,Y);}
+vinto(A) ::= INTO expr(X).              {A = X;}
+vinto(A) ::= .                          {A = 0;}
 %endif  SQLITE_OMIT_ATTACH
 %endif  SQLITE_OMIT_VACUUM
 
@@ -1780,6 +1772,7 @@ raisetype(A) ::= ABORT.     {A = OE_Abort;}
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
+
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
 %ifndef SQLITE_OMIT_TRIGGER
 cmd ::= DROP TRIGGER ifexists(NOERR) fullname(X). {
@@ -1909,6 +1902,9 @@ alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
 alter_table_drop_index ::= DROP INDEX nm(I). {
   comdb2AlterDropIndex(pParse, &I);
 }
+alter_table_commit_pending ::= SET COMMIT PENDING. {
+  comdb2AlterCommitPending(pParse);
+}
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
@@ -1919,6 +1915,7 @@ alter_table_action ::= alter_table_add_fk.
 alter_table_action ::= alter_table_drop_fk.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
+alter_table_action ::= alter_table_commit_pending.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
@@ -2100,6 +2097,17 @@ putcmd ::= TIME PARTITION nm(Y) dbnm(Z) RETENTION  INTEGER(R). {
     comdb2timepartRetention(pParse, &Y, &Z, tmp);
 }
 
+putcmd ::= COUNTER nm(Y) dbnm(Z) INCREMENT. {
+    comdb2CounterIncr(pParse, &Y, &Z);
+}
+
+putcmd ::= COUNTER nm(Y) dbnm(Z) SET INTEGER(R). {
+    int tmp;
+    if (!readIntFromToken(&R, &tmp))
+        tmp = INT_MAX;
+    comdb2CounterSet(pParse, &Y, &Z, tmp);
+}
+
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;
     if (!readIntFromToken(&F, &tmp))
@@ -2139,7 +2147,21 @@ rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
     comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 
-//////////////////////////////////// GRANT ////////////////////////////////////
+//////////////////////////// SCHEMA CHANGE CONTROL ////////////////////////////
+
+cmd ::= scctrl.
+
+%type scaction {int}
+scaction(A) ::= PAUSE. { A = SC_ACTION_PAUSE; }
+scaction(A) ::= RESUME. { A = SC_ACTION_RESUME; }
+scaction(A) ::= COMMIT. { A = SC_ACTION_COMMIT; }
+scaction(A) ::= ABORT. { A = SC_ACTION_ABORT; }
+
+scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X). {
+    comdb2SchemachangeControl(pParse,A,&T,&X);
+}
+
+/////////////////////////////////// GRANT /////////////////////////////////////
 
 %type sql_permission {int}
 sql_permission(A) ::= READ. { A = AUTH_READ; }
@@ -2203,10 +2225,13 @@ cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) 
     comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
-cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+cmd ::= createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);
     comdb2CreatePartition(pParse, &A, &P, &D, &R, &S);
 }
+
+partition_type ::= .
+partition_type ::= TIME.
 
 /////////////////////////////// DROP PARTITION ////////////////////////////////
 
@@ -2405,10 +2430,10 @@ cmd ::= DROP LUA AGGREGATE FUNCTION nm(A). {
   comdb2DropAggFunc(pParse,&A);
 }
 cmd ::= DROP LUA TRIGGER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTrigger(pParse,0,&A);
 }
 cmd ::= DROP LUA CONSUMER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTrigger(pParse,1,&A);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 
@@ -2424,13 +2449,14 @@ cmd ::= DROP LUA CONSUMER nm(A). {
 windowdefn_list(A) ::= windowdefn(Z). { A = Z; }
 windowdefn_list(A) ::= windowdefn_list(Y) COMMA windowdefn(Z). {
   assert( Z!=0 );
+  sqlite3WindowChain(pParse, Z, Y);
   Z->pNextWin = Y;
   A = Z;
 }
 
 %type windowdefn {Window*}
 %destructor windowdefn {sqlite3WindowDelete(pParse->db, $$);}
-windowdefn(A) ::= nm(X) AS window(Y). {
+windowdefn(A) ::= nm(X) AS LP window(Y) RP. {
   if( ALWAYS(Y) ){
     Y->zName = sqlite3DbStrNDup(pParse->db, X.z, X.n);
   }
@@ -2458,39 +2484,56 @@ windowdefn(A) ::= nm(X) AS window(Y). {
 %type frame_bound_e {struct FrameBound}
 %destructor frame_bound_e {sqlite3ExprDelete(pParse->db, $$.pExpr);}
 
-window(A) ::= LP part_opt(X) orderby_opt(Y) frame_opt(Z) RP. {
-  A = Z;
-  if( ALWAYS(A) ){
-    A->pPartition = X;
-    A->pOrderBy = Y;
-  }
+window(A) ::= PARTITION BY nexprlist(X) orderby_opt(Y) frame_opt(Z). {
+  A = sqlite3WindowAssemble(pParse, Z, X, Y, 0);
 }
-
-part_opt(A) ::= PARTITION BY nexprlist(X). { A = X; }
-part_opt(A) ::= .                          { A = 0; }
+window(A) ::= nm(W) PARTITION BY nexprlist(X) orderby_opt(Y) frame_opt(Z). {
+  A = sqlite3WindowAssemble(pParse, Z, X, Y, &W);
+}
+window(A) ::= ORDER BY sortlist(Y) frame_opt(Z). {
+  A = sqlite3WindowAssemble(pParse, Z, 0, Y, 0);
+}
+window(A) ::= nm(W) ORDER BY sortlist(Y) frame_opt(Z). {
+  A = sqlite3WindowAssemble(pParse, Z, 0, Y, &W);
+}
+window(A) ::= frame_opt(Z). {
+  A = Z;
+}
+window(A) ::= nm(W) frame_opt(Z). {
+  A = sqlite3WindowAssemble(pParse, Z, 0, 0, &W);
+}
 
 frame_opt(A) ::= .                             { 
-  A = sqlite3WindowAlloc(pParse, TK_RANGE, TK_UNBOUNDED, 0, TK_CURRENT, 0);
+  A = sqlite3WindowAlloc(pParse, 0, TK_UNBOUNDED, 0, TK_CURRENT, 0, 0);
 }
-frame_opt(A) ::= range_or_rows(X) frame_bound_s(Y). { 
-  A = sqlite3WindowAlloc(pParse, X, Y.eType, Y.pExpr, TK_CURRENT, 0);
+frame_opt(A) ::= range_or_rows(X) frame_bound_s(Y) frame_exclude_opt(Z). { 
+  A = sqlite3WindowAlloc(pParse, X, Y.eType, Y.pExpr, TK_CURRENT, 0, Z);
 }
-frame_opt(A) ::= range_or_rows(X) BETWEEN frame_bound_s(Y) AND frame_bound_e(Z). { 
-  A = sqlite3WindowAlloc(pParse, X, Y.eType, Y.pExpr, Z.eType, Z.pExpr);
+frame_opt(A) ::= range_or_rows(X) BETWEEN frame_bound_s(Y) AND
+                          frame_bound_e(Z) frame_exclude_opt(W). { 
+  A = sqlite3WindowAlloc(pParse, X, Y.eType, Y.pExpr, Z.eType, Z.pExpr, W);
 }
 
-range_or_rows(A) ::= RANGE.   { A = TK_RANGE; }
-range_or_rows(A) ::= ROWS.    { A = TK_ROWS;  }
+range_or_rows(A) ::= RANGE|ROWS|GROUPS(X).   {A = @X; /*A-overwrites-X*/}
 
+frame_bound_s(A) ::= frame_bound(X).         {A = X;}
+frame_bound_s(A) ::= UNBOUNDED(X) PRECEDING. {A.eType = @X; A.pExpr = 0;}
+frame_bound_e(A) ::= frame_bound(X).         {A = X;}
+frame_bound_e(A) ::= UNBOUNDED(X) FOLLOWING. {A.eType = @X; A.pExpr = 0;}
 
-frame_bound_s(A) ::= frame_bound(X). { A = X; }
-frame_bound_s(A) ::= UNBOUNDED PRECEDING. {A.eType = TK_UNBOUNDED; A.pExpr = 0;}
-frame_bound_e(A) ::= frame_bound(X). { A = X; }
-frame_bound_e(A) ::= UNBOUNDED FOLLOWING. {A.eType = TK_UNBOUNDED; A.pExpr = 0;}
+frame_bound(A) ::= expr(X) PRECEDING|FOLLOWING(Y).
+                                             {A.eType = @Y; A.pExpr = X;}
+frame_bound(A) ::= CURRENT(X) ROW.           {A.eType = @X; A.pExpr = 0;}
 
-frame_bound(A) ::= expr(X) PRECEDING.   { A.eType = TK_PRECEDING; A.pExpr = X; }
-frame_bound(A) ::= CURRENT ROW.         { A.eType = TK_CURRENT  ; A.pExpr = 0; }
-frame_bound(A) ::= expr(X) FOLLOWING.   { A.eType = TK_FOLLOWING; A.pExpr = X; }
+%type frame_exclude_opt {u8}
+frame_exclude_opt(A) ::= . {A = 0;}
+frame_exclude_opt(A) ::= EXCLUDE frame_exclude(X). {A = X;}
+
+%type frame_exclude {u8}
+frame_exclude(A) ::= NO(X) OTHERS.   {A = @X; /*A-overwrites-X*/}
+frame_exclude(A) ::= CURRENT(X) ROW. {A = @X; /*A-overwrites-X*/}
+frame_exclude(A) ::= GROUP|TIES(X).  {A = @X; /*A-overwrites-X*/}
+
 
 %type window_clause {Window*}
 %destructor window_clause {sqlite3WindowListDelete(pParse->db, $$);}
@@ -2498,7 +2541,7 @@ window_clause(A) ::= WINDOW windowdefn_list(B). { A = B; }
 
 %type over_clause {Window*}
 %destructor over_clause {sqlite3WindowDelete(pParse->db, $$);}
-over_clause(A) ::= filter_opt(W) OVER window(Z). {
+over_clause(A) ::= filter_opt(W) OVER LP window(Z) RP. {
   A = Z;
   assert( A!=0 );
   A->pFilter = W;
@@ -2516,3 +2559,58 @@ over_clause(A) ::= filter_opt(W) OVER nm(Z). {
 filter_opt(A) ::= .                            { A = 0; }
 filter_opt(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 %endif /* SQLITE_OMIT_WINDOWFUNC */
+
+/*
+** The code generator needs some extra TK_ token values for tokens that
+** are synthesized and do not actually appear in the grammar:
+*/
+%token
+  TRUEFALSE       /* True or false keyword */
+  ISNOT           /* Combination of IS and NOT */
+  FUNCTION        /* A function invocation */
+  COLUMN          /* Reference to a table column */
+  AGG_FUNCTION    /* An aggregate function */
+  AGG_COLUMN      /* An aggregated column */
+  UMINUS          /* Unary minus */
+  UPLUS           /* Unary plus */
+  TRUTH           /* IS TRUE or IS FALSE or IS NOT TRUE or IS NOT FALSE */
+  REGISTER        /* Reference to a VDBE register */
+  VECTOR          /* Vector */
+  SELECT_COLUMN   /* Choose a single column from a multi-column SELECT */
+  IF_NULL_ROW     /* the if-null-row operator */
+  ASTERISK        /* The "*" in count(*) and similar */
+  SPAN            /* The span operator */
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  TO_TEXT
+  TO_DATETIME
+  TO_INTERVAL_YE
+  TO_INTERVAL_MO
+  TO_INTERVAL_DY
+  TO_INTERVAL_HO
+  TO_INTERVAL_MI
+  TO_INTERVAL_SE
+  TO_BLOB
+  TO_NUMERIC
+  TO_INT
+  TO_REAL
+  TO_DECIMAL
+%endif SQLITE_BUILDING_FOR_COMDB2
+.
+/* There must be no more than 255 tokens defined above.  If this grammar
+** is extended with new rules and tokens, they must either be so few in
+** number that TK_SPAN is no more than 255, or else the new tokens must
+** appear after this line.
+*/
+%include {
+#if TK_SPAN>255
+# error too many tokens in the grammar
+#endif
+}
+
+/*
+** The TK_SPACE and TK_ILLEGAL tokens must be the last two tokens.  The
+** parser depends on this.  Those tokens are not used in any grammar rule.
+** They are only used by the tokenizer.  Declare them last so that they
+** are guaranteed to be the last two tokens
+*/
+%token SPACE ILLEGAL.

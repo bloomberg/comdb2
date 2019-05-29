@@ -16,12 +16,11 @@
 
 #include <gettimeofday_ms.h>
 
-typedef struct VdbeSorter VdbeSorter;
-
 #include "sql.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
+#include "fdb_whitelist.h"
 #include "poll.h"
 #include "flibc.h"
 #include "logmsg.h"
@@ -37,6 +36,7 @@ extern int gbl_time_fdb;
 extern int gbl_notimeouts;
 extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
+extern char *gbl_myuri;
 
 /* matches fdb_svc_callback_t callbacks */
 enum {
@@ -393,8 +393,8 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.version = version;
     msg->co.seq = (trans) ? trans->seq : 0;
     msg->co.srcpid = gbl_mypid;
-    msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
-    msg->co.srcname = gbl_myhostname;
+    msg->co.srcnamelen = strlen(gbl_myuri) + 1;
+    msg->co.srcname = gbl_myuri;
     msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
@@ -688,7 +688,7 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
-        if (msg->co.srcname != gbl_myhostname) {
+        if (msg->co.srcname != gbl_myuri) {
             free(msg->co.srcname);
             msg->co.srcname = NULL;
             msg->co.srcnamelen = 0;
@@ -1014,6 +1014,7 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         } else {
             msg->co.srcname = NULL;
         }
+
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
@@ -1041,6 +1042,14 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         msg->co.ssl = 0;
 #endif
 
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
+            char *data = strdup("Access Error: db not allowed to connect");
+            int datalen = strlen(data) + 1;
+            fdb_bend_send_row(sb, msg, NULL, 0, data, datalen, NULL, 0,
+                              FDB_ERR_ACCESS, 0);
+            return -1;
+        }
+
         break;
 
     case FDB_MSG_CURSOR_CLOSE: {
@@ -1064,6 +1073,9 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             rc = sbuf2fread((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))
                 return FDB_ERR_WRITE_IO;
+            msg->cc.seq = htonl(tmp);
+        } else {
+            msg->cc.seq = 0;
         }
 
         break;
@@ -1731,7 +1743,7 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int isuuid;
     char prf[512];
 
-    snprintf(prf, sizeof(prf), "%llu%s%s",
+    snprintf(prf, sizeof(prf), "%lx: %llu%s%s", pthread_self(),
              (unsigned long long)gettimeofday_ms(), (prefix) ? " " : "",
              (prefix) ? prefix : "");
     prefix = prf;
@@ -1749,9 +1761,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_COMMIT:
     case FDB_MSG_TRAN_ROLLBACK:
 
-        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s\n", prefix,
-               __req_2_str(msg->hd.type), *(unsigned long long *)msg->tr.tid,
-               msg->tr.flags, __tran_2_str(msg->tr.lvl));
+        logmsg(LOGMSG_USER, "XXXX: %s %s tid=%llx fl=%x lvl=%s seq=%d\n",
+               prefix, __req_2_str(msg->hd.type),
+               *(unsigned long long *)msg->tr.tid, msg->tr.flags,
+               __tran_2_str(msg->tr.lvl), msg->tr.seq);
         break;
 
     case FDB_MSG_TRAN_RC:
@@ -1764,9 +1777,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_CURSOR_OPEN:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
+               "XXXX: %s %llu sb=%p CURSOR_OPEN cid=%llx tid=%llx fl=%x "
                "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
-               t, prefix, sb, *(unsigned long long *)msg->co.cid,
+               prefix, t, sb, *(unsigned long long *)msg->co.cid,
                *(unsigned long long *)msg->co.tid, msg->co.flags,
                msg->co.rootpage, msg->co.version, msg->co.seq, msg->co.srcpid,
                (msg->co.srcname) ? msg->co.srcname : "(unknown)");
@@ -1775,46 +1788,47 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_CURSOR_CLOSE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_CLOSE cid=%llx\n", t, prefix,
-               *(unsigned long long *)msg->cc.cid);
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_CLOSE cid=%llx seq=%d\n",
+               prefix, t, *(unsigned long long *)msg->cc.cid, msg->cc.seq);
         break;
 
     case FDB_MSG_CURSOR_FIRST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_FIRST cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_FIRST cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_LAST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_LAST cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_LAST cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_NEXT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_NEXT cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_NEXT cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_CURSOR_PREV:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_PREV cid=%llx\n", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu CURSOR_PREV cid=%llx\n", prefix, t,
                *(unsigned long long *)msg->cc.cid);
         break;
 
     case FDB_MSG_DATA_ROW:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s DATA_ROW cid=%llx rc=%d genid=%llx "
-                            "datalen=%d datacpylen=%d\n",
-               t, prefix, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu DATA_ROW cid=%llx rc=%d genid=%llx "
+               "datalen=%d datacpylen=%d\n",
+               prefix, t, *(unsigned long long *)msg->dr.cid, msg->dr.rc,
                msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
         break;
 
     case FDB_MSG_CURSOR_FIND:
     case FDB_MSG_CURSOR_FIND_LAST:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s %s cid=%llx key[%d]=\"", t, prefix,
+        logmsg(LOGMSG_USER, "XXXX: %s %llu %s cid=%llx key[%d]=\"", prefix, t,
                (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
                                                      : "CURSOR_FIND_LAST",
                *(unsigned long long *)msg->cf.cid, msg->cf.keylen);
@@ -1826,9 +1840,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_RUN_SQL:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s RUN_SQL cid=%llx version=%d flags=%x "
+               "XXXX: %s %llu RUN_SQL cid=%llx version=%d flags=%x "
                "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
-               t, prefix, *(unsigned long long *)msg->sq.cid, msg->sq.version,
+               prefix, t, *(unsigned long long *)msg->sq.cid, msg->sq.version,
                msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
                (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
         break;
@@ -1836,9 +1850,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
-                            "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->in.cid,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p INSERT cid=%llx rootp=%d "
+               "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
+               prefix, t, sb, *(unsigned long long *)msg->in.cid,
                msg->in.rootpage, msg->in.version, msg->in.genid,
                msg->in.datalen, msg->in.seq,
                (msg->in.tblname) ? " tblname=" : "",
@@ -1848,9 +1863,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_DELETE_PI:
     case FDB_MSG_DELETE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p DELETE cid=%llx rootp=%d "
-                            "version=%d genid=%llx seq=%d%s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu sb=%p DELETE cid=%llx rootp=%d "
+               "version=%d genid=%llx seq=%d%s%s\n",
+               prefix, t, sb, *(unsigned long long *)msg->up.cid,
                msg->de.rootpage, msg->de.version, msg->de.genid, msg->de.seq,
                (msg->de.tblname) ? " tblname=" : "",
                (msg->de.tblname) ? msg->de.tblname : "");
@@ -1860,9 +1876,9 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_UPDATE:
 
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p UPDATE cid=%llx rootp=%d "
+               "XXXX: %s %llu sb=%p UPDATE cid=%llx rootp=%d "
                "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d %s%s\n",
-               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+               prefix, t, sb, *(unsigned long long *)msg->up.cid,
                msg->up.rootpage, msg->up.version, msg->up.oldgenid,
                msg->up.genid, msg->up.datalen, msg->up.seq,
                (msg->up.tblname) ? " tblname=" : "",
@@ -1871,9 +1887,10 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_INDEX:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INDEX cid=%llx rootp=%d version=%d "
-                            "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
-               t, prefix, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
+        logmsg(LOGMSG_USER,
+               "XXXX: %s %llu INDEX cid=%llx rootp=%d version=%d "
+               "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
+               prefix, t, *(unsigned long long *)msg->ix.cid, msg->ix.rootpage,
                msg->ix.version, msg->ix.genid, msg->ix.is_delete, msg->ix.ixnum,
                msg->ix.ixlen);
         fsnapf(stderr, msg->ix.ix, msg->ix.ixlen);
@@ -1881,8 +1898,8 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_HBEAT:
         logmsg(LOGMSG_USER,
-               "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
-               prefix, sb, *(unsigned long long *)msg->hb.tid,
+               "XXXX: %s %llu sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n",
+               prefix, t, sb, *(unsigned long long *)msg->hb.tid,
                msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
         break;
 
@@ -2039,9 +2056,9 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         int haveid;
 
         if (msg->hd.type & FD_MSG_FLAGS_ISUUID)
-            haveid = !comdb2uuid_is_zero((unsigned char *)msg->co.tid);
+            haveid = !comdb2uuid_is_zero((unsigned char *)msg->cc.tid);
         else
-            haveid = *(unsigned long long *)msg->co.tid != 0;
+            haveid = *(unsigned long long *)msg->cc.tid != 0;
 
         if (haveid) {
             tmp = htonl(msg->cc.seq);
@@ -2566,7 +2583,7 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_nop(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 static enum svc_move_types move_type(int type)
@@ -2750,13 +2767,13 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
 
     /* was there any error processing? */
-    if (clnt->fdb_state.err.errval != 0) {
+    int irc;
+    if ((irc = errstat_get_rc(&clnt->fdb_state.xerr)) != 0) {
         /* we need to send back a rc code */
-        rc = fdb_svc_sql_row(
-            clnt->fdb_state.remote_sql_sb, cid,
-            clnt->fdb_state.err.errstr, /* the actual row is the errstr */
-            strlen(clnt->fdb_state.err.errstr) + 1, clnt->fdb_state.err.errval,
-            arg->isuuid);
+        const char *tmp = errstat_get_str(&clnt->fdb_state.xerr);
+        rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                             (char *)tmp, /* the actual row is the errstr */
+                             strlen(tmp) + 1, irc, arg->isuuid);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fdb_send_rc failed rc=%d\n", __func__,
                    rc);
@@ -3236,8 +3253,10 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     rc =
         fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, arg->isuuid, &clnt);
 
+    /* clnt gets set to NULL on error. */
+    arg->clnt = clnt;
+
     if (!rc) {
-        arg->clnt = clnt;
         arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
@@ -3262,7 +3281,7 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_trans_prepare(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
@@ -3323,7 +3342,7 @@ int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
 int fdb_bend_trans_rc(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    abort();
+    return -1;
 }
 
 int fdb_bend_trans_hbeat(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
@@ -3365,7 +3384,7 @@ static int _check_code_release(SBUF2 *sb, char *cid, int code_release,
     return 0;
 }
 
-int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
+static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 {
     fdb_msg_cursor_open_t open_msg;
     fdb_msg_t msg;
@@ -3559,29 +3578,39 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     }
 
     while (1) {
+        int msg_type;
+
         if (gbl_fdb_track) {
             fdb_msg_print_message(sb, &msg, "received msg");
         }
 
         svc_cb_arg.isuuid = (msg.hd.type & FD_MSG_FLAGS_ISUUID);
+        msg_type = (msg.hd.type & FD_MSG_TYPE);
 
-        rc = callbacks[msg.hd.type & FD_MSG_TYPE](sb, &msg, &svc_cb_arg);
+        rc = callbacks[msg_type](sb, &msg, &svc_cb_arg);
 
-        if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
-            (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK ||
-            (msg.hd.type & FD_MSG_TYPE) ==
-                FDB_MSG_TRAN_RC /* this should be actuall the only case,
-                  since we reuse the buffer to send back results */
-            ) {
-            if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
-                (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK)
+        if (msg_type == FDB_MSG_TRAN_COMMIT ||
+            msg_type == FDB_MSG_TRAN_ROLLBACK) {
+            /* Sanity check:
+             * The msg buffer is reused for response, thus in some cases,
+             * the type it initially stored, could change.
+             * This check ensures that the change adheres with the design.
+             */
+            if (msg_type == FDB_MSG_TRAN_COMMIT &&
+                (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
                 abort();
-
+            }
             break;
         }
+
         if (rc != 0) {
             int rc2;
         clear:
+            /* Bail-out if we failed early. */
+            if (svc_cb_arg.clnt == 0) {
+                goto done;
+            }
+
             rc2 = fdb_svc_trans_rollback(
                 open_msg.tid, open_msg.lvl, svc_cb_arg.clnt,
                 svc_cb_arg.clnt->dbtran.dtran->fdb_trans.top->seq);
@@ -3612,8 +3641,6 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     reset_clnt(svc_cb_arg.clnt, NULL, 0);
 
-    done_sql_thread();
-
     Pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
     Pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
     Pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
@@ -3622,6 +3649,9 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     free(svc_cb_arg.clnt);
     svc_cb_arg.clnt = NULL;
+
+done:
+    done_sql_thread();
 
     return rc;
 }

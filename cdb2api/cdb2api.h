@@ -273,8 +273,8 @@ typedef enum cdb2_event_type {
     CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
 
     /* Lifecycle events */
-    CDB2_AT_OPEN = 1 << 30,
-    CDB2_AT_CLOSE = 1 << 31,
+    CDB2_AT_OPEN = 1 << 29,
+    CDB2_AT_CLOSE = 1 << 30,
 } cdb2_event_type;
 
 typedef enum cdb2_event_arg {

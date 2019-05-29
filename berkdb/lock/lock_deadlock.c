@@ -38,8 +38,9 @@ extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_rowlocks;
 
-void stack_me(char *location);
-
+extern void stack_me(char *location);
+extern void log_snap_info_key(snap_uid_t *);
+extern void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -366,9 +367,24 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 	} else if (lockerp != NULL) {
 		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d, tid=%lx \n", idmap[lid].id,
 		    idmap[lid].killme, lockerp->tid);
-		struct __db_lock *lp =
-		    SH_LIST_FIRST(&lockerp->heldby, __db_lock);
-		__lock_printlock(lt, lp, 1, stdout);
+
+		struct __db_lock *lp;
+		for (lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock); lp !=NULL;
+				lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+			__lock_printlock(lt, lp, 1, stdout);
+		}
+
+        // Also show all the children lockers
+        DB_LOCKER *child = SH_LIST_FIRST(&lockerp->child_locker, __db_locker);
+		while (child) {
+			for (struct __db_lock *lp = SH_LIST_FIRST(&child->heldby, __db_lock);                                                                 
+					lp !=NULL;
+					lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+				__lock_printlock(lt, lp, 1, stdout);
+			}
+			child = SH_LIST_NEXT(child, child_link, __db_locker);
+		}
+
 		unlock_locker_partition(region, lockerp->partition);
 	} else
 		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d\n", idmap[lid].id,
@@ -394,7 +410,7 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 {
 	int j;
 
-	logmsg(LOGMSG_USER, "DEADLOCK-CYCLE: ");
+	logmsg(LOGMSG_WARN, "DEADLOCK-CYCLE: ");
 
 	for (j = 0; j < nlockers; j++) {
 
@@ -402,12 +418,11 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 			continue;
 
 		if (j == victim)
-			logmsg(LOGMSG_USER, "*");
-		extern void log_snap_info_key(snap_uid_t *);
+			logmsg(LOGMSG_WARN, "*");
 		log_snap_info_key(idmap[j].snap_info);
-		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
+		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
-	logmsg(LOGMSG_USER, "\n");
+	logmsg(LOGMSG_WARN, "\n");
 }
     
 
@@ -854,8 +869,10 @@ dokill:
 		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
+#ifdef DEBUG_LOCKS
+			__lock_dump_active_locks(dbenv, stderr);
+#endif
 		}
 
 		/* Kill the locker with lockid idmap[killid]. */

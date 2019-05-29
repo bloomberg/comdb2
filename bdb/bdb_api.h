@@ -1150,6 +1150,8 @@ struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state,
 struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr);
 struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr);
+struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state,
+                                         int *bdberr);
 struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr);
 
@@ -1485,6 +1487,34 @@ int bdb_set_in_schema_change(tran_type *input_trans, const char *db_name,
 int bdb_get_in_schema_change(tran_type *input_trans, const char *db_name,
                              void **schema_change_data,
                              size_t *schema_change_data_len, int *bdberr);
+
+enum {
+    BDB_SC_RUNNING,
+    BDB_SC_PAUSED,
+    BDB_SC_COMMITTED,
+    BDB_SC_ABORTED,
+    BDB_SC_COMMIT_PENDING
+};
+enum {
+    LLMETA_SCERR_LEN =
+        128 /* maximum error string len for schema change status */
+};
+
+typedef struct {
+    unsigned long long start;
+    int status;
+    unsigned long long last;
+    char errstr[LLMETA_SCERR_LEN];
+    int sc_data_len;
+} llmeta_sc_status_data;
+
+int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
+                                 void *schema_change_data,
+                                 size_t schema_change_data_len, int status,
+                                 const char *errstr, int *bdberr);
+
+int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
+                                 void ***sc_data_out, int *num, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
                        unsigned long long genid, int *bdberr);
@@ -2042,7 +2072,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
-void send_newmaster(bdb_state_type *bdb_state);
+void send_newmaster(bdb_state_type *bdb_state, int online);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);

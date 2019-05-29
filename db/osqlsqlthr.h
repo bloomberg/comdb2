@@ -131,6 +131,11 @@ int osql_block_commit(struct sql_thread *thd);
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid);
 
 /**
+ * Start a sosql session if not already started
+ */
+int osql_sock_start_deferred(struct sqlclntstate *clnt);
+
+/**
  * Terminates a sosql session
  * Block processor is informed that all the rows are sent
  * It waits for the block processor to report back the return code

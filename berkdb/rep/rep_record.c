@@ -71,6 +71,7 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
+extern int gbl_dumptxn_at_commit;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -122,6 +123,12 @@ static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
 static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t, int));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
 static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
+
+extern void bdb_set_seqnum(void *);
+extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
+extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
+extern void wait_for_sc_to_stop(const char *operation);
+extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -554,7 +561,6 @@ static void *apply_thread(void *arg)
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
-					void bdb_set_seqnum(void *);
 					bdb_set_seqnum(dbenv->app_private);
 
 					if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
@@ -2505,7 +2511,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		break;
 
 	case REP_PGDUMP_REQ:{
-			extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 			logmsg(LOGMSG_USER, "pgdump request from %s\n", *eidp);
 			__pgdump_reprec(dbenv, rec);
 			break;
@@ -3634,10 +3639,6 @@ gap_check:		max_lsn_dbtp = NULL;
 	case DB___txn_regop_rowlocks:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
-		;
-		extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-		extern int gbl_dumptxn_at_commit;
-
 		if (gbl_dumptxn_at_commit)
 			dumptxn(dbenv, &rp->lsn);
 		if (!F_ISSET(rep, REP_F_LOGSONLY)) {
@@ -5556,12 +5557,18 @@ bad_resize:	;
 			(desired = (gbl_force_serial_on_writelock &&
 			 bdb_the_lock_desired()))) {
 
-		if (txn_args)
+		if (txn_args) {
 			__os_free(dbenv, txn_args);
-		if (txn_gen_args)
+			txn_args = NULL;
+		}
+		if (txn_gen_args) {
 			__os_free(dbenv, txn_gen_args);
-		if (txn_rl_args)
+			txn_gen_args = NULL;
+		}
+		if (txn_rl_args) {
 			__os_free(dbenv, txn_rl_args);
+			txn_rl_args = NULL;
+		}
 
 		ret = wait_for_running_transactions(dbenv);
 		if (ret) {
@@ -6461,7 +6468,6 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		void wait_for_sc_to_stop(const char *operation);
 		wait_for_sc_to_stop("log-truncate");
 	}
 
@@ -6613,12 +6619,17 @@ restart:
 		dbenv->truncate_sc_callback(dbenv, trunclsnp);
 
 	/* Tell replicants to truncate */
-	if (dbenv->rep_truncate_callback)
-		dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
+	if (dbenv->rep_truncate_callback) {
+		uint32_t rep_truncate_flags = 0;
+		if (i_am_master)
+			rep_truncate_flags |= DB_REP_TRUNCATE_MASTER;
+		if (online)
+			rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
+		dbenv->rep_truncate_callback(dbenv, trunclsnp, rep_truncate_flags);
+	}
 
 err:
 	if (i_am_master) {
-		void allow_sc_to_run(void);
 		allow_sc_to_run();
 		assert(truncate_count == 1);
 		truncate_count--;
@@ -6716,7 +6727,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				}
 
 				if (txn_rl_args->timestamp < epoch) {
-					__os_free(dbenv, txn_rl_args);
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
 											"break-loop because timestamp "
@@ -6725,6 +6735,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
 					}
+					__os_free(dbenv, txn_rl_args);
 					done = 1;
 					break;
 				}
@@ -7198,103 +7209,6 @@ err:
 	__log_c_close(logc);
 
 	return -1;
-}
-
-unsigned long long
-get_current_context(dbenv)
-	DB_ENV *dbenv;
-{
-	unsigned long long context = 0;
-	int rc = 0;
-	DB_LSN lsn;
-	DB_LOGC *logc;
-	DBT logdta;
-	u_int32_t rectype;
-
-	__txn_regop_args *txn_args = NULL;
-	__txn_regop_gen_args *txn_gen_args = NULL;
-	__txn_regop_rowlocks_args *txn_rl_args = NULL;
-
-	__log_txn_lsn(dbenv, &lsn, NULL, NULL);
-
-	if ((rc = __log_cursor(dbenv, &logc)) != 0) {
-		logmsg(LOGMSG_ERROR, "%s:%d failed to get log cursor, rc %d\n",
-			__func__, __LINE__, rc);
-		return 0;
-	}
-	bzero(&logdta, sizeof(logdta));
-	logdta.flags = DB_DBT_REALLOC;
-	rc = logc->get(logc, &lsn, &logdta, DB_SET);
-	if (rc) {
-		logmsg(LOGMSG_ERROR, "%s:%d failed to get log at [%u][%u], rc %d\n",
-			__func__, __LINE__, lsn.file, lsn.offset, rc);
-		__log_c_close(logc);
-		return 0;
-	}
-	LOGCOPY_32(&rectype, logdta.data);
-
-	while (rectype != DB___txn_regop || rectype != DB___txn_regop_gen ||
-		rectype != DB___txn_regop_rowlocks) {
-again:
-		if (logdta.data) {
-			__os_free(dbenv, logdta.data);
-			logdta.data = NULL;
-		}
-		rc = logc->get(logc, &lsn, &logdta, DB_PREV);
-		if (rc) {
-			logmsg(LOGMSG_ERROR, 
-				"%s:%d failed to get log at [%u][%u], rc %d\n",
-				__func__, __LINE__, lsn.file, lsn.offset, rc);
-			__log_c_close(logc);
-			return 0;
-		}
-		LOGCOPY_32(&rectype, logdta.data);
-	}
-
-	if (rectype == DB___txn_regop) {
-		if ((rc = __txn_regop_read(dbenv, logdta.data, &txn_args)) != 0)
-			abort();
-		if (txn_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_args);
-			goto again;
-		}
-		context = __txn_regop_read_context(txn_args);
-		__os_free(dbenv, txn_args);
-		__log_c_close(logc);
-		return context;
-	}
-	else if (rectype == DB___txn_regop_gen) {
-		if ((rc =
-			__txn_regop_gen_read(dbenv, logdta.data,
-				&txn_gen_args)) != 0) {
-			abort();
-		}
-		if (txn_gen_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_gen_args);
-			goto again;
-		}
-		context = txn_gen_args->context;
-		__os_free(dbenv, txn_gen_args);
-		__log_c_close(logc);
-		return context;
-	}
-	else {
-		assert(rectype == DB___txn_regop_rowlocks);
-		if ((rc =
-			__txn_regop_rowlocks_read(dbenv, logdta.data,
-				&txn_rl_args)) != 0)
-			abort();
-		if (txn_rl_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_rl_args);
-			goto again;
-		}
-		context = txn_rl_args->context;
-		__os_free(dbenv, txn_rl_args);
-		__log_c_close(logc);
-		return context;
-	}
-
-	return 0;
 }
 
 static int

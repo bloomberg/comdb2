@@ -59,7 +59,7 @@ if [[ -n ${DEBUGGER} ]]; then
         fi
         ;;
     callgrind)
-        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
         if [[ -n ${COLLECTFUNC} ]]; then
             # collect info on $COLLECTFUNC only
             DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
@@ -156,6 +156,7 @@ setup_db() {
     fi
 
     echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
+    echo -e "forbid_remote_admin off" >> ${LRL}
 
     if [[ -n "$CUSTOMLRLPATH" ]]; then
         cat $CUSTOMLRLPATH >> ${LRL}
@@ -348,6 +349,7 @@ setup_db() {
 setup_db
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    cd -
     sec_vars="SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_OPTIONS"
     for required in $sec_vars; do
         q=${!required}
@@ -361,6 +363,7 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
 
     # setup secondary db for the test, if specified
     DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db
+    cd -
 fi
 
 
@@ -380,8 +383,10 @@ if [[ $debug -eq 1 ]]; then
         echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
         echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
         echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
+        echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
         echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
     fi
+    echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
     echo "export PATH=${paths}"':${PATH}' >> $SETENV
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV

@@ -38,6 +38,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;
@@ -217,6 +218,9 @@ extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
+extern int gbl_online_recovery;
+extern int gbl_forbid_remote_admin;
+extern int gbl_abort_on_dta_lookup_error;
 
 extern long long sampling_threshold;
 
@@ -232,6 +236,7 @@ extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
+extern char *gbl_machine_class;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -265,11 +270,12 @@ extern int explicit_flush_trace;
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+extern int set_pbkdf2_iterations(int val);
 
 #include <stdbool.h>
 extern bool gbl_rcache;
 
-static char *name = NULL;
+static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;
 
@@ -792,7 +798,6 @@ static int sql_tranlevel_default_update(void *context, void *value)
 
 static int pbkdf2_iterations_update(void *context, void *value)
 {
-    extern int set_pbkdf2_iterations(int val);
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
 }

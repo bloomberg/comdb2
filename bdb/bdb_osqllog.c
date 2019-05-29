@@ -1339,6 +1339,10 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             int newkeylen = dtalen + sizeof(genid);
             char *use_data;
             int use_datalen;
+            if (newkeylen < 0) {
+                logmsg(LOGMSG_WARN, "invalid dtalen %d\n", dtalen);
+                return -1;
+            }
 
             /* index */
             cur =
@@ -1355,6 +1359,11 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             if (bdb_keycontainsgenid(bdb_state, tableid)) {
                 newkeylen -= sizeof(genid);
                 dtalen -= sizeof(genid);
+
+                if (newkeylen < 0 || dtalen < 0) {
+                    logmsg(LOGMSG_WARN, "invalid dtalen %d or keylen %d\n", dtalen, newkeylen);
+                    return -1;
+                }
 
                 /*
                  * For the dup-key case:
@@ -3647,6 +3656,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
             logmsg(LOGMSG_ERROR, "%s:%d Failed to reconstruct delete ix\n", __FILE__,
                     __LINE__);
             free(keybuf);
+            free(dtabuf);
             if (free_ptr)
                 free(free_ptr);
             goto done;
@@ -3662,6 +3672,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         if (free_ptr)
             free(free_ptr);
         free(keybuf);
+        free(dtabuf);
     } break;
 
     case DB_llog_undo_add_dta:

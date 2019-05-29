@@ -159,9 +159,7 @@ static int completionOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
    * already filtered for current user.
    */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   completion_cursor *pCur;
-
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -242,10 +240,10 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       case COMPLETION_TABLES: {
         if( pCur->pStmt==0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-          /* TODO: UNION vtables? */
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT tablename FROM comdb2_tables "
-                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' UNION "
+                  "SELECT name FROM comdb2_systables ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           sqlite3_stmt *pS2;

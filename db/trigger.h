@@ -101,4 +101,7 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 
 #define SP4Q(q) ((q) + (sizeof("__q") - 1))
 
+struct lua_State;
+void force_unregister(struct lua_State *, trigger_reg_t *);
+
 #endif

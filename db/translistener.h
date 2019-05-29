@@ -136,10 +136,6 @@ void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle);
 int javasp_trans_care_about(struct javasp_trans_state *javasp_trans_handle,
                             int event);
 
-/* This is called for miscelanneous events in a transaction such as start/end */
-int javasp_trans_misc_trigger(struct javasp_trans_state *javasp_trans_handle,
-                              int event);
-
 /* This is called for events in a tagged transaction (add/upd/del). */
 int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
                                 int event, struct javasp_rec *oldrec,

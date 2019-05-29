@@ -112,7 +112,7 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
 	db_pgno_t last, pgno, newnext;
-	int extend, ret;
+	int ret;
 
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
@@ -128,20 +128,19 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 		ret = EINVAL;
 
 		goto err;
-	} else {
-		pgno = meta->free;
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
-			goto err;
-
-		/*
-		 * We want to take the first page off the free list and
-		 * then set meta->free to the that page's next_pgno, but
-		 * we need to log the change first.
-		 */
-		newnext = h->next_pgno;
-		lsn = h->lsn;
-		extend = 0;
 	}
+
+	pgno = meta->free;
+	if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
+		goto err;
+
+	/*
+	 * We want to take the first page off the free list and
+	 * then set meta->free to the that page's next_pgno, but
+	 * we need to log the change first.
+	 */
+	newnext = h->next_pgno;
+	lsn = h->lsn;
 
 	/*
 	 * Log the allocation before fetching the new page.  If we
@@ -158,14 +157,6 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 
 	meta->free = newnext;
 
-	if (extend == 1) {
-		if ((ret = __memp_fget(mpf, &pgno, DB_MPOOL_NEW, &h)) != 0)
-			goto err;
-		DB_ASSERT(last == pgno);
-		meta->last_pgno = pgno;
-		ZERO_LSN(h->lsn);
-		h->pgno = pgno;
-	}
 	LSN(h) = LSN(meta);
 
 	DB_ASSERT(TYPE(h) == P_INVALID);
@@ -498,8 +489,10 @@ __db_new(dbc, type, pagepp)
 	(void)__memp_fput(mpf, (PAGE *)meta, DB_MPOOL_DIRTY);
 
 	(void)__TLPUT(dbc, metalock);
-	if (pagebuf)
+	if (pagebuf) {
 		free(pagebuf);
+        pagebuf = NULL;
+    }
 
 	/*
 	 * If dirty reads are enabled and we are in a transaction, we could

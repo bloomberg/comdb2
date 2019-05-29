@@ -422,15 +422,12 @@ bool is_changeable_file(const std::string& filepath)
 
 }
 
-void replace_file_name(FileInfo fi, const std::string& repl_name,
+void replace_file_name(FileInfo &fi, const std::string& repl_name,
         const std::string& dbname)
 {
-    std::string somename = replace_dbname(repl_name, dbname,  
-            fi.get_filename());
-    std::cerr << "Replace " << fi.get_filename() <<
-        " with " << somename << "\n";
-    fi.set_filename(replace_dbname(repl_name, dbname, 
-                fi.get_filename())); 
+    std::string newname = replace_dbname(repl_name, dbname, fi.get_filename());
+    std::cerr << "Replace " << fi.get_filename() << " with " << newname << "\n";
+    fi.set_filename(replace_dbname(repl_name, dbname, fi.get_filename()));
 }
 
 static void serialise_log_files(

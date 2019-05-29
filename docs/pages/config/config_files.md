@@ -163,6 +163,17 @@ and to wait for all nodes to acknowledge a transaction before returning success.
 |log-delete-age-set  |                     |Takes epoch time in seconds, log files older than the given time are eligible for deletion when not needed
 |log-delete          |on                   |`on` enables log deletion, `off` disables it
 
+### Machine class configuration overrides
+
+By default, the risk machine class names are, from the least risky deployment to the highest risk: 'dev'/'test', 'alpha', 'uat', 'prod'. The following lrl option overrides this hierarchy to a client custom configuration that matches a different deployment stage scheme.
+
+    classes <lowest_risk_name> <higher_risk_name> ... <highest_risk_name>
+
+The machine specific, as perceived by the server using the involved lrl file, can be overridden using the following lrl option:
+
+    machine_class <name>
+
+NOTE: the overriding name should match one of the existing class names, otherwise the client access will be denied.
 
 ### Allow/Disallow commands
 
@@ -634,7 +645,7 @@ sequence).  Tunables to control it are below
 |--------------|-------------
 |PRIVATE_BLKSEQ_CACHESZ | 4194304 | Cache size of the blkseq table
 |PRIVATE_BLKSEQ_MAXAGE | 20 | Maximum time in seconds to let "old" transactions live
-|PRIVATE_BLKSEQ_STRIPES | 1 | Number of stripes for the blkseq table
+|PRIVATE_BLKSEQ_STRIPES | 8 | Number of stripes for the blkseq table
 |PRIVATE_BLKSEQ_ENABLED | 1 | Sets whether dupe detection is enabled
 |PRIVATE_BLKSEQ_CLOSE_WARN_TIME | 100 | Warn when it takes longer than this many MS to roll a blkseq table
 
@@ -867,6 +878,7 @@ These options are toggle-able at runtime.
 |location | | Sets up default file locations - see [file locations](#lrl-files)
 |include | | Include file given as argument.  Named file will be processed before continuing processing the current file.
 |temptable_limit | 8192 | Set the maximum number of temporary tables the database can create
+|forbid_remote_admin | set | Disallow admin SQL sessions unless it is on the same machine as the database
 |disable_temptable_pool | | Disables the pool of temp tables set by `temptable_limit`, temp tables are created as needed.
 |enable_upgrade_ahead | not set | Occasionally update read records to the newest schema version (saves some processing when reading them later)
 |disable_upgrade_ahead | | Disables `enable_upgrade_ahead`

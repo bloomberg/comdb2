@@ -21,14 +21,15 @@
 
 #include <segstr.h>
 #include <stdarg.h>
+#include <compat.h>
 
 #include "comdb2.h"
 #include "tag.h"
 #include "net.h"
 #include "nodemap.h"
 #include "logmsg.h"
-#include <intern_strings.h>
-#include <compat.h>
+#include "time_accounting.h"
+#include "intern_strings.h"
 
 int osql_disable_net_test(void);
 int osql_enable_net_test(int testnum);
@@ -79,7 +80,7 @@ static void nettest_usage(void)
 
 char *tcmtest_routecpu_down_node;
 
-/* parse debug trap */
+/* parse debug trap @send debug <cmd> */
 void debug_trap(char *line, int lline)
 {
     char table[MAXTABLELEN];
@@ -116,23 +117,20 @@ void debug_trap(char *line, int lline)
 
         else if (tokcmp(tok, ltok, "routecpu") == 0) {
             tok = segtok(line, lline, &st, &ltok);
-            if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "routecpu command requires a node to route-off argument\n");
-                return;
-            }
-            char *tmphost = tokdup(tok, ltok);
             char *host = NULL;
-            char *end = NULL;
-            int node = strtol(tmphost, &end, 10);
-            if (*end == 0) { /* consumed entire token */
-                if (node > 0) {
-                    host = hostname(node);
+            if (ltok > 0) {
+                char *tmphost = tokdup(tok, ltok);
+                char *end = NULL;
+                int node = strtol(tmphost, &end, 10);
+                if (*end == 0) { /* consumed entire token */
+                    if (node > 0) {
+                        host = hostname(node);
+                    }
+                } else {
+                    host = intern(tmphost);
                 }
-            } else {
-                host = intern(tmphost);
+                free(tmphost);
             }
-            free(tmphost);
             logmsg(LOGMSG_USER, "%s routecpu test for node %s\n",
                    host ? "enable" : "disable",
                    host ? host : tcmtest_routecpu_down_node);
@@ -254,14 +252,17 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "nodes:\n");
         for (int i = 0; i < numnodes; i++)
             logmsg(LOGMSG_USER, "  %s %d\n", hosts[i], nodeix(hosts[i]));
+    } else if (tokcmp(tok, ltok, "timings") == 0) {
+        print_all_time_accounting();
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "tcmtest <test>       - enable a cdb2tcm test\n");
         logmsg(LOGMSG_USER, "tcmtest list         - list cdb2tcm tests\n");
         logmsg(LOGMSG_USER, "getvers table        - get schema version for table (or all)\n");
         logmsg(LOGMSG_USER, "putvers table num    - set schema version for table\n");
         logmsg(LOGMSG_USER, "delsc   table tag    - delete a tag\n");
+        logmsg(LOGMSG_USER, "timings              - print all accumulated "
+                            "timing measurements \n");
     } else {
         logmsg(LOGMSG_ERROR, "Unknown debug command <%.*s>\n", ltok, tok);
     }
 }
-

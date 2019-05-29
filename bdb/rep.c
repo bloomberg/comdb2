@@ -72,6 +72,9 @@
 #include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
+#include "str0.h"
+
+#include <inttypes.h>
 
 #define REP_PRI 100     /* we are all equal in the eyes of god */
 #define REPTIME 3000000 /* default 3 second timeout on election */
@@ -94,6 +97,9 @@ extern void osql_decom_node(char *decom_host);
 
 void *mymalloc(size_t size);
 void *myrealloc(void *ptr, size_t size);
+void reset_aa_counter(char *tblname);
+void create_coherency_lease_thread(bdb_state_type *bdb_state);
+void create_master_lease_thread(bdb_state_type *bdb_state);
 
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 
@@ -1516,7 +1522,7 @@ static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
 
-char *print_permslsn(DB_LSN lsn, char str[])
+static char *print_permslsn(DB_LSN lsn, char str[])
 {
     int *lognum;
     int *seqnum;
@@ -1904,7 +1910,7 @@ void *hostdown_thread(void *arg)
     if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
-        print(bdb_state, "xxx master is %d we are %d\n", master_host,
+        print(bdb_state, "xxx master is %s we are %s\n", master_host,
               bdb_state->repinfo->myhost);
         electable = is_electable(bdb_state, &num_up, &num_connected);
         print(bdb_state, "connected to %d out of %d up nodes\n", num_connected,
@@ -2192,10 +2198,11 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
-void send_newmaster(bdb_state_type *bdb_state)
+void send_newmaster(bdb_state_type *bdb_state, int online)
 {
     bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
-    bdb_add_dummy_llmeta();
+    /* Online recovery can wait-for-seqnum */
+    bdb_add_dummy_llmeta_wait(online);
 }
 
 /* Called by the master to periodically broadcast the durable lsn.  The
@@ -3578,7 +3585,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
         filenum = 0;
 
     p_buf = (uint8_t *)&filenum_net;
-    p_buf_end = (uint8_t *)(&filenum_net + sizeof(int));
+    p_buf_end = p_buf + sizeof(int);
 
     buf_put(&filenum, sizeof(int), p_buf, p_buf_end);
 
@@ -4368,7 +4375,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
         return;
     }
 
-    strncpy(coherency_master, from_host, sizeof(coherency_master));
+    strncpy0(coherency_master, from_host, sizeof(coherency_master));
 
     /* Choose most conservative possible expiration: the lessor of
      * 'mytime + leasetime' and 'mastertime + leasetime' */
@@ -4423,7 +4430,6 @@ static void pg_compact_do_work(struct thdpool *pool, void *work, void *thddata)
 
     __dbenv_pgcompact(dbenv, fileid, &dbt, gbl_pg_compact_thresh,
                       gbl_pg_compact_target_ff);
-    free(arg);
 }
 
 /* thread pool work function */
@@ -4434,10 +4440,8 @@ static void pg_compact_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         pg_compact_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 /* enqueue a page compact work */
@@ -4447,9 +4451,9 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
-    if (size > PGCOMPMAXLEN) {
-        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
-               __FILE__, __LINE__);
+    if (size > PGCOMPMAXLEN || ((sizeof(pgcomp_rcv_t) + size) < size)) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction invalid size: %u.\n",
+               __FILE__, __LINE__, size);
         return E2BIG;
     }
 
@@ -4762,7 +4766,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         char tblname[MAXTABLELEN + 1] = {0};
         memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
-        void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
     } break;
 
@@ -4829,11 +4832,8 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
     pgno = req->pgno;
 
     if ((ret = __dbreg_id_to_db_prefault(bdb_state->dbenv, NULL, &file_dbp,
-                                         fileid, 1)) != 0) {
-        // fprintf(stderr, "udp prefault: __dbreg_id_to_db failed with ret:
-        // %d\n", ret);
-        goto out;
-    }
+                                         fileid, 1)) != 0)
+        return;
 
     mpf = file_dbp->mpf;
 
@@ -4842,10 +4842,6 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
         sleep(gbl_prefault_latency);
 
     __dbreg_prefault_complete(bdb_state->dbenv, fileid);
-
-out:
-    free(req);
-    return;
 }
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -4878,10 +4874,8 @@ static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
     case THD_RUN:
         touch_page(mpf, pgno);
         break;
-    case THD_FREE:
-        free(work);
-        break;
     }
+    free(work);
 }
 
 int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -4904,10 +4898,8 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         udppfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        free(req);
-        break;
     }
+    free(req);
 }
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
@@ -5220,7 +5212,6 @@ void *watcher_thread(void *arg)
     int done = 0;
     char *rep_master = 0;
     int list_start;
-    int last_list_start = 0;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5239,7 +5230,7 @@ void *watcher_thread(void *arg)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    print(bdb_state, "watcher_thread started as 0x%p\n",
+    print(bdb_state, "watcher_thread started as 0x%"PRIxPTR"\n",
           (intptr_t)pthread_self());
 
     poll(NULL, 0, (rand() % 100) + 1000);
@@ -5293,12 +5284,10 @@ void *watcher_thread(void *arg)
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {
-            void create_coherency_lease_thread(bdb_state_type * bdb_state);
             create_coherency_lease_thread(bdb_state);
         }
 
         if (bdb_state->attr->master_lease && !bdb_state->master_lease_thread) {
-            void create_master_lease_thread(bdb_state_type * bdb_state);
             create_master_lease_thread(bdb_state);
         }
 
@@ -5437,7 +5426,7 @@ void *watcher_thread(void *arg)
 
         list_start = gbl_lock_get_list_start;
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
-            list_start != last_list_start && (time(NULL) - list_start) >= 3) {
+            (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
             lock_info_lockers(stdout, bdb_state);
         }
