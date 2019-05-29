@@ -665,3 +665,16 @@ void cron_clear_queue_all(void)
     }
     Pthread_rwlock_unlock(&crons.rwlock);
 }
+
+void cron_clear_queue_all_except(cron_sched_t *except)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    {
+        if (sched != except)
+            cron_clear_queue(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+}

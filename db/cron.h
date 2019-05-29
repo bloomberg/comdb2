@@ -145,11 +145,17 @@ sched_if_t *cron_impl(cron_sched_t *sched);
  */
 void cron_signal_all(void);
 
+
 /**
  * Clear all the queues events
  *
  */
 void cron_clear_queue_all(void);
+
+/**
+ * Clear most of the queues events. Pass an exception scheduler.
+ */
+void cron_clear_queue_all_except(cron_sched_t *sched);
 
 /**
  * Returns a scheduler with name "name", if any

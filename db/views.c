@@ -1892,6 +1892,8 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     return rc;
 }
 
+extern cron_sched_t *gbl_cron;
+
 /**
  * Queue up the necessary events to rollout time partitions 
  * Done during restart and master swing 
@@ -1907,7 +1909,7 @@ int views_cron_restart(timepart_views_t *views)
 
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
-    cron_clear_queue_all();
+    cron_clear_queue_all_except(gbl_cron);
 
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
