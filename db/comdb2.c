@@ -992,7 +992,10 @@ void no_new_requests(struct dbenv *dbenv)
     MEMORY_SYNC;
 }
 
-int db_is_stopped(void) { return thedb->stopped; }
+int db_is_stopped(void)
+{
+    return thedb->stopped;
+}
 
 void print_dbsize(void);
 
