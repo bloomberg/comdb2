@@ -280,8 +280,8 @@ void create_schedule_table(void)
                     "CREATE UNIQUE INDEX schdid on schedule("
                     "'instid', 'start' DESC, 'tztag') OPTION DATACOPY")) 
             != 0) {
-        fprintf(stderr, "%s error creating index, %d\n",
-                __func__, rc);
+        fprintf(stderr, "%s line %d error creating index, %d, %s\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
@@ -292,8 +292,9 @@ void create_schedule_table(void)
                     "CREATE INDEX state on schedule("
                     "'state', 'start')")) 
             != 0) {
-        fprintf(stderr, "%s error creating index, %d\n",
-                __func__, rc);
+        fprintf(stderr, "%s line %d error creating index, %d, %s\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
+
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
@@ -304,8 +305,9 @@ void create_schedule_table(void)
                     "CREATE INDEX start on schedule("
                     "'start' DESC)")) 
             != 0) {
-        fprintf(stderr, "%s error creating index, %d\n",
-                __func__, rc);
+
+        fprintf(stderr, "%s line %d error creating index, %d, %s\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
@@ -316,8 +318,9 @@ void create_schedule_table(void)
                     "CREATE INDEX instdata on schedule("
                     "'instid', 'state', 'start')")) 
             != 0) {
-        fprintf(stderr, "%s error creating index, %d\n",
-                __func__, rc);
+
+        fprintf(stderr, "%s line %d error creating index, %d, %s\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
@@ -328,8 +331,8 @@ void create_schedule_table(void)
                     "CREATE INDEX rqststate on schedule("
                     "'rqstid', 'state', 'start')")) 
             != 0) {
-        fprintf(stderr, "%s error creating index, %d\n",
-                __func__, rc);
+        fprintf(stderr, "%s line %d error creating index, %d, %s\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
         EXIT(__func__, __LINE__, 1);
     }
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) ;
