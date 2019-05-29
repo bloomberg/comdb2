@@ -5171,6 +5171,7 @@ struct tool tool_callbacks[] = {
 
 int main(int argc, char **argv)
 {
+    printf("This is a change for testing PR against release branch\n");
     int rc;
 
     char *exe = NULL;
