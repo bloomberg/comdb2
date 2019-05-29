@@ -111,7 +111,7 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
-extern int gbl_debug_tmptbl_memset_before_free;
+extern int gbl_debug_tmptbl_corrupt_mem;
 
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
@@ -3200,7 +3200,7 @@ int sqlite3BtreeClose(Btree *pBt)
         free(pBt->zFilename);
         pBt->zFilename = NULL;
     }
-    if (unlikely(gbl_debug_tmptbl_memset_before_free)) {
+    if (unlikely(gbl_debug_tmptbl_corrupt_mem)) {
         memset(pBt, 0xcdb2, sizeof(*pBt));
     }
     free(pBt);

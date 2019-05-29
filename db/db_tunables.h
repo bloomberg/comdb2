@@ -1187,9 +1187,9 @@ REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug.tmptbl_memset_before_free",
-                 "memset memory to some value before freeing", TUNABLE_BOOLEAN,
-                 &gbl_debug_tmptbl_memset_before_free, INTERNAL, NULL, NULL,
+REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
+                 "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
+                 &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
