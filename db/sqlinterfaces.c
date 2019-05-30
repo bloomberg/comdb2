@@ -3814,19 +3814,22 @@ static void handle_stored_proc(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt)
 {
     struct sql_state rec = {0};
-    char *errstr;
+    char *errstr = NULL;
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
+        if (!errstr) {
+            logmsg(LOGMSG_USER, "handle_stored_proc: error occured, rc = %d\n",
+                   rc);
+            errstr = strdup("Error occured");
+        }
         clnt->had_errors = 1;
         if (rc == -1)
             rc = -3;
         write_response(clnt, RESPONSE_ERROR, errstr, rc);
-        if (errstr) {
-            free(errstr);
-        }
+        free(errstr);
     }
     if (!clnt->in_client_trans)
         clnt->trans_has_sp = 0;
