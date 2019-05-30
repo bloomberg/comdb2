@@ -3179,13 +3179,10 @@ int sqlite3BtreeClose(Btree *pBt)
     /* Reset thd pointers */
     thd = pthread_getspecific(query_info_key);
     if (thd) {
-        if (pBt->is_temporary) {
-            assert(thd->bttmp == pBt);
+        if (pBt->is_temporary && thd->bttmp == pBt)
             thd->bttmp = NULL;
-        } else {
-            assert(thd->bt == pBt);
+        else if (thd->bt == pBt)
             thd->bt = NULL;
-        }
     }
 
     if (pBt->free_schema && pBt->schema) {
