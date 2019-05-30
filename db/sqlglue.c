@@ -111,6 +111,7 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
+extern int gbl_debug_tmptbl_corrupt_mem;
 
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
@@ -3146,7 +3147,7 @@ int sqlite3BtreeClose(Btree *pBt)
 {
     int rc = SQLITE_OK;
     BtCursor *pCur;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sql_thread *thd;
 
     /* go through cursor list for db.  close any still open (abort? commit?),
      * deallocate pBt */
@@ -3159,16 +3160,12 @@ int sqlite3BtreeClose(Btree *pBt)
     BtCursor *tmp;
     LISTC_FOR_EACH_SAFE(&pBt->cursors, pCur, tmp, lnk)
     {
-        int rc2 = sqlite3BtreeCloseCursor(pCur);
-        if (rc2) {
+        rc = sqlite3BtreeCloseCursor(pCur);
+        if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: sqlite3BtreeCloseCursor failed, pCur=%p, rc=%d\n",
-                   __func__, pCur, rc2);
-            /* Don't stop, or will leak cursors that will
-             * lock pages forever... 20081002dh
-             rc = SQLITE_INTERNAL;
-             goto done;
-             */
+                   __func__, pCur, rc);
+            /* Don't stop, or will leak cursors that will lock pages forever */
         }
     }
     assert(listc_size(&pBt->cursors) == 0);
@@ -3177,35 +3174,37 @@ int sqlite3BtreeClose(Btree *pBt)
         hash_for(pBt->temp_tables, temptable_free, pBt);
         hash_free(pBt->temp_tables);
         pBt->temp_tables = NULL;
-    } else {
-        if (thd)
+    }
+
+    /* Reset thd pointers */
+    thd = pthread_getspecific(query_info_key);
+    if (thd) {
+        if (pBt->is_temporary) {
+            assert(thd->bttmp == pBt);
+            thd->bttmp = NULL;
+        } else {
+            assert(thd->bt == pBt);
             thd->bt = NULL;
+        }
     }
 
     if (pBt->free_schema && pBt->schema) {
         pBt->free_schema(pBt->schema);
         free(pBt->schema);
     }
-#if 0
- is not part of Btree anymore */
-   if (pBt->tran) {
-      sqlite3BtreeRollback(pBt);
-      pBt->tran = NULL;
-   }
-#endif
-    /*
-     * if (thd->clnt->freemewithbt)
-     * free(thd->clnt);
-     */
+
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Close(pBt %d)      = %s\n",
                 pBt->btreeid, sqlite3ErrStr(rc));
-    if (rc == 0){
-        if (pBt->zFilename) {
-            free(pBt->zFilename);
-            pBt->zFilename = NULL;
-        }
-        free(pBt);
+
+    if (pBt->zFilename) {
+        free(pBt->zFilename);
+        pBt->zFilename = NULL;
     }
+    if (unlikely(gbl_debug_tmptbl_corrupt_mem)) {
+        memset(pBt, 0xcdb2, sizeof(*pBt));
+    }
+    free(pBt);
+
     return rc;
 }
 
@@ -3327,11 +3326,11 @@ int sqlite3BtreeOpen(
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
-        thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
         }
+        thd->bttmp = bt;
         *ppBtree = bt;
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
