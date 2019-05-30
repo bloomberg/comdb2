@@ -25,34 +25,17 @@ extern int __berkdb_read_alarm_ms;
 #include <pthread.h>
 
 #include "limit_fortify.h"
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
 #include <stdint.h>
 #include <errno.h>
-
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/statvfs.h>
-
-#include <segstr.h>
-#include <epochlib.h>
-#include <net.h>
 #include <memory_sync.h>
-
-#include <bdb_api.h>
-#ifdef _LINUX_SOURCE
-#endif
-#include <sqliteInt.h>
+#include <stdbool.h>
 #include <ctrace.h>
 
 #include "comdb2.h"
-#include "block_internal.h"
 #include "timer.h"
-#include "translistener.h"
-#include "tag.h"
 #include "sigutil.h"
-#include "util.h"
 #include "memdebug.h"
 #include "verify.h"
 #include "switches.h"
@@ -60,24 +43,18 @@ extern int __berkdb_read_alarm_ms;
 #include "osqlrepository.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
-#include "thdpool.h"
 #include "bdb_access.h"
 #include "analyze.h"
-#include "dbdest.h"
 #include "intern_strings.h"
-#include <stdbool.h>
 #include "utilmisc.h"
 #include "sqllog.h"
 #include "views.h"
-#include <autoanalyze.h>
+#include "autoanalyze.h"
 #include "quantize.h"
 #include "timers.h"
-#include "crc32c.h"
 #include "ssl_bend.h"
 #include "dohsql.h"
 #include "fdb_whitelist.h"
-
-#include "trigger.h"
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"

@@ -5233,7 +5233,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (1) {
+    while (1) { /* should this stop when db_is_stopped() ?*/
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5250,12 +5250,14 @@ void *watcher_thread(void *arg)
 
         if (db_is_stopped()) {
             stopped_count++;
+            /* we have alarm for 5min or something
             if (stopped_count > 30) {
                 logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
                        __func__, stopped_count);
                 abort();
             }
-            if (stopped_count > 3) {
+            */
+            if (stopped_count > 20) { /* Make this tunable */
                 logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
                        stopped_count);
             }

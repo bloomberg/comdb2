@@ -5795,7 +5795,8 @@ static void *osql_heartbeat_thread(void *arg)
                 logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
         }
 
-        poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
+        for (int i = 0; i < gbl_osql_heartbeat_send && !db_is_stopped(); i++)
+            sleep(1);
     }
     return NULL;
 }

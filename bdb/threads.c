@@ -458,6 +458,8 @@ void *checkpoint_thread(void *arg)
                 }
 
                 poll(0, 0, checkpointtimepoll);
+                if (db_is_stopped())
+                    break;
 
                 BDB_READLOCK("checkpoint_thread2");
                 broken = bdb_state->dbenv->log_get_last_lsn(bdb_state->dbenv,

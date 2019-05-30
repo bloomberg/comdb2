@@ -5999,7 +5999,10 @@ static void *heartbeat_send_thread(void *arg)
         if (netinfo_ptr->exiting)
             break;
 
-        sleep(netinfo_ptr->heartbeat_send_time);
+        int ss = netinfo_ptr->heartbeat_send_time;
+        for (int i = 0; i < ss && !netinfo_ptr->exiting; i++)
+            sleep(1);
+
     }
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);

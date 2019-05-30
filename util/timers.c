@@ -16,18 +16,10 @@
 
 #include <pthread.h>
 #include <sys/time.h>
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <time.h>
-#include <string.h>
 #include <errno.h>
-
 #include <timers.h>
-
-#include <logmsg.h>
-#include <locks_wrap.h>
+#include "logmsg.h"
+#include "locks_wrap.h"
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -44,6 +36,7 @@ static struct timer timers[MAXTIMERS];
 
 int64_t starttime;
 
+extern int db_is_stopped(void);
 static void (*timer_func)(struct timer_parm *) = NULL;
 
 void timer_init(void (*func)(struct timer_parm *))
@@ -210,7 +203,7 @@ void *timer_thread(void *p)
     int rc;
     int oneshot;
     int ms;
-    for (;;) {
+    while (!db_is_stopped()) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
         while (ntimers == 0)
@@ -254,4 +247,5 @@ void *timer_thread(void *p)
         }
         Pthread_mutex_unlock(&timerlk);
     }
+    return NULL;
 }

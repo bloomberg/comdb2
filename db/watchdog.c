@@ -356,7 +356,10 @@ static void *watchdog_watcher_thread(void *arg)
     int failed_once = 0;
 
     while (!db_is_stopped()) {
-        sleep(10);
+        int ss = 10;
+        for (int i = 0; i < ss && !db_is_stopped(); i++)
+            sleep(1);
+
         if (gbl_nowatch || db_is_stopped())
             continue;
 
