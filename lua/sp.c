@@ -1908,10 +1908,14 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
             rc = -1;
         }
 
-        if (err)
+        if (err_str) {
             logmsg(LOGMSG_ERROR, "err: [%d] %s\n", rc, err_str);
-        else
+            *err = strdup(err_str);
+        }
+        else {
             logmsg(LOGMSG_ERROR, "err: [%d]\n", rc);
+            *err = strdup("Error with lua_pcall");
+        }
         stack_trace(sp->lua);
     }
     free(sp_source);
@@ -5261,7 +5265,7 @@ out:
     return arg->type;
 }
 
-static int debug_sp(struct sqlclntstate *clnt)
+static void debug_sp(struct sqlclntstate *clnt)
 {
     int arg1 = 0;
     char *carg1 = NULL;
@@ -5306,7 +5310,6 @@ do_continue:
     clnt->sp = NULL;
     sleep(2);
     logmsg(LOGMSG_USER, "Exit debugging \n");
-    return 0;
 }
 
 static int get_spname(struct sqlclntstate *clnt, const char **exec,
@@ -6175,7 +6178,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, &s, spname, err)) != 0)
         return rc;
 
-    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
+    if (strcmp(spname, "debug") == 0) {
+        debug_sp(clnt);
+        return 0;
+    }
 
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
@@ -6200,7 +6206,11 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = commit_sp(L, err)) != 0) return rc;
 
-    if (sprc) return sprc;
+    if (sprc) {
+        if (!*err)
+            *err = strdup("emit_result error");
+        return sprc;
+    }
 
     return flush_sp(sp, err);
 }
