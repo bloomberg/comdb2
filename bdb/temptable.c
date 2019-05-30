@@ -309,7 +309,7 @@ static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
 
 error:
     tbl->dbenv_temp = NULL;
-    (void)dbenv_temp->close(dbenv_temp, 0);
+    dbenv_temp->close(dbenv_temp, 0);
     return rc;
 }
 

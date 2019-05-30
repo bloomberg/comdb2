@@ -779,6 +779,18 @@ void register_plugin_tunables(void);
 int install_static_plugins(void);
 int run_init_plugins(int phase);
 
+int gbl_hostname_refresh_time = 60;
+
+int close_all_dbs_tran(tran_type *tran);
+
+int reload_all_db_tran(tran_type *tran);
+int open_all_dbs_tran(void *tran);
+void delete_prepared_stmts(struct sqlthdstate *thd);
+int reload_lua_sfuncs();
+int reload_lua_afuncs();
+void oldfile_list_clear(void);
+
+
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -1490,6 +1502,11 @@ void clean_exit(void)
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
     bdb_cleanup_private_blkseq(thedb->bdb_env);
+    extern struct thdpool *gbl_trickle_thdpool;
+
+    if (gbl_udppfault_thdpool)
+        thdpool_stop(gbl_trickle_thdpool);
+    close_all_dbs_tran(NULL);
 
     eventlog_stop();
 
@@ -1510,8 +1527,8 @@ void clean_exit(void)
 
     cleanup_interned_strings();
     cleanup_peer_hash();
-    free(gbl_dbdir);
-    free(gbl_myhostname);
+    free(gbl_dbdir); gbl_dbdir = NULL;
+    free(gbl_myhostname); gbl_myhostname = NULL;
 
     cleanresources(); // list of lrls
     clear_portmux_bind_path();
@@ -3762,6 +3779,7 @@ static int init(int argc, char **argv)
             /* quit successfully */
             logmsg(LOGMSG_INFO, "-exiting.\n");
             clean_exit();
+            exit(0);
         }
     }
 
@@ -3925,6 +3943,7 @@ static int init(int argc, char **argv)
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
         clean_exit();
+        exit(0);
     }
 
 #if 0
@@ -5353,6 +5372,12 @@ int main(int argc, char **argv)
     while (gbl_thread_count > 0) 
         sleep(1);
 
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        struct dbtable *db = thedb->dbs[ii];
+        free(db->handle);
+    }
+    free(thedb); thedb = NULL;
+
     goodbye();
     return 0;
 }
@@ -5589,17 +5614,6 @@ int thdpool_alarm_on_queing(int len)
         return 0;
     return 1;
 }
-
-int gbl_hostname_refresh_time = 60;
-
-int close_all_dbs_tran(tran_type *tran);
-
-int reload_all_db_tran(tran_type *tran);
-int open_all_dbs_tran(void *tran);
-void delete_prepared_stmts(struct sqlthdstate *thd);
-int reload_lua_sfuncs();
-int reload_lua_afuncs();
-void oldfile_list_clear(void);
 
 int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
 {

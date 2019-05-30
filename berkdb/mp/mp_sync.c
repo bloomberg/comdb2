@@ -542,7 +542,7 @@ struct writable_range {
 	struct trickler *t;
 };
 
-static struct thdpool *trickle_thdpool;
+struct thdpool *gbl_trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
 
@@ -1021,12 +1021,12 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 void
 init_trickle_threads(void)
 {
-	trickle_thdpool = thdpool_create("memptrickle", 0);
-	thdpool_set_linger(trickle_thdpool, 10);
-	thdpool_set_minthds(trickle_thdpool, 1);
-	thdpool_set_maxthds(trickle_thdpool, 4);
-	thdpool_set_maxqueue(trickle_thdpool, 8000);
-	thdpool_set_longwaitms(trickle_thdpool, 30000);
+	gbl_trickle_thdpool = thdpool_create("memptrickle", 0);
+	thdpool_set_linger(gbl_trickle_thdpool, 10);
+	thdpool_set_minthds(gbl_trickle_thdpool, 1);
+	thdpool_set_maxthds(gbl_trickle_thdpool, 4);
+	thdpool_set_maxqueue(gbl_trickle_thdpool, 8000);
+	thdpool_set_longwaitms(gbl_trickle_thdpool, 30000);
 	Pthread_mutex_init(&pgpool_lk, NULL);
 
 	pgpool =
@@ -1043,7 +1043,7 @@ void
 berkdb_iopool_process_message(char *line, int lline, int st)
 {
 	pthread_once(&trickle_threads_once, init_trickle_threads);
-	thdpool_process_message(trickle_thdpool, line, lline, st);
+	thdpool_process_message(gbl_trickle_thdpool, line, lline, st);
 }
 
 
@@ -1391,7 +1391,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				      t_ret != 0) {
 					Pthread_mutex_unlock(&pt->lk);
 					
-					t_ret = thdpool_enqueue(trickle_thdpool,
+					t_ret = thdpool_enqueue(gbl_trickle_thdpool,
 					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
@@ -1433,7 +1433,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 			while(pt->ret == 0 && t_ret != 0) {
 				Pthread_mutex_unlock(&pt->lk);
 
-				t_ret = thdpool_enqueue(trickle_thdpool,
+				t_ret = thdpool_enqueue(gbl_trickle_thdpool,
 				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
