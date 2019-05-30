@@ -1216,8 +1216,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
     if (iq == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
     }
-    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
-                   NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
+                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
     if (rc)
         /* init_ireq unlocks on error */
         return NULL;
