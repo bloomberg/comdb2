@@ -6207,7 +6207,8 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = commit_sp(L, err)) != 0) return rc;
 
     if (sprc) {
-        *err = strdup("emit_result error");
+        if (!*err)
+            *err = strdup("emit_result error");
         return sprc;
     }
 
