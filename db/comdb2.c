@@ -4649,7 +4649,7 @@ static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
     void *rc;
 
     // cron jobs always write to ctrace
-    (void)comdb2ma_stats(NULL, 1, 0, COMDB2MA_TOTAL_DESC, COMDB2MA_GRP_NONE, 1);
+    (void)comdb2ma_stats(NULL, 0, 0, COMDB2MA_TOTAL_DESC, COMDB2MA_GRP_NONE, 1);
 
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
