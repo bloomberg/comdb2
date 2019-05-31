@@ -459,7 +459,7 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
     /* If we are master then make sure all the queues are running */
-    if (iammaster && !dbenv->stopped && !dbenv->exiting) {
+    if (iammaster && !dbenv->stopped) {
         for (int ii = 0; ii < dbenv->num_qdbs; ii++) {
             if (dbenv->qdbs[ii] == NULL)
                 continue;
