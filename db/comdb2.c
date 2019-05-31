@@ -5163,6 +5163,10 @@ static void handle_resume_sc()
 static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
+    char cmd[400];
+    sprintf(cmd, "bash -c 'gdb --batch --eval-command=\"thr app all ba\" /proc/%d/exe %d 2>&1 > %s/logs/%s.onexit'",
+                 gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
+    system(cmd);
 }
 
 #define TOOL(x) #x,

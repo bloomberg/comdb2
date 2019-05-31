@@ -143,16 +143,26 @@ flush_and_exit_node() {
 wait_for_exit_pid_list() {
     let TTL=$((SECONDS+$1))
     shift
-    for pid in $# ; do
+    for pidfile in $@ ; do
         while :; do
             if [ $TTL -lt $SECONDS ] ; then
                 return
             fi
 
-            kill -0 $pid
-            if [ $? -eq 0 ] ; then
+            local pid
+            if [[ -f $pidfile ]]; then
+                pid=$(cat $pidfile)
+            else
                 break
             fi
+
+            echo "kill -0 $pid"
+            #$? of 0 means proces $pid exists
+            kill -0 $pid
+            if [ $? != 0 ] ; then
+                break
+            fi
+            sleep 0.5
         done
     done
 }
