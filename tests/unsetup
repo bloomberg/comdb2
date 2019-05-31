@@ -123,7 +123,7 @@ cleanup_cluster() {
         rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
         rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
         if [ "$CLEANUPDBDIR" == "2" ] ; then
-            rm -f $TESTDIR/logs/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f $TESTDIR/logs/${DBNAME}.*testcase `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null
         fi
     fi
