@@ -21,23 +21,16 @@
  * Shamelessly based on Peter Martin's bigsnd thread pool.
  */
 
-#include "limit_fortify.h"
 #include <assert.h>
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <sys/time.h>
 #include "ctrace.h"
-
-#include <unistd.h>
-
 #include <epochlib.h>
 #include <segstring.h>
-
 #include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
@@ -46,14 +39,13 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include <locks_wrap.h>
-
+#include "locks_wrap.h"
 #include "debug_switches.h"
+#include "logmsg.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
 #endif
-#include "logmsg.h"
 
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);

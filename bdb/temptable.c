@@ -72,6 +72,8 @@ extern void backtrace_symbols_fd(void *const *, int, int);
     } while (0)
 
 extern char *gbl_crypto;
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 struct hashobj {
@@ -389,6 +391,11 @@ static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
     unsigned int hash_cur_buk;
     char *data;
 
+    if (tbl->dbenv_temp == NULL &&
+        create_temp_db_env(bdb_state, tbl, bdberr) != 0) {
+        bdb_temp_table_destroy_pool_wrapper(tbl, bdb_state);
+    }
+
     /* copy the hash to a btree */
     data = hash_first(tbl->temp_hash_tbl, &hash_cur, &hash_cur_buk);
     while (data) {
@@ -605,6 +612,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         }
     }
 #endif
+    ++gbl_temptable_created;
 
 done:
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
@@ -635,6 +643,8 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     extern pthread_key_t query_info_key;
     void *sql_thread;
     int action;
+
+    ++gbl_temptable_create_reqs;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -1328,14 +1338,15 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
         struct temp_list_node *c_node = NULL;
+        int not_the_end;
         do {
             c_node = (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
+            not_the_end = c_node != NULL;
             if (c_node) {
-                if (c_node->data)
-                    free(c_node->data);
+                free(c_node->data);
                 free(c_node);
             }
-        } while (c_node);
+        } while (not_the_end);
     } break;
 
     case TEMP_TABLE_TYPE_HASH:

@@ -632,11 +632,13 @@ const char *ast_param_str(enum ast_type type, void *obj)
 void ast_print(ast_t *ast)
 {
     int i;
-    logmsg(LOGMSG_DEBUG, "AST: [%d]\n", ast->nused);
-    for (i = 0; i < ast->nused; i++)
-        logmsg(LOGMSG_DEBUG, "\t %d. %s \"%s\"\n", i,
-               ast_type_str(ast->stack[i].op),
-               ast_param_str(ast->stack[i].op, ast->stack[i].obj));
+    if (gbl_dohast_verbose) {
+        logmsg(LOGMSG_USER, "AST: [%d]\n", ast->nused);
+        for (i = 0; i < ast->nused; i++)
+            logmsg(LOGMSG_USER, "\t %d. %s \"%s\"\n", i,
+                    ast_type_str(ast->stack[i].op),
+                    ast_param_str(ast->stack[i].op, ast->stack[i].obj));
+    }
 }
 
 extern int comdb2IsPrepareOnly(Parse*);
@@ -674,7 +676,7 @@ int comdb2_check_parallel(Parse *pParse)
 
     if (node->type == AST_TYPE_SELECT) {
         if (gbl_dohast_verbose)
-            logmsg(LOGMSG_DEBUG, "%lx Single query \"%s\"\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%lx Single query \"%s\"\n", pthread_self(),
                    node->sql);
         return 0;
     }
@@ -683,16 +685,16 @@ int comdb2_check_parallel(Parse *pParse)
         _save_params(pParse, node);
 
         if (gbl_dohast_verbose) {
-            logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
+            logmsg(LOGMSG_USER, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
             for (i = 0; i < node->nnodes; i++) {
-                logmsg(LOGMSG_DEBUG, "\t Thread %d: \"%s\"\n", i + 1,
+                logmsg(LOGMSG_USER, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
                 if (node->nodes[i]->params) {
-                    logmsg(LOGMSG_DEBUG, "\t\t Params %d:\n",
+                    logmsg(LOGMSG_USER, "\t\t Params %d:\n",
                            node->nodes[i]->params->nparams);
                     for (int j = 0; j < node->nodes[i]->params->nparams; j++) {
-                        logmsg(LOGMSG_DEBUG, "\t\t\t %d \"%s\" %d\n", j + 1,
+                        logmsg(LOGMSG_USER, "\t\t\t %d \"%s\" %d\n", j + 1,
                                node->nodes[i]->params->params[j].name,
                                node->nodes[i]->params->params[j].pos);
                     }
@@ -755,9 +757,11 @@ static void _save_params(Parse *pParse, dohsql_node_t *node)
     if (!v)
         return;
 
-    logmsg(LOGMSG_DEBUG, "%lx Caching bound parameters length %p\n",
-           pthread_self(), v->pVList);
-    sqlite3VListPrint(LOGMSG_DEBUG, v->pVList);
+    if (gbl_dohast_verbose) {
+        logmsg(LOGMSG_USER, "%lx Caching bound parameters length %p\n",
+                pthread_self(), v->pVList);
+        sqlite3VListPrint(LOGMSG_USER, v->pVList);
+    }
 
     node->nparams = sqlite3_bind_parameter_count((sqlite3_stmt *)v);
     /* we don't really need node->params for parent union at this point */

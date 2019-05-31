@@ -1187,6 +1187,10 @@ REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
+                 "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
+                 &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1663,6 +1667,11 @@ REGISTER_TUNABLE("forbid_remote_admin",
                  "Forbid non-local admin requests.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
                  NULL);
+
+REGISTER_TUNABLE("abort_on_dta_lookup_error",
+                 "Abort on dta lookup lost the race.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dta_lookup_error,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
     "pbkdf2_iterations",

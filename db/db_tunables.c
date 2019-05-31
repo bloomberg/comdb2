@@ -220,6 +220,7 @@ extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
+extern int gbl_abort_on_dta_lookup_error;
 
 extern long long sampling_threshold;
 
@@ -289,6 +290,8 @@ extern int gbl_osql_check_replicant_numops;
 extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
+
+int gbl_debug_tmptbl_corrupt_mem;
 
 /*
   =========================================================

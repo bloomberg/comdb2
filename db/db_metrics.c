@@ -76,6 +76,8 @@ struct comdb2_metrics_store {
     double handle_buf_queue_time;
     int64_t denied_appsock_connections;
     int64_t locks;
+    int64_t temptable_created;
+    int64_t temptable_create_reqs;
     int64_t temptable_spills;
     int64_t net_drops;
     int64_t net_queue_size;
@@ -203,8 +205,14 @@ comdb2_metric gbl_metrics[] = {
      &stats.denied_appsock_connections, NULL},
     {"locks", "Number of currently held locks", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.locks, NULL},
+    {"temptable_created", "Number of temporary tables created",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.temptable_created, NULL},
+    {"temptable_create_requests", "Number of create temporary table requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.temptable_create_reqs, NULL},
     {"temptable_spills",
-     "Number of temptables that had to be spilled to disk-backed tables",
+     "Number of temporary tables that had to be spilled to disk-backed tables",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.temptable_spills, NULL},
     {"net_drops",
@@ -425,6 +433,8 @@ int refresh_metrics(void)
     stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
     if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
         stats.locks = 0;
+    stats.temptable_created = gbl_temptable_created;
+    stats.temptable_create_reqs = gbl_temptable_create_reqs;
     stats.temptable_spills = gbl_temptable_spills;
 
     struct net_stats net_stats;
