@@ -4900,6 +4900,12 @@ static void comdb2AddIndexInt(
         char *where_clause;
         size_t where_sz;
 
+        if (gbl_noenv_messages == 0) {
+            extern int gbl_noenv_messages;
+            setError(pParse, SQLITE_ERROR, "Partial index not enabled");
+            goto cleanup;
+        }
+
         where_sz = zEnd - zStart;
         assert(where_sz > 0);
         where_clause = comdb2_strndup(ctx->mem, zStart, where_sz + 1);

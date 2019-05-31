@@ -860,6 +860,13 @@ void sqlite3Insert(
   }
 #ifndef SQLITE_OMIT_UPSERT
   if( pUpsert ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int gbl_noenv_messages;
+    if (gbl_noenv_messages == 0) {
+      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
+      goto insert_cleanup;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( IsVirtual(pTab) ){
       sqlite3ErrorMsg(pParse, "UPSERT not implemented for virtual table \"%s\"",
               pTab->zName);
