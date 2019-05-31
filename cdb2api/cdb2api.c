@@ -1419,6 +1419,17 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     return 0;
 }
 
+static void set_cdb2_timeouts (cdb2_hndl_tp *hndl) {
+        if (!hndl->api_call_timeout)
+            hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
+        if (!hndl->connect_timeout)
+            hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
+        if (!hndl->comdb2db_timeout)
+            hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
+        if (!hndl->socket_timeout)
+            hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
+}
+
 /* Read all available comdb2 configuration files.
    The function returns -1 if the config file path is longer than PATH_MAX;
    returns 0 otherwise. */
@@ -1558,15 +1569,6 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             return rc;
         if (master)
             *master = -1;
-
-        if (!hndl->api_call_timeout)
-            hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
-        if (!hndl->connect_timeout)
-            hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
-        if (!hndl->comdb2db_timeout)
-            hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
-        if (!hndl->socket_timeout)
-            hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
     }
 
     if (dbinfo_or_dns) {
@@ -5396,10 +5398,11 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config()
+static inline void only_read_config(cdb2_hndl_tp *hndl)
 {
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                                     NULL, NULL);
+    set_cdb2_timeouts(hndl);
 }
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
@@ -5414,13 +5417,13 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 
     if (!cdb2cfg_override) {
         /* Try dbinfo query without any host info. */
+        only_read_config(hndl);
         if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                               hndl->hosts, hndl->ports, &hndl->master,
                               &hndl->num_hosts,
                               &hndl->num_hosts_sameroom) == 0) {
             /* We get a plaintext socket from sockpool.
                We still need to read SSL config */
-            only_read_config();
             return 0;
         }
     }
@@ -5650,7 +5653,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config();
+    only_read_config(hndl);
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -6030,7 +6033,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        only_read_config();
+        only_read_config(hndl);
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
@@ -6057,7 +6060,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
     }
-
 #if WITH_SSL
     if (rc == 0) {
         rc = set_up_ssl_params(hndl);
