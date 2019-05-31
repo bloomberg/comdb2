@@ -129,14 +129,32 @@ cleanup_cluster() {
     fi
 }
 
-flush_node() {
+flush_and_exit_node() {
     local node=$1
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
     sleep 1
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("exit")' &
-    sleep 10
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("exit")'
+}
+
+
+# wait for exiting for up to N seconds
+wait_for_exit_pid_list() {
+    let TTL=$((SECONDS+$1))
+    shift
+    for pid in $# ; do
+        while :; do
+            if [ $TTL -lt $SECONDS ] ; then
+                return
+            fi
+
+            kill -0 $pid
+            if [ $? -eq 0 ] ; then
+                break
+            fi
+        done
+    done
 }
 
 
@@ -159,13 +177,15 @@ unsetup_db() {
 
 
     if [[ -z "$CLUSTER" ]]; then
-        flush_node localhost
+        flush_and_exit_node  localhost
+        wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.pid
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
     else
         pidfilelist=""
 
         for node in $CLUSTER; do
-            flush_node $node &
+            flush_and_exit_node  $node &
+            wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.${node}.pid
             build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
         done
         wait
@@ -173,6 +193,7 @@ unsetup_db() {
         # for clustered, killing ssh session which is running comdb2 cmd 
         # will kill server on that node
         if [ -n "$pidfilelist" ] ; then
+            wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.pid
             echo "killing $pidfilelist"
             kill -9 $pidfilelist
         fi
