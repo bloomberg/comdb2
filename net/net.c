@@ -3505,7 +3505,8 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
     for (i = 0; i < *numhosts; i++) {
         int *p_port = (ports + i);
         p_buf = (uint8_t *)buf_get(p_port, sizeof(int), p_buf, p_buf_end);
-        /* older comdb2 will not handle mangled ports and might hello us back unmasked values */ 
+        /* older comdb2 will not handle mangled ports and might hello us back
+         * unmasked values */
         p_port[0] &= 0x0ffff;
     }
 
