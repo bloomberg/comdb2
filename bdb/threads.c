@@ -60,6 +60,7 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     unsigned count = 0;
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
+    ATOMIC_ADD(gbl_thread_count, 1);
     while (!db_is_stopped()) {
         ++count;
         if (repinfo->master_host != repinfo->myhost) { // not master
@@ -75,6 +76,7 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
 
         poll(NULL, 0, pollms);
     }
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -110,6 +112,7 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
 
+    ATOMIC_ADD(gbl_thread_count, 1);
     while (!db_is_stopped()) {
         BDB_READLOCK("memp_trickle_thread");
 
@@ -139,6 +142,7 @@ void *memp_trickle_thread(void *arg)
 
     bdb_thread_event(bdb_state, 0);
     logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -221,6 +225,7 @@ void *master_lease_thread(void *arg)
     thread_started("bdb master lease");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped() &&
            (lease_time = bdb_state->attr->master_lease) != 0) {
@@ -241,6 +246,7 @@ void *master_lease_thread(void *arg)
     have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
     Pthread_mutex_unlock(&lk);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -268,6 +274,7 @@ void *coherency_lease_thread(void *arg)
     thread_started("bdb coherency lease");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped() &&
            (lease_time = bdb_state->attr->coherency_lease)) {
@@ -319,6 +326,7 @@ void *coherency_lease_thread(void *arg)
     have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
     Pthread_mutex_unlock(&lk);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -334,6 +342,7 @@ void *logdelete_thread(void *arg)
 
     bdb_thread_event(bdb_state, 1);
     time_t last_run_time = 0;
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
         time_t now = time(NULL);
@@ -349,6 +358,7 @@ void *logdelete_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
     bdb_thread_event(bdb_state, 0);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -382,7 +392,6 @@ void *checkpoint_thread(void *arg)
         Pthread_mutex_unlock(&lk);
         return NULL;
     }
-    ATOMIC_ADD(gbl_thread_count, 1);
     have_checkpoint_thd = 1;
     Pthread_mutex_unlock(&lk);
 
@@ -396,6 +405,7 @@ void *checkpoint_thread(void *arg)
         sleep(1);
 
     bdb_thread_event(bdb_state, 1);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
         BDB_READLOCK("checkpoint_thread");
