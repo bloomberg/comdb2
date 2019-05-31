@@ -1569,6 +1569,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             return rc;
         if (master)
             *master = -1;
+        set_cdb2_timeouts(hndl);
     }
 
     if (dbinfo_or_dns) {
