@@ -22,21 +22,9 @@
 
 /*#define PTHREAD_USERFUNC*/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <string.h>
-#include <errno.h>
-#include <time.h>
-#include <alloca.h>
-#include <ctrace.h>
-
 #include <netdb.h>
 #include <unistd.h>
 #include <signal.h>
-#include <string.h>
-#include <pthread.h>
-#include "thread_util.h"
 
 #ifdef __DGUX__
 #include <siginfo.h>
@@ -45,30 +33,21 @@
 #include <siginfo.h>
 #endif
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-
-#include <arpa/inet.h>
-#include <sys/socket.h>
 #ifdef _AIX
 #include <sys/socketvar.h>
 #endif
-#include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <pwd.h>
-#include <dirent.h>
 #include <utime.h>
 #include <sys/time.h>
 #include <poll.h>
 
 #include <bb_oscompat.h>
 #include <compat.h>
-
 #include <pool.h>
-#include <dlmalloc.h>
-#include <plhash.h>
 #include <assert.h>
+#include <crc32c.h>
+
 
 #include "locks_wrap.h"
 #include "net.h"
@@ -81,29 +60,19 @@
 
 #include <endian_core.h>
 #include <compile_time_assert.h>
-
 #include <portmuxusr.h>
-
 #include <epochlib.h>
 #include <str0.h>
 
 #include <util.h>
-#include <sched.h>
-#include <cdb2_constants.h>
 #include "intern_strings.h"
-
-#include <fsnapf.h>
-
-#include "rtcpu.h"
 
 #include "mem_net.h"
 #include "mem_override.h"
 #include <bdb_net.h>
 
 #include "debug_switches.h"
-#include "perf.h"
-
-#include <crc32c.h>
+#include "comdb2_atomic.h"
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -115,6 +84,7 @@ static int curr_udp_cnt = 0;
 extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
+extern int gbl_thread_count;
 
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
@@ -5984,6 +5954,7 @@ static void *heartbeat_send_thread(void *arg)
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!netinfo_ptr->exiting) {
         /* netinfo lock protects the list AND the write_heartbeat call
@@ -6007,6 +5978,7 @@ static void *heartbeat_send_thread(void *arg)
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
 
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -6197,6 +6169,8 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
+    ATOMIC_ADD(gbl_thread_count, 1);
+
     while (!netinfo_ptr->exiting) {
         int now;
         /* Re-register under portmux if it's time */
@@ -6268,6 +6242,7 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
 
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 

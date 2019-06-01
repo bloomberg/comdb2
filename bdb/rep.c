@@ -5250,7 +5250,7 @@ void *watcher_thread(void *arg)
 
         if (db_is_stopped()) {
             stopped_count++;
-            /* we have alarm for 5min or something
+            /* we have alarm for 5min or so, thus this is unnecessary
             if (stopped_count > 30) {
                 logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
                        __func__, stopped_count);

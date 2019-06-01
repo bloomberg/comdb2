@@ -489,7 +489,7 @@ static void *udp_reader(void *arg)
     static time_t lastpr = 0;
     time_t now;
 
-    while (1) {
+    while (!db_is_stopped()) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
