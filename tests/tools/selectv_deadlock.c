@@ -30,7 +30,7 @@ int timelimit = 600;
 int numrecs = 100000;
 int contention = 0;
 int stop_flag = 0;
-int contention_interval = 20;
+int contention_interval = 60;
 int do_insert = 0;
 int64_t updates_this_segment;
 FILE *errlog = NULL;
@@ -134,7 +134,7 @@ void *run_test(void *x)
         int64_t instid;
         cdb2_clearbindings(hndl);
         cdb2_bind_param(hndl, "instid", CDB2_INTEGER, &instid, sizeof(instid));
-        for (int i = 0; i < (do_contention ? 1 : limit); i++) {
+        for (int i = 0; i < (do_contention ? limit : 1); i++) {
             instid = instids[i];
             if ((rc = cdb2_run_statement(hndl, "update schedule set state = state + 1 where "
                     "instid = @instid")) != 0) {
