@@ -1,6 +1,6 @@
 nowatch
 logmsg level user
-maxosqltransfer 400000
+maxosqltransfer 1000000
 enable_new_snapshot
 enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1

@@ -6,9 +6,10 @@ export debug=1
 
 export myhost=$(hostname)
 export selectv_deadlock=${TESTSBUILDDIR}/selectv_deadlock
-export threads=10
+export threads=8
 export timelimit=600
 export numrecs=100000
+export updatespertxn=4000
 
 function write_prompt
 {
@@ -37,7 +38,7 @@ function run_tests
 {
     typeset func="run_tests"
     start=$(date +%s)
-    $selectv_deadlock -d $DBNAME -T $threads -I -R $numrecs -m $timelimit -c $CDB2_CONFIG
+    $selectv_deadlock -d $DBNAME -T $threads -I -R $numrecs -m $timelimit -l $updatespertxn -c $CDB2_CONFIG
     export r=$?
     stop=$(date +%s)
     [[ $r != 0 ]] && failexit $func "selectv_deadlock test failed"

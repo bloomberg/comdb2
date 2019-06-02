@@ -25,7 +25,7 @@ char *cltype = "default";
 int numthds = 10;
 int verbose = 0;
 int debug_trace = 0;
-int limit = 1000;
+int limit = 2000;
 int timelimit = 600;
 int numrecs = 100000;
 int contention = 0;
@@ -146,7 +146,7 @@ void *run_test(void *x)
 
         cdb2_clearbindings(hndl);
         if ((rc = cdb2_run_statement(hndl, "COMMIT")) != 0) {
-            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1) { 
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1 && rc != 203) { 
                 fprintf(stderr, "%s error running COMMIT: %d, %s\n", __func__,
                         rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
@@ -157,7 +157,7 @@ void *run_test(void *x)
         while ((rc = cdb2_next_record(hndl)) == CDB2_OK)
             ;
         if (rc != CDB2_OK_DONE) {
-            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1) { 
+            if (rc != -103 && rc != 4 && rc != 2 && rc != 210 && rc != -1 && rc != 203) { 
                 fprintf(stderr, "%s error running COMMIT line %d: %d, %s\n",
                         __func__, __LINE__, rc, cdb2_errstr(hndl));
                 EXIT(__func__, __LINE__, 1);
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
     pthread_t *thds = NULL;
     argv0 = argv[0];
     setvbuf(stdout, NULL, _IOLBF, 0);
-    while ((c = getopt(argc, argv, "d:T:t:Ic:hR:Dvm:")) != EOF) {
+    while ((c = getopt(argc, argv, "d:T:t:Ic:hR:Dvm:l:")) != EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
@@ -382,6 +382,9 @@ int main(int argc, char *argv[])
             case 'R':
                 numrecs = atoi(optarg);
                 break;
+            case 'l':
+                limit = atoi(optarg);
+       	        break;
             case 'c':
                 cdb2_set_comdb2db_config(optarg);
                 break;
@@ -438,6 +441,8 @@ int main(int argc, char *argv[])
         printf("%"PRId64" updates, %s contention\n", updates,
                 contention ? "enabling" : "disabling");
     }
+
+    stop_flag = 1;
 
     for(int i = 0; i < numthds; i++) {
         pthread_join(thds[i], NULL);
