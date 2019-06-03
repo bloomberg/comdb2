@@ -3142,7 +3142,7 @@ static int temptable_free(void *obj, void *arg)
             ATOMIC_ADD(gbl_sql_temptable_count, -1);
         } else {
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
-                   __func__, tbl, rc);
+                   __func__, tmp->tbl, rc);
         }
     }
     free(tmp);
@@ -3848,7 +3848,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             ATOMIC_ADD(gbl_sql_temptable_count, -1);
         } else {
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
-                   __func__, tbl, rc);
+                   __func__, tmp->tbl, rc);
         }
     }
     hash_del(pBt->temp_tables, tmp);
