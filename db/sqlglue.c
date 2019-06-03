@@ -3137,8 +3137,13 @@ static int temptable_free(void *obj, void *arg)
     Btree *pBt = arg;
     if (tmp->owner == pBt) {
         int bdberr;
-        bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
-        ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        if (rc == 0) {
+            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
+                   __func__, tbl, rc);
+        }
     }
     free(tmp);
     return 0;
@@ -3838,8 +3843,13 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
     struct temptable *tmp = hash_find(pBt->temp_tables, &iTable);
     if (tmp->owner == pBt) {
         int bdberr;
-        bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
-        ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        if (rc == 0) {
+            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
+                   __func__, tbl, rc);
+        }
     }
     hash_del(pBt->temp_tables, tmp);
     free(tmp);
@@ -6174,7 +6184,8 @@ skip:
             rc = bdb_temp_table_close_cursor(
                 thedb->bdb_env, pCur->sampled_idx->cursor, &bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "bdb_temp_table_close_cursor rc %d\n", bdberr);
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
+                       __func__, bdberr);
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
