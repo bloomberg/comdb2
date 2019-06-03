@@ -2,6 +2,7 @@ package com.bloomberg.comdb2.jdbc;
 
 import java.sql.*;
 import java.util.logging.*;
+import java.util.*;
 import org.junit.*;
 import org.junit.Assert.*;
 
@@ -60,5 +61,15 @@ public class TimeoutTest {
         rs.close();
         stmt.close();
         conn.close();
+
+        /* De-register myself from the driver manager to not interfere with other tests. */
+        Enumeration<java.sql.Driver> drivers = DriverManager.getDrivers();
+        while (drivers.hasMoreElements()) {
+            java.sql.Driver driver = drivers.nextElement();
+            if (!(driver instanceof com.bloomberg.system.comdb2.jdbc.Driver)) {
+                DriverManager.deregisterDriver(driver);
+                break;
+            }
+        }
     }
 }
