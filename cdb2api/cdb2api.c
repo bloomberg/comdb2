@@ -90,8 +90,17 @@ static int CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
 #define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 2
 static int CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
 
-#define COMDB2DB_TIMEOUT_DEFAULT 500
+#define COMDB2DB_TIMEOUT_DEFAULT 2000
 static int COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+
+#define CDB2_API_CALL_TIMEOUT_DEFAULT 120000 /* defaults to 2 minute */
+static int CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+
+#define CDB2_SOCKET_TIMEOUT_DEFAULT 5000
+static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+
+#define CDB2_POLL_TIMEOUT_DEFAULT 250
+static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
 #define CDB2_TCPBUFSZ_DEFAULT 0
 static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
@@ -270,6 +279,9 @@ static void reset_the_configuration(void)
     MAX_RETRIES = MAX_RETRIES_DEFAULT;
     MIN_RETRIES = MIN_RETRIES_DEFAULT;
     CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
+    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+    CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
     COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
     cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
@@ -993,6 +1005,10 @@ struct cdb2_hndl {
     int send_stack;
     void *user_arg;
     int gbl_event_version; /* Cached global event version */
+    int api_call_timeout;
+    int connect_timeout;
+    int comdb2db_timeout;
+    int socket_timeout;
     cdb2_event events;
 };
 
@@ -1234,16 +1250,32 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                     CDB2_PORTMUXPORT = atoi(tok);
             } else if (strcasecmp("connect_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
-                if (tok)
+                if (hndl && tok)
+                    hndl->connect_timeout = atoi(tok);
+                else if (tok)
                     CDB2_CONNECT_TIMEOUT = atoi(tok);
+            } else if (strcasecmp("api_call_timeout", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl && tok)
+                    hndl->api_call_timeout = atoi(tok);
+                else if (tok)
+                    CDB2_API_CALL_TIMEOUT = atoi(tok);
             } else if (strcasecmp("auto_consume_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_AUTO_CONSUME_TIMEOUT_MS = atoi(tok);
             } else if (strcasecmp("comdb2db_timeout", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
-                if (tok)
+                if (hndl && tok)
+                    hndl->comdb2db_timeout = atoi(tok);
+                else if (tok)
                     COMDB2DB_TIMEOUT = atoi(tok);
+            } else if (strcasecmp("socket_timeout", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl && tok)
+                    hndl->socket_timeout = atoi(tok);
+                else if (tok)
+                    CDB2_SOCKET_TIMEOUT = atoi(tok);
             } else if (strcasecmp("comdb2dbname", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1387,6 +1419,18 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     return 0;
 }
 
+static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
+{
+    if (!hndl->api_call_timeout)
+        hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
+    if (!hndl->connect_timeout)
+        hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
+    if (!hndl->comdb2db_timeout)
+        hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
+    if (!hndl->socket_timeout)
+        hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
+}
+
 /* Read all available comdb2 configuration files.
    The function returns -1 if the config file path is longer than PATH_MAX;
    returns 0 otherwise. */
@@ -1526,6 +1570,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             return rc;
         if (master)
             *master = -1;
+        set_cdb2_timeouts(hndl);
     }
 
     if (dbinfo_or_dns) {
@@ -2143,7 +2188,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     debugprint("name %s\n", name);
 
     fd = cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0,
-                             CDB2_CONNECT_TIMEOUT);
+                             hndl->connect_timeout);
     if (fd < 0)
         return -1;
     ss = sbuf2open(fd, 0);
@@ -2222,7 +2267,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
 
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
-            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, CDB2_CONNECT_TIMEOUT);
+            fd =
+                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    hndl->dbname);
@@ -2240,7 +2286,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
         sbuf2flush(sb);
     }
 
-    sbuf2settimeout(sb, 5000, 5000);
+    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
 #if WITH_SSL
     if (try_ssl(hndl, sb, node_indx) != 0) {
@@ -2318,7 +2364,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     debugprint("name %s\n", name);
 
     fd = cdb2_tcpconnecth_to(hndl, remote_host, CDB2_PORTMUXPORT, 0,
-                             CDB2_CONNECT_TIMEOUT);
+                             hndl->connect_timeout);
     if (fd < 0) {
         debugprint("cdb2_tcpconnecth_to returns fd=%d'\n", fd);
         snprintf(
@@ -2340,7 +2386,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
         port = -1;
         goto after_callback;
     }
-    sbuf2settimeout(ss, CDB2_CONNECT_TIMEOUT, CDB2_CONNECT_TIMEOUT);
+    sbuf2settimeout(ss, hndl->connect_timeout, hndl->connect_timeout);
     sbuf2printf(ss, "get %s\n", name);
     sbuf2flush(ss);
     res[0] = '\0';
@@ -4114,6 +4160,10 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     hndl->retry_all = 1;
     int run_last = 1;
 
+    time_t max_time =
+        time(NULL) + (hndl->api_call_timeout - hndl->connect_timeout) / 1000;
+    if (max_time < 0)
+        max_time = 0;
 retry_queries:
     debugprint(
         "retry_queries: hndl->host=%d (%s)\n", hndl->connected_host,
@@ -4123,12 +4173,18 @@ retry_queries:
 
     retries_done++;
 
+    int tmsec = 0;
+
+    if (!hndl->sb && (retries_done > hndl->num_hosts)) {
+        tmsec = (retries_done - hndl->num_hosts) * 100;
+    }
 #if WITH_SSL
     if (hndl->sslerr != 0)
         PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
 #endif
 
-    if (retries_done > hndl->max_retries) {
+    if ((retries_done > 1) && ((retries_done > hndl->max_retries) ||
+                               ((time(NULL) + (tmsec / 1000)) >= max_time))) {
         sprintf(hndl->errstr, "%s: Maximum number of retries done.", __func__);
         if (is_hasql_commit) {
             cleanup_query_list(hndl, commit_query_list, __LINE__);
@@ -5022,7 +5078,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
-            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, CDB2_CONNECT_TIMEOUT);
+            fd =
+                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    comdb2db_name);
@@ -5053,7 +5110,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
 
         return -1;
     }
-    sbuf2settimeout(ss, 5000, 5000);
+    sbuf2settimeout(ss, hndl->socket_timeout, hndl->socket_timeout);
     if (is_sockfd == 0) {
         if (hndl->is_admin)
             sbuf2printf(ss, "@");
@@ -5212,7 +5269,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                 rc = -1;
                 goto after_callback;
             }
-            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, CDB2_CONNECT_TIMEOUT);
+            fd =
+                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication", dbname);
             debugprint("cdb2portmux_route fd=%d'\n", fd);
@@ -5247,7 +5305,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         }
     }
 
-    sbuf2settimeout(sb, COMDB2DB_TIMEOUT, COMDB2DB_TIMEOUT);
+    sbuf2settimeout(sb, hndl->comdb2db_timeout, hndl->comdb2db_timeout);
 
     CDB2QUERY query = CDB2__QUERY__INIT;
 
@@ -5342,10 +5400,11 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config()
+static inline void only_read_config(cdb2_hndl_tp *hndl)
 {
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                                     NULL, NULL);
+    set_cdb2_timeouts(hndl);
 }
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
@@ -5360,13 +5419,13 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 
     if (!cdb2cfg_override) {
         /* Try dbinfo query without any host info. */
+        only_read_config(hndl);
         if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                               hndl->hosts, hndl->ports, &hndl->master,
                               &hndl->num_hosts,
                               &hndl->num_hosts_sameroom) == 0) {
             /* We get a plaintext socket from sockpool.
                We still need to read SSL config */
-            only_read_config();
             return 0;
         }
     }
@@ -5412,13 +5471,20 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
     }
 
+    time_t max_time =
+        time(NULL) +
+        (hndl->api_call_timeout - (CDB2_POLL_TIMEOUT + hndl->connect_timeout)) /
+            1000;
+    if (max_time < 0)
+        max_time = 0;
 retry:
     if (rc) {
-        if (num_retry >= MAX_RETRIES)
+        if (num_retry >= MAX_RETRIES || time(NULL) > max_time)
             return rc;
 
         num_retry++;
-        poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
+        poll(NULL, 0, CDB2_POLL_TIMEOUT); // Sleep for 250ms everytime and total
+                                          // of 5 seconds
         rc = 0;
     }
     debugprint("num_retry=%d hndl->num_hosts=%d num_comdb2db_hosts=%d\n",
@@ -5431,7 +5497,7 @@ retry:
                     hndl, cdb2_default_cluster, comdb2db_name, comdb2db_num,
                     comdb2db_hosts[i], comdb2db_hosts, comdb2db_ports, &master,
                     &num_comdb2db_hosts, NULL);
-                if (rc == 0) {
+                if (rc == 0 || time(NULL) >= max_time) {
                     break;
                 }
             }
@@ -5449,11 +5515,11 @@ retry:
                                       hndl->hosts, &hndl->num_hosts,
                                       hndl->dbname, hndl->cluster, &hndl->dbnum,
                                       &hndl->num_hosts_sameroom, num_retry);
-            if (rc == 0) {
+            if (rc == 0 || time(NULL) >= max_time) {
                 break;
             }
         }
-        if (rc == -1) {
+        if (rc == -1 && time(NULL) < max_time) {
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master],
                 comdb2db_ports[master], hndl->hosts, &hndl->num_hosts,
@@ -5589,7 +5655,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config();
+    only_read_config(hndl);
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -5969,7 +6035,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        only_read_config();
+        only_read_config(hndl);
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {
@@ -5996,7 +6062,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
     }
-
 #if WITH_SSL
     if (rc == 0) {
         rc = set_up_ssl_params(hndl);
