@@ -943,10 +943,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         // other instead of relatively expensive memcpy()
         od_dta = old_dta;
     } else {
-        rc = ix_find_by_rrn_and_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
+        rc = ix_load_for_write_by_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
                                            od_len, trans);
         if (iq->debug)
-            reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
+            reqprintf(iq, "ix_load_for_write_by_genid_tran RRN %d GENID 0x%llx "
                           "DTALEN %zu FNDLEN %d RC %d",
                       rrn, vgenid, od_len, fndlen, rc);
     }
@@ -1580,10 +1580,10 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
         genid = fndgenid;
     } else {
-        rc = ix_find_by_rrn_and_genid_tran(iq, rrn, genid, od_dta, &fndlen,
+        rc = ix_load_for_write_by_genid_tran(iq, rrn, genid, od_dta, &fndlen,
                                            od_len, trans);
         if (iq->debug)
-            reqprintf(iq, "ix_find_by_rrn_and_genid_tran RRN %d GENID 0x%llx "
+            reqprintf(iq, "ix_load_for_write_by_genid_tran RRN %d GENID 0x%llx "
                           "DTALEN %zu FNDLEN %u RC %d",
                       rrn, genid, od_len, fndlen, rc);
     }
