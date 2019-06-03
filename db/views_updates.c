@@ -157,7 +157,7 @@ char *_views_create_update_trigger_query(timepart_view_t *view,
 
     for (i = 0; i < view->nshards; i++) {
         tmp_str = sqlite3_mprintf(
-            "%s\nUPDATE \"%w\" SET \"%w\" where rowid=old.__hidden__rowid;", ret_str,
+            "%s\nUPDATE \"%w\" SET %s where rowid=old.__hidden__rowid;", ret_str,
             view->shards[i].tblname, cols_str);
         sqlite3_free(ret_str);
         ret_str = tmp_str;
