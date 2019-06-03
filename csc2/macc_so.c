@@ -27,6 +27,7 @@
 
 #include <strbuf.h>
 #include <logmsg.h>
+#include "str0.h"
 
 extern int yyparse(void);
 extern int compute_key_data(void);
@@ -977,7 +978,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
                 return;
             }
         }
-        strncpy(keys[ii]->keytag, tag, sizeof(keys[ii]->keytag));
+        strncpy0(keys[ii]->keytag, tag, sizeof(keys[ii]->keytag));
     } else {
         sprintf(keys[ii]->keytag, "DEFAULT_ix_%d", ix);
     }
@@ -2393,8 +2394,8 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     sprintf(fullname, "%s_%s", dbname, tablename);
     opt_dbname = fullname;
     opt_copycsc = 0;
-    strncpy(opt_maindbname, dbname, sizeof(opt_maindbname));
-    strncpy(opt_tblname, tablename, sizeof(opt_tblname));
+    strncpy0(opt_maindbname, dbname, sizeof(opt_maindbname));
+    strncpy0(opt_tblname, tablename, sizeof(opt_tblname));
 
     /* check args for an input filename or any options */
     if (schematxt) {

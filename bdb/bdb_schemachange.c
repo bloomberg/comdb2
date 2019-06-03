@@ -222,7 +222,7 @@ retry:
 }
 
 static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
-                   int wait, int *bdberr)
+                   int wait, const char *origtable, int *bdberr)
 {
     DBT *dtbl = NULL;
     if (tbl) {
@@ -230,6 +230,16 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
         bzero(dtbl, sizeof(DBT));
         dtbl->data = tbl;
         dtbl->size = strlen(tbl) + 1;
+        if (sctype == rename_table) {
+            assert(origtable);
+            int origlen = strlen(origtable) + 1;
+            int len = dtbl->size + origlen;
+            char *mashup = alloca(len);
+            memcpy(mashup, origtable, origlen);
+            memcpy(mashup + origlen, dtbl->data, dtbl->size);
+            dtbl->data = mashup;
+            dtbl->size = len;
+        }
     }
 
     DBT dtype = {0};
@@ -292,30 +302,37 @@ int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
     ++gbl_dbopen_gen;
-    return do_llog(bdb_state, type, bdb_state->name, wait, bdberr);
+    return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
+}
+
+int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
+                             const char *origtable, int *bdberr)
+{
+    ++gbl_dbopen_gen;
+    return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
 }
 
 int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
     ATOMIC_ADD(gbl_analyze_gen, 1);
-    return do_llog(bdb_state, sc_analyze, NULL, wait, bdberr);
+    return do_llog(bdb_state, sc_analyze, NULL, wait, NULL, bdberr);
 }
 
 int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait, int *bdberr)
 {
     ++gbl_views_gen;
-    return do_llog(bdb_state, views, name, wait, bdberr);
+    return do_llog(bdb_state, views, name, wait, NULL, bdberr);
 }
 
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
-    return do_llog(bdb_state, luareload, NULL, wait, bdberr);
+    return do_llog(bdb_state, luareload, NULL, wait, NULL, bdberr);
 }
 
 int bdb_llog_luafunc(bdb_state_type *bdb_state, scdone_t type, int wait,
                      int *bdberr)
 {
-    return do_llog(bdb_state, type, bdb_state->name, wait, bdberr);
+    return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
 }
 
 extern int gbl_rowlocks;
@@ -339,7 +356,7 @@ int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
         gbl_rowlocks = 1;
     else
         gbl_rowlocks = 0;
-    rc = do_llog(bdb_state, type, NULL, 0, bdberr);
+    rc = do_llog(bdb_state, type, NULL, 0, NULL, bdberr);
     return rc;
 }
 
@@ -362,7 +379,7 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
     }
 
     bdb_genid_set_format(bdb_state, format);
-    rc = do_llog(bdb_state, type, NULL, 0, bdberr);
+    rc = do_llog(bdb_state, type, NULL, 0, NULL, bdberr);
     return rc;
 }
 

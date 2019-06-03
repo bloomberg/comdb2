@@ -147,7 +147,7 @@ int flibc_snprintf_dbl(char *p_str, const size_t str_buf_len, double d)
 /*for(i = 0; i < sizeof(test_fixup_cases) / sizeof(test_fixup_cases[0]); ++i)*/
 /*{*/
 /*char str_buf[128];*/
-/*strncpy(str_buf, test_fixup_cases[i][0], sizeof(str_buf));*/
+/*strncpy(str_buf, test_fixup_cases[i][0], sizeof(str_buf) - 1);*/
 
 /*|+ do fixup +|*/
 /*if(fixup_sigfigs_real_cstr(str_buf, sizeof(str_buf)))*/

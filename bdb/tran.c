@@ -989,13 +989,12 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
     bdb_osql_trn_repo_lock();
     iirc = update_shadows_beforecommit(
         bdb_state, &tran->logical_tran->last_logical_lsn, NULL, 1);
+    bdb_osql_trn_repo_unlock();
     if (iirc) {
         logmsg(LOGMSG_ERROR, "%s:update_shadows_beforecommit returns %d\n", __func__,
                 iirc);
-        bdb_osql_trn_repo_unlock();
         return -1;
     }
-    bdb_osql_trn_repo_unlock();
 
     /* Update last committed logical lsn */
     tran->logical_tran->last_physical_commit_lsn =
@@ -1606,13 +1605,13 @@ static int bdb_tran_commit_with_seqnum_int_int(
                    sizeof(DB_LSN));
 
             if (iirc) {
+                tran->tid->abort(tran->tid);
+                bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, 
                         "%s:%d failed to log logical commit, rc %d\n", __func__,
                        __LINE__, iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
-                tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
 
@@ -1623,12 +1622,12 @@ static int bdb_tran_commit_with_seqnum_int_int(
             }
 
             if (iirc) {
+                tran->tid->abort(tran->tid);
+                bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, 
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
-                tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
                 return -1;
             }
 

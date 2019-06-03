@@ -943,8 +943,7 @@ struct dbenv {
     /* stupid - is the purge_old_blkseq thread running? */
     int purge_old_blkseq_is_running;
     int purge_old_files_is_running;
-    int exiting; /* are we exiting? */
-    int stopped; /* if set, drop requests */
+    int stopped; /* set when exiting -- if set, drop requests */
     int no_more_sql_connections;
 
     LISTC_T(struct sql_thread) sql_threads;
@@ -1516,8 +1515,9 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
-extern const char *const gbl_db_build_name;
-extern const char *const gbl_db_release_name;
+extern const char gbl_db_version[];
+extern const char gbl_db_semver[];
+extern const char gbl_db_codename[];
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_verbose_toblock_backouts;
@@ -3604,6 +3604,8 @@ const char *thrman_get_where(struct thr_handle *thr);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;

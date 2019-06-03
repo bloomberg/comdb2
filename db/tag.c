@@ -2188,8 +2188,8 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
 
     if (tzname) {
         if (tzname[0]) {
-            strncpy(tzopts1.tzname, tzname, sizeof(tzopts1.tzname));
-            strncpy(tzopts2.tzname, tzname, sizeof(tzopts2.tzname));
+            strncpy0(tzopts1.tzname, tzname, sizeof(tzopts1.tzname));
+            strncpy0(tzopts2.tzname, tzname, sizeof(tzopts2.tzname));
         } else {
             tzname = NULL;
         }
@@ -2921,7 +2921,7 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
                     memcpy(&tzopts, &from_field->convopts,
                            sizeof(struct field_conv_opts));
                     tzopts.flags |= FLD_CONV_TZONE;
-                    strncpy(tzopts.tzname, tzname, sizeof(tzopts.tzname));
+                    strncpy0(tzopts.tzname, tzname, sizeof(tzopts.tzname));
 
                     /* The client data is little endian. */
                     if (flags & CONVERT_LITTLE_ENDIAN_CLIENT)
@@ -3378,7 +3378,7 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
 
                     if (tzname && tzname[0]) {
                         tzopts.flags |= FLD_CONV_TZONE;
-                        strncpy(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
+                        strncpy0(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
 
                         rc = SERVER_to_CLIENT(
                             from_field->out_default,
@@ -3424,7 +3424,7 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
                            from_field->len - rec_srt_off);
                 if (tzname && tzname[0]) {
                     tzopts.flags |= FLD_CONV_TZONE;
-                    strncpy(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
+                    strncpy0(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
 
                     rc = SERVER_to_CLIENT(
                         inbuf + from_field->offset, field_len, from_field->type,
@@ -4013,7 +4013,7 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
         bzero(&tzopts, sizeof(tzopts));
         memcpy(&tzopts, &to_field->convopts, sizeof(struct field_conv_opts));
         tzopts.flags |= FLD_CONV_TZONE;
-        strncpy(tzopts.tzname, tzname, sizeof(tzopts.tzname));
+        strncpy0(tzopts.tzname, tzname, sizeof(tzopts.tzname));
 
         rc = SERVER_to_SERVER(inbuf + from_field->offset, from_field->len,
                               from_field->type, &from_field->convopts, inblob,

@@ -23,8 +23,6 @@
 #include <memcompare.c>
 #include "comdb2.h"
 #include "bdb_int.h"
-extern const char *const gbl_db_build_name;
-extern const char * const gbl_db_release_name;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -779,10 +777,16 @@ static void comdb2VersionFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[128];
-  sqlite3_snprintf(sizeof(zBuf), zBuf,
-    "%s (%s.%s)", gbl_db_release_name, gbl_db_release_name, gbl_db_build_name);
-  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, gbl_db_version, -1, SQLITE_STATIC);
+}
+
+static void comdb2SemVerFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  sqlite3_result_text(context, gbl_db_semver, -1, SQLITE_STATIC);
 }
 
 extern char * comdb2_get_prev_query_cost();
@@ -807,7 +811,6 @@ static void comdb2HostFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  extern char *gbl_myhostname;
   sqlite3_result_text(context, gbl_myhostname, -1, SQLITE_STATIC);
 }
 
@@ -2532,6 +2535,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
     FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
     FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
+    FUNCTION(comdb2_semver,         0, 0, 0, comdb2SemVerFunc),
     FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,        2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,           0, 0, 0, comdb2HostFunc),

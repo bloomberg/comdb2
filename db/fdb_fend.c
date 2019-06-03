@@ -1934,6 +1934,14 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
                         12) == 0) {
             goto sqlite_stat4;
         }
+    } else {
+        /* this is the first time we step and locate a table; we
+        will need to position on the current table; given the order
+        chosen {table, stat1, stat4, done}, if table is stat4, we
+        end up skipping stat1.  To fix this, we replace stat4 with
+        stat1 since we will get stat4 after this */
+        if (strncasecmp(zTblName, "sqlite_stat4", 12) == 0)
+            zTblName = "sqlite_stat1";
     }
 
 search:
@@ -3793,12 +3801,15 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         free(msg);
 
         if (gbl_fdb_track) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
-                   comdb2uuidstr((unsigned char *)tran->tid, us), fdb->dbname);
-        } else {
-            logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
-                    *(unsigned long long *)tran->tid, fdb->dbname);
+            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+                uuidstr_t us;
+                logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
+                       comdb2uuidstr((unsigned char *)tran->tid, us),
+                       fdb->dbname);
+            } else {
+                logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
+                       *(unsigned long long *)tran->tid, fdb->dbname);
+            }
         }
     } else {
         if (gbl_fdb_track) {

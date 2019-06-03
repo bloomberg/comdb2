@@ -670,7 +670,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         return EPERM;
     }
 
-    rec = (pooled_object *)hash_find(op->history, &obj);
+    rec = (pooled_object *)hash_find_readonly(op->history, &obj);
     if (rec == NULL) {
         --op->nforcedobjs;
         ++op->nreturns;
