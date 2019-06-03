@@ -939,7 +939,9 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (indx = 0; indx != nidles(op); ++indx) {
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles; ++indx) {
 
         if (reached_min_idle_criteria(op))
             break;
@@ -1007,7 +1009,9 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (cnt = 0; cnt != nidles(op); ++cnt) {
+    int nidles = nidles(op);
+
+    for (cnt = 0; cnt < nidles; ++cnt) {
         if (reached_min_idle_criteria(op))
             break;
 
@@ -1075,7 +1079,9 @@ static void objpool_rand_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (indx = 0; indx != nidles(op) && op->objs[indx] != NULL;) {
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles && op->objs[indx] != NULL;) {
         if (reached_min_idle_criteria(op))
             break;
 
@@ -1123,7 +1129,9 @@ static void objpool_evict_all_int(comdb2_objpool_t op)
 
     Pthread_mutex_lock(&op->data_mutex);
 
-    for (indx = 0; indx != nidles(op); ++indx) {
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles; ++indx) {
         object = op->objs[indx];
         rec = (pooled_object *)hash_find(op->history, &object);
 
