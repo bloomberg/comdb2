@@ -99,6 +99,7 @@ struct osql_sess {
     uint16_t tbl_idx;
     bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
     bool is_reorder_on : 1;
+    hash_t *selectv_genids;
 };
 
 enum {
@@ -294,6 +295,10 @@ void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid,
 int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
+int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl);
+int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, int tbl_idx, 
+            unsigned long long genid), void *wr_arg);
+
 
 /**
  * Terminate a session if the session is not yet completed/dispatched

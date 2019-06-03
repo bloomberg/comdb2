@@ -116,6 +116,12 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
     return rc;
 }
 
+static int free_selectv_genid(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
     osql_sess_t *rq = *prq;
@@ -140,6 +146,9 @@ static void _destroy_session(osql_sess_t **prq, int phase)
         }
 
         queue_free(rq->que);
+        hash_for(rq->selectv_genids, free_selectv_genid, NULL);
+        hash_clear(rq->selectv_genids);
+        hash_free(rq->selectv_genids);
     case 1:
         Pthread_cond_destroy(&rq->cond);
     case 2:
@@ -714,6 +723,12 @@ void osql_sess_setnode(osql_sess_t *sess, char *host) { sess->offhost = host; }
  */
 osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 
+typedef struct selectv_genid {
+    unsigned long long genid;
+    uint16_t tbl_idx;
+    bool get_writelock;
+} selectv_genid_t;
+
 /**
  * Creates an sock osql session and add it to the repository
  * Runs on master node when an initial sorese message is received
@@ -770,6 +785,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
     sess->is_reorder_on = is_reorder_on;
+    sess->selectv_genids = hash_init(offsetof(selectv_genid_t, get_writelock));
 
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
@@ -796,6 +812,66 @@ late_error:
     /* notification of failure to sql thread is handled by caller */
     _destroy_session(&sess, 0);
     return NULL;
+}
+
+int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl) 
+{
+    char *p_buf;
+    int rc = -1;
+    selectv_genid_t *sgenid, fnd = {0};
+    enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+    switch (type) {
+    case OSQL_UPDATE:
+    case OSQL_DELETE:
+    case OSQL_UPDREC:
+    case OSQL_DELREC:
+        p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
+        fnd.tbl_idx = sess->tbl_idx;
+        if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL) {
+            sgenid->get_writelock = 1;
+        }
+        rc = 0;
+        break;
+    case OSQL_RECGENID:
+        p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
+        fnd.tbl_idx = sess->tbl_idx;
+        if (hash_find(sess->selectv_genids, &fnd) == NULL) {
+            sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
+            sgenid->genid = fnd.genid;
+            sgenid->tbl_idx = sess->tbl_idx;
+            sgenid->get_writelock = 0;
+            hash_add(sess->selectv_genids, sgenid);
+        }
+        rc = 0;
+        break;
+    }
+    return rc;
+}
+
+
+typedef struct {
+    int (*wr_sv)(void *, int tbl_idx, unsigned long long genid);
+    void *arg;
+} sv_hf_args;
+
+
+static int process_selectv(void *obj, void *arg)
+{
+    sv_hf_args *hf_args = (sv_hf_args *)arg;
+    selectv_genid_t *sgenid = (selectv_genid_t *)obj;
+    if (sgenid->get_writelock) {
+        return (*hf_args->wr_sv)(hf_args->arg, sgenid->tbl_idx, sgenid->genid);
+    }
+    return 0;
+}
+
+int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, int tbl_idx, 
+            unsigned long long genid), void *wr_selv_arg)
+{
+    sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
+    return hash_for(sess->selectv_genids, process_selectv, &hf_args);
 }
 
 char *osql_sess_tag(osql_sess_t *sess) { return sess->tag; }

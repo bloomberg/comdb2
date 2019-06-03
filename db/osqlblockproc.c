@@ -418,7 +418,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int rc = 0;
+    int rc;
 
     /* apply changes */
     rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
@@ -648,6 +648,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     }
     case OSQL_RECGENID: {
         key->tbl_idx = sess->tbl_idx;
+        /* TODO GET GENID & REORDER */
         break;
     }
     default:
@@ -766,6 +767,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                "Malformed transaction, received duplicated first row");
         abort();
     }
+
+    osql_cache_selectv(type, sess, rpl);
 
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
