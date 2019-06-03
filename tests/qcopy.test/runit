@@ -9,10 +9,13 @@ mkdir $COPYDIR
 export COMDB2AR_AROPTS="-x $COMDB2_EXE"
 $COPYCOMDB2_EXE -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
 cd $COPYDIR
+
+# will start local copy; strip out name and cluster info
 grep -v name ${DBNAME}.lrl | grep -v "cluster nodes" > tmp && mv tmp ${DBNAME}.lrl
 NEWNAME="qcopy$$test"
 echo "name $NEWNAME" >> ${DBNAME}.lrl
 echo creating new db with name $NEWNAME
+source ${TESTDIR}/replicant_vars
 $COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
 echo starting new db $NEWNAME
 $COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
@@ -33,6 +36,7 @@ function exiting {
 
 trap exiting EXIT
 
+# if db does not start, this loop will make test to timeout
 while :; do 
     # cdb2sql may fail if the db isn't up yet
     set +e

@@ -1007,7 +1007,11 @@ void no_new_requests(struct dbenv *dbenv)
 
 int db_is_stopped(void)
 {
-    return thedb->stopped;
+    struct dbenv *d = thedb;
+    if (d) 
+        return d->stopped;
+    else 
+        return 0;
 }
 
 void print_dbsize(void);
