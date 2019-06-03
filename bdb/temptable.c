@@ -1528,8 +1528,10 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             free(tmp);
         }
 
-        tbl->next = bdb_state->temp_list;
-        bdb_state->temp_list = tbl;
+        if (gbl_temptable_pool_capacity == 0) {
+            tbl->next = bdb_state->temp_list;
+            bdb_state->temp_list = tbl;
+        }
 
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
