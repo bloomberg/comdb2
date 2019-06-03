@@ -3138,6 +3138,7 @@ static int temptable_free(void *obj, void *arg)
     if (tmp->owner == pBt) {
         int bdberr;
         bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        ATOMIC_ADD(gbl_sql_temptable_count, -1);
     }
     free(tmp);
     return 0;
@@ -3838,6 +3839,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
     if (tmp->owner == pBt) {
         int bdberr;
         bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        ATOMIC_ADD(gbl_sql_temptable_count, -1);
     }
     hash_del(pBt->temp_tables, tmp);
     free(tmp);
