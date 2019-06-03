@@ -449,7 +449,7 @@ int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
     if (dbenv == NULL)
         return 0;
 
-    if (thedb->stopped)
+    if (db_is_stopped())
         return 0;
 
     qdata = malloc(sizeof(pfrq_t));

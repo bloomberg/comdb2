@@ -1478,7 +1478,7 @@ void change_schemas_recover(char *table)
     backout_schemas(table);
     live_sc_off(db);
 
-    if (thedb->stopped) {
+    if (db_is_stopped()) {
         resume_threads(thedb);
     }
 }
