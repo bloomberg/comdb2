@@ -6436,6 +6436,8 @@ recovery_release_locks(dbenv, lockid)
 
 void __dbenv_reset_mintruncate_vars(DB_ENV *dbenv);
 
+uint32_t gbl_max_undo_generation = 0;
+
 static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
@@ -6524,6 +6526,9 @@ restart:
 				undo = 1;
 			}
 
+            if (txnrlrec->generation > gbl_max_undo_generation)
+                gbl_max_undo_generation = txnrlrec->generation;
+
 			if (online) {
 				if (txnrlrec->lflags & DB_TXN_SCHEMA_LOCK)
 					schema_lk_count++;
@@ -6551,6 +6556,10 @@ restart:
 			if (txngenrec->opcode != TXN_ABORT) {
 				undo = 1;
 			}
+
+            if (txngenrec->generation > gbl_max_undo_generation)
+                gbl_max_undo_generation = txngenrec->generation;
+
 			if (online)
 				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
 
