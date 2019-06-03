@@ -1419,15 +1419,16 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     return 0;
 }
 
-static void set_cdb2_timeouts (cdb2_hndl_tp *hndl) {
-        if (!hndl->api_call_timeout)
-            hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
-        if (!hndl->connect_timeout)
-            hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
-        if (!hndl->comdb2db_timeout)
-            hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
-        if (!hndl->socket_timeout)
-            hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
+static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
+{
+    if (!hndl->api_call_timeout)
+        hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
+    if (!hndl->connect_timeout)
+        hndl->connect_timeout = CDB2_CONNECT_TIMEOUT;
+    if (!hndl->comdb2db_timeout)
+        hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
+    if (!hndl->socket_timeout)
+        hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
 }
 
 /* Read all available comdb2 configuration files.
