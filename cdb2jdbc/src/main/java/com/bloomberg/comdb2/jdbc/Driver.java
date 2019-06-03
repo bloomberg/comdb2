@@ -25,7 +25,10 @@ public class Driver implements java.sql.Driver {
     private static Logger logger = Logger.getLogger(Driver.class.getName());
     public static final String PREFIX = "jdbc:comdb2:";
     protected HashMap<String, Option> options = new HashMap<String, Option>();
-    protected static Driver __instance = new Driver();
+
+    public Driver() throws SQLException {
+        populateOptions();
+    }
 
     protected static abstract class Option {
         Method m;
@@ -81,45 +84,44 @@ public class Driver implements java.sql.Driver {
         }
     }
 
-    public static Driver getInstance() throws SQLException {
+    protected void populateOptions() throws SQLException {
         try {
-            __instance.options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
-            __instance.options.put("timeout", new IntegerOption("timeout", "Timeout"));
-            __instance.options.put("sotimeout", new IntegerOption("sotimeout", "SoTimeout"));
-            __instance.options.put("connect_timeout", new IntegerOption("connect_timeout", "ConnectTimeout"));
-            __instance.options.put("comdb2db_timeout", new IntegerOption("comdb2db_timeout", "Comdb2dbTimeout"));
-            __instance.options.put("dbinfo_timeout", new IntegerOption("dbinfo_timeout", "DbinfoTimeout"));
-            __instance.options.put("user", new StringOption("user", "User"));
-            __instance.options.put("password", new StringOption("password", "Password"));
-            __instance.options.put("default_type", new StringOption("default_type", "DefaultType"));
-            __instance.options.put("room", new StringOption("room", "MachineRoom"));
-            __instance.options.put("portmuxport", new IntegerOption("portmuxport", "PortMuxPort"));
-            __instance.options.put("comdb2dbname", new StringOption("comdb2dbname", "Comdb2dbName"));
-            __instance.options.put("tcpbufsz", new IntegerOption("tcpbufsz", "TcpBufSize"));
-            __instance.options.put("dnssuffix", new StringOption("dnssuffix", "DnsSuffix"));
-            __instance.options.put("load_balance", new StringOption("load_balance", "Policy"));
-            __instance.options.put("microsecond_fraction", new StringOption("microsecond_fraction", "MicroSecond"));
-            __instance.options.put("preferred_machine", new StringOption("preferred_machine", "PrefMach"));
-            __instance.options.put("comdb2db_max_age", new IntegerOption("comdb2db_max_age", "Comdb2dbMaxAge"));
-            __instance.options.put("debug", new BooleanOption("debug", "Debug"));
-            __instance.options.put("max_retries", new IntegerOption("max_retries", "MaxRetries"));
-            __instance.options.put("ssl_mode", new StringOption("ssl_mode", "SSLMode"));
-            __instance.options.put("key_store", new StringOption("key_store", "SSLCrt"));
-            __instance.options.put("key_store_password", new StringOption("key_store_password", "SSLCrtPass"));
-            __instance.options.put("key_store_type", new StringOption("key_store_type", "SSLCrtType"));
-            __instance.options.put("trust_store", new StringOption("trust_store", "SSLCA"));
-            __instance.options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
-            __instance.options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
-            __instance.options.put("crl", new StringOption("crl", "SSLCRL"));
-            __instance.options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
-            __instance.options.put("statement_query_effects",
+            options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
+            options.put("timeout", new IntegerOption("timeout", "Timeout"));
+            options.put("sotimeout", new IntegerOption("sotimeout", "SoTimeout"));
+            options.put("connect_timeout", new IntegerOption("connect_timeout", "ConnectTimeout"));
+            options.put("comdb2db_timeout", new IntegerOption("comdb2db_timeout", "Comdb2dbTimeout"));
+            options.put("dbinfo_timeout", new IntegerOption("dbinfo_timeout", "DbinfoTimeout"));
+            options.put("user", new StringOption("user", "User"));
+            options.put("password", new StringOption("password", "Password"));
+            options.put("default_type", new StringOption("default_type", "DefaultType"));
+            options.put("room", new StringOption("room", "MachineRoom"));
+            options.put("portmuxport", new IntegerOption("portmuxport", "PortMuxPort"));
+            options.put("comdb2dbname", new StringOption("comdb2dbname", "Comdb2dbName"));
+            options.put("tcpbufsz", new IntegerOption("tcpbufsz", "TcpBufSize"));
+            options.put("dnssuffix", new StringOption("dnssuffix", "DnsSuffix"));
+            options.put("load_balance", new StringOption("load_balance", "Policy"));
+            options.put("microsecond_fraction", new StringOption("microsecond_fraction", "MicroSecond"));
+            options.put("preferred_machine", new StringOption("preferred_machine", "PrefMach"));
+            options.put("comdb2db_max_age", new IntegerOption("comdb2db_max_age", "Comdb2dbMaxAge"));
+            options.put("debug", new BooleanOption("debug", "Debug"));
+            options.put("max_retries", new IntegerOption("max_retries", "MaxRetries"));
+            options.put("ssl_mode", new StringOption("ssl_mode", "SSLMode"));
+            options.put("key_store", new StringOption("key_store", "SSLCrt"));
+            options.put("key_store_password", new StringOption("key_store_password", "SSLCrtPass"));
+            options.put("key_store_type", new StringOption("key_store_type", "SSLCrtType"));
+            options.put("trust_store", new StringOption("trust_store", "SSLCA"));
+            options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
+            options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
+            options.put("crl", new StringOption("crl", "SSLCRL"));
+            options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
+            options.put("statement_query_effects",
                     new BooleanOption("statement_query_effects", "StatementQueryEffects"));
-            __instance.options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
-            __instance.options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
+            options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
+            options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
         } catch (Throwable e) {
             throw new SQLException(e);
         }
-        return __instance;
     }
 
     /**
@@ -127,7 +129,7 @@ public class Driver implements java.sql.Driver {
      */
     static {
         try {
-            DriverManager.registerDriver(Driver.getInstance());
+            DriverManager.registerDriver(new Driver());
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Unable to register comdb2 driver", e);
         }
