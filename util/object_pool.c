@@ -1123,9 +1123,7 @@ static void objpool_evict_all_int(comdb2_objpool_t op)
 
     Pthread_mutex_lock(&op->data_mutex);
 
-    int nidles = nidles(op);
-
-    for (indx = 0; indx < nidles; ++indx) {
+    for (indx = 0; indx != nidles(op); ++indx) {
         object = op->objs[indx];
         rec = (pooled_object *)hash_find(op->history, &object);
 
