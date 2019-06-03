@@ -26,6 +26,21 @@ public class TimeoutTest {
         conn.close();
     }
 
+    @Test public void testOfflineNodeDelay() {
+        long then = System.currentTimeMillis();
+        try {
+            /* Silence our logger.
+               The connectivity exception is expected.
+               we don't need the extra noise here. */
+            LogManager.getLogManager().reset();
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://example.com/db");
+            conn.close();
+        } catch (SQLException sqle) {
+            long now = System.currentTimeMillis();
+            Assert.assertEquals("Should see a delay of roughly 100 ms", true, (now - then) <= 150);
+        }
+    }
+
     @Test public void testURLOptionsLegacyNamespace() throws SQLException {
         db = System.getProperty("cdb2jdbc.test.database");
         cluster = System.getProperty("cdb2jdbc.test.cluster");
@@ -45,20 +60,5 @@ public class TimeoutTest {
         rs.close();
         stmt.close();
         conn.close();
-    }
-
-    @Test public void testOfflineNodeDelay() {
-        long then = System.currentTimeMillis();
-        try {
-            /* Silence our logger.
-               The connectivity exception is expected.
-               we don't need the extra noise here. */
-            LogManager.getLogManager().reset();
-            Connection conn = DriverManager.getConnection("jdbc:comdb2://example.com/db");
-            conn.close();
-        } catch (SQLException sqle) {
-            long now = System.currentTimeMillis();
-            Assert.assertEquals("Should see a delay of roughly 100 ms", true, (now - then) <= 150);
-        }
     }
 }
