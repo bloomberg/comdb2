@@ -978,6 +978,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 if (off == 0) {
                     foundit = 1;
                     __os_free(bdb_state->dbenv, big_rec);
+                    big_rec = NULL;
                     if (ovcur == origd && newd != NULL) {
                         ovlen = NULL;
                         ovcur = NULL;

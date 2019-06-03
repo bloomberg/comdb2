@@ -192,9 +192,13 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 struct tm tm;
                 out->lasttime = now;
                 localtime_r(&timet, &tm);
-                snprintf(out->timeprefix, sizeof(out->timeprefix),
-                         "%02d/%02d %02d:%02d:%02d: ", tm.tm_mon + 1,
-                         tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+                int rc = snprintf(out->timeprefix, sizeof(out->timeprefix),
+                                  "%02d/%02d %02d:%02d:%02d: ", tm.tm_mon + 1,
+                                  tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+                if (rc >= sizeof(out->timeprefix)) {
+                    snprintf(out->timeprefix, sizeof(out->timeprefix),
+                             "truncated-time");
+                }
             }
             iov[niov].iov_base = out->timeprefix;
             iov[niov].iov_len = sizeof(out->timeprefix) - 1;

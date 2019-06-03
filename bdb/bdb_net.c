@@ -472,7 +472,7 @@ static void *udp_reader(void *arg)
 
     repinfo_type *repinfo = bdb_state->repinfo;
     void *data;
-    uint8_t buff[1024];
+    uint8_t buff[1024] = {0};
     ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
 #ifdef UDP_DEBUG
@@ -974,7 +974,7 @@ out:
     return rc;
 }
 
-int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
+int send_truncate_to_master(bdb_state_type *bdb_state, unsigned file, unsigned offset)
 {
     int timeout = 10 * 1000, rc;
     uint8_t buf[sizeof(DB_LSN)];

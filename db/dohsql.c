@@ -145,11 +145,9 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     struct sqlclntstate *clnt = work;
     switch (op) {
     case THD_RUN:
-        sqlengine_setup_temp_table_mtx(clnt);
         sqlengine_work_shard(pool, work, thddata);
         break;
     case THD_FREE:
-        sqlengine_cleanup_temp_table_mtx(clnt);
         /* error, we are done */
         clnt->query_rc = -1;
         clnt->done = 1;

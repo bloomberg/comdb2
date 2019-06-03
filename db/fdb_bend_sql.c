@@ -472,7 +472,6 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
                            struct sqlclntstate *clnt, int seq)
 {
     int rc;
-    int bdberr = 0;
 
     if (unlikely(!clnt)) /* extra protection against malicious packets and bugs */
         return -1;
@@ -517,19 +516,6 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
         } else
             logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(),
                    clnt->osql.rqid);
-    }
-    /* destroying curstran */
-    if (clnt->dbtran.cursor_tran) {
-        rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran, 0,
-                                &bdberr);
-        if (rc || bdberr) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: failed releasing the curstran rc=%d bdberr=%d\n",
-                    __func__, rc, bdberr);
-        }
-        clnt->dbtran.cursor_tran = NULL;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: missing trans %llx\n", __func__, clnt->osql.rqid);
     }
 
     if (osql_unregister_sqlthr(clnt)) {

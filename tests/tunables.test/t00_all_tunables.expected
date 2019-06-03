@@ -299,7 +299,7 @@
 (name='exitalarmsec', description='', type='INTEGER', value='300', read_only='Y')
 (name='extended_sql_debug_trace', description='Print extended trace for durable sql debugging', type='BOOLEAN', value='OFF', read_only='N')
 (name='fdb_sqlstats_cache_lock_waittime_nsec', description='', type='INTEGER', value='1000', read_only='N')
-(name='fdbdebg', description='', type='INTEGER', value='0', read_only='Y')
+(name='fdbdebg', description='', type='INTEGER', value='0', read_only='N')
 (name='fdbtrackhints', description='', type='INTEGER', value='0', read_only='Y')
 (name='fingerprint_queries', description='Compute fingerprint for SQL queries', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_cstr', description='Fix validation of cstrings', type='BOOLEAN', value='ON', read_only='N')

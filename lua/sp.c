@@ -83,7 +83,7 @@ pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
 struct tmptbl_info_t {
-    int rootpg;
+    struct temptable tbl;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
     pthread_mutex_t *lk;
@@ -384,7 +384,7 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
 {
     SP sp = getsp(L);
 
-    if (thedb->stopped || thedb->exiting) {
+    if (db_is_stopped()) {
         luabb_error(L, sp, "database exiting");
         return -1;
     }
@@ -1489,7 +1489,6 @@ static int db_db_debug(Lua lua)
     int finish_execute = 0;
     for (;;) {
         char buffer[250] = {0};
-        char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
             Pthread_cond_broadcast(&lua_debug_cond);
@@ -1513,10 +1512,11 @@ static int db_db_debug(Lua lua)
             i = atoi(&buffer[9]);
             sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
         } else if (strncmp(buffer, "print ", 6) == 0) {
+            char old_buffer[sizeof(buffer)];
             sprintf(old_buffer, "%s", buffer);
             int len = strlen(&old_buffer[6]);
             old_buffer[6 + len - 1] = '\0';
-            sprintf(buffer, "eval('%s')", &old_buffer[6]);
+            sprintf(buffer, "eval('%s')", old_buffer + 6);
         } else if (strncmp(buffer, "getinfo", 7) == 0) {
             sprintf(buffer, " %s", "_SP.getinfo(5)");
         } else if (strncmp(buffer, "HALT", 4) == 0) {
@@ -1525,10 +1525,12 @@ static int db_db_debug(Lua lua)
         } else if (strncmp(buffer, "where", 5) == 0) {
             sprintf(buffer, " %s", "_SP.where()");
         } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
-            strncpy(replace_from, "_SP.get_var", 11);
+            char *arguments = replace_from + strlen("getvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.get_var%s", arguments);
             replace_from = NULL;
         } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
-            strncpy(replace_from, "_SP.set_var", 11);
+            char *arguments = replace_from + strlen("setvariable");
+            snprintf0(buffer, sizeof(buffer), "_SP.set_var%s", arguments);
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
@@ -1906,10 +1908,14 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
             rc = -1;
         }
 
-        if (err)
+        if (err_str) {
             logmsg(LOGMSG_ERROR, "err: [%d] %s\n", rc, err_str);
-        else
+            *err = strdup(err_str);
+        }
+        else {
             logmsg(LOGMSG_ERROR, "err: [%d]\n", rc);
+            *err = strdup("Error with lua_pcall");
+        }
         stack_trace(sp->lua);
     }
     free(sp_source);
@@ -2550,8 +2556,6 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
-    assert(clnt.temp_table_mtx == NULL || !clnt.own_temp_table_mtx);
-    clnt.temp_table_mtx = parent_clnt->temp_table_mtx;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
@@ -2597,7 +2601,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
             tmp2->lk = tmp1->lk;
-            tmp2->rootpg = atoi(text[1]);
+            tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);
             return 0;
@@ -3000,7 +3004,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
     Pthread_cond_init(&thd->lua_thread_cond, NULL);
 
-    strcpy(newsp->spname, sp->spname);
+    strncpy0(newsp->spname, sp->spname, sizeof(newsp->spname));
     newsp->spversion = sp->spversion;
     if (newsp->spversion.version_str)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
@@ -3082,7 +3086,7 @@ static int dbthread_join(Lua lua1)
     Lua lua2 = thd->lua;
     SP sp2 = thd->sp;
     int num_returns = copy_state_stacks(lua2, lua1, 0);
-    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error));
+    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error) - 1);
     close_sp_int(sp2, 1);
     return num_returns;
 }
@@ -4224,7 +4228,7 @@ static int db_consumer(Lua L)
         return 0;
     }
     char spname[strlen(sp->spname) + 1];
-    strcpy(spname, sp->spname);
+    strncpy(spname, sp->spname, strlen(sp->spname) + 1);
     Q4SP(qname, spname);
 
     struct dbtable *db = getqueuebyname(qname);
@@ -5261,7 +5265,7 @@ out:
     return arg->type;
 }
 
-static int debug_sp(struct sqlclntstate *clnt)
+static void debug_sp(struct sqlclntstate *clnt)
 {
     int arg1 = 0;
     char *carg1 = NULL;
@@ -5306,7 +5310,6 @@ do_continue:
     clnt->sp = NULL;
     sleep(2);
     logmsg(LOGMSG_USER, "Exit debugging \n");
-    return 0;
 }
 
 static int get_spname(struct sqlclntstate *clnt, const char **exec,
@@ -5855,7 +5858,7 @@ static void clone_temp_tables(SP sp)
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         sp->clnt->skip_peer_chk = 1;
-        clone_temp_table(dest, src, strbuf_buf(sql), tmp->rootpg);
+        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
@@ -6175,7 +6178,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, &s, spname, err)) != 0)
         return rc;
 
-    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
+    if (strcmp(spname, "debug") == 0) {
+        debug_sp(clnt);
+        return 0;
+    }
 
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
@@ -6200,7 +6206,11 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = commit_sp(L, err)) != 0) return rc;
 
-    if (sprc) return sprc;
+    if (sprc) {
+        if (!*err)
+            *err = strdup("emit_result error");
+        return sprc;
+    }
 
     return flush_sp(sp, err);
 }

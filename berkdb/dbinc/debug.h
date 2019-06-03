@@ -45,9 +45,11 @@ extern "C" {
  * Unused, or not-used-yet variable.  We need to write and then read the
  * variable, some compilers are too bloody clever by half.
  */
-#define	COMPQUIET(n, v)							\
-	(n) = (v);							\
-	(n) = (n)
+#define COMPQUIET(n, v)                                                        \
+	do {                                                                   \
+		(n) = (v);                                                     \
+		(n) = (n);                                                     \
+	} while (0)
 
 /*
  * Purify and other run-time tools complain about uninitialized reads/writes
