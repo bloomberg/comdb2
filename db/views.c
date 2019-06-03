@@ -1464,7 +1464,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
         {
             char *tmp_member_name = NULL;
             if (op_type == VIEWS_TRIGGER_UPDATE) {
-                tmp_member_name = sqlite3_mprintf("\"%w\"",
+                tmp_member_name = sqlite3_mprintf("%w",
                                                   gdb->schema->member[i].name);
             }
             tmp_str = sqlite3_mprintf(
