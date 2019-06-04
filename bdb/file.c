@@ -2565,8 +2565,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     /* these things need to be set up for logical recovery which will
        happen as soon as we call dbenv->open */
-    Pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
-
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_create_lifo(
             &bdb_state->temp_table_pool, "temp table",
@@ -2577,15 +2575,10 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
             logmsg(LOGMSG_ERROR, "failed to create temp table pool\n");
             exit(1);
         }
-        int rc2 = bdb_temp_table_clear_list(bdb_state);
-        if (rc2 != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: bdb_temp_table_clear_list() failed, rc %d\n",
-                   __func__, rc2);
-        }
         logmsg(LOGMSG_INFO, "Temptable pool enabled.\n");
     }
 
+    Pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
     bdb_state->logical_transactions_hash = hash_init_o(
         offsetof(tran_type, logical_tranid), sizeof(unsigned long long));
     Pthread_cond_init(&(bdb_state->temptable_wait), NULL);
