@@ -3498,6 +3498,10 @@ unsigned long long bdb_genid_to_host_order(unsigned long long genid);
 ** carried out.  Seek the cursor now.  If an error occurs, return
 ** the appropriate error code.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int gbl_abort_on_dta_lookup_error = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
   int res, rc;
 #ifdef SQLITE_TEST
@@ -3525,6 +3529,8 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
              bdb_genid_to_host_order(p->movetoTarget), 
              bdb_genid_to_host_order(p->movetoTarget));
     logmsg(LOGMSG_ERROR, "%s\n", errmsg);
+    if (gbl_abort_on_dta_lookup_error)
+        abort();
     return SQLITE_DEADLOCK;
   }
   /* this is a direct lookup for a genid;
@@ -3539,6 +3545,8 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
              "Dta lookup lost the race for tbl %s genid=%llu found=%llu\n",
              sqlite3BtreeGetTblName(p->uc.pCursor),
              p->movetoTarget, genid);
+      if (gbl_abort_on_dta_lookup_error)
+          abort();
       return SQLITE_DEADLOCK;
     }
   }

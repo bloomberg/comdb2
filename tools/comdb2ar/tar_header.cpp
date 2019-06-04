@@ -27,7 +27,7 @@ void TarHeader::clear() throw()
 {
     m_used_gnu = false;
     memset(&m_head, 0, sizeof(m_head));
-    strncpy(m_head.h.ustar, "ustar", sizeof(m_head.h.ustar));
+    strncpy(m_head.h.ustar, "ustar", sizeof(m_head.h.ustar) - 1);
     m_head.h.ustar_version[0] = '0';
     m_head.h.ustar_version[1] = '0';
 }
@@ -40,7 +40,7 @@ void TarHeader::set_filename(const std::string& filename)
         throw SerialiseError(filename, "file name too long for tar header");
     }
     strncpy(m_head.h.filename, filename.c_str(),
-            sizeof(m_head.h.filename));
+            sizeof(m_head.h.filename) - 1);
 }
 
 void TarHeader::set_attrs(const struct stat& st)
@@ -71,13 +71,13 @@ void TarHeader::set_attrs(const struct stat& st)
     if(pwd == NULL) {
         std::clog << "getpwuid(" << st.st_uid << ") failed." << std::endl;
     } else {
-        strncpy(m_head.h.uname, pwd->pw_name, sizeof(m_head.h.uname));
+        strncpy(m_head.h.uname, pwd->pw_name, sizeof(m_head.h.uname) - 1);
     }
     struct group *grp = getgrgid(st.st_gid);
     if(grp == NULL) {
         std::clog << "getgrgid(" << st.st_gid << ") failed." << std::endl;
     } else {
-        strncpy(m_head.h.gname, grp->gr_name, sizeof(m_head.h.gname));
+        strncpy(m_head.h.gname, grp->gr_name, sizeof(m_head.h.gname) - 1);
     }
 }
 

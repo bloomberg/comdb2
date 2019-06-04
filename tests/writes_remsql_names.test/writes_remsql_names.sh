@@ -7,12 +7,14 @@ a_remdbname=$1
 a_remdb2config=$2
 a_dbname=$3
 a_cdb2config=$4
-a_dbdir=$4
-a_testdir=$5
+a_dbdir=$5
+a_testdir=$6
 
-if [[ ! -z $6 ]]; then
-   opt=$6
+if [[ ! -z $7 ]]; then
+   opt=$7
 fi
+
+set -x
 
 checkresult()
 {
@@ -166,6 +168,17 @@ if [[ -z $opt || "$opt" == "6" ]]; then
    echo "9. Round of updates" >> $output
    run_test updates2.req output.6.9.log $output t2 a
 fi
+
+if [[ -z $opt || "$opt" == "7" ]]; then
+
+   #TEST3 check deletes
+
+   output=./run.7.out
+   rm $output 2> /dev/null
+
+   run_test rollbackupdates.req output.7.log $output t2 a
+fi
+
 
 echo "Testcase passed."
 

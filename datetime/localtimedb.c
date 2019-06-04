@@ -30,6 +30,7 @@
 #include "mem_override.h"
 #include "logmsg.h"
 #include "locks_wrap.h"
+#include <str0.h>
 
 #ifndef TZ_ABBR_MAX_LEN
 #define TZ_ABBR_MAX_LEN 16
@@ -1930,7 +1931,7 @@ register const int doextend;
         if (!doaccess) {
             if ((p = tzdir) == NULL) return -1;
 
-            if ((strlen(p) + strlen(name) + 1) >= sizeof fullname) return -1;
+            if ((strlen(p) + strlen(name) + 1) >= file_max) return -1;
 
             (void)strcpy(fullname, p);
             (void)strcat(fullname, "/");
@@ -2207,15 +2208,10 @@ static struct db_state *find_tz(const char *name)
 
 static void add_tz(const char *name, struct db_state *ptr)
 {
-    char key[NAME_KEY_MAX];
-    tz_hash_entry_type *hash_entry_ptr;
-
-    bzero(key, NAME_KEY_MAX);
-    strcpy(key, name);
-
-    hash_entry_ptr = malloc(sizeof(tz_hash_entry_type));
-    memcpy(&(hash_entry_ptr->key), key, NAME_KEY_MAX);
-    memcpy(&(hash_entry_ptr->db_mem), ptr, sizeof(struct db_state));
+    tz_hash_entry_type *hash_entry_ptr = malloc(sizeof(tz_hash_entry_type));
+    memset(&hash_entry_ptr->key, 0, sizeof(hash_entry_ptr->key));
+    strncpy0(hash_entry_ptr->key, name, sizeof(hash_entry_ptr->key));
+    memcpy(&hash_entry_ptr->db_mem, ptr, sizeof(struct db_state));
     hash_add(tz_hash_tbl, hash_entry_ptr);
 }
 

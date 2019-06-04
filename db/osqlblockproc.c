@@ -272,8 +272,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             /* this is socksql, recom, snapisol or serial; no retry here
              */
             generr.errval = ERR_INTERNAL;
-            strncpy(generr.errstr, "master cancelled transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "master cancelled transaction",
+                     sizeof(generr.errstr));
             xerr = &generr;
             error = 1;
             break;
@@ -290,7 +290,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     }
 
     /* please stop !!! */
-    if (thedb->stopped || thedb->exiting) {
+    if (db_is_stopped()) {
         if (stop_time == 0) {
             stop_time = comdb2_time_epoch();
         } else {
@@ -470,12 +470,9 @@ char *osql_get_tran_summary(struct ireq *iq)
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
         int sz = 128;
-        int min_rtt = INT_MAX;
-        int max_rtt = 0;
-        int min_tottm = INT_MAX;
-        int max_tottm = 0;
-        int min_rtrs = 0;
-        int max_rtrs = 0;
+        int rtt = 0;
+        int tottm = 0;
+        int rtrs = 0;
 
         ret = (char *)malloc(sz);
         if (!ret) {
@@ -484,24 +481,13 @@ char *osql_get_tran_summary(struct ireq *iq)
         }
 
         if (tran->iscomplete) {
-            int crt_tottm = 0;
-            int crt_rtt = 0;
-            int crt_rtrs = 0;
-
-            osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
-
-            min_tottm = crt_tottm;
-            max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
-            min_rtt = crt_rtt;
-            max_rtt = (max_rtt > crt_rtt) ? max_rtt : crt_rtt;
-            min_rtrs = (min_rtrs < crt_rtrs) ? min_rtrs : crt_rtrs;
-            max_rtrs = (max_rtrs > crt_rtrs) ? max_rtrs : crt_rtrs;
+            osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
         }
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]", nametype,
-                 min_tottm, max_tottm, min_rtt, max_rtt, min_rtrs, max_rtrs);
+        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype, tottm, rtt,
+                 rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -615,7 +601,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
             sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
@@ -703,7 +689,7 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     sorese_info.type = -1; /* I don't need it */
 
     generr.errval = errval;
-    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+    strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
     int rc =
         osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);

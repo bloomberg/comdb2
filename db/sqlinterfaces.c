@@ -3814,19 +3814,22 @@ static void handle_stored_proc(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt)
 {
     struct sql_state rec = {0};
-    char *errstr;
+    char *errstr = NULL;
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
+        if (!errstr) {
+            logmsg(LOGMSG_USER, "handle_stored_proc: error occured, rc = %d\n",
+                   rc);
+            errstr = strdup("Error occured");
+        }
         clnt->had_errors = 1;
         if (rc == -1)
             rc = -3;
         write_response(clnt, RESPONSE_ERROR, errstr, rc);
-        if (errstr) {
-            free(errstr);
-        }
+        free(errstr);
     }
     if (!clnt->in_client_trans)
         clnt->trans_has_sp = 0;
@@ -4304,22 +4307,6 @@ static void debug_close_sb(struct sqlclntstate *clnt)
         once = 0;
 }
 
-void sqlengine_setup_temp_table_mtx(struct sqlclntstate *clnt)
-{
-    if (clnt && clnt->temp_table_mtx == NULL) {
-        Pthread_mutex_alloc_and_init(clnt->temp_table_mtx, NULL);
-        clnt->own_temp_table_mtx = 1;
-    }
-}
-
-void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *clnt)
-{
-    if (clnt && clnt->temp_table_mtx != NULL && clnt->own_temp_table_mtx) {
-        Pthread_mutex_destroy_and_free(clnt->temp_table_mtx);
-        clnt->own_temp_table_mtx = 0;
-    }
-}
-
 static void sqlengine_work_lua_thread(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
@@ -4507,14 +4494,12 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
 
     switch (op) {
     case THD_RUN:
-        sqlengine_setup_temp_table_mtx(clnt);
         if (clnt->exec_lua_thread)
             sqlengine_work_lua_thread(thddata, work);
         else
             sqlengine_work_appsock(thddata, work);
         break;
     case THD_FREE:
-        sqlengine_cleanup_temp_table_mtx(clnt);
         /* we just mark the client done here, with error */
         clnt->query_rc = CDB2ERR_IO_ERROR;
         clnt->done = 1; /* that's gonna revive appsock thread */
@@ -4853,6 +4838,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         if (clnt->idxDelete)
             free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
+    }
+
+    if (clnt->zNormSql) {
+        free(clnt->zNormSql);
+        clnt->zNormSql = NULL;
     }
 
     destroy_hash(clnt->ddl_tables, free_it);

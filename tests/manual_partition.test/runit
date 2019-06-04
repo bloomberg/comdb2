@@ -21,7 +21,7 @@ function gorun
 function gorun_master
 {
     echo cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1"
-    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1" >> $output 2>&1
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1" | grep -v "Module memory stats update" >> $output 2>&1
 }
 
 function gorun_filter

@@ -329,33 +329,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
-    // This can incorrectly return serial-error on retry by conflicting 
-    // against itself: cut-1 solution: disable this serial_check (we 
-    // handle this case correctly on the master).  cut-2 solution might
-    // be to add a blkseq check here & return the correct rcode.
-#if 0
-    if (!usedb_only) {
-        if (clnt->arr)
-            currangearr_build_hash(clnt->arr);
-
-        if (clnt->arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
-                                  &(clnt->arr->offset), 0)) {
-
-            if (gbl_extended_sql_debug_trace) {
-                fprintf(stderr, "td=%u %s line %d returning SQLITE_ABORT for serial_check failure\n", 
-                        pthread_self(), __func__, __LINE__);
-            }
-
-            rc = SQLITE_ABORT;
-            clnt->osql.xerr.errval = ERR_NOTSERIAL;
-            errstat_cat_str(&(clnt->osql.xerr),
-                            "transaction is not serializable");
-            goto goback;
-        }
-    }
-#endif
-
     clnt->osql.timings.commit_prep = osql_log_time();
 
     /* start the block processor session */
@@ -421,7 +394,6 @@ goback:
     if (clnt->osql.xerr.errval == ERR_VERIFY &&
         clnt->dbtran.mode == TRANLEVEL_RECOM &&
         clnt->osql.replay != OSQL_RETRY_LAST) {
-        /*fprintf(stderr, "Received rc=%d=ERR_VERIFY\n", rc);*/
     } else {
         /* CLOSE the temporary tables */
         osql_shadtbl_close(clnt);
@@ -466,6 +438,16 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
 int recom_abort(struct sqlclntstate *clnt)
 {
+    int rc;
+
+    /* temp hook for sql transactions */
+    if (clnt->dbtran.dtran) {
+        rc = fdb_trans_rollback(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__,
+                   rc);
+        }
+    }
 
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
@@ -753,7 +735,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
-                    rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr);
+                    rc = bdb_llog_scdone_origname(s->db->handle, type, 1,
+                                                  s->tablename, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible
                          * mode. For R7 or later, use SC_DONE_SAME_TRAN.

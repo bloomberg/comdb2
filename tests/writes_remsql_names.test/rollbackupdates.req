@@ -1,0 +1,10 @@
+begin
+update t set a=a+1
+select * from t where 1 order by a
+rollback
+select * from t where 1 order by a
+begin
+update t set a=a+1
+select * from t where 1 order by a
+commit
+

@@ -1696,8 +1696,9 @@ clipper_usage:
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
-            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
-            logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
+            logmsg(LOGMSG_USER, "version: %s\n", gbl_db_version);
+            logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_codename);
+            logmsg(LOGMSG_USER, "semver: %s\n", gbl_db_semver);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
         } else if (tokcmp(tok, ltok, "cursors") == 0) {

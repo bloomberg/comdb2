@@ -58,6 +58,7 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
+deadlock_load.test        -- re-enable after Adi merges code
 overflowblobs.test        -- timesout
 halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test

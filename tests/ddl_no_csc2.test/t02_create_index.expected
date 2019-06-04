@@ -125,7 +125,7 @@ keys
 	}
 keys
 	{
-		dup "idx1" = (cstring[10])"( v || 'aaa' )" 
+		dup "idx1" = (cstring[10])"( \"v\" || 'aaa' )" 
 	}
 ')
 (csc2=NULL)
