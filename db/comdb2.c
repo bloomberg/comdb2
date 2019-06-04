@@ -417,7 +417,7 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
 int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-int gbl_exit_alarm_sec = 300;
+int gbl_exit_alarm_sec = 10; //300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
@@ -555,6 +555,8 @@ void free_tzdir();
 extern void init_sql_hint_table();
 extern void init_clientstats_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
+extern void set_stop_mempsync_thread();
+extern void bdb_prepare_close(bdb_state_type *bdb_state);
 
 int gbl_use_plan = 1;
 
@@ -760,6 +762,7 @@ int gbl_early_verify = 1;
 
 int gbl_bbenv;
 extern int gbl_legacy_defaults;
+extern struct thdpool *gbl_trickle_thdpool;
 
 int64_t gbl_temptable_created;
 int64_t gbl_temptable_create_reqs;
@@ -1110,6 +1113,7 @@ static void *purge_old_blkseq_thread(void *arg)
 
     loop = 0;
     sleep(1);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
 
@@ -1236,6 +1240,7 @@ static void *purge_old_blkseq_thread(void *arg)
 
     dbenv->purge_old_blkseq_is_running = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -1259,6 +1264,7 @@ static void *purge_old_files_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     assert(!gbl_is_physical_replicant);
+    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
@@ -1330,6 +1336,7 @@ static void *purge_old_files_thread(void *arg)
 
     dbenv->purge_old_files_is_running = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    ATOMIC_ADD(gbl_thread_count, -1);
 
     return NULL;
 }
@@ -1453,60 +1460,14 @@ static void free_sqlite_table(struct dbenv *dbenv)
     free(dbenv->dbs);
 }
 
-/* clean_exit will be called to cleanup db structures upon exit
- * NB: This function can be called by clean_exit_sigwrap() when the db is not
- * up yet at which point we may not have much to cleanup.
- */
-void clean_exit(void)
+
+void do_clean()
 {
-    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
-
-    logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
-
-    /* this defaults to 5 minutes */
-    alarm(alarmtime);
-
-    /* dont let any new requests come in.  we're going to go non-coherent
-       here in a second, so letting new reads in would be bad. */
-    no_new_requests(thedb);
-
-    print_all_time_accounting();
-    wait_for_sc_to_stop("exit");
-
-    /* let the lower level start advertising high lsns to go non-coherent
-       - dont hang the master waiting for sync replication to an exiting
-       node. */
-    bdb_exiting(thedb->static_table.handle);
-
-    stop_threads(thedb);
-    flush_db();
-
-#   if 0
-    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
-      them to quit.
-    */
-    if (!gbl_create_mode)
-        sleep(4);
-#   endif
-
-    cleanup_q_vars();
-    cleanup_switches();
-    free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
-    destroy_plugins();
-    destroy_appsock();
-
-    if (gbl_create_mode) {
-        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
-    }
-
     int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
     bdb_cleanup_private_blkseq(thedb->bdb_env);
-    extern struct thdpool *gbl_trickle_thdpool;
 
     if (gbl_udppfault_thdpool)
         thdpool_stop(gbl_trickle_thdpool);
@@ -1538,6 +1499,63 @@ void clean_exit(void)
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
+}
+
+void call_abort(int s)
+{
+    abort();
+}
+/* clean_exit will be called to cleanup db structures upon exit
+ * NB: This function can be called by clean_exit_sigwrap() when the db is not
+ * up yet at which point we may not have much to cleanup.
+ */
+void clean_exit(void)
+{
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
+
+    logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
+
+    signal(SIGALRM, call_abort);
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    print_all_time_accounting();
+    wait_for_sc_to_stop("exit");
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->static_table.handle);
+
+    stop_threads(thedb);
+    set_stop_mempsync_thread();
+    flush_db();
+
+#   if 0
+    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
+      them to quit.
+    */
+    if (!gbl_create_mode)
+        sleep(4);
+#   endif
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    destroy_plugins();
+    destroy_appsock();
+    bdb_prepare_close(thedb->bdb_env);
+
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+        do_clean();
+    }
 }
 
 int get_elect_time_microsecs(void)
@@ -5168,8 +5186,10 @@ static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
     char cmd[400];
-    sprintf(cmd, "bash -c 'gdb --batch --eval-command=\"thr app all ba\" /proc/%d/exe %d 2>&1 > %s/logs/%s.onexit'",
+    sprintf(cmd, "bash -c 'gdb --batch --eval-command=\"thr app all ba\" /proc/%d/exe %d 2>&1 > %s/%s.onexit'",
                  gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
+
+    logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
     int rc = system(cmd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "goodbye: system  returned rc %d\n", rc);
@@ -5201,6 +5221,8 @@ struct tool tool_callbacks[] = {
    TOOLS
    {NULL, NULL}
 };
+
+
 
 int main(int argc, char **argv)
 {
@@ -5382,6 +5404,8 @@ int main(int argc, char **argv)
 
     while (gbl_thread_count > 0) 
         sleep(1);
+
+    do_clean();
 
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *db = thedb->dbs[ii];
