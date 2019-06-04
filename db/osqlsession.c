@@ -731,11 +731,6 @@ typedef struct {
     bool get_writelock;
 } selectv_genid_t;
 
-typedef struct {
-    char *tablename;
-    int index;
-} osql_sess_tablename_t;
-
 int gbl_selectv_writelock_on_update = 1;
 
 /**
@@ -824,29 +819,9 @@ late_error:
     return NULL;
 }
 
-int osql_cache_table(osql_sess_t *sess, char *rpl)
-{
-    char *p_buf;
-    osql_sess_tablename_t tablename, *ntablename;
-    tablename.tablename = get_tablename_from_rpl(rpl);
-    assert(tablename.tablename);
-    if (!is_tablename_queue(tablename.tablename, strlen(tablename.tablename)) &&
-            (ntablename = hash_find(sess->tablenames, &tablename)) == NULL) {
-        ntablename = (osql_sess_tablename_t *)calloc(1, sizeof(tablename));
-        ntablename->tablename = strdup(tablename.tablename);
-        ntablename->index = sess->tableindex;
-        sess->tables = (char **)realloc(sess->tables, (sess->tableindex + 1) * sizeof(char *));
-        sess->tables[sess->tableindex++] = ntablename->tablename;
-        hash_add(sess->tablenames, ntablename);
-    }
-    if (ntablename)
-        sess->tbl_idx = ntablename->index;
-    return 0;
-}
-
 int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl) 
 {
-    char *p_buf, *tablename;
+    char *p_buf;
     int rc = -1;
     selectv_genid_t *sgenid, fnd = {0};
     enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
@@ -859,15 +834,15 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
         assert(sess->table);
         fnd.tablename = sess->table;
-        if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL) {
+        if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL)
             sgenid->get_writelock = 1;
-        }
         rc = 0;
         break;
     case OSQL_RECGENID:
         p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
-        fnd.tbl_idx = sess->tbl_idx;
+        assert(sess->table);
+        fnd.tablename = sess->table;
         if (hash_find(sess->selectv_genids, &fnd) == NULL) {
             sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
             sgenid->genid = fnd.genid;
@@ -883,7 +858,7 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
 
 
 typedef struct {
-    int (*wr_sv)(void *, int tbl_idx, unsigned long long genid);
+    int (*wr_sv)(void *, const char *tablename, unsigned long long genid);
     void *arg;
 } sv_hf_args;
 
@@ -893,13 +868,14 @@ static int process_selectv(void *obj, void *arg)
     sv_hf_args *hf_args = (sv_hf_args *)arg;
     selectv_genid_t *sgenid = (selectv_genid_t *)obj;
     if (sgenid->get_writelock) {
-        return (*hf_args->wr_sv)(hf_args->arg, sgenid->tbl_idx, sgenid->genid);
+        return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
+                sgenid->genid);
     }
     return 0;
 }
 
-int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, int tbl_idx, 
-            unsigned long long genid), void *wr_selv_arg)
+int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg,
+            const char *tablename, unsigned long long genid), void *wr_selv_arg)
 {
     sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);

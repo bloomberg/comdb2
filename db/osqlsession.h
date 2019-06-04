@@ -298,8 +298,8 @@ int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl);
-int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, int tbl_idx, 
-            unsigned long long genid), void *wr_arg);
+int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg,
+            const char *tablename, unsigned long long genid), void *wr_arg);
 
 
 /**

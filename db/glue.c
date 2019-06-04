@@ -6008,8 +6008,6 @@ int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
     return -1;
 }
 
-
-
 /*  Returns 0 if not found, 1 if found / found newer, -1 if error */
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr)

@@ -65,6 +65,8 @@
 #include "bpfunc.h"
 #include "logmsg.h"
 #include "time_accounting.h"
+#include <ctrace.h>
+#include "intern_strings.h"
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -416,9 +418,52 @@ typedef struct {
     struct block_err *err;
 } ckgenid_state_t;
 
-static int pselectv_callback(void *arg, int tbl_idx, unsigned long long genid)
+static int pselectv_callback(void *arg, const char *tablename,
+        unsigned long long genid)
 {
     ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
+    extern int ix_check_genid_wl(struct ireq *iq, void *trans,
+            unsigned long long genid, int *bdberr);
+
+    struct ireq *iq = cgstate->iq;
+    void *trans = cgstate->trans;
+    struct block_err *err = cgstate->err;
+    int rc, bdberr = 0;
+
+    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans)) != 0) {
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            return RC_INTERNAL_RETRY;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            return ERR_INTERNAL;
+        }
+    }
+
+    unsigned long long lclgenid = bdb_genid_to_host_order(genid);
+
+    if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
+        if (rc != 1) {
+            if ((bdberr == 0 && rc == 0) || (bdberr == IX_PASTEOF && rc == -1)) {
+                err->ixnum = 01;
+                err->errcode = ERR_CONSTR;
+                ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,
+                       lclgenid);
+                reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "constraints error, no genid");
+                return ERR_CONSTR;
+            }
+
+            if (bdberr != RC_INTERNAL_RETRY) {
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                          "unable to find genid =%llx rc=%d", lclgenid, bdberr);
+            }
+
+            return bdberr;
+        }
+    }
+    return 0;
 }
 
 /**
@@ -432,8 +477,11 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = { .iq = iq, .trans = iq_trans, .err = err };
     int rc;
 
-    /* Bah unnecessarily complicated */
-    if ((rc = osql_process_selectv(iq->sess, pselectv_callback, &cgstate)) != 0) {
+    /* Pre-process selectv's, getting a writelock on rows that are later updated */
+    if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
+                    pselectv_callback, &cgstate)) != 0) {
+        iq->timings.req_applied = osql_log_time();
+        return rc;
     }
 
     /* apply changes */
@@ -618,6 +666,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
+            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
 #if DEBUG_REORDER
