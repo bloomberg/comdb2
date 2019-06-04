@@ -2239,12 +2239,14 @@ int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state)
             wasSet = 1;
         }
         Pthread_mutex_unlock(&bdb_state->temp_list_lock);
-        if (wasSet) {
-            logmsg(LOGMSG_DEBUG, "%s: thd %p NOW HAS PRIORITY\n",
-                   __func__, (void*)pthread_self());
-        } else if (rc == TMPTBL_PRIORITY) {
-            logmsg(LOGMSG_DEBUG, "%s: thd %p STILL HAS PRIORITY\n",
-                   __func__, (void*)pthread_self());
+        if (gbl_debug_temptables) {
+            if (wasSet) {
+                logmsg(LOGMSG_DEBUG, "%s: thd %p NOW HAS PRIORITY\n",
+                       __func__, (void*)pthread_self());
+            } else if (rc == TMPTBL_PRIORITY) {
+                logmsg(LOGMSG_DEBUG, "%s: thd %p STILL HAS PRIORITY\n",
+                       __func__, (void*)pthread_self());
+            }
         }
     }
     return rc;
@@ -2265,7 +2267,7 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
                 rc = 1; /* yes, thread was reset. */
             }
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
-            if (rc) {
+            if (gbl_debug_temptables && rc) {
                 logmsg(LOGMSG_DEBUG, "%s: thd %p NO LONGER HAS PRIORITY\n",
                        __func__, (void*)pthread_self());
             }
@@ -2273,7 +2275,7 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
         if (notify && rc) {
             int rc2 = comdb2_objpool_notify(bdb_state->temp_table_pool, 1);
             if (rc2 != 0) {
-                logmsg(LOGMSG_DEBUG, "%s: comdb2_objpool_notify rc=%d\n",
+                logmsg(LOGMSG_ERROR, "%s: comdb2_objpool_notify rc=%d\n",
                        __func__, rc2);
             }
         }
