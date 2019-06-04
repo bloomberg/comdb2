@@ -2575,6 +2575,12 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
             logmsg(LOGMSG_ERROR, "failed to create temp table pool\n");
             exit(1);
         }
+        int rc2 = bdb_temp_table_clear_list(bdb_state);
+        if (rc2 != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_clear_list() failed, rc %d\n",
+                   __func__, rc2);
+        }
         logmsg(LOGMSG_INFO, "Temptable pool enabled.\n");
     }
 

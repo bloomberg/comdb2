@@ -1618,6 +1618,8 @@ void *bdb_cursor_dbcp(bdb_cursor_impl_t *cur);
 
 extern int gbl_temptable_pool_capacity;
 hash_t *bdb_temp_table_histhash_init(void);
+int bdb_temp_table_clear_list(bdb_state_type *bdb_state);
+int bdb_temp_table_clear_pool(bdb_state_type *bdb_state);
 int bdb_temp_table_clear_cache(bdb_state_type *bdb_state);
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg);
 int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg);
