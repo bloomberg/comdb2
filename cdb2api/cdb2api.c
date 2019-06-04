@@ -1421,6 +1421,8 @@ static int get_config_file(const char *dbname, char *f, size_t s)
 
 static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 {
+    if (!hndl)
+         return;
     if (!hndl->api_call_timeout)
         hndl->api_call_timeout = CDB2_API_CALL_TIMEOUT;
     if (!hndl->connect_timeout)
