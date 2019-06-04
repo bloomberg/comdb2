@@ -5985,6 +5985,31 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
     return -1;
 }
 
+/**
+ * Check a genid, but get a writelock on the page rather than
+ * a readlock. Returns 0 if not found, 1 if found, -1 if error
+ *
+ */
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                   int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+
+    *bdberr = 0;
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, &reqdtalen,
+                                             0, 0, trans, NULL, 1);
+
+    if (rc == IX_FND)
+        return 1;
+    if (rc == IX_NOTFND)
+        return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+
+
 /*  Returns 0 if not found, 1 if found / found newer, -1 if error */
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr)

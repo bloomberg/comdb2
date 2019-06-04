@@ -410,6 +410,17 @@ int osql_bplog_schemachange(struct ireq *iq)
     return rc;
 }
 
+typedef struct {
+    struct ireq *iq;
+    void *trans;
+    struct block_err *err;
+} ckgenid_state_t;
+
+static int pselectv_callback(void *arg, int tbl_idx, unsigned long long genid)
+{
+    ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
+}
+
 /**
  * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
@@ -418,7 +429,12 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
+    ckgenid_state_t cgstate = { .iq = iq, .trans = iq_trans, .err = err };
     int rc;
+
+    /* Bah unnecessarily complicated */
+    if ((rc = osql_process_selectv(iq->sess, pselectv_callback, &cgstate)) != 0) {
+    }
 
     /* apply changes */
     rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
