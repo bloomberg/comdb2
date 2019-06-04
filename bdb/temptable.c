@@ -1529,17 +1529,17 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             free(tmp);
         }
 
-        if (gbl_temptable_pool_capacity == 0) {
-            assert(tbl->next == NULL);
-            tbl->next = bdb_state->temp_list;
-            bdb_state->temp_list = tbl;
-        }
-
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
+    } else {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+        assert(tbl->next == NULL);
+        tbl->next = bdb_state->temp_list;
+        bdb_state->temp_list = tbl;
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
 
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));
