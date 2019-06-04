@@ -716,6 +716,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         if (bdb_state->temp_list) {
             table = bdb_state->temp_list;
             bdb_state->temp_list = table->next;
+            table->next = NULL;
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
         } else {
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
@@ -1529,6 +1530,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         }
 
         if (gbl_temptable_pool_capacity == 0) {
+            assert(tbl->next == NULL);
             tbl->next = bdb_state->temp_list;
             bdb_state->temp_list = tbl;
         }
@@ -1568,6 +1570,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         return 0;
     }
     bdb_state->temp_list = tbl->next;
+    tbl->next = NULL;
+
     *last = 0;
 
     if ((tbl->dbenv_temp != NULL) &&
