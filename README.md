@@ -38,7 +38,6 @@ On every machine in the cluster:
        build-essential \
        cmake \
        flex \
-       gawk \
        protobuf-c-compiler \
        liblz4-dev \
        libncurses5-dev \
