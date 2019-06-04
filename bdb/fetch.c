@@ -735,6 +735,9 @@ static int bdb_fetch_int_ll(
             }
 
             dbp = bdb_state->dbp_data[0][dtafile];
+            if (args->for_write) {
+                 flags |= DB_RMW;
+            }
         }
 
         memcpy(tmp_key, ix, ixlen);
