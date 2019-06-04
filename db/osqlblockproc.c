@@ -424,7 +424,6 @@ static int pselectv_callback(void *arg, const char *tablename,
     ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
     extern int ix_check_genid_wl(struct ireq *iq, void *trans,
             unsigned long long genid, int *bdberr);
-
     struct ireq *iq = cgstate->iq;
     void *trans = cgstate->trans;
     struct block_err *err = cgstate->err;
@@ -442,12 +441,11 @@ static int pselectv_callback(void *arg, const char *tablename,
         }
     }
 
-    unsigned long long lclgenid = bdb_genid_to_host_order(genid);
-
     if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
         if (rc != 1) {
+            unsigned long long lclgenid = bdb_genid_to_host_order(genid);
             if ((bdberr == 0 && rc == 0) || (bdberr == IX_PASTEOF && rc == -1)) {
-                err->ixnum = 01;
+                err->ixnum = -1;
                 err->errcode = ERR_CONSTR;
                 ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,
                        lclgenid);
@@ -712,7 +710,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     }
     case OSQL_RECGENID: {
         key->tbl_idx = sess->tbl_idx;
-        /* TODO GET GENID & REORDER */
         break;
     }
     default:
