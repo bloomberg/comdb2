@@ -22,6 +22,7 @@
 #include "metrics.h"
 #include "bdb_api.h"
 #include "net.h"
+#include "thread_stats.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -311,7 +312,7 @@ static time_t metrics_standing_queue_time(void);
 int refresh_metrics(void)
 {
     int rc;
-    const struct bdb_thread_stats *pstats;
+    const struct berkdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
 #if 0
     int min_file, min_offset;
@@ -329,7 +330,7 @@ int refresh_metrics(void)
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
-    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
+    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks, NULL,
                                &stats.lockwaits, &stats.lockrequests);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,

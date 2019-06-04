@@ -49,6 +49,7 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include "db_int.h"
 #include "dbinc/db_swap.h"
+#include "thread_stats.h"
 #include "printformats.h"
 #include "mem_restore.h"
 
@@ -515,7 +516,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -575,7 +576,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -731,7 +732,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -791,7 +792,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -1189,7 +1190,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 		if (__berkdb_read_alarm_ms) {
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -1246,7 +1247,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 		if (__berkdb_write_alarm_ms) {
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -1513,17 +1514,17 @@ bb_berkdb_thread_stats_init(void)
 	inited = 1;
 }
 
-struct bb_berkdb_thread_stats *
+struct berkdb_thread_stats *
 bb_berkdb_get_thread_stats(void)
 {
-	static struct bb_berkdb_thread_stats junk;
-	struct bb_berkdb_thread_stats *p;
+	static struct berkdb_thread_stats junk;
+	struct berkdb_thread_stats *p;
 
 #ifndef TESTSUITE
 	if (inited) {
 		p = pthread_getspecific(berkdb_thread_stats_key);
 		if (!p) {
-			p = calloc(1, sizeof(struct bb_berkdb_thread_stats));
+			p = calloc(1, sizeof(struct berkdb_thread_stats));
 			Pthread_setspecific(berkdb_thread_stats_key, p);
 		}
 		if (!p)
@@ -1540,14 +1541,19 @@ void
 bb_berkdb_thread_stats_reset(void)
 {
 	bzero(bb_berkdb_get_thread_stats(),
-	    sizeof(struct bb_berkdb_thread_stats));
+	    sizeof(struct berkdb_thread_stats));
 }
 
-struct bb_berkdb_thread_stats *
+struct berkdb_thread_stats *
 bb_berkdb_get_process_stats(void)
 {
-	static struct bb_berkdb_thread_stats s = { 0 };
+	static struct berkdb_thread_stats s = { 0 };
 	return &s;
+}
+
+void bb_berkdb_reset_worst_lock_wait_time_us(void)
+{
+	bb_berkdb_get_thread_stats()->worst_lock_wait_time_us = 0;
 }
 
 void
