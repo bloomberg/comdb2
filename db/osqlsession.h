@@ -99,7 +99,9 @@ struct osql_sess {
     uint16_t tbl_idx;
     bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
     bool is_reorder_on : 1;
+    bool selectv_writelock_on_update : 1;
     hash_t *selectv_genids;
+    char *table;        // intern'd usedb
 };
 
 enum {

@@ -618,7 +618,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
-            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
 #if DEBUG_REORDER
@@ -784,7 +783,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
-    osql_cache_selectv(type, sess, rpl);
+    if (type == OSQL_USEDB && (sess->selectv_writelock_on_update ||
+                sess->is_reorder_on)) {
+        const char *tablename = get_tablename_from_rpl(rpl);
+        sess->table = intern(tablename);
+    }
+
+    if (sess->selectv_writelock_on_update)
+        osql_cache_selectv(type, sess, rpl);
 
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
