@@ -964,7 +964,7 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
     }
 
     if (indx != 0) {
-        memcpy(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
+        memmove(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
 
         op->in -= indx;
         op->out = op->in - 1;
@@ -1146,7 +1146,7 @@ static void objpool_evict_all_int(comdb2_objpool_t op)
     }
 
     if (indx != 0) {
-        memcpy(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
+        memmove(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
 
         op->in -= indx;
         op->out = op->in - 1;
