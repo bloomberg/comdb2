@@ -8,12 +8,14 @@ check_output()
   testcase_output=$(cat q_$1.out)
   expected_output=$(cat output.expect)
   testcase_output_alt=$(cat output.expect.alt)
+  testcase_output_alt2=$(cat output.expect.alt2)
 
-  if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
+  if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" && "$testcase_output" != "$testcase_output_alt2" ]]; then
     echo "SELECT output mismatch at index $1"
     echo "Failed."
     diff q_$1.out output.expect
     diff q_$1.out output.expect.alt
+    diff q_$1.out output.expect.alt2
     exit 1
   fi
 }
