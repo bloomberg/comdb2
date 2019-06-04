@@ -643,7 +643,7 @@ done:
     return tbl;
 }
 
-int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
+int bdb_temp_table_clear_cache(bdb_state_type *bdb_state)
 {
     if (gbl_temptable_pool_capacity == 0) {
         int rc = 0;

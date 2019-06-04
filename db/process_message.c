@@ -1367,7 +1367,7 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
-        int rcp = bdb_temp_table_clear_pool(thedb->bdb_env);
+        int rcp = bdb_temp_table_clear_cache(thedb->bdb_env);
         if (gbl_temptable_pool_capacity == 0) {
             logmsg(LOGMSG_USER, "Temptable list was %scleared.\n",
                    (rcp == 0) ? "" : "not ");
