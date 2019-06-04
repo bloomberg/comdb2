@@ -5194,7 +5194,6 @@ void *watcher_thread(void *arg)
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
-    int stopped_count = 0;
     int i;
     int j;
     int time_now, time_then;
@@ -5233,7 +5232,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (1) { /* should this stop when db_is_stopped() ?*/
+    while (!db_is_stopped()) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5247,25 +5246,6 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_WARN, "watcher thread pausing for %d second\n", diff);
             sleep(diff);
         }
-
-        if (db_is_stopped()) {
-            stopped_count++;
-            /* we have alarm for 5min or so, thus this is unnecessary
-            if (stopped_count > 30) {
-                logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
-                       __func__, stopped_count);
-                abort();
-            }
-            */
-            if (stopped_count > 20) { /* Make this tunable */
-                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
-                       stopped_count);
-            }
-            sleep(1);
-            gbl_watcher_thread_ran = comdb2_time_epoch();
-            continue;
-        }
-        stopped_count = 0;
 
         i++;
         j++;

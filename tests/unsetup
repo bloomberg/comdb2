@@ -140,20 +140,17 @@ flush_and_exit_node() {
 
 
 # wait for exiting for up to N seconds
-wait_for_exit_pid_list() {
+wait_for_exit_pids() {
     let TTL=$((SECONDS+$1))
     shift
-    for pidfile in $@ ; do
+    for pid in $@ ; do
         while :; do
             if [ $TTL -lt $SECONDS ] ; then
                 return
             fi
 
-            local pid
-            if [[ -f $pidfile ]]; then
-                pid=$(cat $pidfile)
-            else
-                break
+            if [[ "x$pid" == "x" ]]; then
+                return
             fi
 
             echo "kill -0 $pid"
@@ -188,14 +185,13 @@ unsetup_db() {
 
     if [[ -z "$CLUSTER" ]]; then
         flush_and_exit_node  localhost
-        wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.pid
+        wait_for_exit_pids 10 `cat ${TMPDIR}/${DBNAME}.pid`
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
     else
         pidfilelist=""
 
         for node in $CLUSTER; do
             flush_and_exit_node  $node &
-            wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.${node}.pid
             build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
         done
         wait
@@ -203,7 +199,7 @@ unsetup_db() {
         # for clustered, killing ssh session which is running comdb2 cmd 
         # will kill server on that node
         if [ -n "$pidfilelist" ] ; then
-            wait_for_exit_pid_list 10 ${TMPDIR}/${DBNAME}.pid
+            wait_for_exit_pids 10 $pidfilelist
             echo "killing $pidfilelist"
             kill -9 $pidfilelist
         fi

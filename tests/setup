@@ -287,7 +287,7 @@ setup_db() {
             let i=i+1
         done
 
-        echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
+        echo "export COMDB2_ROOT=$COMDB2_ROOT TESTDIR=$TESTDIR" >> ${TESTDIR}/replicant_vars
         CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
         echo "!$TESTCASE: starting"
         for node in $CLUSTER; do

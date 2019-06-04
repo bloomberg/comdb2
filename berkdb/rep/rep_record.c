@@ -481,6 +481,7 @@ static void *apply_thread(void *arg)
 	lp = dblp->reginfo.primary;
 	bdb_thread_start_rw();
 
+    //ATOMIC_ADD(gbl_thread_count, 1);
 	Pthread_mutex_lock(&rep_queue_lock);
 	while (gbl_decoupled_logputs) {
 		int pollms = (gbl_apply_thread_pollms > 0) ?
