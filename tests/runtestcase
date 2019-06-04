@@ -232,6 +232,7 @@ verify_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select * from comdb2_tables')
+    timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.send('temptable_clear')" &> verify.out
     for t in $tables ; do 
         timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
         if ! grep "Verify succeeded." verify.out > /dev/null ; then
