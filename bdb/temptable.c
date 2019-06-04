@@ -659,7 +659,7 @@ int bdb_temp_table_clear_list(bdb_state_type *bdb_state)
     return rc;
 }
 
-int bdb_temp_table_clear_pool(bdb_state_type *bdb_state);
+int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
 {
     comdb2_objpool_t op = bdb_state->temp_table_pool;
     if (op == NULL) return EINVAL;
