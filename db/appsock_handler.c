@@ -268,7 +268,6 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
     if (keepsocket == 0) {
-        abort();
         close_appsock(w->sb);
         w->sb = NULL;
     }
