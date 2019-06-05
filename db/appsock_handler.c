@@ -70,8 +70,10 @@ static void appsock_thd_end(struct thdpool *pool, void *thddata);
 
 void close_appsock(SBUF2 *sb)
 {
-    net_end_appsock(sb);
-    ATOMIC_ADD(active_appsock_conns, -1);
+    if (sb != NULL) {
+        net_end_appsock(sb);
+        ATOMIC_ADD(active_appsock_conns, -1);
+    }
 }
 
 int appsock_init(void)
