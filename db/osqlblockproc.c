@@ -106,7 +106,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
-extern const char *get_tablename_from_rpl(const char *rpl);
+extern const char *get_tablename_from_rpl(const char *rpl, int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -419,11 +419,13 @@ typedef struct {
 } ckgenid_state_t;
 
 static int pselectv_callback(void *arg, const char *tablename,
-        unsigned long long genid)
+        int tableversion, unsigned long long genid)
 {
     ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
     extern int ix_check_genid_wl(struct ireq *iq, void *trans,
             unsigned long long genid, int *bdberr);
+    extern int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
+            int step, struct block_err *err);
     struct ireq *iq = cgstate->iq;
     void *trans = cgstate->trans;
     struct block_err *err = cgstate->err;
@@ -439,6 +441,10 @@ static int pselectv_callback(void *arg, const char *tablename,
                 reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
             return ERR_INTERNAL;
         }
+    }
+
+    if ((rc = osql_set_usedb(iq, tablename, tableversion, 0, err)) != 0) {
+        return rc;
     }
 
     if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
@@ -660,7 +666,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        const char *tablename = get_tablename_from_rpl(rpl);
+        const char *tablename = get_tablename_from_rpl(rpl, NULL);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
@@ -831,8 +837,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type == OSQL_USEDB && (sess->selectv_writelock_on_update ||
                 sess->is_reorder_on)) {
-        const char *tablename = get_tablename_from_rpl(rpl);
+        int tableversion = 0;
+        const char *tablename = get_tablename_from_rpl(rpl, &tableversion);
         sess->table = intern(tablename);
+        sess->tableversion = tableversion;
     }
 
     if (sess->selectv_writelock_on_update)

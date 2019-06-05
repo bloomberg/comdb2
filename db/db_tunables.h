@@ -1685,7 +1685,8 @@ REGISTER_TUNABLE("machine_class",
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("selectv_writelock_on_update",
-                 "Acquire a writelock for updated selectv records.",
+                 "Acquire a writelock for updated selectv records."
+                 "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 

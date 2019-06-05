@@ -5997,8 +5997,8 @@ int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
     int reqdtalen = 0;
 
     *bdberr = 0;
-    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, &reqdtalen,
-                                             0, 0, trans, NULL, 1);
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, NULL,
+                                            &reqdtalen, 0, trans, NULL, 1);
 
     if (rc == IX_FND)
         return 1;

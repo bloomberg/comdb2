@@ -728,6 +728,7 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 typedef struct {
     char *tablename;
     unsigned long long genid;
+    int tableversion;
     bool get_writelock;
 } selectv_genid_t;
 
@@ -834,6 +835,7 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
         assert(sess->table);
         fnd.tablename = sess->table;
+        fnd.tableversion = sess->tableversion;
         if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL)
             sgenid->get_writelock = 1;
         rc = 0;
@@ -847,6 +849,7 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
             sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
             sgenid->genid = fnd.genid;
             sgenid->tablename = sess->table;
+            sgenid->tableversion = sess->tableversion;
             sgenid->get_writelock = 0;
             hash_add(sess->selectv_genids, sgenid);
         }
@@ -858,7 +861,7 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
 
 
 typedef struct {
-    int (*wr_sv)(void *, const char *tablename, unsigned long long genid);
+    int (*wr_sv)(void *, const char *tablename, int tableversion, unsigned long long genid);
     void *arg;
 } sv_hf_args;
 
@@ -869,13 +872,14 @@ static int process_selectv(void *obj, void *arg)
     selectv_genid_t *sgenid = (selectv_genid_t *)obj;
     if (sgenid->get_writelock) {
         return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
-                sgenid->genid);
+                sgenid->tableversion, sgenid->genid);
     }
     return 0;
 }
 
-int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg,
-            const char *tablename, unsigned long long genid), void *wr_selv_arg)
+int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, const char
+            *tablename, int tableversion, unsigned long long genid),
+            void *wr_selv_arg)
 {
     sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);
