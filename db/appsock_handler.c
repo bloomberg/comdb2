@@ -268,8 +268,11 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
     thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
-    if (keepsocket == 0)
+    if (keepsocket == 0) {
+        abort();
         close_appsock(sb);
+        w->sb = NULL;
+    }
 
     if (thrman_get_type(state->thr_self) != THRTYPE_APPSOCK_POOL)
         thrman_change_type(state->thr_self, THRTYPE_APPSOCK_POOL);
@@ -279,7 +282,6 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
     appsock_work_args_t *w = (appsock_work_args_t *)work;
-    SBUF2 *sb = w->sb;
 
     switch (op) {
     case THD_RUN:
@@ -287,7 +289,8 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
         break;
 
     case THD_FREE:
-        close_appsock(sb);
+        close_appsock(w->sb);
+        w->sb = NULL;
         break;
 
     default:
