@@ -418,8 +418,8 @@ typedef struct {
     struct block_err *err;
 } ckgenid_state_t;
 
-static int pselectv_callback(void *arg, const char *tablename,
-        int tableversion, unsigned long long genid)
+static int pselectv_callback(void *arg, const char *tablename, int tableversion,
+                             unsigned long long genid)
 {
     ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
     struct ireq *iq = cgstate->iq;
@@ -446,12 +446,14 @@ static int pselectv_callback(void *arg, const char *tablename,
     if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
         if (rc != 1) {
             unsigned long long lclgenid = bdb_genid_to_host_order(genid);
-            if ((bdberr == 0 && rc == 0) || (bdberr == IX_PASTEOF && rc == -1)) {
+            if ((bdberr == 0 && rc == 0) ||
+                (bdberr == IX_PASTEOF && rc == -1)) {
                 err->ixnum = -1;
                 err->errcode = ERR_CONSTR;
                 ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,
                        lclgenid);
-                reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "constraints error, no genid");
+                reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
+                          "constraints error, no genid");
                 return ERR_CONSTR;
             }
 
@@ -474,12 +476,13 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    ckgenid_state_t cgstate = { .iq = iq, .trans = iq_trans, .err = err };
+    ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
-    /* Pre-process selectv's, getting a writelock on rows that are later updated */
+    /* Pre-process selectv's, getting a writelock on rows that are later updated
+     */
     if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
-                    pselectv_callback, &cgstate)) != 0) {
+                                   pselectv_callback, &cgstate)) != 0) {
         iq->timings.req_applied = osql_log_time();
         return rc;
     }
@@ -831,8 +834,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
-    if (type == OSQL_USEDB && (sess->selectv_writelock_on_update ||
-                sess->is_reorder_on)) {
+    if (type == OSQL_USEDB &&
+        (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
         int tableversion = 0;
         const char *tablename = get_tablename_from_rpl(rpl, &tableversion);
         sess->table = intern(tablename);

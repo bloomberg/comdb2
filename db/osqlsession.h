@@ -101,7 +101,7 @@ struct osql_sess {
     bool is_reorder_on : 1;
     bool selectv_writelock_on_update : 1;
     hash_t *selectv_genids;
-    char *table;        // intern'd usedb
+    char *table; // intern'd usedb
     int tableversion;
 };
 
@@ -299,10 +299,11 @@ int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl);
-int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg,
-            const char *tablename, int tableversion, unsigned long long genid),
-            void *wr_arg);
-
+int osql_process_selectv(osql_sess_t *sess,
+                         int (*wr_sv)(void *arg, const char *tablename,
+                                      int tableversion,
+                                      unsigned long long genid),
+                         void *wr_arg);
 
 /**
  * Terminate a session if the session is not yet completed/dispatched

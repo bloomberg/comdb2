@@ -6714,7 +6714,7 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid)
 }
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
-        int step, struct block_err *err)
+                   int step, struct block_err *err)
 {
     if (unlikely(timepart_is_timepart(tablename, 1))) {
         char *newest_shard;
@@ -6725,10 +6725,10 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
             free(newest_shard);
         } else {
             logmsg(LOGMSG_ERROR, "%s: broken time partition %s\n", __func__,
-                    tablename);
+                   tablename);
 
             return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                    tablename, 0);
+                                     tablename, 0);
         }
     } else {
         if (is_tablename_queue(tablename, strlen(tablename))) {
@@ -6739,9 +6739,9 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
         if (iq->usedb == NULL) {
             iq->usedb = iq->origdb;
             logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
-                    __func__, (int)strlen(tablename) + 1, tablename);
+                   __func__, (int)strlen(tablename) + 1, tablename);
             return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                    tablename, 0);
+                                     tablename, 0);
         }
     }
 
@@ -6751,7 +6751,7 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
     if (iq->usedb && iq->usedb->tableversion != tableversion) {
         if (iq->debug)
             reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %llu\n",
-                    tableversion, iq->usedb->tableversion);
+                      tableversion, iq->usedb->tableversion);
         poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
         err->errcode = OP_FAILED_VERIFY;
         return ERR_VERIFY;
@@ -6927,8 +6927,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
-        if ((rc = osql_set_usedb(iq, tablename, dt.tableversion, step,
-                        err)) != 0)
+        if ((rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err)) !=
+            0)
             return rc;
     } break;
     case OSQL_DBQ_CONSUME: {

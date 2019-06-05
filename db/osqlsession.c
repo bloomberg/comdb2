@@ -792,7 +792,8 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->is_reorder_on = is_reorder_on;
     sess->selectv_writelock_on_update = gbl_selectv_writelock_on_update;
     if (sess->selectv_writelock_on_update)
-        sess->selectv_genids = hash_init(offsetof(selectv_genid_t, get_writelock));
+        sess->selectv_genids =
+            hash_init(offsetof(selectv_genid_t, get_writelock));
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
@@ -820,7 +821,7 @@ late_error:
     return NULL;
 }
 
-int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl) 
+int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
 {
     char *p_buf;
     int rc = -1;
@@ -832,7 +833,8 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
     case OSQL_UPDREC:
     case OSQL_DELREC:
         p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
-        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
+                       p_buf + sizeof(fnd.genid));
         assert(sess->table);
         fnd.tablename = sess->table;
         fnd.tableversion = sess->tableversion;
@@ -842,7 +844,8 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
         break;
     case OSQL_RECGENID:
         p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
-        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf, p_buf + sizeof(fnd.genid));
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
+                       p_buf + sizeof(fnd.genid));
         assert(sess->table);
         fnd.tablename = sess->table;
         if (hash_find(sess->selectv_genids, &fnd) == NULL) {
@@ -859,12 +862,11 @@ int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
     return rc;
 }
 
-
 typedef struct {
-    int (*wr_sv)(void *, const char *tablename, int tableversion, unsigned long long genid);
+    int (*wr_sv)(void *, const char *tablename, int tableversion,
+                 unsigned long long genid);
     void *arg;
 } sv_hf_args;
-
 
 static int process_selectv(void *obj, void *arg)
 {
@@ -872,14 +874,16 @@ static int process_selectv(void *obj, void *arg)
     selectv_genid_t *sgenid = (selectv_genid_t *)obj;
     if (sgenid->get_writelock) {
         return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
-                sgenid->tableversion, sgenid->genid);
+                                 sgenid->tableversion, sgenid->genid);
     }
     return 0;
 }
 
-int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, const char
-            *tablename, int tableversion, unsigned long long genid),
-            void *wr_selv_arg)
+int osql_process_selectv(osql_sess_t *sess,
+                         int (*wr_sv)(void *arg, const char *tablename,
+                                      int tableversion,
+                                      unsigned long long genid),
+                         void *wr_selv_arg)
 {
     sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
     if (!sess->selectv_writelock_on_update)
