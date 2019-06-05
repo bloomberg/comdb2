@@ -621,8 +621,10 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         logmsg(LOGMSG_USER, "Cur %p opened with no shadow tran\n", cur);
     }
 
-    if (bdb_state->isopen == 0)
+    if (bdb_state->isopen == 0) {
+        free(pcur_ifn);
         return NULL;
+    }
 
     if (ixnum >= 0) {
         cur->idx = ixnum;
@@ -634,6 +636,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
                 logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
                        bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
+                free(pcur_ifn);
                 return NULL;
             }
         }
@@ -6086,12 +6089,25 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
     if (cur->type == BDBC_DT && how == DB_FIRST && cur->pageorder) {
         /* Create my vs_stab temp_table if it doesn't exist. */
         if (cur->vs_skip == NULL) {
+            assert(cur->vs_stab == NULL);
             cur->vs_stab = bdb_temp_table_create(cur->state, bdberr);
         }
         /* Otherwise truncate it. */
         else {
-            bdb_temp_table_close_cursor(cur->state, cur->vs_skip, bdberr);
-            bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            int rc2 = bdb_temp_table_close_cursor(cur->state, cur->vs_skip,
+                                                  bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_close_cursor(%p, %p) rc %d, bdberr %d\n",
+                   __func__, cur->vs_stab, cur->vs_skip, rc, *bdberr);
+            }
+            assert(cur->vs_stab != NULL);
+            rc2 = bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: bdb_temp_table_truncate(%p) rc %d, bdberr %d\n",
+                       __func__, cur->vs_stab, rc, *bdberr);
+            }
         }
 
         /* Get a cursor to the new (or truncated) table. */
