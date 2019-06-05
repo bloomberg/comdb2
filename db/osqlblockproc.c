@@ -106,7 +106,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
-extern const char *get_tablename_from_rpl(const char *rpl, int *tableversion);
+extern const char *get_tablename_from_rpl(unsigned long long rqid,
+        const char *rpl, int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -658,14 +659,14 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
-void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
-                       oplog_key_t *key)
+void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
+        struct ireq *iq, char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        const char *tablename = get_tablename_from_rpl(rpl, NULL);
+        const char *tablename = get_tablename_from_rpl(rqid, rpl, NULL);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
@@ -837,7 +838,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_USEDB &&
         (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
         int tableversion = 0;
-        const char *tablename = get_tablename_from_rpl(rpl, &tableversion);
+        const char *tablename = get_tablename_from_rpl(rqid, rpl, &tableversion);
         sess->table = intern(tablename);
         sess->tableversion = tableversion;
     }
@@ -847,7 +848,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, iq, rpl, &key);
+        setup_reorder_key(type, sess, rqid, iq, rpl, &key);
         if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }
