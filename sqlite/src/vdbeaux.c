@@ -3498,7 +3498,9 @@ unsigned long long bdb_genid_to_host_order(unsigned long long genid);
 ** carried out.  Seek the cursor now.  If an error occurs, return
 ** the appropriate error code.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 int gbl_abort_on_dta_lookup_error = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
   int res, rc;
