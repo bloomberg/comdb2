@@ -261,16 +261,15 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
     appsock_work_args_t *w = (appsock_work_args_t *)work;
-    SBUF2 *sb = w->sb;
     int keepsocket = 0;
 
-    thrman_setfd(state->thr_self, sbuf2fileno(sb));
+    thrman_setfd(state->thr_self, sbuf2fileno(w->sb));
     thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
     if (keepsocket == 0) {
         abort();
-        close_appsock(sb);
+        close_appsock(w->sb);
         w->sb = NULL;
     }
 
