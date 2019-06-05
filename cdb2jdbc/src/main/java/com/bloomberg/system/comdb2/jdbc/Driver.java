@@ -22,7 +22,11 @@ import java.util.logging.*;
  */
 public class Driver implements java.sql.Driver {
     private static Logger logger = Logger.getLogger(Driver.class.getName());
-    private com.bloomberg.comdb2.jdbc.Driver drv = new com.bloomberg.comdb2.jdbc.Driver();
+    private com.bloomberg.comdb2.jdbc.Driver drv;
+
+    public Driver() throws SQLException {
+        drv = new com.bloomberg.comdb2.jdbc.Driver();
+    }
 
     static {
         try {

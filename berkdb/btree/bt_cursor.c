@@ -1924,7 +1924,7 @@ __bam_c_get(dbc, key, data, flags, pgnop)
 	prefault_dbp = dbp;
 
 	newopd = 0;
-	switch (flags) {
+	switch (flags & DB_OPFLAGS_MASK) {
 	case DB_CURRENT:
 		/* It's not possible to return a deleted record. */
 		if (F_ISSET(cp, C_DELETED)) {
