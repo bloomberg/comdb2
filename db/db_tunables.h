@@ -1690,4 +1690,9 @@ REGISTER_TUNABLE("selectv_writelock_on_update",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("selectv_writelock",
+                 "Acquire a writelock for selectv records.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_selectv_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

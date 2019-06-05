@@ -6759,6 +6759,8 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
     return 0;
 }
 
+int gbl_selectv_writelock = 0;
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -7499,7 +7501,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         lclgenid = bdb_genid_to_host_order(dt.genid);
 
-        rc = ix_check_genid(iq, trans, dt.genid, &bdberr);
+        if (gbl_selectv_writelock)
+            rc = ix_check_genid_wl(iq, trans, dt.genid, &bdberr);
+        else
+            rc = ix_check_genid(iq, trans, dt.genid, &bdberr);
 
         if (logsb) {
             uuidstr_t us;

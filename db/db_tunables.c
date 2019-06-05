@@ -291,6 +291,7 @@ extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
+extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
 

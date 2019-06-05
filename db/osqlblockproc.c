@@ -422,10 +422,6 @@ static int pselectv_callback(void *arg, const char *tablename,
         int tableversion, unsigned long long genid)
 {
     ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
-    extern int ix_check_genid_wl(struct ireq *iq, void *trans,
-            unsigned long long genid, int *bdberr);
-    extern int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
-            int step, struct block_err *err);
     struct ireq *iq = cgstate->iq;
     void *trans = cgstate->trans;
     struct block_err *err = cgstate->err;
