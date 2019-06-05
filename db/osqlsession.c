@@ -882,6 +882,8 @@ int osql_process_selectv(osql_sess_t *sess, int (*wr_sv)(void *arg, const char
             void *wr_selv_arg)
 {
     sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
+    if (!sess->selectv_writelock_on_update)
+        return 0;
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);
 }
 
