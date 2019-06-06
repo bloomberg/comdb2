@@ -612,6 +612,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         }
         break;
     }
+    case OSQL_RECGENID:
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
@@ -644,10 +645,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         /* NB: this stripe is only used for ordering, NOT for inserting */
         key->stripe = get_dtafile_from_genid(key->genid);
         assert(key->stripe >= 0);
-        break;
-    }
-    case OSQL_RECGENID: {
-        key->tbl_idx = sess->tbl_idx;
         break;
     }
     default:
