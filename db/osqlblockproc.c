@@ -480,8 +480,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
-    /* Pre-process selectv's, getting a writelock on rows that are later updated
-     */
+    /* Pre-process selectv's, getting a writelock on rows that are later updated */
     if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
                                    pselectv_callback, &cgstate)) != 0) {
         iq->timings.req_applied = osql_log_time();

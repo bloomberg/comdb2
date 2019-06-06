@@ -32,6 +32,7 @@ int contention = 0;
 int stop_flag = 0;
 int contention_interval = 60;
 int do_insert = 0;
+int do_create = 0;
 int64_t updates_this_segment;
 FILE *errlog = NULL;
 
@@ -42,6 +43,7 @@ void usage(FILE *f)
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
     fprintf(f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
     fprintf(f, "        -I                  - do initial insert\n");
+    fprintf(f, "        -M                  - create initial tables\n");
     fprintf(f, "        -m <timelimit>      - run test for this amount of time\n");
     fprintf(f, "        -l <limit>          - set selectv limit\n");
     fprintf(f, "        -R <initial-recs>   - initial database record count\n");
@@ -359,10 +361,13 @@ int main(int argc, char *argv[])
     pthread_t *thds = NULL;
     argv0 = argv[0];
     setvbuf(stdout, NULL, _IOLBF, 0);
-    while ((c = getopt(argc, argv, "d:T:t:Ic:hR:Dvm:l:")) != EOF) {
+    while ((c = getopt(argc, argv, "d:T:t:Ic:hR:Dvm:l:M")) != EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
+                break;
+            case 'M':
+                do_create = 1;
                 break;
             case 'I':
                 do_insert = 1;
@@ -411,12 +416,14 @@ int main(int argc, char *argv[])
     assert(errlog);
     srand(time(NULL));
 
-    if (do_insert) {
+    if (do_create) {
         drop_tables();
         create_tables();
-        populate_tables();
     }
 
+    if (do_insert) {
+        populate_tables();
+    }
     thds = (pthread_t *)calloc(numthds, sizeof(pthread_t));
     for(int i = 0; i < numthds; i++) {
         int64_t x = (int64_t)i;
