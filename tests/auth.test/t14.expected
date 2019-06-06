@@ -11,7 +11,6 @@
 (username='user2', isOP='N')
 (username='user3', isOP='N')
 [create table t2(i int, i int)] failed with rc -3 Duplicate column name 'i'.
-(tablename='dummy')
 (tablename='t1@user2')
 (tablename='t3@user2')
 [drop table t2] failed with rc -3 no such table: t2@user2

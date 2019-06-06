@@ -48,6 +48,11 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
     DB_LSN lsn;
     int rectype, rc;
 
+    /* If we're exiting, some fields might have been
+       destroyed before we get here. Return now. */
+    if (net_is_exiting(netinfo_ptr))
+        return;
+
     /* Get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 

@@ -724,6 +724,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
             *bdberr = BDBERR_READONLY;
             myfree(tran);
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
             return NULL;
         }
 
@@ -988,13 +989,12 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
     bdb_osql_trn_repo_lock();
     iirc = update_shadows_beforecommit(
         bdb_state, &tran->logical_tran->last_logical_lsn, NULL, 1);
+    bdb_osql_trn_repo_unlock();
     if (iirc) {
         logmsg(LOGMSG_ERROR, "%s:update_shadows_beforecommit returns %d\n", __func__,
                 iirc);
-        bdb_osql_trn_repo_unlock();
         return -1;
     }
-    bdb_osql_trn_repo_unlock();
 
     /* Update last committed logical lsn */
     tran->logical_tran->last_physical_commit_lsn =
@@ -1116,6 +1116,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->threadid = pthread_self();
 
     tran->usrptr = 0;
+    int setThdTran = 0; /* was tran saved into thread local data? */
 
     /* comdb2 coding style:  "if parent" means "i am a child" */
     if (parent) {
@@ -1132,6 +1133,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
         tran->master = 1;
 
         Pthread_setspecific(bdb_state->seqnum_info->key, tran);
+        setThdTran = 1;
 
         /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
@@ -1172,6 +1174,10 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
             myfree(tran);
+            if (setThdTran){
+                Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+                setThdTran = 0;
+            }
             return NULL;
         } else {
             if (!parent) {
@@ -1599,13 +1605,13 @@ static int bdb_tran_commit_with_seqnum_int_int(
                    sizeof(DB_LSN));
 
             if (iirc) {
+                tran->tid->abort(tran->tid);
+                bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, 
                         "%s:%d failed to log logical commit, rc %d\n", __func__,
                        __LINE__, iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
-                tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
 
@@ -1616,12 +1622,12 @@ static int bdb_tran_commit_with_seqnum_int_int(
             }
 
             if (iirc) {
+                tran->tid->abort(tran->tid);
+                bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR, 
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
-                tran->tid->abort(tran->tid);
-                bdb_osql_trn_repo_unlock();
                 return -1;
             }
 
@@ -2502,16 +2508,16 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
-        unsigned int flags = DB_LOCK_ID_READONLY;
+        unsigned int loc_flags = DB_LOCK_ID_READONLY;
         extern int gbl_track_curtran_locks;
 
         if (lowpri)
-            flags |= DB_LOCK_ID_LOWPRI;
+            loc_flags |= DB_LOCK_ID_LOWPRI;
         if (gbl_track_curtran_locks)
-            flags |= DB_LOCK_ID_TRACK;
+            loc_flags |= DB_LOCK_ID_TRACK;
 
         rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv,
-                                             &curtran->lockerid, flags);
+                                             &curtran->lockerid, loc_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: fail to get lock_id rc=%d\n", __func__, rc);
             *bdberr = (rc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : rc;

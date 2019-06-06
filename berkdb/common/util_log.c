@@ -51,7 +51,8 @@ __db_util_logset(progname, fname)
 
 	(void)time(&now);
 	__os_id(&id);
-	fprintf(fp, "%s: %lu %s", progname, (u_long)id, ctime(&now));
+	char my_buf[30];
+	fprintf(fp, "%s: %lu %s", progname, (u_long)id, ctime_r(&now, my_buf));
 
 	if (fclose(fp) == EOF)
 		goto err;

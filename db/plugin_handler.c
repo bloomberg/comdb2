@@ -322,14 +322,25 @@ const char *comdb2_plugin_type_to_str(int type)
     return "unknown";
 }
 
-int run_init_plugins()
+int run_init_plugins(int phase)
 {
     for (int i = 0; gbl_plugins[i]; ++i) {
         struct comdb2_initializer *initer;
-        int rc;
+        int rc = 0;
         if (gbl_plugins[i]->type == COMDB2_PLUGIN_INITIALIZER) {
             initer = gbl_plugins[i]->data;
-            rc = initer->initializer_handler();
+            rc = 0;
+            switch (phase) {
+                case COMDB2_PLUGIN_INITIALIZER_PRE:
+                    if (initer->pre_recovery)
+                        rc = initer->pre_recovery();
+                    break;
+                case COMDB2_PLUGIN_INITIALIZER_POST:
+                    if (initer->post_recovery)
+                        rc = initer->post_recovery();
+                    break;
+
+            }
             if (rc) {
                 return 1;
             }

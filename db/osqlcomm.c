@@ -3612,6 +3612,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         comdb2uuidcpy(usedb_uuid_rpl.hd.uuid, uuid);
         usedb_uuid_rpl.dt.tablenamelen = tablenamelen;
         usedb_uuid_rpl.dt.tableversion = tableversion;
+        /* tablename field needs to be NOT null-terminated if > than 4 chars */
         strncpy(usedb_uuid_rpl.dt.tablename, tablename,
                 sizeof(usedb_uuid_rpl.dt.tablename));
 
@@ -3635,6 +3636,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         usedb_rpl.hd.sid = rqid;
         usedb_rpl.dt.tablenamelen = tablenamelen;
         usedb_rpl.dt.tableversion = tableversion;
+        /* tablename field needs to be NOT null-terminated if > than 4 chars */
         strncpy(usedb_rpl.dt.tablename, tablename,
                 sizeof(usedb_rpl.dt.tablename));
 
@@ -3653,6 +3655,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
+    /* tablename field is not null-terminated -- send rest of tablename */
     if (tablenamelen > sent) {
         rc = offload_net_send_tail(tohost, type, &buf, msglen, 0,
                                    tablename + sent, tablenamelen - sent);
@@ -4903,8 +4906,8 @@ static void osql_blocksql_failed_dispatch(netinfo_type *netinfo_ptr,
     rpl_xerr.hd.sid = rqid;
 
     rpl_xerr.dt.errval = rc;
-    strncpy(rpl_xerr.dt.errstr, "cannot dispatch sql request",
-            sizeof(rpl_xerr.dt.errstr));
+    strncpy0(rpl_xerr.dt.errstr, "cannot dispatch sql request",
+             sizeof(rpl_xerr.dt.errstr));
 
     if (!(osqlcomm_done_xerr_type_put(&rpl_xerr, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
@@ -5016,7 +5019,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         req_uuid.sqlqlen = sqlen;
 
         if (tzname)
-            strncpy(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
+            strncpy0(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
 
         p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
         r_uuid_ptr->rqlen = rqlen;
@@ -5048,7 +5051,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         r_ptr->rqlen = rqlen;
 
         if (tzname)
-            strncpy(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
+            strncpy0(r_ptr->tzname, tzname, sizeof(r_ptr->tzname));
     }
 
     p_buf = buf_no_net_put(sql, sqlen, p_buf, p_buf_end);
@@ -5482,7 +5485,7 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (db_is_stopped()) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5536,7 +5539,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     bool found = false;
     int rc = 0;
 
-    if (thedb->exiting || thedb->stopped) {
+    if (db_is_stopped()) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5584,7 +5587,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_t poke;
+    osql_poke_t poke = {0};
     osql_poke_uuid_t pokeuuid;
     int found = 0;
     int rc = 0;
@@ -5595,7 +5598,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (db_is_stopped()) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5690,7 +5693,7 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (thedb->exiting || thedb->stopped) {
+    if (db_is_stopped()) {
         /* don't do anything, we're going down */
         return;
     }
@@ -6678,10 +6681,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
         return 0;
-    else
-        return ERR_SC;
 
-    return 0;
+    return ERR_SC;
 }
 
 /* get the table name part of the rpl request
@@ -6909,7 +6910,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // thus they will not need to check table version
         if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %llu\n",
                           dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
@@ -7370,8 +7371,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             int jj = 0;
             uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
-                        comdb2uuidstr(uuid, us), dt.ixnum,
-                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+                        comdb2uuidstr(uuid, us),
+                        isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
             for (jj = 0; jj < dt.nData; jj++)
                 sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -7736,11 +7737,11 @@ done:
 
         generr.errval = ERR_TRAN_FAILED;
         if (rc == -4) {
-            strncpy(generr.errstr, "fail to create block processor log",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "fail to create block processor log",
+                     sizeof(generr.errstr));
         } else {
-            strncpy(generr.errstr, "failed to create transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "failed to create transaction",
+                     sizeof(generr.errstr));
         }
 
         rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
@@ -8087,7 +8088,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         tablename =
             (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
-        sbuf2printf(logsb, "[%llx us] OSQL_USEDB \"%s\"\n", id, us, tablename);
+        sbuf2printf(logsb, "[%llx %s] OSQL_USEDB \"%s\"\n", id, us, tablename);
     } break;
     case OSQL_DELREC:
     case OSQL_DELETE: {
@@ -8252,8 +8253,8 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         lclgenid = bdb_genid_to_host_order(dt.seq);
-        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us, dt.ixnum,
-                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
+        sbuf2printf(logsb, "[%llx %s] %s ixnum %d [\n", id, us,
+                    isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", dt.ixnum);
         for (jj = 0; jj < dt.nData; jj++)
             sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -9009,9 +9010,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 done:
     bdb_thread_event(thedb->bdb_env, 0);
     send_prefault_udp = 0;
-    if (req->record)
-        free(req->record);
-    free(req);
 }
 
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
@@ -9022,12 +9020,9 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     case THD_RUN:
         osqlpfault_do_work(pool, work, thddata);
         break;
-    case THD_FREE:
-        if (req->record)
-            free(req->record);
-        free(req);
-        break;
     }
+    free(req->record);
+    free(req);
 }
 
 int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,

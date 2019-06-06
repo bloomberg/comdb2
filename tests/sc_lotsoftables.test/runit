@@ -220,4 +220,26 @@ done
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('delfiles t$i ')"
 #done
 
+
+#create tables with increasing longer tablenames
+test_create_tbls() {
+    i=0
+    tbl="f"
+    while [ $i -lt 30 ] ; do
+        tbl=$tbl$((i%10))
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table $tbl (i int unique)"
+        val=$RANDOM
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into $tbl values ($val)"
+        res=`$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --tabs default "select * from $tbl"`
+        assertres $res $val
+        let i=i+1
+    done
+
+}
+
+test_create_tbls
+
+
+
+
 echo "Success"

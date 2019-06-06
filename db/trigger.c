@@ -195,23 +195,16 @@ static void *trigger_start_int(void *name_)
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         rc = trigger_register_req(reg);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        switch (rc) {
-        case CDB2_TRIG_REQ_SUCCESS:
-            break;
-        case CDB2_TRIG_NOT_MASTER:
-        case NET_SEND_FAIL_TIMEOUT:
-        case NET_SEND_FAIL_INVALIDNODE:
-        case NET_SEND_FAIL_INTERNAL:
-            sleep(1);
-            break;
-        case CDB2_TRIG_ASSIGNED_OTHER:
-        default:
-            return NULL;
-        }
         if (rc == CDB2_TRIG_REQ_SUCCESS)
             break;
+        if (rc == CDB2_TRIG_ASSIGNED_OTHER)
+            return NULL;
+        sleep(1);
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+        force_unregister(NULL, reg);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
         return NULL;
     }
     exec_trigger(reg);

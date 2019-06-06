@@ -1,7 +1,10 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
 set(LIBNAME "remsql")
-
+include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
+add_definitions(
+  ${SQLITE_FLAGS}
+)
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc

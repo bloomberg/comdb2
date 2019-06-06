@@ -298,7 +298,7 @@ static void init_router_mode()
 
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
+    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path) - 1);
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
@@ -406,7 +406,6 @@ static void dealloc_svc_running_on_port(int port)
     for (std::map<std::string, int>::iterator it = port_map.begin();
          it != port_map.end(); ++it) {
         if (it->second == port) {
-            int port = it->second;
             pmux_store->del_port(it->first.c_str());
             port_map.erase(it);
             if (is_port_in_range(port))
@@ -840,13 +839,13 @@ static bool init_local_names()
     return true;
 }
 
-static bool init(std::vector<std::pair<int, int>> port_ranges)
+static bool init(const std::vector<std::pair<int, int>> &pranges)
 {
 
     if (!init_local_names())
         return false;
 
-    for (auto &range : port_ranges) {
+    for (auto &range : pranges) {
 #ifdef VERBOSE
         syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
                range.second);
@@ -1011,7 +1010,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }
-            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path) - 1);
             break;
         case 'p':
             if (default_ports) {

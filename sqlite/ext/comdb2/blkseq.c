@@ -12,6 +12,8 @@
 #include "build/db.h"
 #include <bdb/bdb_api.h>
 
+extern int blkseq_get_rcode(void *data, int datalen);
+
 typedef struct systable_blkseq {
     int64_t stripe;
     int64_t ix;
@@ -60,7 +62,6 @@ static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
     } else {
         int timestamp;
         int age;
-        int blkseq_get_rcode(void *data, int datalen);
         int rcode = blkseq_get_rcode(data->data, data->size);
         memcpy(&timestamp, (uint8_t *)data->data + (data->size - 4), 4);
         age = now - timestamp;

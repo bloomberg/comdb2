@@ -112,7 +112,6 @@ struct dohsql {
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
 };
-typedef struct dohsql dohsql_t;
 
 struct dohsql_stats {
     long long num_reqs;
@@ -146,11 +145,9 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     struct sqlclntstate *clnt = work;
     switch (op) {
     case THD_RUN:
-        sqlengine_setup_temp_table_mtx(clnt);
         sqlengine_work_shard(pool, work, thddata);
         break;
     case THD_FREE:
-        sqlengine_cleanup_temp_table_mtx(clnt);
         /* error, we are done */
         clnt->query_rc = -1;
         clnt->done = 1;
@@ -1087,6 +1084,7 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     if (conn->cols)
         free(conn->cols);
 
+    free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
@@ -1881,6 +1879,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         /* clnt parameters are incorrect, fallback to single thread to err */
         free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     /* found, add it to the node->params array */
@@ -1894,5 +1893,6 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
+    free(newparam);
     return *pparams = params;
 }

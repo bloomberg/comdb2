@@ -24,6 +24,7 @@ import java.util.*;
 public class Comdb2DatabaseMetaData implements DatabaseMetaData {
 
     private Statement stmt;
+    private PreparedStatement ps = null;
     private String url;
     Comdb2Connection conn;
     private String sqlkws = null;
@@ -36,11 +37,17 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     private boolean hasSystemTables() {
+        ResultSet rs = null;
         try {
-            stmt.executeQuery("select 1 from comdb2sys_tables limit 0");
+            rs = stmt.executeQuery("select 1 from comdb2sys_tables limit 0");
             return true;
         } catch (Exception e) {
             return false;
+        } finally {
+            try {
+                if (rs != null)
+                    rs.close();
+            } catch (SQLException sqle) {}
         }
     }
 
@@ -701,8 +708,9 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         ht.add("YEAR");
         ht.add("ZONE");
 
+        ResultSet rs = null;
         try {
-            ResultSet rs = stmt.executeQuery("GET RESERVED KW");
+            rs = stmt.executeQuery("GET RESERVED KW");
             while (rs.next()) {
                 String keyword = rs.getString(1).toUpperCase();
                 if (!ht.contains(keyword)) // only add to list if this is not a SQL 2003 kw
@@ -719,6 +727,12 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         } catch (Exception e) {
             /* fall back if db doesn't support the feature */
             sqlkws = "";
+        } finally {
+            if (rs != null) {
+                try {
+                    rs.close();
+                } catch (SQLException sqle) {}
+            }
         }
         return sqlkws;
     }
@@ -1098,16 +1112,32 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     "null as PROCEDURE_NAME, null as UNDEF1, null as UNDEF2, null as UNDEF3, " +
                     "null as REMARKS, null as PROCEDURE_TYPE, null as SPECIFIC_NAME limit 0;");
         }
-        return stmt.executeQuery("select '" + conn.getDatabase() + "' as PROCEDURE_CAT, '" +
-                conn.getCluster() + "' as PROCEDURE_SCHEM, " +
-                "name as PROCEDURE_NAME, null as UNDEF1, null as UNDEF2, null as UNDEF3, " +
-                "'' as REMARKS, " +
-                DatabaseMetaData.procedureResultUnknown
-                + " as PROCEDURE_TYPE, (name + '.' + version) as SPECIFIC_NAME from comdb2sys_procedures" + (
-                (procedureNamePattern != null) ?
-                " WHERE name LIKE '" + procedureNamePattern + "'" :
-                "")
-                );
+
+        StringBuilder q = new StringBuilder();
+        q.append("select ? as PROCEDURE_CAT,")
+            .append("    ? as PROCEDURE_SCHEM,")
+            .append("    name as PROCEDURE_NAME,")
+            .append("    null as UNDEF1,")
+            .append("    null as UNDEF2,")
+            .append("    null as UNDEF3,")
+            .append("    '' as REMARKS,")
+            .append("    ? as PROCEDURE_TYPE,")
+            .append("    (name || '.' || version) as SPECIFIC_NAME ")
+            .append("from comdb2sys_procedures ");
+        if (procedureNamePattern != null)
+            q.append(" WHERE name LIKE ? ");
+        q.append("order by PROCEDURE_CAT, PROCEDURE_SCHEM, PROCEDURE_NAME, SPECIFIC_NAME");
+
+        if (ps != null)
+            ps.close();
+
+        ps = conn.prepareStatement(q.toString());
+        ps.setString(1, conn.getDatabase());
+        ps.setString(2, conn.getCluster());
+        ps.setInt(3, DatabaseMetaData.procedureResultUnknown);
+        if (procedureNamePattern != null)
+            ps.setString(4, procedureNamePattern);
+        return ps.executeQuery();
     }
 
     public ResultSet getProcedureColumns(String catalog, String schemaPattern,
@@ -1125,17 +1155,27 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         tableNamePattern = (tableNamePattern == null || "".equals(tableNamePattern)) ? "%" : tableNamePattern;
 
         StringBuilder sql = new StringBuilder();
-        sql.append("select '" + conn.getDatabase() + "' as TABLE_CAT, '" + conn.getCluster() +
-             "' as TABLE_SCHEM, name as TABLE_NAME,")
-            .append(" upper(type) as TABLE_TYPE, null as REMARKS, null as TYPE_CAT, null as TYPE_SCHEM,")
-            .append(" null as TYPE_NAME, null as SELF_REFERENCING_COL_NAME, null as REF_GENERATION")
-            .append(" from (select name, type from sqlite_master)")
-            .append(" where TABLE_NAME like '").append(tableNamePattern).append("' and TABLE_TYPE in (");
+        sql.append("select ? as TABLE_CAT,")
+            .append("      ? as TABLE_SCHEM,")
+            .append("      name as TABLE_NAME,")
+            .append("      upper(type) as TABLE_TYPE,")
+            .append("      null as REMARKS,")
+            .append("      null as TYPE_CAT,")
+            .append("      null as TYPE_SCHEM,")
+            .append("      null as TYPE_NAME,")
+            .append("      null as SELF_REFERENCING_COL_NAME,")
+            .append("      null as REF_GENERATION ")
+            .append("      from (")
+            .append("            select name,")
+            .append("                   type")
+            .append("            from sqlite_master")
+            .append("           )")
+            .append("where TABLE_NAME like ? ")
+            .append("and   TABLE_TYPE in (");
 
         if (types == null || types.length == 0) {
             sql.append("'TABLE','VIEW'");
-        }
-        else {
+        } else {
             sql.append("'").append(types[0].toUpperCase()).append("'");
 
             for (int i = 1; i < types.length; i++) {
@@ -1143,19 +1183,35 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
             }
         }
 
-        sql.append(") order by TABLE_TYPE, TABLE_NAME;");
+        sql.append(") order by TABLE_TYPE, TABLE_NAME");
 
-        return stmt.executeQuery(sql.toString());
+        if (ps != null)
+            ps.close();
+        ps = conn.prepareStatement(sql.toString());
+        ps.setString(1, conn.getDatabase());
+        ps.setString(2, conn.getCluster());
+        ps.setString(3, tableNamePattern);
+
+        return ps.executeQuery();
     }
 
     public ResultSet getSchemas() throws SQLException {
-        return stmt.executeQuery("select '" + conn.getCluster() + 
-                "' as TABLE_SCHEM, '" + conn.getDatabase() +
-                "' as TABLE_CATALOG");
+        if (ps != null)
+            ps.close();
+        ps = conn.prepareStatement("select ? as TABLE_SCHEM, ? as TABLE_CATALOG");
+        ps.setString(1, conn.getCluster());
+        ps.setString(2, conn.getDatabase());
+
+        return ps.executeQuery();
     }
 
     public ResultSet getCatalogs() throws SQLException {
-        return stmt.executeQuery("select '" + conn.getDatabase() + "' as TABLE_CAT");
+        if (ps != null)
+            ps.close();
+        ps = conn.prepareStatement("select ? as TABLE_CAT");
+        ps.setString(1, conn.getDatabase());
+
+        return ps.executeQuery();
     }
 
     public ResultSet getTableTypes() throws SQLException {
@@ -1429,22 +1485,41 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     new Comdb2ResultSet(lh, (Comdb2Statement)stmt, "<Internal SQL>"));
         }
 
-        return new Comdb2DatabaseMetaDataResultSet(stmt.executeQuery("select '" + conn.getDatabase() + "' as TABLE_CAT, '" 
-                + conn.getCluster() + "' as TABLE_SCHME, tablename as TABLE_NAME, columnname as COLUMN_NAME, "
-                + "0 as DATA_TYPE, type as TYPE_NAME, (size - 1) as COLUMN_SIZE, 0 as BUFFER_LENGTH, 0 as DECIMAL_DIGITS, 10 as NUM_PREC_RADIX, "
-                + "(upper(isnullable) == 'Y') as NULLABLE, null as REMARKS, trim(defaultvalue) as COLUMN_DEF, 0 as SQL_DATA_TYPE, 0 as SQL_DATETIME_SUB, "
-                + "(size - 1) as CHAR_OCTET_LENGTH, 0 as ORDINAL_POSITION, "
-                + "CASE WHEN (upper(isnullable) == 'Y') THEN 'YES' ELSE 'NO' END as IS_NULLABLE, "
-                + "null as SCOPE_CATALOG, null as SCOPE_SCHEMA, "
-                + "null as SCOPE_TABLE, 0 as SOURCE_DATA_TYPE, 'NO' as IS_AUTOINCREMENT, "
-                + "'NO' as IS_GENERATEDCOLUMN, sqltype FROM comdb2sys_columns WHERE 1=1 " + (
-                (tableNamePattern != null) ?
-                " AND tablename LIKE '" + tableNamePattern + "' " :
-                " ") + (
-                (columnNamePattern != null) ?
-                " AND columnname LIKE '" + columnNamePattern + "' " :
-                " ")
-                ));
+        StringBuilder q = new StringBuilder();
+        q.append("select ? as TABLE_CAT,")
+            .append("    ? as TABLE_SCHEM,")
+            .append("    tablename as TABLE_NAME,")
+            .append("    columnname as COLUMN_NAME,")
+            .append("    (upper(isnullable) == 'Y') as NULLABLE,")
+            .append("    null as REMARKS,")
+            .append("    trim(defaultvalue) as COLUMN_DEF,")
+            .append("    0 as SQL_DATA_TYPE,")
+            .append("    0 as SQL_DATETIME_SUB,")
+            .append("    (size - 1) as CHAR_OCTET_LENGTH,")
+            .append("    0 as ORDINAL_POSITION,")
+            .append("    CASE WHEN (upper(isnullable) == 'Y') THEN 'YES' ELSE 'NO' END as IS_NULLABLE,")
+            .append("    null as SCOPE_CATALOG,")
+            .append("    null as SCOPE_SCHEMA,")
+            .append("    null as SCOPE_TABLE,")
+            .append("    0 as SOURCE_DATA_TYPE,")
+            .append("    'NO' as IS_AUTOINCREMENT,")
+            .append("    'NO' as IS_GENERATEDCOLUMN,")
+            .append("    sqltype ")
+            .append("from comdb2sys_columns ")
+            .append("where 1=1 AND ")
+            .append("tablename LIKE ? AND ")
+            .append("columnname LIKE ? ")
+            .append("order by TABLE_CAT,TABLE_SCHEM, TABLE_NAME, ORDINAL_POSITION");
+
+        if (ps != null)
+            ps.close();
+        ps = conn.prepareStatement(q.toString());
+        ps.setString(1, conn.getDatabase());
+        ps.setString(2, conn.getCluster());
+        ps.setString(3, tableNamePattern != null ? tableNamePattern : "%");
+        ps.setString(4, columnNamePattern != null ? columnNamePattern : "%");
+
+        return ps.executeQuery();
     }
 
     public ResultSet getColumnPrivileges(String catalog, String schema,
@@ -1476,73 +1551,226 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public ResultSet getPrimaryKeys(String catalog, String schema, String table) throws SQLException {
-        if (!hasSystemTables())
-            return stmt.executeQuery("select null as TABLE_CAT, null as TABLE_SCHEM, '" 
-                    + table + "' as TABLE_NAME, null as COLUMN_NAME, 0 as KEY_SEQ, null as PK_NAME limit 0");
 
-        return stmt.executeQuery("select null as TABLE_CAT, null as TABLE_SCHEM, a.tablename as TABLE_NAME, a.columnname as COLUMN_NAME, (columnnumber + 1) as KEY_SEQ, a.keyname as PK_NAME "
-                + "from comdb2sys_keycomponents a, comdb2sys_keys b where a.tablename = b.tablename and a.keyname = b.keyname and (upper(isunique) = 'Y' or upper(isunique) = 'YES') "
-                + "and a.tablename like '" + table + "' order by a.tablename, columnnumber");
+        StringBuilder q = new StringBuilder();
+
+        if (ps != null)
+            ps.close();
+
+        if (!hasSystemTables()) {
+            q.append("select null as TABLE_CAT,")
+                .append("    null as TABLE_SCHEM,")
+                .append("    ? as TABLE_NAME,")
+                .append("    null as COLUMN_NAME,")
+                .append("    0 as KEY_SEQ,")
+                .append("    null as PK_NAME limit 0");
+            ps = conn.prepareStatement(q.toString());
+        } else {
+            q.append("select null as TABLE_CAT,")
+                .append("    null as TABLE_SCHEM,")
+                .append("    a.tablename as TABLE_NAME,")
+                .append("    a.columnname as COLUMN_NAME,")
+                .append("    (columnnumber + 1) as KEY_SEQ,")
+                .append("    a.keyname as PK_NAME ")
+                .append("from comdb2sys_keycomponents a,")
+                .append("     comdb2sys_keys b ")
+                .append("where ")
+                .append("a.tablename = b.tablename and ")
+                .append("a.keyname = b.keyname and ")
+                .append("(upper(isunique) = 'Y' or upper(isunique) = 'YES') and ")
+                .append("a.tablename like ? ")
+                .append("order by a.tablename, a.columnname");
+            ps = conn.prepareStatement(q.toString());
+        }
+
+        ps.setString(1, table);
+
+        return ps.executeQuery();
     }
 
     public ResultSet getImportedKeys(String catalog, String schema, String table) throws SQLException {
-        if (!hasSystemTables())
-            return stmt.executeQuery("select '" + catalog + "' as PKTABLE_CAT, '" + schema + "' as PKTABLE_SCHEM, '" 
-                    + table + "' as PKTABLE_NAME," + "null as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, "
-                    + "null as FKTABLE_NAME, null as FKCOLUMN_NAME, 0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
-                    + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
+        StringBuilder q = new StringBuilder();
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
-                + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + " (a.columnnumber + 1) as KEY_SEQ, "
-                + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
-                + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
-                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
-                + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
-                + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
-                + " and b.tablename like '" + table
-                + "' order by PKTABLE_NAME, KEY_SEQ");
+        if (ps != null)
+            ps.close();
+
+        if (!hasSystemTables()) {
+            q.append("select ? as PKTABLE_CAT,")
+                .append("    ? as PKTABLE_SCHEM,")
+                .append("    ? as PKTABLE_NAME,")
+                .append("    null as PKCOLUMN_NAME,")
+                .append("    null as FKTABLE_CAT,")
+                .append("    null as FKTABLE_SCHEM,")
+                .append("    null as FKTABLE_NAME,")
+                .append("    null as FKCOLUMN_NAME,")
+                .append("    0 as KEY_SEQ,")
+                .append("    0 as UPDATE_RULE,")
+                .append("    0 as DELETE_RULE,")
+                .append("    null as FK_NAME,")
+                .append("    null as PK_NAME,")
+                .append("0 as DEFERRABILITY limit 0");
+            ps = conn.prepareStatement(q.toString());
+            ps.setString(1, catalog);
+            ps.setString(2, schema);
+            ps.setString(3, table);
+        } else {
+            q.append("select null as PKTABLE_CAT,")
+                .append("    null as PKTABLE_SCHEM,")
+                .append("    c.tablename as PKTABLE_NAME,")
+                .append("    c.columnname as PKCOLUMN_NAME,")
+                .append("    null as FKTABLE_CAT,")
+                .append("    null as FKTABLE_SCHEM,")
+                .append("    a.tablename as FKTABLE_NAME,")
+                .append("    a.columnname as FKCOLUMN_NAME,")
+                .append("    (a.columnnumber + 1) as KEY_SEQ,")
+                .append("    CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN ? ELSE ? END as DELETE_RULE,")
+                .append("    CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN ? ELSE ? END as UPDATE_RULE,")
+                .append("    a.keyname as FK_NAME,")
+                .append("    c.keyname as PK_NAME,")
+                .append("    ? as DEFERRABILITY ")
+                .append("from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c ")
+                .append("where a.tablename = b.tablename and ")
+                .append("      a.keyname = b.keyname and ")
+                .append("      b.foreigntablename = c.tablename and ")
+                .append("      b.foreignkeyname = c.keyname and ")
+                .append("      b.tablename like ? ")
+                .append("order by PKTABLE_NAME, KEY_SEQ");
+            ps = conn.prepareStatement(q.toString());
+            ps.setInt(1, importedKeyCascade);
+            ps.setInt(2, importedKeyNoAction);
+            ps.setInt(3, importedKeyCascade);
+            ps.setInt(4, importedKeyNoAction);
+            ps.setInt(5, importedKeyInitiallyDeferred);
+            ps.setString(6, table);
+        }
+
+        return ps.executeQuery();
     }
 
     public ResultSet getExportedKeys(String catalog, String schema, String table) throws SQLException {
-        if (!hasSystemTables())
-            return stmt.executeQuery("select '" + catalog + "' as PKTABLE_CAT, '" + schema + "' as PKTABLE_SCHEM, '" 
-                    + table + "' as PKTABLE_NAME," + "null as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, "
-                    + "null as FKTABLE_NAME, null as FKCOLUMN_NAME, 0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
-                    + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
+        StringBuilder q = new StringBuilder();
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
-                + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + " (a.columnnumber + 1) as KEY_SEQ, "
-                + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
-                + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
-                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
-                + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
-                + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
-                + " and b.foreigntablename like '" + table
-                + "' order by PKTABLE_NAME, KEY_SEQ");
+        if (ps != null)
+            ps.close();
+
+        if (!hasSystemTables()) {
+            q.append("select ? as PKTABLE_CAT,")
+                .append("    ? as PKTABLE_SCHEM,")
+                .append("    ? as PKTABLE_NAME,")
+                .append("    null as PKCOLUMN_NAME,")
+                .append("    null as FKTABLE_CAT,")
+                .append("    null as FKTABLE_SCHEM,")
+                .append("    null as FKTABLE_NAME,")
+                .append("    null as FKCOLUMN_NAME,")
+                .append("    0 as KEY_SEQ,")
+                .append("    0 as UPDATE_RULE,")
+                .append("    0 as DELETE_RULE,")
+                .append("    null as FK_NAME,")
+                .append("    null as PK_NAME,")
+                .append("0 as DEFERRABILITY limit 0");
+            ps = conn.prepareStatement(q.toString());
+            ps.setString(1, catalog);
+            ps.setString(2, schema);
+            ps.setString(3, table);
+        } else {
+            q.append("select null as PKTABLE_CAT,")
+                .append("    null as PKTABLE_SCHEM,")
+                .append("    c.tablename as PKTABLE_NAME,")
+                .append("    c.columnname as PKCOLUMN_NAME,")
+                .append("    null as FKTABLE_CAT,")
+                .append("    null as FKTABLE_SCHEM,")
+                .append("    a.tablename as FKTABLE_NAME,")
+                .append("    a.columnname as FKCOLUMN_NAME,")
+                .append("    (a.columnnumber + 1) as KEY_SEQ,")
+                .append("    CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN ? ELSE ? END as DELETE_RULE,")
+                .append("    CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN ? ELSE ? END as UPDATE_RULE,")
+                .append("    a.keyname as FK_NAME,")
+                .append("    c.keyname as PK_NAME,")
+                .append("    ? as DEFERRABILITY ")
+                .append("from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c ")
+                .append("where a.tablename = b.tablename and ")
+                .append("      a.keyname = b.keyname and ")
+                .append("      b.foreigntablename = c.tablename and ")
+                .append("      b.foreignkeyname = c.keyname and ")
+                .append("      b.foreigntablename like ? ")
+                .append("order by PKTABLE_NAME, KEY_SEQ");
+            ps = conn.prepareStatement(q.toString());
+            ps.setInt(1, importedKeyCascade);
+            ps.setInt(2, importedKeyNoAction);
+            ps.setInt(3, importedKeyCascade);
+            ps.setInt(4, importedKeyNoAction);
+            ps.setInt(5, importedKeyInitiallyDeferred);
+            ps.setString(6, table);
+        }
+
+        return ps.executeQuery();
     }
 
     public ResultSet getCrossReference(String parentCatalog,
             String parentSchema, String parentTable, String foreignCatalog,
             String foreignSchema, String foreignTable) throws SQLException {
-        if (!hasSystemTables())
-            return stmt.executeQuery("select '" + parentCatalog + "' as PKTABLE_CAT, '" + parentSchema + "' as PKTABLE_SCHEM, '" 
-                    + parentTable + "' as PKTABLE_NAME," + "null as PKCOLUMN_NAME, '" + foreignCatalog + "' as FKTABLE_CAT, '"
-                    + foreignSchema + "' as FKTABLE_SCHEM, '" + foreignTable + "' as FKTABLE_NAME, null as FKCOLUMN_NAME, "
-                    + "0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
-                    + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
+        StringBuilder q = new StringBuilder();
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
-                + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + " (a.columnnumber + 1) as KEY_SEQ, "
-                + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
-                + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
-                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
-                + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
-                + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
-                + " and b.foreigntablename like '" + parentTable + "' and b.tablename like '" + foreignTable
-                + "' order by PKTABLE_NAME, KEY_SEQ");
+        if (ps != null)
+            ps.close();
+
+        if (!hasSystemTables()) {
+            q.append("select ? as PKTABLE_CAT,")
+                .append("    ? as PKTABLE_SCHEM,")
+                .append("    ? as PKTABLE_NAME,")
+                .append("    null as PKCOLUMN_NAME,")
+                .append("    ? as FKTABLE_CAT,")
+                .append("    ? as FKTABLE_SCHEM,")
+                .append("    ? as FKTABLE_NAME,")
+                .append("    null as FKCOLUMN_NAME,")
+                .append("    0 as KEY_SEQ,")
+                .append("    0 as UPDATE_RULE,")
+                .append("    0 as DELETE_RULE,")
+                .append("    null as FK_NAME,")
+                .append("    null as PK_NAME,")
+                .append("    0 as DEFERRABILITY ")
+                .append("limit 0");
+            ps = conn.prepareStatement(q.toString());
+            ps.setString(1, parentCatalog);
+            ps.setString(2, parentSchema);
+            ps.setString(3, parentTable);
+            ps.setString(4, foreignCatalog);
+            ps.setString(5, foreignSchema);
+            ps.setString(6, foreignTable);
+        } else {
+            q.append("select null as PKTABLE_CAT,")
+                .append("    null as PKTABLE_SCHEM,")
+                .append("    c.tablename as PKTABLE_NAME,")
+                .append("    c.columnname as PKCOLUMN_NAME,")
+                .append("    null as FKTABLE_CAT,")
+                .append("    null as FKTABLE_SCHEM,")
+                .append("    a.tablename as FKTABLE_NAME,")
+                .append("    a.columnname as FKCOLUMN_NAME,")
+                .append("    (a.columnnumber + 1) as KEY_SEQ,")
+                .append("    CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN ? ELSE ? END as DELETE_RULE,")
+                .append("    CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN ? ELSE ? END as UPDATE_RULE,")
+                .append("    a.keyname as FK_NAME,")
+                .append("    c.keyname as PK_NAME,")
+                .append("    ? as DEFERRABILITY ")
+                .append("from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c ")
+                .append("where a.tablename = b.tablename and ")
+                .append("      a.keyname = b.keyname and ")
+                .append("      b.foreigntablename = c.tablename and ")
+                .append("      b.foreignkeyname = c.keyname and ")
+                .append("      b.foreigntablename like ? and ")
+                .append("      b.tablename like ? ")
+                .append("order by PKTABLE_NAME, KEY_SEQ");
+            ps = conn.prepareStatement(q.toString());
+            ps.setInt(1, importedKeyCascade);
+            ps.setInt(2, importedKeyNoAction);
+            ps.setInt(3, importedKeyCascade);
+            ps.setInt(4, importedKeyNoAction);
+            ps.setInt(5, importedKeyInitiallyDeferred);
+            ps.setString(6, parentTable);
+            ps.setString(7, foreignTable);
+        }
+
+        return ps.executeQuery();
     }
 
     public ResultSet getTypeInfo() throws SQLException {
@@ -1584,29 +1812,80 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
 
     public ResultSet getIndexInfo(String catalog, String schema, String table,
             boolean unique, boolean approximate) throws SQLException {
-        if (!hasSystemTables())
-            return stmt.executeQuery("select null as TABLE_CAT, null as TABLE_SCHEM, a.name as TABLE_NAME, "
-                    + "0 as NON_UNIQUE, null as INDEX_QUALIFIER, b.name as INDEX_NAME, 0 as TYPE, " 
-                    + "0 as ORDINAL_POSITION, null as COLUMN_NAME, null as ASC_OR_DESC, 0 as CARDINALITY, "
-                    + "0 as PAGES, null as FILTER_CONDITION from sqlite_master as a, sqlite_master as b "
-                    + "where a.type='table' and b.type='index' and a.tbl_name = b.tbl_name and a.tbl_name like '"
-                    + table + "'");
 
-        if (unique)
-            return stmt.executeQuery("select null as TABLE_CAT, null as TABLE_SCHEM, a.tablename as TABLE_NAME, "
-                    + "(upper(isunique) = 'NO' or upper(isunique) = 'N') as NON_UNIQUE, null as INDEX_QUALIFIER, a.keyname as INDEX_NAME, "
-                    + tableIndexHashed + " as TYPE, (columnnumber + 1) as ORDINAL_POSITION, a.columnname as COLUMN_NAME, "
-                    + "CASE WHEN (upper(isdescending) = 'NO' or upper(isdescending) = 'N') THEN 'A' ELSE 'D' END as ASC_OR_DESC, "
-                    + "0 as CARDINALITY, 0 as PAGES, null as FILTER_CONDITION from comdb2sys_keycomponents a, comdb2sys_keys b where "
-                    + "a.tablename = b.tablename and a.keyname = b.keyname and a.tablename like '" + table + "' and (upper(isunique)='YES' or upper(isunique)='Y') " 
-                    + "order by a.tablename, isdescending, a.keyname, columnnumber");
+        StringBuilder q = new StringBuilder();
+        if (ps != null)
+            ps.close();
 
-        return stmt.executeQuery("select null as TABLE_CAT, null as TABLE_SCHEM, a.tablename as TABLE_NAME, "
-                + "(upper(isunique) = 'NO' or upper(isunique) = 'N') as NON_UNIQUE, null as INDEX_QUALIFIER, a.keyname as INDEX_NAME, "
-                + tableIndexHashed + " as TYPE, (columnnumber + 1) as ORDINAL_POSITION, a.columnname as COLUMN_NAME, "
-                + "CASE WHEN (upper(isdescending) = 'NO' or upper(isdescending) = 'N') THEN 'A' ELSE 'D' END as ASC_OR_DESC, "
-                + "0 as CARDINALITY, 0 as PAGES, null as FILTER_CONDITION from comdb2sys_keycomponents a, comdb2sys_keys b where "
-                + "a.tablename = b.tablename and a.keyname = b.keyname and a.tablename like '" + table + "' order by a.tablename, isdescending, a.keyname, columnnumber");
+        if (!hasSystemTables()) {
+            q.append("select null as TABLE_CAT,")
+                .append("    null as TABLE_SCHEM,")
+                .append("    a.name as TABLE_NAME,")
+                .append("    0 as NON_UNIQUE,")
+                .append("    null as INDEX_QUALIFIER,")
+                .append("    b.name as INDEX_NAME,")
+                .append("    0 as TYPE,")
+                .append("    0 as ORDINAL_POSITION,")
+                .append("    null as COLUMN_NAME,")
+                .append("    null as ASC_OR_DESC,")
+                .append("    0 as CARDINALITY,")
+                .append("    0 as PAGES,")
+                .append("    null as FILTER_CONDITION ")
+                .append("from sqlite_master as a, sqlite_master as b ")
+                .append("where a.type='table' and ")
+                .append("      b.type='index' and ")
+                .append("      a.tbl_name = b.tbl_name and ")
+                .append("      a.tbl_name like ?");
+            ps = conn.prepareStatement(q.toString());
+            ps.setString(1, table);
+        } else if (unique) {
+            q.append("select null as TABLE_CAT,")
+                .append("    null as TABLE_SCHEM,")
+                .append("    a.tablename as TABLE_NAME,")
+                .append("    (upper(isunique) = 'NO' or upper(isunique) = 'N') as NON_UNIQUE,")
+                .append("    null as INDEX_QUALIFIER,")
+                .append("    a.keyname as INDEX_NAME,")
+                .append("    ? as TYPE,")
+                .append("    (columnnumber + 1) as ORDINAL_POSITION,")
+                .append("    a.columnname as COLUMN_NAME,")
+                .append("    CASE WHEN (upper(isdescending) = 'NO' or upper(isdescending) = 'N') THEN 'A' ELSE 'D' END as ASC_OR_DESC,")
+                .append("    0 as CARDINALITY,")
+                .append("    0 as PAGES,")
+                .append("    null as FILTER_CONDITION ")
+                .append("from comdb2sys_keycomponents a, comdb2sys_keys b ")
+                .append("where a.tablename = b.tablename and ")
+                .append("      a.keyname = b.keyname and ")
+                .append("      a.tablename like ? and ")
+                .append("      (upper(isunique)='YES' or upper(isunique)='Y') ")
+                .append("order by NON_UNIQUE, TYPE, INDEX_NAME, ORDINAL_POSITION");
+            ps = conn.prepareStatement(q.toString());
+            ps.setInt(1, tableIndexHashed);
+            ps.setString(2, table);
+        } else {
+            q.append("select null as TABLE_CAT,")
+                .append("    null as TABLE_SCHEM,")
+                .append("    a.tablename as TABLE_NAME,")
+                .append("    (upper(isunique) = 'NO' or upper(isunique) = 'N') as NON_UNIQUE,")
+                .append("    null as INDEX_QUALIFIER,")
+                .append("    a.keyname as INDEX_NAME,")
+                .append("    ? as TYPE,")
+                .append("    (columnnumber + 1) as ORDINAL_POSITION,")
+                .append("    a.columnname as COLUMN_NAME,")
+                .append("    CASE WHEN (upper(isdescending) = 'NO' or upper(isdescending) = 'N') THEN 'A' ELSE 'D' END as ASC_OR_DESC,")
+                .append("    0 as CARDINALITY,")
+                .append("    0 as PAGES,")
+                .append("    null as FILTER_CONDITION ")
+                .append("from comdb2sys_keycomponents a, comdb2sys_keys b ")
+                .append("where a.tablename = b.tablename and ")
+                .append("      a.keyname = b.keyname and ")
+                .append("      a.tablename like ? ")
+                .append("order by NON_UNIQUE, TYPE, INDEX_NAME, ORDINAL_POSITION");
+            ps = conn.prepareStatement(q.toString());
+            ps.setInt(1, tableIndexHashed);
+            ps.setString(2, table);
+        }
+
+        return ps.executeQuery();
     }
 
     public boolean supportsResultSetType(int type) throws SQLException {

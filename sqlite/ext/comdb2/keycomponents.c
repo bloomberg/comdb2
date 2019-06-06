@@ -245,7 +245,6 @@ static int systblFieldsFilter(
     systblFieldsNext(pVtabCursor);
   }
 
-
   return SQLITE_OK;
 }
 

@@ -29,7 +29,7 @@ typedef struct ack_info_t {
     uint32_t len; /* payload len */
     int32_t from;
     int32_t to;
-    int32_t fromlen;
+    uint32_t fromlen;
     /* To prevent double copying of payload, allocate enough
     ** memory beyond every ack_info to hold the payload.
     */

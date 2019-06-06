@@ -49,6 +49,7 @@ set(src
   thdpool.c
   thread_malloc.c
   thread_util.c
+  time_accounting.c
   timers.c
   tohex.c
   utilmisc.c
@@ -74,6 +75,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
+  ${PROJECT_SOURCE_DIR}/db
 )
 add_dependencies(util mem)
 set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)

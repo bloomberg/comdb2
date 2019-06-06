@@ -161,8 +161,8 @@ static int systblTblSizeFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)pVtabCursor;
-
   pCur->iRowid = 0;
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 

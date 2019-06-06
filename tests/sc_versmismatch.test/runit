@@ -62,7 +62,7 @@ function insert_records_oneshot
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-         echo "insert into t1(a,b,c) values ($j,'test1$j',$j)"  
+        echo "insert into t1(a,b,c) values ($j,'test1$j',$j)"  
         let j=j+1
     done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &> $insfl
 }

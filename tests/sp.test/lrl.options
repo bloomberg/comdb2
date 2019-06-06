@@ -1,2 +1,3 @@
 dtastripe 1
 enable_snapshot_isolation
+allow_lua_exec_with_ddl

@@ -96,7 +96,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 assertcnt t1 8
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",cast(substr(comdb2_rowid,3) as integer)%16) as genid from t1' > stripes.out
 for i in `seq 1 $N` ; do
-    cnt=`grep $((i-1)) stripes.out | wc -l`
+    cnt=`grep -c $((i-1)) stripes.out`
     assertres "$cnt" "1"
 done
 
@@ -150,9 +150,9 @@ for i in `seq 1 $N` ; do
 done > entry_counts.out
 
 
-zeros=`grep "entries:0" entry_counts.out | wc -l`
+zeros=`grep -c "entries:0" entry_counts.out`
 assertres "$zeros" "$((N-1))"
-other=`grep "entries:16" entry_counts.out | wc -l`
+other=`grep -c "entries:16" entry_counts.out`
 assertres "$other" "1"
 
 
@@ -169,9 +169,9 @@ for i in `seq 1 $N` ; do
 done > entry_counts2.out
 
 
-zeros=`grep "entries:2" entry_counts2.out | wc -l`
+zeros=`grep -c "entries:2" entry_counts2.out`
 assertres "$zeros" "$((N-1))"
-other=`grep "entries:18" entry_counts2.out | wc -l`
+other=`grep -c "entries:18" entry_counts2.out`
 assertres "$other" "1"
 
 

@@ -31,6 +31,11 @@
   comdb2_keywords: list of keywords
 */
 
+// reach into sqlite innards a bit for these
+extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+extern int sqlite3ParserFallback(int iToken);
+
+
 typedef struct {
   sqlite3_vtab_cursor base; /* Base class - must be first */
   sqlite3_int64 rowid;      /* Row ID */
@@ -145,7 +150,23 @@ static int systblKeywordsColumn(
       }
     }
     case KEYWORDS_COLUMN_RESERVED: {
-      sqlite3_result_text(ctx, "Y", 1, NULL);
+        int tok = 0;
+        const char *zName;
+        int nName;
+        char kw[100];
+
+        int rc = sqlite3_keyword_name(pCur->rowid, &zName, &nName);
+        if (rc == 0 && nName < (sizeof(kw)-1)) {
+
+            strncpy(kw, zName, nName);
+            kw[nName] = 0;
+
+            rc = sqlite3GetToken((unsigned char*) kw, &tok);
+            if (rc > 0) {
+                int isfallback = sqlite3ParserFallback(tok);
+                sqlite3_result_text(ctx, isfallback ? "N" : "Y", 1, NULL);
+            }
+        }
       return SQLITE_OK;
     }
     default: {

@@ -1006,8 +1006,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         if (rc != namelen)
             return -1;
     } else {
-        strncpy(my_hostname, connect_message.my_hostname, HOSTNAME_LEN);
-        my_hostname[HOSTNAME_LEN - 1] = 0;
+        strncpy0(my_hostname, connect_message.my_hostname, HOSTNAME_LEN);
     }
 
     if (connect_message.to_hostname[0] == '.') {
@@ -1021,8 +1020,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         if (rc != namelen)
             return -1;
     } else {
-        strncpy(to_hostname, connect_message.to_hostname, HOSTNAME_LEN);
-        to_hostname[HOSTNAME_LEN - 1] = 0;
+        strncpy0(to_hostname, connect_message.to_hostname, HOSTNAME_LEN);
     }
 
     if (strcmp(netinfo_ptr->myhostname, to_hostname) == 0)
@@ -1146,8 +1144,8 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
                  host_node_ptr->hostname_len);
         append_to = 1;
     } else {
-        strncpy(connect_message.to_hostname, host_node_ptr->host,
-                sizeof(connect_message.to_hostname));
+        strncpy0(connect_message.to_hostname, host_node_ptr->host,
+                 sizeof(connect_message.to_hostname));
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
@@ -1163,8 +1161,8 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
                  netinfo_ptr->myhostname_len);
         append_from = 1;
     } else {
-        strncpy(connect_message.my_hostname, netinfo_ptr->myhostname,
-                sizeof(connect_message.my_hostname));
+        strncpy0(connect_message.my_hostname, netinfo_ptr->myhostname,
+                 sizeof(connect_message.my_hostname));
     }
     if (netinfo_ptr->myport)
         connect_message.my_portnum =
@@ -1242,11 +1240,11 @@ static int write_message_int(netinfo_type *netinfo_ptr,
     /* The writer thread will fill in these details later.. for now, we don't
      * necessarily know the correct details anyway. */
     /*
-    strncpy(wire_header.fromhost, netinfo_ptr->myhostname,
+    strncpy0(wire_header.fromhost, netinfo_ptr->myhostname,
        sizeof(wire_header.fromhost));
     wire_header.fromport = netinfo_ptr->myport;
     wire_header.fromnode = netinfo_ptr->mynode;
-    strncpy(wire_header.tohost, host_node_ptr->host,
+    strncpy0(wire_header.tohost, host_node_ptr->host,
        sizeof(wire_header.tohost));
     wire_header.toport = host_node_ptr->port;
     wire_header.tonode = host_node_ptr->node;
@@ -1333,8 +1331,7 @@ static int read_message_header(netinfo_type *netinfo_ptr,
         if (rc != namelen)
             return 1;
     } else {
-        strncpy(fromhost, wire_header->fromhost, HOSTNAME_LEN);
-        fromhost[HOSTNAME_LEN - 1] = 0;
+        strncpy0(fromhost, wire_header->fromhost, HOSTNAME_LEN);
     }
     if (wire_header->tohost[0] == '.') {
         wire_header->tohost[HOSTNAME_LEN - 1] = 0;
@@ -1346,8 +1343,7 @@ static int read_message_header(netinfo_type *netinfo_ptr,
         if (rc != namelen)
             return 1;
     } else {
-        strncpy(tohost, wire_header->tohost, HOSTNAME_LEN);
-        tohost[HOSTNAME_LEN - 1] = 0;
+        strncpy0(tohost, wire_header->tohost, HOSTNAME_LEN);
     }
 
     return 0;
@@ -3032,7 +3028,7 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x)
 
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x)
 {
-    if (x >= 0 || x <= 100)
+    if (x >= 0 && x <= 100)
         netinfo_ptr->throttle_percent = x;
     else
         logmsg(LOGMSG_ERROR, 
@@ -3063,6 +3059,11 @@ void net_setbufsz(netinfo_type *netinfo_ptr, int bufsz)
 void net_exiting(netinfo_type *netinfo_ptr)
 {
     netinfo_ptr->exiting = 1;
+}
+
+int net_is_exiting(netinfo_type *netinfo_ptr)
+{
+    return netinfo_ptr->exiting;
 }
 
 typedef struct netinfo_node {
@@ -3306,9 +3307,9 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     netinfo_ptr->fake = fake;
     netinfo_ptr->offload = offload;
 
-    strncpy(netinfo_ptr->app, app, sizeof(netinfo_ptr->app));
-    strncpy(netinfo_ptr->service, service, sizeof(netinfo_ptr->service));
-    strncpy(netinfo_ptr->instance, instance, sizeof(netinfo_ptr->instance));
+    strncpy0(netinfo_ptr->app, app, sizeof(netinfo_ptr->app));
+    strncpy0(netinfo_ptr->service, service, sizeof(netinfo_ptr->service));
+    strncpy0(netinfo_ptr->instance, instance, sizeof(netinfo_ptr->instance));
 
     netinfo_ptr->stats.bytes_read = netinfo_ptr->stats.bytes_written = 0;
     netinfo_ptr->stats.throttle_waits = netinfo_ptr->stats.reorders = 0;
@@ -3499,6 +3500,9 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
     for (i = 0; i < *numhosts; i++) {
         int *p_port = (ports + i);
         p_buf = (uint8_t *)buf_get(p_port, sizeof(int), p_buf, p_buf_end);
+        /* older comdb2 will not handle mangled ports and might hello us back
+         * unmasked values */
+        p_port[0] &= 0x0ffff;
     }
 
     /* read and discard node numbers */
@@ -4270,8 +4274,8 @@ static void *writer_thread(void *args)
                                  sizeof(tmp_wire_hdr.fromhost), ".%d",
                                  netinfo_ptr->myhostname_len);
                     } else {
-                        strncpy(tmp_wire_hdr.fromhost, netinfo_ptr->myhostname,
-                                sizeof(tmp_wire_hdr.fromhost));
+                        strncpy0(tmp_wire_hdr.fromhost, netinfo_ptr->myhostname,
+                                 sizeof(tmp_wire_hdr.fromhost));
                     }
                     tmp_wire_hdr.fromport = netinfo_ptr->myport;
                     tmp_wire_hdr.fromnode = 0;
@@ -4280,8 +4284,8 @@ static void *writer_thread(void *args)
                                  sizeof(tmp_wire_hdr.tohost), ".%d",
                                  host_node_ptr->hostname_len);
                     } else {
-                        strncpy(tmp_wire_hdr.tohost, host_node_ptr->host,
-                                sizeof(tmp_wire_hdr.tohost));
+                        strncpy0(tmp_wire_hdr.tohost, host_node_ptr->host,
+                                 sizeof(tmp_wire_hdr.tohost));
                     }
                     tmp_wire_hdr.toport = host_node_ptr->port;
                     tmp_wire_hdr.tonode = 0;
@@ -4678,11 +4682,12 @@ void net_subnet_status()
 {
     int i = 0;
     Pthread_mutex_lock(&subnet_mtx);
+    char my_buf[30];
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                subnet_disabled[i] ? "disabled" : "enabled\n",
                subnet_disabled[i] ? " at " : "",
-               subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+               subnet_disabled[i] ? ctime_r(&subnet_disabled[i], my_buf) : "");
     }
     Pthread_mutex_unlock(&subnet_mtx);
 }
@@ -4841,7 +4846,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         strcpy(rephostname, host_node_ptr->host);
         if (subnet[0]) {
             strcat(rephostname, subnet);
-            strncpy(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
+            strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
 
 #ifdef DEBUG
             host_node_printf(
@@ -4865,8 +4870,8 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
         } else {
             if (gbl_verbose_net) {
                 host_node_printf(LOGMSG_USER, host_node_ptr,
-                                 "'%s': gethostbyname '%s' addr %d\n", __func__,
-                                 rephostname, *addr);
+                                 "'%s': gethostbyname '%s' addr %x\n", __func__,
+                                 rephostname, (unsigned)addr->s_addr);
             }
             break;
         }
@@ -4984,7 +4989,6 @@ static void *connect_thread(void *arg)
         sin.sin_port = htons(connport);
 
         if (netinfo_ptr->exiting) {
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
             break;
         }
 
@@ -5129,9 +5133,9 @@ static void *connect_thread(void *arg)
                                    host_node_ptr->sb);
         if (rc != 0) {
             host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                             "%s: couldnt send connect message\n", __func__);
+                             "%s: couldn't send connect message\n", __func__);
             Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-            close_hostnode(host_node_ptr);
+            close_hostnode_ll(host_node_ptr);
             goto again;
         }
         sbuf2flush(host_node_ptr->sb);
@@ -5940,7 +5944,9 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
                     strerror(errno));
-            free(ca);
+            Pthread_mutex_lock(&(netinfo_ptr->connlk));
+            pool_relablk(netinfo_ptr->connpool, ca);
+            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
             sbuf2close(sb);
             continue;
         }

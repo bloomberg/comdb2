@@ -14,12 +14,14 @@ nsamples=$(cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT cast(value as
 
 echo nSamples is $nsamples
 
-while true; do
-cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+cat << EOF > in.sql
 BEGIN
 $(for i in `seq 1 $nsamples`; do echo 'INSERT INTO t values('$i')'; done)
 COMMIT
 EOF
+
+while true; do
+cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql >/dev/null 2>&1
 done &
 
 keep_inserting=$!

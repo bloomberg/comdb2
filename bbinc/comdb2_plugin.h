@@ -26,6 +26,11 @@ enum comdb2_plugin_type {
     COMDB2_PLUGIN_LAST
 };
 
+enum {
+    COMDB2_PLUGIN_INITIALIZER_PRE,
+    COMDB2_PLUGIN_INITIALIZER_POST
+};
+
 enum comdb2_plugin_flag {
     /* Flag to indicate whether the plugin is static. */
     COMDB2_PLUGIN_STATIC = 1,

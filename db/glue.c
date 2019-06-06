@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -91,6 +90,7 @@
 
 #include "views.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -146,6 +146,10 @@ struct net_morestripe_msg {
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
+
+extern int get_physical_transaction(bdb_state_type *bdb_state,
+                                    tran_type *logical_tran,
+                                    tran_type **outtran, int force_commit);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
@@ -294,9 +298,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(
-                bdb_state_type * bdb_state, tran_type * logical_tran,
-                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
             if (rc) {
@@ -973,8 +974,11 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen, isnull);
+    int rc;
+    ACCUMULATE_TIMING(CHR_IXADDK,
+                      rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
+                                         genid, rrn, dta, dtalen, isnull););
+    return rc;
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
@@ -1234,7 +1238,13 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
 int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
-    return dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    int rc;
+
+    ACCUMULATE_TIMING(CHR_DATADD,
+                      rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen,
+                                         genid, out_rrn););
+
+    return rc;
 }
 
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
@@ -2019,14 +2029,14 @@ int ix_find_auxdb_by_rrn_and_genid_prefault(int auxdb, struct ireq *iq, int rrn,
 int ix_find_auxdb_by_rrn_and_genid_tran(int auxdb, struct ireq *iq, int rrn,
                                         unsigned long long genid, void *fnddta,
                                         int *fndlen, int maxlen, void *trans,
-                                        int *ver)
+                                        int *ver, int for_write)
 {
     int rc;
     int retries = 0;
     void *bdb_handle;
     int bdberr;
     char *req;
-    bdb_fetch_args_t args = {0};
+    bdb_fetch_args_t args = { .for_write = for_write };
 
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
@@ -2218,13 +2228,29 @@ int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, NULL);
+                                             fndlen, maxlen, trans, NULL, 0 /* for_write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
 
     return rc;
 }
+
+int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans)
+{
+    int rc = 0;
+
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
+            fndlen, maxlen, trans, NULL, 1 /* for_write */);
+
+    if (rc == IX_EMPTY)
+        rc = IX_NOTFND;
+
+    return rc;
+}
+
 
 int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                       unsigned long long genid, void *fnddta,
@@ -2234,7 +2260,7 @@ int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, version);
+                                             fndlen, maxlen, trans, version, 0 /*for write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
@@ -3396,7 +3422,7 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
-    if (!thedb || thedb->stopped || gbl_exit || !gbl_ready) {
+    if (!thedb || db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_WARN, "I am not ready, ignoring NET_FLUSH_ALL\n");
         return;
     }
@@ -3538,7 +3564,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
 {
 
     /* if this arrives too early, it will crash the master */
-    if (thedb->stopped || gbl_exit || !gbl_ready) {
+    if (db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_ERROR, "%s: received trap during lunch time\n", __func__);
         return;
     }
@@ -5621,8 +5647,6 @@ void compr_print_stats()
 {
     int ii;
     int odh, compr, blob_compr;
-
-    const char *bdb_compr_alg_2a(int alg);
 
     logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
     logmsg(LOGMSG_USER, "These apply to new records only!\n");

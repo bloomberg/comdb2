@@ -339,11 +339,13 @@ int bdb_queue_best_pagesize(int avg_item_sz)
     int checksums = 1; /* assume checksums on for now */
 
     /* Discover the minimum page size that will cover items of this length. */
-    pagesize = 128;
+    pagesize = 512;
 
+#if 0
     /* Don't go below this, or set_pagesize will fail */
     if (pagesize < 512 /*db_int.h/DB_MIN_PGSIZE*/)
         pagesize = 512;
+#endif
 
     while (max_item_size(pagesize, checksums) < avg_item_sz) {
         pagesize <<= 1;

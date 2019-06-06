@@ -1,3 +1,6 @@
+#ifndef __bdb_queue_h
+#define __bdb_queue_h
+
 /* Found items are returned in one of these (although the caller only gets
  * the memory handle and offset of the data).  All memory needed for this is
  * allocated together so it can be freed in one operation.
@@ -32,3 +35,5 @@ const uint8_t *queue_found_get(struct bdb_queue_found *p_queue_found,
 
 uint8_t *queue_found_put(const struct bdb_queue_found *p_queue_found,
                          uint8_t *p_buf, const uint8_t *p_buf_end);
+
+#endif

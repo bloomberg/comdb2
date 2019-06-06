@@ -1150,6 +1150,8 @@ struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state,
 struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr);
 struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr);
+struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state,
+                                         int *bdberr);
 struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr);
 
@@ -1230,6 +1232,10 @@ int bdb_temp_hash_insert(bdb_temp_hash *h, void *key, int keylen, void *dta,
                          int dtalen);
 int bdb_temp_hash_lookup(bdb_temp_hash *h, void *key, int keylen, void *dta,
                          int *dtalen, int maxlen);
+
+int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state);
+int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
+                                               int notify);
 
 bulk_dump *bdb_start_fstdump(bdb_state_type *bdb_state, int *bdberr);
 int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr);

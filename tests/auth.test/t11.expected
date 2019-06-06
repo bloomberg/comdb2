@@ -95,16 +95,13 @@
 [select " cannot access following system tables " as " replicant "] rc 0
 ( replicant =' limited access to following system tables ')
 [select " limited access to following system tables " as " replicant "] rc 0
-(1=1)
 [select 1 from comdb2_columns limit 1] rc 0
 [select 1 from comdb2_constraints limit 1] rc 0
 [select 1 from comdb2_keycomponents limit 1] rc 0
 [select 1 from comdb2_keys limit 1] rc 0
 (1=1)
 [select 1 from comdb2_tablepermissions limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tables limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tablesizes limit 1] rc 0
 [select 1 from comdb2_triggers limit 1] rc 0
 ( replicant =' can following system tables ')
@@ -143,16 +140,13 @@
 [select " cannot access following system tables " as " sysmon "] rc 0
 ( sysmon =' limited access to following system tables ')
 [select " limited access to following system tables " as " sysmon "] rc 0
-(1=1)
 [select 1 from comdb2_columns limit 1] rc 0
 [select 1 from comdb2_constraints limit 1] rc 0
 [select 1 from comdb2_keycomponents limit 1] rc 0
 [select 1 from comdb2_keys limit 1] rc 0
 (1=1)
 [select 1 from comdb2_tablepermissions limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tables limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tablesizes limit 1] rc 0
 [select 1 from comdb2_triggers limit 1] rc 0
 ( sysmon =' can access following system tables ')
@@ -192,16 +186,13 @@
 [select " cannot access following system tables " as " other "] rc 0
 ( other =' limited access to following system tables ')
 [select " limited access to following system tables " as " other "] rc 0
-(1=1)
 [select 1 from comdb2_columns limit 1] rc 0
 [select 1 from comdb2_constraints limit 1] rc 0
 [select 1 from comdb2_keycomponents limit 1] rc 0
 [select 1 from comdb2_keys limit 1] rc 0
 (1=1)
 [select 1 from comdb2_tablepermissions limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tables limit 1] rc 0
-(1=1)
 [select 1 from comdb2_tablesizes limit 1] rc 0
 [select 1 from comdb2_triggers limit 1] rc 0
 ( other =' can access following system tables ')

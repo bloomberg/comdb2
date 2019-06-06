@@ -21,8 +21,8 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <memcompare.c>
-extern const char *const gbl_db_build_name;
-extern const char * const gbl_db_release_name;
+#include "comdb2.h"
+#include "bdb_int.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -253,6 +253,7 @@ static void instrFunc(
   int typeHaystack, typeNeedle;
   int N = 1;
   int isText;
+  unsigned char firstChar;
 
   UNUSED_PARAMETER(argc);
   typeHaystack = sqlite3_value_type(argv[0]);
@@ -271,7 +272,10 @@ static void instrFunc(
       isText = 1;
     }
     if( zNeedle==0 || (nHaystack && zHaystack==0) ) return;
-    while( nNeedle<=nHaystack && memcmp(zHaystack, zNeedle, nNeedle)!=0 ){
+    firstChar = zNeedle[0];
+    while( nNeedle<=nHaystack
+       && (zHaystack[0]!=firstChar || memcmp(zHaystack, zNeedle, nNeedle)!=0)
+    ){
       N++;
       do{
         nHaystack--;
@@ -593,11 +597,11 @@ static void randomBlob(
   int argc,
   sqlite3_value **argv
 ){
-  int n;
+  sqlite3_int64 n;
   unsigned char *p;
   assert( argc==1 );
   UNUSED_PARAMETER(argc);
-  n = sqlite3_value_int(argv[0]);
+  n = sqlite3_value_int64(argv[0]);
   if( n<1 ){
     n = 1;
   }
@@ -695,7 +699,6 @@ static void guidFromByteFunc(
   sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
 static void comdb2DoubleToBlobFunc(
   sqlite3_context *context,
   int argc,
@@ -732,7 +735,37 @@ static void comdb2BlobToDoubleFunc(
   sqlite3_result_double(context, sqlite3Int64ToDouble(
                         (i64)sqlite3Get8byte(sqlite3_value_blob(argv[0]))));
 }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
+/*
+** Implementation of the comdb2_sysinfo() SQL function.  The return
+** value depends on the class of system information being requested.
+*/
+static void comdb2SysinfoFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  const char *zName;
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ){
+    return;
+  }
+  zName = (const char *)sqlite3_value_text(argv[0]);
+  if( sqlite3_stricmp(zName, "pid")==0 ){
+    sqlite3_result_int64(context, (sqlite3_int64)getpid());
+  }else if( sqlite3_stricmp(zName, "master")==0 ){
+    sqlite3_result_text(context, thedb->bdb_env->repinfo->master_host, -1,
+                        SQLITE_TRANSIENT);
+  }else if( sqlite3_stricmp(zName, "host")==0 ){
+    char zHostName[1024];
+    memset(zHostName, 0, sizeof(zHostName));
+    if( gethostname(zHostName, sizeof(zHostName))==0 ){
+      sqlite3_result_text(context, zHostName, -1, SQLITE_TRANSIENT);
+    }else{
+      sqlite3_result_error(context, "unable to obtain host name", -1);
+    }
+  }
+}
 
 /*
 ** Implementation of the comdb2_version() SQL function.  The return
@@ -744,10 +777,16 @@ static void comdb2VersionFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[128];
-  sqlite3_snprintf(sizeof(zBuf), zBuf,
-    "%s (%s.%s)", gbl_db_release_name, gbl_db_release_name, gbl_db_build_name);
-  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, gbl_db_version, -1, SQLITE_STATIC);
+}
+
+static void comdb2SemVerFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  sqlite3_result_text(context, gbl_db_semver, -1, SQLITE_STATIC);
 }
 
 extern char * comdb2_get_prev_query_cost();
@@ -772,7 +811,6 @@ static void comdb2HostFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  extern char *gbl_myhostname;
   sqlite3_result_text(context, gbl_myhostname, -1, SQLITE_STATIC);
 }
 
@@ -2242,6 +2280,10 @@ static void setLikeOptFlag(sqlite3 *db, const char *zName, u8 flagVal){
   if( ALWAYS(pDef) ){
     pDef->funcFlags |= flagVal;
   }
+  pDef = sqlite3FindFunction(db, zName, 3, SQLITE_UTF8, 0);
+  if( pDef ){
+    pDef->funcFlags |= flagVal;
+  }
 }
 
 /*
@@ -2491,7 +2533,9 @@ void sqlite3RegisterBuiltinFunctions(void){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
+    FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
     FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
+    FUNCTION(comdb2_semver,         0, 0, 0, comdb2SemVerFunc),
     FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,        2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,           0, 0, 0, comdb2HostFunc),

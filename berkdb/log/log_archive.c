@@ -420,6 +420,7 @@ q_err:			if (list != NULL)
 				__os_free(dbenv, list);
 		}
 free_continue:	__os_free(dbenv, argp);
+		argp = NULL;
 		if (ret != 0)
 			break;
 	}

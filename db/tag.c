@@ -84,6 +84,9 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
 
+extern int offload_comm_send_upgrade_records(struct dbtable *,
+                                             unsigned long long);
+
 static inline void lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
@@ -1496,7 +1499,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     struct field *m;
     int offset;
     char altname[MAXTAGLEN];
-    char tmptagname[MAXTAGLEN];
+    char tmptagname[MAXTAGLEN + sizeof(".NEW.")];
     char *where;
     char *expr;
     int rc;
@@ -2185,8 +2188,8 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
 
     if (tzname) {
         if (tzname[0]) {
-            strncpy(tzopts1.tzname, tzname, sizeof(tzopts1.tzname));
-            strncpy(tzopts2.tzname, tzname, sizeof(tzopts2.tzname));
+            strncpy0(tzopts1.tzname, tzname, sizeof(tzopts1.tzname));
+            strncpy0(tzopts2.tzname, tzname, sizeof(tzopts2.tzname));
         } else {
             tzname = NULL;
         }
@@ -2918,7 +2921,7 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
                     memcpy(&tzopts, &from_field->convopts,
                            sizeof(struct field_conv_opts));
                     tzopts.flags |= FLD_CONV_TZONE;
-                    strncpy(tzopts.tzname, tzname, sizeof(tzopts.tzname));
+                    strncpy0(tzopts.tzname, tzname, sizeof(tzopts.tzname));
 
                     /* The client data is little endian. */
                     if (flags & CONVERT_LITTLE_ENDIAN_CLIENT)
@@ -3176,9 +3179,6 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
         goto done;
     }
 
-    extern int offload_comm_send_upgrade_records(struct dbtable *,
-                                                 unsigned long long);
-
     if (gbl_num_record_upgrades > 0 && genid != 0)
         offload_comm_send_upgrade_records(db, genid);
 
@@ -3378,7 +3378,7 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
 
                     if (tzname && tzname[0]) {
                         tzopts.flags |= FLD_CONV_TZONE;
-                        strncpy(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
+                        strncpy0(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
 
                         rc = SERVER_to_CLIENT(
                             from_field->out_default,
@@ -3424,7 +3424,7 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
                            from_field->len - rec_srt_off);
                 if (tzname && tzname[0]) {
                     tzopts.flags |= FLD_CONV_TZONE;
-                    strncpy(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
+                    strncpy0(tzopts.tzname, tzname, DB_MAX_TZNAMEDB);
 
                     rc = SERVER_to_CLIENT(
                         inbuf + from_field->offset, field_len, from_field->type,
@@ -4013,7 +4013,7 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
         bzero(&tzopts, sizeof(tzopts));
         memcpy(&tzopts, &to_field->convopts, sizeof(struct field_conv_opts));
         tzopts.flags |= FLD_CONV_TZONE;
-        strncpy(tzopts.tzname, tzname, sizeof(tzopts.tzname));
+        strncpy0(tzopts.tzname, tzname, sizeof(tzopts.tzname));
 
         rc = SERVER_to_SERVER(inbuf + from_field->offset, from_field->len,
                               from_field->type, &from_field->convopts, inblob,
@@ -6505,7 +6505,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
             if (iq->debug)
                 reqprintf(
                     iq, "resolve_tag_name CAN'T ALLOCATE DYNAMIC SCHEMA '%.*s'",
-                    taglen, tagdescr);
+                    (int) taglen, tagdescr);
             return -1;
         }
         add_tag_schema(iq->usedb->tablename, *dynschema);
@@ -6515,7 +6515,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
         if (taglen > tagnamelen - 1) {
             if (iq->debug)
                 reqprintf(iq, "resolve_tag_name TAG NAME TOO LONG '%.*s'",
-                          taglen, tagdescr);
+                          (int) taglen, tagdescr);
             return -1;
         }
         memcpy(tagname, tagdescr, taglen);
@@ -6682,7 +6682,6 @@ void update_dbstore(struct dbtable *db)
         if (ver == NULL) {
             logmsg(LOGMSG_FATAL, "%s: %s not found!! PANIC!! %s() @ %d\n",
                    db->tablename, tag, __func__, __LINE__);
-            /* FIXME */
             cheap_stack_trace();
             abort();
         }
@@ -6708,7 +6707,6 @@ void update_dbstore(struct dbtable *db)
                        "%s: %s no such field: %s in .ONDISK. but in %s!! "
                        "PANIC!!\n",
                        db->tablename, __func__, from->name, tag);
-                /* FIXME */
                 abort();
             }
 
@@ -6727,7 +6725,6 @@ void update_dbstore(struct dbtable *db)
                         logmsg(LOGMSG_FATAL,
                                "%s: %s() @ %d calloc failed!! PANIC!!\n",
                                db->tablename, __func__, __LINE__);
-                        /* FIXME */
                         abort();
                     }
                     rc = SERVER_to_SERVER(
@@ -6741,7 +6738,6 @@ void update_dbstore(struct dbtable *db)
                                "%s: %s() @ %d: SERVER_to_SERVER failed!! "
                                "PANIC!!\n",
                                db->tablename, __func__, __LINE__);
-                        /* FIXME */
                         abort();
                     }
                 }
@@ -7182,7 +7178,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
         case CLIENT_UINT: {
             uint64_t uint;
             memcpy(&uint, (uint8_t *)rec + f->offset, sizeof(uint));
-            strbuf_appendf(buf, "%u", uint);
+            strbuf_appendf(buf, "%"PRIu64, uint);
             break;
         }
         case CLIENT_INT: {
@@ -7241,7 +7237,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
                 if (isnull)
                     strbuf_appendf(buf, "null");
                 else
-                    strbuf_appendf(buf, "%u", uint);
+                    strbuf_appendf(buf, "%"PRIu64, uint);
             }
             break;
         }

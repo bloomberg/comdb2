@@ -129,15 +129,8 @@ static int machine_class_default(const char *host)
 
         envclass = getenv("COMDB2_CLASS");
         if (envclass) {
-            if (strcmp(envclass, "dev") == 0 || strcmp(envclass, "test") == 0)
-                my_class = CLASS_TEST;
-            else if (strcmp(envclass, "alpha") == 0)
-                my_class = CLASS_ALPHA;
-            else if (strcmp(envclass, "beta") == 0)
-                my_class = CLASS_BETA;
-            else if (strcmp(envclass, "prod") == 0)
-                my_class = CLASS_PROD;
-            else
+            my_class = mach_class_name2class(envclass);
+            if (my_class == CLASS_UNKNOWN)
                 logmsg(LOGMSG_ERROR,
                        "envclass set to \"%s\", don't recognize it\n",
                        envclass);
@@ -176,14 +169,7 @@ static int machine_class_default(const char *host)
                 goto done;
             }
             envclass = cdb2_column_value(db, 0);
-            if (strcmp(envclass, "dev") == 0 || strcmp(envclass, "test") == 0)
-                my_class = CLASS_TEST;
-            else if (strcmp(envclass, "alpha") == 0)
-                my_class = CLASS_ALPHA;
-            else if (strcmp(envclass, "beta") == 0)
-                my_class = CLASS_BETA;
-            else if (strcmp(envclass, "prod") == 0)
-                my_class = CLASS_PROD;
+            my_class = mach_class_name2class(envclass);
             do {
                 rc = cdb2_next_record(db);
             } while (rc == CDB2_OK);

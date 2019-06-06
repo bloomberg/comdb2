@@ -73,7 +73,7 @@ typedef long long tranid_t;
 #include <dlmalloc.h>
 #include <stdbool.h>
 
-#include "tag.h"
+#include "sqlinterfaces.h"
 #include "errstat.h"
 #include "comdb2_rcodes.h"
 #include "repl_wait.h"
@@ -315,8 +315,7 @@ enum BLOCK_OPS {
     BLOCK_MAXOPCODE
 
     /* Used for some condensed blockop stats; this should be the number of
-     * opcodes
-     * that there actually really are. */
+     * opcodes that there actually really are. */
     ,
     NUM_BLOCKOP_OPCODES = 45
 };
@@ -944,8 +943,7 @@ struct dbenv {
     /* stupid - is the purge_old_blkseq thread running? */
     int purge_old_blkseq_is_running;
     int purge_old_files_is_running;
-    int exiting; /* are we exiting? */
-    int stopped; /* if set, drop requests */
+    int stopped; /* set when exiting -- if set, drop requests */
     int no_more_sql_connections;
 
     LISTC_T(struct sql_thread) sql_threads;
@@ -1517,8 +1515,9 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
-extern const char *const gbl_db_build_name;
-extern const char *const gbl_db_release_name;
+extern const char gbl_db_version[];
+extern const char gbl_db_semver[];
+extern const char gbl_db_codename[];
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_verbose_toblock_backouts;
@@ -1591,6 +1590,7 @@ extern int gbl_maxthreads;   /* max number of threads allowed */
 extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_mynode;     /* my hostname */
+extern char *gbl_machine_class; /* my machine class */
 struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern char *gbl_myhostname; /* my hostname */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
@@ -1609,13 +1609,6 @@ extern int gbl_maxblobretries; /* max retries on deadlocks */
 extern int
     gbl_maxcontextskips; /* max records we will skip in a stable cursor */
 extern int gbl_elect_time_secs; /* overrides elect time if > 0 */
-extern int gbl_use_fstblk;
-extern int gbl_fstblk_vb;
-extern int gbl_fstblk_dbgtrans;
-extern size_t gbl_fstblk_bucket_sz; /* how many seqnums to drop in a bucket */
-extern size_t gbl_fstblk_bucket_gr; /* granularity, 0 for default */
-extern size_t gbl_fstblk_minq; /* min no of seqnums to queue before purge */
-extern size_t gbl_fstblk_maxq; /* max no of seqnums to queue              */
 extern int gbl_rtcpu_debug;    /* 1 to enable rtcpu debugging */
 extern int gbl_longblk_trans_purge_interval; /* long transaction purge check
                                                 interval. default 30 secs */
@@ -1815,6 +1808,7 @@ int schema_init(void);
 int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
+int mach_class_init(void);
 
 /* deinit routines */
 int destroy_appsock(void);
@@ -2162,6 +2156,9 @@ int ix_find_by_rrn_and_genid_prefault(struct ireq *iq, int rrn,
 int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                   unsigned long long genid, void *fnddta,
                                   int *fndlen, int maxlen, void *trans);
+int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans);
 int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                       unsigned long long genid, void *fnddta,
                                       int *fndlen, int maxlen, void *trans,
@@ -2537,7 +2534,6 @@ void hash_set_cmpfunc(hash_t *h, cmpfunc_t cmpfunc);
 enum mach_class get_my_mach_class(void);
 enum mach_class get_mach_class(const char *host);
 const char *get_mach_class_str(char *host);
-const char *get_class_str(enum mach_class cls);
 int allow_write_from_remote(const char *host);
 int allow_cluster_from_remote(const char *host);
 int allow_broadcast_to_remote(const char *host);
@@ -3611,6 +3607,8 @@ const char *thrman_get_where(struct thr_handle *thr);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;

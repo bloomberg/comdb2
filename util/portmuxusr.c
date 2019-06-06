@@ -521,7 +521,7 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
                 unix_bind_path);
         return -1;
     }
-    strncpy(addr.sun_path, unix_bind_path, sizeof(addr.sun_path));
+    strncpy(addr.sun_path, unix_bind_path, sizeof(addr.sun_path) - 1);
     len += offsetof(struct sockaddr_un, sun_path);
 
     if (fcntl(listenfd, F_SETFD, 1 /*TRUE: close-on-exec*/) < 0) {
@@ -1556,9 +1556,9 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
     fds->listenfd = listenfd;
     fds->tcplistenfd = tcplistenfd;
     fds->port = port;
-    strncpy(fds->app, app, sizeof(fds->app));
-    strncpy(fds->service, service, sizeof(fds->service));
-    strncpy(fds->instance, instance, sizeof(fds->instance));
+    strncpy(fds->app, app, sizeof(fds->app) - 1);
+    strncpy(fds->service, service, sizeof(fds->service) - 1);
+    strncpy(fds->instance, instance, sizeof(fds->instance) - 1);
     fds->options = options;
 
     /*check if we have connection on portmux unix socket*/

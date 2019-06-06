@@ -11,8 +11,6 @@
 #include <parse_lsn.h>
 #include "locks.h"
 
-extern bdb_state_type *bdb_state;
-
 int matchable_log_type(int rectype);
 
 extern int gbl_verbose_physrep;

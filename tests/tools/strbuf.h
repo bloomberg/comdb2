@@ -26,7 +26,7 @@ void strbuf_vappendf(strbuf *, const char *, va_list args);
 void strbuf_clear(strbuf *);
 void strbuf_free(strbuf *);
 const char *strbuf_buf(const strbuf *);
-const int strbuf_len(const strbuf *buf);
+int strbuf_len(const strbuf *buf);
 char *strbuf_disown(strbuf *);
 void strbuf_del(strbuf *buf, int n);
 

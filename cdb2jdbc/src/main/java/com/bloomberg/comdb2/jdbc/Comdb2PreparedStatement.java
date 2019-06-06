@@ -362,8 +362,6 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
                 setByte(parameterIndex, (Byte) x);
             } else if (x instanceof byte[]) {
                 setBytes(parameterIndex, (byte[]) x);
-            } else if (x instanceof java.util.Date) {
-                setDate(parameterIndex, new Date(((java.util.Date) x).getTime()));
             } else if (x instanceof Date) {
                 setDate(parameterIndex, (Date) x);
             } else if (x instanceof Double) {
@@ -378,18 +376,18 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
                 setTime(parameterIndex, (Time) x);
             } else if (x instanceof Timestamp) {
                 setTimestamp(parameterIndex, (Timestamp) x);
+            } else if (x instanceof java.util.Date) {
+                setDate(parameterIndex, new Date(((java.util.Date) x).getTime()));
             } else if (x instanceof Short) {
                 setShort(parameterIndex, (Short) x);
             } else if (x instanceof String) {
                 setString(parameterIndex, (String) x);
-
             } else if (x instanceof Blob) {
                 setBlob(parameterIndex, (Blob) x);
-            } else if (x instanceof Clob) {
-                setClob(parameterIndex, (Clob) x);
             } else if (x instanceof NClob) {
                 setNClob(parameterIndex, (NClob) x);
-
+            } else if (x instanceof Clob) {
+                setClob(parameterIndex, (Clob) x);
             } else {
                 // Default to string representation for unknown types
                 setString(parameterIndex, x.toString());

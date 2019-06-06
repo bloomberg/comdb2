@@ -2803,7 +2803,7 @@ static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
     case DB_llog_undo_upd_dta_lk:
         return 1;
     default:
-        return 0;
+        break;
     }
     return 0;
 }
@@ -3295,8 +3295,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
             eofLsn = curLsn;
 
-            if (!serial)
+            if (!serial) {
                 free(redo);
+                redo = NULL;
+            }
             else if (log_compare(&curLsn, &serialLsn) > 0) {
                 sc_printf(s, "[%s] logical redo exits serial mode\n",
                           s->tablename);

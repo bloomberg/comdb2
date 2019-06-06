@@ -14,6 +14,9 @@
    limitations under the License.
  */
 
+#ifndef __dbdest_h
+#define __dbdest_h
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -24,3 +27,5 @@ void dbdest_init(void);
 int handle_dbdest(char *line, int llen);
 int dbdest_get_destinations(int dbnum, int *nhosts, char ***hosts);
 int dbdest_mtrap(char *line, int llen, int toff);
+
+#endif

@@ -1,3 +1,6 @@
+#ifndef comdb2systblInt_h
+#define comdb2systblInt_h
+
 #include "sqlite3.h"
 
 #ifdef __cplusplus
@@ -58,3 +61,5 @@ int systblScStatusInit(sqlite3 *db);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif

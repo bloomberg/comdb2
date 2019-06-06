@@ -41,6 +41,9 @@
 
 #include "cson_amalgamation_core.h"
 
+extern int64_t comdb2_time_epochus(void);
+extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
+
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 2; // keep only last 2 event log files
@@ -116,7 +119,6 @@ static void eventlog_roll_cleanup()
     int rc = system(cmd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
-        exit(1);
     }
 }
 
@@ -396,16 +398,20 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     for (int i = 0; i < logger->path->n_components; i++) {
         cson_value *component;
         component = cson_value_new_object();
-        cson_object *obj = cson_value_get_object(component);
+        cson_object *lobj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
         if (c->table[0])
-            cson_object_set(obj, "table",
+            cson_object_set(lobj, "table",
                             cson_value_new_string(c->table, strlen(c->table)));
-        if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
-        if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
-        if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
-        if (c->nwrite) cson_object_set(obj, "write", cson_new_int(c->nwrite));
+        if (c->ix != -1)
+            cson_object_set(lobj, "index", cson_new_int(c->ix));
+        if (c->nfind)
+            cson_object_set(lobj, "find", cson_new_int(c->nfind));
+        if (c->nnext)
+            cson_object_set(lobj, "next", cson_new_int(c->nnext));
+        if (c->nwrite)
+            cson_object_set(lobj, "write", cson_new_int(c->nwrite));
         cson_array_append(arr, component);
     }
     cson_object_set(obj, "path", components);
@@ -497,7 +503,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     }
 
     cson_object_set(obj, "host",
-                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+                    cson_value_new_string(logger->origin, strlen(logger->origin)));
 
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
@@ -718,7 +724,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_object *obj = cson_value_get_object(dval);
 
     cson_value *dd_list = cson_value_new_array();
-    int64_t comdb2_time_epochus(void);
     uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
@@ -735,7 +740,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
 
-        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);

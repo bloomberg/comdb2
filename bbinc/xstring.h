@@ -367,8 +367,10 @@ int strissignedinteger(const char *psz);
 int strishexnumber(const char *psz);
 #define strIsNumber(psz) strisnumber(psz)
 
+#if 0
 char *strltrims(char *s, const char *trims);
 #define strltrim(s) strltrims(s, NULL)
+#endif
 
 char *strrtrims(char *s, const char *trims);
 #define strrtrim(s) strrtrims(s, NULL)

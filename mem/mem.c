@@ -107,6 +107,11 @@
 #define COMDB2MA_MEMCHK(m, sz)
 #endif
 
+
+#if defined(M_TRIM_THRESHOLD)
+extern int malloc_trim (size_t pad);
+#endif
+
 // macros$
 
 static comdb2ma COMDB2_STATIC_MAS[COMDB2MA_COUNT];
@@ -640,7 +645,6 @@ int comdb2ma_release(void)
 #if defined(M_GRANULARITY)
 #error "The function must be defined after comdb2ma_nice."
 #elif defined(M_TRIM_THRESHOLD)
-    extern int malloc_trim (size_t pad);
     malloc_trim(0);
 #endif
 #endif
