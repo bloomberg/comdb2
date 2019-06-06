@@ -171,6 +171,8 @@ static int dbg_pthread_free_outer_pair(
       hash_free(locks);
       DBG_LESS_MEMORY(sizeof(hash_t*));
     }
+    free(obj);
+    DBG_LESS_MEMORY(sizeof(outer_pair_t));
   }
   return 0;
 }
@@ -214,9 +216,11 @@ void dbg_pthread_term(void){
   hash_free(dbg_locks);
   DBG_LESS_MEMORY(sizeof(hash_t*));
   dbg_locks = NULL;
-  dbg_pthread_dump(stdout, "after cleanup", 1);
-  assert( dbg_locks_bytes==0 );
 done:
+  pthread_mutex_unlock(&dbg_locks_lk);
+  dbg_pthread_dump(stdout, "after cleanup", 1);
+  pthread_mutex_lock(&dbg_locks_lk);
+  assert( dbg_locks_bytes==0 );
   pthread_mutex_unlock(&dbg_locks_lk);
 }
 
