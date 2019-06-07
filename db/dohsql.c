@@ -1889,6 +1889,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (params->params)
             free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     params->params = temparr;

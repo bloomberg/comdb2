@@ -1738,7 +1738,7 @@ int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
   do{
     const char *z = (const char*)&pIn[i+2];
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( z && strncmp(z+off,zName,nName)==0 && z[nName+off]==0 ){
+    if( z && strncmp(z+off,zName,nName)==0 && z[nName]==0 ){
       return pIn[i];
     }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */

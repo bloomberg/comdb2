@@ -3313,7 +3313,7 @@ struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
         if (p->pos > 0 && p->pos == index)
             return p;
 
-        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
+        if (name[0] && !strncmp(name, p->name, strlen(name) + 1))
             return p;
     }
 done:
