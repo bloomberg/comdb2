@@ -63,16 +63,16 @@ void free_connections(void *data, int num_points) {
 
 int systblConnectionsInit(sqlite3 *db) {
     return create_system_table(db, "comdb2_connections", get_connections, free_connections, sizeof(struct connection_info),
-            CDB2_CSTRING, "host", offsetof(struct connection_info, host),
-            CDB2_INTEGER, "connection_id", offsetof(struct connection_info, connection_id),
-            CDB2_DATETIME, "connect_time", offsetof(struct connection_info, connect_time),
-            CDB2_DATETIME, "last_reset_time", offsetof(struct connection_info, connect_time),
-            CDB2_INTEGER, "pid", offsetof(struct connection_info, pid),
-            CDB2_INTEGER, "total_sql", offsetof(struct connection_info, total_sql),
-            CDB2_INTEGER, "sql_since_reset", offsetof(struct connection_info, sql_since_reset),
-            CDB2_INTEGER, "num_resets", offsetof(struct connection_info, num_resets),
-            CDB2_CSTRING, "state", offsetof(struct connection_info, state),
-            CDB2_INTERVALDS, "time_in_state", offsetof(struct connection_info, time_in_state),
-            CDB2_CSTRING, "sql", offsetof(struct connection_info, sql),
+            CDB2_CSTRING, "host", -1, offsetof(struct connection_info, host),
+            CDB2_INTEGER, "connection_id", -1, offsetof(struct connection_info, connection_id),
+            CDB2_DATETIME, "connect_time", -1, offsetof(struct connection_info, connect_time),
+            CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, connect_time),
+            CDB2_INTEGER, "pid", -1, offsetof(struct connection_info, pid),
+            CDB2_INTEGER, "total_sql", -1, offsetof(struct connection_info, total_sql),
+            CDB2_INTEGER, "sql_since_reset", -1, offsetof(struct connection_info, sql_since_reset),
+            CDB2_INTEGER, "num_resets", -1, offsetof(struct connection_info, num_resets),
+            CDB2_CSTRING, "state", -1, offsetof(struct connection_info, state),
+            CDB2_INTERVALDS, "time_in_state", -1, offsetof(struct connection_info, time_in_state),
+            CDB2_CSTRING, "sql", -1, offsetof(struct connection_info, sql),
             SYSTABLE_END_OF_FIELDS);
 }

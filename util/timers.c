@@ -25,7 +25,6 @@
 #include <errno.h>
 
 #include <timers.h>
-#include <epochlib.h>
 
 #include <logmsg.h>
 #include <locks_wrap.h>

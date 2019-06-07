@@ -5699,6 +5699,11 @@ done:
     return ret;
 }
 
+static void clnt_queued_event(void *p) {
+   struct sqlclntstate *clnt = (struct sqlclntstate*) p;
+   clnt_change_state(clnt, CONNECTION_QUEUED);
+}
+
 int sqlpool_init(void)
 {
     gbl_sqlengine_thdpool =
@@ -6274,7 +6279,6 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
->>>>>>> connections table
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)

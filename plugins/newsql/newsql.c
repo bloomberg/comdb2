@@ -2118,8 +2118,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     tab = arg->tab;
     sb = arg->sb;
 
-    clnt_register(&clnt);
-
     if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
         /*
           Don't change this message. The sql api recognises the first four
@@ -2168,7 +2166,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
-
     clnt_register(&clnt);
 
     get_newsql_appdata(&clnt, 32);
@@ -2416,7 +2413,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
         }
-        pthread_mutex_unlock(&clnt.wait_mutex);
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 
