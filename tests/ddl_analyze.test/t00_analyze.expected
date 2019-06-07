@@ -47,6 +47,10 @@
 [CREATE UNIQUE INDEX idx1 ON 'all'(i)] rc 0
 (rows inserted=1000)
 [INSERT INTO 'all' SELECT * FROM generate_series(1,1000)] rc 0
+[CREATE TABLE other_tab(i INT)] rc 0
+[CREATE UNIQUE INDEX idx1 ON other_tab(i)] rc 0
+(rows inserted=1000)
+[INSERT INTO other_tab SELECT * FROM generate_series(1,1000)] rc 0
 [SELECT * FROM sqlite_stat1] rc 0
 [SELECT * FROM sqlite_stat4] rc 0
 [ANALYZE 'all'] rc 0
@@ -55,3 +59,4 @@
 (tbl='all')
 [SELECT DISTINCT tbl FROM sqlite_stat4 ORDER BY tbl] rc 0
 [DROP TABLE 'all'] rc 0
+[DROP TABLE other_tab] rc 0

@@ -47,6 +47,10 @@ CREATE TABLE 'all'(i INT) $$
 CREATE UNIQUE INDEX idx1 ON 'all'(i);
 INSERT INTO 'all' SELECT * FROM generate_series(1,1000);
 
+CREATE TABLE other_tab(i INT) $$
+CREATE UNIQUE INDEX idx1 ON other_tab(i);
+INSERT INTO other_tab SELECT * FROM generate_series(1,1000);
+
 SELECT * FROM sqlite_stat1;
 SELECT * FROM sqlite_stat4;
 
@@ -56,3 +60,4 @@ SELECT DISTINCT tbl FROM sqlite_stat1 ORDER BY tbl;
 SELECT DISTINCT tbl FROM sqlite_stat4 ORDER BY tbl;
 
 DROP TABLE 'all';
+DROP TABLE other_tab;
