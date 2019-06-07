@@ -4566,6 +4566,9 @@ static int cson_to_table(Lua lua, cson_value *v)
         cson_object_iterator i;
         cson_object_iter_init(o, &i);
         cson_kvp *kv;
+        /* Make sure we have enough space to store "key" and "value". */
+        if (lua_checkstack(lua, 2) == 0)
+            return -1;
         while ((kv = cson_object_iter_next(&i)) != NULL) {
             lua_pushstring(lua, cson_string_cstr(cson_kvp_key(kv)));
             if (cson_push_value(lua, cson_kvp_value(kv)) != 0) return -1;
@@ -4574,6 +4577,12 @@ static int cson_to_table(Lua lua, cson_value *v)
     } else if (cson_value_is_array(v)) {
         cson_array *a = cson_value_get_array(v);
         unsigned int i, len = cson_array_length_get(a);
+        /*
+         * Make sure we have enough space to store one value to be pushed into
+         * the array.
+         */
+        if (lua_checkstack(lua, 1) == 0)
+            return -1;
         for (i = 0; i < len; ++i) {
             if (cson_push_value(lua, cson_array_get(a, i)) != 0) return -1;
             lua_rawseti(lua, -2, i + 1);
