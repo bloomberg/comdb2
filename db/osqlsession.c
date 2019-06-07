@@ -822,20 +822,22 @@ late_error:
 }
 
 int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
-        char *rpl)
+                       char *rpl)
 {
     char *p_buf;
     int rc = -1;
     selectv_genid_t *sgenid, fnd = {0};
-    enum {  OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16,
-            OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8 };
+    enum {
+        OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16,
+        OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8
+    };
     switch (type) {
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
     case OSQL_DELREC:
-        p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ? 
-                OSQLCOMM_UUID_RPL_TYPE_LEN : OSQLCOMM_RPL_TYPE_LEN);
+        p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ? OSQLCOMM_UUID_RPL_TYPE_LEN
+                                                  : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
         assert(sess->table);
@@ -843,84 +845,106 @@ int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
         fnd.tableversion = sess->tableversion;
         if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL) {
             sgenid->get_writelock = 1;
-        rc = 0;
-        break;
-    case OSQL_RECGENID:
-        p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ?
-                OSQLCOMM_UUID_RPL_TYPE_LEN : OSQLCOMM_RPL_TYPE_LEN);
-        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
-                       p_buf + sizeof(fnd.genid));
-        assert(sess->table);
-        fnd.tablename = sess->table;
-        if (hash_find(sess->selectv_genids, &fnd) == NULL) {
-            sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
-            sgenid->genid = fnd.genid;
-            sgenid->tablename = sess->table;
-            sgenid->tableversion = sess->tableversion;
-            sgenid->get_writelock = 0;
-            hash_add(sess->selectv_genids, sgenid);
+            rc = 0;
+            break;
+        case OSQL_RECGENID:
+            p_buf =
+                rpl + (rqid == OSQL_RQID_USE_UUID ? OSQLCOMM_UUID_RPL_TYPE_LEN
+                                                  : OSQLCOMM_RPL_TYPE_LEN);
+            buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
+                           p_buf + sizeof(fnd.genid));
+            assert(sess->table);
+            fnd.tablename = sess->table;
+            if (hash_find(sess->selectv_genids, &fnd) == NULL) {
+                sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
+                sgenid->genid = fnd.genid;
+                sgenid->tablename = sess->table;
+                sgenid->tableversion = sess->tableversion;
+                sgenid->get_writelock = 0;
+                hash_add(sess->selectv_genids, sgenid);
+            }
+            rc = 0;
+            break;
         }
-        rc = 0;
-        break;
+        return rc;
     }
-    return rc;
-}
 
-typedef struct {
-    int (*wr_sv)(void *, const char *tablename, int tableversion,
-                 unsigned long long genid);
-    void *arg;
-} sv_hf_args;
+    typedef struct {
+        int (*wr_sv)(void *, const char *tablename, int tableversion,
+                     unsigned long long genid);
+        void *arg;
+    } sv_hf_args;
 
-int process_selectv(void *obj, void *arg)
-{
-    sv_hf_args *hf_args = (sv_hf_args *)arg;
-    selectv_genid_t *sgenid = (selectv_genid_t *)obj;
-    if (sgenid->get_writelock) {
-        return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
-                                 sgenid->tableversion, sgenid->genid);
-    }
-    return 0;
-}
-
-int osql_process_selectv(osql_sess_t *sess,
-                         int (*wr_sv)(void *arg, const char *tablename,
-                                      int tableversion,
-                                      unsigned long long genid),
-                         void *wr_selv_arg)
-{
-    sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
-    if (!sess->selectv_writelock_on_update)
+    int process_selectv(void *obj, void *arg)
+    {
+        sv_hf_args *hf_args = (sv_hf_args *)arg;
+        selectv_genid_t *sgenid = (selectv_genid_t *)obj;
+        if (sgenid->get_writelock) {
+            return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
+                                     sgenid->tableversion, sgenid->genid);
+        }
         return 0;
-    return hash_for(sess->selectv_genids, process_selectv, &hf_args);
-}
+    }
 
-char *osql_sess_tag(osql_sess_t *sess) { return sess->tag; }
+    int osql_process_selectv(osql_sess_t * sess,
+                             int (*wr_sv)(void *arg, const char *tablename,
+                                          int tableversion,
+                                          unsigned long long genid),
+                             void *wr_selv_arg)
+    {
+        sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
+        if (!sess->selectv_writelock_on_update)
+            return 0;
+        return hash_for(sess->selectv_genids, process_selectv, &hf_args);
+    }
 
-void *osql_sess_tagbuf(osql_sess_t *sess) { return sess->tagbuf; }
+    char *osql_sess_tag(osql_sess_t * sess)
+    {
+        return sess->tag;
+    }
 
-int osql_sess_tagbuf_len(osql_sess_t *sess) { return sess->tagbuflen; }
+    void *osql_sess_tagbuf(osql_sess_t * sess)
+    {
+        return sess->tagbuf;
+    }
 
-void osql_sess_set_reqlen(osql_sess_t *sess, int len) { sess->reqlen = len; }
+    int osql_sess_tagbuf_len(osql_sess_t * sess)
+    {
+        return sess->tagbuflen;
+    }
 
-void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
-                             int *nblobs)
-{
-    *blobs = sess->blobs;
-    *nblobs = sess->numblobs;
-}
+    void osql_sess_set_reqlen(osql_sess_t * sess, int len)
+    {
+        sess->reqlen = len;
+    }
 
-int osql_sess_reqlen(osql_sess_t *sess) { return sess->reqlen; }
+    void osql_sess_get_blob_info(osql_sess_t * sess, blob_buffer_t * *blobs,
+                                 int *nblobs)
+    {
+        *blobs = sess->blobs;
+        *nblobs = sess->numblobs;
+    }
 
-int osql_sess_type(osql_sess_t *sess) { return sess->type; }
+    int osql_sess_reqlen(osql_sess_t * sess)
+    {
+        return sess->reqlen;
+    }
 
-int osql_sess_queryid(osql_sess_t *sess) { return sess->queryid; }
+    int osql_sess_type(osql_sess_t * sess)
+    {
+        return sess->type;
+    }
 
-// get sess->uuid into uuid as destination
-void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
-{
-    comdb2uuidcpy(uuid, sess->uuid);
-}
+    int osql_sess_queryid(osql_sess_t * sess)
+    {
+        return sess->queryid;
+    }
+
+    // get sess->uuid into uuid as destination
+    void osql_sess_getuuid(osql_sess_t * sess, uuid_t uuid)
+    {
+        comdb2uuidcpy(uuid, sess->uuid);
+    }
 
 #if 0
 /**

@@ -107,7 +107,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(unsigned long long rqid,
-        const char *rpl, int *tableversion);
+                                          const char *rpl, int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -480,7 +480,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
-    /* Pre-process selectv's, getting a writelock on rows that are later updated */
+    /* Pre-process selectv's, getting a writelock on rows that are later updated
+     */
     if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
                                    pselectv_callback, &cgstate)) != 0) {
         iq->timings.req_applied = osql_log_time();
@@ -659,7 +660,7 @@ const char *osql_reqtype_str(int type)
 }
 
 void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
-        struct ireq *iq, char *rpl, oplog_key_t *key)
+                       struct ireq *iq, char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
@@ -837,7 +838,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_USEDB &&
         (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
         int tableversion = 0;
-        const char *tablename = get_tablename_from_rpl(rqid, rpl, &tableversion);
+        const char *tablename =
+            get_tablename_from_rpl(rqid, rpl, &tableversion);
         sess->table = intern(tablename);
         sess->tableversion = tableversion;
     }

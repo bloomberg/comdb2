@@ -6688,11 +6688,12 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 /* get the table name part of the rpl request
  */
 const char *get_tablename_from_rpl(unsigned long long rqid, const uint8_t *rpl,
-        int *tableversion)
+                                   int *tableversion)
 {
     osql_usedb_t dt;
-    const uint8_t *p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ?
-            sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    const uint8_t *p_buf =
+        rpl + (rqid == OSQL_RQID_USE_UUID ? sizeof(osql_uuid_rpl_t)
+                                          : sizeof(osql_rpl_t));
     const uint8_t *p_buf_end = p_buf + sizeof(osql_usedb_t);
     const char *tablename;
 

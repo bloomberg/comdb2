@@ -3316,7 +3316,7 @@ void osql_checkboard_check_down_nodes(char *host);
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
 int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
-                   int *bdberr);
+                      int *bdberr);
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr);
 
