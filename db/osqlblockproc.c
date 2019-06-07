@@ -843,7 +843,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     if (sess->selectv_writelock_on_update)
-        osql_cache_selectv(type, sess, rpl);
+        osql_cache_selectv(type, sess, rqid, rpl);
 
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {

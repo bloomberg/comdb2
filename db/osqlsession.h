@@ -298,7 +298,8 @@ void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid,
 int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
-int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl);
+int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long,
+                         char *rpl);
 int osql_process_selectv(osql_sess_t *sess,
                          int (*wr_sv)(void *arg, const char *tablename,
                                       int tableversion,

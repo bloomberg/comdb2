@@ -821,29 +821,33 @@ late_error:
     return NULL;
 }
 
-int osql_cache_selectv(int type, osql_sess_t *sess, char *rpl)
+int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
+        char *rpl)
 {
     char *p_buf;
     int rc = -1;
     selectv_genid_t *sgenid, fnd = {0};
-    enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+    enum {  OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16,
+            OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8 };
     switch (type) {
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
     case OSQL_DELREC:
-        p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+        p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ? 
+                OSQLCOMM_UUID_RPL_TYPE_LEN : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
         assert(sess->table);
         fnd.tablename = sess->table;
         fnd.tableversion = sess->tableversion;
-        if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL)
+        if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL) {
             sgenid->get_writelock = 1;
         rc = 0;
         break;
     case OSQL_RECGENID:
-        p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+        p_buf = rpl + (rqid == OSQL_RQID_USE_UUID ?
+                OSQLCOMM_UUID_RPL_TYPE_LEN : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
         assert(sess->table);
@@ -868,7 +872,7 @@ typedef struct {
     void *arg;
 } sv_hf_args;
 
-static int process_selectv(void *obj, void *arg)
+int process_selectv(void *obj, void *arg)
 {
     sv_hf_args *hf_args = (sv_hf_args *)arg;
     selectv_genid_t *sgenid = (selectv_genid_t *)obj;
