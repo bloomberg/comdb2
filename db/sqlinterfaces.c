@@ -3230,6 +3230,9 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
             eventlog_bind_null(arr, p.name);
+            if (rc) { /* position out-of-bounds, etc? */
+                goto out;
+            }
             continue;
         }
         switch (p.type) {
