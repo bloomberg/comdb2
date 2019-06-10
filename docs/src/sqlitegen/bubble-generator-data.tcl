@@ -493,6 +493,10 @@ stack
               {loop
               {line /argument } ,
       }}} ) 
+      line EXECUTE PROCEDURE /procedure-name ( {opt {line
+              {loop
+              {line /argument } ,
+      }}} )
   }
   host-config {
       line "@" {loop {line
