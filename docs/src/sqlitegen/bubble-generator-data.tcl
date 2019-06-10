@@ -489,14 +489,10 @@ stack
     }
   }
   exec-procedure {
-      line EXEC PROCEDURE /procedure-name ( {opt {line
+      line {or EXEC EXECUTE} PROCEDURE /procedure-name ( {opt {line
               {loop
               {line /argument } ,
       }}} ) 
-      line EXECUTE PROCEDURE /procedure-name ( {opt {line
-              {loop
-              {line /argument } ,
-      }}} )
   }
   host-config {
       line "@" {loop {line
