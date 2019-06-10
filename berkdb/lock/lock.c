@@ -2737,12 +2737,12 @@ upgrade:
 			p = bb_berkdb_get_process_stats();
             uint64_t d = (x2 - x1);
 			p->lock_wait_time_us += d;
-            if (p->worst_lock_wait_time_us < d)
-                p->worst_lock_wait_time_us = d;
+			if (p->worst_lock_wait_time_us < d)
+				p->worst_lock_wait_time_us = d;
 			p->n_lock_waits++;
 			t->lock_wait_time_us += d;
-            if (t->worst_lock_wait_time_us < d)
-                t->worst_lock_wait_time_us = d;
+			if (t->worst_lock_wait_time_us < d)
+				t->worst_lock_wait_time_us = d;
 			t->n_lock_waits++;
 
 			if (gbl_bb_log_lock_waits_fn) {

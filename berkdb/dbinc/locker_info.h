@@ -30,7 +30,6 @@ typedef struct {
 	snap_uid_t *snap_info; /* contains cnonce */
 	roff_t last_lock;
 	u_int32_t count;
-	u_int32_t lock_count;
 	u_int32_t id;
 	u_int32_t last_locker_id;
 	db_pgno_t pgno;

@@ -4139,7 +4139,7 @@ void *statthd(void *p)
     long long newsql_steps;
     int nretries;
     int64_t ndeadlocks = 0;
-    int64_t ndeadlock_locks = 0;
+    int64_t nlocks_aborted = 0;
     int64_t nlockwaits = 0;
     int64_t vreplays;
 
@@ -4152,7 +4152,7 @@ void *statthd(void *p)
     int diff_newsql;
     int diff_nretries;
     int diff_deadlocks;
-    int diff_deadlock_locks;
+    int diff_locks_aborted;
     int diff_lockwaits;
     int diff_vreplays;
 
@@ -4164,7 +4164,7 @@ void *statthd(void *p)
     long long last_ncommit_time = 0;
     int last_newsql = 0;
     int last_nretries = 0;
-    int64_t last_ndeadlocks = 0, last_ndeadlock_locks = 0, last_nlockwaits = 0;
+    int64_t last_ndeadlocks = 0, last_nlocks_aborted = 0, last_nlockwaits = 0;
     int64_t last_vreplays = 0;
 
     int count = 0;
@@ -4240,9 +4240,9 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses, &rw_evicts);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &ndeadlock_locks, &nlockwaits, NULL);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
-        diff_deadlock_locks = ndeadlock_locks - last_ndeadlock_locks;
+        diff_locks_aborted = nlocks_aborted - last_nlocks_aborted;
         diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
@@ -4267,7 +4267,7 @@ void *statthd(void *p)
         last_newsql = newsql;
         last_nretries = nretries;
         last_ndeadlocks = ndeadlocks;
-        last_ndeadlock_locks = ndeadlock_locks;
+        last_nlocks_aborted = nlocks_aborted;
         last_nlockwaits = nlockwaits;
         last_vreplays = vreplays;
         last_ncommits = ncommits;
@@ -4517,8 +4517,8 @@ void *statthd(void *p)
 
                 if (diff_deadlocks || diff_lockwaits || diff_vreplays)
                     reqlog_logf(statlogger, REQL_INFO,
-                                "ndeadlocks %d, nlockwaits %d, vreplays %d deadlock steps %d\n",
-                                diff_deadlocks, diff_lockwaits, diff_vreplays, diff_deadlock_locks);
+                                "ndeadlocks %d, nlockwaits %d, vreplays %d, locks aborted %d\n",
+                                diff_deadlocks, diff_lockwaits, diff_vreplays, diff_locks_aborted);
 
                 bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes, curlsn,
                                     sizeof(curlsn));

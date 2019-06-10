@@ -501,7 +501,7 @@ struct __db_lock_stat {
 	u_int64_t st_nnowaits;		/* Number of requests that would have
 					   waited, but NOWAIT was set. */
 	u_int64_t st_ndeadlocks;	/* Number of lock deadlocks. */
-	u_int64_t st_ndeadlock_locks;	/* Number of locks involved in deadlocks. */
+	u_int64_t st_locks_aborted;	/* Number of locks released on deadlocks.*/
 	db_timeout_t st_locktimeout;	/* Lock timeout. */
 	u_int64_t st_nlocktimeouts;	/* Number of lock timeouts. */
 	db_timeout_t st_txntimeout;	/* Transaction timeout. */

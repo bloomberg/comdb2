@@ -1870,7 +1870,7 @@ __dd_abort(dbenv, info)
 	MUTEX_UNLOCK(dbenv, &lockp->mutex);
 
 	region->stat.st_ndeadlocks++;
-    region->stat.st_ndeadlock_locks += lockerp->nlocks;
+    region->stat.st_locks_aborted += lockerp->nlocks;
 ounlock:unlock_obj_partition(region, partition);
 unlock:unlock_locker_partition(region, lockerp->partition);
 out:unlock_lockers(region);
