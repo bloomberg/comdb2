@@ -79,8 +79,11 @@ typedef struct stmt_hash_entry {
 } stmt_hash_entry_type;
 
 struct sql_authorizer_state {
+    struct sqlclntstate *clnt;         /* pointer to current client info */
     int denyDdl;                       /* non-zero if DDL is forbidden */
+    int allowPragma;                   /* non-zero if PRAGMA is allowed */
     int numDdls;                       /* number of DDL statements found */
+    int numPragmas;                    /* number of PRAGMA statements found */
 };
 
 /* Thread specific sql state */

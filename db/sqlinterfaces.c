@@ -759,7 +759,6 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_TEMP_TABLE:
     case SQLITE_CREATE_TEMP_TRIGGER:
     case SQLITE_CREATE_TEMP_VIEW:
-    case SQLITE_CREATE_TRIGGER: /* NOTE: Always blocked by check_sql(). */
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
@@ -769,9 +768,6 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_TEMP_VIEW:
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
-#if !defined(SQLITE_DEBUG)
-    case SQLITE_PRAGMA: /* NOTE: Non-debug build blocked by check_sql(). */
-#endif
     case SQLITE_ALTER_TABLE:
     case SQLITE_REINDEX:
     case SQLITE_ANALYZE:
@@ -802,6 +798,28 @@ static int comdb2_authorizer_for_sqlite(
       } else {
         return SQLITE_DENY;
       }
+    case SQLITE_PRAGMA:
+      if (pAuthState != NULL) {
+        pAuthState->numDdls++;
+        pAuthState->numPragmas++;
+        if (pAuthState->denyDdl) {
+          return SQLITE_DENY;
+        } else if (pAuthState->allowPragma && (pAuthState->clnt != NULL)) {
+          logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
+                 __LINE__, __func__, pAuthState->clnt->sql);
+          return SQLITE_OK;
+        } else {
+          return SQLITE_DENY;
+        }
+      } else {
+        return SQLITE_DENY;
+      }
+    case SQLITE_CREATE_TRIGGER:
+      /*
+      ** This is unsupported in comdb2 and was formerly blocked
+      ** in the check_sql() function.
+      */
+      return SQLITE_DENY;
     default:
       return SQLITE_OK;
   }
@@ -2641,62 +2659,25 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int check_sql(struct sqlclntstate *clnt, int *sp, int *pragma)
+static int check_sql(struct sqlclntstate *clnt, int *sp)
 {
-    int tempPragma = 0;
-    char buf[256];
-    char *sql = clnt->sql;
-    size_t len = sizeof("exec") - 1;
-    if (pragma == NULL) pragma = &tempPragma;
-    if (strncasecmp(sql, "exec", len) == 0) {
+    size_t len = sizeof("EXEC") - 1;
+    if (strncasecmp(sql, "EXEC", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
             *sp = 1;
-            *pragma = 0;
             return 0;
         }
     }
-    len = sizeof("pragma") - 1;
-    if (strncasecmp(sql, "pragma", len) == 0) {
+    len = sizeof("EXECUTE") - 1;
+    if (strncasecmp(sql, "EXECUTE", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
-            if (*pragma) {
-                return 0;
-            } else {
-                goto error;
-            }
-        }
-        *pragma = 0;
-        return 0;
-    }
-    len = sizeof("create") - 1;
-    if (strncasecmp(sql, "create", len) == 0) {
-        char *trigger = sql;
-        trigger += len;
-        if (!isspace(*trigger)) {
-            *pragma = 0;
+            *sp = 1;
             return 0;
         }
-        trigger = skipws(trigger);
-        len = sizeof("trigger") - 1;
-        if (strncasecmp(trigger, "trigger", len) != 0) {
-            *pragma = 0;
-            return 0;
-        }
-        trigger += len;
-        if (isspace(*trigger)) {
-            goto error;
-        }
     }
-    *pragma = 0;
     return 0;
-
-error: /* pretend that a real prepare error occured */
-    strcpy(buf, "near \"");
-    strncat(buf + len, sql, len);
-    strcat(buf, "\": syntax error");
-    write_response(clnt, RESPONSE_ERROR_PREPARE, buf, 0);
-    return SQLITE_ERROR;
 }
 
 /* if userpassword does not match this function
@@ -3131,12 +3112,16 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
+        thd->authState.clnt = clnt;
         thd->authState.denyDdl = denyDdl;
+        thd->authState.allowPragma = gbl_allow_pragma;
         thd->authState.numDdls = 0;
+        thd->authState.numPragmas = 0;
         rec->prepFlags = flags;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
         thd->authState.denyDdl = 0;
+        thd->authState.allowPragma = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
@@ -3445,9 +3430,8 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     /* additional non-sqlite requests */
     int stored_proc = 0;
-    int is_pragma = (gbl_allow_pragma != 0);
 
-    if ((rc = check_sql(clnt, &stored_proc, &is_pragma)) != 0)
+    if ((rc = check_sql(clnt, &stored_proc)) != 0)
     {
         // TODO: set this: outrc = rc;
         return rc;
@@ -3457,12 +3441,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
-    } else if (is_pragma) {
-        /* currently, all PRAGMA requests, when allowed, are handled
-        ** by SQLite */
-        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, clnt->sql);
-        return 0;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
         rc = sqlengine_prepare_engine(thd, clnt, 1);
