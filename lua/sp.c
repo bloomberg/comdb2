@@ -5332,7 +5332,7 @@ static int get_spname(struct sqlclntstate *clnt, const char **exec,
         *err = strdup(EXEC_SYNTAX_ERROR);
         return -1;
     }
-    if (!strncasecmp(s, "execute", 4)) {
+    if (!strncasecmp(s, "execute", 7)) {
         s += 7;
     } else if (!strncasecmp(s, "exec", 4)) {
         s += 4;

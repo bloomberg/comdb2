@@ -2669,18 +2669,14 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
 {
     const char *sql = clnt->sql;
     size_t len = sizeof("EXEC") - 1;
-    if (strncasecmp(sql, "EXEC", len) == 0) {
-        if (isspace(sql[len])) {
-            *sp = 1;
-            return 0;
-        }
+    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
+        *sp = 1;
+        return 0;
     }
     len = sizeof("EXECUTE") - 1;
-    if (strncasecmp(sql, "EXECUTE", len) == 0) {
-        if (isspace(sql[len])) {
-            *sp = 1;
-            return 0;
-        }
+    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
+        *sp = 1;
+        return 0;
     }
     return 0;
 }
