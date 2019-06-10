@@ -5324,14 +5324,22 @@ do_continue:
 static int get_spname(struct sqlclntstate *clnt, const char **exec,
                       char *spname, char **err)
 {
+#define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
     const char *s = *exec;
     while (s && isspace(*s))
         s++;
-    if (!s || strncasecmp(s, "exec", 4)) {
-        *err = strdup("syntax error, expected 'exec'");
+    if (!s) {
+        *err = strdup(EXEC_SYNTAX_ERROR);
         return -1;
     }
-    s += 4;
+    if (!strncasecmp(s, "exec", 4)) {
+        s += 4;
+    } else if (!strncasecmp(s, "execute", 7)) {
+        s += 7;
+    } else {
+        *err = strdup(EXEC_SYNTAX_ERROR);
+        return -1;
+    }
 
     const char *start, *end;
     if (has_sqlcache_hint(s, &start, &end)) s = end;
