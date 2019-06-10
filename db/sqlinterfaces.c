@@ -2661,6 +2661,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 static int check_sql(struct sqlclntstate *clnt, int *sp)
 {
+    const char *sql = clnt->sql;
     size_t len = sizeof("EXEC") - 1;
     if (strncasecmp(sql, "EXEC", len) == 0) {
         sql += len;
