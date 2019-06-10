@@ -80,10 +80,12 @@ typedef struct stmt_hash_entry {
 
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
-    int denyDdl;                       /* non-zero if DDL is forbidden */
-    int denyPragma;                    /* non-zero if PRAGMA is forbidden */
-    int numDdls;                       /* number of DDL statements found */
-    int numPragmas;                    /* number of PRAGMA statements found */
+    int denyDdl;                       /* DDL is forbidden? */
+    int denyPragma;                    /* PRAGMA is forbidden? */
+    int denyTrigger;                   /* CREATE TRIGGER is forbidden? */
+    int numDdls;                       /* number of DDLs found */
+    int numPragmas;                    /* number of PRAGMAs found */
+    int numTriggers;                   /* number of CREATE TRIGGERs found */
 };
 
 /* Thread specific sql state */

@@ -802,9 +802,9 @@ static int comdb2_authorizer_for_sqlite(
       if (pAuthState != NULL) {
         pAuthState->numDdls++;
         pAuthState->numPragmas++;
-        if (pAuthState->denyDdl) {
+        if (pAuthState->denyDdl || pAuthState->denyPragma) {
           return SQLITE_DENY;
-        } else if (!pAuthState->denyPragma && (pAuthState->clnt != NULL)) {
+        } else if (pAuthState->clnt != NULL) {
           logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
                  __LINE__, __func__, pAuthState->clnt->sql);
           return SQLITE_OK;
@@ -815,11 +815,17 @@ static int comdb2_authorizer_for_sqlite(
         return SQLITE_DENY;
       }
     case SQLITE_CREATE_TRIGGER:
-      /*
-      ** This is unsupported in comdb2 and was formerly blocked
-      ** in the check_sql() function.
-      */
-      return SQLITE_DENY;
+      if (pAuthState != NULL) {
+        pAuthState->numDdls++;
+        pAuthState->numTriggers++;
+        if (pAuthState->denyDdl || pAuthState->denyTrigger) {
+          return SQLITE_DENY;
+        } else {
+          return SQLITE_OK;
+        }
+      } else {
+        return SQLITE_DENY;
+      }
     default:
       return SQLITE_OK;
   }
@@ -3116,13 +3122,16 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->authState.clnt = clnt;
         thd->authState.denyDdl = denyDdl;
         thd->authState.denyPragma = !gbl_allow_pragma;
+        thd->authState.denyTrigger = 1; /* UNSUPPORTED: was in check_sql() */
         thd->authState.numDdls = 0;
         thd->authState.numPragmas = 0;
+        thd->authState.numTriggers = 0;
         rec->prepFlags = flags;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
         thd->authState.denyDdl = 0;
         thd->authState.denyPragma = 0;
+        thd->authState.denyTrigger = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
