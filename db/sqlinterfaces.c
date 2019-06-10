@@ -804,7 +804,7 @@ static int comdb2_authorizer_for_sqlite(
         pAuthState->numPragmas++;
         if (pAuthState->denyDdl) {
           return SQLITE_DENY;
-        } else if (pAuthState->allowPragma && (pAuthState->clnt != NULL)) {
+        } else if (!pAuthState->denyPragma && (pAuthState->clnt != NULL)) {
           logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
                  __LINE__, __func__, pAuthState->clnt->sql);
           return SQLITE_OK;
@@ -3115,14 +3115,14 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
         thd->authState.denyDdl = denyDdl;
-        thd->authState.allowPragma = gbl_allow_pragma;
+        thd->authState.denyPragma = !gbl_allow_pragma;
         thd->authState.numDdls = 0;
         thd->authState.numPragmas = 0;
         rec->prepFlags = flags;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
         thd->authState.denyDdl = 0;
-        thd->authState.allowPragma = 0;
+        thd->authState.denyPragma = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
