@@ -1054,13 +1054,12 @@ public class Comdb2Handle extends AbstractConnection {
                 }
                 tdlog(Level.FINEST, "Connected to %s", dbHostConnected);
 
-                if (!is_begin) {
+                if (retry > 0 && !is_begin) {
                     retryAll = true;
                     int retryrc = retryQueries(retry, runLast);
 
                     if (retryrc < 0) {
                         tdlog(Level.FINE, "Can't retry query, retryrc = %d", retryrc);
-                        driverErrStr = "Can't retry query to db.";
                         return retryrc;
                     } 
                     else if (retryrc > 0) {
@@ -1775,10 +1774,14 @@ readloop:
             return driverErrStr;
         if (lastResp == null) {
             if (firstResp.errStr != null
-                    && firstResp.errStr.length() > 0)
+                    && firstResp.errStr.length() > 0) {
+                driverErrStr = firstResp.errStr;
                 return firstResp.errStr;
+            }
             return driverErrStr;
         }
+
+        driverErrStr = lastResp.errStr;
         return lastResp.errStr;
     }
 

@@ -453,7 +453,7 @@ done:
     crt = p;
     while (crt) {
         crt->pLimit = NULL;
-        crt = crt->pNext;
+        crt = crt->pPrior;
     }
     p->pLimit = pLimit;
 
