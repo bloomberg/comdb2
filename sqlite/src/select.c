@@ -5885,8 +5885,10 @@ int sqlite3Select(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( !pParse->ast ) pParse->ast = ast_init();
-  ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
+  if( sqlite3ParseToplevel(pParse) == pParse && !pParse->ast ) {
+    if( !pParse->ast ) pParse->ast = ast_init();
+    ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()

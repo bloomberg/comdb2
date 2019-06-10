@@ -2782,8 +2782,10 @@ void sqlite3CodeRhsOfIN(
 
   if( ExprHasProperty(pExpr, EP_xIsSelect) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !pParse->ast ) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
+    if( sqlite3ParseToplevel(pParse) == pParse && !pParse->ast ) {
+       if( !pParse->ast ) pParse->ast = ast_init();
+       ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
+    }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* Case 1:     expr IN (SELECT ...)
     **

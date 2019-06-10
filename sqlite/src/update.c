@@ -241,8 +241,10 @@ void sqlite3Update(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto update_cleanup;
-  if( !pParse->ast ) pParse->ast = ast_init();
-  ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
+  if( sqlite3ParseToplevel(pParse) == pParse && !pParse->ast ) {
+    if( !pParse->ast ) pParse->ast = ast_init();
+    ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){

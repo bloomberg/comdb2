@@ -331,8 +331,10 @@ void sqlite3DeleteFrom(
   if( v==0 ){
     goto delete_from_cleanup;
   }
-  if( !pParse->ast ) pParse->ast = ast_init();
-  ast_push(pParse->ast, AST_TYPE_DELETE, v, NULL);
+  if( sqlite3ParseToplevel(pParse) == pParse && !pParse->ast ) {
+      pParse->ast = ast_init();
+      ast_push(pParse->ast, AST_TYPE_DELETE, v, NULL);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
