@@ -28,6 +28,10 @@
 
 #include <logmsg.h>
 #include <locks_wrap.h>
+#include "thrman.h"
+#include "thread_util.h"
+
+extern int db_is_stopped();
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -210,7 +214,11 @@ void *timer_thread(void *p)
     int rc;
     int oneshot;
     int ms;
-    for (;;) {
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("timer_thread");
+
+    while (!db_is_stopped()) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
         while (ntimers == 0)
@@ -254,4 +262,5 @@ void *timer_thread(void *p)
         }
         Pthread_mutex_unlock(&timerlk);
     }
+    return NULL;
 }
