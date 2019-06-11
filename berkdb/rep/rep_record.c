@@ -46,12 +46,12 @@ static const char revid[] =
 
 #include "printformats.h"
 
+#include <errno.h>
 #include <list.h>
 #include <bbhrtime.h>
 #include <epochlib.h>
 #include "schema_lk.h"
-#include "logmsg.h"
-#include <errno.h>
+#include "comdb2_atomic.h"
 
 
 #ifndef TESTSUITE
@@ -72,6 +72,7 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
 extern int gbl_dumptxn_at_commit;
+extern int gbl_thread_count;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -790,6 +791,7 @@ static void *apply_thread(void *arg)
 	memset(&apply_thd, 0, sizeof(apply_thd));
 	Pthread_mutex_unlock(&rep_queue_lock);
 	bdb_thread_done_rw();
+    //ATOMIC_ADD(gbl_thread_count, -1);
 	return NULL;
 }
 

@@ -71,6 +71,7 @@ int gbl_pmux_route_enabled = 1;
     instance=secdb
 */
 
+extern int db_is_stopped(void);
 int portmux_port = 5105;
 
 enum {
@@ -1304,7 +1305,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
 
     int startms = comdb2_time_epochms();
 
-    while (true) {
+    while (!db_is_stopped()) {
         if (build_pollfds) {
             /* Iterate over all the portmux descriptors and build
              * the array of descriptors to pass to poll().
@@ -1382,7 +1383,14 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                     pollms = RECONNECT_POLL_TIMEOUTMS;
                 }
             }
-            nready = poll(pollfds, npollfds, pollms);
+            if (pollms == -1) {
+                do {
+                    nready = poll(pollfds, npollfds, 1000); // poll for 1000ms
+                } while (!db_is_stopped() && nready == 0);
+                if (nready == 0)
+                    break;
+            } else 
+                nready = poll(pollfds, npollfds, pollms);
         } while (nready < 0 && errno == EINTR);
 
         if (nready < 0) {

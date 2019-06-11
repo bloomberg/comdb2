@@ -5402,8 +5402,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    while (gbl_thread_count > 0) 
+    int wait_counter = 0;
+    while (gbl_thread_count > 0) {
         sleep(1);
+        wait_counter++;
+    }
 
     do_clean();
 

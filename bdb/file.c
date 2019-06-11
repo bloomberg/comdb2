@@ -1693,6 +1693,12 @@ int bdb_handle_dbp_hash_stat_reset(bdb_state_type *bdb_state)
     return 0;
 }
 
+void bdb_stop_recover_threads(bdb_state_type *bdb_state)
+{
+    if (bdb_state->dbenv->recovery_processors)
+        thdpool_stop(bdb_state->dbenv->recovery_processors);
+}
+
 int bdb_close_env(bdb_state_type *bdb_state)
 {
     return bdb_close_int(bdb_state, 1);
