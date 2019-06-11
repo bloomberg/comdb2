@@ -1,0 +1,12 @@
+#!/bin/sh
+
+bash -n "$0" | exit 1
+dbnm=$1
+PERDBDIR=$TESTDIR/etc/cdb2/config.d/
+mkdir -p $PERDBDIR
+echo "
+comdb2_config:default_type=EXAMPLE
+" >>$PERDBDIR/$dbnm.cfg
+COMDB2_ROOT=$TESTDIR cdb2sql ${CDB2_OPTIONS} $dbnm default "SELECT 1" >actual 2>&1
+[ $? = 0 ] && { exit 1; }
+diff expected actual

@@ -1,0 +1,2 @@
+get_host_by_name:gethostbyname(EXAMPLE-comdb2db.): errno=0 err=Success
+cdb2_open rc -1 cdb2_get_dbhosts: no comdb2db hosts found.
