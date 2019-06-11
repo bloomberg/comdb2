@@ -120,3 +120,10 @@
 [COMMIT] failed with rc 3 verify key constraint cannot cascade update table 'c' rc 2
 (tbl='p', i=1)
 (tbl='c', i=1)
+('-- DRQS 143875590 --'='-- DRQS 143875590 --')
+(rows inserted=1)
+(rows inserted=1)
+(c1='aaa', c2=7)
+(c1='aaa', c2=3)
+[INSERT INTO t1 VALUES('aaa', 3)] failed with rc 299 add key constraint duplicate key 'IDX' on table 't1' index 0
+(rows inserted=1)

@@ -87,8 +87,8 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
         return 0;
     }
 
-    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn, &fndgenid,
-                             NULL, NULL, 0, trans);
+    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
+                             &fndgenid, NULL, NULL, 0, trans);
     if (rc == IX_FND) {
         *ixfailnum = ixnum;
         /* If following changes, update OSQL_INSREC in osqlcomm.c */
