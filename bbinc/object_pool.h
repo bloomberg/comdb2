@@ -105,6 +105,17 @@ typedef int (*obj_new_fn)(void **, void *);
 typedef int (*obj_del_fn)(void *, void *);
 
 /*
+** Object availability notification function.  When this function is called,
+** the object pool is about to wait for an object to become available.  The
+** called function should perform whatever actions are necessary to make the
+** thread ready to enter a wait state (e.g. give up locks, etc).  Also, it
+** may return a special value to indicate that the request for a pool object
+** should fail immediately -OR- that the force flag should be set and the
+** request for a pool object should be retried.
+*/
+typedef int (*obj_not_fn)(void **, void *);
+
+/*
 ** Object pool tunables.
 **
 ** OP_CAPACITY       - maximum number of objects that can be allocated
@@ -154,6 +165,24 @@ enum comdb2_objpool_option {
 };
 
 /*
+** Legal return codes from the notification function (i.e. obj_not_fn).
+**
+** OP_FAIL_NOW       - failure borrow operation immediately and return to
+**                     caller.
+**
+** OP_WAIT_AGAIN     - wait again for an object to become available from the
+**                     pool.
+**
+** OP_FORCE_NOW      - set the force flag and retry the borrow operation, do
+**                     not wait.
+*/
+enum comdb2_objpool_notify_result {
+    OP_FAIL_NOW,
+    OP_WAIT_AGAIN,
+    OP_FORCE_NOW
+};
+
+/*
 ** Create a lifo object pool.
 **
 ** Parameters
@@ -164,6 +193,8 @@ enum comdb2_objpool_option {
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
+** not_fn  - function to notify before waiting
+** not_arg - argument of not_fn
 **
 ** Return Value
 ** 0      - success
@@ -172,7 +203,9 @@ enum comdb2_objpool_option {
 */
 int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg);
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg);
 
 /*
 ** Create a fifo object pool.
@@ -185,6 +218,8 @@ int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
+** not_fn  - function to notify before waiting
+** not_arg - argument of not_fn
 **
 ** Return Value
 ** 0      - success
@@ -193,7 +228,9 @@ int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
 */
 int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg);
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg);
 
 /*
 ** Create a rand object pool.
@@ -206,6 +243,8 @@ int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
 ** new_arg - argument of new_fn
 ** del_fn  - function to delete an object
 ** del_arg - argument of del_fn
+** not_fn  - function to notify before waiting
+** not_arg - argument of not_fn
 **
 ** Return Value
 ** 0      - success
@@ -214,7 +253,9 @@ int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
 */
 int comdb2_objpool_create_rand(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg);
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg);
 
 /*
 ** Stop an object pool.
@@ -239,6 +280,18 @@ int comdb2_objpool_stop(comdb2_objpool_t op);
 ** Other  - failed to lock/unlock mutex
 */
 int comdb2_objpool_resume(comdb2_objpool_t op);
+
+/*
+** Clears an object pool.
+**
+** Parameters
+** op - an object pool
+**
+** Return Value
+** 0      - success
+** Other  - failed to lock/unlock mutex
+*/
+int comdb2_objpool_clear(comdb2_objpool_t op);
 
 /*
 ** Destroy an object pool.
@@ -288,16 +341,18 @@ int comdb2_objpool_setopt(comdb2_objpool_t op,
 int comdb2_objpool_return(comdb2_objpool_t op, void *obj);
 
 /*
-** Check object availability of a pool.
+** Wakes up one thread waiting to borrow an object from a pool, and calls
+** its configured notification function, if any.
 **
 ** Parameters
-** op  - an object pool
+** op - an object pool
 **
 ** Return Value
-** 0      - no available object
-** 1      - object(s) available
+** 0      - success
+** EPERM  - the pool has no threads waiting to borrow
+** Other  - failed to lock/unlock mutex
 */
-int comdb2_objpool_available(comdb2_objpool_t op);
+int comdb2_objpool_notify(comdb2_objpool_t op, int force);
 
 /*
 ** Borrow an object from a pool.
