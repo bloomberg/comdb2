@@ -5655,6 +5655,15 @@ void replace_db_idx(struct dbtable *p_db, int idx)
     Pthread_rwlock_unlock(&thedb_lock);
 }
 
+struct dbview *get_view_by_name(char *view_name)
+{
+    struct dbview *view;
+    Pthread_rwlock_wrlock(&thedb_lock);
+    view = hash_find_readonly(thedb->view_hash, &view_name);
+    Pthread_rwlock_unlock(&thedb_lock);
+    return view;
+}
+
 int add_view(struct dbview *view)
 {
     Pthread_rwlock_wrlock(&thedb_lock);
