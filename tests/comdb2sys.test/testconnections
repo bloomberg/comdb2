@@ -4,9 +4,6 @@ DB=$2
 default=default
 cdb2sql=cdb2sql
 
-default=local
-cdb2sql=/home/mponomar/comdb2/src/build/tools/cdb2sql/cdb2sql
-
 # wait for other connections to go away
 sleep 30
 
