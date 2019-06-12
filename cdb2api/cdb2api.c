@@ -1526,13 +1526,14 @@ static int get_host_by_name(cdb2_hndl_tp *hndl, const char *comdb2db_name,
        #3: <comdb2db name>.<dns suffix> */
 
     if (hndl->cluster[0] != '\0') {
-        snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", hndl->cluster, comdb2db_name,
-                 cdb2_dnssuffix);
+        snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", hndl->cluster,
+                 comdb2db_name, cdb2_dnssuffix);
     } else if (cdb2_default_cluster[0] != '\0') {
         snprintf(dns_name, sizeof(dns_name), "%s-%s.%s", cdb2_default_cluster, comdb2db_name,
                  cdb2_dnssuffix);
     } else {
-        snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name, cdb2_dnssuffix);
+        snprintf(dns_name, sizeof(dns_name), "%s.%s", comdb2db_name,
+                 cdb2_dnssuffix);
     }
 
 #ifdef __APPLE__
@@ -1596,7 +1597,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                                comdb2db_ports, master, num_hosts, NULL);
         /* DNS lookup comdb2db hosts. */
         if (rc != 0)
-            rc = get_host_by_name(hndl, comdb2db_name, comdb2db_hosts, num_hosts);
+            rc = get_host_by_name(hndl, comdb2db_name, comdb2db_hosts,
+                                  num_hosts);
     }
 
     return rc;
