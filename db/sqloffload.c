@@ -370,6 +370,9 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
+    /* process shadow tables */
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
+
     if (rc && rc != -2) {
         int irc = 0;
 
@@ -405,24 +408,18 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
 goback:
     if (check_serializability) {
-        if (clnt->selectv_arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
-                                  &(clnt->selectv_arr->file),
-                                  &(clnt->selectv_arr->offset), 0)) {
+        if (clnt->selectv_arr && bdb_osql_serial_check(thedb->bdb_env,
+                    clnt->selectv_arr, &(clnt->selectv_arr->file),
+                    &(clnt->selectv_arr->offset), 0)) {
             rc = SQLITE_ABORT;
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "returning SQLITE_ABORT\n");
+            sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
             clnt->osql.xerr.errval = ERR_CONSTR;
             errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
-        } else if (clnt->arr &&
-                   bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
-                                         &(clnt->arr->file),
-                                         &(clnt->arr->offset), 0)) {
+        } else if (clnt->arr && bdb_osql_serial_check(thedb->bdb_env,
+                    clnt->arr, &(clnt->arr->file), &(clnt->arr->offset), 0)) {
             rc = SQLITE_ABORT;
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "returning SQLITE_ABORT\n");
-            errstat_cat_str(&(clnt->osql.xerr),
-                            "transaction is not serializable");
+            sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
+            errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
         }
     }
