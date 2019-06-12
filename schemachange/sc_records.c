@@ -3293,8 +3293,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
             eofLsn = curLsn;
 
-            if (!serial)
+            if (!serial) {
                 free(redo);
+                redo = NULL;
+            }
             else if (log_compare(&curLsn, &serialLsn) > 0) {
                 sc_printf(s, "[%s] logical redo exits serial mode\n",
                           s->tablename);

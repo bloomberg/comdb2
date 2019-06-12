@@ -384,7 +384,7 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
 {
     SP sp = getsp(L);
 
-    if (thedb->stopped || thedb->exiting) {
+    if (db_is_stopped()) {
         luabb_error(L, sp, "database exiting");
         return -1;
     }
@@ -1908,10 +1908,14 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
             rc = -1;
         }
 
-        if (err)
+        if (err_str) {
             logmsg(LOGMSG_ERROR, "err: [%d] %s\n", rc, err_str);
-        else
+            *err = strdup(err_str);
+        }
+        else {
             logmsg(LOGMSG_ERROR, "err: [%d]\n", rc);
+            *err = strdup("Error with lua_pcall");
+        }
         stack_trace(sp->lua);
     }
     free(sp_source);
@@ -4566,6 +4570,9 @@ static int cson_to_table(Lua lua, cson_value *v)
         cson_object_iterator i;
         cson_object_iter_init(o, &i);
         cson_kvp *kv;
+        /* Make sure we have enough space to store "key" and "value". */
+        if (lua_checkstack(lua, 2) == 0)
+            return -1;
         while ((kv = cson_object_iter_next(&i)) != NULL) {
             lua_pushstring(lua, cson_string_cstr(cson_kvp_key(kv)));
             if (cson_push_value(lua, cson_kvp_value(kv)) != 0) return -1;
@@ -4574,6 +4581,12 @@ static int cson_to_table(Lua lua, cson_value *v)
     } else if (cson_value_is_array(v)) {
         cson_array *a = cson_value_get_array(v);
         unsigned int i, len = cson_array_length_get(a);
+        /*
+         * Make sure we have enough space to store one value to be pushed into
+         * the array.
+         */
+        if (lua_checkstack(lua, 1) == 0)
+            return -1;
         for (i = 0; i < len; ++i) {
             if (cson_push_value(lua, cson_array_get(a, i)) != 0) return -1;
             lua_rawseti(lua, -2, i + 1);
@@ -5261,7 +5274,7 @@ out:
     return arg->type;
 }
 
-static int debug_sp(struct sqlclntstate *clnt)
+static void debug_sp(struct sqlclntstate *clnt)
 {
     int arg1 = 0;
     char *carg1 = NULL;
@@ -5306,7 +5319,6 @@ do_continue:
     clnt->sp = NULL;
     sleep(2);
     logmsg(LOGMSG_USER, "Exit debugging \n");
-    return 0;
 }
 
 static int get_spname(struct sqlclntstate *clnt, const char **exec,
@@ -6175,7 +6187,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, &s, spname, err)) != 0)
         return rc;
 
-    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
+    if (strcmp(spname, "debug") == 0) {
+        debug_sp(clnt);
+        return 0;
+    }
 
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
@@ -6200,7 +6215,11 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = commit_sp(L, err)) != 0) return rc;
 
-    if (sprc) return sprc;
+    if (sprc) {
+        if (!*err)
+            *err = strdup("emit_result error");
+        return sprc;
+    }
 
     return flush_sp(sp, err);
 }

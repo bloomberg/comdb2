@@ -503,7 +503,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     }
 
     cson_object_set(obj, "host",
-                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+                    cson_value_new_string(logger->origin, strlen(logger->origin)));
 
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];

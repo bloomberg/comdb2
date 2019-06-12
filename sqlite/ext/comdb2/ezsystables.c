@@ -282,9 +282,7 @@ static int systbl_eof(sqlite3_vtab_cursor *cur){
 }
 
 static int systbl_disconnect(sqlite3_vtab *pVtab){
-    // SQLite still wants a disconnect.  We have some per-module
-    // state, but that gets freed in the module destructor, so
-    // this is a no-op.
+    free(pVtab);
     return SQLITE_OK;
 }
 

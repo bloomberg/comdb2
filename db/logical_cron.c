@@ -152,6 +152,8 @@ int logical_cron_init(const char *sched_name, struct errstat *err)
 
     sched = cron_sched_byname(sched_name);
     if (sched) {
+        /* re-initializing a logical cron need to clear existing events */
+        cron_clear_queue(sched);
         return VIEW_NOERR;
     }
 

@@ -41,6 +41,7 @@ extern int __berkdb_read_alarm_ms;
 #include <memory_sync.h>
 
 #include <bdb_api.h>
+#include <bdb_int.h>
 #ifdef _LINUX_SOURCE
 #endif
 #include <sqliteInt.h>
@@ -81,6 +82,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -149,7 +151,6 @@ extern int get_blkmax(void);
 void set_analyze_abort_requested();
 extern void dump_log_event_counts(void);
 extern void bdb_dumptrans(bdb_state_type *bdb_state);
-const char *deadlock_policy_str(int policy);
 void bdb_locker_summary(void *_bdb_state);
 extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
                     int endfile, int endoff);
@@ -1365,6 +1366,29 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
+        int rcp = bdb_temp_table_clear_cache(thedb->bdb_env);
+        if (gbl_temptable_pool_capacity == 0) {
+            logmsg(LOGMSG_USER, "Temptable list was %scleared.\n",
+                   (rcp == 0) ? "" : "not ");
+        } else {
+            if (rcp == 0) {
+                logmsg(LOGMSG_USER, "Temptable pool was cleared.\n");
+            } else {
+                logmsg(LOGMSG_USER, "Temptable pool was not available.\n");
+            }
+        }
+    }
+    else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
+        extern int gbl_temptable_count;
+        extern int gbl_sql_temptable_count;
+        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
+        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        logmsg(LOGMSG_USER,
+                "Overall temptable count is %d, SQL temptable count is %d\n",
+                temptable_count, sql_temptable_count);
+    }
+
     /*
        pagesize set <tablename> <data|blob|index> <pagesize>
        pagesize specified in bytes: 65536 for 64K pages
@@ -1696,8 +1720,9 @@ clipper_usage:
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
-            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
-            logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
+            logmsg(LOGMSG_USER, "version: %s\n", gbl_db_version);
+            logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_codename);
+            logmsg(LOGMSG_USER, "semver: %s\n", gbl_db_semver);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
         } else if (tokcmp(tok, ltok, "cursors") == 0) {

@@ -290,6 +290,10 @@ extern int gbl_osql_check_replicant_numops;
 extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
+extern int gbl_selectv_writelock_on_update;
+extern int gbl_selectv_writelock;
+
+int gbl_debug_tmptbl_corrupt_mem;
 
 extern int gbl_reorder_idx_writes;
 
@@ -687,7 +691,7 @@ static void *netconndumptime_value(void *context)
     return val;
 }
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 static int deadlock_policy_override_update(void *context, void *value)

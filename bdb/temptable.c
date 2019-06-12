@@ -49,6 +49,9 @@
 #include "locks.h"
 #include "locks_wrap.h"
 #include "bdb_int.h"
+#include "strbuf.h"
+
+extern int recover_deadlock_simple(bdb_state_type *bdb_state);
 
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
@@ -72,12 +75,33 @@ extern void backtrace_symbols_fd(void *const *, int, int);
     } while (0)
 
 extern char *gbl_crypto;
+extern int64_t gbl_temptable_created;
+extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 struct hashobj {
     int len;
     unsigned char data[/*len*/];
 };
+
+int gbl_temptable_count;
+
+static char *get_stack_backtrace(void)
+{
+    void *stack[100] = {0};
+    int nFrames = backtrace(stack, sizeof(stack) / sizeof(void*));
+    if (nFrames > 0) {
+        strbuf *pStr = strbuf_new();
+        for (int i = 0; i < nFrames; i++) {
+            if (i > 0) strbuf_append(pStr, " ");
+            strbuf_appendf(pStr, "%p", stack[i]);
+        }
+        char *zBacktrace = strbuf_disown(pStr);
+        strbuf_free(pStr);
+        return zBacktrace;
+    }
+    return NULL;
+}
 
 unsigned int hashfunc(const void *key, int len)
 {
@@ -188,6 +212,7 @@ struct temp_table {
     char filename[512];
     int tblid;
     unsigned long long rowid;
+    char *sql;
 
     unsigned long long num_mem_entries;
     int max_mem_entries;
@@ -558,6 +583,11 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         return NULL;
     }
 
+    if (gbl_debug_temptables) {
+        char *sql = pthread_getspecific(current_sql_query_key);
+        if (sql) tbl->sql = strdup(sql);
+    }
+
     tbl->cachesz = bdb_state->attr->temptable_cachesz;
 
     /* 512k minimim cache */
@@ -585,36 +615,65 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
 
-    tbl->elements = malloc(sizeof(arr_elem_t) * tbl->max_mem_entries);
+    tbl->elements = calloc(tbl->max_mem_entries, sizeof(arr_elem_t));
     if (tbl->elements == NULL) {
         bdb_temp_table_close(parent, tbl, bdberr);
+        if (tbl->sql) free(tbl->sql);
         free(tbl);
         tbl = NULL;
         goto done;
     }
 
+done:
+
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
-        char *sql;
-        sql = pthread_getspecific(current_sql_query_key);
-        if (sql)
-            logmsg(LOGMSG_USER, "creating a temp table object %p: %s\n", tbl, sql);
-        else {
-            int nframes;
-            void *stack[100];
-            logmsg(LOGMSG_USER, "creating a temp table object %p: ", tbl);
-            nframes = backtrace(stack, 100);
-            for (int i = 0; i < nframes; i++)
-               logmsg(LOGMSG_USER, "%p ", stack[i]);
-           logmsg(LOGMSG_USER, "\n");
-        }
+        char *zBacktrace = get_stack_backtrace();
+        logmsg(LOGMSG_USER, "creating a temp table object %p (%d): %s, %s\n",
+               tbl, tbl ? 0 : -1, tbl ? tbl->sql : 0, zBacktrace);
+        free(zBacktrace);
     }
 #endif
+    ++gbl_temptable_created;
 
-done:
+    if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
+
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
     return tbl;
+}
+
+int bdb_temp_table_clear_list(bdb_state_type *bdb_state)
+{
+    int rc = 0;
+    int last = 0;
+    while (rc == 0 && last == 0) {
+        int bdberr = 0;
+        rc = bdb_temp_table_destroy_lru(NULL, bdb_state, &last, &bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_USER,
+                   "%s: failed to destroy a temp table object rc=%d, bdberr=%d\n",
+                   __func__, rc, bdberr);
+        }
+    }
+    return rc;
+}
+
+int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
+{
+    comdb2_objpool_t op = bdb_state->temp_table_pool;
+    if (op == NULL) return EINVAL;
+    comdb2_objpool_clear(op);
+    return 0;
+}
+
+int bdb_temp_table_clear_cache(bdb_state_type *bdb_state)
+{
+    if (gbl_temptable_pool_capacity == 0) {
+        return bdb_temp_table_clear_list(bdb_state);
+    } else {
+        return bdb_temp_table_clear_pool(bdb_state);
+    }
 }
 
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
@@ -623,6 +682,21 @@ int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
     *tblp =
         bdb_temp_table_create_main((bdb_state_type *)bdb_state_arg, &bdberr);
     return bdberr;
+}
+
+int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_arg;
+    int rc1 = bdb_temp_table_maybe_set_priority_thread(bdb_state);
+    if (rc1 == TMPTBL_PRIORITY) { /* Are we going to end up waiting? */
+        return OP_FORCE_NOW; /* No, we are forcing object creation. */
+    } else {
+        int rc2 = recover_deadlock_simple(bdb_state);
+        if (rc2 != 0) {
+            logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc2);
+        }
+        return OP_WAIT_AGAIN; /* Yes, and we give up locks. */
+    }
 }
 
 /*
@@ -641,6 +715,8 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     void *sql_thread;
     int action;
 
+    ++gbl_temptable_create_reqs;
+
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -650,6 +726,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         if (bdb_state->temp_list) {
             table = bdb_state->temp_list;
             bdb_state->temp_list = table->next;
+            table->next = NULL;
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
         } else {
             Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
@@ -658,7 +735,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 return NULL;
         }
     } else {
-        action = TMPTBL_WAIT;
         sql_thread = pthread_getspecific(query_info_key);
 
         if (sql_thread == NULL) {
@@ -668,20 +744,8 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             ** so don't block non-sql.
             */
             action = TMPTBL_PRIORITY;
-        } else if (bdb_state->haspriosqlthr) {
-            /* there is a priority thread. there might be a dirty read here but
-             * wouldn't matter */
-            action = pthread_equal(pthread_self(), bdb_state->priosqlthr)
-                         ? TMPTBL_PRIORITY
-                         : TMPTBL_WAIT;
-        } else if (!comdb2_objpool_available(bdb_state->temp_table_pool)) {
-            Pthread_mutex_lock(&bdb_state->temp_list_lock);
-            if (!bdb_state->haspriosqlthr) {
-                bdb_state->haspriosqlthr = 1;
-                bdb_state->priosqlthr = pthread_self();
-                action = TMPTBL_PRIORITY;
-            }
-            Pthread_mutex_unlock(&bdb_state->temp_list_lock);
+        } else {
+            action = bdb_temp_table_maybe_set_priority_thread(bdb_state);
         }
 
         switch (action) {
@@ -1401,8 +1465,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
     DB_MPOOL_STAT *tmp;
     int rc;
 
-    extern pthread_key_t query_info_key;
-
     if (tbl == NULL)
         return 0;
 
@@ -1413,11 +1475,19 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     LISTC_FOR_EACH_SAFE(&tbl->cursors, cur, temp, lnk)
     {
-        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0)
+        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor(%p, %p) rc %d\n",
+                   __func__, tbl, cur, rc);
             return rc;
+        }
     }
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
+
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_truncate rc = %d\n",
+               __func__, rc);
+    }
 
     if (tbl->dbenv_temp != NULL) {
         Pthread_mutex_lock(&(bdb_state->temp_list_lock));
@@ -1469,24 +1539,17 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             free(tmp);
         }
 
-        tbl->next = bdb_state->temp_list;
-        bdb_state->temp_list = tbl;
-
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
-        if (rc == 0) {
-            if (bdb_state->haspriosqlthr &&
-                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
-                Pthread_mutex_lock(&(bdb_state->temp_list_lock));
-                if (bdb_state->haspriosqlthr &&
-                    pthread_equal(pthread_self(), bdb_state->priosqlthr))
-                    bdb_state->haspriosqlthr = 0;
-                Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
-            }
-        }
+    } else {
+        Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+        assert(tbl->next == NULL);
+        tbl->next = bdb_state->temp_list;
+        bdb_state->temp_list = tbl;
+        Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
 
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));
@@ -1517,6 +1580,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         return 0;
     }
     bdb_state->temp_list = tbl->next;
+    tbl->next = NULL;
+
     *last = 0;
 
     if ((tbl->dbenv_temp != NULL) &&
@@ -1612,6 +1677,23 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     if (tbl->dbenv_temp != NULL)
         rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
 
+#ifdef _LINUX_SOURCE
+    if (gbl_debug_temptables) {
+        char *zBacktrace = get_stack_backtrace();
+        logmsg(LOGMSG_USER, "closing a temp table object %p (%d): %s, %s\n",
+               tbl, rc, tbl ? tbl->sql : 0, zBacktrace);
+        free(zBacktrace);
+    }
+#endif
+
+    if (rc == 0) {
+        ATOMIC_ADD(gbl_temptable_count, -1);
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close(%p) rc %d\n",
+               __func__, tbl, rc);
+    }
+
+    if (tbl->sql) free(tbl->sql);
     free(tbl);
 
     dbgtrace(3, "temp_table_destroy_lru() = %d %s", rc, db_strerror(rc));
@@ -2140,6 +2222,67 @@ inline int bdb_is_hashtable(struct temp_table *tt)
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
 
+int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state)
+{
+    int rc = TMPTBL_WAIT;
+    if (bdb_state) {
+        int wasSet = 0;
+        Pthread_mutex_lock(&bdb_state->temp_list_lock);
+        if (bdb_state->haspriosqlthr) {
+            rc = pthread_equal(pthread_self(), bdb_state->priosqlthr)
+                         ? TMPTBL_PRIORITY
+                         : TMPTBL_WAIT;
+        } else {
+            bdb_state->haspriosqlthr = 1;
+            bdb_state->priosqlthr = pthread_self();
+            rc = TMPTBL_PRIORITY;
+            wasSet = 1;
+        }
+        Pthread_mutex_unlock(&bdb_state->temp_list_lock);
+        if (gbl_debug_temptables) {
+            if (wasSet) {
+                logmsg(LOGMSG_DEBUG, "%s: thd %p NOW HAS PRIORITY\n",
+                       __func__, (void*)pthread_self());
+            } else if (rc == TMPTBL_PRIORITY) {
+                logmsg(LOGMSG_DEBUG, "%s: thd %p STILL HAS PRIORITY\n",
+                       __func__, (void*)pthread_self());
+            }
+        }
+    }
+    return rc;
+}
+
+int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
+                                               int notify)
+{
+    int rc = 0;
+    if (bdb_state) {
+        if (bdb_state->haspriosqlthr &&
+                pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+            Pthread_mutex_lock(&(bdb_state->temp_list_lock));
+            if (bdb_state->haspriosqlthr &&
+                    pthread_equal(pthread_self(), bdb_state->priosqlthr)) {
+                bdb_state->haspriosqlthr = 0;
+                bdb_state->priosqlthr = 0;
+                rc = 1; /* yes, thread was reset. */
+            }
+            Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+            if (gbl_debug_temptables && rc) {
+                logmsg(LOGMSG_DEBUG, "%s: thd %p NO LONGER HAS PRIORITY\n",
+                       __func__, (void*)pthread_self());
+            }
+        }
+        if (notify && rc) {
+            int rc2 = comdb2_objpool_notify(bdb_state->temp_table_pool, 1);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR, "%s: comdb2_objpool_notify rc=%d\n",
+                       __func__, rc2);
+            }
+        }
+    }
+    return rc;
+}
+
 static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                                      struct temp_table *tbl, void *key,
                                      int keylen, void *data, int dtalen,
@@ -2151,7 +2294,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     void *keycopy, *dtacopy;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        struct temp_list_node *c_node = malloc(sizeof(struct temp_list_node));
+        struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
         void *list_data = malloc(dtalen);
         memcpy(list_data, data, dtalen);
         c_node->data = list_data;

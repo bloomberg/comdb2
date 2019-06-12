@@ -1463,7 +1463,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
 
         {
             tmp_str = sqlite3_mprintf(
-                "%s%s\"%s\"%s%s%s%s", cols_str,
+                "%s%s\"%w\"%s%w%s%s", cols_str,
                 (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
                 gdb->schema->member[i].name,
                 (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
@@ -1477,7 +1477,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
                 goto malloc;
 
             tmp_str =
-                sqlite3_mprintf("%scoalesce(new.\"%s\", %s)%s", cols_str,
+                sqlite3_mprintf("%scoalesce(new.\"%w\", %s)%s", cols_str,
                                 gdb->schema->member[i].name, in_default,
                                 (i < (gdb->schema->nmembers - 1)) ? ", " : "");
             sqlite3_free(in_default);
@@ -1907,7 +1907,7 @@ int views_cron_restart(timepart_views_t *views)
 
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
-    cron_clear_queue_all();
+    cron_clear_queue(timepart_sched);
 
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock

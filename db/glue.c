@@ -2026,11 +2026,10 @@ int ix_find_auxdb_by_rrn_and_genid_prefault(int auxdb, struct ireq *iq, int rrn,
     return rc;
 }
 
-static int ix_find_auxdb_by_rrn_and_genid_tran(
-        int auxdb, struct ireq *iq, int rrn,
-        unsigned long long genid, void *fnddta,
-        int *fndlen, int maxlen, void *trans,
-        int *ver, int for_write)
+int ix_find_auxdb_by_rrn_and_genid_tran(int auxdb, struct ireq *iq, int rrn,
+                                        unsigned long long genid, void *fnddta,
+                                        int *fndlen, int maxlen, void *trans,
+                                        int *ver, int for_write)
 {
     int rc;
     int retries = 0;
@@ -2238,13 +2237,13 @@ int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
 }
 
 int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
-                                  unsigned long long genid, void *fnddta,
-                                  int *fndlen, int maxlen, void *trans)
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans)
 {
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, NULL, 1 /* for_write */);
+            fndlen, maxlen, trans, NULL, 1 /* for_write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
@@ -2261,7 +2260,7 @@ int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, version, 0 /* for write */);
+                                             fndlen, maxlen, trans, version, 0 /*for write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
@@ -3423,7 +3422,7 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
-    if (!thedb || thedb->stopped || gbl_exit || !gbl_ready) {
+    if (!thedb || db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_WARN, "I am not ready, ignoring NET_FLUSH_ALL\n");
         return;
     }
@@ -3565,7 +3564,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
 {
 
     /* if this arrives too early, it will crash the master */
-    if (thedb->stopped || gbl_exit || !gbl_ready) {
+    if (db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_ERROR, "%s: received trap during lunch time\n", __func__);
         return;
     }
@@ -5978,6 +5977,29 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
     *bdberr = 0;
     rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
                                        0, trans);
+    if (rc == IX_FND)
+        return 1;
+    if (rc == IX_NOTFND)
+        return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/**
+ * Check a genid, but get a writelock on the page rather than
+ * a readlock. Returns 0 if not found, 1 if found, -1 if error
+ *
+ */
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                      int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+
+    *bdberr = 0;
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, NULL,
+                                             &reqdtalen, 0, trans, NULL, 1);
+
     if (rc == IX_FND)
         return 1;
     if (rc == IX_NOTFND)

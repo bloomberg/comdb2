@@ -735,9 +735,8 @@ static int bdb_fetch_int_ll(
             }
 
             dbp = bdb_state->dbp_data[0][dtafile];
-            extern int gbl_reorder_idx_writes;
-            if (args->for_write && gbl_reorder_idx_writes) {
-                flags |= DB_RMW;
+            if (args->for_write) {
+                 flags |= DB_RMW;
             }
         }
 

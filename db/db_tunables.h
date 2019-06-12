@@ -1187,6 +1187,10 @@ REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
+                 "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
+                 &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1684,5 +1688,16 @@ REGISTER_TUNABLE("machine_class",
                  "override for the machine class from this db perspective.",
                  TUNABLE_STRING, &gbl_machine_class, READEARLY | READONLY, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("selectv_writelock_on_update",
+                 "Acquire a writelock for updated selectv records."
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("selectv_writelock",
+                 "Acquire a writelock for selectv records.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_selectv_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

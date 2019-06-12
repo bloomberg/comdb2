@@ -65,6 +65,8 @@
 #include "bpfunc.h"
 #include "logmsg.h"
 #include "time_accounting.h"
+#include <ctrace.h>
+#include "intern_strings.h"
 
 #define DEBUG_REORDER 0
 
@@ -106,7 +108,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
-extern const char *get_tablename_from_rpl(const char *rpl);
+extern const char *get_tablename_from_rpl(unsigned long long rqid,
+                                          const char *rpl, int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -292,7 +295,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     }
 
     /* please stop !!! */
-    if (thedb->stopped || thedb->exiting) {
+    if (db_is_stopped()) {
         if (stop_time == 0) {
             stop_time = comdb2_time_epoch();
         } else {
@@ -412,6 +415,62 @@ int osql_bplog_schemachange(struct ireq *iq)
     return rc;
 }
 
+typedef struct {
+    struct ireq *iq;
+    void *trans;
+    struct block_err *err;
+} ckgenid_state_t;
+
+static int pselectv_callback(void *arg, const char *tablename, int tableversion,
+                             unsigned long long genid)
+{
+    ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
+    struct ireq *iq = cgstate->iq;
+    void *trans = cgstate->trans;
+    struct block_err *err = cgstate->err;
+    int rc, bdberr = 0;
+
+    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans)) != 0) {
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            return RC_INTERNAL_RETRY;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            return ERR_INTERNAL;
+        }
+    }
+
+    if ((rc = osql_set_usedb(iq, tablename, tableversion, 0, err)) != 0) {
+        return rc;
+    }
+
+    if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
+        if (rc != 1) {
+            unsigned long long lclgenid = bdb_genid_to_host_order(genid);
+            if ((bdberr == 0 && rc == 0) ||
+                (bdberr == IX_PASTEOF && rc == -1)) {
+                err->ixnum = -1;
+                err->errcode = ERR_CONSTR;
+                ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,
+                       lclgenid);
+                reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
+                          "constraints error, no genid");
+                return ERR_CONSTR;
+            }
+
+            if (bdberr != RC_INTERNAL_RETRY) {
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                          "unable to find genid =%llx rc=%d", lclgenid, bdberr);
+            }
+
+            return bdberr;
+        }
+    }
+    return 0;
+}
+
 /**
  * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
@@ -420,7 +479,16 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int rc = 0;
+    ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
+    int rc;
+
+    /* Pre-process selectv's, getting a writelock on rows that are later updated
+     */
+    if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
+                                   pselectv_callback, &cgstate)) != 0) {
+        iq->timings.req_applied = osql_log_time();
+        return rc;
+    }
 
     /* apply changes */
     rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
@@ -593,14 +661,14 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
-void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
-                       oplog_key_t *key)
+void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
+                       struct ireq *iq, char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        const char *tablename = get_tablename_from_rpl(rpl);
+        const char *tablename = get_tablename_from_rpl(rqid, rpl, NULL);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
@@ -614,6 +682,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         }
         break;
     }
+    case OSQL_RECGENID:
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
@@ -646,10 +715,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         /* NB: this stripe is only used for ordering, NOT for inserting */
         key->stripe = get_dtafile_from_genid(key->genid);
         assert(key->stripe >= 0);
-        break;
-    }
-    case OSQL_RECGENID: {
-        key->tbl_idx = sess->tbl_idx;
         break;
     }
     default:
@@ -771,9 +836,21 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
+    if (type == OSQL_USEDB &&
+        (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
+        int tableversion = 0;
+        const char *tablename =
+            get_tablename_from_rpl(rqid, rpl, &tableversion);
+        sess->table = intern(tablename);
+        sess->tableversion = tableversion;
+    }
+
+    if (sess->selectv_writelock_on_update)
+        osql_cache_selectv(type, sess, rqid, rpl);
+
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, iq, rpl, &key);
+        setup_reorder_key(type, sess, rqid, iq, rpl, &key);
         if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }

@@ -2117,9 +2117,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     tab = arg->tab;
     sb = arg->sb;
 
-    if (arg->keepsocket)
-        *arg->keepsocket = 1;
-
     if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
         /*
           Don't change this message. The sql api recognises the first four
@@ -2151,6 +2148,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         dbenv->master != gbl_mynode) {
         return APPSOCK_RETURN_OK;
     }
+
+    /*
+      This flag cannot be set to non-zero until after all the early returns in
+      this function; otherwise, we may "leak" appsock connections.
+    */
+    if (arg->keepsocket)
+        *arg->keepsocket = 1;
 
     /*
       New way. Do the basic socket I/O in line in this thread (which has a very
