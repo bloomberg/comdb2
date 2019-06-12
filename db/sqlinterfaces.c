@@ -927,7 +927,9 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                 */
             }
         }
-        comdb2_setup_authorizer_for_sqlite(*ppDb, &thd->authState, 1);
+        if (thd != NULL) {
+            comdb2_setup_authorizer_for_sqlite(*ppDb, &thd->authState, 1);
+        }
     }
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
