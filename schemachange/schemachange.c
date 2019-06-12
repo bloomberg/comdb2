@@ -1080,6 +1080,7 @@ int sc_timepart_add_table(const char *existingTableName,
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
+    sc.views_locked = 1;
 
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
     sc.tablename[sizeof(sc.tablename) - 1] = '\0';
