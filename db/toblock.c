@@ -2558,7 +2558,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int have_blkseq = 0;
     bool have_keyless_requests = 0;
     int numerrs = 0;
-    int constraint_violation = 0;
+    int check_serializability = 0;
     struct block_err err;
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
@@ -4714,6 +4714,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (gbl_prefault_udp)
             send_prefault_udp = 1;
         rc = osql_bplog_commit(iq, trans, &tmpnops, &err);
+        if (rc == ERR_VERIFY)
+            check_serializability = 1;
         send_prefault_udp = 0;
 
         if (iq->osql_step_ix) {
@@ -4769,7 +4771,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */
             err.blockop_num = blkpos;
             err.errcode = errout;
@@ -4789,7 +4791,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
@@ -4807,7 +4809,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
@@ -5055,14 +5057,28 @@ backout:
      * serializable error and a dup-key constraint we should return the 
      * serializable error as the dup-key may have been caused by the 
      * conflicting write. */
-    if (constraint_violation && iq->arr &&
-        bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
+    if (check_serializability) {
+        if (iq->selectv_arr && bdb_osql_serial_check(thedb->bdb_env,
+                    iq->selectv_arr, &(iq->selectv_arr->file),
+                    &(iq->selectv_arr->offset), 0)) {
+            numerrs = 1;
+            currangearr_free(iq->selectv_arr);
+            iq->selectv_arr = NULL;
+
+            /* verify error */
+            err.ixnum = -1; /* data */
+            err.errcode = ERR_CONSTR;
+
+            rc = ERR_CONSTR;
+            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
+        } else if (iq->arr && bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
                 &(iq->arr->offset), 0)) {
-        currangearr_free(iq->arr);
-        iq->arr = NULL;
-        numerrs = 1;
-        rc = ERR_NOTSERIAL;
-        reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+            numerrs = 1;
+            currangearr_free(iq->arr);
+            iq->arr = NULL;
+            rc = ERR_NOTSERIAL;
+            reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+        }
     }
 
     /* starting writes, no more reads */

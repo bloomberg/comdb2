@@ -272,6 +272,12 @@ extern int gbl_osql_send_startgen;
  *
  */
 
+/* Set to 1, causes read-only transactions to produce a commit record, and
+   the master to enforce the serial order.  Set to 0, the serial order
+   for readonly transactions corresponds to the end-of-log at its BEGIN. */
+
+int gbl_serializable_force_commit = 0;
+
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                        char *tzname, int osqlreq_type, int is_distrib_tran)
 {
@@ -280,6 +286,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
+    int check_serializability = 0;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
@@ -290,12 +297,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (clnt->early_retry == EARLY_ERR_VERIFY) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
+        check_serializability = 1;
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
+        check_serializability = 1;
     }
     if (clnt->early_retry) {
         clnt->early_retry = 0;
@@ -304,14 +313,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     /* optimization (will catch all transactions with no internal updates */
-    if (osql_shadtbl_empty(clnt)) {
+    if (!gbl_serializable_force_commit && osql_shadtbl_empty(clnt)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
         return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
+    if (!gbl_serializable_force_commit && usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
@@ -341,10 +350,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
-    /* process shadow tables */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
-
-    if (sentops && clnt->arr) {
+    /* Master needs this first to report serial error rather than verify */
+    if (clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
@@ -353,6 +360,9 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
+
+    /* process shadow tables */
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     if (rc && rc != -2) {
         int irc = 0;
@@ -388,6 +398,22 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
 goback:
+    if (check_serializability) {
+        if (clnt->selectv_arr && bdb_osql_serial_check(thedb->bdb_env,
+                    clnt->selectv_arr, &(clnt->selectv_arr->file),
+                    &(clnt->selectv_arr->offset), 0)) {
+            rc = SQLITE_ABORT;
+            sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
+            clnt->osql.xerr.errval = ERR_CONSTR;
+            errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
+        } else if (clnt->arr && bdb_osql_serial_check(thedb->bdb_env,
+                    clnt->arr, &(clnt->arr->file), &(clnt->arr->offset), 0)) {
+            rc = SQLITE_ABORT;
+            sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
+            errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
+            clnt->osql.xerr.errval = ERR_NOTSERIAL;
+        }
+    }
 
     /* if this is read committed and we just got a verify error,
        don't close the shadow tables since this will get retried */

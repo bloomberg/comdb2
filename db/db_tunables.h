@@ -1692,7 +1692,7 @@ REGISTER_TUNABLE("machine_class",
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("selectv_writelock_on_update",
-                 "Acquire a writelock for updated selectv records."
+                 "Acquire a writelock for updated selectv records.  "
                  "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1712,5 +1712,11 @@ REGISTER_TUNABLE("debug_children_lock",
                  "  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_children_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("serializable_force_commit",
+                 "Force a commit record for read-only multi-statement "
+                 "serializable transactions.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_serializable_force_commit,
+                 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

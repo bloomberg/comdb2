@@ -4728,7 +4728,10 @@ int sqlite3BtreeCommit(Btree *pBt)
         if (clnt->dbtran.shadow_tran) {
             rc = serial_commit(clnt, thd, clnt->tzname);
             if (!rc) {
-                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+                if (clnt->dbtran.shadow_tran) {
+                    irc = trans_commit_shadow(clnt->dbtran.shadow_tran,
+                            &bdberr);
+                }
             } else {
                 irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
                                          &bdberr);

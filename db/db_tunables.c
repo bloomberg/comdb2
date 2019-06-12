@@ -222,6 +222,7 @@ extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
 extern int gbl_debug_children_lock;
+extern int gbl_serializable_force_commit;
 
 extern long long sampling_threshold;
 
