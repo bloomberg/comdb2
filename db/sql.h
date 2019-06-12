@@ -80,12 +80,8 @@ typedef struct stmt_hash_entry {
 
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
-    int denyDdl;                       /* DDL is forbidden? */
-    int denyPragma;                    /* PRAGMA is forbidden? */
-    int denyTrigger;                   /* CREATE TRIGGER is forbidden? */
+    int flags;                         /* DDL, PRAGMA, CREATE TRIGGER denied? */
     int numDdls;                       /* number of DDLs found */
-    int numPragmas;                    /* number of PRAGMAs found */
-    int numTriggers;                   /* number of CREATE TRIGGERs found */
 };
 
 /* Thread specific sql state */
@@ -1074,8 +1070,10 @@ enum cache_status {
 enum prepare_flags {
     PREPARE_NONE = 0,
     PREPARE_RECREATE = 1,
-    PREPARE_DENY_DDL = 2,
-    PREPARE_IGNORE_ERR = 4
+    PREPARE_DENY_CREATE_TRIGGER = 2,
+    PREPARE_DENY_PRAGMA = 4,
+    PREPARE_DENY_DDL = 8,
+    PREPARE_IGNORE_ERR = 16
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */

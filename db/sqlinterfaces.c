@@ -752,7 +752,13 @@ static int comdb2_authorizer_for_sqlite(
 #endif
 ){
   struct sql_authorizer_state *pAuthState = pArg;
-  switch( code ){
+  if (pAuthState == NULL) {
+    return SQLITE_DENY;
+  }
+  int denyCreateTrigger = (pAuthState->flags & PREPARE_DENY_CREATE_TRIGGER);
+  int denyPragma = (pAuthState->flags & PREPARE_DENY_PRAGMA);
+  int denyDdl = (pAuthState->flags & PREPARE_DENY_DDL);
+  switch (code) {
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
     case SQLITE_CREATE_TEMP_INDEX:
@@ -792,39 +798,25 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_LUA_TRIGGER:    /* COMDB2 ONLY */
     case SQLITE_CREATE_LUA_CONSUMER: /* COMDB2 ONLY */
     case SQLITE_DROP_LUA_CONSUMER:   /* COMDB2 ONLY */
-      if (pAuthState != NULL) {
-        pAuthState->numDdls++;
-        return pAuthState->denyDdl ? SQLITE_DENY : SQLITE_OK;
-      } else {
-        return SQLITE_DENY;
-      }
+      pAuthState->numDdls++;
+      return denyDdl ? SQLITE_DENY : SQLITE_OK;
     case SQLITE_PRAGMA:
-      if (pAuthState != NULL) {
-        pAuthState->numDdls++;
-        pAuthState->numPragmas++;
-        if (pAuthState->denyDdl || pAuthState->denyPragma) {
-          return SQLITE_DENY;
-        } else if (pAuthState->clnt != NULL) {
-          logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-                 __LINE__, __func__, pAuthState->clnt->sql);
-          return SQLITE_OK;
-        } else {
-          return SQLITE_DENY;
-        }
+      pAuthState->numDdls++;
+      if (denyDdl || denyPragma) {
+        return SQLITE_DENY;
+      } else if (pAuthState->clnt != NULL) {
+        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
+               __LINE__, __func__, pAuthState->clnt->sql);
+        return SQLITE_OK;
       } else {
         return SQLITE_DENY;
       }
     case SQLITE_CREATE_TRIGGER:
-      if (pAuthState != NULL) {
-        pAuthState->numDdls++;
-        pAuthState->numTriggers++;
-        if (pAuthState->denyDdl || pAuthState->denyTrigger) {
-          return SQLITE_DENY;
-        } else {
-          return SQLITE_OK;
-        }
-      } else {
+      pAuthState->numDdls++;
+      if (denyDdl || denyCreateTrigger) {
         return SQLITE_DENY;
+      } else {
+        return SQLITE_OK;
       }
     default:
       return SQLITE_OK;
@@ -3088,7 +3080,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
-    int denyDdl = (flags & PREPARE_DENY_DDL);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -3108,24 +3099,23 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
 
+    if (!gbl_allow_pragma)
+        flags |= PREPARE_DENY_PRAGMA;
+
+    flags |= PREPARE_DENY_CREATE_TRIGGER; /* UNSUPPORTED: was in check_sql() */
+
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
-        thd->authState.denyDdl = denyDdl;
-        thd->authState.denyPragma = !gbl_allow_pragma;
-        thd->authState.denyTrigger = 1; /* UNSUPPORTED: was in check_sql() */
+        thd->authState.flags = flags;
         thd->authState.numDdls = 0;
-        thd->authState.numPragmas = 0;
-        thd->authState.numTriggers = 0;
         rec->prepFlags = flags;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
-        thd->authState.denyDdl = 0;
-        thd->authState.denyPragma = 0;
-        thd->authState.denyTrigger = 0;
+        thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
