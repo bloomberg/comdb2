@@ -36,9 +36,11 @@ struct comdb2_metrics_store {
     int64_t connection_timeouts;
     double  cpu_percent;
     int64_t deadlocks;
+    int64_t locks_aborted;
     int64_t fstraps;
     int64_t lockrequests;
     int64_t lockwaits;
+    int64_t lock_wait_time_us;
     int64_t memory_ulimit;
     int64_t memory_usage;
     int64_t preads;
@@ -121,6 +123,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.current_connections, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.deadlocks, NULL},
+    {"locks_aborted", "Number of locks aborted", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.locks_aborted, NULL},
     {"diskspace", "Disk space used (bytes)", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.diskspace, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER,
@@ -131,6 +135,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockrequests, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwaits, NULL},
+    {"lockwait_time", "Time spent in lock waits (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lock_wait_time_us, NULL},
     {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size", STATISTIC_INTEGER,
@@ -330,7 +336,7 @@ int refresh_metrics(void)
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
-    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks, NULL,
+    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks, &stats.locks_aborted,
                                &stats.lockwaits, &stats.lockrequests);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
@@ -349,6 +355,7 @@ int refresh_metrics(void)
     pstats = bdb_get_process_stats();
     stats.preads = pstats->n_preads;
     stats.pwrites = pstats->n_pwrites;
+    stats.lock_wait_time_us = pstats->lock_wait_time_us;
 
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
@@ -405,7 +412,7 @@ int refresh_metrics(void)
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
-    int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
+    int master = bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0; 
     stats.ismaster = master;
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
                              (unsigned long long *)&stats.num_sc_done, &bdberr);
