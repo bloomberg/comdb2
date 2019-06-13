@@ -113,7 +113,6 @@ do_execsql_test view-1.10 {
 #  PRAGMA table_info(v9d);
 #} {0 x INTEGER 0 {} 0}
 
-#TODO: (NC) fix execsql2
 do_test view-2.1 {
   execsql {
     CREATE VIEW v2 AS SELECT * FROM t1 WHERE a>5
@@ -181,10 +180,9 @@ do_test view-3.3.3 {
     SELECT * FROM v1c LIMIT 1;
   }
 } {x 2 y 7 z 1}
-#TODO: (NC) fixme
-#do_catchsql_test view-3.3.4 {
-#  CREATE VIEW v1err(x,y DESC,z) AS SELECT a, b+c, c-b FROM t1;
-#} {1 {syntax error after column name "y"}}
+do_catchsql_test view-3.3.4 {
+  CREATE VIEW v1err(x,y DESC,z) AS SELECT a, b+c, c-b FROM t1;
+} {1 {syntax error after column name "y"}}
 do_catchsql_test view-3.3.5 {
   DROP VIEW IF EXISTS v1err;
   CREATE VIEW v1err(x,y) AS SELECT a, b+c, c-b FROM t1;
