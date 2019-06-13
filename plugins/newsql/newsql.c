@@ -2438,6 +2438,7 @@ done:
 
     /* XXX free logical tran?  */
     close_appsock(sb);
+    arg->sb = NULL;
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
