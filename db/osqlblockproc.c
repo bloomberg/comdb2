@@ -717,6 +717,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     }
     /* This doesn't touch btrees and should be processed first */
     case OSQL_SERIAL:
+    case OSQL_SELECTV:
         key->tbl_idx = 0;
         key->genid = 0;
         key->stripe = 0;

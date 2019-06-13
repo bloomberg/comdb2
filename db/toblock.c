@@ -4870,16 +4870,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                       &(iq->selectv_arr->offset), 1))) {
             Pthread_rwlock_unlock(&commit_lock);
             hascommitlock = 0;
-            if (iq->arr &&
-                bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                                      &(iq->arr->offset), 0)) {
-                currangearr_free(iq->arr);
-                iq->arr = NULL;
-                numerrs = 1;
-                rc = ERR_NOTSERIAL;
-                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
-                GOTOBACKOUT;
-            } else if (iq->selectv_arr &&
+
+            if (iq->selectv_arr &&
                        bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                              &(iq->selectv_arr->file),
                                              &(iq->selectv_arr->offset), 0)) {
@@ -4893,6 +4885,15 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                 rc = ERR_CONSTR;
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
+                GOTOBACKOUT;
+            } else if (iq->arr &&
+                bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
+                                      &(iq->arr->offset), 0)) {
+                currangearr_free(iq->arr);
+                iq->arr = NULL;
+                numerrs = 1;
+                rc = ERR_NOTSERIAL;
+                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
                 GOTOBACKOUT;
             } else {
                 Pthread_rwlock_wrlock(&commit_lock);

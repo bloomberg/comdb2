@@ -287,6 +287,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc = 0;
     int usedb_only = 0;
     int check_serializability = 0;
+    int force_commit = gbl_serializable_force_commit;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
@@ -313,14 +314,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     /* optimization (will catch all transactions with no internal updates */
-    if (!gbl_serializable_force_commit && osql_shadtbl_empty(clnt)) {
+    if (!force_commit && osql_shadtbl_empty(clnt)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
         return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (!gbl_serializable_force_commit && usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
+    if (!force_commit && usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
@@ -350,8 +351,15 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
-    /* Master needs this first to report serial error rather than verify */
-    if (clnt->arr) {
+    if (!clnt->osql.is_reorder_on && clnt->arr && force_commit) {
+        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+    }
+
+    /* process shadow tables */
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
+
+    if (clnt->osql.is_reorder_on && (force_commit || sentops) && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
@@ -360,9 +368,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
-
-    /* process shadow tables */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     if (rc && rc != -2) {
         int irc = 0;
