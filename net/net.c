@@ -5717,9 +5717,11 @@ static void *accept_thread(void *arg)
             rc = getpeername(new_fd, (struct sockaddr *)&cliaddr,
                              (socklen_t *)&clilen);
             if (rc) {
-              logmsg(LOGMSG_ERROR, "Failed to get peer address\n");
-              close(new_fd);
-              continue;
+                logmsg(LOGMSG_ERROR,
+                       "Failed to get peer address, error: %d %s\n", errno,
+                       strerror(errno));
+                close(new_fd);
+                continue;
             }
         }
 
