@@ -4872,9 +4872,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             hascommitlock = 0;
 
             if (iq->selectv_arr &&
-                       bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
-                                             &(iq->selectv_arr->file),
-                                             &(iq->selectv_arr->offset), 0)) {
+                bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                      &(iq->selectv_arr->file),
+                                      &(iq->selectv_arr->offset), 0)) {
                 currangearr_free(iq->selectv_arr);
                 iq->selectv_arr = NULL;
                 numerrs = 1;
@@ -4886,8 +4886,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = ERR_CONSTR;
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
                 GOTOBACKOUT;
-            } else if (iq->arr &&
-                bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
+            } else if (iq->arr && bdb_osql_serial_check(
+                                      thedb->bdb_env, iq->arr, &(iq->arr->file),
                                       &(iq->arr->offset), 0)) {
                 currangearr_free(iq->arr);
                 iq->arr = NULL;
@@ -5059,9 +5059,10 @@ backout:
      * serializable error as the dup-key may have been caused by the 
      * conflicting write. */
     if (check_serializability) {
-        if (iq->selectv_arr && bdb_osql_serial_check(thedb->bdb_env,
-                    iq->selectv_arr, &(iq->selectv_arr->file),
-                    &(iq->selectv_arr->offset), 0)) {
+        if (iq->selectv_arr &&
+            bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                  &(iq->selectv_arr->file),
+                                  &(iq->selectv_arr->offset), 0)) {
             numerrs = 1;
             currangearr_free(iq->selectv_arr);
             iq->selectv_arr = NULL;
@@ -5072,8 +5073,9 @@ backout:
 
             rc = ERR_CONSTR;
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
-        } else if (iq->arr && bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                &(iq->arr->offset), 0)) {
+        } else if (iq->arr && bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+                                                    &(iq->arr->file),
+                                                    &(iq->arr->offset), 0)) {
             numerrs = 1;
             currangearr_free(iq->arr);
             iq->arr = NULL;

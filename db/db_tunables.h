@@ -1716,7 +1716,7 @@ REGISTER_TUNABLE("debug_children_lock",
 REGISTER_TUNABLE("serializable_force_commit",
                  "Force a commit record for read-only multi-statement "
                  "serializable transactions.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_serializable_force_commit,
-                 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_serializable_force_commit, 0, NULL, NULL,
+                 NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
