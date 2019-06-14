@@ -3271,7 +3271,7 @@ struct Parse {
   u8 eOrconf;          /* Default ON CONFLICT policy for trigger steps */
   u8 disableTriggers;  /* True to disable triggers */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-//  ast_t *ast;
+  ast_t *ast;
   int preserve_update;    /* statement replacement, preserve flags */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -3327,7 +3327,6 @@ struct Parse {
   RenameToken *pRename;     /* Tokens subject to renaming by ALTER TABLE */
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ast_t *ast;
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
