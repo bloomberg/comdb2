@@ -63,6 +63,12 @@
 #include <logmsg.h>
 #include <tohex.h>
 
+#ifdef WITH_RDKAFKA    
+
+#include "librdkafka/rdkafka.h"  /* for Kafka driver */
+
+#endif
+
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -3947,6 +3953,79 @@ static int db_copyrow(Lua lua)
     return 1;
 }
 
+char *gbl_kafka_brokers = NULL;
+char *gbl_kafka_topic = NULL;
+
+#ifdef WITH_RDKAFKA
+
+static rd_kafka_topic_t *rkt_p = NULL;
+static rd_kafka_t *rk_p = NULL;
+
+static int kafka_publish(Lua lua)
+{
+    const void *dta = lua_topointer(lua, -2);
+    int dta_len = lua_tonumber(lua, -1);
+
+    rd_kafka_conf_t *conf;  /* Temporary configuration object */
+    char errstr[512];       /* librdkafka API error reporting buffer */
+
+    SP sp = getsp(lua);
+
+    if (!gbl_kafka_topic || !gbl_kafka_brokers) {
+        return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
+    }
+
+    if (!rk_p) {
+        conf = rd_kafka_conf_new();
+        if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
+                             errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+               return luabb_error(lua, sp, "%s\n", errstr);
+        }
+
+        rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+
+        if (!rk_p) {
+                return luabb_error(lua, sp,
+                        "%% Failed to create new producer: %s\n", errstr);
+        }
+
+    }
+    if (!rkt_p)  {
+        rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
+        if (!rkt_p) {
+                return luabb_error(lua, sp, "%% Failed to create topic object: %s\n",
+                        rd_kafka_err2str(rd_kafka_last_error()));
+        }
+    }
+
+    if (rd_kafka_produce(
+            /* Topic object */
+            rkt_p,
+            /* Use builtin partitioner to select partition*/
+            RD_KAFKA_PARTITION_UA,
+            /* Make a copy of the payload. */
+            RD_KAFKA_MSG_F_COPY,
+            /* Message payload (value) and length */
+            (void*)dta, dta_len,
+            /* Optional key and its length */
+            NULL, 0,
+            /* Message opaque, provided in
+             * delivery report callback as
+             * msg_opaque. */
+            NULL) == -1) {
+        /**
+         * Failed to *enqueue* message for producing.
+         */
+        return luabb_error(lua, sp,
+                "%% Failed to produce to topic %s: %s\n",
+                rd_kafka_topic_name(rkt_p),
+                rd_kafka_err2str(rd_kafka_last_error()));
+    }
+    return 0;
+}
+
+#endif
+
 static int db_print(Lua lua)
 {
     int nargs = lua_gettop(lua);
@@ -4360,6 +4439,9 @@ static const luaL_Reg db_funcs[] = {
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
     /************ CONSUMER **************/
+#ifdef WITH_RDKAFKA    
+    {"kafka_publish", kafka_publish},
+#endif    
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/

@@ -204,8 +204,8 @@ target_link_libraries(comdb2
   bdb
   util
   cdb2api
-  comdb2rle
   crc32c
+  comdb2rle
   csc2
   cson
   db
@@ -227,7 +227,9 @@ target_link_libraries(comdb2
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
+  ${RDKAFKA_LIBRARY}
 )
+
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(
   TARGET comdb2 POST_BUILD
