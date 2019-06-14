@@ -262,15 +262,16 @@ ast_t *ast_init(Parse *pParse, const char *caller)
     ast_t *ast;
 
     if (pParse->ast)
-        return pParse->ast->unsupported?NULL:pParse->ast;
+        return pParse->ast->unsupported ? NULL : pParse->ast;
 
     if (gbl_dohast_verbose)
-        logmsg(LOGMSG_USER, "TTT: %lu %s from %s\n", pthread_self(),
-                __func__, caller);
+        logmsg(LOGMSG_USER, "TTT: %lu %s from %s\n", pthread_self(), __func__,
+               caller);
 
     if (!sqlite3IsToplevel(pParse)) {
         ast = ast_init(sqlite3ParseToplevel(pParse), __func__);
-        if (ast) ast->unsupported = 1; 
+        if (ast)
+            ast->unsupported = 1;
         return NULL;
     }
 
