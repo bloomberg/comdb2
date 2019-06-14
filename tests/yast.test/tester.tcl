@@ -1447,12 +1447,6 @@ proc execsql {sql {options ""}} {
       continue
     }
 
-    if {[regexp -nocase {^DELETE FROM ([[:alnum:]]+)$} $query _ table]} {
-      do_cdb2_defquery "TRUNCATE $table"
-      delay_for_schema_change
-      continue
-    }
-
     if {[regexp -nocase {^DROP INDEX(?: IF EXISTS)?? ([[:alnum:]]+)$} $query]} {
       drop_index $query
       delay_for_schema_change

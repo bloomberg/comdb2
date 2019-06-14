@@ -131,12 +131,11 @@ do_test view-2.3 {
     UPDATE v2 SET a=10 WHERE a=5;
   }
 } {1 {cannot modify v2 because it is a view}}
-#TODO: (NC) fixme
-#do_test view-2.4 {
-#  catchsql {
-#    DELETE FROM v2;
-#  }
-#} {1 {cannot modify v2 because it is a view}}
+do_test view-2.4 {
+  catchsql {
+    DELETE FROM v2;
+  }
+} {1 {cannot modify v2 because it is a view}}
 do_test view-2.5 {
   execsql {
     INSERT INTO t1 VALUES(11,12,13,14);
@@ -235,12 +234,12 @@ do_test view-4.4 {
      SELECT 1 FROM v1 LIMIT 1;
   }
 } {1}
-#TODO: (NC) fixme
-#do_test view-4.5 {
-#  catchsql {
-#    CREATE INDEX i1v1 ON v1(xyz);
-#  }
-#} {1 {views may not be indexed}}
+# sqlite fails with "views may not be indexed"
+do_test view-4.5 {
+  catchsql {
+    CREATE INDEX i1v1 ON v1(xyz);
+  }
+} {1 {Table not found}}
 
 do_test view-5.1 {
   execsql {
