@@ -1623,3 +1623,4 @@ local function main(emoji)
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"
+cdb2sql $SP_OPTIONS "execute procedure json_emoji('hello world 😁')"
