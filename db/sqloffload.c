@@ -360,12 +360,12 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
-    if (clnt->osql.is_reorder_on && (force_commit || sentops) && clnt->arr) {
+    if (!rc && clnt->osql.is_reorder_on && (force_commit || sentops) && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
-    if (clnt->selectv_arr) {
+    if (!rc && clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
