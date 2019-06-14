@@ -453,7 +453,7 @@ do_test view-9.6 {
 # Tables with columns having peculiar quoted names used in views
 # Ticket #756.
 #
-#TODO: (NC) fixme
+#TODO: (NC) CSC2 limitations?
 #do_test view-10.1 {
 #  execsql {
 #    CREATE TABLE t3("9" integer, [4] text);
@@ -518,20 +518,19 @@ ifcapable attach {
 
 # Ticket #1658
 #
-#TODO: (NC) fixme
-#do_test view-14.1 {
-#  catchsql {
-#    CREATE TEMP VIEW t1 AS SELECT a,b FROM t1;
-#    SELECT * FROM temp.t1;
-#  }
-#} {1 {view t1 is circularly defined}}
-#do_test view-14.2 {
-#  catchsql {
-#    DROP VIEW IF EXISTS temp.t1;
-#    CREATE TEMP VIEW t1(a,b) AS SELECT a,b FROM t1;
-#    SELECT * FROM temp.t1;
-#  }
-#} {1 {view t1 is circularly defined}}
+do_test view-14.1 {
+  catchsql {
+    CREATE TEMP VIEW t1 AS SELECT a,b FROM t1;
+    SELECT * FROM temp.t1;
+  }
+} {1 {view t1 is circularly defined}}
+do_test view-14.2 {
+  catchsql {
+    DROP VIEW IF EXISTS temp.t1;
+    CREATE TEMP VIEW t1(a,b) AS SELECT a,b FROM t1;
+    SELECT * FROM temp.t1;
+  }
+} {1 {view t1 is circularly defined}}
 
 # Tickets #1688, #1709
 #
