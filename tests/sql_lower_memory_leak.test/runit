@@ -3,22 +3,28 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
-set -ex
+set -e
 
 # Make sure that all queries go to the same node.
 mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 echo "target machine is $mach"
 
+# Create table; insert rows
 cdb2sql -s --host $mach $dbnm "drop table if exists leak"
 cdb2sql -s --host $mach $dbnm "create table leak (i int, t text)"
+yes "insert into leak values (1, 'Lorem ipsum')" | head -2000 | cdb2sql -s --host $mach $dbnm ->/dev/null
 
-yes "insert into leak values (1, 'abcd')" | head -2000 | cdb2sql -s --host $mach $dbnm ->/dev/null
-sleep 2
-cdb2sql -s --host $mach $dbnm 'select i from leak where lower(t) in ("abcd") and i != 1'
+# Warm up
+yes 'select i from leak where lower(t) in ("abcd") and i != 1' | head -100 | cdb2sql -s --host $mach $dbnm ->/dev/null
 
+# Get memory snapshot
 cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat sqlite")' | grep SQLITE >expected
 
+# Run the leak reproducer
 yes 'select i from leak where lower(t) in ("abcd") and i != 1' | head -500 | cdb2sql -s --host $mach $dbnm ->/dev/null
 
+# Get memory snapshot after
 cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat sqlite")' | grep SQLITE >actual
+
+# Should stay the same;
 diff actual expected
