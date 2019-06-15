@@ -352,30 +352,29 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
-    if (!clnt->osql.is_reorder_on && clnt->arr && force_commit) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+    if (!clnt->osql.is_reorder_on && force_commit) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
     }
 
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
-    if (!rc && clnt->osql.is_reorder_on && (force_commit || sentops) && clnt->arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-    }
-
-    /* process shadow tables */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
-
-    if (!rc && clnt->osql.is_reorder_on && (force_commit || sentops) && clnt->arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-    }
-
-    if (!rc && clnt->selectv_arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+    if (clnt->osql.is_reorder_on && (force_commit || sentops)) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
     }
 
     if (rc && rc != -2) {
