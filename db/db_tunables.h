@@ -1714,8 +1714,8 @@ REGISTER_TUNABLE("debug_children_lock",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("serializable_force_commit",
-                 "Force a commit record for read-only multi-statement "
-                 "serializable transactions.  (Default: off)",
+                 "Send read-only multi-statement schedules to the master.  "
+                 "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_serializable_force_commit, 0, NULL, NULL,
                  NULL, NULL);
 

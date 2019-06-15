@@ -272,10 +272,7 @@ extern int gbl_osql_send_startgen;
  *
  */
 
-/* Set to 1, causes read-only transactions to produce a commit record, and
-   the master to enforce the serial order.  Set to 0, the serial order
-   for readonly transactions corresponds to the end-of-log at its BEGIN. */
-
+/* Set to 1, check read-only transactions on the master. */
 int gbl_serializable_force_commit = 0;
 
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
@@ -286,7 +283,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
-    int check_serializability = 0;
     int force_commit = gbl_serializable_force_commit;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
@@ -296,16 +292,20 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     if (clnt->early_retry == EARLY_ERR_VERIFY) {
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
-        check_serializability = 1;
+        if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+            clnt->osql.xerr.errval = ERR_NOTSERIAL;
+            errstat_cat_str(&(clnt->osql.xerr),
+                            "transaction is not serializable");
+        } else {
+            clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+            errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
+        }
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
-        check_serializability = 1;
     }
     if (clnt->early_retry) {
         clnt->early_retry = 0;
@@ -352,7 +352,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
-    if (!clnt->osql.is_reorder_on && force_commit) {
+    if (!clnt->osql.is_reorder_on) {
         if (clnt->arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
@@ -366,11 +366,13 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
+    /* Preserve the sentops optimization */
     if (clnt->osql.is_reorder_on && (force_commit || sentops)) {
         if (clnt->arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
+
         if (clnt->selectv_arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
@@ -411,28 +413,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
 goback:
-    if (check_serializability) {
-        if (clnt->selectv_arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
-                                  &(clnt->selectv_arr->file),
-                                  &(clnt->selectv_arr->offset), 0)) {
-            rc = SQLITE_ABORT;
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "returning SQLITE_ABORT\n");
-            clnt->osql.xerr.errval = ERR_CONSTR;
-            errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
-        } else if (clnt->arr &&
-                   bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
-                                         &(clnt->arr->file),
-                                         &(clnt->arr->offset), 0)) {
-            rc = SQLITE_ABORT;
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "returning SQLITE_ABORT\n");
-            errstat_cat_str(&(clnt->osql.xerr),
-                            "transaction is not serializable");
-            clnt->osql.xerr.errval = ERR_NOTSERIAL;
-        }
-    }
 
     /* if this is read committed and we just got a verify error,
        don't close the shadow tables since this will get retried */
