@@ -37,6 +37,7 @@
 #include "tohex.h"
 #include "plhash.h"
 #include "logmsg.h"
+#include "thread_stats.h"
 #include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
@@ -321,7 +322,7 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 {
-    const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
+    const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
     int64_t start = logger->startus;
     int64_t end = comdb2_time_epochus();
 
