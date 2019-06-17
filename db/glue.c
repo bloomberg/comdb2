@@ -3956,17 +3956,16 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         }
 
-        net_set_pool_size(dbenv->handle_sibling, gbl_maxreclen + 300);
-        net_set_pool_size(dbenv->handle_sibling_offload, gbl_maxreclen + 300);
+        /* get the max rec len, or a sane default */
+        gbl_maxreclen = get_max_reclen(dbenv);
+        if (gbl_maxreclen < 0)
+            gbl_maxreclen = 512;
+        net_set_pool_size(dbenv->handle_sibling, (gbl_maxreclen + 300) * 1024);
+        net_set_pool_size(dbenv->handle_sibling_offload, (gbl_maxreclen + 300) * 1024);
 
         net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,
                                gbl_accept_on_child_nets);
-
-        /* get the max rec len, or a sane default */
-        gbl_maxreclen = get_max_reclen(dbenv);
-        if (gbl_maxreclen == 0)
-            gbl_maxreclen = 512;
 
 #if 0
         net_set_callback_data(dbenv->handle_sibling, dbenv);

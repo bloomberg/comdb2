@@ -618,9 +618,7 @@ static void *thdpool_thd(void *voidarg)
 
     thread_started("thdpool");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = pool->name;
-#endif
+    THREAD_TYPE(pool->name);
     thd->archtid = getarchtid();
 
     if (pool->per_thread_data_sz > 0) {

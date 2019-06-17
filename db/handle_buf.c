@@ -426,10 +426,8 @@ static void *thd_req(void *vthd)
     int numwriterthreads;
 
     thread_started("request");
+    THREAD_TYPE("tag");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = "tag";
-#endif
     thr_self = thrman_register(THRTYPE_REQ);
     logger = thrman_get_reqlogger(thr_self);
 
