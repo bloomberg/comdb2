@@ -1553,7 +1553,7 @@ bb_berkdb_get_process_stats(void)
 
 void bb_berkdb_reset_worst_lock_wait_time_us(void)
 {
-	bb_berkdb_get_thread_stats()->worst_lock_wait_time_us = 0;
+	bb_berkdb_get_process_stats()->worst_lock_wait_time_us = 0;
 }
 
 void
