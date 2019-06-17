@@ -336,8 +336,9 @@ int refresh_metrics(void)
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
-    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks, &stats.locks_aborted,
-                               &stats.lockwaits, &stats.lockrequests);
+    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
+                               &stats.locks_aborted, &stats.lockwaits,
+                               &stats.lockrequests);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -412,7 +413,8 @@ int refresh_metrics(void)
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
-    int master = bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0; 
+    int master =
+        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0;
     stats.ismaster = master;
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
                              (unsigned long long *)&stats.num_sc_done, &bdberr);

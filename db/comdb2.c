@@ -4240,7 +4240,8 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses, &rw_evicts);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted, &nlockwaits, NULL);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted,
+                              &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
         diff_locks_aborted = nlocks_aborted - last_nlocks_aborted;
         diff_lockwaits = nlockwaits - last_nlockwaits;
@@ -4482,10 +4483,12 @@ void *statthd(void *p)
                                       last_bdb_stats.n_lock_waits;
                     reqlog_logf(statlogger, REQL_INFO,
                                 "%u locks, avg time %ums, worst time %ums\n",
-                                nwaits, U2M(cur_bdb_stats.lock_wait_time_us -
-                                    last_bdb_stats.lock_wait_time_us) / nwaits,
+                                nwaits,
+                                U2M(cur_bdb_stats.lock_wait_time_us -
+                                    last_bdb_stats.lock_wait_time_us) /
+                                    nwaits,
                                 U2M(cur_bdb_stats.worst_lock_wait_time_us));
-                   bb_berkdb_reset_worst_lock_wait_time_us();
+                    bb_berkdb_reset_worst_lock_wait_time_us();
                 }
                 if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
                     unsigned npreads =
@@ -4517,8 +4520,10 @@ void *statthd(void *p)
 
                 if (diff_deadlocks || diff_lockwaits || diff_vreplays)
                     reqlog_logf(statlogger, REQL_INFO,
-                                "ndeadlocks %d, nlockwaits %d, vreplays %d, locks aborted %d\n",
-                                diff_deadlocks, diff_lockwaits, diff_vreplays, diff_locks_aborted);
+                                "ndeadlocks %d, nlockwaits %d, vreplays %d, "
+                                "locks aborted %d\n",
+                                diff_deadlocks, diff_lockwaits, diff_vreplays,
+                                diff_locks_aborted);
 
                 bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes, curlsn,
                                     sizeof(curlsn));
