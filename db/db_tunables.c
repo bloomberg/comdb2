@@ -298,6 +298,8 @@ extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
 
+extern int gbl_clean_exit_on_sigterm;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -707,6 +709,19 @@ static int deadlock_policy_override_update(void *context, void *value)
     *(int *)tunable->var = val;
     logmsg(LOGMSG_INFO, "Set deadlock policy to %s\n",
            deadlock_policy_str(val));
+    return 0;
+}
+
+extern void clean_exit_sigwrap(int signum);
+
+static int update_clean_exit_on_sigterm(void *context, void *value) {
+    int val = *(int *)value;
+    if (val)
+        signal(SIGTERM, clean_exit_sigwrap);
+    else
+        signal(SIGTERM, SIG_DFL);
+    printf("turning SIGTERM handling %s\n", val ? "on" : "off");
+
     return 0;
 }
 
