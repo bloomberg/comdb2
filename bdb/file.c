@@ -1431,13 +1431,19 @@ int bdb_flush_noforce(bdb_state_type *bdb_state, int *bdberr)
     return rc;
 }
 
+int gbl_debug_children_lock = 0;
+
 static int bdb_lock_children_lock(bdb_state_type *bdb_state)
 {
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-    assert(!bdb_state->have_children_lock);
     Pthread_mutex_lock(&(bdb_state->children_lock));
+    assert(!bdb_state->have_children_lock);
     bdb_state->have_children_lock = 1;
+    if (gbl_debug_children_lock) {
+        logmsg(LOGMSG_USER, "Acquired children lock\n");
+        cheap_stack_trace();
+    }
     return 0;
 }
 
@@ -1447,8 +1453,12 @@ static int bdb_unlock_children_lock(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
     assert(bdb_state->have_children_lock);
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
     bdb_state->have_children_lock = 0;
+    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    if (gbl_debug_children_lock) {
+        logmsg(LOGMSG_USER, "Released children lock\n");
+        cheap_stack_trace();
+    }
     return 0;
 }
 
@@ -8012,10 +8022,10 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
     int retry;
     char **tablenames = NULL;
     int tablecount = 0;
-    int rc = 0;
+    int rc;
 
 retry:
-    retry = 0;
+    rc = retry = 0;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
