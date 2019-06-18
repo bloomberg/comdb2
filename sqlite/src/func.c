@@ -767,8 +767,8 @@ static void comdb2SysinfoFunc(
     }
   }else if( sqlite3_stricmp(zName, "parallel")==0 ){
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
-    sqlite3_result_int(context, clnt->conns!=NULL);
+    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+    sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
   }
 }
 
