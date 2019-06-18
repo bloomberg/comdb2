@@ -22,6 +22,7 @@
 #include <uuid/uuid.h>
 #include <memcompare.c>
 #include "comdb2.h"
+#include "dohsql.h"
 #include "bdb_int.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -764,6 +765,8 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
+  }else if( sqlite3_stricmp(zName, "parallel")==0 ){
+    sqlite3_result_int(context, dohsql_is_parallel_shard());
   }
 }
 
