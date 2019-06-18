@@ -768,6 +768,8 @@ int64_t gbl_temptable_spills;
 
 int gbl_osql_odh_blob = 1;
 
+int gbl_clean_exit_on_sigterm = 1;
+
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
@@ -5242,7 +5244,8 @@ int main(int argc, char **argv)
     sact.sa_flags = 0;
     sigaction(SIGXFSZ, &sact, NULL);
 
-    signal(SIGTERM, clean_exit_sigwrap);
+    if (gbl_clean_exit_on_sigterm)
+        signal(SIGTERM, clean_exit_sigwrap);
 
     if (debug_switch_skip_skipables_on_verify())
         gbl_berkdb_verify_skip_skipables = 1;

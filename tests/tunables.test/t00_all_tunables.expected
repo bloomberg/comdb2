@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=913)
+(TUNABLES_COUNT=914)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -117,6 +117,7 @@
 (name='checksums', description='Checksum data pages. Turning this off is highly discouraged.', type='BOOLEAN', value='ON', read_only='N')
 (name='chk_aa_time', description='Check whether we should start analyze this often.', type='INTEGER', value='180', read_only='N')
 (name='chkpoint_alarm_time', description='Warn if checkpoints are taking more than this many seconds. (Default: 60 secs)', type='INTEGER', value='60', read_only='Y')
+(name='clean_exit_on_sigterm', description='Attempt to do orderly shutdown on SIGTERM (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='coherency_lease', description='A coherency lease grants a replicant the right to be coherent for this many ms.', type='INTEGER', value='500', read_only='N')
 (name='coherency_lease_udp', description='Use udp to issue leases.', type='BOOLEAN', value='ON', read_only='N')
 (name='commitdelay', description='Add a delay after every commit. This is occasionally useful to throttle the transaction rate.', type='INTEGER', value='0', read_only='N')
