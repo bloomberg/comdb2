@@ -640,7 +640,8 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
      * header) and all the data in our iovec. */
     insert = HOST_MALLOC(host_node_ptr, sizeof(write_data) + datasz);
     if (insert == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: %s: %zu\n", __func__, strerror(errno), datasz);
+        logmsg(LOGMSG_ERROR, "%s: %s: %zu\n", __func__, strerror(errno),
+               datasz);
         return -1;
     }
 
@@ -2609,15 +2610,16 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 #ifdef PER_THREAD_MALLOC
     if (gbl_verbose_net)
         logmsg(LOGMSG_INFO, "creating %d byte buffer pool for node %s\n",
-                netinfo_ptr->pool_size, hostname);
+               netinfo_ptr->pool_size, hostname);
 
     size_t scopelen = ptr->hostname_len + sizeof(netinfo_ptr->service) + 1;
     char *scope = malloc(scopelen);
     snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, ptr->host);
-    ptr->msp = comdb2ma_create_with_scope(netinfo_ptr->pool_size,
-            0, "NET", scope, 1);
+    ptr->msp =
+        comdb2ma_create_with_scope(netinfo_ptr->pool_size, 0, "NET", scope, 1);
     if (ptr->msp == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__, hostname);
+        logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__,
+               hostname);
         free(scope);
         free(ptr);
         return NULL;
