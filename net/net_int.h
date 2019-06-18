@@ -185,9 +185,6 @@ struct host_node_tag {
     struct netinfo_struct *netinfo_ptr;
     stats_type stats; /* useful per host */
 
-    pthread_mutex_t pool_lock;
-    void *write_pool;
-
 #ifdef PER_THREAD_MALLOC
     comdb2ma msp;
 #endif
