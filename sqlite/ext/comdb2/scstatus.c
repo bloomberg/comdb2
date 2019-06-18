@@ -130,18 +130,24 @@ void free_status(void *p, int n)
     free(sc_status_ents);
 }
 
+sqlite3_module systblScStatusModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblScStatusInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_sc_status", get_status, free_status,
-        sizeof(struct sc_status_ent), CDB2_CSTRING, "name", -1,
-        offsetof(struct sc_status_ent, name), CDB2_CSTRING, "type", -1,
-        offsetof(struct sc_status_ent, type), CDB2_CSTRING, "newcsc2", -1,
-        offsetof(struct sc_status_ent, newcsc2), CDB2_DATETIME, "start", -1,
-        offsetof(struct sc_status_ent, start), CDB2_CSTRING, "status", -1,
-        offsetof(struct sc_status_ent, status), CDB2_DATETIME, "last_updated",
-        -1, offsetof(struct sc_status_ent, lastupdated), CDB2_INTEGER,
-        "converted", -1, offsetof(struct sc_status_ent, converted),
+        db, "comdb2_sc_status", &systblScStatusModule,
+        get_status, free_status, sizeof(struct sc_status_ent),
+        CDB2_CSTRING, "name", -1, offsetof(struct sc_status_ent, name),
+        CDB2_CSTRING, "type", -1, offsetof(struct sc_status_ent, type),
+        CDB2_CSTRING, "newcsc2", -1, offsetof(struct sc_status_ent, newcsc2),
+        CDB2_DATETIME, "start", -1, offsetof(struct sc_status_ent, start),
+        CDB2_CSTRING, "status", -1, offsetof(struct sc_status_ent, status),
+        CDB2_DATETIME, "last_updated", -1, offsetof(struct sc_status_ent,
+                                                    lastupdated),
+        CDB2_INTEGER, "converted", -1, offsetof(struct sc_status_ent,
+                                                converted),
         CDB2_CSTRING, "error", -1, offsetof(struct sc_status_ent, error),
         SYSTABLE_END_OF_FIELDS);
 }
