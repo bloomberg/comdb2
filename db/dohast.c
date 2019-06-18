@@ -49,12 +49,12 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s%s%s%s", sExpr,
+            cols = sqlite3_mprintf("%s%s%w%s", sExpr,
                                    (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
         else {
-            accum = sqlite3_mprintf("%s, %s%s%s%s", cols, sExpr,
+            accum = sqlite3_mprintf("%s, %s%s%w%s", cols, sExpr,
                                     (c->a[i].zName) ? " aS \"" : "",
                                     (c->a[i].zName) ? c->a[i].zName : "",
                                     (c->a[i].zName) ? "\" " : "");
@@ -172,7 +172,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                             (where) ? where : "", (orderby) ? " oRDeR By " : "",
                             (orderby) ? orderby : "");
     } else if (!p->pLimit) {
-        select = sqlite3_mprintf("SeLeCT %s FRoM \"%s\"%s%s%s%s", cols, tbl,
+        select = sqlite3_mprintf("SeLeCT %s FRoM \"%w\"%s%s%s%s", cols, tbl,
                                  (where) ? " WHeRe " : "", (where) ? where : "",
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
@@ -195,7 +195,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s "
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s "
                 "LiMit (CaSe wHeN (%s)<0 THeN (%s) eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
                 ") eND) oFFSeT (%s)",
@@ -204,7 +204,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 limit, limit, offset, offset, offset);
         } else if (!extraRows) {
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit %s", cols, tbl,
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s LiMit %s", cols, tbl,
                 (where) ? " WHeRe " : "", (where) ? where : "",
                 (orderby) ? " oRDeR By " : "", (orderby) ? orderby : "", limit);
         } else {
@@ -217,7 +217,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN "
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN "
                 "(%s) "
                 "eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
