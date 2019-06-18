@@ -486,6 +486,10 @@ static int skip_tables(Select *p)
     for (i = 0; i < p->pSrc->nSrc; i++) {
         if (!p->pSrc->a[i].zName)
             continue; /* skip subqueries */
+        /* NOTE: comdb2_sysinfo('parallel') is used for testing; therefore,
+                 it must be exempt from this handling. */
+        if (strncasecmp(p->pSrc->a[i].zName, "comdb2_sysinfo", 14) == 0)
+            continue;
         j = 0;
         while (ignored[j]) {
             if (strncasecmp(p->pSrc->a[i].zName, ignored[j], lens[j]) == 0)
@@ -723,7 +727,13 @@ static int _exprCallback(Walker *pWalker, Expr *pExpr)
     case TK_PLUS:
     case TK_MINUS:
     case TK_INTEGER:
+    case TK_STRING:
         return WRC_Continue;
+    case TK_FUNCTION:
+        if (strcasecmp(pExpr->u.zToken, "comdb2_sysinfo") == 0) {
+            return WRC_Continue;
+        }
+        /* fallthrough */
     default:
         return WRC_Abort;
     }

@@ -22,6 +22,7 @@
 #include <uuid/uuid.h>
 #include <memcompare.c>
 #include "comdb2.h"
+#include "sql.h"
 #include "bdb_int.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
