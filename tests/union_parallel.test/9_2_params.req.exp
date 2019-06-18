@@ -1,1 +1,3 @@
-stub
+('one'='one', a=1)
+('one'='two', a=2)
+('one'='three', a=3)
