@@ -8020,12 +8020,13 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
 {
     int i = 0;
     int retry;
-    char **tablenames = NULL;
-    int tablecount = 0;
+    char **tablenames;
+    int tablecount;
     int rc;
 
 retry:
     rc = retry = 0;
+    tablenames = NULL;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -8091,22 +8092,27 @@ retry:
     bdb_lock_children_lock(bdb_state);
     if (bdb_state->numchildren != tablecount)
         retry = 1;
-    for (int i = 0 ; i < tablecount && retry == 0; i++) {
+    for (int i = 0; i < tablecount && retry == 0; i++) {
         if ((tablenames[i] && !bdb_state->children[i]) ||
-                (!tablenames[i] && bdb_state->children[i]) ||
-                (tablenames[i] && bdb_state->children[i] &&
-                strcmp(tablenames[i], bdb_state->children[i]->name))) {
+            (!tablenames[i] && bdb_state->children[i]) ||
+            (tablenames[i] && bdb_state->children[i] &&
+             strcmp(tablenames[i], bdb_state->children[i]->name))) {
             retry = 1;
-        } else if (bdb_state->children[i] && bdb_state->children[i]->version_num > 0 &&
-                bdb_state->children[i]->version_num != 
-                tran->table_version_cache[i]) {
+        /* Update children version number if it hasn't been set (is 0) */
+        } else if (bdb_state->children[i] &&
+                   bdb_state->children[i]->version_num > 0 &&
+                   bdb_state->children[i]->version_num !=
+                       tran->table_version_cache[i]) {
             retry = 1;
         }
     }
     if (!retry) {
         for (int i = 0; i < tablecount; i++) {
             if (bdb_state->children[i])
-                bdb_state->children[i]->version_num = tran->table_version_cache[i];
+                bdb_state->children[i]->version_num =
+                    tran->table_version_cache[i];
+
+
         }
     }
     bdb_unlock_children_lock(bdb_state);
