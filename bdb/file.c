@@ -8039,9 +8039,9 @@ retry:
     bdb_lock_children_lock(bdb_state);
     tran->table_version_cache_sz = tablecount = bdb_state->numchildren;
     tablenames = (char **)calloc(sizeof(char *), tablecount);
-    tran->table_version_cache = (unsigned long long *)calloc(tablecount,
-            sizeof(unsigned long long));
-    
+    tran->table_version_cache =
+        (unsigned long long *)calloc(tablecount, sizeof(unsigned long long));
+
     for (int i = 0; i < tablecount; i++) {
         if (bdb_state->children[i]) {
             tablenames[i] = strdup(bdb_state->children[i]->name);
@@ -8064,8 +8064,8 @@ retry:
             continue;
         if (tran->table_version_cache[i] == 0) {
             /* read it */
-            rc = bdb_get_file_version_data_by_name(NULL, tablenames[i], 0,
-                                           &tran->table_version_cache[i], bdberr);
+            rc = bdb_get_file_version_data_by_name(
+                NULL, tablenames[i], 0, &tran->table_version_cache[i], bdberr);
             if (rc) {
                 if (*bdberr == BDBERR_FETCH_DTA) {
                     rc = 0;
@@ -8094,9 +8094,10 @@ retry:
     for (int i = 0 ; i < tablecount && retry == 0; i++) {
         if ((tablenames[i] && !bdb_state->children[i]) ||
                 (!tablenames[i] && bdb_state->children[i]) ||
-                strcmp(tablenames[i], bdb_state->children[i]->name)) {
+                (tablenames[i] && bdb_state->children[i] &&
+                strcmp(tablenames[i], bdb_state->children[i]->name))) {
             retry = 1;
-        } else if (bdb_state->children[i]->version_num > 0 &&
+        } else if (bdb_state->children[i] && bdb_state->children[i]->version_num > 0 &&
                 bdb_state->children[i]->version_num != 
                 tran->table_version_cache[i]) {
             retry = 1;
@@ -8104,14 +8105,15 @@ retry:
     }
     if (!retry) {
         for (int i = 0; i < tablecount; i++) {
-            bdb_state->children[i]->version_num = tran->table_version_cache[i];
+            if (bdb_state->children[i])
+                bdb_state->children[i]->version_num = tran->table_version_cache[i];
         }
     }
     bdb_unlock_children_lock(bdb_state);
 
 done:
     if (tablenames) {
-        for(int i = 0; i < tablecount; i++) {
+        for (int i = 0; i < tablecount; i++) {
             if (tablenames[i])
                 free(tablenames[i]);
         }
