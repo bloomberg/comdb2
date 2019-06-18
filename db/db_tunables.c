@@ -721,6 +721,8 @@ static int update_clean_exit_on_sigterm(void *context, void *value) {
     else
         signal(SIGTERM, SIG_DFL);
 
+    gbl_clean_exit_on_sigterm = val;
+
     return 0;
 }
 
