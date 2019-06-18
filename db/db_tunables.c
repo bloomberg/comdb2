@@ -720,7 +720,6 @@ static int update_clean_exit_on_sigterm(void *context, void *value) {
         signal(SIGTERM, clean_exit_sigwrap);
     else
         signal(SIGTERM, SIG_DFL);
-    printf("turning SIGTERM handling %s\n", val ? "on" : "off");
 
     return 0;
 }
