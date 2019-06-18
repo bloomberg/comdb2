@@ -117,7 +117,7 @@
 (name='checksums', description='Checksum data pages. Turning this off is highly discouraged.', type='BOOLEAN', value='ON', read_only='N')
 (name='chk_aa_time', description='Check whether we should start analyze this often.', type='INTEGER', value='180', read_only='N')
 (name='chkpoint_alarm_time', description='Warn if checkpoints are taking more than this many seconds. (Default: 60 secs)', type='INTEGER', value='60', read_only='Y')
-(name='clean_exit_on_sigterm', description='Attempt to do orderly shutdown on SIGTERM (Default: on)', type='BOOLEAN', value='ON', read_only='N') 
+(name='clean_exit_on_sigterm', description='Attempt to do orderly shutdown on SIGTERM (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='coherency_lease', description='A coherency lease grants a replicant the right to be coherent for this many ms.', type='INTEGER', value='500', read_only='N')
 (name='coherency_lease_udp', description='Use udp to issue leases.', type='BOOLEAN', value='ON', read_only='N')
 (name='commitdelay', description='Add a delay after every commit. This is occasionally useful to throttle the transaction rate.', type='INTEGER', value='0', read_only='N')
