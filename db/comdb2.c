@@ -58,6 +58,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
+#include "thread_stats.h"
 
 #include <list.h>
 #include <mem.h>
@@ -167,6 +168,7 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
+extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
@@ -4136,7 +4138,9 @@ void *statthd(void *p)
     int newsql;
     long long newsql_steps;
     int nretries;
-    int64_t ndeadlocks = 0, nlockwaits = 0;
+    int64_t ndeadlocks = 0;
+    int64_t nlocks_aborted = 0;
+    int64_t nlockwaits = 0;
     int64_t vreplays;
 
     int diff_qtrap;
@@ -4148,6 +4152,7 @@ void *statthd(void *p)
     int diff_newsql;
     int diff_nretries;
     int diff_deadlocks;
+    int diff_locks_aborted;
     int diff_lockwaits;
     int diff_vreplays;
 
@@ -4159,7 +4164,7 @@ void *statthd(void *p)
     long long last_ncommit_time = 0;
     int last_newsql = 0;
     int last_nretries = 0;
-    int64_t last_ndeadlocks = 0, last_nlockwaits = 0;
+    int64_t last_ndeadlocks = 0, last_nlocks_aborted = 0, last_nlockwaits = 0;
     int64_t last_vreplays = 0;
 
     int count = 0;
@@ -4192,9 +4197,9 @@ void *statthd(void *p)
     int64_t last_report_curr_conns=0;
 
     struct reqlogger *statlogger = NULL;
-    struct bdb_thread_stats last_bdb_stats = {0};
-    struct bdb_thread_stats cur_bdb_stats;
-    const struct bdb_thread_stats *pstats;
+    struct berkdb_thread_stats last_bdb_stats = {0};
+    struct berkdb_thread_stats cur_bdb_stats;
+    const struct berkdb_thread_stats *pstats;
     char lastlsn[63] = "", curlsn[64];
     uint64_t lastlsnbytes = 0, curlsnbytes;
     int ii;
@@ -4235,8 +4240,10 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses, &rw_evicts);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlocks_aborted,
+                              &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
+        diff_locks_aborted = nlocks_aborted - last_nlocks_aborted;
         diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
@@ -4261,6 +4268,7 @@ void *statthd(void *p)
         last_newsql = newsql;
         last_nretries = nretries;
         last_ndeadlocks = ndeadlocks;
+        last_nlocks_aborted = nlocks_aborted;
         last_nlockwaits = nlockwaits;
         last_vreplays = vreplays;
         last_ncommits = ncommits;
@@ -4326,7 +4334,7 @@ void *statthd(void *p)
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count == thresh)) {
+            if ((thresh > 0) && (count == thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
@@ -4471,13 +4479,16 @@ void *statthd(void *p)
                 pstats = bdb_get_process_stats();
                 cur_bdb_stats = *pstats;
                 if (cur_bdb_stats.n_lock_waits > last_bdb_stats.n_lock_waits) {
-                    unsigned nreads = cur_bdb_stats.n_lock_waits -
+                    unsigned nwaits = cur_bdb_stats.n_lock_waits -
                                       last_bdb_stats.n_lock_waits;
                     reqlog_logf(statlogger, REQL_INFO,
-                                "%u locks, avg time %ums\n", nreads,
+                                "%u locks, avg time %ums, worst time %ums\n",
+                                nwaits,
                                 U2M(cur_bdb_stats.lock_wait_time_us -
                                     last_bdb_stats.lock_wait_time_us) /
-                                    nreads);
+                                    nwaits,
+                                U2M(cur_bdb_stats.worst_lock_wait_time_us));
+                    bb_berkdb_reset_worst_lock_wait_time_us();
                 }
                 if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
                     unsigned npreads =
@@ -4509,8 +4520,10 @@ void *statthd(void *p)
 
                 if (diff_deadlocks || diff_lockwaits || diff_vreplays)
                     reqlog_logf(statlogger, REQL_INFO,
-                                "ndeadlocks %d, nlockwaits %d, vreplays %d\n",
-                                diff_deadlocks, diff_lockwaits, diff_vreplays);
+                                "ndeadlocks %d, nlockwaits %d, vreplays %d, "
+                                "locks aborted %d\n",
+                                diff_deadlocks, diff_lockwaits, diff_vreplays,
+                                diff_locks_aborted);
 
                 bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes, curlsn,
                                     sizeof(curlsn));

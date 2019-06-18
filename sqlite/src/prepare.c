@@ -674,6 +674,9 @@ int sqlite3SchemaToIndex(sqlite3 *db, Schema *pSchema){
 */
 void sqlite3ParserReset(Parse *pParse){
   sqlite3 *db = pParse->db;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pParse->ast ) ast_destroy(&pParse->ast, db);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, pParse->aLabel);
   sqlite3ExprListDelete(db, pParse->pConstExpr);
   if( db ){
@@ -850,7 +853,6 @@ end_prepare:
 
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( sParse.ast ) ast_destroy(&sParse.ast, db);
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;

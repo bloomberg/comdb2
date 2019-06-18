@@ -14,28 +14,35 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_AST_H
-#define INCLUDED_AST_H
+#ifndef _THREAD_STATS_H_
+#define _THREAD_STATS_H_
 
-struct ast;
-typedef struct ast ast_t;
+#include <stdint.h>
 
-enum ast_type {
-    AST_TYPE_INVALID = 0,
-    AST_TYPE_SELECT = 1,
-    AST_TYPE_INSERT = 2,
-    AST_TYPE_UNION = 3,
-    AST_TYPE_IN = 4,
-    AST_TYPE_DELETE = 5,
-    AST_TYPE_UPDATE = 6
+struct berkdb_thread_stats {
+    unsigned n_lock_waits;
+    uint64_t lock_wait_time_us;
+    uint64_t worst_lock_wait_time_us;
+
+    unsigned n_preads;
+    unsigned pread_bytes;
+    uint64_t pread_time_us;
+
+    unsigned n_pwrites;
+    unsigned pwrite_bytes;
+    uint64_t pwrite_time_us;
+
+    unsigned n_memp_fgets;
+    uint64_t memp_fget_time_us;
+
+    unsigned n_memp_pgs;
+    uint64_t memp_pg_time_us;
+
+    unsigned n_shallocs;
+    uint64_t shalloc_time_us;
+
+    unsigned n_shalloc_frees;
+    uint64_t shalloc_free_time_us;
 };
-
-struct Vdbe;
-struct sqlite3;
-struct Parse;
-ast_t *ast_init(struct Parse *pParse, const char *caller);
-int ast_push(ast_t *ast, enum ast_type op, struct Vdbe *v, void *obj);
-void ast_destroy(ast_t **ast, struct sqlite3 *db);
-void ast_print(ast_t *ast);
 
 #endif

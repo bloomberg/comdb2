@@ -43,6 +43,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include "logmsg.h"
 #include "util.h"
 #include "locks_wrap.h"
+#include "thread_stats.h"
 #include "tohex.h"
 
 
@@ -2725,8 +2726,8 @@ upgrade:
 		MUTEX_LOCK(dbenv, &newl->mutex);
 
 		if (gbl_bb_berkdb_enable_thread_stats) {
-			struct bb_berkdb_thread_stats *t;
-			struct bb_berkdb_thread_stats *p;
+			struct berkdb_thread_stats *t;
+			struct berkdb_thread_stats *p;
 			if (gbl_bb_berkdb_enable_lock_timing) {
 				x2 = bb_berkdb_fasttime();
 			} else {
@@ -2734,9 +2735,14 @@ upgrade:
 			}
 			t = bb_berkdb_get_thread_stats();
 			p = bb_berkdb_get_process_stats();
-			p->lock_wait_time_us += (x2 - x1);
+            uint64_t d = (x2 - x1);
+			p->lock_wait_time_us += d;
+			if (p->worst_lock_wait_time_us < d)
+				p->worst_lock_wait_time_us = d;
 			p->n_lock_waits++;
-			t->lock_wait_time_us += (x2 - x1);
+			t->lock_wait_time_us += d;
+			if (t->worst_lock_wait_time_us < d)
+				t->worst_lock_wait_time_us = d;
 			t->n_lock_waits++;
 
 			if (gbl_bb_log_lock_waits_fn) {
