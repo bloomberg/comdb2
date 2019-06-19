@@ -183,14 +183,19 @@ do_test check-2.cleanup {
   }
 } {}
 
-#TODO: (NC) fixme
-#ifcapable subquery {
-#  do_test check-3.1 {
-#    catchsql {
-#      CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( x<(SELECT min(x) FROM t1) ));
-#    }
-#  } {1 {subqueries prohibited in CHECK constraints}}
-#}
+# NC: The following test is not in upstream.
+do_test check-3.0 {
+  catchsql {
+    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( x<(SELECT 1) ));
+  }
+} {1 {malformed database schema (t3) - subqueries prohibited in CHECK constraints}}
+
+do_test check-3.1 {
+  catchsql {
+    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( x<(SELECT min(x) FROM t1) ));
+  }
+} {1 {malformed database schema (t3) - no such table: t1}}
+#} {1 {subqueries prohibited in CHECK constraints}}
 
 do_test check-3.2 {
   execsql {
@@ -198,27 +203,26 @@ do_test check-3.2 {
   }
 } {sqlite_stat1 sqlite_stat4 t1 t2}
 #} {t1 t2}
-#TODO: (NC) fixme, following rightly fails with "no such column: q" though
-#do_test check-3.3 {
-#  catchsql {
-#    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( q<x ));
-#  }
-#} {1 {no such column: q}}
-#do_test check-3.4 {
-#  execsql {
-#    SELECT name FROM sqlite_master ORDER BY name
-#  }
-#} {t1 t2}
-#do_test check-3.5 {
-#  catchsql {
-#    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( t2.x<x ));
-#  }
-#} {1 {no such column: t2.x}}
-#do_test check-3.6 {
-#  execsql {
-#    SELECT name FROM sqlite_master ORDER BY name
-#  }
-#} {t1 t2}
+do_test check-3.3 {
+  catchsql {
+    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( q<x ));
+  }
+} {1 {malformed database schema (t3) - no such column: q}}
+do_test check-3.4 {
+  execsql {
+    SELECT name FROM sqlite_master ORDER BY name
+  }
+} {sqlite_stat1 sqlite_stat4 t1 t2}
+do_test check-3.5 {
+  catchsql {
+    CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( t2.x<x ));
+  }
+} {1 {malformed database schema (t3) - no such column: t2.x}}
+do_test check-3.6 {
+  execsql {
+    SELECT name FROM sqlite_master ORDER BY name
+  }
+} {sqlite_stat1 sqlite_stat4 t1 t2}
 do_test check-3.7 {
   catchsql {
     CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( t3.x<25 ));
@@ -301,16 +305,19 @@ ifcapable vacuum {
   } {0 {}}
 }
 
-#TODO: (NC) fixme
-#do_test check-5.1 {
-#  catchsql {
-#    CREATE TABLE t5(x INTEGER, y INTEGER, CHECK( x*y<:abc ));
-#  }
+# NC: In Comdb2, for standard DDL, post-syntax check (sql_syntax_check())
+# is performed after we check the number of parameters
+do_test check-5.1 {
+  catchsql {
+    CREATE TABLE t5(x INTEGER, y INTEGER, CHECK( x*y<:abc ));
+  }
+} {1 {parameters in stmt:1 parameters provided:0}}
 #} {1 {parameters prohibited in CHECK constraints}}
-#do_test check-5.2 {
-#  catchsql {
-#    CREATE TABLE t5(x INTEGER, y INTEGER, CHECK( x*y<? ));
-#  }
+do_test check-5.2 {
+  catchsql {
+    CREATE TABLE t5(x INTEGER, y INTEGER, CHECK( x*y<? ));
+  }
+} {1 {parameters in stmt:1 parameters provided:0}}
 #} {1 {parameters prohibited in CHECK constraints}}
 
 ifcapable conflict {
