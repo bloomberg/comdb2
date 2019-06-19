@@ -9,7 +9,6 @@ hostflags=
 if [[ -n "$CLUSTER" ]]; then
     read -ra nodes <<< "$CLUSTER"
     hostflags="--host ${nodes[0]}"
-    exit 1
 fi
 
 # wait for other connections to go away
