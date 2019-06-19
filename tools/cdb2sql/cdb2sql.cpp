@@ -488,14 +488,14 @@ void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
         (*sqlstr)++;
-    const char *end = *sqlstr;
+    const char *str = *sqlstr;
+    const char *end = str;
     while (*end)
         end++; // till \0
-    int len = end - (*sqlstr);
-    if (len < 1 || !(**sqlstr)) {
+    int len = end - str;
+    if (len < 1 || !(*str)) {
         return NULL;
     }
-    const char *str = *sqlstr;
     if (type == CDB2_INTEGER) {
         int64_t i = atol(str);
         int64_t *val = (int64_t *) malloc(sizeof(int64_t));
@@ -560,7 +560,6 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     } else {
         fprintf(stderr,
                "Type %d not yet supported\n", type);
-        /* ?? */
     }
     return NULL;
 }
@@ -1095,6 +1094,58 @@ int Result_buffer::print_result() {
     return 0;
 }
 
+int process_bind(const char *sql)
+{
+    if (!strncasecmp(sql, "@bind", 5) == 0)
+        return process_escape(sql);
+
+    const char *copy_sql = sql;
+    verbose_print("setting bind parameter\n");
+    //@bind BINDTYPE parameter value
+    sql += 5;
+
+    int type = get_type(&sql);
+    if (type < 0 || !isspace(*sql)) {
+        fprintf(stderr,
+                "Usage: @bind <type> <paramname> <value>, with type one of the following: \n"
+                "    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}\n");
+        fprintf(stderr,
+                "[%s] rc %d\n", copy_sql, type);
+        return type;
+    }
+
+    char *parameter = get_parameter(&sql);
+    if (parameter == NULL) {
+        fprintf(stderr,
+                "[%s] rc -1: Parameter name expected after type\n", copy_sql);
+        return -1;
+    }
+
+    int length;
+    int rc = 0;
+    void *value = get_val(&sql, type, &length);
+    if (!value) {
+        fprintf(stderr,
+                "[%s] rc -1: Value expected after parameter\n", copy_sql);
+        return -1;
+    }
+
+    if (debug_trace)
+        fprintf(stderr, "binding: type %d, param %s, value %s\n",
+                type, parameter, value);
+    if (isdigit(parameter[0])) {
+        int index = atoi(parameter);
+        if (index <= 0)
+            return -1;
+        rc = cdb2_bind_index(cdb2h, index, type, value, length);
+    } else {
+        rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+        /* we have to leak parameter here -- freeing breaks the bind */
+    }
+    return rc;
+}
+
+
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time)
 {
@@ -1112,7 +1163,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
-
         if (maxretries) {
             cdb2_set_max_retries(maxretries);
         }
@@ -1163,12 +1213,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
           Note: It is good to report the user about the use of environment
           variables to set user/password to avoid any surprises.
         */
-        int length;
-
         if (getenv("COMDB2_USER")) {
-            length = snprintf(cmd, sizeof(cmd), "set user %s",
-                              getenv("COMDB2_USER"));
-
+            int length = snprintf(cmd, sizeof(cmd), "set user %s",
+                                  getenv("COMDB2_USER"));
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_USER too long, ignored\n");
             } else if ((length < 0) ||
@@ -1182,9 +1229,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
 
         if (getenv("COMDB2_PASSWORD")) {
-            length = snprintf(cmd, sizeof(cmd), "set password %s",
-                              getenv("COMDB2_PASSWORD"));
-
+            int length = snprintf(cmd, sizeof(cmd), "set password %s",
+                                  getenv("COMDB2_PASSWORD"));
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
             } else if ((length < 0) ||
@@ -1198,54 +1244,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    /* Bind parameter ability -- useful for debugging */
+    /* Bind parameter ability */
     if (sql[0] == '@') {
-        if (!strncasecmp(sql, "@bind", 5) == 0)
-            return process_escape(sql);
-
-        const char *copy_sql = sql;
-        verbose_print("setting bind parameter\n");
-        //@bind BINDTYPE parameter value
-        sql += 5;
-
-        int type = get_type(&sql);
-        if (type < 0 || !isspace(*sql)) {
-            fprintf(stderr,
-                    "Usage: @bind <type> <paramname> <value>, with type one of the following: \n"
-                    "    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}\n");
-            fprintf(stderr,
-                    "[%s] rc %d\n", copy_sql, type);
-            return type;
-        }
-
-        char *parameter = get_parameter(&sql);
-        if (parameter == NULL) {
-            fprintf(stderr,
-                    "[%s] rc -1: Parameter name expected after type\n", copy_sql);
-            return -1;
-        }
-
-        int length;
-        void *value = get_val(&sql, type, &length);
-        if (!value) {
-            fprintf(stderr,
-                    "[%s] rc -1: Value expected after parameter\n", copy_sql);
-            return -1;
-        }
-
-        if (debug_trace)
-            fprintf(stderr, "binding: type %d, param %s, value %s\n",
-                    type, parameter, value);
-        if (isdigit(parameter[0])) {
-            int index = atoi(parameter);
-            if (index <= 0)
-                return -1;
-            rc = cdb2_bind_index(cdb2h, index, type, value, length);
-        } else {
-            rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-            /* we have to leak parameter here -- freeing breaks the bind */
-        }
-        return rc;
+        return process_bind(sql);
     }
 
     {
