@@ -140,6 +140,7 @@ struct thdpool {
 #ifdef MONITOR_STACK
     comdb2ma stack_alloc;
 #endif
+    void (*queued_callback)(void*);
 };
 
 pthread_mutex_t pool_list_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -883,6 +884,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             thd->on_freelist = 0;
             pool->num_passed++;
         } else {
+            /* queue work */
+            if (pool->queued_callback)
+                pool->queued_callback(work);
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
@@ -1136,4 +1140,9 @@ struct thdpool *thdpool_next_pool(struct thdpool *pool)
 int thdpool_get_queue_depth(struct thdpool *pool)
 {
     return pool->queue.count;
+}
+
+void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*)) 
+{
+    pool->queued_callback = callback;
 }
