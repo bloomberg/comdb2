@@ -313,8 +313,8 @@ static SBUF2 *sbuf2openread(const char *filename)
     int fd;
     SBUF2 *s;
 
-    if ((fd = open(filename, O_RDONLY, 0)) < 0 || 
-            (s = sbuf2open(fd, 0)) == NULL) {
+    if ((fd = open(filename, O_RDONLY, 0)) < 0 ||
+        (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
             close(fd);
         return NULL;
