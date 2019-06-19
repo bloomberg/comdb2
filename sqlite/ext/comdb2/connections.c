@@ -8,6 +8,10 @@
 #include "ezsystables.h"
 #include "types.h"
 
+sqlite3_module systblConnectionsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int get_connections(void **data, int *num_points) {
     struct connection_info *info;
     int rc = gather_connection_info(&info, num_points);
@@ -62,7 +66,8 @@ void free_connections(void *data, int num_points) {
 }
 
 int systblConnectionsInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_connections", get_connections, free_connections, sizeof(struct connection_info),
+    return create_system_table(db, "comdb2_connections", 
+            &systblConnectionsModule, get_connections, free_connections, sizeof(struct connection_info),
             CDB2_CSTRING, "host", -1, offsetof(struct connection_info, host),
             CDB2_INTEGER, "connection_id", -1, offsetof(struct connection_info, connection_id),
             CDB2_DATETIME, "connect_time", -1, offsetof(struct connection_info, connect_time),
