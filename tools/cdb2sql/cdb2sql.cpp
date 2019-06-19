@@ -441,7 +441,7 @@ int get_type(const char **sqlstr)
         (*sqlstr)++;
     if (!*sqlstr || strncasecmp(*sqlstr, "CDB2_", 5) != 0)
         return -1;
-    
+
     *sqlstr += 5; // skip CDB2_
     checkfortype(*sqlstr, "INTEGER", CDB2_INTEGER);
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
@@ -460,7 +460,7 @@ char *get_parameter(const char **sqlstr)
     }
     const char *end = *sqlstr;
     while (*end && !isspace(*end))
-        end++; 
+        end++;
     int len = end - (*sqlstr);
     if (len < 1 || !*sqlstr) {
         return NULL;
@@ -516,9 +516,9 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d",
-                        &dt->tm.tm_year, &dt->tm.tm_mon, &dt->tm.tm_mday,
-                        &dt->tm.tm_hour, &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
+                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                        &dt->tm.tm_min, &dt->tm.tm_sec);
         /* timezone not supported for now */
         if (rc != 6) {
             fprintf(stderr,
@@ -535,31 +535,31 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     } else if (type == CDB2_BLOB) {
         int slen = strlen(str);
         if (str[0] != 'x' && str[0] != '\'' && str[slen - 1] != '\'') {
-            fprintf(stderr,
-                    "Type CDB2_BLOB should be in format: x'abcd'\n");
+            fprintf(stderr, "Type CDB2_BLOB should be in format: x'abcd'\n");
             return NULL;
         }
-            
+
         slen -= 3; /* without x'' */
-        int unexlen = slen/2;
+        int unexlen = slen / 2;
         if (2 * unexlen != slen) {
-            fprintf(stderr,
-                    "Type CDB2_BLOB should have an even size length in format: x'abcd'\n");
+            fprintf(stderr, "Type CDB2_BLOB should have an even size length in "
+                            "format: x'abcd'\n");
             return NULL;
         }
-        uint8_t *unexpanded = (uint8_t *) malloc(unexlen + 1);
-        int rc = fromhex(unexpanded, (const uint8_t *) str + 2, slen); /* no x' */
+        uint8_t *unexpanded = (uint8_t *)malloc(unexlen + 1);
+        int rc =
+            fromhex(unexpanded, (const uint8_t *)str + 2, slen); /* no x' */
         if (rc) {
-            fprintf(stderr,
-                    "Type CDB2_BLOB should have characters from 0-9a-f: x'abcd'\n");
+            fprintf(
+                stderr,
+                "Type CDB2_BLOB should have characters from 0-9a-f: x'abcd'\n");
             return NULL;
         }
         unexpanded[unexlen] = '\0';
         *vallen = unexlen;
         return unexpanded;
     } else {
-        fprintf(stderr,
-               "Type %d not yet supported\n", type);
+        fprintf(stderr, "Type %d not yet supported\n", type);
     }
     return NULL;
 }
@@ -1106,18 +1106,18 @@ int process_bind(const char *sql)
 
     int type = get_type(&sql);
     if (type < 0 || !isspace(*sql)) {
-        fprintf(stderr,
-                "Usage: @bind <type> <paramname> <value>, with type one of the following: \n"
-                "    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}\n");
-        fprintf(stderr,
-                "[%s] rc %d\n", copy_sql, type);
+        fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
+                        "one of the following:\n"
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
+                        "INTERVALDS}\n");
+        fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
         return type;
     }
 
     char *parameter = get_parameter(&sql);
     if (parameter == NULL) {
-        fprintf(stderr,
-                "[%s] rc -1: Parameter name expected after type\n", copy_sql);
+        fprintf(stderr, "[%s] rc -1: Parameter name expected after type\n",
+                copy_sql);
         return -1;
     }
 
@@ -1125,14 +1125,14 @@ int process_bind(const char *sql)
     int rc = 0;
     void *value = get_val(&sql, type, &length);
     if (!value) {
-        fprintf(stderr,
-                "[%s] rc -1: Value expected after parameter\n", copy_sql);
+        fprintf(stderr, "[%s] rc -1: Value expected after parameter\n",
+                copy_sql);
         return -1;
     }
 
     if (debug_trace)
-        fprintf(stderr, "binding: type %d, param %s, value %s\n",
-                type, parameter, value);
+        fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
+                parameter, value);
     if (isdigit(parameter[0])) {
         int index = atoi(parameter);
         if (index <= 0)
@@ -1144,7 +1144,6 @@ int process_bind(const char *sql)
     }
     return rc;
 }
-
 
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time)

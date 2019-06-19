@@ -1,30 +1,30 @@
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind] rc -1
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind] rc -1
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind  CDB2_STUFF] rc -1
 (1=1)
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind  CDB2_INTEGE] rc -1
 [select 1] rc 0
 (2=2)
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind  CDB2_INTEGERABC] rc 1
 [select 2] rc 0
 (3=3)
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind  CDB2_INTEGER] rc 1
 [select 3] rc 0
 (4=4)
-Usage: @bind <type> <paramname> <value>, with type one of the following: 
-    CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
+Usage: @bind <type> <paramname> <value>, with type one of the following:
+CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,INTERVALDS}
 [@bind  CDB2_INTEGER] rc 1
 [select 4] rc 0
 (5=5)
