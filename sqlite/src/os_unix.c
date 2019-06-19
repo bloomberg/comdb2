@@ -5701,7 +5701,7 @@ char *comdb2_get_tmp_dir(void);
 */
 static const char *unixTempFileDir(void){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-   return comdb2_get_tmp_dir();
+  return comdb2_get_tmp_dir();
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   static const char *azDirs[] = {
      0,

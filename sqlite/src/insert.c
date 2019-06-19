@@ -2012,8 +2012,8 @@ void sqlite3CompleteInsertion(
   int appendBias,     /* True if this is likely to be an append */
   int useSeekResult   /* True to set the USESEEKRESULT flag on OP_[Idx]Insert */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ,int onError     /* OE_Replace, etc. */
-  ,Upsert *pUpsert /* ON CONFLICT clauses for upsert, or NULL */
+  ,int onError        /* OE_Replace, etc. */
+  ,Upsert *pUpsert    /* ON CONFLICT clauses for upsert, or NULL */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   Vdbe *v;            /* Prepared statements under construction */

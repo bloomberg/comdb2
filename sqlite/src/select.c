@@ -5776,9 +5776,10 @@ int sqlite3Select(
   sqlite3SelectPrep(pParse, p, 0);
   if( pParse->nErr || db->mallocFailed ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( pParse->checkSchema == 1 /* parsing error */ && 
-            pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
-                strlen("no such column")) == 0){
+    #define SQLITE_NO_SUCH_COLUMN_ERROR "no such column"
+    if( pParse->checkSchema==1 /* parsing error */ && pParse->zErrMsg &&
+        strncasecmp(pParse->zErrMsg, SQLITE_NO_SUCH_COLUMN_ERROR,
+                    strlen(SQLITE_NO_SUCH_COLUMN_ERROR)) == 0){
       if (sql_has_remotes(pParse, p->pSrc)) {
         comdb2_set_verify_remote_schemas();
       }
