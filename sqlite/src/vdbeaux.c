@@ -666,6 +666,7 @@ int sqlite3VdbeAssertMayAbort(Vdbe *v, int mayAbort){
   int hasAbort = 0;
   int hasFkCounter = 0;
   int hasCreateTable = 0;
+  int hasCreateIndex = 0;
   int hasInitCoroutine = 0;
   Op *pOp;
   VdbeOpIter sIter;
@@ -684,6 +685,14 @@ int sqlite3VdbeAssertMayAbort(Vdbe *v, int mayAbort){
       break;
     }
     if( opcode==OP_CreateBtree && pOp->p3==BTREE_INTKEY ) hasCreateTable = 1;
+    if( mayAbort ){
+      /* hasCreateIndex may also be set for some DELETE statements that use
+      ** OP_Clear. So this routine may end up returning true in the case 
+      ** where a "DELETE FROM tbl" has a statement-journal but does not
+      ** require one. This is not so bad - it is an inefficiency, not a bug. */
+      if( opcode==OP_CreateBtree && pOp->p3==BTREE_BLOBKEY ) hasCreateIndex = 1;
+      if( opcode==OP_Clear ) hasCreateIndex = 1;
+    }
     if( opcode==OP_InitCoroutine ) hasInitCoroutine = 1;
 #ifndef SQLITE_OMIT_FOREIGN_KEY
     if( opcode==OP_FkCounter && pOp->p1==0 && pOp->p2==1 ){
@@ -699,7 +708,8 @@ int sqlite3VdbeAssertMayAbort(Vdbe *v, int mayAbort){
   ** true for this case to prevent the assert() in the callers frame
   ** from failing.  */
   return ( v->db->mallocFailed || hasAbort==mayAbort || hasFkCounter
-              || (hasCreateTable && hasInitCoroutine) );
+        || (hasCreateTable && hasInitCoroutine) || hasCreateIndex
+  );
 }
 #endif /* SQLITE_DEBUG - the sqlite3AssertMayAbort() function */
 
@@ -1631,7 +1641,7 @@ static char *displayP4(Op *pOp, char *zTemp, int nTemp){
       Mem *pMem = pOp->p4.pMem;
       if( pMem->flags & MEM_Str ){
         zP4 = pMem->z;
-      }else if( pMem->flags & MEM_Int ){
+      }else if( pMem->flags & (MEM_Int|MEM_IntReal) ){
         sqlite3_str_appendf(&x, "%lld", pMem->u.i);
       }else if( pMem->flags & MEM_Real ){
         sqlite3_str_appendf(&x, "%.16g", pMem->u.r);
@@ -3055,7 +3065,7 @@ int sqlite3VdbeHalt(Vdbe *p){
     }
 
     /* Check for immediate foreign key violations. */
-    if( p->rc==SQLITE_OK ){
+    if( p->rc==SQLITE_OK || (p->errorAction==OE_Fail && !isSpecialError) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       (void)
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3689,6 +3699,8 @@ int sqlite3VdbeCursorMoveto(VdbeCursor **pp, int *piCol){
 
 /*
 ** Return the serial-type for the value stored in pMem.
+**
+** This routine might convert a large MEM_IntReal value into MEM_Real.
 */
 u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
   int flags = pMem->flags;
@@ -3699,7 +3711,7 @@ u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
     *pLen = 0;
     return 0;
   }
-  if( flags&MEM_Int ){
+  if( flags&(MEM_Int|MEM_IntReal) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     *pLen = 8;
     return 6;
@@ -3708,6 +3720,8 @@ u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
 #   define MAX_6BYTE ((((i64)0x00008000)<<32)-1)
     i64 i = pMem->u.i;
     u64 u;
+    testcase( flags & MEM_Int );
+    testcase( flags & MEM_IntReal );
     if( i<0 ){
       u = ~i;
     }else{
@@ -3727,6 +3741,15 @@ u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
     if( u<=2147483647 ){ *pLen = 4; return 4; }
     if( u<=MAX_6BYTE ){ *pLen = 6; return 5; }
     *pLen = 8;
+    if( flags&MEM_IntReal ){
+      /* If the value is IntReal and is going to take up 8 bytes to store
+      ** as an integer, then we might as well make it an 8-byte floating
+      ** point value */
+      pMem->u.r = (double)pMem->u.i;
+      pMem->flags &= ~MEM_IntReal;
+      pMem->flags |= MEM_Real;
+      return 7;
+    }
     return 6;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
@@ -4083,7 +4106,7 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 ** routine so that in most cases the overhead of moving the stack pointer
 ** is avoided.
 */ 
-static u32 SQLITE_NOINLINE serialGet(
+static u32 serialGet(
   const unsigned char *buf,     /* Buffer to deserialize from */
   u32 serial_type,              /* Serial type to deserialize */
   Mem *pMem                     /* Memory cell to write value into */
@@ -4115,7 +4138,7 @@ static u32 SQLITE_NOINLINE serialGet(
     assert( sizeof(x)==8 && sizeof(pMem->u.r)==8 );
     swapMixedEndianFloat(x);
     memcpy(&pMem->u.r, &x, sizeof(x));
-    pMem->flags = sqlite3IsNaN(pMem->u.r) ? MEM_Null : MEM_Real;
+    pMem->flags = IsNaN(x) ? MEM_Null : MEM_Real;
   }
   return 8;
 }
@@ -4827,13 +4850,21 @@ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
   ** If both are numbers, compare as reals if one is a real, or as integers
   ** if both values are integers.
   */
-  if( combined_flags&(MEM_Int|MEM_Real|MEM_Small) ){
+  if( combined_flags&(MEM_Int|MEM_Real|MEM_IntReal|MEM_Small) ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* At least one of the two values is a number
   */
-  if( combined_flags&(MEM_Int|MEM_Real) ){
+  if( combined_flags&(MEM_Int|MEM_Real|MEM_IntReal) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    if( (f1 & f2 & MEM_Int)!=0 ){
+    testcase( combined_flags & MEM_Int );
+    testcase( combined_flags & MEM_Real );
+    testcase( combined_flags & MEM_IntReal );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    testcase( combined_flags & MEM_Small );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    if( (f1 & f2 & (MEM_Int|MEM_IntReal))!=0 ){
+      testcase( f1 & f2 & MEM_Int );
+      testcase( f1 & f2 & MEM_IntReal );
       if( pMem1->u.i < pMem2->u.i ) return -1;
       if( pMem1->u.i > pMem2->u.i ) return +1;
       return 0;
@@ -4854,15 +4885,23 @@ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
       if( pMem1->u.r > pMem2->u.r ) return +1;
       return 0;
     }
-    if( (f1&MEM_Int)!=0 ){
+    if( (f1&(MEM_Int|MEM_IntReal))!=0 ){
+      testcase( f1 & MEM_Int );
+      testcase( f1 & MEM_IntReal );
       if( (f2&MEM_Real)!=0 ){
         return sqlite3IntFloatCompare(pMem1->u.i, pMem2->u.r);
+      }else if( (f2&(MEM_Int|MEM_IntReal))!=0 ){
+        if( pMem1->u.i < pMem2->u.i ) return -1;
+        if( pMem1->u.i > pMem2->u.i ) return +1;
+        return 0;
       }else{
         return -1;
       }
     }
     if( (f1&MEM_Real)!=0 ){
-      if( (f2&MEM_Int)!=0 ){
+      if( (f2&(MEM_Int|MEM_IntReal))!=0 ){
+        testcase( f2 & MEM_Int );
+        testcase( f2 & MEM_IntReal );
         return -sqlite3IntFloatCompare(pMem2->u.i, pMem1->u.r);
       }else{
         return -1;
@@ -5034,7 +5073,9 @@ int sqlite3VdbeRecordCompareWithSkip(
     else
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* RHS is an integer */
-    if( pRhs->flags & MEM_Int ){
+    if( pRhs->flags & (MEM_Int|MEM_IntReal) ){
+      testcase( pRhs->flags & MEM_Int );
+      testcase( pRhs->flags & MEM_IntReal );
       serial_type = aKey1[idx1];
       testcase( serial_type==12 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -5402,7 +5443,9 @@ RecordCompare sqlite3VdbeFindCompare(UnpackedRecord *p){
     testcase( flags & MEM_Real );
     testcase( flags & MEM_Null );
     testcase( flags & MEM_Blob );
-    if( (flags & (MEM_Real|MEM_Null|MEM_Blob))==0 && p->pKeyInfo->aColl[0]==0 ){
+    if( (flags & (MEM_Real|MEM_IntReal|MEM_Null|MEM_Blob))==0
+     && p->pKeyInfo->aColl[0]==0
+    ){
       assert( flags & MEM_Str );
       return vdbeRecordCompareString;
     }

@@ -1062,7 +1062,7 @@ static void codeCursorHint(
     }
 
     /* If we survive all prior tests, that means this term is worth hinting */
-    pExpr = sqlite3ExprAnd(db, pExpr, sqlite3ExprDup(db, pTerm->pExpr, 0));
+    pExpr = sqlite3ExprAnd(pParse, pExpr, sqlite3ExprDup(db, pTerm->pExpr, 0));
   }
   if( pExpr!=0 ){
     sWalker.xExprCallback = codeCursorHintFixExpr;
@@ -2044,7 +2044,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         if( (pWC->a[iTerm].eOperator & WO_ALL)==0 ) continue;
         testcase( pWC->a[iTerm].wtFlags & TERM_ORINFO );
         pExpr = sqlite3ExprDup(db, pExpr, 0);
-        pAndExpr = sqlite3ExprAnd(db, pAndExpr, pExpr);
+        pAndExpr = sqlite3ExprAnd(pParse, pAndExpr, pExpr);
       }
       if( pAndExpr ){
         /* The extra 0x10000 bit on the opcode is masked off and does not
@@ -2195,7 +2195,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     sqlite3VdbeGoto(v, pLevel->addrBrk);
     sqlite3VdbeResolveLabel(v, iLoopBody);
 
-    if( pWInfo->nLevel>1 ) sqlite3StackFree(db, pOrTab);
+    if( pWInfo->nLevel>1 ){ sqlite3StackFree(db, pOrTab); }
     if( !untestedTerms ) disableTerm(pLevel, pTerm);
   }else
 #endif /* SQLITE_OMIT_OR_OPTIMIZATION */
