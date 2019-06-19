@@ -1687,6 +1687,7 @@ void sqlite3GenerateConstraintChecks(
   }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ix = 0;
   if( need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
@@ -2034,6 +2035,7 @@ void sqlite3CompleteInsertion(
   assert( v!=0 );
   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  i = 0;
   if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
