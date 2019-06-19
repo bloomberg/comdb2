@@ -886,7 +886,7 @@ struct dbtable *getqueuebyname(const char *name)
 
 int get_max_reclen(struct dbenv *dbenv)
 {
-    int max = 0;
+    int max = -1;
     char *fname, fname_tail[] = "_file_vers_map";
     int file, fnamelen;
     SBUF2 *sbfile;
