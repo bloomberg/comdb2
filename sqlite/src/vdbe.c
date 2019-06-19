@@ -4865,9 +4865,7 @@ case OP_SeekGT: {       /* jump, in3, group */
       res = sqlite3BtreeEof(pC->uc.pCursor);
     }
   }
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 seek_not_found:
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pOp->p2>0 );
   VdbeBranchTaken(res!=0,2);
   if( res ){

@@ -4873,8 +4873,8 @@ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
     if( (combined_flags&MEM_Small)!=0 ){
       float r1 = pMem1->u.r;
       float r2 = pMem2->u.r;
-      if( f1&MEM_Int ) r1 = pMem1->u.i;
-      if( f2&MEM_Int ) r2 = pMem2->u.i;
+      if( (f1&(MEM_Int|MEM_IntReal))!=0 ) r1 = pMem1->u.i;
+      if( (f2&(MEM_Int|MEM_IntReal))!=0 ) r2 = pMem2->u.i;
       if( r1<r2 ) return -1;
       if( r1>r2 ) return +1;
       return 0;

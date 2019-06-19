@@ -431,10 +431,8 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
   const int nByte = 32;
 
   assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
-  assert( !(fg&MEM_Zero) );
-  assert( !(fg&(MEM_Str|MEM_Blob)) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  assert( fg&(MEM_Int|MEM_Real|MEM_IntReal|MEM_Datetime|MEM_Interval) );
+  assert( pMem->flags&(MEM_Int|MEM_Real|MEM_IntReal|MEM_Datetime|MEM_Interval) );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( !(pMem->flags&MEM_Zero) );
   assert( !(pMem->flags&(MEM_Str|MEM_Blob)) );
@@ -456,7 +454,7 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
   ** FIX ME: It would be better if sqlite3_snprintf() could do UTF-16.
   */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( fg&MEM_Interval ){
+  if( pMem->flags&MEM_Interval ){
     char tmp[64];
     char *z;
 
@@ -510,7 +508,7 @@ int sqlite3VdbeMemStringify(Mem *pMem, u8 enc, u8 bForce){
     if( bForce ) pMem->flags &= ~MEM_Interval;
     sqlite3VdbeChangeEncoding(pMem, enc);
     return SQLITE_OK;
-  }else if( fg&MEM_Datetime ){
+  }else if( pMem->flags&MEM_Datetime ){
     char    tmp[64];
     int     outdtsz;
 
@@ -2371,7 +2369,7 @@ int sqlite3VdbeMemDatetimefyTz(Mem *pMem, const char *tz){
     if(real_to_dttz(pMem->u.r, &pMem->du.dt, pMem->dtprec) != 0)
       return SQLITE_ERROR;
     pMem->flags = MEM_Datetime;
-  }else if( pMem->flags & MEM_Int ){
+  }else if( pMem->flags & (MEM_Int|MEM_IntReal) ){
     if (int_to_dttz(pMem->u.i, &pMem->du.dt, pMem->dtprec) != 0)
       return SQLITE_ERROR;
     pMem->flags = MEM_Datetime;
@@ -2422,7 +2420,7 @@ int sqlite3VdbeMemDecimalfy(Mem *pMem)
    /* TODO: we need a custom routine */
    if(fg & MEM_Real) return SQLITE_ERROR;
 
-   if(fg & MEM_Int)
+   if(fg & (MEM_Int|MEM_IntReal))
    {
       char str[32]; 
       void *ret = NULL;
@@ -2523,7 +2521,7 @@ int sqlite3VdbeMemIntervalfy(Mem *pMem, int type){
   }
 
   bzero(&pMem->du, sizeof(pMem->du));
-  if( pMem->flags & MEM_Int ){
+  if( pMem->flags & (MEM_Int|MEM_IntReal) ){
     int_to_interval(pMem->u.i, &tmp, &tmp2, &pMem->du.tv.sign);
     goto num;
   }else if( pMem->flags & MEM_Real ){
@@ -2800,7 +2798,7 @@ int sqlite3VdbeMemIntervalAndInt(
   const Mem *b,
   int opcode,
   Mem * res
-                                 ){
+){
   bzero(res, sizeof(Mem));
   res->flags |= MEM_Interval;
   long long aa = 0, bb = 0;
@@ -3268,6 +3266,7 @@ int sqliteVdbeMemDecimalBasicArithmetics(
 
   switch( b->flags & MEM_TypeMask ){
     case MEM_Int:
+    case MEM_IntReal:
     case MEM_Str: {
       sqlite3VdbeMemCopy(&bcopy, b);
       b = &bcopy;
