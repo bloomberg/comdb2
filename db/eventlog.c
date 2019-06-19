@@ -454,13 +454,15 @@ static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (eventlog == NULL || !eventlog_enabled) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
+    }
 
     bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
 
-    Pthread_mutex_lock(&eventlog_lk);
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(obj, logger);
     }
@@ -537,13 +539,15 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (eventlog == NULL || !eventlog_enabled) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
+    }
 
     cson_value *val;
     cson_object *obj;
 
-    Pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
         Pthread_mutex_unlock(&eventlog_lk);
@@ -559,7 +563,8 @@ void eventlog_add(const struct reqlogger *logger)
     eventlog_add_int(obj, logger);
 
     Pthread_mutex_lock(&eventlog_lk);
-    cson_output(val, write_json, eventlog, &opt);
+    if (eventlog != NULL && eventlog_enabled)
+        cson_output(val, write_json, eventlog, &opt);
     Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
@@ -718,10 +723,12 @@ void eventlog_process_message(char *line, int lline, int *toff)
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
                         u_int32_t nlockers, u_int32_t victim)
 {
-    if (eventlog == NULL)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (!eventlog_enabled || eventlog == NULL) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
-    if (!eventlog_enabled)
-        return;
+    }
+    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_value *dval = cson_value_new_object();
     cson_object *obj = cson_value_get_object(dval);
@@ -755,6 +762,8 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     logmsg(LOGMSG_USER, "\n");
 
     Pthread_mutex_lock(&eventlog_lk);
-    cson_output(dval, write_json, eventlog, &opt);
+    if (eventlog_enabled && eventlog != NULL)
+        cson_output(dval, write_json, eventlog, &opt);
     Pthread_mutex_unlock(&eventlog_lk);
+    cson_value_free(dval);
 }
