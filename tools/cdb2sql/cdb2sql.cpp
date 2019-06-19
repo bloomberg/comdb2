@@ -398,6 +398,27 @@ static char **my_completion (const char *text, int start, int end)
         return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
+static bool skip_history(const char *line)
+{
+    size_t n;
+
+    while (isspace(*line))
+        ++line;
+
+    n = sizeof("set") - 1;
+    if (strncasecmp(line, "set", n)) {
+        return false;
+    }
+    line += n;
+
+    while (isspace(*line))
+        ++line;
+
+    if (strncasecmp(line, "password", sizeof("password") - 1)) {
+        return false;
+    }
+    return true;
+}
 
 static char *read_line()
 {
@@ -408,7 +429,8 @@ static char *read_line()
             free(line);
             line = NULL;
         }
-        if ((line = readline(prompt)) != NULL && line[0] != 0)
+        if ((line = readline(prompt)) != NULL && line[0] != 0 &&
+            !skip_history(line))
             add_history(line);
         return line;
     }

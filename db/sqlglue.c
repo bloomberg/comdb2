@@ -111,10 +111,13 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
+extern int gbl_debug_tmptbl_corrupt_mem;
 
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
 static __thread struct temptable *tmptbl_clone = NULL;
+
+int gbl_sql_temptable_count;
 
 void free_cached_idx(uint8_t **cached_idx)
 {
@@ -756,6 +759,7 @@ void done_sql_thread(void)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         free(thd);
     }
+    bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
 }
 
 static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
@@ -3133,7 +3137,13 @@ static int temptable_free(void *obj, void *arg)
     Btree *pBt = arg;
     if (tmp->owner == pBt) {
         int bdberr;
-        bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        if (rc == 0) {
+            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
+                   __func__, tmp->tbl, rc);
+        }
     }
     free(tmp);
     return 0;
@@ -3146,7 +3156,7 @@ int sqlite3BtreeClose(Btree *pBt)
 {
     int rc = SQLITE_OK;
     BtCursor *pCur;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sql_thread *thd;
 
     /* go through cursor list for db.  close any still open (abort? commit?),
      * deallocate pBt */
@@ -3159,16 +3169,12 @@ int sqlite3BtreeClose(Btree *pBt)
     BtCursor *tmp;
     LISTC_FOR_EACH_SAFE(&pBt->cursors, pCur, tmp, lnk)
     {
-        int rc2 = sqlite3BtreeCloseCursor(pCur);
-        if (rc2) {
+        rc = sqlite3BtreeCloseCursor(pCur);
+        if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: sqlite3BtreeCloseCursor failed, pCur=%p, rc=%d\n",
-                   __func__, pCur, rc2);
-            /* Don't stop, or will leak cursors that will
-             * lock pages forever... 20081002dh
-             rc = SQLITE_INTERNAL;
-             goto done;
-             */
+                   __func__, pCur, rc);
+            /* Don't stop, or will leak cursors that will lock pages forever */
         }
     }
     assert(listc_size(&pBt->cursors) == 0);
@@ -3177,8 +3183,14 @@ int sqlite3BtreeClose(Btree *pBt)
         hash_for(pBt->temp_tables, temptable_free, pBt);
         hash_free(pBt->temp_tables);
         pBt->temp_tables = NULL;
-    } else {
-        if (thd)
+    }
+
+    /* Reset thd pointers */
+    thd = pthread_getspecific(query_info_key);
+    if (thd) {
+        if (pBt->is_temporary && thd->bttmp == pBt)
+            thd->bttmp = NULL;
+        else if (thd->bt == pBt)
             thd->bt = NULL;
     }
 
@@ -3186,26 +3198,19 @@ int sqlite3BtreeClose(Btree *pBt)
         pBt->free_schema(pBt->schema);
         free(pBt->schema);
     }
-#if 0
- is not part of Btree anymore */
-   if (pBt->tran) {
-      sqlite3BtreeRollback(pBt);
-      pBt->tran = NULL;
-   }
-#endif
-    /*
-     * if (thd->clnt->freemewithbt)
-     * free(thd->clnt);
-     */
+
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Close(pBt %d)      = %s\n",
                 pBt->btreeid, sqlite3ErrStr(rc));
-    if (rc == 0){
-        if (pBt->zFilename) {
-            free(pBt->zFilename);
-            pBt->zFilename = NULL;
-        }
-        free(pBt);
+
+    if (pBt->zFilename) {
+        free(pBt->zFilename);
+        pBt->zFilename = NULL;
     }
+    if (unlikely(gbl_debug_tmptbl_corrupt_mem)) {
+        memset(pBt, 0xcdb2, sizeof(*pBt));
+    }
+    free(pBt);
+
     return rc;
 }
 
@@ -3327,11 +3332,11 @@ int sqlite3BtreeOpen(
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
-        thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
         }
+        thd->bttmp = bt;
         *ppBtree = bt;
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
@@ -3838,7 +3843,13 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
     struct temptable *tmp = hash_find(pBt->temp_tables, &iTable);
     if (tmp->owner == pBt) {
         int bdberr;
-        bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
+        if (rc == 0) {
+            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
+                   __func__, tmp->tbl, rc);
+        }
     }
     hash_del(pBt->temp_tables, tmp);
     free(tmp);
@@ -4998,12 +5009,14 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     pNewTbl->rootpage = ++pBt->num_temp_tables;
     if (pBt->is_hashtable) {
         pNewTbl->tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
     } else if (tmptbl_clone) {
         pNewTbl->lk = tmptbl_clone->lk;
         pNewTbl->tbl = tmptbl_clone->tbl;
         pNewTbl->owner = tmptbl_clone->owner;
     } else {
         pNewTbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
     }
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;
@@ -6171,7 +6184,8 @@ skip:
             rc = bdb_temp_table_close_cursor(
                 thedb->bdb_env, pCur->sampled_idx->cursor, &bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "bdb_temp_table_close_cursor rc %d\n", bdberr);
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
+                       __func__, bdberr);
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
@@ -9400,6 +9414,13 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 }
 
 int comdb2_cheapstack_char_array(char *str, int maxln);
+
+int recover_deadlock_simple(bdb_state_type *bdb_state)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    assert(thd != NULL);
+    return recover_deadlock(bdb_state, thd, NULL, 0);
+}
 
 int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,

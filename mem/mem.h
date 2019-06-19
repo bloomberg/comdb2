@@ -111,11 +111,14 @@ struct mallinfo;
 typedef void (*stats_fn)(const struct mallinfo *mallinfo, int verbose,
                          int human_readable, void *arg);
 
-#ifdef PER_THREAD_MALLOC
 /*
 ** Thread type string.
 */
+#ifdef PER_THREAD_MALLOC
 extern __thread const char *thread_type_key;
+#define THREAD_TYPE(key) do { thread_type_key = (key); } while (0)
+#else
+#define THREAD_TYPE(key) do { (void)key; } while (0)
 #endif
 
 /*

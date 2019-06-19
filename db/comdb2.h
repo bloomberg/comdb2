@@ -1803,6 +1803,7 @@ int appsock_init(void);
 int thd_init(void);
 void sqlinit(void);
 void sqlnet_init(void);
+int clnt_stats_init(void);
 int sqlpool_init(void);
 int schema_init(void);
 int osqlpfthdpool_init(void);
@@ -2156,6 +2157,9 @@ int ix_find_by_rrn_and_genid_prefault(struct ireq *iq, int rrn,
 int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                   unsigned long long genid, void *fnddta,
                                   int *fndlen, int maxlen, void *trans);
+int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans);
 int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
                                       unsigned long long genid, void *fnddta,
                                       int *fndlen, int maxlen, void *trans,
@@ -3312,6 +3316,8 @@ void osql_checkboard_check_down_nodes(char *host);
  */
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                      int *bdberr);
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr);
 

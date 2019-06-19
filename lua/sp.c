@@ -63,6 +63,12 @@
 #include <logmsg.h>
 #include <tohex.h>
 
+#ifdef WITH_RDKAFKA    
+
+#include "librdkafka/rdkafka.h"  /* for Kafka driver */
+
+#endif
+
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -1908,10 +1914,14 @@ static int load_debugging_information(struct stored_proc *sp, char **err)
             rc = -1;
         }
 
-        if (err)
+        if (err_str) {
             logmsg(LOGMSG_ERROR, "err: [%d] %s\n", rc, err_str);
-        else
+            *err = strdup(err_str);
+        }
+        else {
             logmsg(LOGMSG_ERROR, "err: [%d]\n", rc);
+            *err = strdup("Error with lua_pcall");
+        }
         stack_trace(sp->lua);
     }
     free(sp_source);
@@ -3943,6 +3953,79 @@ static int db_copyrow(Lua lua)
     return 1;
 }
 
+char *gbl_kafka_brokers = NULL;
+char *gbl_kafka_topic = NULL;
+
+#ifdef WITH_RDKAFKA
+
+static rd_kafka_topic_t *rkt_p = NULL;
+static rd_kafka_t *rk_p = NULL;
+
+static int kafka_publish(Lua lua)
+{
+    const void *dta = lua_topointer(lua, -2);
+    int dta_len = lua_tonumber(lua, -1);
+
+    rd_kafka_conf_t *conf;  /* Temporary configuration object */
+    char errstr[512];       /* librdkafka API error reporting buffer */
+
+    SP sp = getsp(lua);
+
+    if (!gbl_kafka_topic || !gbl_kafka_brokers) {
+        return luabb_error(lua, sp, "%s: Kafka Topic or Broker not set", __func__);
+    }
+
+    if (!rk_p) {
+        conf = rd_kafka_conf_new();
+        if (rd_kafka_conf_set(conf, "bootstrap.servers", gbl_kafka_brokers,
+                             errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+               return luabb_error(lua, sp, "%s\n", errstr);
+        }
+
+        rk_p = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+
+        if (!rk_p) {
+                return luabb_error(lua, sp,
+                        "%% Failed to create new producer: %s\n", errstr);
+        }
+
+    }
+    if (!rkt_p)  {
+        rkt_p = rd_kafka_topic_new(rk_p, gbl_kafka_topic, NULL);
+        if (!rkt_p) {
+                return luabb_error(lua, sp, "%% Failed to create topic object: %s\n",
+                        rd_kafka_err2str(rd_kafka_last_error()));
+        }
+    }
+
+    if (rd_kafka_produce(
+            /* Topic object */
+            rkt_p,
+            /* Use builtin partitioner to select partition*/
+            RD_KAFKA_PARTITION_UA,
+            /* Make a copy of the payload. */
+            RD_KAFKA_MSG_F_COPY,
+            /* Message payload (value) and length */
+            (void*)dta, dta_len,
+            /* Optional key and its length */
+            NULL, 0,
+            /* Message opaque, provided in
+             * delivery report callback as
+             * msg_opaque. */
+            NULL) == -1) {
+        /**
+         * Failed to *enqueue* message for producing.
+         */
+        return luabb_error(lua, sp,
+                "%% Failed to produce to topic %s: %s\n",
+                rd_kafka_topic_name(rkt_p),
+                rd_kafka_err2str(rd_kafka_last_error()));
+    }
+    return 0;
+}
+
+#endif
+
 static int db_print(Lua lua)
 {
     int nargs = lua_gettop(lua);
@@ -4356,6 +4439,9 @@ static const luaL_Reg db_funcs[] = {
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
     /************ CONSUMER **************/
+#ifdef WITH_RDKAFKA    
+    {"kafka_publish", kafka_publish},
+#endif    
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
@@ -4566,6 +4652,9 @@ static int cson_to_table(Lua lua, cson_value *v)
         cson_object_iterator i;
         cson_object_iter_init(o, &i);
         cson_kvp *kv;
+        /* Make sure we have enough space to store "key" and "value". */
+        if (lua_checkstack(lua, 2) == 0)
+            return -1;
         while ((kv = cson_object_iter_next(&i)) != NULL) {
             lua_pushstring(lua, cson_string_cstr(cson_kvp_key(kv)));
             if (cson_push_value(lua, cson_kvp_value(kv)) != 0) return -1;
@@ -4574,6 +4663,12 @@ static int cson_to_table(Lua lua, cson_value *v)
     } else if (cson_value_is_array(v)) {
         cson_array *a = cson_value_get_array(v);
         unsigned int i, len = cson_array_length_get(a);
+        /*
+         * Make sure we have enough space to store one value to be pushed into
+         * the array.
+         */
+        if (lua_checkstack(lua, 1) == 0)
+            return -1;
         for (i = 0; i < len; ++i) {
             if (cson_push_value(lua, cson_array_get(a, i)) != 0) return -1;
             lua_rawseti(lua, -2, i + 1);
@@ -5261,7 +5356,7 @@ out:
     return arg->type;
 }
 
-static int debug_sp(struct sqlclntstate *clnt)
+static void debug_sp(struct sqlclntstate *clnt)
 {
     int arg1 = 0;
     char *carg1 = NULL;
@@ -5306,20 +5401,27 @@ do_continue:
     clnt->sp = NULL;
     sleep(2);
     logmsg(LOGMSG_USER, "Exit debugging \n");
-    return 0;
 }
 
 static int get_spname(struct sqlclntstate *clnt, const char **exec,
                       char *spname, char **err)
 {
+#define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
     const char *s = *exec;
     while (s && isspace(*s))
         s++;
-    if (!s || strncasecmp(s, "exec", 4)) {
-        *err = strdup("syntax error, expected 'exec'");
+    if (!s) {
+        *err = strdup(EXEC_SYNTAX_ERROR);
         return -1;
     }
-    s += 4;
+    if (!strncasecmp(s, "execute", 7)) {
+        s += 7;
+    } else if (!strncasecmp(s, "exec", 4)) {
+        s += 4;
+    } else {
+        *err = strdup(EXEC_SYNTAX_ERROR);
+        return -1;
+    }
 
     const char *start, *end;
     if (has_sqlcache_hint(s, &start, &end)) s = end;
@@ -6175,7 +6277,10 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, &s, spname, err)) != 0)
         return rc;
 
-    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
+    if (strcmp(spname, "debug") == 0) {
+        debug_sp(clnt);
+        return 0;
+    }
 
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
@@ -6200,7 +6305,11 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = commit_sp(L, err)) != 0) return rc;
 
-    if (sprc) return sprc;
+    if (sprc) {
+        if (!*err)
+            *err = strdup("emit_result error");
+        return sprc;
+    }
 
     return flush_sp(sp, err);
 }

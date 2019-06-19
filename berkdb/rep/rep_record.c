@@ -4957,6 +4957,9 @@ err1:
 	else
 		__os_free(dbenv, prep_args);
 
+	if (pglogs)
+		__os_free(dbenv, pglogs);
+
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 

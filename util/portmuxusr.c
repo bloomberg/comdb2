@@ -1300,7 +1300,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
         return -1;
     }
 
-    int result;
+    int result = 0;
     bool build_pollfds = true;
 
     int startms = comdb2_time_epochms();

@@ -615,6 +615,10 @@ void sqlite_init_end(void) { in_init = 0; }
 
 #endif // DEBUG_SQLITE_MEMORY
 
+static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
+static LISTC_T(struct sqlclntstate) clntlist;
+static int64_t connid = 0;
+
 static __thread comdb2ma sql_mspace = NULL;
 int sql_mem_init(void *arg)
 {
@@ -752,14 +756,19 @@ static int comdb2_authorizer_for_sqlite(
 #endif
 ){
   struct sql_authorizer_state *pAuthState = pArg;
-  switch( code ){
+  if (pAuthState == NULL) {
+    return SQLITE_DENY;
+  }
+  int denyCreateTrigger = (pAuthState->flags & PREPARE_DENY_CREATE_TRIGGER);
+  int denyPragma = (pAuthState->flags & PREPARE_DENY_PRAGMA);
+  int denyDdl = (pAuthState->flags & PREPARE_DENY_DDL);
+  switch (code) {
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
     case SQLITE_CREATE_TEMP_INDEX:
     case SQLITE_CREATE_TEMP_TABLE:
     case SQLITE_CREATE_TEMP_TRIGGER:
     case SQLITE_CREATE_TEMP_VIEW:
-    case SQLITE_CREATE_TRIGGER: /* NOTE: Always blocked by check_sql(). */
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
@@ -769,9 +778,6 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_TEMP_VIEW:
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
-#if !defined(SQLITE_DEBUG)
-    case SQLITE_PRAGMA: /* NOTE: Non-debug build blocked by check_sql(). */
-#endif
     case SQLITE_ALTER_TABLE:
     case SQLITE_REINDEX:
     case SQLITE_ANALYZE:
@@ -796,11 +802,25 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_LUA_TRIGGER:    /* COMDB2 ONLY */
     case SQLITE_CREATE_LUA_CONSUMER: /* COMDB2 ONLY */
     case SQLITE_DROP_LUA_CONSUMER:   /* COMDB2 ONLY */
-      if (pAuthState != NULL) {
-        pAuthState->numDdls++;
-        return pAuthState->denyDdl ? SQLITE_DENY : SQLITE_OK;
+      pAuthState->numDdls++;
+      return denyDdl ? SQLITE_DENY : SQLITE_OK;
+    case SQLITE_PRAGMA:
+      pAuthState->numDdls++;
+      if (denyDdl || denyPragma) {
+        return SQLITE_DENY;
+      } else if (pAuthState->clnt != NULL) {
+        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
+               __LINE__, __func__, pAuthState->clnt->sql);
+        return SQLITE_OK;
       } else {
         return SQLITE_DENY;
+      }
+    case SQLITE_CREATE_TRIGGER:
+      pAuthState->numDdls++;
+      if (denyDdl || denyCreateTrigger) {
+        return SQLITE_DENY;
+      } else {
+        return SQLITE_OK;
       }
     default:
       return SQLITE_OK;
@@ -911,7 +931,9 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                 */
             }
         }
-        comdb2_setup_authorizer_for_sqlite(*ppDb, &thd->authState, 1);
+        if (thd != NULL) {
+            comdb2_setup_authorizer_for_sqlite(*ppDb, &thd->authState, 1);
+        }
     }
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
@@ -2641,62 +2663,20 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int check_sql(struct sqlclntstate *clnt, int *sp, int *pragma)
+static int check_sql(struct sqlclntstate *clnt, int *sp)
 {
-    int tempPragma = 0;
-    char buf[256];
-    char *sql = clnt->sql;
-    size_t len = sizeof("exec") - 1;
-    if (pragma == NULL) pragma = &tempPragma;
-    if (strncasecmp(sql, "exec", len) == 0) {
-        sql += len;
-        if (isspace(*sql)) {
-            *sp = 1;
-            *pragma = 0;
-            return 0;
-        }
-    }
-    len = sizeof("pragma") - 1;
-    if (strncasecmp(sql, "pragma", len) == 0) {
-        sql += len;
-        if (isspace(*sql)) {
-            if (*pragma) {
-                return 0;
-            } else {
-                goto error;
-            }
-        }
-        *pragma = 0;
+    const char *sql = clnt->sql;
+    size_t len = sizeof("EXEC") - 1;
+    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
+        *sp = 1;
         return 0;
     }
-    len = sizeof("create") - 1;
-    if (strncasecmp(sql, "create", len) == 0) {
-        char *trigger = sql;
-        trigger += len;
-        if (!isspace(*trigger)) {
-            *pragma = 0;
-            return 0;
-        }
-        trigger = skipws(trigger);
-        len = sizeof("trigger") - 1;
-        if (strncasecmp(trigger, "trigger", len) != 0) {
-            *pragma = 0;
-            return 0;
-        }
-        trigger += len;
-        if (isspace(*trigger)) {
-            goto error;
-        }
+    len = sizeof("EXECUTE") - 1;
+    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
+        *sp = 1;
+        return 0;
     }
-    *pragma = 0;
     return 0;
-
-error: /* pretend that a real prepare error occured */
-    strcpy(buf, "near \"");
-    strncat(buf + len, sql, len);
-    strcat(buf, "\": syntax error");
-    write_response(clnt, RESPONSE_ERROR_PREPARE, buf, 0);
-    return SQLITE_ERROR;
 }
 
 /* if userpassword does not match this function
@@ -3106,7 +3086,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
-    int denyDdl = (flags & PREPARE_DENY_DDL);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -3126,17 +3105,23 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
 
+    if (!gbl_allow_pragma)
+        flags |= PREPARE_DENY_PRAGMA;
+
+    flags |= PREPARE_DENY_CREATE_TRIGGER; /* UNSUPPORTED: was in check_sql() */
+
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        thd->authState.denyDdl = denyDdl;
+        thd->authState.clnt = clnt;
+        thd->authState.flags = flags;
         thd->authState.numDdls = 0;
         rec->prepFlags = flags;
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
-        thd->authState.denyDdl = 0;
+        thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
@@ -3445,9 +3430,8 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     /* additional non-sqlite requests */
     int stored_proc = 0;
-    int is_pragma = (gbl_allow_pragma != 0);
 
-    if ((rc = check_sql(clnt, &stored_proc, &is_pragma)) != 0)
+    if ((rc = check_sql(clnt, &stored_proc)) != 0)
     {
         // TODO: set this: outrc = rc;
         return rc;
@@ -3457,12 +3441,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
-    } else if (is_pragma) {
-        /* currently, all PRAGMA requests, when allowed, are handled
-        ** by SQLite */
-        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, clnt->sql);
-        return 0;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
         rc = sqlengine_prepare_engine(thd, clnt, 1);
@@ -3814,19 +3792,22 @@ static void handle_stored_proc(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt)
 {
     struct sql_state rec = {0};
-    char *errstr;
+    char *errstr = NULL;
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
+        if (!errstr) {
+            logmsg(LOGMSG_USER, "handle_stored_proc: error occured, rc = %d\n",
+                   rc);
+            errstr = strdup("Error occured");
+        }
         clnt->had_errors = 1;
         if (rc == -1)
             rc = -3;
         write_response(clnt, RESPONSE_ERROR, errstr, rc);
-        if (errstr) {
-            free(errstr);
-        }
+        free(errstr);
     }
     if (!clnt->in_client_trans)
         clnt->trans_has_sp = 0;
@@ -4398,6 +4379,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
+    clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 
@@ -4424,6 +4406,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
         return;
     }
 
@@ -4479,6 +4462,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
+    clnt_change_state(clnt, CONNECTION_IDLE);
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
     thrman_setid(thrman_self(), "[done]");
@@ -4502,6 +4486,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
         clnt->done = 1; /* that's gonna revive appsock thread */
         break;
     }
+    bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
 }
 
 static int send_heartbeat(struct sqlclntstate *clnt)
@@ -4564,6 +4549,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
     clnt->statement_timedout = 0;
+    clnt->total_sql++;
+    clnt->sql_since_reset++;
 
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
@@ -4856,6 +4843,13 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
+    else {
+       clnt->sql_since_reset = 0;
+       clnt->num_resets++;
+       clnt->last_reset_time = comdb2_time_epoch();
+       clnt_change_state(clnt, CONNECTION_RESET);
+    }
+
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
@@ -4917,7 +4911,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     osql_clean_sqlclntstate(clnt);
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
-    clnt->origin = intern(get_origin_mach_by_buf(sb));
+
+    if (initial)
+        clnt->origin = intern(get_origin_mach_by_buf(sb));
 
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
@@ -5677,6 +5673,11 @@ done:
     return ret;
 }
 
+static void clnt_queued_event(void *p) {
+   struct sqlclntstate *clnt = (struct sqlclntstate*) p;
+   clnt_change_state(clnt, CONNECTION_QUEUED);
+}
+
 int sqlpool_init(void)
 {
     gbl_sqlengine_thdpool =
@@ -5696,10 +5697,50 @@ int sqlpool_init(void)
     thdpool_set_maxqueueagems(gbl_sqlengine_thdpool, 5 * 60 * 1000);
     thdpool_set_dque_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_dque);
     thdpool_set_dump_on_full(gbl_sqlengine_thdpool, 1);
+    thdpool_set_queued_callback(gbl_sqlengine_thdpool, clnt_queued_event);
 
     return 0;
 }
 
+int clnt_stats_init(void) {
+    listc_init(&clntlist, offsetof(struct sqlclntstate, lnk));
+    return 0;
+}
+
+static const char* connstate_str(enum connection_state s) {
+    switch (s) {
+        case CONNECTION_NEW:
+            return "CONNECTION_NEW";
+
+        case CONNECTION_IDLE:
+            return "CONNECTION_IDLE";
+
+        case CONNECTION_RESET:
+            return "CONNECTION_RESET";
+
+        case CONNECTION_QUEUED:
+            return "CONNECTION_QUEUED";
+
+        case CONNECTION_RUNNING:
+            return "CONNECTION_RUNNING";
+
+        default:
+            return "???";
+    }
+}
+
+void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
+    clnt->state_start_time = comdb2_time_epochms();
+    // printf("%p -> %s\n", clnt, connstate_str(state));
+    pthread_mutex_lock(&clnt->state_lk);
+    clnt->state = state;
+    pthread_mutex_unlock(&clnt->state_lk);
+}
+
+/* we have to clear
+      - sqlclntstate (key, pointers in Bt, thd)
+      - thd->tran and mode (this is actually done in Commit/Rollback)
+ */
 void sql_reset_sqlthread(struct sql_thread *thd)
 {
     if (thd) {
@@ -6162,6 +6203,56 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+}
+
+void clnt_register(struct sqlclntstate *clnt) {
+    clnt->state = CONNECTION_NEW;
+    clnt->connect_time = comdb2_time_epoch();
+    pthread_mutex_lock(&clnt_lk);
+    clnt->connid = connid++;
+    listc_abl(&clntlist, clnt);
+    pthread_mutex_unlock(&clnt_lk);
+}
+
+void clnt_unregister(struct sqlclntstate *clnt) {
+    pthread_mutex_lock(&clnt_lk);
+    listc_rfl(&clntlist, clnt);
+    pthread_mutex_unlock(&clnt_lk);
+}
+
+int gather_connection_info(struct connection_info **info, int *num_connections) {
+   struct connection_info *c;
+   int connid = 0;
+
+   pthread_mutex_lock(&clnt_lk);
+   *num_connections = listc_size(&clntlist);
+   c = malloc(*num_connections * sizeof(struct connection_info));
+   struct sqlclntstate *clnt;
+   LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+      c[connid].connection_id = clnt->connid;
+      c[connid].pid = clnt->last_pid;
+      c[connid].total_sql = clnt->total_sql;
+      c[connid].sql_since_reset = clnt->sql_since_reset;
+      c[connid].num_resets = clnt->num_resets;
+      c[connid].connect_time_int = clnt->connect_time;
+      c[connid].last_reset_time_int = clnt->last_reset_time;
+      c[connid].num_resets = clnt->num_resets;
+      c[connid].host = clnt->origin;
+      c[connid].state_int = clnt->state;
+      c[connid].time_in_state_int = clnt->state_start_time;
+      pthread_mutex_lock(&clnt->state_lk);
+      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
+         c[connid].sql = strdup(clnt->sql);
+      }
+      else
+         c[connid].sql = NULL;
+
+      pthread_mutex_unlock(&clnt->state_lk);
+      connid++;
+   }
+   pthread_mutex_unlock(&clnt_lk);
+   *info = c;
+   return 0;
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)

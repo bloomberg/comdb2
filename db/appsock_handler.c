@@ -64,19 +64,16 @@ static unsigned long long total_appsock_conns = 0;
 static unsigned long long num_bad_toks = 0;
 static unsigned long long total_toks = 0;
 static unsigned long long total_appsock_rejections = 0;
-static pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
 
 void close_appsock(SBUF2 *sb)
 {
-    net_end_appsock(sb);
-    LOCK(&appsock_conn_lk)
-    {
-        active_appsock_conns--;
+    if (sb != NULL) {
+        net_end_appsock(sb);
+        ATOMIC_ADD(active_appsock_conns, -1);
     }
-    UNLOCK(&appsock_conn_lk);
 }
 
 int appsock_init(void)
@@ -266,15 +263,16 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
     appsock_work_args_t *w = (appsock_work_args_t *)work;
-    SBUF2 *sb = w->sb;
     int keepsocket = 0;
 
-    thrman_setfd(state->thr_self, sbuf2fileno(sb));
+    thrman_setfd(state->thr_self, sbuf2fileno(w->sb));
     thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
-    if (keepsocket == 0)
-        close_appsock(sb);
+    if (keepsocket == 0) {
+        close_appsock(w->sb);
+        w->sb = NULL;
+    }
 
     if (thrman_get_type(state->thr_self) != THRTYPE_APPSOCK_POOL)
         thrman_change_type(state->thr_self, THRTYPE_APPSOCK_POOL);
@@ -284,7 +282,6 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
     appsock_work_args_t *w = (appsock_work_args_t *)work;
-    SBUF2 *sb = w->sb;
 
     switch (op) {
     case THD_RUN:
@@ -292,7 +289,8 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
         break;
 
     case THD_FREE:
-        close_appsock(sb);
+        close_appsock(w->sb);
+        w->sb = NULL;
         break;
 
     default:
@@ -384,11 +382,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     total_appsock_conns++;
-    LOCK(&appsock_conn_lk)
-    {
-        active_appsock_conns++;
-    }
-    UNLOCK(&appsock_conn_lk);
+    ATOMIC_ADD(active_appsock_conns, 1);
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
         logmsg(LOGMSG_WARN,

@@ -97,7 +97,7 @@ static int shortest_long_request_ms = -1;
 
 static struct output *default_out;
 
-int diffstat_thresh = 60; /* every minute */
+int diffstat_thresh = 60; /* every sixty seconds */
 static struct output *stat_request_out = NULL;
 
 /* These global lockless variables define what we will log for all requests
@@ -1540,7 +1540,7 @@ static void print_client_query_stats(struct reqlogger *logger,
 /* print the request header for the request. */
 static void log_header_ll(struct reqlogger *logger, struct output *out)
 {
-    const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
+    const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
     struct reqlog_print_callback_args args;
 
     if (out == long_request_out) {

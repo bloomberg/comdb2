@@ -348,6 +348,7 @@
 (name='comdb2_cluster')
 (name='comdb2_columns')
 (name='comdb2_completion')
+(name='comdb2_connections')
 (name='comdb2_constraints')
 (name='comdb2_cron_events')
 (name='comdb2_cron_schedulers')

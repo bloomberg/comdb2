@@ -135,7 +135,8 @@ struct bdb_queue_stats {
     unsigned n_physical_gets;
 };
 
-/* This is identical to bb_berkdb_thread_stats in db.h */
+/* Forward declare, this is defined in thread_stats.h */
+struct berkdb_thread_stats;
 
 /*
  * Multiplication usually takes fewer CPU cycles than division. Therefore
@@ -148,30 +149,8 @@ struct bdb_queue_stats {
 #ifndef M2U
 #define M2U(msec) ((msec)*1000ULL)
 #endif
-struct bdb_thread_stats {
-    unsigned n_lock_waits;
-    uint64_t lock_wait_time_us;
 
-    unsigned n_preads;
-    unsigned pread_bytes;
-    uint64_t pread_time_us;
 
-    unsigned n_pwrites;
-    unsigned pwrite_bytes;
-    uint64_t pwrite_time_us;
-
-    unsigned n_memp_fgets;
-    uint64_t memp_fget_time_us;
-
-    unsigned n_memp_pgs;
-    uint64_t memp_pg_time_us;
-
-    unsigned n_shallocs;
-    uint64_t shalloc_time_us;
-
-    unsigned n_shalloc_frees;
-    uint64_t shalloc_free_time_us;
-};
 
 /* these are the values that "bdberr" can be */
 enum {
@@ -1233,6 +1212,10 @@ int bdb_temp_hash_insert(bdb_temp_hash *h, void *key, int keylen, void *dta,
 int bdb_temp_hash_lookup(bdb_temp_hash *h, void *key, int keylen, void *dta,
                          int *dtalen, int maxlen);
 
+int bdb_temp_table_maybe_set_priority_thread(bdb_state_type *bdb_state);
+int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
+                                               int notify);
+
 bulk_dump *bdb_start_fstdump(bdb_state_type *bdb_state, int *bdberr);
 int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr);
 int bdb_close_fstdump(bulk_dump *dmp);
@@ -1316,16 +1299,16 @@ extern int gbl_bb_berkdb_enable_memp_timing;
 extern int gbl_bb_berkdb_enable_memp_pg_timing;
 extern int gbl_bb_berkdb_enable_shalloc_timing;
 void bdb_reset_thread_stats(void);
-const struct bdb_thread_stats *bdb_get_thread_stats(void);
-const struct bdb_thread_stats *bdb_get_process_stats(void);
+const struct berkdb_thread_stats *bdb_get_thread_stats(void);
+const struct berkdb_thread_stats *bdb_get_process_stats(void);
 
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value
  * is ignored.  bdb_fprintf_stats is a convenience wrapper which uses fputs()
  * as the printing function. */
-void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                      int (*printfn)(const char *, void *), void *context);
-void bdb_fprintf_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_fprintf_stats(const struct berkdb_thread_stats *st, const char *prefix,
                        FILE *out);
 
 int bdb_find_oldest_genid(bdb_state_type *bdb_state, tran_type *tran,
@@ -1820,7 +1803,8 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
+                          int64_t *deadlock_locks, int64_t *waits,
                           int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,

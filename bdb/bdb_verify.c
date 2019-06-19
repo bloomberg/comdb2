@@ -49,7 +49,7 @@ static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *),
     va_end(ap);
 
     if(sb) 
-        return sbuf2printf(sb, lbuf);
+        return sbuf2printf(sb, lbuf) >= 0 ? 0 : -1;
     else if(lua_callback)
         return lua_callback(lua_params, lbuf);
     return -1;

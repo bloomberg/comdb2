@@ -21,23 +21,16 @@
  * Shamelessly based on Peter Martin's bigsnd thread pool.
  */
 
-#include "limit_fortify.h"
 #include <assert.h>
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <sys/time.h>
 #include "ctrace.h"
-
-#include <unistd.h>
-
 #include <epochlib.h>
 #include <segstring.h>
-
 #include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
@@ -46,14 +39,13 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include <locks_wrap.h>
-
+#include "locks_wrap.h"
 #include "debug_switches.h"
+#include "logmsg.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
 #endif
-#include "logmsg.h"
 
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
@@ -148,6 +140,7 @@ struct thdpool {
 #ifdef MONITOR_STACK
     comdb2ma stack_alloc;
 #endif
+    void (*queued_callback)(void*);
 };
 
 pthread_mutex_t pool_list_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -626,9 +619,7 @@ static void *thdpool_thd(void *voidarg)
 
     thread_started("thdpool");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = pool->name;
-#endif
+    THREAD_TYPE(pool->name);
     thd->archtid = getarchtid();
 
     if (pool->per_thread_data_sz > 0) {
@@ -893,6 +884,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             thd->on_freelist = 0;
             pool->num_passed++;
         } else {
+            /* queue work */
+            if (pool->queued_callback)
+                pool->queued_callback(work);
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
@@ -1146,4 +1140,9 @@ struct thdpool *thdpool_next_pool(struct thdpool *pool)
 int thdpool_get_queue_depth(struct thdpool *pool)
 {
     return pool->queue.count;
+}
+
+void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*)) 
+{
+    pool->queued_callback = callback;
 }

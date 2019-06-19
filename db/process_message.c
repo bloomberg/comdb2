@@ -31,6 +31,7 @@ extern int __berkdb_read_alarm_ms;
 #include <sys/statvfs.h>
 #include <memory_sync.h>
 #include <stdbool.h>
+#include <bdb_int.h>
 #include <ctrace.h>
 
 #include "comdb2.h"
@@ -127,7 +128,6 @@ extern int get_blkmax(void);
 void set_analyze_abort_requested();
 extern void dump_log_event_counts(void);
 extern void bdb_dumptrans(bdb_state_type *bdb_state);
-const char *deadlock_policy_str(int policy);
 void bdb_locker_summary(void *_bdb_state);
 extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
                     int endfile, int endoff);
@@ -1344,6 +1344,29 @@ clipper_usage:
         logmsg(LOGMSG_USER, 
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
                 blkmax, gbl_maxwthreads);
+    }
+
+    else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
+        int rcp = bdb_temp_table_clear_cache(thedb->bdb_env);
+        if (gbl_temptable_pool_capacity == 0) {
+            logmsg(LOGMSG_USER, "Temptable list was %scleared.\n",
+                   (rcp == 0) ? "" : "not ");
+        } else {
+            if (rcp == 0) {
+                logmsg(LOGMSG_USER, "Temptable pool was cleared.\n");
+            } else {
+                logmsg(LOGMSG_USER, "Temptable pool was not available.\n");
+            }
+        }
+    }
+    else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
+        extern int gbl_temptable_count;
+        extern int gbl_sql_temptable_count;
+        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
+        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        logmsg(LOGMSG_USER,
+                "Overall temptable count is %d, SQL temptable count is %d\n",
+                temptable_count, sql_temptable_count);
     }
 
     /*
@@ -4538,14 +4561,6 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             comdb2ma_stats(prefix, verbose, hr, ord, grp, 0);
-#ifndef PER_THREAD_MALLOC
-        } else if (tokcmp(tok, ltok, "net") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0 || tokcmp(tok, ltok, "hr") != 0)
-                print_net_memstat(0);
-            else
-                print_net_memstat(1);
-#endif
         } else if (tokcmp(tok, ltok, "nice") == 0) {
             int nicerc;
             tok = segtok(line, lline, &st, &ltok);

@@ -726,8 +726,8 @@ void sqlite3Insert(
     int rc;             /* Result code */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !pParse->ast ) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_INSERT, v, NULL);
+    ast_t *ast = ast_init(pParse, __func__);
+    if( ast ) ast_push(ast, AST_TYPE_INSERT, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     regYield = ++pParse->nMem;
     addrTop = sqlite3VdbeCurrentAddr(v) + 1;
@@ -860,6 +860,13 @@ void sqlite3Insert(
   }
 #ifndef SQLITE_OMIT_UPSERT
   if( pUpsert ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int gbl_noenv_messages;
+    if (gbl_noenv_messages == 0) {
+      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
+      goto insert_cleanup;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( IsVirtual(pTab) ){
       sqlite3ErrorMsg(pParse, "UPSERT not implemented for virtual table \"%s\"",
               pTab->zName);
