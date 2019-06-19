@@ -9,6 +9,7 @@ put password 'secret' for 'other'
 
 grant read on comdb2_transaction_logs to 'replicant'
 grant read on comdb2_metrics to 'sysmon'
+grant read on comdb2_fingerprints to 'sysmon'
 
 # The following must fail
 grant write on comdb2_metrics to 'sysmon'
@@ -22,12 +23,13 @@ select " can access all system tables " as " user1 (OP user) "
 select 1 from comdb2_appsock_handlers limit 1
 select 1 from comdb2_clientstats limit 1
 select 1 from comdb2_cluster limit 1
+select 1 from comdb2_fingerprints limit 1
 select 1 from comdb2_locks limit 1
 select 1 from comdb2_logical_operations limit 1
 select 1 from comdb2_metrics limit 1
 select 1 from comdb2_net_userfuncs limit 1
 select 1 from comdb2_opcode_handlers limit 1
-#select 1 from comdb2_plugins limit 1
+select 1 from comdb2_plugins limit 1
 select 1 from comdb2_procedures limit 1
 select 1 from comdb2_queues limit 1
 select count(*) from comdb2_repl_stats where host='dummy'
@@ -63,12 +65,13 @@ select " cannot access following system tables " as " replicant "
 select 1 from comdb2_appsock_handlers limit 1
 select 1 from comdb2_clientstats limit 1
 select 1 from comdb2_cluster limit 1
+select 1 from comdb2_fingerprints limit 1
 select 1 from comdb2_locks limit 1
 select 1 from comdb2_logical_operations limit 1
 select 1 from comdb2_metrics limit 1
 select 1 from comdb2_net_userfuncs limit 1
 select 1 from comdb2_opcode_handlers limit 1
-#select 1 from comdb2_plugins limit 1
+select 1 from comdb2_plugins limit 1
 select 1 from comdb2_procedures limit 1
 select 1 from comdb2_queues limit 1
 select 1 from comdb2_repl_stats limit 1
@@ -80,7 +83,6 @@ select 1 from comdb2_timepartitions limit 1
 select 1 from comdb2_timepartshards limit 1
 select 1 from comdb2_timeseries limit 1
 select 1 from comdb2_tunables limit 1
-select 1 from comdb2_type_samples limit 1
 
 select " limited access to following system tables " as " replicant "
 
@@ -98,6 +100,7 @@ select " can following system tables " as " replicant "
 select 1 from comdb2_transaction_logs limit 1
 select 1 from comdb2_keywords limit 1
 select 1 from comdb2_limits limit 1
+select 1 from comdb2_type_samples limit 1
 select 1 from comdb2_users limit 1
 
 # =============== sysmon ===============
@@ -114,7 +117,7 @@ select 1 from comdb2_locks limit 1
 select 1 from comdb2_logical_operations limit 1
 select 1 from comdb2_net_userfuncs limit 1
 select 1 from comdb2_opcode_handlers limit 1
-#select 1 from comdb2_plugins limit 1
+select 1 from comdb2_plugins limit 1
 select 1 from comdb2_procedures limit 1
 select 1 from comdb2_queues limit 1
 select 1 from comdb2_repl_stats limit 1
@@ -127,7 +130,6 @@ select 1 from comdb2_timepartshards limit 1
 select 1 from comdb2_timeseries limit 1
 select 1 from comdb2_transaction_logs limit 1
 select 1 from comdb2_tunables limit 1
-select 1 from comdb2_type_samples limit 1
 
 select " limited access to following system tables " as " sysmon "
 
@@ -142,9 +144,11 @@ select 1 from comdb2_triggers limit 1
 
 select " can access following system tables " as " sysmon "
 
+select 1 from comdb2_fingerprints limit 1
 select 1 from comdb2_metrics limit 1
 select 1 from comdb2_keywords limit 1
 select 1 from comdb2_limits limit 1
+select 1 from comdb2_type_samples limit 1
 select 1 from comdb2_users limit 1
 
 # =============== other ===============
@@ -157,12 +161,13 @@ select " cannot access following system tables " as " other "
 select 1 from comdb2_appsock_handlers limit 1
 select 1 from comdb2_clientstats limit 1
 select 1 from comdb2_cluster limit 1
+select 1 from comdb2_fingerprints limit 1
 select 1 from comdb2_locks limit 1
 select 1 from comdb2_logical_operations limit 1
 select 1 from comdb2_metrics limit 1
 select 1 from comdb2_net_userfuncs limit 1
 select 1 from comdb2_opcode_handlers limit 1
-#select 1 from comdb2_plugins limit 1
+select 1 from comdb2_plugins limit 1
 select 1 from comdb2_procedures limit 1
 select 1 from comdb2_queues limit 1
 select 1 from comdb2_repl_stats limit 1
@@ -175,7 +180,6 @@ select 1 from comdb2_timepartshards limit 1
 select 1 from comdb2_timeseries limit 1
 select 1 from comdb2_transaction_logs limit 1
 select 1 from comdb2_tunables limit 1
-select 1 from comdb2_type_samples limit 1
 
 select " limited access to following system tables " as " other "
 
@@ -192,5 +196,6 @@ select " can access following system tables " as " other "
 
 select 1 from comdb2_keywords limit 1
 select 1 from comdb2_limits limit 1
+select 1 from comdb2_type_samples limit 1
 select 1 from comdb2_users limit 1
 

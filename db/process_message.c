@@ -4581,14 +4581,6 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             comdb2ma_stats(prefix, verbose, hr, ord, grp, 0);
-#ifndef PER_THREAD_MALLOC
-        } else if (tokcmp(tok, ltok, "net") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0 || tokcmp(tok, ltok, "hr") != 0)
-                print_net_memstat(0);
-            else
-                print_net_memstat(1);
-#endif
         } else if (tokcmp(tok, ltok, "nice") == 0) {
             int nicerc;
             tok = segtok(line, lline, &st, &ltok);
