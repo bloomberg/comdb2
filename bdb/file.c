@@ -8098,7 +8098,7 @@ retry:
             (tablenames[i] && bdb_state->children[i] &&
              strcmp(tablenames[i], bdb_state->children[i]->name))) {
             retry = 1;
-        /* Update children version number if it hasn't been set (is 0) */
+            /* Update children version number if it hasn't been set (is 0) */
         } else if (bdb_state->children[i] &&
                    bdb_state->children[i]->version_num > 0 &&
                    bdb_state->children[i]->version_num !=
@@ -8111,8 +8111,6 @@ retry:
             if (bdb_state->children[i])
                 bdb_state->children[i]->version_num =
                     tran->table_version_cache[i];
-
-
         }
     }
     bdb_unlock_children_lock(bdb_state);
