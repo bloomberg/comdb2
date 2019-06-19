@@ -1707,5 +1707,10 @@ REGISTER_TUNABLE("clean_exit_on_sigterm",
                  TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
                  NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
 
+REGISTER_TUNABLE("debug_children_lock",
+                 "Stacktrace when database acquires or releases children lock."
+                 "  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_children_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
