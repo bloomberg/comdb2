@@ -1013,12 +1013,7 @@ proc show_memstats {} {
 
 proc create_table_ddl {origquery} {
   regexp -nocase {^CREATE TABLE ([[:alnum:]]+) (.*)$} $origquery _ dest
-
-  set rc [catch {do_cdb2_defquery "$origquery"} output]
-  if {$rc != 0} {
-    puts "add table failed for $table rc: $rc $output"
-  }
-  delay_for_schema_change
+  return [do_cdb2_defquery "$origquery"]
 }
 
 proc create_table_as {origquery} {
@@ -1414,7 +1409,8 @@ proc execsql {sql {options ""}} {
     }
 
     if {[string match -nocase "CREATE TABLE*" $query]} {
-      create_table $query
+      set rc [catch {create_table $query} err]
+      if {$rc != 0} {lappend r $rc $err}
       delay_for_schema_change
       continue
     }
