@@ -20,9 +20,10 @@
 #include <timers.h>
 #include "logmsg.h"
 #include "locks_wrap.h"
-#include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
 
-extern int gbl_thread_count;
+extern int db_is_stopped();
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -212,7 +213,10 @@ void *timer_thread(void *p)
     int rc;
     int oneshot;
     int ms;
-    ATOMIC_ADD(gbl_thread_count, 1);
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("timer_thread");
+
     while (!db_is_stopped()) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
@@ -257,6 +261,5 @@ void *timer_thread(void *p)
         }
         Pthread_mutex_unlock(&timerlk);
     }
-    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }

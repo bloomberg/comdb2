@@ -1109,10 +1109,9 @@ static void *purge_old_blkseq_thread(void *arg)
 {
     struct dbenv *dbenv;
     dbenv = arg;
-    struct thr_handle *thr_self;
     int loop;
 
-    thr_self = thrman_register(THRTYPE_PURGEBLKSEQ);
+    struct thr_handle *thr_self = thrman_register(THRTYPE_PURGEBLKSEQ);
     thread_started("blkseq");
 
     dbenv->purge_old_blkseq_is_running = 1;
@@ -4263,6 +4262,9 @@ void *statthd(void *p)
     int64_t rw_evicts;
 
     extern int active_appsock_conns;
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("statthd");
 
     dbenv = p;
 

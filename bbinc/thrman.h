@@ -45,6 +45,7 @@ enum thrtype {
     THRTYPE_BULK_IMPORT = 21,
     THRTYPE_TRIGGER = 22,
     THRTYPE_PGLOGS_ASOF = 23,
+    THRTYPE_GENERIC = 24,
     THRTYPE_MAX
 };
 

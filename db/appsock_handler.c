@@ -336,7 +336,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     /* reject requests if we're not up, going down, or not interested */
-    if (dbenv->stopped || gbl_exit || !gbl_ready) {
+    if (db_is_stopped() || gbl_exit || !gbl_ready) {
         total_appsock_rejections++;
         net_end_appsock(sb);
         return;

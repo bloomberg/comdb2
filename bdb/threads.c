@@ -24,9 +24,11 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include "locks_wrap.h"
+#include "comdb2_atomic.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
-#include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
 
 extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
@@ -58,6 +60,9 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
 {
     unsigned pollms = 500;
     unsigned count = 0;
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("statthd");
+
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     ATOMIC_ADD(gbl_thread_count, 1);
