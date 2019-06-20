@@ -1383,13 +1383,19 @@ void sqlite3GenerateConstraintChecks(
   int ipkTop = 0;        /* Top of the IPK uniqueness check */
   int ipkBottom = 0;     /* OP_Goto at the end of the IPK uniqueness check */
 
+  isUpdate = regOldData!=0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( !need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
-    *pbMayReplace = 0;
-    return;
+    v = sqlite3GetVdbe(pParse);
+    ix = 0;
+    if( isUpdate ){
+      for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, ix++){
+        /* NO LOOP BODY */
+      }
+    }
+    goto skip_constraint_checks;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  isUpdate = regOldData!=0;
   db = pParse->db;
   v = sqlite3GetVdbe(pParse);
   assert( v!=0 );
@@ -1687,7 +1693,6 @@ void sqlite3GenerateConstraintChecks(
   }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ix = 0;
   if( need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
@@ -1958,6 +1963,9 @@ void sqlite3GenerateConstraintChecks(
   }
 
   /* Generate the table record */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+skip_constraint_checks:
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( HasRowid(pTab) ){
     int regRec = aRegIdx[ix];
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regNewData+1, pTab->nCol, regRec);
@@ -2035,7 +2043,6 @@ void sqlite3CompleteInsertion(
   assert( v!=0 );
   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  i = 0;
   if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
@@ -2067,6 +2074,13 @@ void sqlite3CompleteInsertion(
     sqlite3VdbeChangeP5(v, pik_flags);
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  }else{
+    i = 0;
+    if( update_flags ){
+      for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
+        /* NO LOOP BODY */
+      }
+    }
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( !HasRowid(pTab) ) return;
