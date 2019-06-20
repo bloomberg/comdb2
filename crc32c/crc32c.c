@@ -127,7 +127,7 @@ void crc32c_init(int v)
 	}
 }
 
-uint32_t crc32c(const uint8_t* buf, uint32_t sz)
+uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz)
 {
 	return crc32c_func(buf, sz, CRC32C_SEED);
 }

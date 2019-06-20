@@ -2098,6 +2098,7 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
+extern pthread_mutex_t clnt_lk;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
@@ -2149,6 +2150,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_OK;
     }
 
+
     /*
       This flag cannot be set to non-zero until after all the early returns in
       this function; otherwise, we may "leak" appsock connections.
@@ -2164,6 +2166,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
+    clnt_register(&clnt);
+
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
@@ -2190,6 +2194,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                    gbl_denied_appsock_connection_count);
             pr = now;
         }
+
         newsql_error(&clnt, "Exhausted appsock connections.",
                      CDB2__ERROR_CODE__APPSOCK_LIMIT);
         goto done;
@@ -2223,6 +2228,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
+    if (sql_query->client_info) {
+        clnt.conninfo.pid = sql_query->client_info->pid;
+        clnt.last_pid = sql_query->client_info->pid;
+    }
+    else {
+        clnt.conninfo.pid = 0;
+        clnt.last_pid = 0;
+    }
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     newsql_clr_high_availability(&clnt);
@@ -2263,6 +2276,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
+        clnt.added_to_hist = 0;
+
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
@@ -2371,6 +2386,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             comdb2bma_pass_priority_back(blobmem);
             rc = dispatch_sql_query(&clnt);
         }
+        clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
             if (clnt.trans_has_sp) {
@@ -2402,6 +2418,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
 done:
     sbuf2setclnt(sb, NULL);
+    clnt_unregister(&clnt);
 
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
@@ -2438,6 +2455,7 @@ done:
 
     /* XXX free logical tran?  */
     close_appsock(sb);
+    arg->sb = NULL;
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);

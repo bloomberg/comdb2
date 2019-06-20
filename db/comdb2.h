@@ -1803,6 +1803,7 @@ int appsock_init(void);
 int thd_init(void);
 void sqlinit(void);
 void sqlnet_init(void);
+int clnt_stats_init(void);
 int sqlpool_init(void);
 int schema_init(void);
 int osqlpfthdpool_init(void);
@@ -3315,6 +3316,8 @@ void osql_checkboard_check_down_nodes(char *host);
  */
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                      int *bdberr);
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr);
 

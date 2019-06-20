@@ -163,7 +163,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
     if (!tbl && p->pSrc->nSrc) {
         /* select 1 from tbl */
-        tbl = (const char*)p->pSrc->a[0].zName;
+        tbl = (const char *)p->pSrc->a[0].zName;
     }
 
     if (unlikely(!tbl)) {
@@ -254,17 +254,30 @@ struct ast {
     ast_node_t *stack;
     int nused;
     int nalloc;
+    int unsupported;
 };
 
-ast_t *ast_init(void)
+ast_t *ast_init(Parse *pParse, const char *caller)
 {
     ast_t *ast;
+
+    if (pParse->ast)
+        return pParse->ast->unsupported ? NULL : pParse->ast;
+
+    if (gbl_dohast_verbose)
+        logmsg(LOGMSG_USER, "TTT: %lu %s from %s\n", pthread_self(), __func__,
+               caller);
+
+    if (!sqlite3IsToplevel(pParse)) {
+        ast = ast_init(sqlite3ParseToplevel(pParse), __func__);
+        if (ast)
+            ast->unsupported = 1;
+        return NULL;
+    }
 
     ast = calloc(1, sizeof(ast_t));
     if (!ast)
         return NULL;
-
-    ast->nused = 0;
     ast->nalloc = AST_STACK_INIT;
     ast->stack = calloc(ast->nalloc, sizeof(ast_node_t));
     if (!ast->stack) {
@@ -272,7 +285,7 @@ ast_t *ast_init(void)
         ast = NULL;
     }
 
-    return ast;
+    return pParse->ast = ast;
 }
 
 void ast_destroy(ast_t **past, sqlite3 *db)
@@ -653,6 +666,9 @@ int comdb2_check_parallel(Parse *pParse)
     int i;
 
     if (gbl_dohsql_disable)
+        return 0;
+
+    if (ast && ast->unsupported)
         return 0;
 
     if (has_parallel_sql(NULL) == 0)

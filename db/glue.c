@@ -3956,17 +3956,17 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         }
 
-        net_set_pool_size(dbenv->handle_sibling, gbl_maxreclen + 300);
-        net_set_pool_size(dbenv->handle_sibling_offload, gbl_maxreclen + 300);
+        /* get the max rec len, or a sane default */
+        gbl_maxreclen = get_max_reclen(dbenv);
+        if (gbl_maxreclen < 0)
+            gbl_maxreclen = 512;
+        net_set_pool_size(dbenv->handle_sibling, (gbl_maxreclen + 300) * 1024);
+        net_set_pool_size(dbenv->handle_sibling_offload,
+                          (gbl_maxreclen + 300) * 1024);
 
         net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,
                                gbl_accept_on_child_nets);
-
-        /* get the max rec len, or a sane default */
-        gbl_maxreclen = get_max_reclen(dbenv);
-        if (gbl_maxreclen == 0)
-            gbl_maxreclen = 512;
 
 #if 0
         net_set_callback_data(dbenv->handle_sibling, dbenv);
@@ -5977,6 +5977,29 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
     *bdberr = 0;
     rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
                                        0, trans);
+    if (rc == IX_FND)
+        return 1;
+    if (rc == IX_NOTFND)
+        return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/**
+ * Check a genid, but get a writelock on the page rather than
+ * a readlock. Returns 0 if not found, 1 if found, -1 if error
+ *
+ */
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                      int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+
+    *bdberr = 0;
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, NULL,
+                                             &reqdtalen, 0, trans, NULL, 1);
+
     if (rc == IX_FND)
         return 1;
     if (rc == IX_NOTFND)

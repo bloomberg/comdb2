@@ -2246,6 +2246,10 @@ cmd ::= ANALYZE nm(N) dbnm(Y) analyzepercentage(P) analyzeopt(X). {
     comdb2analyze(pParse, X, &N, &Y, P);
 }
 
+cmd ::= ANALYZE ALL analyzepercentage(P) analyzeopt(X). {
+    comdb2analyze(pParse, X, NULL, NULL, P);
+}
+
 cmd ::= ANALYZE analyzepercentage(P) analyzeopt(X). {
     comdb2analyze(pParse, X, NULL, NULL, P);
 }
