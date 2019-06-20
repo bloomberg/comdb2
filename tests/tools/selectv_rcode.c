@@ -96,7 +96,7 @@ int selectv_query(cdb2_hndl_tp *db, int *numerrs)
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin\n", __LINE__);
+        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
     }
     if ((rc = cdb2_run_statement(db, "selectv i.rqstid,instid,began from jobinstance "
@@ -154,7 +154,7 @@ int selectv_update_query(cdb2_hndl_tp *db, int *numerrs)
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin\n", __LINE__);
+        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
     }
     if ((rc = cdb2_run_statement(db, "selectv i.rqstid,instid,began from jobinstance "
@@ -223,7 +223,7 @@ int update_query(cdb2_hndl_tp *db, int *numerrs)
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin\n", __LINE__);
+        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
     }
     if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance "
@@ -290,7 +290,7 @@ void set_isolation(cdb2_hndl_tp *db)
     int rc;
     switch(isolation) {
         case SOCKSQL:
-            rc = cdb2_run_statement(db, "set transaction socksql");
+            rc = cdb2_run_statement(db, "set transaction blocksql");
             break;
         case READ_COMMITTED:
             rc = cdb2_run_statement(db, "set transaction read committed");
@@ -307,6 +307,14 @@ void set_isolation(cdb2_hndl_tp *db)
     }
     if (rc != 0) {
         fprintf(stderr, "set transaction failed, %d %s\n", rc, cdb2_errstr(db));
+        exit(1);
+    }
+
+    while ((rc = cdb2_next_record(db)) == CDB2_OK)
+        ;
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "Set transaction line %d bad rcode from next record, %d\n",
+                __LINE__, rc);
         exit(1);
     }
 }
