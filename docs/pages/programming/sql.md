@@ -497,6 +497,16 @@ INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
 same name. The support for ```DROP INDEX``` was added in version 7.0.
 
+### CREATE VIEW
+
+![CREATE VIEW](images/create-view.gif)
+
+The ```CREATE VIEW``` statement can be used to create a view, which is essentially
+an alias of a SELECT statement. Views cannot be used to modify records. Thus, an
+attempt to INSERT, UPDATE or DELETE on a view would fail. One may think of views
+as READ-ONLY tables. A list of views can be obtained by querying ```comdb2_views```
+system table.
+
 ## Access control
 
 ### GRANT and REVOKE
