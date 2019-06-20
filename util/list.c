@@ -248,7 +248,7 @@ void *listc_rfl(listc_t *l, void *obj)
     {
         if (l->top != obj) {
             logmsg(LOGMSG_ERROR, "WARNING: REMOVED WRONG ITEM %p FROM LIST %p\n",
-                    obj, l);
+                    obj, l->top);
             abort();
         }
         l->top = l->bot = 0;

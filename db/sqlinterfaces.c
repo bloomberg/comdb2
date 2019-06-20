@@ -4106,6 +4106,54 @@ errors:
 
 */
 
+int check_active_appsock_connections(struct sqlclntstate *clnt) {
+    int max_appsock_conns = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+    if (active_appsock_conns > max_appsock_conns) {
+        int num_retry = 0;
+retry:
+        num_retry++;
+        pthread_mutex_lock(&clnt_lk);
+        struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
+        listc_abl(&clntlist, lru_clnt);
+        if (lru_clnt == clnt) { /* Handle case when only 1 connection is available */
+            if (active_appsock_conns  <= max_appsock_conns) {
+                pthread_mutex_unlock(&clnt_lk);
+                return 0;
+            }
+            lru_clnt = listc_rtl(&clntlist);
+            listc_abl(&clntlist, lru_clnt);
+        }
+        while(lru_clnt != clnt) {
+          if (lru_clnt->done && !lru_clnt->in_client_trans) {
+             lru_clnt->statement_timedout = 1; /* disallow any new query */
+             break;
+          }
+          lru_clnt = listc_rtl(&clntlist);
+          listc_abl(&clntlist, lru_clnt);
+        }
+        pthread_mutex_unlock(&clnt_lk);
+         if (lru_clnt == clnt) {
+           /* All clients have transactions, wait for 1 second */
+           if (num_retry <= 5) {
+               sleep(1);
+               goto retry;
+           }
+           return -1;
+        }
+       int fd = sbuf2fileno(lru_clnt->sb);
+        if (lru_clnt->done)
+        {
+            //lru_clnt->statement_timedout = 1; already done
+            shutdown(fd,SHUT_RD);
+            logmsg(LOGMSG_WARN, "%s: Closing least recently used connection fd %d , total %d \n",__func__,
+                             fd, active_appsock_conns-1);
+            return 0;
+        }
+    }
+    return 0;
+}
+
+
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests
  */
@@ -4548,7 +4596,10 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
-    clnt->statement_timedout = 0;
+
+    if (clnt->statement_timedout)
+        return -1;
+
     clnt->total_sql++;
     clnt->sql_since_reset++;
 
@@ -4605,6 +4656,13 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
      * again.  We block until then. */
     if (self)
         thrman_where(self, "waiting for query");
+
+    if (clnt->connid) { // Only for connections which we track
+        pthread_mutex_lock(&clnt_lk);
+        listc_rfl(&clntlist, clnt);
+        listc_abl(&clntlist, clnt);
+        pthread_mutex_unlock(&clnt_lk);
+    }
 
     if (clnt->heartbeat) {
         if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
@@ -4861,6 +4919,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
+    clnt->done = 1;
     strcpy(clnt->tzname, "America/New_York");
     clnt->dtprec = gbl_datetime_precision;
     bzero(&clnt->conninfo, sizeof(clnt->conninfo));
