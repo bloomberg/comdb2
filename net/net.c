@@ -86,6 +86,9 @@ extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_thread_count;
 
+extern void myfree(void *ptr);
+extern int db_is_stopped(void);
+
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
 
@@ -127,8 +130,6 @@ static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
 
     return sbuf2unbufferedwrite(sb, buf, nbytes);
 }
-
-extern void myfree(void *ptr);
 
 /* Help me build the test program... - Sam J */
 #ifdef TEST
@@ -5470,7 +5471,7 @@ static void *accept_thread(void *arg)
     netinfo_ptr->accept_thread_created = 1;
     /*fprintf(stderr, "setting netinfo_ptr->accept_thread_created\n");*/
 
-    while (!netinfo_ptr->exiting) {
+    while (!netinfo_ptr->exiting && !db_is_stopped()) {
 
         clilen = sizeof(cliaddr);
 
@@ -5480,13 +5481,15 @@ static void *accept_thread(void *arg)
             new_fd = accept(listenfd, (struct sockaddr *)&cliaddr,
                             (socklen_t *)&clilen);
         }
-        if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
-            logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
-        }
 
         if (new_fd == -1) {
-            logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s", listenfd, errno,
+            logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s\n", listenfd, errno,
                     strerror(errno));
+            continue;
+        }
+
+        if (new_fd <= 2) {
+            logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
             continue;
         }
 

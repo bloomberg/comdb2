@@ -174,6 +174,7 @@ extern void *clean_exit_thd(void *unused);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
 extern void update_metrics(void);
 extern void *timer_thread(void *);
+extern void comdb2_signal_timer();
 void init_lua_dbtypes(void);
 static int put_all_csc2();
 
@@ -257,6 +258,7 @@ int gbl_sqlwrtimeoutms = 10000;
 
 long long gbl_converted_blocksql_requests = 0;
 
+/* TODO: delete */
 int gbl_rangextunit =
     16; /* dont do more than 16 records in a single rangext op */
 int gbl_honor_rangextunit_for_old_apis = 0;
@@ -419,7 +421,7 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
 int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-int gbl_exit_alarm_sec = 10; //300;
+int gbl_exit_alarm_sec = 5; //300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
@@ -1474,7 +1476,8 @@ void do_clean()
     }
     bdb_cleanup_private_blkseq(thedb->bdb_env);
 
-    if (gbl_udppfault_thdpool)
+    /* gbl_trickle_thdpool is needed up to here */
+    if (gbl_trickle_thdpool)
         thdpool_stop(gbl_trickle_thdpool);
     close_all_dbs_tran(NULL);
 
@@ -1556,6 +1559,7 @@ void clean_exit(void)
     destroy_plugins();
     destroy_appsock();
     bdb_prepare_close(thedb->bdb_env);
+    comdb2_signal_timer();
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);

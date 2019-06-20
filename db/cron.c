@@ -288,6 +288,9 @@ static void *_cron_runner(void *arg)
             }
         }
 
+        if (db_is_stopped())
+            break;
+
         rc = sched->impl.wait_next_event(&sched->impl, event);
         if (rc && rc != ETIMEDOUT) {
             logmsg(LOGMSG_ERROR, "%s: bad pthread_cond_timedwait rc=%d\n",

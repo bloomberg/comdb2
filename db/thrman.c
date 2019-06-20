@@ -551,13 +551,12 @@ void stop_threads(struct dbenv *dbenv)
         thdpool_stop(gbl_sqlengine_thdpool);
     if (gbl_osqlpfault_thdpool)
         thdpool_stop(gbl_osqlpfault_thdpool);
-    //if (gbl_udppfault_thdpool)
-        //thdpool_stop(gbl_udppfault_thdpool);
-    //if (gbl_pgcompact_thdpool)
-        //thdpool_stop(gbl_pgcompact_thdpool);
-    //if (gbl_osqlpfault_thdpool)
-        //thdpool_stop(gbl_osqlpfault_thdpool);
-    //thdpool_stop(memptrickle);
+    if (gbl_udppfault_thdpool)
+        thdpool_stop(gbl_udppfault_thdpool);
+    if (gbl_pgcompact_thdpool)
+        thdpool_stop(gbl_pgcompact_thdpool);
+    if (gbl_osqlpfault_thdpool)
+        thdpool_stop(gbl_osqlpfault_thdpool);
 
     /* Membar ensures that all other threads will now see that db is stopping */
     MEMORY_SYNC;

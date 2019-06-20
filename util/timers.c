@@ -188,6 +188,12 @@ int remove_timer(int parm, int dolock)
     return -1;
 }
 
+// ment signal on db exit
+void comdb2_signal_timer()
+{
+    Pthread_cond_signal(&timerwait);
+}
+
 int comdb2_cantim(int parm)
 {
     return remove_timer(parm, 1);
@@ -206,7 +212,7 @@ void *timer_thread(void *p)
     int rc;
     int oneshot;
     int ms;
-    //ATOMIC_ADD(gbl_thread_count, 1);
+    ATOMIC_ADD(gbl_thread_count, 1);
     while (!db_is_stopped()) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
@@ -251,6 +257,6 @@ void *timer_thread(void *p)
         }
         Pthread_mutex_unlock(&timerlk);
     }
-    //ATOMIC_ADD(gbl_thread_count, -1);
+    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
