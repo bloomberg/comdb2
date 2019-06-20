@@ -3865,7 +3865,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     time2 = comdb2_time_epoch();
 
     if ((time2 - time1) > bdb_state->attr->rep_longreq) {
-        const struct bdb_thread_stats *t = bdb_get_thread_stats();
+        const struct berkdb_thread_stats *t = bdb_get_thread_stats();
         logmsg(LOGMSG_WARN, "LONG rep_process_message: %d seconds, type %d r %d\n",
                 time2 - time1, rep_control->rectype, r);
         bdb_fprintf_stats(t, "  ", stderr);

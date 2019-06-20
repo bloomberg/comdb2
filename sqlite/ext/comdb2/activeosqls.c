@@ -150,10 +150,15 @@ static void free_osqls(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblActiveOsqlsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblActiveOsqlsInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_active_osqls", get_osqls, free_osqls, sizeof(systable_osqlsession_t),
+        db, "comdb2_active_osqls", &systblActiveOsqlsModule,
+        get_osqls, free_osqls, sizeof(systable_osqlsession_t),
         CDB2_CSTRING, "type", -1, offsetof(systable_osqlsession_t, type),
         CDB2_CSTRING, "origin", -1, offsetof(systable_osqlsession_t, origin),
         CDB2_CSTRING, "argv0", -1, offsetof(systable_osqlsession_t, argv0),

@@ -221,6 +221,7 @@ extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
+extern int gbl_debug_children_lock;
 
 extern long long sampling_threshold;
 
@@ -297,6 +298,8 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+
+extern int gbl_clean_exit_on_sigterm;
 
 /*
   =========================================================
@@ -707,6 +710,20 @@ static int deadlock_policy_override_update(void *context, void *value)
     *(int *)tunable->var = val;
     logmsg(LOGMSG_INFO, "Set deadlock policy to %s\n",
            deadlock_policy_str(val));
+    return 0;
+}
+
+extern void clean_exit_sigwrap(int signum);
+
+static int update_clean_exit_on_sigterm(void *context, void *value) {
+    int val = *(int *)value;
+    if (val)
+        signal(SIGTERM, clean_exit_sigwrap);
+    else
+        signal(SIGTERM, SIG_DFL);
+
+    gbl_clean_exit_on_sigterm = val;
+
     return 0;
 }
 

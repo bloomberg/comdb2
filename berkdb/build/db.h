@@ -501,6 +501,7 @@ struct __db_lock_stat {
 	u_int64_t st_nnowaits;		/* Number of requests that would have
 					   waited, but NOWAIT was set. */
 	u_int64_t st_ndeadlocks;	/* Number of lock deadlocks. */
+	u_int64_t st_locks_aborted;	/* Number of locks released on deadlocks.*/
 	db_timeout_t st_locktimeout;	/* Lock timeout. */
 	u_int64_t st_nlocktimeouts;	/* Number of lock timeouts. */
 	db_timeout_t st_txntimeout;	/* Transaction timeout. */
@@ -2713,37 +2714,6 @@ void __db_hdestroy __P((void));
 #endif
 
 
-
-/* SJ - jamming this into berkeley.  If you change this struct, recompile
- * everything.  Note that there is an identical copy of this struct in
- * bdb_api.h just to make the code maintenance issue even worse.  And even
- * worse than that, this stuff is all duplicated in build_ibm/db.h and
- * build_sundev1/db.h */
-struct bb_berkdb_thread_stats {
-	unsigned n_lock_waits;
-	uint64_t lock_wait_time_us;
-
-	unsigned n_preads;
-	unsigned pread_bytes;
-	uint64_t pread_time_us;
-
-	unsigned n_pwrites;
-	unsigned pwrite_bytes;
-	uint64_t pwrite_time_us;
-
-	unsigned n_memp_fgets;
-	uint64_t memp_fget_time_us;
-
-	unsigned n_memp_pgs;
-	uint64_t memp_pg_time_us;
-
-	unsigned n_shallocs;
-	uint64_t shalloc_time_us;
-
-	unsigned n_shalloc_frees;
-	uint64_t shalloc_free_time_us;
-};
-
 /*
  * Helper macros for microsecond-granularity event logging.
  * Multiplication usually takes fewer CPU cycles than division. Therefore
@@ -2757,8 +2727,8 @@ struct bb_berkdb_thread_stats {
 #define M2U(msec) ((msec) * 1000ULL)
 #endif
 uint64_t bb_berkdb_fasttime(void);
-struct bb_berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
-struct bb_berkdb_thread_stats *bb_berkdb_get_process_stats(void);
+struct berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
+struct berkdb_thread_stats *bb_berkdb_get_process_stats(void);
 void bb_berkdb_thread_stats_init(void);
 void bb_berkdb_thread_stats_reset(void);
 

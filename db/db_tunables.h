@@ -346,6 +346,7 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+
 /*
 REGISTER_TUNABLE("enable_new_snapshot",
                  "Enable new SNAPSHOT implementation. (Default: off)",
@@ -1699,6 +1700,17 @@ REGISTER_TUNABLE("selectv_writelock_on_update",
 REGISTER_TUNABLE("selectv_writelock",
                  "Acquire a writelock for selectv records.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("clean_exit_on_sigterm",
+                 "Attempt to do orderly shutdown on SIGTERM (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
+                 NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
+
+REGISTER_TUNABLE("debug_children_lock",
+                 "Stacktrace when database acquires or releases children lock."
+                 "  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_children_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
