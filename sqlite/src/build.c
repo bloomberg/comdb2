@@ -5413,6 +5413,8 @@ static char *getIndexCond(
 
   if( flgs == MEM_Int ){
     right = sqlite3_mprintf("%lld", m->u.i);
+  }else if( flgs == MEM_IntReal ){
+    right = sqlite3_mprintf("%lld", m->u.i);
   }else if( flgs == MEM_Real ){
     right = sqlite3_mprintf("%lf", m->u.r);
   }else if( flgs & MEM_Str ){
