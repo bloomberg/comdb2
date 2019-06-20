@@ -102,6 +102,9 @@ static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
 #define CDB2_POLL_TIMEOUT_DEFAULT 250
 static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
+#define CDB2_PROTOBUF_SIZE_DEFAULT 4096
+static int  CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
+
 #define CDB2_TCPBUFSZ_DEFAULT 0
 static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
@@ -284,6 +287,10 @@ static void reset_the_configuration(void)
     CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
     COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+    CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
+    CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
     cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
@@ -1010,7 +1017,33 @@ struct cdb2_hndl {
     int comdb2db_timeout;
     int socket_timeout;
     cdb2_event events;
+    // Protobuf allocator data used only for row data i.e. lastresponse
+    void *protobuf_data;
+    int  protobuf_size;
+    int  protobuf_offset;
+    int  protobuf_used_sysmalloc;
+    ProtobufCAllocator allocator;
 };
+
+static void *cdb2_protobuf_alloc(void *allocator_data, size_t size) {
+     struct cdb2_hndl *hndl = allocator_data;
+     void *p = NULL;
+     if (size <= hndl->protobuf_size - hndl->protobuf_offset) {
+       p = hndl->protobuf_data  + hndl->protobuf_offset;
+       hndl->protobuf_offset += size;
+     } else {
+         p = malloc(size);
+         hndl->protobuf_used_sysmalloc = 1;
+     }
+     return p;
+}
+ void cdb2_protobuf_free(void *allocator_data, void *p) {
+    struct cdb2_hndl *hndl = allocator_data;
+    hndl->protobuf_used_sysmalloc = 0;
+    if (p < hndl->protobuf_data || p > (hndl->protobuf_data + hndl->protobuf_size)) {
+        free(p);
+    }
+}
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
                                int myport, int timeoutms)
@@ -1276,6 +1309,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                     hndl->socket_timeout = atoi(tok);
                 else if (tok)
                     CDB2_SOCKET_TIMEOUT = atoi(tok);
+             } else if (strcasecmp("protobuf_size",tok) == 0) {
+               tok = strtok_r(NULL, " :,", &last);
+               if (hndl)
+                   hndl->protobuf_size = atoi(tok);
+               else
+                   CDB2_PROTOBUF_SIZE = atoi(tok);
             } else if (strcasecmp("comdb2dbname", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -2725,7 +2764,9 @@ static int cdb2_convert_error_code(int rc)
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse, &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
         hndl->lastresponse = NULL;
@@ -3137,10 +3178,13 @@ retry_next_record:
     }
 
     /* free previous response */
-    if (hndl->lastresponse)
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+    if (hndl->lastresponse) {
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse, &hndl->allocator);
+        hndl->protobuf_offset = 0;
+    }
 
-    hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
+    hndl->lastresponse = cdb2__sqlresponse__unpack(&hndl->allocator, len, hndl->last_buf);
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
@@ -3379,9 +3423,15 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse, &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
     }
+
+    if (hndl->protobuf_data)
+        free(hndl->protobuf_data);
+
     if (hndl->num_set_commands) {
         while (hndl->num_set_commands) {
             hndl->num_set_commands--;
@@ -6086,6 +6136,13 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
+
+    if (!hndl->protobuf_size)
+        hndl->protobuf_size = CDB2_PROTOBUF_SIZE;
+    hndl->protobuf_data = malloc(hndl->protobuf_size);
+    hndl->allocator.alloc = &cdb2_protobuf_alloc;
+    hndl->allocator.free = &cdb2_protobuf_free;
+    hndl->allocator.allocator_data = hndl;
 
 out:
     if (log_calls) {
