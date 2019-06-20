@@ -892,7 +892,7 @@ int convert_sql_failure_reason_str(const struct convert_failure *reason,
 {
     if (reason->source_sql_field_flags & MEM_Null) {
         return snprintf(out, outlen, " from SQL NULL");
-    } else if (reason->source_sql_field_flags & MEM_Int) {
+    } else if (reason->source_sql_field_flags & (MEM_Int|MEM_IntReal)) {
         return snprintf(out, outlen, " from SQL integer '%lld'",
                         reason->source_sql_field_info.ival);
     } else if (reason->source_sql_field_flags & MEM_Real) {
@@ -980,7 +980,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         return rc;
     }
 
-    if (m->flags & MEM_Int) {
+    if (m->flags & (MEM_Int|MEM_IntReal)) {
         i64 i = flibc_htonll(m->u.i);
         rc = CLIENT_to_SERVER(
             &i, sizeof(i), CLIENT_INT, null, (struct field_conv_opts *)convopts,
@@ -1272,7 +1272,7 @@ done:
         fail_reason->source_sql_field_flags = m->flags;
         fail_reason->target_schema = s;
         fail_reason->target_field_idx = info->fldidx;
-        if (m->flags & MEM_Int) {
+        if (m->flags & (MEM_Int|MEM_IntReal)) {
             fail_reason->source_sql_field_info.ival = m->u.i;
         } else if (m->flags & MEM_Real) {
             fail_reason->source_sql_field_info.rval = m->u.r;
@@ -11101,7 +11101,7 @@ void stat4dump(int more, char *table, int istrace)
                     comma = ", ";
                     if (m.flags & MEM_Null) {
                         outFunc("NULL");
-                    } else if (m.flags & MEM_Int) {
+                    } else if (m.flags & (MEM_Int|MEM_IntReal)) {
                         outFunc("%" PRId64, m.u.i);
                     } else if (m.flags & MEM_Real) {
                         outFunc("%f", m.u.r);

@@ -230,6 +230,7 @@ static void print_mem(strbuf *out, Mem *m)
         strbuf_appendf(out, "string \"%.*s\"", m->n, m->z);
         break;
     case MEM_Int:
+    case MEM_IntReal:
         strbuf_appendf(out, "int %lld", (long long)m->u.i);
         break;
     case MEM_Real:
