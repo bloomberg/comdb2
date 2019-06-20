@@ -1,0 +1,3 @@
+enable_serial_isolation
+table jobinstance jobinstance.csc2
+table dbgopts dbgopts.csc2
