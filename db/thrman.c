@@ -515,9 +515,8 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             break;
 
         gettimeofday(&tp, NULL);
-        ts.tv_sec = tp.tv_sec;
+        ts.tv_sec = tp.tv_sec + 1;
         ts.tv_nsec = tp.tv_usec * 1000;
-        ts.tv_sec += 10;
 
         /* Wait for something to change. */
         rc = pthread_cond_timedwait(&cond, &mutex, &ts);
@@ -579,8 +578,6 @@ void stop_threads(struct dbenv *dbenv)
 
     LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = 0; }
     UNLOCK(&stop_thds_time_lk);
-    /*watchdog_disable();*/ /* watchdog will fail when trying to run a sql query
-                         * bc sql thds are stopped */
 }
 
 void resume_threads(struct dbenv *dbenv)

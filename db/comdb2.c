@@ -126,7 +126,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
 #include <schemachange.h>
-#include "comdb2_atomic.h"
 #include "cron.h"
 #include "metrics.h"
 #include "time_accounting.h"
@@ -1119,7 +1118,6 @@ static void *purge_old_blkseq_thread(void *arg)
 
     loop = 0;
     sleep(1);
-    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
 
@@ -1246,7 +1244,6 @@ static void *purge_old_blkseq_thread(void *arg)
 
     dbenv->purge_old_blkseq_is_running = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -1270,7 +1267,6 @@ static void *purge_old_files_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     assert(!gbl_is_physical_replicant);
-    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
@@ -1342,7 +1338,6 @@ static void *purge_old_files_thread(void *arg)
 
     dbenv->purge_old_files_is_running = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-    ATOMIC_ADD(gbl_thread_count, -1);
 
     return NULL;
 }
@@ -1538,6 +1533,7 @@ void clean_exit(void)
        node. */
     bdb_exiting(thedb->static_table.handle);
 
+    comdb2_signal_timer();
     stop_threads(thedb);
     set_stop_mempsync_thread();
     flush_db();
@@ -1558,7 +1554,9 @@ void clean_exit(void)
     destroy_plugins();
     destroy_appsock();
     bdb_prepare_close(thedb->bdb_env);
-    comdb2_signal_timer();
+
+    thrman_wait_type_exit(THRTYPE_GENERIC);
+    thrman_wait_type_exit(THRTYPE_PURGEFILES);
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
