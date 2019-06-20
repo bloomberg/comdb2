@@ -847,7 +847,7 @@ static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c)
 {
     int i;
     for (i = 0; i < conn->nparams; i++) {
-        if (!strcasecmp(b, conn->params[i].name)) {
+        if (!strcmp(b, conn->params[i].name)) {
             *c = conn->params[i].pos;
             return 0;
         }
@@ -1863,7 +1863,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     } else {
         /* if already allocated, check to see if name is already in */
         for (i = 0; i < params->nparams; i++) {
-            if (!strcasecmp(name, params->params[i].name)) {
+            if (!strcmp(name, params->params[i].name)) {
                 /* done here */
                 return params;
             }
@@ -1889,6 +1889,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (params->params)
             free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     params->params = temparr;

@@ -23,6 +23,7 @@
 #include <uuid/uuid.h>
 #include <memcompare.c>
 #include "comdb2.h"
+#include "sql.h"
 #include "bdb_int.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -765,6 +766,10 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
+  }else if( sqlite3_stricmp(zName, "parallel")==0 ){
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+    sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
   }
 }
 

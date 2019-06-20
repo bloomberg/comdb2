@@ -3215,6 +3215,9 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
             eventlog_bind_null(arr, p.name);
+            if (rc) { /* position out-of-bounds, etc? */
+                goto out;
+            }
             continue;
         }
         switch (p.type) {
@@ -3298,7 +3301,7 @@ struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
         if (p->pos > 0 && p->pos == index)
             return p;
 
-        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
+        if (name[0] && !strncmp(name, p->name, strlen(name) + 1))
             return p;
     }
 done:
