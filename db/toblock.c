@@ -5091,13 +5091,15 @@ backout:
             int priority = 0;
 
             if (iq->tranddl) {
-                irc = trans_abort(iq, iq->sc_tran);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
-                           __func__, __LINE__, irc);
-                    comdb2_die(1);
+                if (iq->sc_tran) {
+                    irc = trans_abort(iq, iq->sc_tran);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(1);
+                    }
+                    iq->sc_tran = NULL;
                 }
-                iq->sc_tran = NULL;
 
                 /* Backout Schema Change */
                 if (!parent_trans)
