@@ -25,12 +25,13 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <assert.h>
 #include <poll.h>
 
+#include "thrman.h"
+#include "thread_util.h"
 #include "thdpool.h"
-#include <ctrace.h>
+#include "ctrace.h"
 #include <pool.h>
-#include <logmsg.h>
+#include "logmsg.h"
 #include "locks_wrap.h"
-#include "comdb2_atomic.h"
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
@@ -46,7 +47,6 @@ static int __bhlru __P((const void *, const void *));
 static int __memp_close_flush_files __P((DB_ENV *, DB_MPOOL *));
 static int __memp_sync_files __P((DB_ENV *, DB_MPOOL *));
 
-extern int gbl_thread_count;
 extern void *gbl_bdb_state;
 void bdb_get_writelock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
@@ -218,12 +218,11 @@ enum {
 void set_stop_mempsync_thread()
 {
 	mempsync_thread_should_stop = 1;
-    if (mempsync_thread_running)
-        Pthread_cond_signal(&mempsync_wait);
+	if (mempsync_thread_running)
+		Pthread_cond_signal(&mempsync_wait);
 }
 
-void *
-mempsync_thd(void *p)
+void *mempsync_thd(void *p)
 {
 	int rc;
 	DB_LOGC *logc;
@@ -238,15 +237,16 @@ mempsync_thd(void *p)
 	bdb_state = dbenv->app_private;
 	bdb_set_key(bdb_state);
 	bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+	thrman_register(THRTYPE_GENERIC);
+	thread_started("mempsync");
 
 	rep_check = IS_ENV_REPLICATED(dbenv);
 
-    ATOMIC_ADD(gbl_thread_count, 1);
 	mempsync_thread_running = 1;
 	while (!mempsync_thread_should_stop) {
 		Pthread_mutex_lock(&mempsync_lk);
 		Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
-        Pthread_mutex_unlock(&mempsync_lk);
+		Pthread_mutex_unlock(&mempsync_lk);
 		if (mempsync_thread_should_stop) {
 			break;
 		}
@@ -331,7 +331,6 @@ err:
 
 	mempsync_thread_running = 0;
 
-    ATOMIC_ADD(gbl_thread_count, -1);
 	return NULL;
 }
 

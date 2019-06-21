@@ -73,6 +73,8 @@
 
 #include "debug_switches.h"
 #include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -84,7 +86,6 @@ static int curr_udp_cnt = 0;
 extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
-extern int gbl_thread_count;
 
 extern void myfree(void *ptr);
 extern int db_is_stopped(void);
@@ -3998,6 +3999,7 @@ static void *writer_thread(void *args)
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
 #endif
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net writer");
     THREAD_TYPE(__func__);
 
@@ -4267,6 +4269,7 @@ static void *reader_thread(void *arg)
     int rc, set_qstat = 0;
     char fromhost[256], tohost[256];
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net reader");
     THREAD_TYPE(__func__);
 
@@ -4681,6 +4684,7 @@ static void *connect_thread(void *arg)
     int flag = 1;
     int connport = -1;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("connect thread");
     THREAD_TYPE(__func__);
 
@@ -5438,6 +5442,7 @@ static void *accept_thread(void *arg)
     watchlist_node_type *watchlist_node;
     unsigned int last_stat_dump_time = comdb2_time_epochms();
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net accept");
     THREAD_TYPE(__func__);
 
@@ -5763,6 +5768,7 @@ static void *heartbeat_send_thread(void *arg)
     host_node_type *ptr;
     netinfo_type *netinfo_ptr;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net heartbeat send");
 
     netinfo_ptr = (netinfo_type *)arg;
@@ -5774,7 +5780,6 @@ static void *heartbeat_send_thread(void *arg)
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!netinfo_ptr->exiting) {
         /* netinfo lock protects the list AND the write_heartbeat call
@@ -5798,7 +5803,6 @@ static void *heartbeat_send_thread(void *arg)
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
 
-    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
@@ -5978,6 +5982,7 @@ static void *heartbeat_check_thread(void *arg)
     int node_timestamp;
     int running_user_func;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net heartbeat check");
 
     netinfo_ptr = (netinfo_type *)arg;
@@ -5988,8 +5993,6 @@ static void *heartbeat_check_thread(void *arg)
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    ATOMIC_ADD(gbl_thread_count, 1);
 
     while (!netinfo_ptr->exiting) {
         int now;
@@ -6062,7 +6065,6 @@ static void *heartbeat_check_thread(void *arg)
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
 
-    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 

@@ -420,7 +420,7 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
 int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-int gbl_exit_alarm_sec = 5; //300;
+int gbl_exit_alarm_sec = 6; //300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
@@ -639,7 +639,6 @@ int gbl_use_fastseed_for_comdb2_seqno = 0;
 int gbl_disable_stable_for_ipu = 1;
 
 int gbl_disable_exit_on_thread_error = 0;
-int gbl_thread_count = 0; // count threads running; wait for them on clean exit
 
 int gbl_berkdb_iomap = 1;
 int gbl_check_dbnum_conflicts = 1;
@@ -5430,7 +5429,7 @@ int main(int argc, char **argv)
     }
 
     int wait_counter = 0;
-    while (gbl_thread_count > 0) {
+    while (!db_is_stopped()) {
         sleep(1);
         wait_counter++;
     }

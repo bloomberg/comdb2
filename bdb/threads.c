@@ -32,7 +32,6 @@
 extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
-extern int gbl_thread_count;
 
 void *udp_backup(void *arg)
 {

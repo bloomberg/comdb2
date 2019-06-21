@@ -24,7 +24,6 @@
 #include "fdb_fend.h"
 #include "views.h"
 #include "logmsg.h"
-#include "comdb2_atomic.h"
 
 extern int gbl_watcher_thread_ran;
 
@@ -86,7 +85,6 @@ int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
 static void *watchdog_thread(void *arg)
 {
-    ATOMIC_ADD(gbl_thread_count, 1);
     void *ptr;
     pthread_t dummy_tid;
     int rc;
@@ -106,6 +104,9 @@ static void *watchdog_thread(void *arg)
     Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("watchdog");
 
     while (!gbl_ready)
         sleep(1);
@@ -297,7 +298,6 @@ static void *watchdog_thread(void *arg)
 
         sleep(1);
     }
-    ATOMIC_ADD(gbl_thread_count, -1);
     return NULL;
 }
 
