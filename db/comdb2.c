@@ -2169,6 +2169,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
     }
     free_view_hash(thedb->view_hash);
     thedb->view_hash = view_hash;
+    return 0;
 
 err:
     free_view_hash(view_hash);

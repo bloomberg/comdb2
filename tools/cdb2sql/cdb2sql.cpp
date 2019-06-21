@@ -152,7 +152,20 @@ static const char *usage_text =
     " * Query db by connecting to a specific server:\n"
     "     cdb2sql mydb --host node1 'select 1'\n"
     " * Query db by connecting to a known set of servers/ports:\n"
-    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n";
+    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
+    "\n"
+    "Interactive session commands:\n"
+    "@cdb2_close          Close connection (calls cdb2_close())\n"
+    "@desc      tblname   Describe a table\n"
+    "@hexblobs            Display blobs in hexadecimal format\n"
+    "@ls        tables    List tables\n"
+    "@ls        systables List system tables\n"
+    "@ls        views     List views\n"
+    "@redirect  [file]    Redirect output to a file\n"
+    "@row_sleep number    Sleep for this many secs between printing rows\n"
+    "@send      command   Send a command via 'sys.cmd.send()'\n"
+    "@strblobs            Display blobs as strings\n"
+    "@time                Toggle between time modes\n";
 
 void cdb2sql_usage(int exit_val)
 {
@@ -179,7 +192,8 @@ const char *level_one_words[] = {
 };
 
 const char *char_atglyph_words[] = {
-    "desc", "ls", "send", NULL, // must be terminated by NULL
+    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
+    "send",       "strblobs", "time",     NULL, // must be terminated by NULL
 };
 
 static char *char_atglyph_generator(const char *text, int state)
