@@ -696,7 +696,9 @@ void sqlite3VdbeMemPrettyPrint(Mem *pMem, char *zBuf){
   }else if( (f & MEM_Datetime) || (f & MEM_Interval) ){
     Mem newMem;
     sqlite3_value_dup_inplace(&newMem, pMem);
+    newMem.db = pMem->db;
     sqlite3VdbeMemStringify(&newMem, SQLITE_UTF8, 0);
+    newMem.db = 0;
     sqlite3_snprintf(100, zCsr, newMem.z);
     sqlite3_value_free_inplace(&newMem);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
