@@ -4316,8 +4316,13 @@ void sqlite3GenerateRowIndexDelete(Parse*, Table*, int, int, int*, int);
 int sqlite3GenerateIndexKey(Parse*, Index*, int, int, int, int*,Index*,int);
 void sqlite3ResolvePartIdxLabel(Parse*,int);
 int sqlite3ExprReferencesUpdatedColumn(Expr*,int*,int);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
+                                     u8,u8,int,int*,int*,Upsert*,int*);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
                                      u8,u8,int,int*,int*,Upsert*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_NULL_TRIM
   void sqlite3SetMakeRecordP5(Vdbe*,Table*);
 #else
@@ -4325,7 +4330,7 @@ void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int,
-                              int, Upsert*);
+                              int,Upsert*,int);
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
                                int, Upsert*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */

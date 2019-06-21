@@ -759,12 +759,21 @@ void sqlite3Update(
 
   if( !isView ){
     int addr1 = 0;        /* Address of jump instruction */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    int bUseLastIndex = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Do constraint checks. */
     assert( regOldRowid>0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
+        regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
+        aXRef, 0, &bUseLastIndex);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
         regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
         aXRef, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Do FK constraint checks. */
     if( hasFK ){
@@ -822,7 +831,7 @@ void sqlite3Update(
     sqlite3CompleteInsertion(
         pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
         OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
-        0, 0, OE_None, 0
+        0, 0, OE_None, 0, bUseLastIndex
     );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3CompleteInsertion(

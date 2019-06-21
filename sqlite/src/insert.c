@@ -1094,9 +1094,17 @@ void sqlite3Insert(
     {
       int isReplace;    /* Set to true if constraints may cause a replace */
       int bUseSeek;     /* True to use OPFLAG_SEEKRESULT */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      int bUseLastIndex = 0;
+      sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
+          regIns, 0, ipkColumn>=0, onError, endOfLoop, &isReplace, 0, pUpsert,
+          &bUseLastIndex
+      );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
           regIns, 0, ipkColumn>=0, onError, endOfLoop, &isReplace, 0, pUpsert
       );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3FkCheck(pParse, pTab, 0, regIns, 0, 0);
 
       /* Set the OPFLAG_USESEEKRESULT flag if either (a) there are no REPLACE
@@ -1112,7 +1120,8 @@ void sqlite3Insert(
       ));
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3CompleteInsertion(pParse, pTab, iDataCur, iIdxCur,
-          regIns, aRegIdx, 0, appendFlag, bUseSeek, onError, pUpsert
+          regIns, aRegIdx, 0, appendFlag, bUseSeek, onError, pUpsert,
+          bUseLastIndex
       );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3CompleteInsertion(pParse, pTab, iDataCur, iIdxCur,
@@ -1363,6 +1372,9 @@ void sqlite3GenerateConstraintChecks(
   int *pbMayReplace,   /* OUT: Set to true if constraint may cause a replace */
   int *aiChng,         /* column i is unchanged if aiChng[i]<0 */
   Upsert *pUpsert      /* ON CONFLICT clauses, if any.  NULL otherwise */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int *pbUseLastIndex /* Use the last entry in aRegIdx? */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   Vdbe *v;             /* VDBE under constrution */
   Index *pIdx;         /* Pointer to one of the indices */
@@ -1392,6 +1404,7 @@ void sqlite3GenerateConstraintChecks(
       for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, ix++){
         /* NO LOOP BODY */
       }
+      *pbUseLastIndex = 1;
     }
     goto skip_constraint_checks;
   }
@@ -1952,6 +1965,7 @@ void sqlite3GenerateConstraintChecks(
     if( regR!=regIdx ) sqlite3ReleaseTempRange(pParse, regR, nPkField);
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+    *pbUseLastIndex = 1;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -2023,6 +2037,7 @@ void sqlite3CompleteInsertion(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   ,int onError        /* OE_Replace, etc. */
   ,Upsert *pUpsert    /* ON CONFLICT clauses for upsert, or NULL */
+  ,int bUseLastIndex  /* Use the last entry in aRegIdx? */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   Vdbe *v;            /* Prepared statements under construction */
@@ -2076,7 +2091,7 @@ void sqlite3CompleteInsertion(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   }else{
     i = 0;
-    if( update_flags ){
+    if( bUseLastIndex ){
       for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
         /* NO LOOP BODY */
       }
