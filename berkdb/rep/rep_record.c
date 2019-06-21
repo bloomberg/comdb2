@@ -61,6 +61,7 @@ void bdb_get_writelock(void *bdb_state,
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 int rep_qstat_has_fills(void);
+extern int db_is_stopped(void);
 
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
@@ -484,7 +485,7 @@ static void *apply_thread(void *arg)
 
     //ATOMIC_ADD(gbl_thread_count, 1);
 	Pthread_mutex_lock(&rep_queue_lock);
-	while (gbl_decoupled_logputs) {
+	while (!db_is_stopped() && gbl_decoupled_logputs) {
 		int pollms = (gbl_apply_thread_pollms > 0) ?
 			gbl_apply_thread_pollms : 200;
 		int waitms;

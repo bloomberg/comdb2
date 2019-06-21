@@ -1697,6 +1697,8 @@ void bdb_stop_recover_threads(bdb_state_type *bdb_state)
 {
     if (bdb_state->dbenv->recovery_processors)
         thdpool_stop(bdb_state->dbenv->recovery_processors);
+    if (bdb_state->dbenv->recovery_workers)
+        thdpool_stop(bdb_state->dbenv->recovery_workers);
 }
 
 int bdb_close_env(bdb_state_type *bdb_state)

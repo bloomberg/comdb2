@@ -4721,7 +4721,12 @@ static void *connect_thread(void *arg)
             uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
             int r = rand_r(&seed) % 5000;
             Pthread_mutex_unlock(&(host_node_ptr->lock));
-            poll(NULL, 0, r);
+            // sleep up to r-ms by 1s (1000ms) increments
+            while (r > 0 && !host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
+                int milli = (r > 1000) ? 1000 : r; // usleep for at most 1s
+                usleep(milli * 1000);
+                r -= 1000;
+            }
             check = 0;
             Pthread_mutex_lock(&(host_node_ptr->lock));
             continue;

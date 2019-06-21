@@ -560,6 +560,7 @@ extern void init_clientstats_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
 extern void set_stop_mempsync_thread();
 extern void bdb_prepare_close(bdb_state_type *bdb_state);
+extern void bdb_stop_recover_threads(bdb_state_type *bdb_state);
 
 int gbl_use_plan = 1;
 
@@ -1554,6 +1555,7 @@ void clean_exit(void)
     destroy_plugins();
     destroy_appsock();
     bdb_prepare_close(thedb->bdb_env);
+    bdb_stop_recover_threads(thedb->bdb_env);
 
     thrman_wait_type_exit(THRTYPE_GENERIC);
     thrman_wait_type_exit(THRTYPE_PURGEFILES);
