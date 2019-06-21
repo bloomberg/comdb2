@@ -795,5 +795,8 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
 #define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)==SQLITE_MAX_U32 || ((unsigned int)t)==(SQLITE_MAX_U32-1) )
+
+int sqlite3_value_dup_inplace(sqlite3_value *pNew, const sqlite3_value *pOrig);
+void sqlite3_value_free_inplace(sqlite3_value *v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif /* !defined(SQLITE_VDBEINT_H) */
