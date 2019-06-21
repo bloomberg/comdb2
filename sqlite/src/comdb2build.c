@@ -35,6 +35,8 @@ extern int gbl_convert_sleep;
 extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
+extern int gbl_legacy_schema;
+
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
@@ -6422,6 +6424,11 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+    if (gbl_legacy_schema) {
+        setError(pParse, SQLITE_ERROR, "CHECK CONSTRAINT not enabled");
+        return;
+    }
 
     struct comdb2_constraint *constraint;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;

@@ -90,6 +90,16 @@ void dyns_disallow_bools(void) { allow_bools = 0; }
 
 int dyns_used_bools(void) { return used_bools; }
 
+#define CHECK_LEGACY_SCHEMA(A)                                                 \
+    do {                                                                       \
+        if (gbl_legacy_schema && (A)) {                                        \
+            csc2_syntax_error(                                                 \
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");         \
+            any_errors++;                                                      \
+            return;                                                            \
+        }                                                                      \
+    } while (0)
+
 void start_constraint_list(char *keyname)
 {
     if (nconstraints >= MAXCNSTRTS) {
@@ -163,6 +173,7 @@ void add_constraint(char *tbl, char *key)
 
 void add_check_constraint(char *expr)
 {
+    CHECK_LEGACY_SCHEMA(1);
     int cidx = constraints[nconstraints].ncnstrts;
     constraints[nconstraints].ncnstrts++;
     constraints[nconstraints].type = CONS_CHECK;
@@ -818,11 +829,7 @@ void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
 void key_setuniqnulls(void)
 {
-    if (gbl_legacy_schema) {
-        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-        any_errors++;
-        return;
-    }
+    CHECK_LEGACY_SCHEMA(1);
     workkeyflag |= UNIQNULLS;
 }
 
@@ -1019,12 +1026,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             current_line, tag, MAXIDXNAMELEN - 1);
     }
     if (where && strlen(where) != 0) {
-        if (gbl_legacy_schema) {
-            csc2_syntax_error(
-                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-            any_errors++;
-            return;
-        }
+        CHECK_LEGACY_SCHEMA(1);
         keys[ii]->where = csc2_strdup(where);
     } else {
         keys[ii]->where = NULL;
@@ -1069,12 +1071,7 @@ void key_piece_add(char *buf,
     char *cp, *tag;
 
     if (is_expr) {
-        if (gbl_legacy_schema) {
-            csc2_syntax_error(
-                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-            any_errors++;
-            return;
-        }
+        CHECK_LEGACY_SCHEMA(1);
         struct key *nk = (struct key *)csc2_malloc(sizeof(struct key));
         struct key *kp;
         int keyfields = 0;
@@ -1513,15 +1510,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             case T_DATETIME:
             case T_DATETIMEUS:
-                if (gbl_legacy_schema && (tables[ntables]
-                                              .sym[tables[ntables].nsym]
-                                              .fopts[i]
-                                              .opttype != FLDOPT_NULL)) {
-                    csc2_syntax_error(
-                        "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-                    any_errors++;
-                    return;
-                }
+                CHECK_LEGACY_SCHEMA((tables[ntables]
+                                         .sym[tables[ntables].nsym]
+                                         .fopts[i]
+                                         .opttype != FLDOPT_NULL));
             case T_PSTR:
             case T_CSTR:
             case T_VUTF8:
