@@ -1445,6 +1445,21 @@ static void free_sqlite_table(struct dbenv *dbenv)
     free(dbenv->dbs);
 }
 
+static void free_view_hash(hash_t *view_hash) {
+    void *ent;
+    unsigned int bkt;
+    struct dbview *view;
+
+    for (view = (struct dbview *)hash_first(view_hash, &ent, &bkt);
+         view;
+         view = (struct dbview *)hash_next(view_hash, &ent, &bkt)) {
+        free(view->view_name);
+        free(view->view_def);
+    }
+    hash_clear(view_hash);
+    hash_free(view_hash);
+}
+
 /* clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
@@ -1514,6 +1529,11 @@ void clean_exit(void)
         hash_clear(thedb->db_hash);
         hash_free(thedb->db_hash);
         thedb->db_hash = NULL;
+    }
+
+    if (thedb->view_hash) {
+        free_view_hash(thedb->view_hash);
+        thedb->view_hash = NULL;
     }
 
     cleanup_interned_strings();
@@ -2105,7 +2125,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
     int bdberr = 0;
     char *view_names[MAX_NUM_TABLES];
     char *view_def;
-    int view_count;
+    int view_count = 0;
     hash_t *view_hash;
 
     view_hash =
@@ -2116,44 +2136,42 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
     if (bdb_llmeta_get_view_names(tran, (char **)&view_names, &view_count,
                                   sizeof(view_names), &bdberr) ||
         bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR,
-               "couldn't load view names from low level meta table\n");
+        logmsg(
+            LOGMSG_ERROR,
+            "couldn't load view names from low level meta table (bdberr: %d)\n",
+            bdberr);
         return 1;
     }
 
     for (int i = 0; i < view_count; i++) {
-        struct dbview *view = malloc(sizeof(struct dbview));
-
+        struct dbview *view = calloc(1, sizeof(struct dbview));
         if (!view) {
             logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
                    __LINE__);
-            return 1;
+            rc = 1;
+            goto err;
         }
+
+        hash_add(view_hash, view);
 
         rc =
             bdb_llmeta_get_view_def(tran, view_names[i], 0, &view_def, &bdberr);
         if (rc) {
-            /* TODO (NC): handle error */
+            logmsg(LOGMSG_ERROR,
+                   "couldn't load view definition from low level meta table "
+                   "(bdberr: %d)\n",
+                   bdberr);
+            goto err;
         }
 
-        view->view_name = strdup(view_names[i]);
-        if (!view->view_name) {
-            logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
-                   __LINE__);
-            return 1;
-        }
-        view->view_def = strdup(view_def);
-        if (!view->view_def) {
-            logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
-                   __LINE__);
-            free(view_def);
-            return 1;
-        }
-        free(view_def);
-        hash_add(view_hash, view);
+        view->view_name = view_names[i];
+        view->view_def = view_def;
     }
-    hash_clear(thedb->view_hash);
+    free_view_hash(thedb->view_hash);
     thedb->view_hash = view_hash;
+
+err:
+    free_view_hash(view_hash);
     return rc;
 }
 
@@ -5689,6 +5707,10 @@ void delete_view(char *view_name)
     if (view) {
         /* Remove the view from hash. */
         hash_del(thedb->view_hash, view);
+
+        free(view->view_name);
+        free(view->view_def);
+        free(view);
     }
 
     Pthread_rwlock_unlock(&thedb_lock);

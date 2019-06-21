@@ -10335,6 +10335,7 @@ int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
         }
         return -1;
     }
+    *view_count = 0;
 
     if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
         logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
@@ -10355,8 +10356,6 @@ int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
     }
 
     p_outbuf_start = p_outbuf;
-
-    *view_count = 0;
 
 retry:
     if (++retries >= gbl_maxretries) {
@@ -10552,9 +10551,10 @@ backout:
 
         /* Kill the transaction */
         rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
-        if (rc && !BDBERR_NOERROR) {
+        if (rc && *bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
                    __func__, *bdberr);
+            free(p_buf_start);
             return -1;
         }
 

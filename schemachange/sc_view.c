@@ -32,30 +32,40 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     int bdberr;
     struct dbview *view;
 
-    view = malloc(sizeof(struct dbview));
-    if (view == 0) {
+    view = calloc(1, sizeof(struct dbview));
+    if (view == NULL) {
+        sc_errf(s, "Failed to alloc memory (%s:%d)\n", __func__, __LINE__);
         return -1;
     }
 
     view->view_name = strdup(s->tablename);
-    if (view->view_name == 0) {
-        return -1;
+    if (view->view_name == NULL) {
+        sc_errf(s, "Failed to alloc memory (%s:%d)\n", __func__, __LINE__);
+        rc = -1;
+        goto err;
     }
     view->view_def = strdup(s->newcsc2);
-    if (view->view_def == 0) {
-        return -1;
+    if (view->view_def == NULL) {
+        sc_errf(s, "Failed to alloc memory (%s:%d)\n", __func__, __LINE__);
+        rc = -1;
+        goto err;
     }
 
     rc = bdb_llmeta_put_view_def(tran, s->tablename, s->newcsc2, 0, &bdberr);
     if (rc != 0) {
-        return rc;
+        sc_errf(s, "Failed to set view definition in low level meta\n");
+        goto err;
     }
 
-    add_view(view);
-
     if (llmeta_set_views(tran, thedb)) {
-        sc_errf(s, "Failed to set table names in low level meta\n");
+        sc_errf(s, "Failed to set view names in low level meta\n");
         return -1;
+    }
+
+    rc = add_view(view);
+    if (rc != 0) {
+        sc_errf(s, "Failed to add view to the thedb->view_hash\n");
+        goto err;
     }
 
     s->addonly = SC_DONE_ADD;
@@ -63,18 +73,26 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
 
     if (create_sqlmaster_records(tran)) {
         sc_errf(s, "create_sqlmaster_records failed\n");
-        return -1;
+        goto err;
     }
     create_sqlite_master();
 
     rc = bdb_llog_view(thedb->bdb_env, user_view, 1, &bdberr);
     if (rc != 0) {
-        return rc;
+        sc_errf(s, "Failed to log view info\n");
+        goto err;
     }
     gbl_user_views_gen++;
 
     sc_printf(s, "Schema change ok\n");
     return 0;
+
+err:
+    free(view->view_name);
+    free(view->view_def);
+    free(view);
+
+    return rc;
 }
 
 int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
