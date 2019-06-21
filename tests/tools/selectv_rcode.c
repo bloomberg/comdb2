@@ -90,9 +90,10 @@ static char *type_to_str(int type)
  *
  */
 
-int selectv_query(cdb2_hndl_tp *db, int *numerrs)
+int selectv_query(cdb2_hndl_tp *db)
 {
     int rc;
+    int got_error = 0;
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
@@ -115,7 +116,7 @@ int selectv_query(cdb2_hndl_tp *db, int *numerrs)
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
-            (*numerrs)++;
+            got_error = 1;
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
@@ -123,9 +124,9 @@ int selectv_query(cdb2_hndl_tp *db, int *numerrs)
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
-            (*numerrs)++;
+            got_error = 1;
     }
-    return 0;
+    return got_error;
 }
 
 
@@ -146,11 +147,12 @@ int selectv_query(cdb2_hndl_tp *db, int *numerrs)
  */
 
 
-int selectv_update_query(cdb2_hndl_tp *db, int *numerrs)
+int selectv_update_query(cdb2_hndl_tp *db)
 {
     int rc;
     int64_t *instids = NULL;
     int cnt = 0;
+    int got_error = 0;
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
@@ -187,7 +189,7 @@ int selectv_update_query(cdb2_hndl_tp *db, int *numerrs)
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
-            (*numerrs)++;
+            got_error = 1;
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
@@ -195,9 +197,9 @@ int selectv_update_query(cdb2_hndl_tp *db, int *numerrs)
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
-            (*numerrs)++;
+            got_error = 1;
     }
-    return 0;
+    return got_error;
 }
 
 /*
@@ -215,11 +217,12 @@ int selectv_update_query(cdb2_hndl_tp *db, int *numerrs)
  *
  */
 
-int update_query(cdb2_hndl_tp *db, int *numerrs)
+int update_query(cdb2_hndl_tp *db)
 {
     int rc;
     int64_t *instids = NULL;
     int cnt = 0;
+    int got_error = 0;
 
     cdb2_clearbindings(db);
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
@@ -257,13 +260,13 @@ int update_query(cdb2_hndl_tp *db, int *numerrs)
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
             } else
-                (*numerrs)++;
+                got_error = 1;
         } else {
             if (rc != 2) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
             } else
-                (*numerrs)++;
+                got_error = 1;
         }
     }
 
@@ -273,16 +276,16 @@ int update_query(cdb2_hndl_tp *db, int *numerrs)
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
             } else
-                (*numerrs)++;
+                got_error = 1;
         } else {
             if (rc != 2) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
             } else
-                (*numerrs)++;
+                got_error = 1;
         }
     }
-    return 0;
+    return got_error;
 }
 
 void set_isolation(cdb2_hndl_tp *db)
@@ -347,13 +350,13 @@ void *thd(void *arg) {
     while(!time_is_up) {
         switch(type) {
             case SELECTV_THREAD:
-                selectv_query(db, &numerrs);
+                numerrs += selectv_query(db);
                 break;
             case UPDATER_THREAD:
-                update_query(db, &numerrs);
+                numerrs += update_query(db);
                 break;
             case SELECTV_UPDATER_THREAD:
-                selectv_update_query(db, &numerrs);
+                numerrs += selectv_update_query(db);
                 break;
         }
         iterations++;
