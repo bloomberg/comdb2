@@ -6860,6 +6860,13 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
         }
         free(db->ixsql);
     }
+
+    for (i = 0; i < db->n_constraints; i++) {
+        free(db->constraints[i].consname);
+        free(db->constraints[i].lclkeyname);
+        free(db->constraints[i].check_expr);
+    }
+
     free(db->ixuse);
     free(db->sqlixuse);
     free(db->csc2_schema);
