@@ -57,15 +57,18 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
         goto err;
     }
 
-    if (llmeta_set_views(tran, thedb)) {
-        sc_errf(s, "Failed to set view names in low level meta\n");
-        return -1;
-    }
-
     rc = add_view(view);
     if (rc != 0) {
         sc_errf(s, "Failed to add view to the thedb->view_hash\n");
         goto err;
+    }
+
+    /* Note: add_view() must go before llmeta_set_views, as add_view() updates
+     * the view hash which lmeta_set_views() reads to update the llmeta.
+     */
+    if (llmeta_set_views(tran, thedb)) {
+        sc_errf(s, "Failed to set view names in low level meta\n");
+        return -1;
     }
 
     s->addonly = SC_DONE_ADD;

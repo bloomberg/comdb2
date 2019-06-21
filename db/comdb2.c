@@ -2152,8 +2152,6 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
             goto err;
         }
 
-        hash_add(view_hash, view);
-
         rc =
             bdb_llmeta_get_view_def(tran, view_names[i], 0, &view_def, &bdberr);
         if (rc) {
@@ -2161,11 +2159,14 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
                    "couldn't load view definition from low level meta table "
                    "(bdberr: %d)\n",
                    bdberr);
+            free(view);
             goto err;
         }
 
         view->view_name = view_names[i];
         view->view_def = view_def;
+        hash_add(view_hash, view);
+
     }
     free_view_hash(thedb->view_hash);
     thedb->view_hash = view_hash;
