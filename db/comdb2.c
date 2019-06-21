@@ -1556,8 +1556,9 @@ void clean_exit(void)
     bdb_prepare_close(thedb->bdb_env);
     bdb_stop_recover_threads(thedb->bdb_env);
 
-    thrman_wait_type_exit(THRTYPE_GENERIC);
     thrman_wait_type_exit(THRTYPE_PURGEFILES);
+    // close the generic threads
+    thrman_wait_type_exit(THRTYPE_GENERIC);
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
@@ -5434,6 +5435,8 @@ int main(int argc, char **argv)
         wait_counter++;
     }
 
+    /* clean_exit() will wait for all the generic threads to exit */
+    thrman_wait_type_exit(THRTYPE_CLEANEXIT);
     do_clean();
 
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
