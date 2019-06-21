@@ -2559,6 +2559,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     bool have_keyless_requests = 0;
     int numerrs = 0;
     int check_serializability = 0;
+    int force_serial_error = 0;
     struct block_err err;
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
@@ -4714,8 +4715,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (gbl_prefault_udp)
             send_prefault_udp = 1;
         rc = osql_bplog_commit(iq, trans, &tmpnops, &err);
-        if (rc == ERR_VERIFY)
+        if (rc == ERR_VERIFY) {
             check_serializability = 1;
+            force_serial_error = 1;
+        }
         send_prefault_udp = 0;
 
         if (iq->osql_step_ix) {
@@ -4861,6 +4864,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         Pthread_rwlock_wrlock(&commit_lock);
         hascommitlock = 1;
 
+        /* This is looking for a commit record - one dive is fine */
         while ((iq->arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
                                       &(iq->arr->offset), 1)) ||
@@ -5073,9 +5077,9 @@ backout:
 
             rc = ERR_CONSTR;
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
-        } else if (iq->arr && bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+        } else if (iq->arr && (force_serial_error || bdb_osql_serial_check(thedb->bdb_env, iq->arr,
                                                     &(iq->arr->file),
-                                                    &(iq->arr->offset), 0)) {
+                                                    &(iq->arr->offset), 0))) {
             numerrs = 1;
             currangearr_free(iq->arr);
             iq->arr = NULL;

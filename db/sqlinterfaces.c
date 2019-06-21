@@ -1789,13 +1789,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     (clnt->sql) ? clnt->sql : "(???.)", clnt->osql.replay);
             }
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
-                if (gbl_selectv_rangechk)
-                    rc = selectv_range_commit(clnt);
                 if (gbl_early_verify && !clnt->early_retry &&
                     gbl_osql_send_startgen && clnt->start_gen) {
                     if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                         clnt->early_retry = EARLY_ERR_GENCHANGE;
                 }
+                if (gbl_selectv_rangechk)
+                    rc = selectv_range_commit(clnt);
                 if (rc) {
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
