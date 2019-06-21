@@ -336,6 +336,12 @@ void *thd(void *arg) {
         exit(1);
     }
 
+    if ((rc = cdb2_run_statement(db, "set verifyretry off")) != CDB2_OK) {
+        fprintf(stderr, "line %d run_statement error, %d, %s\n", __LINE__,
+                rc, cdb2_errstr(db));
+        exit(1);
+    }
+
     set_isolation(db);
 
     while(!time_is_up) {

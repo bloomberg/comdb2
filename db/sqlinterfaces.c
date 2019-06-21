@@ -1793,7 +1793,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = selectv_range_commit(clnt);
                 }
 
-                if (gbl_early_verify && !clnt->early_retry &&
+                if (!rc && gbl_early_verify && !clnt->early_retry &&
                     gbl_osql_send_startgen && clnt->start_gen) {
                     if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                         clnt->early_retry = EARLY_ERR_GENCHANGE;
@@ -1807,15 +1807,15 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             "%s: failed to abort sorese transaction irc=%d\n",
                             __func__, irc);
                     }
-                    if (clnt->early_retry == EARLY_ERR_VERIFY) {
+                    if (!rc && clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "unable to update record rc = 4");
-                    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+                    } else if (rc || clnt->early_retry == EARLY_ERR_SELECTV) {
                         clnt->osql.xerr.errval = ERR_CONSTR;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "constraints error, no genid");
-                    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+                    } else if (!rc && clnt->early_retry == EARLY_ERR_GENCHANGE) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "verify error on master swing");
