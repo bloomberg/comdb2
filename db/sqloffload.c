@@ -294,8 +294,9 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
     if (clnt->selectv_arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
-                &(clnt->selectv_arr->file), &(clnt->selectv_arr->offset), 0)) {
+        bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
+                              &(clnt->selectv_arr->file),
+                              &(clnt->selectv_arr->offset), 0)) {
         rc = SQLITE_ABORT;
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
@@ -306,7 +307,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                             "transaction is not serializable");
         } else {
             clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-            errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
+            errstat_cat_str(&(clnt->osql.xerr),
+                            "unable to update record rc = 4");
         }
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;

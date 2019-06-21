@@ -1799,31 +1799,32 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 if (rc) {
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
-                        logmsg(LOGMSG_ERROR,
-                                "%s: failed to abort sorese transaction irc=%d\n",
-                                __func__, irc);
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "%s: failed to abort sorese transaction irc=%d\n",
+                            __func__, irc);
                     }
                     rc = SQLITE_ABORT;
                 } else if (clnt->early_retry) {
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(
-                                LOGMSG_ERROR,
-                                "%s: failed to abort sorese transaction irc=%d\n",
-                                __func__, irc);
+                            LOGMSG_ERROR,
+                            "%s: failed to abort sorese transaction irc=%d\n",
+                            __func__, irc);
                     }
                     if (clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
-                                "unable to update record rc = 4");
+                                        "unable to update record rc = 4");
                     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
                         clnt->osql.xerr.errval = ERR_CONSTR;
                         errstat_cat_str(&(clnt->osql.xerr),
-                                "constraints error, no genid");
+                                        "constraints error, no genid");
                     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
-                                "verify error on master swing");
+                                        "verify error on master swing");
                     }
                     clnt->early_retry = 0;
                     rc = SQLITE_ABORT;
