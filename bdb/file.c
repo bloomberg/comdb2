@@ -115,6 +115,8 @@ extern size_t gbl_blobmem_cap;
 
 extern int is_db_roomsync();
 
+int gbl_debug_children_lock = 0;
+int gbl_queuedb_genid_filename = 1;
 static const char NEW_PREFIX[] = "new.";
 
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
@@ -634,7 +636,6 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
                           0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
 }
 
-int gbl_queuedb_genid_filename = 1;
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
                              int create, char *name, size_t len)
 {
@@ -1431,6 +1432,35 @@ int bdb_flush_noforce(bdb_state_type *bdb_state, int *bdberr)
     return rc;
 }
 
+static int bdb_lock_children_lock(bdb_state_type *bdb_state)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    Pthread_mutex_lock(&(bdb_state->children_lock));
+    assert(!bdb_state->have_children_lock);
+    bdb_state->have_children_lock = 1;
+    if (gbl_debug_children_lock) {
+        logmsg(LOGMSG_USER, "Acquired children lock\n");
+        cheap_stack_trace();
+    }
+    return 0;
+}
+
+static int bdb_unlock_children_lock(bdb_state_type *bdb_state)
+{
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    assert(bdb_state->have_children_lock);
+    bdb_state->have_children_lock = 0;
+    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    if (gbl_debug_children_lock) {
+        logmsg(LOGMSG_USER, "Released children lock\n");
+        cheap_stack_trace();
+    }
+    return 0;
+}
+
 void bdb_prepare_close(bdb_state_type *bdb_state)
 {
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
@@ -1469,14 +1499,14 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
         if (child) {
             child->exiting = 1;
         }
     }
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 
 #   if 0
     /* Wait for ongoing election to abort. */
@@ -1499,7 +1529,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     }
 
     /* now do it for all of our children */
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
 
@@ -1509,7 +1539,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
             bdb_access_destroy(child);
         }
     }
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 
     /* Commit */
     tid->commit(tid, 0);
@@ -4774,7 +4804,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
     }
 
     /* now do it for all of our children */
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
         if (child) {
@@ -4796,7 +4826,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             child->isopen = 1;
         }
     }
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 
     /* fprintf(stderr, "back from open_dbs\n"); */
 
@@ -4858,14 +4888,14 @@ static inline void bdb_set_read_only(bdb_state_type *bdb_state)
 
     bdb_state->read_write = 0;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
         if (child) {
             child->read_write = 0;
         }
     }
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 }
 
 static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
@@ -4990,14 +5020,14 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
 
     bdb_state->read_write = 1;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < bdb_state->numchildren; i++) {
         child = bdb_state->children[i];
         if (child) {
             child->read_write = 1;
         }
     }
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
     logmsg(LOGMSG_USER, "%s line %d calling rep_start as master with egen %d\n",
            __func__, __LINE__, newgen);
     rc = bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, newgen,
@@ -5486,6 +5516,7 @@ static bdb_state_type *bdb_open_int(
         bdb_state->bdb_lock = mymalloc(sizeof(pthread_rwlock_t));
         Pthread_rwlock_init(bdb_state->bdb_lock, NULL);
         Pthread_mutex_init(&(bdb_state->children_lock), NULL);
+        bdb_state->have_children_lock = 0;
 
     } else {
         bdb_state->parent = parent_bdb_state;
@@ -5864,7 +5895,7 @@ static bdb_state_type *bdb_open_int(
 
             parent = bdb_state->parent;
 
-            Pthread_mutex_lock(&(parent->children_lock));
+            bdb_lock_children_lock(parent);
 
             /* chain us into a free slot, or extend */
             for (i = 0; i < parent->numchildren; i++) {
@@ -5882,7 +5913,7 @@ static bdb_state_type *bdb_open_int(
                 parent->numchildren++;
             }
 
-            Pthread_mutex_unlock(&(parent->children_lock));
+            bdb_unlock_children_lock(parent);
         }
 
         bdb_state->last_dta = 0;
@@ -6670,15 +6701,15 @@ int get_dbnum_by_handle(bdb_state_type *bdb_state)
 {
     int i;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
 
     for (i = 0; i < bdb_state->parent->numchildren; i++)
         if (bdb_state->parent->children[i] == bdb_state) {
-            Pthread_mutex_unlock(&(bdb_state->children_lock));
+            bdb_unlock_children_lock(bdb_state);
             return i;
         }
 
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 
     return -1;
 }
@@ -6689,7 +6720,7 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
     int nlen = strlen(name);
     int found = -1;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
 
     for (i = 0; i < bdb_state->parent->numchildren; i++) {
         if (strncasecmp(bdb_state->parent->children[i]->name, name, nlen) ==
@@ -6699,7 +6730,7 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
         }
     }
 
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
     return found;
 }
 
@@ -6724,7 +6755,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
 
     /* now remove myself from my parents list of children */
 
-    Pthread_mutex_lock(&(parent->children_lock));
+    bdb_lock_children_lock(parent);
 
     /* find ourselves and swap null it. */
     for (i = 0; i < parent->numchildren; i++)
@@ -6734,7 +6765,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
             break;
         }
 
-    Pthread_mutex_unlock(&(parent->children_lock));
+    bdb_unlock_children_lock(parent);
 
     return 0;
 }
@@ -6805,7 +6836,7 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
         if (replace) {
             memcpy(child, replace, sizeof(bdb_state_type));
 
-            Pthread_mutex_lock(&(bdb_state->children_lock));
+            bdb_lock_children_lock(bdb_state);
 
             /* find ourselves and swap it. */
             for (int i = 0; i < bdb_state->numchildren; i++)
@@ -6816,7 +6847,7 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
                     break;
                 }
 
-            Pthread_mutex_unlock(&(bdb_state->children_lock));
+            bdb_unlock_children_lock(bdb_state);
         } else
             free(child);
     }
@@ -6910,7 +6941,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
     }
     bdb_state->isopen = 1;
 
-    Pthread_mutex_lock(&(parent->children_lock));
+    bdb_lock_children_lock(parent);
 
     /* chain us into a free slot, or extend */
     for (i = 0; i < parent->numchildren; i++) {
@@ -6928,7 +6959,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
         parent->numchildren++;
     }
 
-    Pthread_mutex_unlock(&(parent->children_lock));
+    bdb_unlock_children_lock(parent);
 
     BDB_RELLOCK();
 
@@ -7179,7 +7210,7 @@ void bdb_verify_dbreg(bdb_state_type *bdb_state)
     char fname[255];
     int exists;
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
 
     for (tbl = 0; tbl < bdb_state->numchildren; tbl++) {
         s = bdb_state->children[tbl];
@@ -7213,7 +7244,7 @@ void bdb_verify_dbreg(bdb_state_type *bdb_state)
         }
     }
 
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 }
 
 void bdb_set_origname(bdb_state_type *bdb_state, const char *name)
@@ -7993,11 +8024,19 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
+/* Refactor to not access berkley while holding children lock */
 int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
                                   int trak, int *bdberr)
 {
     int i = 0;
-    int rc = 0;
+    int retry;
+    char **tablenames;
+    int tablecount;
+    int rc;
+
+retry:
+    rc = retry = 0;
+    tablenames = NULL;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -8008,11 +8047,20 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
         tran->table_version_cache = NULL;
     }
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
+    tran->table_version_cache_sz = tablecount = bdb_state->numchildren;
+    tablenames = (char **)calloc(sizeof(char *), tablecount);
+    tran->table_version_cache =
+        (unsigned long long *)calloc(tablecount, sizeof(unsigned long long));
 
-    tran->table_version_cache_sz = bdb_state->numchildren;
-    tran->table_version_cache = (unsigned long long *)calloc(
-        tran->table_version_cache_sz, sizeof(unsigned long long));
+    for (int i = 0; i < tablecount; i++) {
+        if (bdb_state->children[i]) {
+            tablenames[i] = strdup(bdb_state->children[i]->name);
+            tran->table_version_cache[i] = bdb_state->children[i]->version_num;
+        }
+    }
+
+    bdb_unlock_children_lock(bdb_state);
 
     if (!tran->table_version_cache) {
         logmsg(LOGMSG_ERROR, "%s: failed to allocated %zu bytes\n", __func__,
@@ -8022,23 +8070,18 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
 
-    /*printf("Start caching %d\n", tran->table_version_cache_sz);*/
     for (i = 0; i < tran->table_version_cache_sz; i++) {
-        if (bdb_state->children[i] == NULL)
+        if (tablenames[i] == NULL)
             continue;
-        if (bdb_state->children[i]->version_num == 0) {
+        if (tran->table_version_cache[i] == 0) {
             /* read it */
-            rc = bdb_get_file_version_data(bdb_state->children[i], NULL, 0,
-                                           &bdb_state->children[i]->version_num,
-                                           bdberr);
+            rc = bdb_get_file_version_data_by_name(
+                NULL, tablenames[i], 0, &tran->table_version_cache[i], bdberr);
             if (rc) {
-                /*printf("Failed Caching %s rc=%d bdberr=%d\n",
-                 * bdb_state->children[i]->name, rc, *bdberr);*/
                 if (*bdberr == BDBERR_FETCH_DTA) {
                     rc = 0;
                     *bdberr = BDBERR_NOERROR;
-                    bdb_state->children[i]->version_num =
-                        -1; /* this will stop trying to check again*/
+                    tran->table_version_cache[i] = -1;
                 } else {
                     logmsg(LOGMSG_ERROR, "%s: failed to read file version number "
                                     "rc=%d bdberr=%d\n",
@@ -8053,12 +8096,45 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
                  * bdb_state->children[i]->version_num);*/
             }
         }
-
-        tran->table_version_cache[i] = bdb_state->children[i]->version_num;
     }
+
+    /* Recheck and copy back */
+    bdb_lock_children_lock(bdb_state);
+    if (bdb_state->numchildren != tablecount)
+        retry = 1;
+    for (int i = 0; i < tablecount && retry == 0; i++) {
+        if ((tablenames[i] && !bdb_state->children[i]) ||
+            (!tablenames[i] && bdb_state->children[i]) ||
+            (tablenames[i] && bdb_state->children[i] &&
+             strcmp(tablenames[i], bdb_state->children[i]->name))) {
+            retry = 1;
+            /* Update children version number if it hasn't been set (is 0) */
+        } else if (bdb_state->children[i] &&
+                   bdb_state->children[i]->version_num > 0 &&
+                   bdb_state->children[i]->version_num !=
+                       tran->table_version_cache[i]) {
+            retry = 1;
+        }
+    }
+    if (!retry) {
+        for (int i = 0; i < tablecount; i++) {
+            if (bdb_state->children[i])
+                bdb_state->children[i]->version_num =
+                    tran->table_version_cache[i];
+        }
+    }
+    bdb_unlock_children_lock(bdb_state);
+
 done:
-    /*printf("Done caching\n");*/
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    if (tablenames) {
+        for (int i = 0; i < tablecount; i++) {
+            if (tablenames[i])
+                free(tablenames[i]);
+        }
+        free(tablenames);
+    }
+    if (retry != 0)
+        goto retry;
 
     return rc;
 }
@@ -8072,7 +8148,7 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
     parent = bdb_state->parent;
     assert(parent != 0);
 
-    Pthread_mutex_lock(&(bdb_state->children_lock));
+    bdb_lock_children_lock(bdb_state);
     for (i = 0; i < parent->numchildren; i++) {
         if (bdb_state == parent->children[i]) {
             break;
@@ -8081,7 +8157,7 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
     if (i == parent->numchildren) /* this looks more like a locking bug */
         i = -1;
 
-    Pthread_mutex_unlock(&(bdb_state->children_lock));
+    bdb_unlock_children_lock(bdb_state);
 
     if ((i >= 0) && (i < tran->table_version_cache_sz) &&
         (tran->table_version_cache[i] != 0) &&
