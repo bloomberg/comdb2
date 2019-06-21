@@ -1385,9 +1385,9 @@ void sqlite3GenerateConstraintChecks(
 
   isUpdate = regOldData!=0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ix = 0;
   if( !need_index_checks_for_upsert(pTab, pUpsert, overrideError, 0) ){
     v = sqlite3GetVdbe(pParse);
-    ix = 0;
     if( isUpdate ){
       for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, ix++){
         /* NO LOOP BODY */
