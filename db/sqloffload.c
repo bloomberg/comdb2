@@ -273,7 +273,7 @@ extern int gbl_osql_send_startgen;
  */
 
 /* Set to 1, check read-only transactions on the master. */
-int gbl_serializable_force_commit = 0;
+int gbl_serialize_reads_like_writes = 0;
 
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                        char *tzname, int osqlreq_type, int is_distrib_tran)
@@ -283,7 +283,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
-    int force_commit = gbl_serializable_force_commit;
+    int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
@@ -324,14 +324,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     /* optimization (will catch all transactions with no internal updates */
-    if (!force_commit && osql_shadtbl_empty(clnt)) {
+    if (!force_master && osql_shadtbl_empty(clnt)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
         return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (!force_commit && usedb_only &&
+    if (!force_master && usedb_only &&
         (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
@@ -364,7 +364,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     /* Preserve the sentops optimization */
-    if (clnt->osql.is_reorder_on && (force_commit || sentops)) {
+    if (clnt->osql.is_reorder_on && (force_master || sentops)) {
         if (clnt->arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);

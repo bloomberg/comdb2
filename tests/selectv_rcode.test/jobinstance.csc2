@@ -1,6 +1,3 @@
-// zjobdb table jobinstance
-// job instance state
-
 tag ondisk
 {
   longlong rqstid // job request id

@@ -1481,7 +1481,7 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
     return ret;
 }
 
-extern int gbl_serializable_force_commit;
+extern int gbl_serialize_reads_like_writes;
 
 /**
  * Scan the shadow tables for the current transaction
@@ -1502,7 +1502,7 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
      */
     if (!restarting && !osql->dirty &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
-        !osql->sc_tbl && !osql->bpfunc_tbl && !gbl_serializable_force_commit) {
+        !osql->sc_tbl && !osql->bpfunc_tbl && !gbl_serialize_reads_like_writes) {
         return -3;
     }
 
