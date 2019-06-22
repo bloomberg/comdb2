@@ -39,6 +39,8 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "logmsg.h"
 #include "locks_wrap.h"
 #include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
 #include "thread_stats.h"
 
 
@@ -49,6 +51,7 @@ extern int gbl_prefault_udp;
 extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
+extern int db_is_stopped(void);
 void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
@@ -1019,13 +1022,19 @@ __memp_send_sparse_page_thread(_)
 
 	ii = sizeof(spgs.list) / sizeof(spgs.list[0]) - 1;
 
-	while (1) {
+	thrman_register(THRTYPE_GENERIC);
+	thread_started("send_sparse_page");
+
+	while (!db_is_stopped()) {
 		{
 			Pthread_mutex_lock(&spgs.lock);
-			while (spgs.list[ii].sparseness == 0) {
+			while (spgs.list[ii].sparseness == 0 && !db_is_stopped()) {
 				/* no entry, cond wait */
 				spgs.wait = 1;
-				Pthread_cond_wait(&spgs.cond, &spgs.lock);
+				struct timespec now;
+				now.tv_sec += 1;
+				clock_gettime(CLOCK_REALTIME, &now);
+				pthread_cond_timedwait(&spgs.cond, &spgs.lock, &now);
 			}
 
 			spgs.wait = 0;
@@ -1034,6 +1043,9 @@ __memp_send_sparse_page_thread(_)
 			memset(spgs.list, 0, sizeof(struct spg));
 			Pthread_mutex_unlock(&spgs.lock);
 		}
+
+		if (db_is_stopped())
+			continue;
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;

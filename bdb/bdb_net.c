@@ -491,6 +491,7 @@ static void *udp_reader(void *arg)
 
     while (!db_is_stopped()) {
         /* TODO: First do a poll() or select() on the fd then recv */
+
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
