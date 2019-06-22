@@ -1,1 +1,1 @@
-serializable_force_commit 0
+serialize_reads_like_writes 0
