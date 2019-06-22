@@ -490,7 +490,18 @@ static void *udp_reader(void *arg)
     time_t now;
 
     while (!db_is_stopped()) {
-        /* TODO: First do a poll() or select() on the fd then recv */
+        struct pollfd pol;
+        pol.fd = fd;
+        pol.events = POLLIN;
+        
+        int rc = poll(&pol, 1, 1000);
+        if (rc == 0 || (pol.revents & POLLIN) == 0)
+            continue;
+        if (rc < 0) { 
+            logmsg(LOGMSG_ERROR, "udp_reader:%d: poll err %d %s\n", __LINE__,
+                   errno, strerror(errno));
+            break;
+        }
 
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
