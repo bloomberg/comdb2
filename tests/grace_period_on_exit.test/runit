@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# On clean exit, we wait up to 5 minutes for queries to finish.
+# Verify it works.
+
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+# make sure we send the query and exit to the same node
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+echo "target machine is $mach"
+
+# clean exit should wait for the query to finish
+cdb2sql -s --host $mach $dbnm "SELECT SLEEP(60)" &
+# hold up a little bit for the query to be dispatched
+sleep 5
+# request an exit
+cdb2sql -s --host $mach $dbnm "exec procedure sys.cmd.send('exit')"
+# the query should succeed here
+wait
