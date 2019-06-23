@@ -1502,7 +1502,8 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
      */
     if (!restarting && !osql->dirty &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
-        !osql->sc_tbl && !osql->bpfunc_tbl && !gbl_serialize_reads_like_writes) {
+        !osql->sc_tbl && !osql->bpfunc_tbl &&
+        !gbl_serialize_reads_like_writes) {
         return -3;
     }
 

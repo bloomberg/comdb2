@@ -5077,9 +5077,10 @@ backout:
 
             rc = ERR_CONSTR;
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
-        } else if (iq->arr && (force_serial_error || bdb_osql_serial_check(thedb->bdb_env, iq->arr,
-                                                    &(iq->arr->file),
-                                                    &(iq->arr->offset), 0))) {
+        } else if (iq->arr && (force_serial_error ||
+                               bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+                                                     &(iq->arr->file),
+                                                     &(iq->arr->offset), 0))) {
             numerrs = 1;
             currangearr_free(iq->arr);
             iq->arr = NULL;

@@ -1716,7 +1716,7 @@ REGISTER_TUNABLE("debug_children_lock",
 REGISTER_TUNABLE("serialize_reads_like_writes",
                  "Send read-only multi-statement schedules to the master.  "
                  "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
