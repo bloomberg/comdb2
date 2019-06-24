@@ -2181,7 +2181,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     if (!clnt.admin &&
-        !check_active_appsock_connections(&clnt)) {
+        check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
 
