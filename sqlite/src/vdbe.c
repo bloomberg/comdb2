@@ -1972,6 +1972,9 @@ case OP_Subtract:              /* same as TK_MINUS, in1, in2, out3 */
 case OP_Multiply:              /* same as TK_STAR, in1, in2, out3 */
 case OP_Divide:                /* same as TK_SLASH, in1, in2, out3 */
 case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  char bIntint;   /* Started out as two integer operands */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u16 flags;      /* Combined MEM_* flags from both inputs */
   u16 type1;      /* Numeric type of left operand */
   u16 type2;      /* Numeric type of right operand */
@@ -2069,6 +2072,9 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   }else
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( (type1 & type2 & MEM_Int)!=0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    bIntint = 1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     iA = pIn1->u.i;
     iB = pIn2->u.i;
     switch( pOp->opcode ){
@@ -2093,6 +2099,9 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   }else if( (flags & MEM_Null)!=0 ){
     goto arithmetic_result_is_null;
   }else{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    bIntint = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 fp_math:
     rA = sqlite3VdbeRealValue(pIn1);
     rB = sqlite3VdbeRealValue(pIn2);
@@ -2124,6 +2133,11 @@ fp_math:
     }
     pOut->u.r = rB;
     MemSetTypeFlag(pOut, MEM_Real);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( ((type1|type2)&MEM_Real)==0 && !bIntint ){
+      sqlite3VdbeIntegerAffinity(pOut);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
