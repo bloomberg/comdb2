@@ -1692,7 +1692,7 @@ REGISTER_TUNABLE("machine_class",
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("selectv_writelock_on_update",
-                 "Acquire a writelock for updated selectv records."
+                 "Acquire a writelock for updated selectv records.  "
                  "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1707,5 +1707,16 @@ REGISTER_TUNABLE("clean_exit_on_sigterm",
                  TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
                  NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
 
+REGISTER_TUNABLE("debug_children_lock",
+                 "Stacktrace when database acquires or releases children lock."
+                 "  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_children_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("serialize_reads_like_writes",
+                 "Send read-only multi-statement schedules to the master.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
