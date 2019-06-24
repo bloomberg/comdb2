@@ -27,3 +27,9 @@ SELECT csc2 FROM sqlite_master WHERE name = 't1';
 INSERT INTO t1 VALUES('white');
 SELECT * FROM t1;
 DROP TABLE t1;
+
+SELECT '3. Invalid use cases' as test;
+CREATE TABLE t1(i INT, CHECK ())$$
+CREATE TABLE t1(i INT, CHECK (SELECT 1))$$
+CREATE TABLE t1(i INT, CHECK (i > MAX(i)))$$
+CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))$$
