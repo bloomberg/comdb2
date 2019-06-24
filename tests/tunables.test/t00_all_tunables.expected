@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=914)
+(TUNABLES_COUNT=915)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -741,6 +741,7 @@
 (name='schemachange_perms', description='Check if schema change allowed from source machines', type='BOOLEAN', value='ON', read_only='N')
 (name='scpushlogs', description='Push to next log after a schema changes', type='BOOLEAN', value='ON', read_only='N')
 (name='seqnum_wait_interval', description='Wake up to check the state of the world this often while waiting for replication ACKs.', type='INTEGER', value='500', read_only='N')
+(name='serialize_reads_like_writes', description='Send read-only multi-statement schedules to the master.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='set_abort_flag_in_locker', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='set_repinfo_master_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='sgio_enabled', description='Do scatter gather I/O', type='BOOLEAN', value='OFF', read_only='N')
