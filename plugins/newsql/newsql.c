@@ -1505,7 +1505,11 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
-                sbuf2settimeout(clnt->sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME)*1000, notimeout ? 0 : timeout);
+                sbuf2settimeout(
+                    clnt->sb,
+                    bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) *
+                        1000,
+                    notimeout ? 0 : timeout);
                 if (timeout == 0)
                     net_add_watch(clnt->sb, 0, 0);
                 else
@@ -2180,8 +2184,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
-    if (!clnt.admin &&
-        check_active_appsock_connections(&clnt)) {
+    if (!clnt.admin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
 
