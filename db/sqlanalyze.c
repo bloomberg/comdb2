@@ -437,8 +437,8 @@ static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable 
 }
 
 /* Return the requested sampler */
-sampler_t *analyze_get_sampler(struct sqlclntstate *client,
-                                                 char *table, int idx)
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+                               int idx)
 {
     sampled_idx_t *s_ix;
 

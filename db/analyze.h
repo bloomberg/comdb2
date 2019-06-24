@@ -43,8 +43,8 @@ long long analyze_get_sampling_threshold(void);
  * it
  * exists, or a NULL otherwise.
  */
-sampler_t *analyze_get_sampler(struct sqlclntstate *client,
-                                                 char *table, int idx);
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+                               int idx);
 
 /**
  * Retrieve the actual number of compressed records in this sampled (compressed)

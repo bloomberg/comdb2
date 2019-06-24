@@ -121,13 +121,13 @@ static DB *dbp_from_meta(DB *dbp, DBMETA *meta)
 }
 
 typedef struct sampler {
-    DB db; /* our DB handle */
-    bdb_state_type *bdb_state; /* our bdb_state */
-    struct temp_table *tmptbl; /* temptable to store sampled pages */
+    DB db;                      /* our DB handle */
+    bdb_state_type *bdb_state;  /* our bdb_state */
+    struct temp_table *tmptbl;  /* temptable to store sampled pages */
     struct temp_cursor *tmpcur; /* cursor on the temptable */
-    int pos; /* to keep track of the index in the page */
-    void *data; /* payload of the entry at `pos' */
-    int len; /* length of the payload */
+    int pos;                    /* to keep track of the index in the page */
+    void *data;                 /* payload of the entry at `pos' */
+    int len;                    /* length of the payload */
 } sampler_t;
 
 int sampler_first(sampler_t *sampler)
@@ -168,7 +168,7 @@ int sampler_next(sampler_t *sampler)
     int ii, n, minlen, memcmprc;
 
 next_leaf:
-    page = (PAGE* )bdb_temp_table_data(tmpcur);
+    page = (PAGE *)bdb_temp_table_data(tmpcur);
     inp = P_INP(dbp, page);
     ii = sampler->pos;
     n = NUM_ENT(page);
@@ -186,17 +186,15 @@ next_leaf:
         db_indx_t len;
         ASSIGN_ALIGN(db_indx_t, len, data->len);
         assert(((uint8_t *)data + len) < max);
-        if (bk_decompress(dbp, page, &data, pfxbuf,
-                          sizeof(pfxbuf)) != 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "\ndecompress failed page:%d ii:%d total:%d\n",
+        if (bk_decompress(dbp, page, &data, pfxbuf, sizeof(pfxbuf)) != 0) {
+            logmsg(LOGMSG_ERROR, "\ndecompress failed page:%d ii:%d total:%d\n",
                    page->pgno, ii, n);
             continue;
         }
         ASSIGN_ALIGN(db_indx_t, len, data->len);
 
         /* Even though we sort pages by their 1st key, out-of-order pages
-           can still occurr if a leaf we have read splits. 
+           can still occurr if a leaf we have read splits.
            We ensure that strictly sorted samples are returned by keeping
            reading from the temptable till the 1st entry on current page
            is greater than or equal the last entry on previous page. */
@@ -289,8 +287,8 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             rc = -1;
             goto done;
         }
-        sampler->tmpcur = bdb_temp_table_cursor(
-                bdb_state->parent, sampler->tmptbl, NULL, bdberr);
+        sampler->tmpcur = bdb_temp_table_cursor(bdb_state->parent,
+                                                sampler->tmptbl, NULL, bdberr);
         if (sampler->tmpcur == NULL) {
             rc = -1;
             goto done;
@@ -395,8 +393,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             size_t skip = P_OVERHEAD(dbp);
             uint8_t *ciphertext = (uint8_t *)page + skip;
             if ((ret = db_cipher->decrypt(dbenv, db_cipher->data, iv,
-                                          ciphertext, sumlen - skip)) !=
-                0) {
+                                          ciphertext, sumlen - skip)) != 0) {
                 logmsg(LOGMSG_ERROR, "pgno %u decryption failed\n", page->pgno);
                 continue;
             }
@@ -415,11 +412,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         /* We only care about the index so we take half entries
            on the page. We don't check the flags of every entry
            to get the count, so it's likely deleted entries are
-           counted here, if the dirty pages haven't been flushed
-           to disk yet. However this is okay as we only need these
+           counted here. However this is okay as we only need these
            two counters to estimate the number of periodic stat4 samples.
            And because entries may be deleted after we check them,
-           even if we did check every entry, the results wouldn't be 
+           even if we did check every entry, the results wouldn't be
            100% accurate anyway. */
         recs_looked_at += (n >> 1);
         if (rand() % 100 >= comp_pct)
@@ -452,11 +448,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         db_indx_t len;
         ASSIGN_ALIGN(db_indx_t, len, data->len);
         assert(((uint8_t *)data + len) < max);
-        if (bk_decompress(dbp, page, &data, pfxbuf,
-                          sizeof(pfxbuf)) != 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "\ndecompress failed page:%d indx:0 total:%d\n",
-                   page->pgno, n);
+        if (bk_decompress(dbp, page, &data, pfxbuf, sizeof(pfxbuf)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "\ndecompress failed page:%d indx:0 total:%d\n", page->pgno,
+                   n);
             continue;
         }
         ASSIGN_ALIGN(db_indx_t, len, data->len);
@@ -468,9 +463,8 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         /* Save the entire page:
            key is the 1st key on the page;
            data is the page itself. */
-        rc = bdb_temp_table_put(
-                bdb_state->parent, sampler->tmptbl, data->data, len, page,
-                pgsz, NULL, bdberr);
+        rc = bdb_temp_table_put(bdb_state->parent, sampler->tmptbl, data->data,
+                                len, page, pgsz, NULL, bdberr);
         if (rc)
             goto done;
 
@@ -506,7 +500,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     }
 
     logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
-            recs_looked_at);
+           recs_looked_at);
 done:
     if (fd != -1)
         close(fd);
@@ -516,7 +510,8 @@ done:
         if (sampler && *samplerp == NULL) {
             if (sampler->tmptbl != NULL) {
                 int unused;
-                (void)bdb_temp_table_close(bdb_state->parent, sampler->tmptbl, &unused);
+                (void)bdb_temp_table_close(bdb_state->parent, sampler->tmptbl,
+                                           &unused);
             }
             free(sampler);
         }
