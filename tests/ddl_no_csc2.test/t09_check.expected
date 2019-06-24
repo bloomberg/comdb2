@@ -42,3 +42,7 @@ constraints
 [CREATE TABLE t1(i INT, CHECK (SELECT 1))] failed with rc -3 near "SELECT": syntax error
 [CREATE TABLE t1(i INT, CHECK (i > MAX(i)))] failed with rc 240 malformed database schema (t1) - misuse of aggregate function MAX()
 [CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))] failed with rc 240 malformed database schema (t1) - subqueries prohibited in CHECK constraints
+(test='3. Test fof updates')
+(rows inserted=1)
+[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 304 CHECK constraint violation unable to update record rc = 320
+(i=1)
