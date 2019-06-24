@@ -4106,53 +4106,56 @@ errors:
 
 */
 
-int check_active_appsock_connections(struct sqlclntstate *clnt) {
-    int max_appsock_conns = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+int check_active_appsock_connections(struct sqlclntstate *clnt)
+{
+    int max_appsock_conns =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     if (active_appsock_conns > max_appsock_conns) {
         int num_retry = 0;
-retry:
+    retry:
         num_retry++;
         Pthread_mutex_lock(&clnt_lk);
         struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
         listc_abl(&clntlist, lru_clnt);
-        if (lru_clnt == clnt) { /* Handle case when only 1 connection is available */
-            if (active_appsock_conns  <= max_appsock_conns) {
+        if (lru_clnt ==
+            clnt) { /* Handle case when only 1 connection is available */
+            if (active_appsock_conns <= max_appsock_conns) {
                 pthread_mutex_unlock(&clnt_lk);
                 return 0;
             }
             lru_clnt = listc_rtl(&clntlist);
             listc_abl(&clntlist, lru_clnt);
         }
-        while(lru_clnt != clnt) {
-          if (lru_clnt->done && !lru_clnt->in_client_trans) {
-             lru_clnt->statement_timedout = 1; /* disallow any new query */
-             break;
-          }
-          lru_clnt = listc_rtl(&clntlist);
-          listc_abl(&clntlist, lru_clnt);
+        while (lru_clnt != clnt) {
+            if (lru_clnt->done && !lru_clnt->in_client_trans) {
+                lru_clnt->statement_timedout = 1; /* disallow any new query */
+                break;
+            }
+            lru_clnt = listc_rtl(&clntlist);
+            listc_abl(&clntlist, lru_clnt);
         }
         pthread_mutex_unlock(&clnt_lk);
-         if (lru_clnt == clnt) {
-           /* All clients have transactions, wait for 1 second */
-           if (num_retry <= 5) {
-               sleep(1);
-               goto retry;
-           }
-           return -1;
+        if (lru_clnt == clnt) {
+            /* All clients have transactions, wait for 1 second */
+            if (num_retry <= 5) {
+                sleep(1);
+                goto retry;
+            }
+            return -1;
         }
-       int fd = sbuf2fileno(lru_clnt->sb);
-        if (lru_clnt->done)
-        {
-            //lru_clnt->statement_timedout = 1; already done
-            shutdown(fd,SHUT_RD);
-            logmsg(LOGMSG_WARN, "%s: Closing least recently used connection fd %d , total %d \n",__func__,
-                             fd, active_appsock_conns-1);
+        int fd = sbuf2fileno(lru_clnt->sb);
+        if (lru_clnt->done) {
+            // lru_clnt->statement_timedout = 1; already done
+            shutdown(fd, SHUT_RD);
+            logmsg(LOGMSG_WARN,
+                   "%s: Closing least recently used connection fd %d , total "
+                   "%d \n",
+                   __func__, fd, active_appsock_conns - 1);
             return 0;
         }
     }
     return 0;
 }
-
 
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests
