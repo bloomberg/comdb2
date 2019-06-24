@@ -91,7 +91,7 @@ static void typeofFunc(
   static const char *azType[] = {
     "integer", "real", "text", "blob", "null",
     "datetime", "interval_ym", "interval_ds",
-    "datetime", "interval_ds", "decimal"
+    "datetime_us", "interval_ds_us", "decimal"
   };
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   static const char *azType[] = { "integer", "real", "text", "blob", "null" };
