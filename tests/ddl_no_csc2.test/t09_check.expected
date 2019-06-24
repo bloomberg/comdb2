@@ -1,0 +1,39 @@
+(test='1. Test CHECK CONSTRAINT behavior')
+(rows inserted=1)
+[INSERT INTO t1 VALUES('greenish')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES('black')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(color='red')
+(test='2. ALTER TABLE')
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows inserted=1)
+(rows inserted=1)
+[ALTER TABLE t1 ADD CONSTRAINT valid_colors CHECK (color IN ('red', 'green', 'blue'))] failed with rc 240 Error verifying constraints changed rrn xx genid xx
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows deleted=1)
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+constraints
+	{
+		check "valid_colors" = "color IN ('red', 'green', 'blue')"
+	}
+')
+(color='blue')
+[INSERT INTO t1 VALUES('white')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows inserted=1)
+(color='white')
+(color='blue')
