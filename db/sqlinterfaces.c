@@ -4120,7 +4120,7 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
         if (lru_clnt ==
             clnt) { /* Handle case when only 1 connection is available */
             if (active_appsock_conns <= max_appsock_conns) {
-                pthread_mutex_unlock(&clnt_lk);
+                Pthread_mutex_unlock(&clnt_lk);
                 return 0;
             }
             lru_clnt = listc_rtl(&clntlist);
@@ -4134,7 +4134,7 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
             lru_clnt = listc_rtl(&clntlist);
             listc_abl(&clntlist, lru_clnt);
         }
-        pthread_mutex_unlock(&clnt_lk);
+        Pthread_mutex_unlock(&clnt_lk);
         if (lru_clnt == clnt) {
             /* All clients have transactions, wait for 1 second */
             if (num_retry <= 5) {
@@ -4600,9 +4600,6 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
 
-    if (clnt->statement_timedout)
-        return -1;
-
     clnt->total_sql++;
     clnt->sql_since_reset++;
 
@@ -4610,6 +4607,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     clnt->appsock_id = getarchtid();
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
+
+    if (clnt->statement_timedout)
+        return -1;
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
@@ -6311,7 +6311,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }
-   pthread_mutex_unlock(&clnt_lk);
+   Pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
 }
