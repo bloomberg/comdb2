@@ -37,8 +37,9 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
-#include <pthread_wrap.h>
+#include "pthread_wrap.h"
 #include "comdb2_atomic.h"
+#include "thread_stats.h"
 
 
 struct bdb_state_tag;
@@ -132,7 +133,7 @@ static void
 bb_memp_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_fgets++;

@@ -103,10 +103,15 @@ static int fingerprints_callback(void **data, int *npoints)
     return rc;
 }
 
+sqlite3_module systblFingerprintsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblFingerprintsInit(sqlite3 *db)
 {
     return create_system_table(db,
         "comdb2_fingerprints",
+        &systblFingerprintsModule,
         fingerprints_callback, release_callback,
         sizeof(struct fingerprint_track),
         CDB2_BLOB, "fingerprint", -1,

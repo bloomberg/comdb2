@@ -217,6 +217,7 @@
 (candidate='comdb2_cluster')
 (candidate='comdb2_columns')
 (candidate='comdb2_completion')
+(candidate='comdb2_connections')
 (candidate='comdb2_constraints')
 (candidate='comdb2_cron_events')
 (candidate='comdb2_cron_schedulers')

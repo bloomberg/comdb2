@@ -3270,6 +3270,10 @@ struct Parse {
   u8 eTriggerOp;       /* TK_UPDATE, TK_INSERT or TK_DELETE */
   u8 eOrconf;          /* Default ON CONFLICT policy for trigger steps */
   u8 disableTriggers;  /* True to disable triggers */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ast_t *ast;
+  int preserve_update;    /* statement replacement, preserve flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /**************************************************************************
   ** Fields above must be initialized to zero.  The fields that follow,
@@ -3280,9 +3284,6 @@ struct Parse {
 
   int aTempReg[8];        /* Holding area for temporary registers */
   Token sNameToken;       /* Token with unqualified schema object name */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int preserve_update;    /* statement replacement, preserve flags */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /************************************************************************
   ** Above is constant between recursions.  Below is reset before and after
@@ -3329,7 +3330,6 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
-  ast_t *ast;
   int prepare_only;         /* Prepare-only mode, skip schema changes that
                              * originate from DDL, etc.  This is primarily
                              * of interest to the DDL integration code in

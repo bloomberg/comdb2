@@ -398,6 +398,27 @@ static char **my_completion (const char *text, int start, int end)
         return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
+static bool skip_history(const char *line)
+{
+    size_t n;
+
+    while (isspace(*line))
+        ++line;
+
+    n = sizeof("set") - 1;
+    if (strncasecmp(line, "set", n)) {
+        return false;
+    }
+    line += n;
+
+    while (isspace(*line))
+        ++line;
+
+    if (strncasecmp(line, "password", sizeof("password") - 1)) {
+        return false;
+    }
+    return true;
+}
 
 static char *read_line()
 {
@@ -408,7 +429,8 @@ static char *read_line()
             free(line);
             line = NULL;
         }
-        if ((line = readline(prompt)) != NULL && line[0] != 0)
+        if ((line = readline(prompt)) != NULL && line[0] != 0 &&
+            !skip_history(line))
             add_history(line);
         return line;
     }
@@ -437,13 +459,11 @@ static char *read_line()
 
 int get_type(const char **sqlstr)
 {
-    // char * strptr = *sqlstr;
     while (isspace(**sqlstr))
         (*sqlstr)++;
-    if (strncasecmp(*sqlstr, "CDB2_", 5) != 0) {
-        printf("Type expected after @bind\n");
+    if (!*sqlstr || strncasecmp(*sqlstr, "CDB2_", 5) != 0)
         return -1;
-    }
+
     *sqlstr += 5; // skip CDB2_
     checkfortype(*sqlstr, "INTEGER", CDB2_INTEGER);
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
@@ -452,20 +472,19 @@ int get_type(const char **sqlstr)
     checkfortype(*sqlstr, "DATETIME", CDB2_DATETIME);
     checkfortype(*sqlstr, "INTERVALYM", CDB2_INTERVALYM);
     checkfortype(*sqlstr, "INTERVALDS", CDB2_INTERVALDS);
-
     return -1;
 }
 
 char *get_parameter(const char **sqlstr)
 {
-    while (isspace(**sqlstr))
+    while (isspace(**sqlstr)) {
         (*sqlstr)++;
+    }
     const char *end = *sqlstr;
-    while (!isspace(*end))
+    while (*end && !isspace(*end))
         end++;
     int len = end - (*sqlstr);
-    if (len < 1) {
-        printf("Parameter name expected after type\n");
+    if (len < 1 || !*sqlstr) {
         return NULL;
     }
     char *copy = strndup(*sqlstr, len);
@@ -473,45 +492,59 @@ char *get_parameter(const char **sqlstr)
     return copy;
 }
 
+int fromhex(uint8_t *out, const uint8_t *in, size_t len)
+{
+    const uint8_t *end = in + len;
+    while (in != end) {
+        uint8_t i0 = tolower(*(in++));
+        uint8_t i1 = tolower(*(in++));
+        if (i0 > 'f' || i1 > 'f')
+            return 1;
+        i0 -= isdigit(i0) ? '0' : ('a' - 0xa);
+        i1 -= isdigit(i1) ? '0' : ('a' - 0xa);
+        *(out++) = (i0 << 4) | i1;
+    }
+    return 0;
+}
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
         (*sqlstr)++;
-    const char *end = *sqlstr;
+    const char *str = *sqlstr;
+    const char *end = str;
     while (*end)
         end++; // till \0
-    int len = end - (*sqlstr);
-    if (len < 1) {
-        printf("Value expected after parameter\n");
+    int len = end - str;
+    if (len < 1 || !(*str)) {
         return NULL;
     }
     if (type == CDB2_INTEGER) {
-        int64_t i = atol(*sqlstr);
+        int64_t i = atol(str);
         int64_t *val = (int64_t *) malloc(sizeof(int64_t));
         *val = i;
         *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_REAL) {
-        double d = atof(*sqlstr);
+        double d = atof(str);
         double *val = (double *) malloc(sizeof(double));
         *val = d;
         *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_CSTRING) {
-        char *val = strndup(*sqlstr, end - (*sqlstr));
+        char *val = strndup(str, end - str);
         *vallen = len;
         return val;
     } else if (type == CDB2_DATETIME) {
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(*sqlstr, "%04d-%02d-%02dT%02d:%02d:%02d",
-                        &dt->tm.tm_year, &dt->tm.tm_mon, &dt->tm.tm_mday,
-                        &dt->tm.tm_hour, &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
+                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                        &dt->tm.tm_min, &dt->tm.tm_sec);
         /* timezone not supported for now */
         if (rc != 6) {
             fprintf(stderr,
-                    "invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
+                    "Invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
             return NULL;
         }
         dt->msec = 0;
@@ -521,8 +554,34 @@ void *get_val(const char **sqlstr, int type, int *vallen)
 
         *vallen = sizeof(*dt);
         return dt;
+    } else if (type == CDB2_BLOB) {
+        int slen = strlen(str);
+        if (str[0] != 'x' && str[0] != '\'' && str[slen - 1] != '\'') {
+            fprintf(stderr, "Type CDB2_BLOB should be in format: x'abcd'\n");
+            return NULL;
+        }
+
+        slen -= 3; /* without x'' */
+        int unexlen = slen / 2;
+        if (2 * unexlen != slen) {
+            fprintf(stderr, "Type CDB2_BLOB should have an even size length in "
+                            "format: x'abcd'\n");
+            return NULL;
+        }
+        uint8_t *unexpanded = (uint8_t *)malloc(unexlen + 1);
+        int rc =
+            fromhex(unexpanded, (const uint8_t *)str + 2, slen); /* no x' */
+        if (rc) {
+            fprintf(
+                stderr,
+                "Type CDB2_BLOB should have characters from 0-9a-f: x'abcd'\n");
+            return NULL;
+        }
+        unexpanded[unexlen] = '\0';
+        *vallen = unexlen;
+        return unexpanded;
     } else {
-        /* ?? */
+        fprintf(stderr, "Type %d not yet supported\n", type);
     }
     return NULL;
 }
@@ -1057,6 +1116,57 @@ int Result_buffer::print_result() {
     return 0;
 }
 
+int process_bind(const char *sql)
+{
+    if (!strncasecmp(sql, "@bind", 5) == 0)
+        return process_escape(sql);
+
+    const char *copy_sql = sql;
+    verbose_print("setting bind parameter\n");
+    //@bind BINDTYPE parameter value
+    sql += 5;
+
+    int type = get_type(&sql);
+    if (type < 0 || !isspace(*sql)) {
+        fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
+                        "one of the following:\n"
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
+                        "INTERVALDS}\n");
+        fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
+        return type;
+    }
+
+    char *parameter = get_parameter(&sql);
+    if (parameter == NULL) {
+        fprintf(stderr, "[%s] rc -1: Parameter name expected after type\n",
+                copy_sql);
+        return -1;
+    }
+
+    int length;
+    int rc = 0;
+    void *value = get_val(&sql, type, &length);
+    if (!value) {
+        fprintf(stderr, "[%s] rc -1: Value expected after parameter\n",
+                copy_sql);
+        return -1;
+    }
+
+    if (debug_trace)
+        fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
+                parameter, value);
+    if (isdigit(parameter[0])) {
+        int index = atoi(parameter);
+        if (index <= 0)
+            return -1;
+        rc = cdb2_bind_index(cdb2h, index, type, value, length);
+    } else {
+        rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+        /* we have to leak parameter here -- freeing breaks the bind */
+    }
+    return rc;
+}
+
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time)
 {
@@ -1074,7 +1184,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
-
         if (maxretries) {
             cdb2_set_max_retries(maxretries);
         }
@@ -1125,12 +1234,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
           Note: It is good to report the user about the use of environment
           variables to set user/password to avoid any surprises.
         */
-        int length;
-
         if (getenv("COMDB2_USER")) {
-            length = snprintf(cmd, sizeof(cmd), "set user %s",
-                              getenv("COMDB2_USER"));
-
+            int length = snprintf(cmd, sizeof(cmd), "set user %s",
+                                  getenv("COMDB2_USER"));
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_USER too long, ignored\n");
             } else if ((length < 0) ||
@@ -1144,9 +1250,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
 
         if (getenv("COMDB2_PASSWORD")) {
-            length = snprintf(cmd, sizeof(cmd), "set password %s",
-                              getenv("COMDB2_PASSWORD"));
-
+            int length = snprintf(cmd, sizeof(cmd), "set password %s",
+                                  getenv("COMDB2_PASSWORD"));
             if (length >= sizeof(cmd)) {
                 fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
             } else if ((length < 0) ||
@@ -1160,36 +1265,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    /* Bind parameter ability -- useful for debugging */
+    /* Bind parameter ability */
     if (sql[0] == '@') {
-        if (strncasecmp(sql, "@bind", 5) == 0) {
-            verbose_print("setting bind parameter\n");
-            //@bind BINDTYPE parameter value
-            sql += 5;
-
-            int type = get_type(&sql);
-            if (type < 0)
-                return -1;
-
-            char *parameter = get_parameter(&sql);
-            if (parameter == NULL)
-                return -1;
-
-            int length;
-            void *value = get_val(&sql, type, &length);
-
-            if (isdigit(parameter[0])) {
-                int index = atoi(parameter);
-                if (index <= 0)
-                    return -1;
-                rc = cdb2_bind_index(cdb2h, index, type, value, length);
-            } else {
-                rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-                /* we have to leak parameter here -- freeing breaks the bind */
-            }
-        } else
-            rc = process_escape(sql);
-        return rc;
+        return process_bind(sql);
     }
 
     {

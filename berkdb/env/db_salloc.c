@@ -21,6 +21,7 @@ static const char revid[] = "$Id: db_salloc.c,v 11.17 2003/01/08 04:42:01 bostic
 #endif
 
 #include "db_int.h"
+#include "thread_stats.h"
 #include "logmsg.h"
 
 /* Switch to control whether we allocate regions using malloc. */
@@ -149,7 +150,7 @@ static void
 bb_shalloc_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_shallocs++;
@@ -164,7 +165,7 @@ static void
 bb_shalloc_free_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_shalloc_frees++;

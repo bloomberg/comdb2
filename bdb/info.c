@@ -41,6 +41,7 @@
 #include "nodemap.h"
 #include "sqlresponse.pb-c.h"
 #include "logmsg.h"
+#include "thread_stats.h"
 #include <compat.h>
 
 extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
@@ -191,8 +192,9 @@ static void log_stats(FILE *out, bdb_state_type *bdb_state)
     free(stats);
 }
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
-    int64_t *requests)
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
+                          int64_t *locks_aborted, int64_t *waits,
+                          int64_t *requests)
 {
     int rc;
     DB_LOCK_STAT *lock_stats = NULL;
@@ -202,6 +204,8 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t
         return rc;
     if (deadlocks)
         *deadlocks = lock_stats->st_ndeadlocks;
+    if (locks_aborted)
+        *locks_aborted = lock_stats->st_locks_aborted;
     if (waits)
         *waits = lock_stats->st_nconflicts;
     if (requests)
@@ -1753,7 +1757,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
            logmsg(LOGMSG_USER, "Attribute set\n");
         }
     } else if (tokcmp(tok, ltok, "bbstat") == 0) {
-        const struct bdb_thread_stats *p = bdb_get_process_stats();
+        const struct berkdb_thread_stats *p = bdb_get_process_stats();
         unsigned n_lock_waits = p->n_lock_waits ? p->n_lock_waits : 1;
         unsigned n_preads = p->n_preads ? p->n_preads : 1;
         unsigned n_pwrites = p->n_pwrites ? p->n_pwrites : 1;

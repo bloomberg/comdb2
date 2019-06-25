@@ -221,6 +221,8 @@ extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
+extern int gbl_debug_children_lock;
+extern int gbl_serialize_reads_like_writes;
 
 extern long long sampling_threshold;
 
@@ -237,6 +239,9 @@ extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
+
+extern char *gbl_kafka_topic;
+extern char *gbl_kafka_brokers;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -294,6 +299,8 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+
+extern int gbl_clean_exit_on_sigterm;
 
 /*
   =========================================================
@@ -704,6 +711,20 @@ static int deadlock_policy_override_update(void *context, void *value)
     *(int *)tunable->var = val;
     logmsg(LOGMSG_INFO, "Set deadlock policy to %s\n",
            deadlock_policy_str(val));
+    return 0;
+}
+
+extern void clean_exit_sigwrap(int signum);
+
+static int update_clean_exit_on_sigterm(void *context, void *value) {
+    int val = *(int *)value;
+    if (val)
+        signal(SIGTERM, clean_exit_sigwrap);
+    else
+        signal(SIGTERM, SIG_DFL);
+
+    gbl_clean_exit_on_sigterm = val;
+
     return 0;
 }
 

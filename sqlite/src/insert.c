@@ -726,8 +726,8 @@ void sqlite3Insert(
     int rc;             /* Result code */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !pParse->ast ) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_INSERT, v, NULL);
+    ast_t *ast = ast_init(pParse, __func__);
+    if( ast ) ast_push(ast, AST_TYPE_INSERT, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     regYield = ++pParse->nMem;
     addrTop = sqlite3VdbeCurrentAddr(v) + 1;

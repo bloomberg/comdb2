@@ -135,11 +135,14 @@ int thdpool_get_dump_on_full(struct thdpool *pool);
 void thdpool_list_pools(void);
 void thdpool_command_to_all(char *line, int lline, int st);
 void thdpool_set_dump_on_full(struct thdpool *pool, int onoff);
+/* TODO: maybe thdpool_set_event_callback, to call for various life cycle events? */
+void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*));
 
 int thdpool_lock(struct thdpool *pool);
 int thdpool_unlock(struct thdpool *pool);
 
 struct thdpool *thdpool_next_pool(struct thdpool *pool);
+
 
 #ifdef __cplusplus
 }

@@ -267,7 +267,8 @@ See also:
 ![CREATE PROCEDURE](images/create-proc.gif)
 
 The ```CREATE PROCEDURE``` statement defines a new procedure.  Procedures can be run directly with the 
-```EXEC PROCEDURE``` statement. Defined procedures can also be registered as new SQL functions with the
+```EXEC PROCEDURE``` or ```EXECUTE PROCEDURE``` statements. Defined procedures can also be registered
+as new SQL functions with the
 [CREATE LUA FUNCTION](#create-lua-function) statement, or as triggers with ```CREATE LUA TRIGGER```/
 ```CREATE LUA CONSUMER``` statements.
 
@@ -280,7 +281,7 @@ the [```PUT DEFAULT PROCEDURE```](#put) statement.
 
 For detailed information on writing stored procedures, see the [stored procedures](storedprocs.html) section.
 
-### EXEC PROCEDURE
+### EXEC/EXECUTE PROCEDURE
 
 ![exec procedure](images/exec-procedure.gif)
 

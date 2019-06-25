@@ -1803,6 +1803,7 @@ int appsock_init(void);
 int thd_init(void);
 void sqlinit(void);
 void sqlnet_init(void);
+int clnt_stats_init(void);
 int sqlpool_init(void);
 int schema_init(void);
 int osqlpfthdpool_init(void);

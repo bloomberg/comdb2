@@ -926,6 +926,7 @@ struct bdb_state_tag {
     unsigned int id;
     pthread_mutex_t gblcontext_lock;
     pthread_mutex_t children_lock;
+    signed char have_children_lock;
 
     FILE *bdblock_debug_fp;
     pthread_mutex_t bdblock_debug_lock;

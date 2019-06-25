@@ -30,9 +30,10 @@ enum ast_type {
     AST_TYPE_UPDATE = 6
 };
 
-ast_t *ast_init(void);
 struct Vdbe;
 struct sqlite3;
+struct Parse;
+ast_t *ast_init(struct Parse *pParse, const char *caller);
 int ast_push(ast_t *ast, enum ast_type op, struct Vdbe *v, void *obj);
 void ast_destroy(ast_t **ast, struct sqlite3 *db);
 void ast_print(ast_t *ast);

@@ -85,8 +85,14 @@ void free_type_samples(void *p, int n) {
     free(p);
 }
 
+sqlite3_module systblTypeSamplesModule = {
+    .access_flag = CDB2_ALLOW_ALL,
+};
+
 int systblTypeSamplesInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_type_samples", get_type_samples, free_type_samples, sizeof(struct typesamples),
+    return create_system_table(db, "comdb2_type_samples",
+            &systblTypeSamplesModule, get_type_samples, free_type_samples,
+            sizeof(struct typesamples),
             CDB2_INTEGER, "integer", -1, offsetof(struct typesamples, integer),
             CDB2_REAL, "real", -1, offsetof(struct typesamples, real),
             CDB2_CSTRING, "cstring", -1, offsetof(struct typesamples, cstring),
