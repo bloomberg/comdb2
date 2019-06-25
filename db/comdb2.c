@@ -1018,8 +1018,13 @@ int db_is_stopped(void)
     struct dbenv *d = thedb;
     if (d)
         return d->stopped;
-    else
-        return 0;
+    else {
+        //if thedb has not been created we want to continue running the callers of this
+        // (gbl_ready will be 0 at that time)
+        //if thedb has been destroyed (at exit), we want to stop the callers for this
+        // (gbl_ready will be 1 at that time)
+        return gbl_ready;
+    }
 }
 
 void print_dbsize(void);
@@ -1507,6 +1512,7 @@ void call_abort(int s)
 {
     abort();
 }
+
 /* clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
@@ -1517,7 +1523,9 @@ void clean_exit(void)
 
     logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
 
+#ifndef NDEBUG
     signal(SIGALRM, call_abort);
+#endif
     /* this defaults to 5 minutes */
     alarm(alarmtime);
 
@@ -5211,6 +5219,8 @@ static void handle_resume_sc()
 static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
+#ifndef NDEBUG //TODO:wrap the follwing lines before checking in
+#endif
     char cmd[400];
     sprintf(cmd,
             "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
