@@ -113,7 +113,7 @@ static void dbg_pthread_flag_names(
     case DBG_LOCK_PTHREAD_FLAG_LOCKED:      { DBG_SET_NAME("locked"); return; }
     case DBG_LOCK_PTHREAD_FLAG_READ_LOCKED: { DBG_SET_NAME("rdlock"); return; }
     case DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED:{ DBG_SET_NAME("wrlock"); return; }
-    default:                                { DBG_UNK_NAME(type);     return; }
+    default:                                { DBG_UNK_NAME(flags);    return; }
   }
 }
 
