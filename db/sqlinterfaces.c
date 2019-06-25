@@ -1327,6 +1327,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 {
     const char *sql = clnt->sql;
 
+    if (!clnt->in_client_trans) {
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
+        clnt->client_requested_data = 0;
+    }
+
     if (!sql)
         return;
 
@@ -1512,11 +1517,37 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
+int gbl_snapshot_serial_verify_retry = 1;
+
 inline int replicant_can_retry(struct sqlclntstate *clnt)
 {
+    if (clnt->verifyretry_off)
+        return 0;
+
+    if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+        clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+        gbl_snapshot_serial_verify_retry)
+        return 1;
+
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           clnt->verifyretry_off == 0;
+        clnt->dbtran.mode != TRANLEVEL_SERIAL;
+}
+
+static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
+{
+    if (clnt->verifyretry_off)
+        return 0;
+
+    if (clnt->dbtran.mode == TRANLEVEL_SERIAL)
+        assert(rc != CDB2ERR_VERIFY_ERROR);
+
+    if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
+        (!clnt->client_requested_data) && gbl_snapshot_serial_verify_retry)
+        return 1;
+
+    return (rc == CDB2ERR_VERIFY_ERROR) &&
+        (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
+        (clnt->dbtran.mode != TRANLEVEL_SERIAL);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -1976,7 +2007,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         /* if this is a verify error and we are not running in
            snapshot/serializable mode, repeat this request ad nauseam
            (Alex and Sam made me do it) */
-        if (rc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
+        if (replicant_can_retry_rc(clnt, rc) &&
             !clnt->has_recording && clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
@@ -3432,9 +3463,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 {
     int rc;
 
-    if (!clnt->in_client_trans)
-        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
-
     sql_update_usertran_state(clnt);
 
     switch (clnt->ctrl_sqlengine) {
@@ -3545,6 +3573,9 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
+    if (clnt->isselect || is_with_statement(clnt->sql)) {
+        clnt->client_requested_data = 1;
+    }
     clnt->has_recording |= v->recording;
     clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
@@ -3585,7 +3616,7 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             irc = (clnt->osql.error_is_remote)
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
-            if (irc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
+            if (replicant_can_retry_rc(clnt, irc) &&
                 !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }

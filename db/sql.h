@@ -760,6 +760,7 @@ struct sqlclntstate {
      * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
     char* origin_host;
+    int8_t client_requested_data;
     LINKC_T(struct sqlclntstate) lnk;
 };
 

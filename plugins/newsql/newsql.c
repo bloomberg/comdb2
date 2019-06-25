@@ -2048,6 +2048,7 @@ retry_read:
                 effects.num_updated = clnt->effects.num_updated;
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
+                clnt->client_requested_data = 1;
                 sql_response.effects = &effects;
                 sql_response.error_code = 0;
             } else {
