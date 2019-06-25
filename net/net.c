@@ -2584,9 +2584,16 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         logmsg(LOGMSG_INFO, "creating %d byte buffer pool for node %s\n",
                netinfo_ptr->pool_size, hostname);
 
-    size_t scopelen = ptr->hostname_len + sizeof(netinfo_ptr->service) + 1;
+    size_t scopelen = strlen(hostname) + sizeof(netinfo_ptr->service) + 2;
     char *scope = malloc(scopelen);
-    snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, ptr->host);
+    if (scope == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__,
+               hostname);
+        free(ptr);
+        return NULL;
+    }
+
+    snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, hostname);
     ptr->msp =
         comdb2ma_create_with_scope(netinfo_ptr->pool_size, 0, "NET", scope, 1);
     if (ptr->msp == NULL) {
@@ -4146,6 +4153,11 @@ static void *writer_thread(void *args)
         timeval_to_timespec(&tv, &waittime);
 #endif
         add_millisecs_to_timespec(&waittime, gbl_net_writer_thread_poll_ms);
+
+#ifdef PER_THREAD_MALLOC
+        /* No queued messages. This is our chance to trim the allocator. */
+        comdb2_malloc_trim(host_node_ptr->msp, netinfo_ptr->pool_size);
+#endif
 
         pthread_cond_timedwait(&(host_node_ptr->write_wakeup),
                                &(host_node_ptr->enquelk), &waittime);
