@@ -38,9 +38,9 @@ enum dbg_lock_pthread_type_t {
 
 enum dbg_lock_pthread_flags_t {
   DBG_LOCK_PTHREAD_FLAG_NONE = 0x0,
-  DBG_LOCK_PTHREAD_FLAG_LOCKED = 0x4,
-  DBG_LOCK_PTHREAD_FLAG_READ_LOCKED = 0x8,
-  DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED = 0x10
+  DBG_LOCK_PTHREAD_FLAG_LOCKED = 0x1,
+  DBG_LOCK_PTHREAD_FLAG_READ_LOCKED = 0x2,
+  DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED = 0x4
 };
 
 struct dbg_lock_pthread_outer_pair_t {
@@ -280,8 +280,8 @@ static void dbg_pthread_add_self(
     assert( pair->key.thread==self );
     assert( pair->key.type==type );
     assert( pair->nRef>0 );
-    assert( pair->flags==flags );
     pair->nRef++;
+    pair->flags = flags;
     pair->file = file;
     pair->func = func;
     pair->line = line;
