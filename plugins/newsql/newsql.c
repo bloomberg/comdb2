@@ -2179,6 +2179,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.state_lk, NULL);
 
     if (!clnt.admin &&
         check_active_appsock_connections(&clnt)) {
@@ -2463,6 +2464,7 @@ done:
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.state_lk);
 
     return APPSOCK_RETURN_OK;
 }

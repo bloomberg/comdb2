@@ -6308,7 +6308,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       else
          c[connid].sql = NULL;
 
-      pthread_mutex_unlock(&clnt->state_lk);
+      Pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }
    Pthread_mutex_unlock(&clnt_lk);
