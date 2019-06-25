@@ -2086,12 +2086,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static int lua_get_prepare_flags()
 {
-    int prepFlags = PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
-
-    if (gbl_allow_lua_exec_with_ddl)
-        prepFlags &= ~PREPARE_DENY_DDL;
-
-    return prepFlags;
+    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
 }
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)

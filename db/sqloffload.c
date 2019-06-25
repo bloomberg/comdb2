@@ -283,6 +283,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
+    int serial_error = 0;
     int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
@@ -290,17 +291,24 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
-
+    if (clnt->arr)
+        currangearr_build_hash(clnt->arr);
+    if (clnt->arr &&
+            bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
+                &(clnt->arr->file), &(clnt->arr->offset), 0)) {
+        serial_error = 1;
+        rc = SQLITE_ABORT;
+    }
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
     if (clnt->selectv_arr &&
         bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
                               &(clnt->selectv_arr->file),
                               &(clnt->selectv_arr->offset), 0)) {
-        rc = SQLITE_ABORT;
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
-    } else if (clnt->early_retry == EARLY_ERR_VERIFY) {
+        rc = SQLITE_ABORT;
+    } else if (serial_error || clnt->early_retry == EARLY_ERR_VERIFY) {
         if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
             errstat_cat_str(&(clnt->osql.xerr),
@@ -310,14 +318,17 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             errstat_cat_str(&(clnt->osql.xerr),
                             "unable to update record rc = 4");
         }
+        rc = SQLITE_ABORT;
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+        rc = SQLITE_ABORT;
     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
+        rc = SQLITE_ABORT;
     }
-    if (rc || clnt->early_retry) {
+    if (rc) {
         clnt->early_retry = 0;
         rc = SQLITE_ABORT;
         goto goback;

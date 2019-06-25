@@ -4897,6 +4897,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 iq->arr = NULL;
                 numerrs = 1;
                 rc = ERR_NOTSERIAL;
+
+                /* Check selectv_arr in backout code */
+                if (iq->selectv_arr)
+                    check_serializability = 1;
                 reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
                 GOTOBACKOUT;
             } else {
@@ -5063,6 +5067,19 @@ backout:
      * serializable error as the dup-key may have been caused by the 
      * conflicting write. */
     if (check_serializability) {
+        /* Check serial and selectv readsets independently, serial first to
+         * eliminate the race: selectv-error should override serial error */
+        if (iq->arr && (force_serial_error ||
+                               bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+                                                     &(iq->arr->file),
+                                                     &(iq->arr->offset), 0))) {
+            numerrs = 1;
+            currangearr_free(iq->arr);
+            iq->arr = NULL;
+            rc = ERR_NOTSERIAL;
+            reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+        }
+
         if (iq->selectv_arr &&
             bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                   &(iq->selectv_arr->file),
@@ -5077,16 +5094,7 @@ backout:
 
             rc = ERR_CONSTR;
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
-        } else if (iq->arr && (force_serial_error ||
-                               bdb_osql_serial_check(thedb->bdb_env, iq->arr,
-                                                     &(iq->arr->file),
-                                                     &(iq->arr->offset), 0))) {
-            numerrs = 1;
-            currangearr_free(iq->arr);
-            iq->arr = NULL;
-            rc = ERR_NOTSERIAL;
-            reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
-        }
+        } 
     }
 
     /* starting writes, no more reads */
