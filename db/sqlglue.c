@@ -12471,24 +12471,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
             *check_status = 0;
         }
 
-        clnt_reset_cursor_hints(&clnt);
-        osql_clean_sqlclntstate(&clnt);
-
-        if (clnt.dbglog) {
-            sbuf2close(clnt.dbglog);
-            clnt.dbglog = NULL;
-        }
-
-        /* XXX free logical tran?  */
-
-        clnt.dbtran.mode = TRANLEVEL_INVALID;
-        if (clnt.query_stats)
-            free(clnt.query_stats);
-
-        Pthread_mutex_destroy(&clnt.wait_mutex);
-        Pthread_cond_destroy(&clnt.wait_cond);
-        Pthread_mutex_destroy(&clnt.write_lock);
-        Pthread_mutex_destroy(&clnt.dtran_mtx);
+        end_internal_sql_clnt(&clnt);
 
         if (*check_status == 1) {
             /* Check failed, no need to continue. */
