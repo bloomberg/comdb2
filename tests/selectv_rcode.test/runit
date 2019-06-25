@@ -51,23 +51,33 @@ function populate
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default - < $file
 }
 
+function disallow_update_fail
+{
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'snapshot_serial_verify_retry'")
+    if [[ "$x" == "ON" ]]; then
+        echo "-f"
+    fi
+}
+
 function run_tests
 {
     typeset func="run_tests"
+    typeset strict_mode=$(disallow_update_fail)
+
     start=$(date +%s)
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG -i socksql
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i socksql
     export r=$?
     [[ $r != 0 ]] && failexit "socksql selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG -i reccom
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i reccom
     export r=$?
     [[ $r != 0 ]] && failexit "read committed selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG -i snapshot
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i snapshot
     export r=$?
     [[ $r != 0 ]] && failexit "snapshot selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG -i serial
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i serial
     export r=$?
     [[ $r != 0 ]] && failexit "serial selectv rcodes"
 }

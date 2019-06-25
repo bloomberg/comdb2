@@ -24,7 +24,7 @@ int forkmode = 0;
 
 enum {
     SOCKSQL             = 1,
-    READ_COMMITTED       = 2,
+    READ_COMMITTED      = 2,
     SNAPSHOT            = 3,
     SERIALIZABLE        = 4
 };
@@ -33,6 +33,7 @@ int selectv_updaters = 10;
 int updaters = 10;
 int selectvers = 10;
 int isolation = SOCKSQL;
+int fail_updater_error = 0;
 int time_is_up = 0;
 
 void usage(FILE *f)
@@ -42,6 +43,7 @@ void usage(FILE *f)
     fprintf(f, "    -s <stage>                   - set stage\n");
     fprintf(f, "    -c <config>                  - set config file\n");
     fprintf(f, "    -i <isolation>               - set isolation level\n");
+    fprintf(f, "    -f                           - fail updater on any error\n");
     fprintf(f, "    -v <cnt>                     - number of selectv-updaters\n");
     fprintf(f, "    -u <cnt>                     - number of updaters\n");
     fprintf(f, "    -V <cnt>                     - number of selectv-ers\n");
@@ -255,7 +257,10 @@ int update_query(cdb2_hndl_tp *db)
     }
     /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (isolation == SERIALIZABLE) {
+        if (fail_updater_error) {
+            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+            exit(1);
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -271,7 +276,10 @@ int update_query(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (isolation == SERIALIZABLE) {
+        if (fail_updater_error) {
+            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+            exit(1);
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -339,7 +347,13 @@ void *thd(void *arg) {
         exit(1);
     }
 
-    if ((rc = cdb2_run_statement(db, "set verifyretry off")) != CDB2_OK) {
+    /* Allow retries if we're going to fail on verify error */
+    if (fail_updater_error)
+        rc = cdb2_run_statement(db, "set verifyretry on");
+    else 
+        rc = cdb2_run_statement(db, "set verifyretry off");
+
+    if (rc != CDB2_OK) {
         fprintf(stderr, "line %d run_statement error, %d, %s\n", __LINE__,
                 rc, cdb2_errstr(db));
         exit(1);
@@ -377,7 +391,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:i:t:h")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:i:t:fh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -413,6 +427,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 test_time = atoi(optarg);
+                break;
+            case 'f':
+                fail_updater_error = 1;
                 break;
             case 'h':
                 usage(stdout);
