@@ -2078,6 +2078,8 @@ done:
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
         sqlite3_close(hndl);
+
+    cleanup_clnt(&client);
     done_sql_thread();
     sql_mem_shutdown(NULL);
     return rc;
