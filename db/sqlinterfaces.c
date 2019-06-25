@@ -6271,7 +6271,7 @@ void run_internal_sql(char *sql)
         clnt.dbglog = NULL;
     }
 
-    cleanup_clnt(&clnt);
+    end_internal_sql_clnt(&clnt);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

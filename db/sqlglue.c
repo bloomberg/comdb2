@@ -11901,7 +11901,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     if (clnt.query_stats)
         free(clnt.query_stats);
 
-    cleanup_clnt(&clnt);
+    end_internal_sql_clnt(&clnt);
 
     return rc;
 }
