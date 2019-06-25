@@ -33,15 +33,11 @@
 enum dbg_lock_pthread_type_t {
   DBG_LOCK_PTHREAD_TYPE_NONE = 0x0,
   DBG_LOCK_PTHREAD_TYPE_MUTEX = 0x1,
-  DBG_LOCK_PTHREAD_TYPE_RDLOCK = 0x2,
-  DBG_LOCK_PTHREAD_TYPE_WRLOCK = 0x4,
-  DBG_LOCK_PTHREAD_TYPE_RWLOCK = 0x8
+  DBG_LOCK_PTHREAD_TYPE_RWLOCK = 0x2
 };
 
 enum dbg_lock_pthread_flags_t {
   DBG_LOCK_PTHREAD_FLAG_NONE = 0x0,
-  DBG_LOCK_PTHREAD_FLAG_PENDING_LOCK = 0x1,
-  DBG_LOCK_PTHREAD_FLAG_PENDING_UNLOCK = 0x2,
   DBG_LOCK_PTHREAD_FLAG_LOCKED = 0x4,
   DBG_LOCK_PTHREAD_FLAG_READ_LOCKED = 0x8,
   DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED = 0x10
@@ -100,10 +96,24 @@ static void dbg_pthread_type_name(
   switch( type ){
     case DBG_LOCK_PTHREAD_TYPE_NONE:  { DBG_SET_NAME("none");   return; }
     case DBG_LOCK_PTHREAD_TYPE_MUTEX: { DBG_SET_NAME("mutex");  return; }
-    case DBG_LOCK_PTHREAD_TYPE_RDLOCK:{ DBG_SET_NAME("rdlock"); return; }
-    case DBG_LOCK_PTHREAD_TYPE_WRLOCK:{ DBG_SET_NAME("wrlock"); return; }
     case DBG_LOCK_PTHREAD_TYPE_RWLOCK:{ DBG_SET_NAME("rwlock"); return; }
     default:                          { DBG_UNK_NAME(type);     return; }
+  }
+}
+
+/*****************************************************************************/
+
+static void dbg_pthread_flag_names(
+  char *zBuf,
+  size_t nBuf,
+  int flags
+){
+  switch( flags ){
+    case DBG_LOCK_PTHREAD_FLAG_NONE:        { DBG_SET_NAME("none");   return; }
+    case DBG_LOCK_PTHREAD_FLAG_LOCKED:      { DBG_SET_NAME("locked"); return; }
+    case DBG_LOCK_PTHREAD_FLAG_READ_LOCKED: { DBG_SET_NAME("rdlock"); return; }
+    case DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED:{ DBG_SET_NAME("wrlock"); return; }
+    default:                                { DBG_UNK_NAME(type);     return; }
   }
 }
 
@@ -116,14 +126,16 @@ static int dbg_pthread_dump_inner_pair(
   inner_pair_t *pair = (inner_pair_t *)obj;
   if( pair!=NULL ){
     FILE *out = (FILE *)arg;
-    char zBuf[64];
+    char zBuf1[64];
+    char zBuf2[64];
 
-    dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
+    dbg_pthread_type_name(zBuf1, sizeof(zBuf1), pair->key.type);
+    dbg_pthread_type_name(zBuf2, sizeof(zBuf2), pair->flags);
 
-    fprintf(out, "%s: [refs:%4d] [type:%s @ %18p / %18p] "
-            "[%s @ %s:%d] (pair:%18p)\n", __func__, pair->nRef,
-            zBuf, pair->key.obj, (void *)pair->key.thread,
-            pair->func, pair->file, pair->line, (void *)pair);
+    fprintf(out, "%s: [refs:%4d] [type:%s @ %18p / %18p] [flags:%s] "
+            "[%s @ %s:%d] (pair:%18p)\n", __func__, pair->nRef, zBuf1,
+            pair->key.obj, (void *)pair->key.thread, zBuf2, pair->func,
+            pair->file, pair->line, (void *)pair);
 
     fflush(out);
   }
@@ -320,29 +332,6 @@ done:
 
 /*****************************************************************************/
 
-static void dbg_pthread_remove_self2(
-  void *obj,
-  int type,
-  const char *file,
-  const char *func,
-  int line
-){
-  int type1 = type;
-  int type2 = DBG_LOCK_PTHREAD_TYPE_NONE;
-  if( type==DBG_LOCK_PTHREAD_TYPE_RWLOCK ){
-    type1 = DBG_LOCK_PTHREAD_TYPE_RDLOCK;
-    type2 = DBG_LOCK_PTHREAD_TYPE_WRLOCK;
-  }
-  if( type1!=DBG_LOCK_PTHREAD_TYPE_NONE ){
-    dbg_pthread_remove_self(obj, type1, file, func, line);
-  }
-  if( type2!=DBG_LOCK_PTHREAD_TYPE_NONE ){
-    dbg_pthread_remove_self(obj, type2, file, func, line);
-  }
-}
-
-/*****************************************************************************/
-
 int dbg_pthread_mutex_lock(
   pthread_mutex_t *mutex,
   const char *file,
@@ -354,7 +343,8 @@ int dbg_pthread_mutex_lock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, 0, file, func, line
+      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -373,7 +363,8 @@ int dbg_pthread_mutex_trylock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, 0, file, func, line
+      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -393,7 +384,8 @@ int dbg_pthread_mutex_timedlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, 0, file, func, line
+      mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -410,7 +402,7 @@ int dbg_pthread_mutex_unlock(
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_mutex_unlock, mutex);
   if( rc==0 ){
-    dbg_pthread_remove_self2(
+    dbg_pthread_remove_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, file, func, line
     );
   }
@@ -430,7 +422,8 @@ int dbg_pthread_rwlock_rdlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_RDLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -449,7 +442,8 @@ int dbg_pthread_rwlock_wrlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_WRLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -468,7 +462,8 @@ int dbg_pthread_rwlock_tryrdlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_RDLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -487,7 +482,8 @@ int dbg_pthread_rwlock_trywrlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_WRLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -507,7 +503,8 @@ int dbg_pthread_rwlock_timedrdlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_RDLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -527,7 +524,8 @@ int dbg_pthread_rwlock_timedwrlock(
   if( rc==0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
-      rwlock, DBG_LOCK_PTHREAD_TYPE_WRLOCK, 0, file, func, line
+      rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
+      file, func, line
     );
   }
   return rc;
@@ -544,7 +542,7 @@ int dbg_pthread_rwlock_unlock(
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_unlock, rwlock);
   if( rc==0 ){
-    dbg_pthread_remove_self2(
+    dbg_pthread_remove_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, file, func, line
     );
   }
