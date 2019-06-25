@@ -493,11 +493,11 @@ static void *udp_reader(void *arg)
         struct pollfd pol;
         pol.fd = fd;
         pol.events = POLLIN;
-        
+
         int rc = poll(&pol, 1, 1000);
         if (rc == 0 || (pol.revents & POLLIN) == 0)
             continue;
-        if (rc < 0) { 
+        if (rc < 0) {
             logmsg(LOGMSG_ERROR, "udp_reader:%d: poll err %d %s\n", __LINE__,
                    errno, strerror(errno));
             break;

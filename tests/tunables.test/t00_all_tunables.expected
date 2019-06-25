@@ -297,7 +297,7 @@
 (name='erron', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='exclusive_blockop_qconsume', description='Enables serialization of blockops and queue consumes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='exit_on_internal_failure', description='', type='BOOLEAN', value='ON', read_only='Y')
-(name='exitalarmsec', description='', type='INTEGER', value='300', read_only='Y')
+(name='exitalarmsec', description='', type='INTEGER', value='6', read_only='Y')
 (name='extended_sql_debug_trace', description='Print extended trace for durable sql debugging', type='BOOLEAN', value='OFF', read_only='N')
 (name='fdb_sqlstats_cache_lock_waittime_nsec', description='', type='INTEGER', value='1000', read_only='N')
 (name='fdbdebg', description='', type='INTEGER', value='0', read_only='N')

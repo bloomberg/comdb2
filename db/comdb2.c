@@ -420,7 +420,7 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 
 int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
 int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-int gbl_exit_alarm_sec = 6; //300;
+int gbl_exit_alarm_sec = 300;
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
@@ -798,7 +798,6 @@ int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
 
-
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -1017,9 +1016,9 @@ void no_new_requests(struct dbenv *dbenv)
 int db_is_stopped(void)
 {
     struct dbenv *d = thedb;
-    if (d) 
+    if (d)
         return d->stopped;
-    else 
+    else
         return 0;
 }
 
@@ -1461,7 +1460,6 @@ static void free_sqlite_table(struct dbenv *dbenv)
     free(dbenv->dbs);
 }
 
-
 void do_clean()
 {
     int rc = backend_close(thedb);
@@ -1494,8 +1492,10 @@ void do_clean()
 
     cleanup_interned_strings();
     cleanup_peer_hash();
-    free(gbl_dbdir); gbl_dbdir = NULL;
-    free(gbl_myhostname); gbl_myhostname = NULL;
+    free(gbl_dbdir);
+    gbl_dbdir = NULL;
+    free(gbl_myhostname);
+    gbl_myhostname = NULL;
 
     cleanresources(); // list of lrls
     clear_portmux_bind_path();
@@ -5212,8 +5212,10 @@ static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
     char cmd[400];
-    sprintf(cmd, "bash -c 'gdb --batch --eval-command=\"thr app all ba\" /proc/%d/exe %d 2>&1 > %s/%s.onexit'",
-                 gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
+    sprintf(cmd,
+            "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
+            "/proc/%d/exe %d 2>&1 > %s/%s.onexit'",
+            gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
 
     logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
     int rc = system(cmd);
@@ -5247,8 +5249,6 @@ struct tool tool_callbacks[] = {
    TOOLS
    {NULL, NULL}
 };
-
-
 
 int main(int argc, char **argv)
 {
@@ -5423,7 +5423,8 @@ int main(int argc, char **argv)
 
     pthread_t timer_tid;
     extern pthread_attr_t gbl_pthread_attr_detached;
-    rc = pthread_create(&timer_tid, &gbl_pthread_attr_detached, timer_thread, NULL);
+    rc = pthread_create(&timer_tid, &gbl_pthread_attr_detached, timer_thread,
+                        NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "Can't create timer thread %d %s\n", rc, strerror(rc));
         return 1;
@@ -5443,7 +5444,8 @@ int main(int argc, char **argv)
         struct dbtable *db = thedb->dbs[ii];
         free(db->handle);
     }
-    free(thedb); thedb = NULL;
+    free(thedb);
+    thedb = NULL;
 
     goodbye();
     return 0;

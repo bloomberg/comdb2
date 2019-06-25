@@ -1389,7 +1389,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                 } while (!db_is_stopped() && nready == 0);
                 if (nready == 0)
                     break;
-            } else 
+            } else
                 nready = poll(pollfds, npollfds, pollms);
         } while (nready < 0 && errno == EINTR);
 

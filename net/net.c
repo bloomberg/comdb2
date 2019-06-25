@@ -48,7 +48,6 @@
 #include <assert.h>
 #include <crc32c.h>
 
-
 #include "locks_wrap.h"
 #include "net.h"
 #include "net_int.h"
@@ -4726,7 +4725,8 @@ static void *connect_thread(void *arg)
             int r = rand_r(&seed) % 5000;
             Pthread_mutex_unlock(&(host_node_ptr->lock));
             // sleep up to r-ms by 1s (1000ms) increments
-            while (r > 0 && !host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
+            while (r > 0 && !host_node_ptr->decom_flag &&
+                   !netinfo_ptr->exiting) {
                 int milli = (r > 1000) ? 1000 : r; // usleep for at most 1s
                 usleep(milli * 1000);
                 r -= 1000;
@@ -5494,7 +5494,7 @@ static void *accept_thread(void *arg)
 
         if (new_fd == -1) {
             logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s\n", listenfd, errno,
-                    strerror(errno));
+                   strerror(errno));
             continue;
         }
 
@@ -5798,7 +5798,6 @@ static void *heartbeat_send_thread(void *arg)
         int ss = netinfo_ptr->heartbeat_send_time;
         for (int i = 0; i < ss && !netinfo_ptr->exiting; i++)
             sleep(1);
-
     }
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
