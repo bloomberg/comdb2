@@ -4896,6 +4896,14 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     clnt->dml_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
     clnt->ddl_contexts = NULL;
+
+    Pthread_mutex_destroy(&clnt->wait_mutex);
+    Pthread_cond_destroy(&clnt->wait_cond);
+    Pthread_mutex_destroy(&clnt->write_lock);
+    Pthread_cond_destroy(&clnt->write_cond);
+    Pthread_mutex_destroy(&clnt->dtran_mtx);
+    Pthread_mutex_destroy(&clnt->state_lk);
+
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
@@ -4903,6 +4911,12 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
+        Pthread_mutex_init(&clnt->wait_mutex, NULL);
+        Pthread_cond_init(&clnt->wait_cond, NULL);
+        Pthread_mutex_init(&clnt->write_lock, NULL);
+        Pthread_cond_init(&clnt->write_cond, NULL);
+        Pthread_mutex_init(&clnt->dtran_mtx, NULL);
+        Pthread_mutex_init(&clnt->state_lk, NULL);
     }
     else {
        clnt->sql_since_reset = 0;
@@ -6258,12 +6272,6 @@ void run_internal_sql(char *sql)
     }
 
     cleanup_clnt(&clnt);
-
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {
@@ -6440,11 +6448,6 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
     plugin_set_callbacks(clnt, internal);
-    Pthread_mutex_init(&clnt->wait_mutex, NULL);
-    Pthread_cond_init(&clnt->wait_cond, NULL);
-    Pthread_mutex_init(&clnt->write_lock, NULL);
-    Pthread_cond_init(&clnt->write_cond, NULL);
-    Pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
 }
@@ -6480,10 +6483,4 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
-
-    Pthread_mutex_destroy(&clnt->wait_mutex);
-    Pthread_cond_destroy(&clnt->wait_cond);
-    Pthread_mutex_destroy(&clnt->write_lock);
-    Pthread_cond_destroy(&clnt->write_cond);
-    Pthread_mutex_destroy(&clnt->dtran_mtx);
 }

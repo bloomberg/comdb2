@@ -2178,13 +2178,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    Pthread_cond_init(&clnt.wait_cond, NULL);
-    Pthread_mutex_init(&clnt.write_lock, NULL);
-    Pthread_cond_init(&clnt.write_cond, NULL);
-    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
-    Pthread_mutex_init(&clnt.state_lk, NULL);
-
     if (!clnt.admin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
@@ -2461,13 +2454,6 @@ done:
     close_appsock(sb);
     arg->sb = NULL;
     cleanup_clnt(&clnt);
-
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
-    Pthread_mutex_destroy(&clnt.state_lk);
 
     return APPSOCK_RETURN_OK;
 }

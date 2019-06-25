@@ -11899,10 +11899,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     if (clnt.query_stats)
         free(clnt.query_stats);
 
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
+    cleanup_clnt(&clnt);
 
     return rc;
 }
