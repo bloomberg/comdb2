@@ -130,7 +130,7 @@ static int dbg_pthread_dump_inner_pair(
     char zBuf2[64];
 
     dbg_pthread_type_name(zBuf1, sizeof(zBuf1), pair->key.type);
-    dbg_pthread_type_name(zBuf2, sizeof(zBuf2), pair->flags);
+    dbg_pthread_flag_names(zBuf2, sizeof(zBuf2), pair->flags);
 
     logmsgf(LOGMSG_USER,
             out, "[%s @ %s:%d] [%s / %s @ %p / %p] [refs:%d] [pair:%p]\n",
