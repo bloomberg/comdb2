@@ -2,3 +2,4 @@ enable_serial_isolation
 logmsg level info
 table jobinstance jobinstance.csc2
 table dbgopts dbgopts.csc2
+snapshot_serial_verify_retry off
