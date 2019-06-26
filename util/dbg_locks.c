@@ -75,11 +75,11 @@ static hash_t *dbg_locks = NULL;
 #define DBG_SET_NAME(a) snprintf(zBuf, nBuf, "%s", (a))
 #define DBG_UNK_NAME(a) snprintf(zBuf, nBuf, "unk:%d", (a))
 
-#define DBG_SET_IKEY(ikey, obj, thread, type) do { \
-  memset(&(ikey), 0, sizeof(inner_key_t));         \
-  (ikey).obj = obj;                                \
-  (ikey).thread = thread;                          \
-  (ikey).type = type;                              \
+#define DBG_SET_IKEY(a, b, c, d) do {   \
+  memset(&(a), 0, sizeof(inner_key_t)); \
+  (a).obj = (b);                        \
+  (a).thread = (c);                     \
+  (a).type = (d);                       \
 } while(0)
 
 #define DBG_MORE_MEMORY(a) do {               \
