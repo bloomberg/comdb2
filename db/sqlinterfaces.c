@@ -5739,9 +5739,9 @@ static const char* connstate_str(enum connection_state s) {
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     clnt->state_start_time = comdb2_time_epochms();
     // printf("%p -> %s\n", clnt, connstate_str(state));
-    pthread_mutex_lock(&clnt->state_lk);
+    Pthread_mutex_lock(&clnt->state_lk);
     clnt->state = state;
-    pthread_mutex_unlock(&clnt->state_lk);
+    Pthread_mutex_unlock(&clnt->state_lk);
 }
 
 /* we have to clear
@@ -6215,23 +6215,23 @@ void run_internal_sql(char *sql)
 void clnt_register(struct sqlclntstate *clnt) {
     clnt->state = CONNECTION_NEW;
     clnt->connect_time = comdb2_time_epoch();
-    pthread_mutex_lock(&clnt_lk);
+    Pthread_mutex_lock(&clnt_lk);
     clnt->connid = connid++;
     listc_abl(&clntlist, clnt);
-    pthread_mutex_unlock(&clnt_lk);
+    Pthread_mutex_unlock(&clnt_lk);
 }
 
 void clnt_unregister(struct sqlclntstate *clnt) {
-    pthread_mutex_lock(&clnt_lk);
+    Pthread_mutex_lock(&clnt_lk);
     listc_rfl(&clntlist, clnt);
-    pthread_mutex_unlock(&clnt_lk);
+    Pthread_mutex_unlock(&clnt_lk);
 }
 
 int gather_connection_info(struct connection_info **info, int *num_connections) {
    struct connection_info *c;
    int connid = 0;
 
-   pthread_mutex_lock(&clnt_lk);
+   Pthread_mutex_lock(&clnt_lk);
    *num_connections = listc_size(&clntlist);
    c = malloc(*num_connections * sizeof(struct connection_info));
    struct sqlclntstate *clnt;
@@ -6247,17 +6247,17 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].host = clnt->origin;
       c[connid].state_int = clnt->state;
       c[connid].time_in_state_int = clnt->state_start_time;
-      pthread_mutex_lock(&clnt->state_lk);
+      Pthread_mutex_lock(&clnt->state_lk);
       if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          c[connid].sql = strdup(clnt->sql);
       }
       else
          c[connid].sql = NULL;
 
-      pthread_mutex_unlock(&clnt->state_lk);
+      Pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }
-   pthread_mutex_unlock(&clnt_lk);
+   Pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
 }
