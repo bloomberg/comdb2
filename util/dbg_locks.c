@@ -132,10 +132,11 @@ static int dbg_pthread_dump_inner_pair(
     dbg_pthread_type_name(zBuf1, sizeof(zBuf1), pair->key.type);
     dbg_pthread_type_name(zBuf2, sizeof(zBuf2), pair->flags);
 
-    fprintf(out, "%s: [refs:%4d] [type:%s @ %18p / %18p] [flags:%s] "
-            "[%s @ %s:%d] (pair:%18p)\n", __func__, pair->nRef, zBuf1,
-            pair->key.obj, (void *)pair->key.thread, zBuf2, pair->func,
-            pair->file, pair->line, (void *)pair);
+    logmsgf(LOGMSG_USER, out,
+            "%s: [refs:%4d] [type:%s @ %18p / %18p] [flags:%s] "
+            "[%s @ %s:%d] (pair:%18p)\n", __func__, pair->nRef,
+            zBuf1, pair->key.obj, (void *)pair->key.thread, zBuf2,
+            pair->func, pair->file, pair->line, (void *)pair);
 
     fflush(out);
   }
@@ -197,8 +198,9 @@ void dbg_pthread_dump(
   int bSummaryOnly
 ){
   pthread_mutex_lock(&dbg_locks_lk);
-  fprintf(out, "%s (%s): used %" BBPRIu64 ", peak %" BBPRIu64 "\n",
-          __func__, zDesc, dbg_locks_bytes, dbg_locks_peak_bytes);
+  logmsgf(LOGMSG_USER, out, "%s (%s): used %" BBPRIu64
+          ", peak %" BBPRIu64 "\n", __func__, zDesc,
+          dbg_locks_bytes, dbg_locks_peak_bytes);
   if( bSummaryOnly || dbg_locks==NULL ) goto done;
   hash_for(dbg_locks, dbg_pthread_dump_outer_pair, out);
 done:
