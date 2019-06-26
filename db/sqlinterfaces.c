@@ -4368,9 +4368,9 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
 
+    debug_close_sb(clnt);
     clean_queries_not_cached_in_srs(clnt);
 
-    debug_close_sb(clnt);
 
     thrman_setid(thrman_self(), "[done]");
 }
@@ -4451,13 +4451,13 @@ void sqlengine_work_appsock(void *thddata, void *work)
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
+        clnt->osql.timings.query_finished = osql_log_time();
+        osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
         Pthread_cond_signal(&clnt->wait_cond);
         Pthread_mutex_unlock(&clnt->wait_mutex);
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
         return;
     }
 
@@ -4514,8 +4514,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     clnt_change_state(clnt, CONNECTION_IDLE);
-    clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
+    clean_queries_not_cached_in_srs(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
