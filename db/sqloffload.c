@@ -293,12 +293,12 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
 
-    /* If we have both always check serializable first to close 
+    /* If we have both always check serializable first to close
      * a race: the selectv rcode should prevail */
     if (clnt->selectv_arr && clnt->arr) {
         currangearr_build_hash(clnt->arr);
-        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
-                    &(clnt->arr->file), &(clnt->arr->offset), 0)) {
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0)) {
             serial_error = 1;
         }
         checked_arr = 1;
@@ -356,15 +356,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* Do replicant serializable check if we haven't yet */
     if (clnt->arr && !checked_arr && !osql_shadtbl_has_selectv(clnt, &bdberr)) {
         currangearr_build_hash(clnt->arr);
-        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
-                    &(clnt->arr->file), &(clnt->arr->offset), 0))
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0))
             serial_error = 1;
     }
 
     if (serial_error) {
         clnt->osql.xerr.errval = ERR_NOTSERIAL;
-        errstat_cat_str(&(clnt->osql.xerr),
-                "transaction is not serializable");
+        errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
         rc = SQLITE_ABORT;
         goto goback;
     }
