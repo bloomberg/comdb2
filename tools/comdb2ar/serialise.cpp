@@ -639,26 +639,27 @@ void parse_lrl_file(const std::string& lrlpath,
     if (!certdir.empty())
         certdir += "/";
 
-    if (cert.empty()) {
-        if (file_exists(certdir + DEFAULT_SERVER_CERT))
-            p_support_files->push_back(certdir + DEFAULT_SERVER_CERT);
-        if (file_exists(certdir + DEFAULT_SERVER_KEY))
-            p_support_files->push_back(certdir + DEFAULT_SERVER_KEY);
-        if (file_exists(certdir + DEFAULT_CA))
-            p_support_files->push_back(certdir + DEFAULT_CA);
-#if HAVE_CRL
-        if (file_exists(certdir + DEFAULT_CRL))
-            p_support_files->push_back(certdir + DEFAULT_CRL);
-#endif
-    }
-    else {
+    if (!cert.empty())
         p_support_files->push_back(cert);
+    else if (file_exists(certdir + DEFAULT_SERVER_CERT))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_CERT);
+
+    if (!key.empty())
         p_support_files->push_back(key);
+    else if (file_exists(certdir + DEFAULT_SERVER_KEY))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_KEY);
+
+    if (!ca.empty())
         p_support_files->push_back(ca);
+    else if (file_exists(certdir + DEFAULT_CA))
+        p_support_files->push_back(certdir + DEFAULT_CA);
+
 #if HAVE_CRL
+    if (!crl.empty())
         p_support_files->push_back(crl);
+    else if (file_exists(certdir + DEFAULT_CRL))
+        p_support_files->push_back(certdir + DEFAULT_CRL);
 #endif
-    }
 }
 
 void create_lrl_file(std::string& lrlpath,
