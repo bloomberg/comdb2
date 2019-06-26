@@ -132,11 +132,10 @@ static int dbg_pthread_dump_inner_pair(
     dbg_pthread_type_name(zBuf1, sizeof(zBuf1), pair->key.type);
     dbg_pthread_type_name(zBuf2, sizeof(zBuf2), pair->flags);
 
-    logmsgf(LOGMSG_USER, out,
-            "[%s @ %s:%d] [type:%s @ %18p / %18p] [flags:%s] [refs:%4d] "
-            "(pair:%18p)\n", pair->func, pair->file, pair->line, zBuf1,
-            pair->key.obj, (void *)pair->key.thread, zBuf2, pair->nRef,
-            (void *)pair);
+    logmsgf(LOGMSG_USER,
+            out, "[%s @ %s:%d] [%s / %s @ %p / %p] [refs:%d] [pair:%p]\n",
+            pair->func, pair->file, pair->line, zBuf1, zBuf2, pair->key.obj,
+            (void *)pair->key.thread, pair->nRef, (void *)pair);
 
     fflush(out);
   }
