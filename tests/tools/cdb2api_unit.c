@@ -188,7 +188,7 @@ void test_read_comdb2db_cfg()
     cdb2_hndl_tp hndl;
     char comdb2db_hosts[10][64];
     char db_hosts[10][64];
-    FILE *fp = NULL;
+    SBUF2 *s = NULL;
     char *comdb2db_name = NULL;
     int num_hosts = 0;
     int comdb2db_num = 0;
@@ -204,7 +204,7 @@ void test_read_comdb2db_cfg()
 ";
 
 
-    read_comdb2db_cfg(&hndl, fp, comdb2db_name,
+    read_comdb2db_cfg(&hndl, s, comdb2db_name,
                       buf, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
@@ -224,7 +224,7 @@ void test_read_comdb2db_cfg()
   comdb2_config:allow_pmux_route:true       \
 ";
 
-    read_comdb2db_cfg(&hndl, fp, "comdb2dbnm",
+    read_comdb2db_cfg(&hndl, s, "comdb2dbnm",
                       buf2, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
