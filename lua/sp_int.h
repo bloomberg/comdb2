@@ -116,4 +116,7 @@ int db_csvcopy(Lua lua);
 
 char* find_syssp(const char *, char **override);
 
+int begin_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions);
+int end_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions);
+
 #endif

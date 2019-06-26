@@ -6584,9 +6584,13 @@ int begin_unlimited_lua(int *pSavedMaxLuaInstructions)
     struct sqlclntstate *clnt = thd->clnt;
     if (clnt == NULL) return 0;
 
-    SP sp = clnt->sp;
-    if (sp == NULL) return 0;
+    return begin_unlimited_lua_int(clnt->sp, pSavedMaxLuaInstructions);
+}
 
+int begin_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions)
+{
+    if (sp == NULL) return 0;
+    if (pSavedMaxLuaInstructions == NULL) return 0;
     *pSavedMaxLuaInstructions = sp->max_num_instructions;
     sp->max_num_instructions = 0;
     return 1;
@@ -6600,9 +6604,13 @@ int end_unlimited_lua(int *pSavedMaxLuaInstructions)
     struct sqlclntstate *clnt = thd->clnt;
     if (clnt == NULL) return 0;
 
-    SP sp = clnt->sp;
-    if (sp == NULL) return 0;
+    return end_unlimited_lua_int(clnt->sp, pSavedMaxLuaInstructions);
+}
 
+int end_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions)
+{
+    if (sp == NULL) return 0;
+    if (pSavedMaxLuaInstructions == NULL) return 0;
     sp->max_num_instructions = *pSavedMaxLuaInstructions;
     *pSavedMaxLuaInstructions = 0;
     return 1;

@@ -402,12 +402,13 @@ static int db_send(Lua L) {
     char buf[1024];
     int rownum = 1;
     char *cmd;
+    SP sp = getsp(L);
+    int savedMaxLuaInstructions = 0;
 
     if (!lua_isstring(L, 1))
         return luaL_error(L, "Expected string argument");
 
     if (gbl_uses_password) {
-      SP sp = getsp(L);
       if (sp && sp->clnt) {
           int bdberr;
           if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
@@ -433,6 +434,7 @@ static int db_send(Lua L) {
     process_command(thedb, cmd, strlen(cmd), 0);
     io_override_set_std(NULL);
     rewind(f);
+    begin_unlimited_lua_int(sp, &savedMaxLuaInstructions);
     while (fgets(buf, sizeof(buf), f)) {
         char *s;
         s = strchr(buf, '\n');
@@ -446,6 +448,7 @@ static int db_send(Lua L) {
 
         lua_rawseti(L, -2, rownum++);
     }
+    end_unlimited_lua_int(sp, &savedMaxLuaInstructions);
     fclose(f);
 
     return 1;
