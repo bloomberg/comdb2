@@ -304,13 +304,9 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                         }
                     }
                 }
-                /* we should only repeat socksql and read committed */
-                assert(clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-                       clnt->dbtran.mode == TRANLEVEL_RECOM);
 
-                osql_sock_abort(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                          ? OSQL_SOCK_REQ
-                                          : OSQL_RECOM_REQ);
+                int type = tran2netreq(clnt->dbtran.mode);
+                osql_sock_abort(clnt, type);
             }
             break;
         }

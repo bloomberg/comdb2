@@ -1318,6 +1318,12 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     return 0;
 }
 
+void set_client_requested_data(struct sqlclntstate *clnt, int val,
+        const char *func, int line)
+{
+    clnt->client_requested_data = val;
+}
+
 /**
  * Cluster here all pre-sqlite parsing, detecting requests that
  * are not handled by sqlite (transaction commands, pragma, stored proc,
@@ -1329,7 +1335,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     if (!clnt->in_client_trans) {
         clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
-        clnt->client_requested_data = 0;
+        set_client_requested_data(clnt, 0, __func__, __LINE__);
     }
 
     if (!sql)
@@ -1541,10 +1547,12 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     if (clnt->dbtran.mode == TRANLEVEL_SERIAL)
         assert(rc != CDB2ERR_VERIFY_ERROR);
 
+    /* Any isolation level can retry if nothing has been read */
     if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
         !clnt->client_requested_data && gbl_snapshot_serial_verify_retry)
         return 1;
 
+    /* Verify error can be retried in reccom or lower */
     return (rc == CDB2ERR_VERIFY_ERROR) &&
         (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
         (clnt->dbtran.mode != TRANLEVEL_SERIAL);
@@ -3574,7 +3582,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     if (clnt->isselect || is_with_statement(clnt->sql)) {
-        clnt->client_requested_data = 1;
+        set_client_requested_data(clnt, 1, __func__, __LINE__);
     }
     clnt->has_recording |= v->recording;
     clnt->nsteps = 0;
@@ -5132,6 +5140,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
+    set_client_requested_data(clnt, 0, __func__, __LINE__);
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
