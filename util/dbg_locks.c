@@ -75,6 +75,13 @@ static hash_t *dbg_locks = NULL;
 #define DBG_SET_NAME(a) snprintf(zBuf, nBuf, "%s", (a))
 #define DBG_UNK_NAME(a) snprintf(zBuf, nBuf, "unk:%d", (a))
 
+#define DBG_SET_IKEY(ikey, obj, thread, type) do { \
+  memset(&(ikey), 0, sizeof(inner_key_t));         \
+  (ikey).obj = obj;                                \
+  (ikey).thread = thread;                          \
+  (ikey).type = type;                              \
+} while(0)
+
 #define DBG_MORE_MEMORY(a) do {               \
   dbg_locks_bytes += (a);                     \
   if( dbg_locks_bytes>dbg_locks_peak_bytes ){ \
@@ -123,19 +130,19 @@ static int dbg_pthread_dump_inner_pair(
   void *obj,
   void *arg
 ){
-  inner_pair_t *pair = (inner_pair_t *)obj;
-  if( pair!=NULL ){
+  inner_pair_t *ipair = (inner_pair_t *)obj;
+  if( ipair!=NULL ){
     FILE *out = (FILE *)arg;
     char zBuf1[64];
     char zBuf2[64];
 
-    dbg_pthread_type_name(zBuf1, sizeof(zBuf1), pair->key.type);
-    dbg_pthread_flag_names(zBuf2, sizeof(zBuf2), pair->flags);
+    dbg_pthread_type_name(zBuf1, sizeof(zBuf1), ipair->key.type);
+    dbg_pthread_flag_names(zBuf2, sizeof(zBuf2), ipair->flags);
 
     logmsgf(LOGMSG_USER,
-            out, "[%s @ %s:%d] [%s / %s @ %p / %p] [refs:%d] [pair:%p]\n",
-            pair->func, pair->file, pair->line, zBuf1, zBuf2, pair->key.obj,
-            (void *)pair->key.thread, pair->nRef, (void *)pair);
+            out, "[%s @ %s:%d] [%s / %s @ obj:%p, thd:%p] [refs:%d, pair:%p]\n",
+            ipair->func, ipair->file, ipair->line, zBuf1, zBuf2, ipair->key.obj,
+            (void *)ipair->key.thread, ipair->nRef, (void *)ipair);
 
     fflush(out);
   }
@@ -148,9 +155,9 @@ static int dbg_pthread_dump_outer_pair(
   void *obj,
   void *arg
 ){
-  outer_pair_t *pair = (outer_pair_t *)obj;
-  if( pair!=NULL && pair->locks!=NULL ){
-    hash_for(pair->locks, dbg_pthread_dump_inner_pair, arg);
+  outer_pair_t *opair = (outer_pair_t *)obj;
+  if( opair!=NULL && opair->locks!=NULL ){
+    hash_for(opair->locks, dbg_pthread_dump_inner_pair, arg);
   }
   return 0;
 }
@@ -174,9 +181,9 @@ static int dbg_pthread_free_outer_pair(
   void *obj,
   void *arg
 ){
-  outer_pair_t *pair = (outer_pair_t *)obj;
-  if( pair!=NULL ){
-    hash_t *locks = pair->locks;
+  outer_pair_t *opair = (outer_pair_t *)obj;
+  if( opair!=NULL ){
+    hash_t *locks = opair->locks;
     if( locks!=NULL ){
       hash_for(locks, dbg_pthread_free_inner_pair, NULL);
       hash_clear(locks);
@@ -249,43 +256,44 @@ static void dbg_pthread_add_self(
 ){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  outer_pair_t *okey = hash_find(dbg_locks, &obj);
-  if( okey==NULL ){
-    okey = calloc(1, sizeof(outer_pair_t));
-    if( okey==NULL ) abort();
+  outer_pair_t *opair = hash_find(dbg_locks, &obj);
+  if( opair==NULL ){
+    opair = calloc(1, sizeof(outer_pair_t));
+    if( opair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(outer_pair_t));
-    okey->locks = hash_init(sizeof(inner_key_t));
-    if( okey->locks==NULL ) abort();
+    opair->locks = hash_init(sizeof(inner_key_t));
+    if( opair->locks==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(hash_t*));
-    okey->obj = obj;
-    if( hash_add(dbg_locks, okey)!=0 ) abort();
+    opair->obj = obj;
+    if( hash_add(dbg_locks, opair)!=0 ) abort();
   }
   pthread_t self = pthread_self();
-  inner_key_t ikey = { obj, self, type };
-  inner_pair_t *pair = hash_find(okey->locks, &ikey);
-  if( pair==NULL ){
-    pair = calloc(1, sizeof(inner_pair_t));
-    if( pair==NULL ) abort();
+  inner_key_t ikey;
+  DBG_SET_IKEY(ikey, obj, self, type);
+  inner_pair_t *ipair = hash_find(opair->locks, &ikey);
+  if( ipair==NULL ){
+    ipair = calloc(1, sizeof(inner_pair_t));
+    if( ipair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(inner_pair_t));
-    pair->key.obj = obj;
-    pair->key.thread = self;
-    pair->key.type = type;
-    pair->nRef = 1;
-    pair->flags = flags;
-    pair->file = file;
-    pair->func = func;
-    pair->line = line;
-    if( hash_add(okey->locks, pair)!=0 ) abort();
+    ipair->key.obj = obj;
+    ipair->key.thread = self;
+    ipair->key.type = type;
+    ipair->nRef = 1;
+    ipair->flags = flags;
+    ipair->file = file;
+    ipair->func = func;
+    ipair->line = line;
+    if( hash_add(opair->locks, ipair)!=0 ) abort();
   }else{
-    assert( pair->key.obj==obj );
-    assert( pair->key.thread==self );
-    assert( pair->key.type==type );
-    assert( pair->nRef>0 );
-    pair->nRef++;
-    pair->flags = flags;
-    pair->file = file;
-    pair->func = func;
-    pair->line = line;
+    assert( ipair->key.obj==obj );
+    assert( ipair->key.thread==self );
+    assert( ipair->key.type==type );
+    assert( ipair->nRef>0 );
+    ipair->nRef++;
+    ipair->flags = flags;
+    ipair->file = file;
+    ipair->func = func;
+    ipair->line = line;
   }
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
@@ -302,30 +310,31 @@ static void dbg_pthread_remove_self(
 ){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  outer_pair_t *okey = hash_find(dbg_locks, &obj);
-  if( okey==NULL ) goto done;
+  outer_pair_t *opair = hash_find(dbg_locks, &obj);
+  if( opair==NULL ) goto done;
   pthread_t self = pthread_self();
-  inner_key_t ikey = { obj, self, type };
-  inner_pair_t *pair = hash_find(okey->locks, &ikey);
-  if( pair==NULL ) goto done;
-  if( --pair->nRef==0 ){
-    if( hash_del(okey->locks, pair)!=0 ) abort();
-    free(pair);
+  inner_key_t ikey;
+  DBG_SET_IKEY(ikey, obj, self, type);
+  inner_pair_t *ipair = hash_find(opair->locks, &ikey);
+  if( ipair==NULL ) goto done;
+  if( --ipair->nRef==0 ){
+    if( hash_del(opair->locks, ipair)!=0 ) abort();
+    free(ipair);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
-    if( hash_get_num_entries(okey->locks)==0 ){
+    if( hash_get_num_entries(opair->locks)==0 ){
       if( hash_del(dbg_locks, &obj)!=0 ) abort();
-      hash_for(okey->locks, dbg_pthread_free_inner_pair, NULL);
-      hash_clear(okey->locks);
-      hash_free(okey->locks);
+      hash_for(opair->locks, dbg_pthread_free_inner_pair, NULL);
+      hash_clear(opair->locks);
+      hash_free(opair->locks);
       DBG_LESS_MEMORY(sizeof(hash_t*));
-      free(okey);
+      free(opair);
       DBG_LESS_MEMORY(sizeof(outer_pair_t));
     }
   }else{
-    assert( pair->key.obj==obj );
-    assert( pair->key.thread==self );
-    assert( pair->key.type==type );
-    assert( pair->nRef>0 );
+    assert( ipair->key.obj==obj );
+    assert( ipair->key.thread==self );
+    assert( ipair->key.type==type );
+    assert( ipair->nRef>0 );
   }
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
