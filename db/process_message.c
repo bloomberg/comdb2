@@ -1370,7 +1370,7 @@ clipper_usage:
         int bSummaryOnly;
 
         tok = segtok(line, lline, &st, &ltok);
-        bSummaryOnly = toknum(tok, ltok);
+        bSummaryOnly = !toknum(tok, ltok);
 
         dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
     }
