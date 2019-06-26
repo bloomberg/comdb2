@@ -523,7 +523,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
         }
 #endif
 
-        rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
+        rc = Pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
             logmsg(LOGMSG_INFO,
                    "trying readlock (%s %lu), last writelock is %s %lu\n",
