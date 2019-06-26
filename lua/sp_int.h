@@ -47,6 +47,7 @@ struct stored_proc {
     int bufsz;
     int num_instructions;
     int max_num_instructions;
+    int saved_max_num_instructions;
     int had_allow_lua_exec_with_ddl;
     int had_allow_lua_dynamic_libs;
     uint8_t *buf;
@@ -115,8 +116,5 @@ void dttz_to_datetime_t(const dttz_t *, const char *tz, datetime_t *);
 int db_csvcopy(Lua lua);
 
 char* find_syssp(const char *, char **override);
-
-int begin_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions);
-int end_unlimited_lua_int(SP sp, int *pSavedMaxLuaInstructions);
 
 #endif

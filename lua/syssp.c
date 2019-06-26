@@ -207,6 +207,7 @@ static int db_comdb_analyze(Lua L) {
 
 static int db_comdb_verify(Lua L) {
     SP sp = getsp(L);
+    sp->saved_max_num_instructions = sp->max_num_instructions;
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *tblname = NULL;
     if (lua_isstring(L, 1)) {
@@ -250,6 +251,7 @@ int gbl_truncating_log = 0;
 
 static int db_comdb_truncate_log(Lua L) {
     SP sp = getsp(L);
+    sp->saved_max_num_instructions = sp->max_num_instructions;
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *lsnstr = NULL;
     if (lua_isstring(L, 1)) {
@@ -304,6 +306,7 @@ static int db_comdb_truncate_log(Lua L) {
 
 static int db_comdb_truncate_time(Lua L) {
     SP sp = getsp(L);
+    sp->saved_max_num_instructions = sp->max_num_instructions;
     sp->max_num_instructions = 1000000; //allow large number of steps
     time_t time;
     int rc;
@@ -352,6 +355,7 @@ static int db_comdb_truncate_time(Lua L) {
 
 static int db_comdb_apply_log(Lua L) {
     SP sp = getsp(L);
+    sp->saved_max_num_instructions = sp->max_num_instructions;
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *lsnstr = NULL;
     int rc, newfile;
@@ -403,7 +407,8 @@ static int db_send(Lua L) {
     int rownum = 1;
     char *cmd;
     SP sp = getsp(L);
-    int savedMaxLuaInstructions = 0;
+    sp->saved_max_num_instructions = sp->max_num_instructions;
+    sp->max_num_instructions = 1000000; //allow large number of steps
 
     if (!lua_isstring(L, 1))
         return luaL_error(L, "Expected string argument");
@@ -434,7 +439,6 @@ static int db_send(Lua L) {
     process_command(thedb, cmd, strlen(cmd), 0);
     io_override_set_std(NULL);
     rewind(f);
-    begin_unlimited_lua_int(sp, &savedMaxLuaInstructions);
     while (fgets(buf, sizeof(buf), f)) {
         char *s;
         s = strchr(buf, '\n');
@@ -448,7 +452,6 @@ static int db_send(Lua L) {
 
         lua_rawseti(L, -2, rownum++);
     }
-    end_unlimited_lua_int(sp, &savedMaxLuaInstructions);
     fclose(f);
 
     return 1;
