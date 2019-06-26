@@ -511,6 +511,14 @@ static void strip_cluster(const std::string& lrlpath,
     }
 }
 
+static bool file_exists(const std::string &path) {
+    int rc = access(path.c_str(), F_OK);
+    if (rc == 0)
+        return true;
+    // treat not being able to access the file the same as file doesn't exist
+    return false;
+}
+
 void parse_lrl_file(const std::string& lrlpath,
         std::string* p_dbname,
         std::string* p_dbdir,
@@ -631,12 +639,26 @@ void parse_lrl_file(const std::string& lrlpath,
     if (!certdir.empty())
         certdir += "/";
 
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_CERT) : cert);
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_KEY) : key);
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CA) : ca);
+    if (cert.empty()) {
+        if (file_exists(certdir + DEFAULT_SERVER_CERT))
+            p_support_files->push_back(certdir + DEFAULT_SERVER_CERT);
+        if (file_exists(certdir + DEFAULT_SERVER_KEY))
+            p_support_files->push_back(certdir + DEFAULT_SERVER_KEY);
+        if (file_exists(certdir + DEFAULT_CA))
+            p_support_files->push_back(certdir + DEFAULT_CA);
 #if HAVE_CRL
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CRL) : crl);
+        if (file_exists(certdir + DEFAULT_CRL))
+            p_support_files->push_back(certdir + DEFAULT_CRL);
 #endif
+    }
+    else {
+        p_support_files->push_back(cert);
+        p_support_files->push_back(key);
+        p_support_files->push_back(ca);
+#if HAVE_CRL
+        p_support_files->push_back(crl);
+#endif
+    }
 }
 
 void create_lrl_file(std::string& lrlpath,
