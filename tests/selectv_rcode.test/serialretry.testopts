@@ -1,0 +1,2 @@
+snapshot_serial_verify_retry on
+osql_verify_retry_max 1000000

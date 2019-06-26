@@ -5490,8 +5490,9 @@ add_blkseq:
 
         if (!rowlocks) {
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
-                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
+            if (outrc == ERR_BLOCK_FAILED && (err.errcode == ERR_VERIFY ||
+                err.errcode == ERR_NOTSERIAL) && (iq->have_snap_info &&
+                iq->snap_info.replicant_can_retry)) {
                 /* do nothing */
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,

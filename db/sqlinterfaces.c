@@ -1527,7 +1527,7 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
         gbl_snapshot_serial_verify_retry)
-        return 1;
+        return !clnt->client_requested_data;
 
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
         clnt->dbtran.mode != TRANLEVEL_SERIAL;
@@ -1542,7 +1542,7 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
         assert(rc != CDB2ERR_VERIFY_ERROR);
 
     if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
-        (!clnt->client_requested_data) && gbl_snapshot_serial_verify_retry)
+        !clnt->client_requested_data && gbl_snapshot_serial_verify_retry)
         return 1;
 
     return (rc == CDB2ERR_VERIFY_ERROR) &&
