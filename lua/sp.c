@@ -6575,3 +6575,35 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     }
     return rc;
 }
+
+int begin_unlimited_lua(int *pSavedMaxLuaInstructions)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL) return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL) return 0;
+
+    SP sp = clnt->sp;
+    if (sp == NULL) return 0;
+
+    *pSavedMaxLuaInstructions = sp->max_num_instructions;
+    sp->max_num_instructions = 0;
+    return 1;
+}
+
+int end_unlimited_lua(int *pSavedMaxLuaInstructions)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL) return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL) return 0;
+
+    SP sp = clnt->sp;
+    if (sp == NULL) return 0;
+
+    sp->max_num_instructions = *pSavedMaxLuaInstructions;
+    *pSavedMaxLuaInstructions = 0;
+    return 1;
+}

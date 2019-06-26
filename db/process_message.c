@@ -83,6 +83,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_global.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "sp.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -1372,7 +1373,7 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         bSummaryOnly = !toknum(tok, ltok);
 
-        int *savedMaxLuaInstructions = 0;
+        int savedMaxLuaInstructions = 0;
         begin_unlimited_lua(&savedMaxLuaInstructions);
         dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
         end_unlimited_lua(&savedMaxLuaInstructions);

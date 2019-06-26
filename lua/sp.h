@@ -38,4 +38,7 @@ void lua_step(struct sqlite3_context *, int argc, struct sqlite3_value **argv);
 void lua_func(struct sqlite3_context *, int argc, struct sqlite3_value **argv);
 int db_verify_table_callback(void *v, const char *buf);
 
+int begin_unlimited_lua(int *pSavedMaxLuaInstructions);
+int end_unlimited_lua(int *pSavedMaxLuaInstructions);
+
 #endif
