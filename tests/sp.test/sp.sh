@@ -1313,6 +1313,7 @@ cdb2sql $SP_OPTIONS - <<'EOF'
 create table no_ddl_t1(x INT);$$
 create table no_ddl_t2(x BLOB);$$
 create table no_ddl_t3(x INT);$$
+select sleep(5);
 create index no_ddl_t1_i1 on no_ddl_t1(x);$$
 -- No support for user-defined views...
 -- This will cause DROP VIEW to have an rc of 1 instead of 23 (below)
