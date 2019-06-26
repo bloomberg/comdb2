@@ -169,7 +169,7 @@ int selectv_update(cdb2_hndl_tp *db)
         fprintf(stderr, "line %d error running selectv, %s\n", __LINE__, cdb2_errstr(db));
         exit(1);
     }
-    while ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
@@ -234,7 +234,7 @@ int update(cdb2_hndl_tp *db)
         fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
         exit(1);
     }
-    while ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
@@ -311,7 +311,7 @@ int noselect_update(cdb2_hndl_tp *db)
         fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
         exit(1);
     }
-    while ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }

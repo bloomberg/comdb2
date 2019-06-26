@@ -253,6 +253,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
 
+        /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
             /* we need to free all the shadows but selectv table (recgenid) */
             rc = osql_shadtbl_reset_for_selectv(clnt);

@@ -3633,13 +3633,13 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
         if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
             /* if this is still a verify error but we tried to many times,
                send error back anyway by resetting the replay field */
-            if (irc == CDB2ERR_VERIFY_ERROR &&
+            if (replicant_can_retry_rc(clnt, irc)  &&
                 clnt->osql.replay == OSQL_RETRY_LAST) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is still an error, but not verify, pass it back to
                client */
-            else if (irc && irc != CDB2ERR_VERIFY_ERROR) {
+            else if (irc && !replicant_can_retry_rc(clnt, irc)) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is a successful retrial of a previous verified-failed
