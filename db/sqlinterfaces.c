@@ -4903,7 +4903,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_cond_destroy(&clnt->write_cond);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
     Pthread_mutex_destroy(&clnt->state_lk);
-
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
