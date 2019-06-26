@@ -1366,6 +1366,15 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "pthread_locks") == 0) {
+        int bSummaryOnly;
+
+        tok = segtok(line, lline, &st, &ltok);
+        bSummaryOnly = toknum(tok, ltok);
+
+        dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
+    }
+
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
         int rcp = bdb_temp_table_clear_cache(thedb->bdb_env);
         if (gbl_temptable_pool_capacity == 0) {
