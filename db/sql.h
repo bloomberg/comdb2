@@ -1044,6 +1044,9 @@ void osql_log_time_done(struct sqlclntstate *clnt);
 
 int dispatch_sql_query(struct sqlclntstate *clnt);
 
+int begin_unlimited_lua(int *pSavedMaxLuaInstructions);
+void end_unlimited_lua(int *pSavedMaxLuaInstructions);
+
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse);
 int handle_sql_commitrollback(struct sqlthdstate *thd,

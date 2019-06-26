@@ -1372,7 +1372,10 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         bSummaryOnly = !toknum(tok, ltok);
 
+        int *savedMaxLuaInstructions = 0;
+        begin_unlimited_lua(&savedMaxLuaInstructions);
         dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
+        end_unlimited_lua(&savedMaxLuaInstructions);
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {

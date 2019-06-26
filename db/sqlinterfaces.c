@@ -6433,3 +6433,35 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_cond_destroy(&clnt->write_cond);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
 }
+
+int begin_unlimited_lua(int *pSavedMaxLuaInstructions)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL) return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL) return 0;
+
+    SP sp = clnt->sp;
+    if (sp == NULL) return 0;
+
+    *pSavedMaxLuaInstructions = sp->max_num_instructions;
+    sp->max_num_instructions = 0;
+    return 1;
+}
+
+void end_unlimited_lua(int *pSavedMaxLuaInstructions)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL) return 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
+    if (clnt == NULL) return 0;
+
+    SP sp = clnt->sp;
+    if (sp == NULL) return 0;
+
+    sp->max_num_instructions = *pSavedMaxLuaInstructions;
+    *pSavedMaxLuaInstructions = 0;
+    return 1;
+}
