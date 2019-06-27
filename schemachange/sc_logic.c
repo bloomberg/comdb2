@@ -518,7 +518,9 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
 
     Pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtxStart);
     Pthread_cond_signal(&s->condStart);
+    Pthread_mutex_unlock(&s->mtxStart);
 
     s->iq = iq;
     enum thrtype oldtype = prepare_sc_thread(s);
