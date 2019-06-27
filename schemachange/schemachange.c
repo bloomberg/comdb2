@@ -309,6 +309,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        Pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
         int max_threads =
@@ -333,6 +334,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_locked, s);
         } else {
+            Pthread_mutex_lock(&s->mtx);
             rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_tran, arg);
         }
