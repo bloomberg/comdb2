@@ -517,6 +517,9 @@ int do_schema_change_tran(sc_arg_t *arg)
         abort();
     }
 
+    Pthread_mutex_lock(&s->mtx);
+    Pthread_cond_signal(&s->condStart);
+
     s->iq = iq;
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
@@ -651,7 +654,6 @@ int do_schema_change_locked(struct schema_change_type *s)
     /* the only callers are lightweight timepartition events,
        which already have schema lock */
     arg->iq->sc_locked = 1;
-    Pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
