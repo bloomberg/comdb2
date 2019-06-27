@@ -1369,12 +1369,16 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "pthread_locks") == 0) {
+#if defined(DBG_PTHREAD_LOCKS)
         int bSummaryOnly;
 
         tok = segtok(line, lline, &st, &ltok);
         bSummaryOnly = !toknum(tok, ltok);
 
         dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
+#else
+        logmsg(LOGMSG_USER, "pthread locks not available.\n");
+#endif
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
