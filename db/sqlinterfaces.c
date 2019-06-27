@@ -4577,6 +4577,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     char msg[1024];
     char *sqlcpy;
     int rc;
+    int fail_dispatch = 0;
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
 
@@ -4593,7 +4594,12 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
+
+    Pthread_mutex_lock(&clnt_lk);
     clnt->done = 0;
+    if (clnt->statement_timedout)
+        fail_dispatch = 1;
+    Pthread_mutex_unlock(&clnt_lk);
 
     clnt->total_sql++;
     clnt->sql_since_reset++;
@@ -4603,7 +4609,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
-    if (clnt->statement_timedout)
+    if (fail_dispatch)
         return -1;
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
