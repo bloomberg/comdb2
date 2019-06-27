@@ -2103,7 +2103,6 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
-extern pthread_mutex_t clnt_lk;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
