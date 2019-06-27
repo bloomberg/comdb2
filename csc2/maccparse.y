@@ -123,7 +123,7 @@ validstruct:	recstruct
 
 
 /* constraintstruct: defines cross-table constraints */
-constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' { end_constraint_list(); }
+constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' {}
                 ;
 
 ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_constraint_mod(0,0,1); }
@@ -133,33 +133,28 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 | /* %empty */
                 ;
 
-cnstrtstart:    string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
-                | varname '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+cnstrtstart:    string '-' T_GT { start_constraint_list($1); }
+                | varname '-' T_GT { start_constraint_list($1); }
                 ;
 
 /* Named constraint (introduced in r7) */
 cnstrtnamedstart: string T_EQ string '-' T_GT {
-                      end_constraint_list();
                       start_constraint_list($3);
-                      set_constraint_name($1);
+                      set_constraint_name($1, CT_FKEY);
                   }
 
 /* Named check constraint */
 cnstrtnamedcheck: T_CHECK string T_EQ string {
-                      end_constraint_list();
                       add_check_constraint($4);
-                      set_constraint_name($2);
+                      set_constraint_name($2, CT_CHECK);
                   }
 
 /* Unnamed check constraint */
-cnstrtunnamedcheck: T_CHECK string {
-                        end_constraint_list();
-                        add_check_constraint($2);
-                    }
+cnstrtunnamedcheck: T_CHECK string { add_check_constraint($2); }
 
 /* Note: a named constraint does not allow a list of parent key references. */
-cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { /*end_constraint_list(); */}
-                | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { /*end_constraint_list(); */}
+cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { }
+                | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { }
                 | cnstrtdef cnstrtnamedcheck
                 | cnstrtdef cnstrtunnamedcheck
                 | /* %empty */

@@ -1690,17 +1690,13 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     }
 
     /* CHECK constraints */
-    for (int i = 0; i < tbl->n_constraints; i++) {
-        if (tbl->constraints[i].type != CONS_CHECK) {
-            continue;
-        }
-
+    for (int i = 0; i < tbl->n_check_constraints; i++) {
         strbuf_append(sql, ",");
-        if (tbl->constraints[i].consname) {
+        if (tbl->check_constraints[i].consname) {
             strbuf_appendf(sql, " constraint '%s'",
-                           tbl->constraints[i].consname);
+                           tbl->check_constraints[i].consname);
         }
-        strbuf_appendf(sql, " check (%s)", tbl->constraints[i].check_expr);
+        strbuf_appendf(sql, " check (%s)", tbl->check_constraints[i].expr);
     }
 
     strbuf_append(sql, ");");
@@ -2016,20 +2012,9 @@ struct schema_mem {
  */
 static int do_syntax_check(struct dbtable *tbl)
 {
-    int has_check_constraints = 0;
-
-    for (int i = 0; i < tbl->n_constraints; i++) {
-        if (tbl->constraints[i].type == CONS_CHECK) {
-            has_check_constraints = 1;
-            break;
-        }
-    }
-
     return ((gbl_partial_indexes && tbl->ix_partial) ||
             (gbl_expressions_indexes && tbl->ix_expr) ||
-            (has_check_constraints == 1))
-               ? 1
-               : 0;
+            (tbl->n_check_constraints > 0)) ? 1 : 0;
 }
 
 #define INDEXES_THREAD_MEMORY 1048576
@@ -12374,21 +12359,14 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     Mem *m = NULL;
     Mem mout = {{0}};
     int rc = 0;
-    int has_check_cons = 0;
 
     /* Skip if there are no CHECK constraints. */
-    for (int i = 0; i < table->n_constraints; i++) {
-        if (table->constraints[i].type == CONS_CHECK) {
-            has_check_cons = 1;
-            break;
-        }
-    }
-
-    if (has_check_cons == 0) {
+    if (table->n_check_constraints < 1) {
         *check_status = 0;
         return rc;
     }
 
+    /* Let's start by assuming that the check failed. */
     *check_status = 1;
 
     if (!rec) {
@@ -12423,10 +12401,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         }
     }
 
-    for (int i = 0; i < table->n_constraints; i++) {
-        if (table->constraints[i].type != CONS_CHECK) {
-            continue;
-        }
+    for (int i = 0; i < table->n_check_constraints; i++) {
         strbuf_clear(sql);
         strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", table->tablename,
                        sc->member[0].name);
@@ -12438,7 +12413,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
             strbuf_appendf(sql, ", @%s", sc->member[i].name);
         }
         strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
-                       table->constraints[i].check_expr, table->tablename);
+                       table->check_constraints[i].expr, table->tablename);
 
         struct sqlclntstate clnt;
         struct schema_mem sm;

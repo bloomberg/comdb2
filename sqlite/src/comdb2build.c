@@ -25,7 +25,6 @@
 #include <shard_range.h>
 #include <logical_cron.h>
 #include "cdb2_constants.h"
-#include "constraints.h"
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
@@ -2568,6 +2567,14 @@ struct comdb2_key {
     LINKC_T(struct comdb2_key) lnk;
 };
 
+/* Supported constraint types */
+enum {
+    CONS_FKEY = 1 << 1,
+    CONS_CHECK = 1 << 2,
+};
+
+#define CONS_ALL (CONS_FKEY | CONS_CHECK)
+
 /* Constraint flags */
 enum {
     CONS_UPD_CASCADE = 1 << 0,
@@ -3290,8 +3297,8 @@ static int gen_constraint_name_int(char *in, size_t in_size, char *out,
     return 0;
 }
 
-static int gen_check_constraint_name(const char *check_expr, char *buf,
-                                     size_t buf_sz)
+static int gen_check_constraint_name_int(const char *check_expr, char *buf,
+                                         size_t buf_sz)
 {
     int pos = 0;
     /* CHECK expression */
@@ -3301,8 +3308,8 @@ done:
     return pos;
 }
 
-static int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx,
-                                  char *buf, size_t buf_sz)
+static int gen_fk_constraint_name_int(constraint_t *pConstraint, int parent_idx,
+                                      char *buf, size_t buf_sz)
 {
     struct dbtable *table;
     struct schema *key;
@@ -3375,19 +3382,27 @@ done:
     return pos;
 }
 
-int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
-                        size_t out_size)
+int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
+                           size_t out_size)
 {
     char buf[3 * 1024];
     char *ptr = (char *)buf;
     int end;
 
-    if (pConstraint->type == CONS_CHECK) {
-        end = gen_check_constraint_name(pConstraint->check_expr, ptr,
-                                        sizeof(buf));
-    } else {
-        end = gen_fk_constraint_name(pConstraint, parent_idx, ptr, sizeof(buf));
-    }
+    end = gen_fk_constraint_name_int(pConstraint, parent_idx, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
+                              size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = gen_check_constraint_name_int(pConstraint->expr, ptr, sizeof(buf));
     gen_constraint_name_int(buf, end, out, out_size);
 
     return 0;
@@ -3441,8 +3456,8 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
     int end;
 
     if (constraint->type == CONS_CHECK) {
-        end =
-            gen_check_constraint_name(constraint->check_expr, ptr, sizeof(buf));
+        end = gen_check_constraint_name_int(constraint->check_expr, ptr,
+                                            sizeof(buf));
     } else {
         end = gen_fk_constraint_name2(constraint, ptr, sizeof(buf));
     }
@@ -3814,7 +3829,7 @@ static void escape_expr(struct strbuf *out, const char *expr)
 
 static int retrieve_check_constraint(Parse *pParse,
                                      struct comdb2_ddl_context *ctx,
-                                     constraint_t *cons)
+                                     check_constraint_t *cons)
 {
     struct comdb2_constraint *constraint;
 
@@ -3826,7 +3841,7 @@ static int retrieve_check_constraint(Parse *pParse,
     constraint->type = CONS_CHECK;
 
     /* CHECK expression */
-    constraint->check_expr = comdb2_strdup(ctx->mem, cons->check_expr);
+    constraint->check_expr = comdb2_strdup(ctx->mem, cons->expr);
     if (constraint->check_expr == 0)
         goto oom;
 
@@ -4146,14 +4161,13 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     /* Populate constraints list */
     for (int i = 0; i < table->n_constraints; i++) {
-        if (table->constraints[i].type == CONS_FKEY) {
-            if ((retrieve_fk_constraint(pParse, ctx, &table->constraints[i])))
-                goto err;
-        } else {
-            if ((retrieve_check_constraint(pParse, ctx,
-                                           &table->constraints[i])))
-                goto err;
-        }
+        if ((retrieve_fk_constraint(pParse, ctx, &table->constraints[i])))
+            goto err;
+    }
+    for (int i = 0; i < table->n_check_constraints; i++) {
+        if ((retrieve_check_constraint(pParse, ctx,
+                                       &table->check_constraints[i])))
+            goto err;
     }
 
     /* Fetch all user-defined tags. */

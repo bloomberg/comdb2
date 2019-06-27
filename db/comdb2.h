@@ -88,7 +88,6 @@ typedef long long tranid_t;
 #include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
-#include "constraints.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -595,14 +594,17 @@ typedef struct {
 typedef struct {
     struct dbtable *lcltable;
     char *consname;
-    int type;
     char *lclkeyname;
     int nrules;
     int flags;
     char *table[MAXCONSTRAINTS];
     char *keynm[MAXCONSTRAINTS];
-    char *check_expr;
 } constraint_t;
+
+typedef struct {
+    char *consname;
+    char *expr;
+} check_constraint_t;
 
 struct managed_component {
     int dbnum;
@@ -719,13 +721,16 @@ struct dbtable {
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
 
-    /* This tables constraints */
+    /* Foreign key constraints */
     constraint_t constraints[MAXCONSTRAINTS];
     int n_constraints;
-
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t *rev_constraints[MAXCONSTRAINTS];
     int n_rev_constraints;
+
+    /* CHECK constraints */
+    check_constraint_t check_constraints[MAXCONSTRAINTS];
+    int n_check_constraints;
 
     /* One of the DBTYPE_ constants. */
     int dbtype;

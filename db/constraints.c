@@ -1425,9 +1425,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 int ridx = 0, lixnum = -1;
                 char lkey[MAXKEYLEN];
 
-                if (ct->type != CONS_FKEY)
-                    continue;
-
                 rc = getidxnumbyname(iq->usedb->tablename, ct->lclkeyname,
                                      &lixnum);
                 if (rc) {
@@ -1975,9 +1972,6 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
 
-        if (ct->type == CONS_CHECK)
-            continue;
-
         if (from_db == new_db) {
             snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
         } else {
@@ -2056,9 +2050,6 @@ int populate_reverse_constraints(struct dbtable *db)
         int jj = 0;
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
-
-        if (cnstrt->type == CONS_CHECK)
-            continue;
 
         sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
         if (sc == NULL) {

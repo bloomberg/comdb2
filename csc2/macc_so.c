@@ -100,23 +100,36 @@ int dyns_used_bools(void) { return used_bools; }
         }                                                                      \
     } while (0)
 
+#define DUP_CONSTRAINT_NAME_ERR(name)                                          \
+    do {                                                                       \
+        csc2_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES ARE "        \
+                   "NOT ALLOWED (variable '%s')\n",                            \
+                   current_line, name);                                        \
+        csc2_syntax_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES "     \
+                          "ARE NOT ALLOWED (variable '%s')",                   \
+                          current_line, name);                                 \
+        any_errors++;                                                          \
+        return;                                                                \
+    } while (0)
+
 void start_constraint_list(char *keyname)
 {
+    ++nconstraints;
+
     if (nconstraints >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY CONSTRAINTS SPECIFIED. MAX %d\n",
                    MAXCNSTRTS);
         any_errors++;
         return;
     }
+
     constraints[nconstraints].flags = 0;
     constraints[nconstraints].ncnstrts = 0;
     constraints[nconstraints].lclkey = keyname;
-    /*  fprintf(stderr, "constraints for key %s\n", keyname);*/
 }
 
 void set_constraint_mod(int start, int op, int type)
 {
-    /*fprintf(stderr, "%d %d %d\n", start, op, type);*/
     if (type == 0)
         return;
     if (op == 0)
@@ -125,31 +138,34 @@ void set_constraint_mod(int start, int op, int type)
         constraints[nconstraints].flags |= CT_DEL_CASCADE;
 }
 
-void set_constraint_name(char *name)
+void set_constraint_name(char *name, enum ct_type type)
 {
     int i;
     for (i = 0; i < nconstraints; i++) {
         if (constraints[i].consname &&
             !strcasecmp(constraints[i].consname, name)) {
-            csc2_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES ARE "
-                       "NOT ALLOWED (variable '%s')\n",
-                       current_line, name);
-            csc2_syntax_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES "
-                              "ARE NOT ALLOWED (variable '%s')",
-                              current_line, name);
-            any_errors++;
-            return;
+            DUP_CONSTRAINT_NAME_ERR(name);
         }
     }
-    constraints[nconstraints].consname = name;
-    return;
-}
+    for (i = 0; i < n_check_constraints; i++) {
+        if (check_constraints[i].consname &&
+            !strcasecmp(check_constraints[i].consname, name)) {
+            DUP_CONSTRAINT_NAME_ERR(name);
+        }
+    }
 
-/* TODO (NC): Cleanup - remove this func */
-void end_constraint_list(void)
-{
-    /*  fprintf(stderr, "constraint: end list\n");*/
-    nconstraints++;
+    switch (type) {
+    case CT_FKEY:
+        constraints[nconstraints].consname = name;
+        break;
+    case CT_CHECK:
+        check_constraints[n_check_constraints].consname = name;
+        break;
+    default:
+        abort();
+    }
+
+    return;
 }
 
 void add_constraint(char *tbl, char *key)
@@ -163,26 +179,15 @@ void add_constraint(char *tbl, char *key)
         return;
     }
     constraints[nconstraints].ncnstrts++;
-    constraints[nconstraints].type = CONS_FKEY;
     constraints[nconstraints].table[cidx] = tbl;
     constraints[nconstraints].keynm[cidx] = key;
-    constraints[nconstraints].check_expr = 0;
-    /*  fprintf(stderr, "constraint: tbl %s key %s %d\n",
-     * tbl,key,nconstraints);*/
 }
 
 void add_check_constraint(char *expr)
 {
     CHECK_LEGACY_SCHEMA(1);
-    int cidx = constraints[nconstraints].ncnstrts;
-    constraints[nconstraints].ncnstrts++;
-    constraints[nconstraints].type = CONS_CHECK;
-    constraints[nconstraints].flags = 0;
-    constraints[nconstraints].ncnstrts = 1;
-    constraints[nconstraints].lclkey = 0;
-    constraints[nconstraints].table[cidx] = 0;
-    constraints[nconstraints].keynm[cidx] = 0;
-    constraints[nconstraints].check_expr = expr;
+    ++n_check_constraints;
+    check_constraints[n_check_constraints].expr = expr;
 }
 
 int constant(char *var)
@@ -3239,35 +3244,45 @@ int dyns_get_table_field_count(char *tabletag)
 
 int dyns_get_constraint_count(void)
 {
-    if (nconstraints < 0)
-        return 0;
-    return nconstraints;
+    return nconstraints + 1;
 }
 
-int dyns_get_constraint_at(int idx, char **consname, int *type, char **keyname,
-                           int *rulecnt, int *flags, char **check_expr)
+int dyns_get_constraint_at(int idx, char **consname, char **keyname,
+                           int *rulecnt, int *flags)
 {
-    if (idx < 0 || idx >= nconstraints)
+    if (idx < 0 || idx > nconstraints)
         return -1;
-    *type = constraints[idx].type;
     *consname = constraints[idx].consname;
     *keyname = constraints[idx].lclkey;
     *rulecnt = constraints[idx].ncnstrts;
     *flags = constraints[idx].flags;
-    *check_expr = constraints[idx].check_expr;
     return 0;
 }
 
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm)
 {
     int rcnt = 0;
-    if (cidx < 0 || cidx >= nconstraints)
+    if (cidx < 0 || cidx > nconstraints)
         return -1;
     rcnt = constraints[cidx].ncnstrts;
-    if (ridx < 0 || ridx >= rcnt)
+    if (ridx < 0 || ridx > rcnt)
         return -1;
     *tblname = constraints[cidx].table[ridx];
     *keynm = constraints[cidx].keynm[ridx];
+    return 0;
+}
+
+int dyns_get_check_constraint_count(void)
+{
+    return n_check_constraints + 1;
+}
+
+int dyns_get_check_constraint_at(int idx, char **consname, char **expr)
+{
+    if (idx < 0 || idx > n_check_constraints)
+        return -1;
+    *consname = check_constraints[idx].consname;
+    *expr = check_constraints[idx].expr;
     return 0;
 }
 

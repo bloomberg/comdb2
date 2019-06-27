@@ -6864,7 +6864,11 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
     for (i = 0; i < db->n_constraints; i++) {
         free(db->constraints[i].consname);
         free(db->constraints[i].lclkeyname);
-        free(db->constraints[i].check_expr);
+    }
+
+    for (i = 0; i < db->n_check_constraints; i++) {
+        free(db->check_constraints[i].consname);
+        free(db->check_constraints[i].expr);
     }
 
     free(db->ixuse);

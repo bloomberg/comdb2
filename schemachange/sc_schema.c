@@ -70,9 +70,6 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
     for (int ci = 0; ci < db->n_constraints; ci++) {
         constraint_t *ct = &(db->constraints[ci]);
 
-        if (ct->type == CONS_CHECK)
-            continue;
-
         char lcl_tag[MAXTAGLEN];
         char lcl_key[MAXKEYLEN];
         int lcl_idx;
@@ -283,10 +280,6 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
     for (i = 0; i < newdb->n_constraints; i++) {
         constraint_t *ct = &newdb->constraints[i];
 
-        if (ct->type == CONS_CHECK) {
-            continue;
-        }
-
         rc = find_constraint(db, ct);
         if (rc == 0) {
             /* constraint not found!  will need to re-verify */
@@ -354,10 +347,6 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
 
     /* see if we removed constraints */
     for (i = 0; i < db->n_constraints; i++) {
-        if (db->constraints[i].type == CONS_CHECK) {
-            continue;
-        }
-
         rc = find_constraint(newdb, &db->constraints[i]);
         /* as a kludge - for now verify.  technically, we don't need to */
         if (rc == 0) verify = 1;
@@ -747,7 +736,7 @@ int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
         return SC_KEY_CHANGE;
     }
 
-    if (constraint_rc && newdb->n_constraints) {
+    if (constraint_rc && (newdb->n_constraints || newdb->n_check_constraints)) {
         return SC_CONSTRAINT_CHANGE;
     }
 
@@ -1188,10 +1177,9 @@ int compare_constraints(const char *table, struct dbtable *newdb)
 
     if (nvlist > 0) return 1;
 
-    for (i = 0; i < newdb->n_constraints; i++) {
-        if (newdb->constraints[i].type == CONS_CHECK) {
-            return 1;
-        }
+    /* Verify CHECK constraints on all records. */
+    if (newdb->n_check_constraints > 0) {
+        return 1;
     }
 
     return 0;
@@ -1238,10 +1226,6 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
             for (int k = 0; k < newdb->constraints[j].nrules; k++) {
                 int ridx = 0;
                 int dupadd = 0;
-
-                if (newdb->constraints[j].type == CONS_CHECK) {
-                    continue;
-                }
 
                 if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename))
                     continue;
