@@ -2946,11 +2946,7 @@ static void reset_sp(SP sp)
     sp->bufsz = 0;
     sp->rc = 0;
     sp->num_instructions = 0;
-    if (sp->saved_max_num_instructions > 0) {
-        sp->max_num_instructions = sp->saved_max_num_instructions;
-    } else {
-        sp->max_num_instructions = gbl_max_lua_instructions;
-    }
+    sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
     LIST_INIT(&sp->tmptbls);
 }
