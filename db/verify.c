@@ -30,7 +30,10 @@
 #include "segstr.h"
 
 #include <bdb_api.h>
+#include <bdb_verify.h>
 #include <bdb/locks.h>
+
+struct thdpool *gbl_verify_thdpool;
 
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
@@ -314,12 +317,14 @@ static int verify_table_int(const char *table, SBUF2 *sb,
         assert(tran && "tran is null but should not be");
         assert(db && "db is null but should not be");
         blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
-        rc = bdb_verify(
+        verify_td_params par = {
             sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
             verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
-            progress_report_seconds, attempt_fix);
+            progress_report_seconds, attempt_fix
+        };
+        rc = bdb_verify(&par);
     }
 
     if (tran)
@@ -389,4 +394,37 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     Pthread_attr_destroy(&attr);
     return v.rcode;
+}
+
+struct verify_thd_state {
+    struct thr_handle *thr_self;
+};
+
+static void verify_thd_start(struct thdpool *pool, void *thddata)
+{
+    struct verify_thd_state *state = thddata;
+    state->thr_self = thrman_register(THRTYPE_VERIFY);
+}
+
+int parallel_verify()
+{
+    gbl_verify_thdpool =
+        thdpool_create("verify_pool", sizeof(struct verify_thd_state));
+
+    if (gbl_exit_on_pthread_create_fail)
+        thdpool_set_exit(gbl_verify_thdpool);
+
+    /* Nice small stack so we can handle lots of connections */
+    thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
+    thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
+    thdpool_set_minthds(gbl_verify_thdpool, 1);
+    thdpool_set_linger(gbl_verify_thdpool, 10);
+
+    thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
+
+
+    //dispatch work
+    //wait for all threads to finish
+    //return error code and output
+    return 0;
 }
