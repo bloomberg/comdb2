@@ -4121,10 +4121,6 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
         }
         struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
         listc_abl(&clntlist, lru_clnt);
-        if (lru_clnt == clnt) {
-            lru_clnt = listc_rtl(&clntlist);
-            listc_abl(&clntlist, lru_clnt);
-        }
         while (lru_clnt != clnt) {
             if (lru_clnt->done && !lru_clnt->in_client_trans) {
                 lru_clnt->statement_timedout = 1; /* disallow any new query */
