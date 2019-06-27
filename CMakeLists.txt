@@ -220,6 +220,5 @@ elseif(${COMDB2_PKG_TYPE} STREQUAL rpm)
   set(CPACK_RPM_PACKAGE_LICENSE Various) #Apache?
 elseif(${COMDB2_PKG_TYPE} STREQUAL tgz)
   set(CPACK_GENERATOR "TGZ")
-endif()
- 
+endif() 
 include(CPack)
