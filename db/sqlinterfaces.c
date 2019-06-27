@@ -2031,7 +2031,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
 
         /* last retry */
-        if (rc == CDB2ERR_VERIFY_ERROR &&
+        if (replicant_can_retry_rc(clnt, rc) &&
             (clnt->osql.replay == OSQL_RETRY_LAST || clnt->verifyretry_off)) {
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done (hit last) sendresp=%d\n",
@@ -2039,7 +2039,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
-        else if (rc != CDB2ERR_VERIFY_ERROR) {
+        else if (!replicant_can_retry_rc(clnt, rc)) {
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
                                                  "(non verify error rc=%d) "
                                                  "sendresp=%d\n",
