@@ -3,6 +3,7 @@
 #debug=1
 [[ "$debug" == "1" ]] && set -x
 
+DOMAIN=comdb2-d1.org
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
@@ -45,7 +46,7 @@ function mail_error
 
     text="$1"
     for addr in $email ; do
-        mail -s "$text" $addr < $l
+        mail -s "$text" -r testloop@$DOMAIL $addr < $l
     done
 }
 
@@ -57,7 +58,7 @@ function mail_status
     echo "Mailing results"
     print_status > body.txt
     for addr in $email ; do
-        mail -s "Successfully tested $i iterations on $host" $addr < body.txt
+        mail -s "Successfully tested $i iterations on $host" -r testloop@$DOMAIN $addr < body.txt
     done
 }
 

@@ -1,2 +1,2 @@
 disable_selectvonly_tran_nop 1
-serializable_force_commit on
+serialize_reads_like_writes 1

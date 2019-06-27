@@ -3076,6 +3076,9 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     int rc;
     struct dbtable *tbl;
 
+    if (get_dbtable_by_name(table))
+        return 0;
+
     dbenv->dbs =
         realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
 

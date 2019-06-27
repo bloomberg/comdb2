@@ -284,6 +284,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc = 0;
     int usedb_only = 0;
     int serial_error = 0;
+    int checked_arr = 0;
     int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
@@ -291,14 +292,18 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
-    if (clnt->arr)
+
+    /* If we have both always check serializable first to close
+     * a race: the selectv rcode should prevail */
+    if (clnt->selectv_arr && clnt->arr) {
         currangearr_build_hash(clnt->arr);
-    if (clnt->arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->arr,
-                &(clnt->arr->file), &(clnt->arr->offset), 0)) {
-        serial_error = 1;
-        rc = SQLITE_ABORT;
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0)) {
+            serial_error = 1;
+        }
+        checked_arr = 1;
     }
+
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
     if (clnt->selectv_arr &&
@@ -308,7 +313,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
         rc = SQLITE_ABORT;
-    } else if (serial_error || clnt->early_retry == EARLY_ERR_VERIFY) {
+    } else if (clnt->early_retry == EARLY_ERR_VERIFY) {
         if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
             errstat_cat_str(&(clnt->osql.xerr),
@@ -346,6 +351,21 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
         sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
+    }
+
+    /* Do replicant serializable check if we haven't yet */
+    if (clnt->arr && !checked_arr && !osql_shadtbl_has_selectv(clnt, &bdberr)) {
+        currangearr_build_hash(clnt->arr);
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0))
+            serial_error = 1;
+    }
+
+    if (serial_error) {
+        clnt->osql.xerr.errval = ERR_NOTSERIAL;
+        errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
+        rc = SQLITE_ABORT;
+        goto goback;
     }
 
     clnt->osql.timings.commit_prep = osql_log_time();
