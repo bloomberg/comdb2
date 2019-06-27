@@ -4115,14 +4115,13 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
     retry:
         num_retry++;
         Pthread_mutex_lock(&clnt_lk);
+        if (active_appsock_conns <= max_appsock_conns) {
+           Pthread_mutex_unlock(&clnt_lk);
+           return 0;
+        }
         struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
         listc_abl(&clntlist, lru_clnt);
-        if (lru_clnt ==
-            clnt) { /* Handle case when only 1 connection is available */
-            if (active_appsock_conns <= max_appsock_conns) {
-                Pthread_mutex_unlock(&clnt_lk);
-                return 0;
-            }
+        if (lru_clnt == clnt) {
             lru_clnt = listc_rtl(&clntlist);
             listc_abl(&clntlist, lru_clnt);
         }
