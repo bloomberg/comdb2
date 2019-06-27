@@ -84,6 +84,7 @@ extern int __berkdb_read_alarm_ms;
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "sp.h"
+#include "dbg_locks_core.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
