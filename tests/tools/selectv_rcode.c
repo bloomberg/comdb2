@@ -36,6 +36,7 @@ int updaters = INITTHDS;
 int selectvers = INITTHDS;
 int noselect_updaters = INITTHDS;
 int single_statement_noselect_updaters = INITTHDS;
+int point_in_time_updaters = INITTHDS;
 int isolation = SOCKSQL;
 int fail_updater_error = 0;
 int time_is_up = 0;
@@ -53,16 +54,18 @@ void usage(FILE *f)
     fprintf(f, "    -U <cnt>                     - no-select updaters td count\n");
     fprintf(f, "    -S <cnt>                     - standalone no-select updaters td count\n");
     fprintf(f, "    -V <cnt>                     - number of selectv-ers\n");
+    fprintf(f, "    -p <cnt>                     - number of point-in-time updaters\n");
     fprintf(f, "    -t <test-time>               - let test run for this many seconds\n");
     fprintf(f, "    -h                           - this menu\n");
 }
 
 enum {
-    SELECTV_THREAD              = 1,
-    UPDATER_THREAD              = 2,
-    SELECTV_UPDATER_THREAD      = 3,
-    NOSELECT_UPDATER            = 4,
-    SINGLE_STATEMENT_NOSELECT_UPDATER = 5
+    SELECTV_THREAD                      = 1,
+    UPDATER_THREAD                      = 2,
+    SELECTV_UPDATER_THREAD              = 3,
+    NOSELECT_UPDATER                    = 4,
+    SINGLE_STATEMENT_NOSELECT_UPDATER   = 5,
+    POINT_IN_TIME_UPDATER               = 6
 };
 
 struct thread_num_type
@@ -84,6 +87,8 @@ static char *type_to_str(int type)
             return "noselect_updater";
         case SINGLE_STATEMENT_NOSELECT_UPDATER:
             return "single_statement_noselect_updater";
+        case POINT_IN_TIME_UPDATER:
+            return "point_in_time_updater";
         default:
             abort();
             break;
@@ -375,6 +380,80 @@ int noselect_update(cdb2_hndl_tp *db)
 }
 
 /*
+ * POINT-IN-TIME UPDATER THREAD SQL
+ *
+ * BEGIN TRANSACTION AS OF DATETIME <now - 10 seconds>
+ * UPDATE jobinstance SET instid = instdid WHERE state=1 AND
+ *          began <= now() limit 15
+ * COMMIT
+ */
+int point_in_time_update(cdb2_hndl_tp *db)
+{
+    int rc;
+    int got_error = 0;
+    char sql[80];
+    time_t point_in_time = (time(NULL) - 10);
+
+    cdb2_clearbindings(db);
+    snprintf(sql, sizeof(sql), "BEGIN TRANSACTION AS OF DATETIME %ld", point_in_time);
+    if ((rc = cdb2_run_statement(db, sql)) != CDB2_OK) {
+        fprintf(stderr, "line %d error running %s, %d\n", __LINE__, sql, rc);
+        exit(1);
+    }
+
+    if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
+                    "state = 1 AND began <= now() limit 15")) != CDB2_OK) {
+        if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
+    }
+
+    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
+    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
+        if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
+    }
+
+    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+        if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
+    }
+    return got_error;
+}
+
+/*
  * SINGLE_STATEMENT-NOSELECT-UPDATER THREAD SQL
  *
  * UPDATE jobinstance SET instid = instdid WHERE state=1 AND
@@ -513,9 +592,15 @@ void *thd(void *arg) {
                 numerrs += single_statement_noselect_update(db);
                 assert (!fail_updater_error || (numerrs == 0));
                 break;
+            case POINT_IN_TIME_UPDATER:
+                numerrs += point_in_time_update(db);
+                break;
         }
         iterations++;
     }
+
+    if (type == POINT_IN_TIME_UPDATER)
+        assert(numerrs > 0);
 
     cdb2_close(db);
     printf("%s thread num %d exiting, iterations %d, permissible-errors: %d\n",
@@ -566,6 +651,9 @@ int main(int argc, char *argv[]) {
             case 'S':
                 single_statement_noselect_updaters = atoi(optarg);
                 break;
+            case 'p':
+                point_in_time_updaters = atoi(optarg);
+                break;
             case 'U':
                 noselect_updaters = atoi(optarg);
                 break;
@@ -608,7 +696,7 @@ int main(int argc, char *argv[]) {
 
     pthread_t *threads;
     nthreads = selectv_updaters + updaters + selectvers + noselect_updaters +
-        single_statement_noselect_updaters;
+        single_statement_noselect_updaters + point_in_time_updaters;
     threads = malloc(sizeof(pthread_t) * nthreads);
 
     if (threads == NULL) {
@@ -668,6 +756,19 @@ int main(int argc, char *argv[]) {
         t->tdnum = i;
         t->tdtype = SINGLE_STATEMENT_NOSELECT_UPDATER;
         ix = updaters+selectv_updaters+selectvers+noselect_updaters+i;
+        int rc = pthread_create(&threads[ix], NULL, thd, (void *)t);
+        if (rc) {
+            fprintf(stderr, "Can't create thread: %d %s\n", rc, strerror(rc));
+            return 1;
+        }
+    }
+
+    for (int i = 0 ; i < point_in_time_updaters; i++) {
+        struct thread_num_type *t = (struct thread_num_type *)malloc(sizeof(*t));
+        t->tdnum = i;
+        t->tdtype = POINT_IN_TIME_UPDATER;
+        ix = updaters+selectv_updaters+selectvers+noselect_updaters+
+            single_statement_noselect_updaters+i;
         int rc = pthread_create(&threads[ix], NULL, thd, (void *)t);
         if (rc) {
             fprintf(stderr, "Can't create thread: %d %s\n", rc, strerror(rc));
