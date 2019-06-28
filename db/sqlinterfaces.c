@@ -618,7 +618,6 @@ void sqlite_init_end(void) { in_init = 0; }
 static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
 extern pthread_mutex_t appsock_conn_lk;
 
-
 static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
 
@@ -4148,10 +4147,11 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
             if (lru_clnt->done) {
                 // lru_clnt->statement_timedout = 1; already done
                 shutdown(fd, SHUT_RD);
-                logmsg(LOGMSG_WARN,
-                       "%s: Closing least recently used connection fd %d , total "
-                       "%d \n",
-                       __func__, fd, active_appsock_conns - 1);
+                logmsg(
+                    LOGMSG_WARN,
+                    "%s: Closing least recently used connection fd %d , total "
+                    "%d \n",
+                    __func__, fd, active_appsock_conns - 1);
                 rc = 0;
             }
         }
