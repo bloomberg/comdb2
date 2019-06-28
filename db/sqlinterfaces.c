@@ -615,7 +615,9 @@ void sqlite_init_end(void) { in_init = 0; }
 
 #endif // DEBUG_SQLITE_MEMORY
 
-pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
+extern pthread_mutex_t appsock_conn_lk;
+
 
 static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
@@ -4113,10 +4115,13 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     if (active_appsock_conns > max_appsock_conns) {
         int num_retry = 0;
+        int rc = -1;
     retry:
         num_retry++;
         Pthread_mutex_lock(&clnt_lk);
+        Pthread_mutex_lock(&appsock_conn_lk);
         if (active_appsock_conns <= max_appsock_conns) {
+            Pthread_mutex_unlock(&appsock_conn_lk);
             Pthread_mutex_unlock(&clnt_lk);
             return 0;
         }
@@ -4130,25 +4135,29 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
             lru_clnt = listc_rtl(&clntlist);
             listc_abl(&clntlist, lru_clnt);
         }
-        Pthread_mutex_unlock(&clnt_lk);
-        if (lru_clnt == clnt) {
+
+        if (lru_clnt == clnt || !lru_clnt->done) {
             /* All clients have transactions, wait for 1 second */
             if (num_retry <= 5) {
                 sleep(1);
                 goto retry;
             }
-            return -1;
+            rc = -1;
+        } else {
+            int fd = sbuf2fileno(lru_clnt->sb);
+            if (lru_clnt->done) {
+                // lru_clnt->statement_timedout = 1; already done
+                shutdown(fd, SHUT_RD);
+                logmsg(LOGMSG_WARN,
+                       "%s: Closing least recently used connection fd %d , total "
+                       "%d \n",
+                       __func__, fd, active_appsock_conns - 1);
+                rc = 0;
+            }
         }
-        int fd = sbuf2fileno(lru_clnt->sb);
-        if (lru_clnt->done) {
-            // lru_clnt->statement_timedout = 1; already done
-            shutdown(fd, SHUT_RD);
-            logmsg(LOGMSG_WARN,
-                   "%s: Closing least recently used connection fd %d , total "
-                   "%d \n",
-                   __func__, fd, active_appsock_conns - 1);
-            return 0;
-        }
+        Pthread_mutex_unlock(&appsock_conn_lk);
+        Pthread_mutex_unlock(&clnt_lk);
+        return rc;
     }
     return 0;
 }
