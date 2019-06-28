@@ -42,7 +42,23 @@ constraints
 [CREATE TABLE t1(i INT, CHECK (SELECT 1))] failed with rc -3 near "SELECT": syntax error
 [CREATE TABLE t1(i INT, CHECK (i > MAX(i)))] failed with rc 240 malformed database schema (t1) - misuse of aggregate function MAX()
 [CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))] failed with rc 240 malformed database schema (t1) - subqueries prohibited in CHECK constraints
-(test='3. Test fof updates')
+(test='4. Test for updates')
 (rows inserted=1)
 [UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 304 CHECK constraint violation unable to update record rc = 320
 (i=1)
+(test='5. Test for some obscure expressions')
+[INSERT INTO t1 VALUES(1)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(rows inserted=1)
+(rows inserted=1)
+[INSERT INTO t1 VALUES(1)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(test='6. Test for strings')
+[INSERT INTO t1 VALUES('foo')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(rows inserted=1)
+(v='bar')
+[INSERT INTO t1 VALUES('foo')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+(rows inserted=1)
+(v='bar')
