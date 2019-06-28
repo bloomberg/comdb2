@@ -3297,8 +3297,8 @@ static int gen_constraint_name_int(char *in, size_t in_size, char *out,
     return 0;
 }
 
-static int gen_check_constraint_name_int(const char *check_expr, char *buf,
-                                         size_t buf_sz)
+static int serialize_check_attributes(const char *check_expr, char *buf,
+                                      size_t buf_sz)
 {
     int pos = 0;
     /* CHECK expression */
@@ -3308,8 +3308,12 @@ done:
     return pos;
 }
 
-static int gen_fk_constraint_name_int(constraint_t *pConstraint, int parent_idx,
-                                      char *buf, size_t buf_sz)
+/* Serialize the details of the constraint into the specified buffer.
+ * NOTE: There's a sister function below 'serialize_fk_attributes2' that does
+ * the same this, but out of a different structure (struct comdb2_constraint).
+ */
+static int serialize_fk_attributes(constraint_t *pConstraint, int parent_idx,
+                                   char *buf, size_t buf_sz)
 {
     struct dbtable *table;
     struct schema *key;
@@ -3382,34 +3386,8 @@ done:
     return pos;
 }
 
-int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
-                           size_t out_size)
-{
-    char buf[3 * 1024];
-    char *ptr = (char *)buf;
-    int end;
-
-    end = gen_fk_constraint_name_int(pConstraint, parent_idx, ptr, sizeof(buf));
-    gen_constraint_name_int(buf, end, out, out_size);
-
-    return 0;
-}
-
-int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
-                              size_t out_size)
-{
-    char buf[3 * 1024];
-    char *ptr = (char *)buf;
-    int end;
-
-    end = gen_check_constraint_name_int(pConstraint->expr, ptr, sizeof(buf));
-    gen_constraint_name_int(buf, end, out, out_size);
-
-    return 0;
-}
-
-static int gen_fk_constraint_name2(struct comdb2_constraint *constraint,
-                                   char *buf, size_t buf_sz)
+static int serialize_fk_attributes2(struct comdb2_constraint *constraint,
+                                    char *buf, size_t buf_sz)
 {
     int pos = 0;
     struct comdb2_index_part *idx_part;
@@ -3443,18 +3421,44 @@ done:
     return pos;
 }
 
-static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
-                                size_t out_size)
+int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
+                           size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_fk_attributes(pConstraint, parent_idx, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
+                              size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_check_attributes(pConstraint->expr, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+static int gen_constraint_name(struct comdb2_constraint *constraint, char *out,
+                               size_t out_size)
 {
     char buf[3 * 1024];
     char *ptr = (char *)buf;
     int end;
 
     if (constraint->type == CONS_CHECK) {
-        end = gen_check_constraint_name_int(constraint->check_expr, ptr,
-                                            sizeof(buf));
+        end = serialize_check_attributes(constraint->check_expr, ptr,
+                                         sizeof(buf));
     } else {
-        end = gen_fk_constraint_name2(constraint, ptr, sizeof(buf));
+        end = serialize_fk_attributes2(constraint, ptr, sizeof(buf));
     }
     gen_constraint_name_int(buf, end, out, out_size);
 
@@ -4811,8 +4815,8 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons, int type)
             continue;
 
         if (constraint->name == 0) {
-            gen_constraint_name2(constraint, constraint_name_buf,
-                                 sizeof(constraint_name_buf));
+            gen_constraint_name(constraint, constraint_name_buf,
+                                sizeof(constraint_name_buf));
             constraint_name = constraint_name_buf;
         } else {
             constraint_name = constraint->name;
@@ -5424,8 +5428,8 @@ static int set_constraint_name(Parse *pParse,
 
     if (pParse->constraintName.n == 0) {
         /* Generate the constraint name. */
-        gen_constraint_name2(constraint, constraint_name_buf,
-                             sizeof(constraint_name_buf));
+        gen_constraint_name(constraint, constraint_name_buf,
+                            sizeof(constraint_name_buf));
         constraint_name = constraint_name_buf;
     } else {
         if (pParse->constraintName.n > MAXCONSLEN) {
@@ -5652,7 +5656,7 @@ void comdb2CreateForeignKey(
     }
 
 parent_key_found:
-    /* Verify the conststraint action. */
+    /* Verify the constraint action. */
     if ((check_constraint_action(pParse, &flags))) {
         goto cleanup;
     }
