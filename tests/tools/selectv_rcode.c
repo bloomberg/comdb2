@@ -617,7 +617,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:i:t:fh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:i:t:fh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
