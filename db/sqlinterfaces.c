@@ -4115,9 +4115,9 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
     if (active_appsock_conns > max_appsock_conns) {
         int num_retry = 0;
         int rc = -1;
+    retry:
         Pthread_mutex_lock(&clnt_lk);
         Pthread_mutex_lock(&appsock_conn_lk);
-    retry:
         num_retry++;
         if (active_appsock_conns <= max_appsock_conns) {
             Pthread_mutex_unlock(&appsock_conn_lk);
@@ -4138,6 +4138,8 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
         if (lru_clnt == clnt || !lru_clnt->done) {
             /* All clients have transactions, wait for 1 second */
             if (num_retry <= 5) {
+                Pthread_mutex_unlock(&appsock_conn_lk);
+                Pthread_mutex_unlock(&clnt_lk);
                 sleep(1);
                 goto retry;
             }
