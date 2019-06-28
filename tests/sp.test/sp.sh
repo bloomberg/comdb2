@@ -1593,7 +1593,7 @@ end};$$
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
--- WARNING: Creating a time partition is fundamnetally an asynchronous operation that may
+-- WARNING: Creating a time partition is fundamentally an asynchronous operation that may
 --          cause subsequent 'database schema has changed' style errors in the subsequent
 --          stored procedure execution.  The sleep below is designed to work around this
 --          issue; however, the timing may need to be adjusted in the future.
@@ -1601,7 +1601,7 @@ create time partition on no_ddl_t3 as no_ddl_t3_p1 period 'daily' retention 30 s
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-select sleep(20);
+select sleep(40);
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
