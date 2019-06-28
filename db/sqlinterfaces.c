@@ -4115,10 +4115,10 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
     if (active_appsock_conns > max_appsock_conns) {
         int num_retry = 0;
         int rc = -1;
-    retry:
-        num_retry++;
         Pthread_mutex_lock(&clnt_lk);
         Pthread_mutex_lock(&appsock_conn_lk);
+    retry:
+        num_retry++;
         if (active_appsock_conns <= max_appsock_conns) {
             Pthread_mutex_unlock(&appsock_conn_lk);
             Pthread_mutex_unlock(&clnt_lk);
