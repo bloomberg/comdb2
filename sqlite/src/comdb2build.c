@@ -3414,34 +3414,29 @@ static int gen_fk_constraint_name2(struct comdb2_constraint *constraint,
     int pos = 0;
     struct comdb2_index_part *idx_part;
 
-    if (constraint->type == CONS_CHECK) {
-        /* CHECK expression */
-        SNPRINTF(buf, buf_sz, pos, "%s", constraint->check_expr);
-    } else {
-        /* Child key columns and sort orders */
-        LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
-        {
-            /* Column name */
-            SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
+    /* Child key columns and sort orders */
+    LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
+    {
+        /* Column name */
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
-            /* Sort order */
-            if (idx_part->flags & INDEX_ORDER_DESC)
-                SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
-        }
+        /* Sort order */
+        if (idx_part->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
+    }
 
-        /* Parent table name */
-        SNPRINTF(buf, buf_sz, pos, "%s", constraint->parent_table)
+    /* Parent table name */
+    SNPRINTF(buf, buf_sz, pos, "%s", constraint->parent_table)
 
-        /* Parent key columns and sort orders */
-        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
-        {
-            /* Column name */
-            SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
+    /* Parent key columns and sort orders */
+    LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
+    {
+        /* Column name */
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
-            /* Sort order */
-            if (idx_part->flags & INDEX_ORDER_DESC)
-                SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
-        }
+        /* Sort order */
+        if (idx_part->flags & INDEX_ORDER_DESC)
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
     }
 
 done:
