@@ -187,6 +187,11 @@ void add_check_constraint(char *expr)
 {
     CHECK_LEGACY_SCHEMA(1);
     ++n_check_constraints;
+    /* We have to move past "where" and subsequent spaces. */
+    expr += sizeof("where");
+    while (*expr && isspace(*expr)) {
+        expr++;
+    }
     check_constraints[n_check_constraints].expr = expr;
 }
 

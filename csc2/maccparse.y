@@ -144,19 +144,15 @@ cnstrtnamedstart: string T_EQ string '-' T_GT {
                   }
 
 /* Named check constraint */
-cnstrtnamedcheck: T_CHECK string T_EQ string {
+cnstrtnamedcheck: T_CHECK string T_EQ where {
                       add_check_constraint($4);
                       set_constraint_name($2, CT_CHECK);
                   }
-
-/* Unnamed check constraint */
-cnstrtunnamedcheck: T_CHECK string { add_check_constraint($2); }
 
 /* Note: a named constraint does not allow a list of parent key references. */
 cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { }
                 | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { }
                 | cnstrtdef cnstrtnamedcheck
-                | cnstrtdef cnstrtunnamedcheck
                 | /* %empty */
                 ;
 

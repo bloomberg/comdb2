@@ -3060,7 +3060,7 @@ static void csc2_append_check_cons(struct strbuf *csc2,
     if (constraint->name) {
         strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
     }
-    strbuf_appendf(csc2, "\"%s\"", constraint->check_expr);
+    strbuf_appendf(csc2, "{where %s}", constraint->check_expr);
 }
 
 /*
@@ -3848,11 +3848,10 @@ static int retrieve_check_constraint(Parse *pParse,
     /* TODO: (NC) escape quotes? */
 
     /* Name */
-    if (cons->consname) {
-        constraint->name = comdb2_strdup(ctx->mem, cons->consname);
-        if (constraint->name == 0)
-            goto oom;
-    }
+    assert(cons->consname);
+    constraint->name = comdb2_strdup(ctx->mem, cons->consname);
+    if (constraint->name == 0)
+        goto oom;
 
     listc_abl(&ctx->schema->constraint_list, constraint);
     return 0;
@@ -5429,11 +5428,7 @@ static int set_constraint_name(Parse *pParse,
     char *constraint_name;
 
     if (pParse->constraintName.n == 0) {
-        /*
-          Check whether a similar constraint already exists.
-
-          Generate the constraint name.
-        */
+        /* Generate the constraint name. */
         gen_constraint_name2(constraint, constraint_name_buf,
                              sizeof(constraint_name_buf));
         constraint_name = constraint_name_buf;
@@ -5442,21 +5437,30 @@ static int set_constraint_name(Parse *pParse,
             setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
             return 1;
         }
-        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                          pParse->constraintName.n);
-        if (constraint->name == 0) {
-            setError(pParse, SQLITE_NOMEM, "System out of memory");
-            return 1;
-        }
-        sqlite3Dequote(constraint->name);
-        constraint_name = constraint->name;
+        memcpy(constraint_name_buf, pParse->constraintName.z,
+               pParse->constraintName.n);
+        constraint_name_buf[pParse->constraintName.n] = 0;
+        constraint_name = constraint_name_buf;
+        sqlite3Dequote(constraint_name);
     }
+
+    /* Check whether a similar constraint already exists. */
     if ((find_cons_by_name(ctx, constraint_name, CONS_ALL))) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
                         constraint_name);
         return 1;
     }
+
+    /* Don't use auto-generated constraint name for foreign keys. */
+    if (pParse->constraintName.n > 0 || constraint->type != CONS_FKEY) {
+        constraint->name = comdb2_strdup(ctx->mem, constraint_name);
+        if (constraint->name == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 1;
+        }
+    }
+
     return 0;
 }
 

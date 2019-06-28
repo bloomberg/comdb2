@@ -24,7 +24,7 @@
 	}
 constraints
 	{
-		check "valid_colors" = "color IN ('red', 'green', 'blue')"
+		check "valid_colors" = {where color IN ('red', 'green', 'blue')}
 	}
 ')
 (color='blue')
