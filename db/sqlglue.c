@@ -12440,10 +12440,12 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
                 /* Passed */
                 *check_status = 0;
             }
-        } else {
-            assert(sm.min->flags & MEM_Null);
+        } else if (sm.min->flags & MEM_Null) {
             /* Passed */
             *check_status = 0;
+        } else {
+            /* Failed */
+            *check_status = 1;
         }
 
         end_internal_sql_clnt(&clnt);
