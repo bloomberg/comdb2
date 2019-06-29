@@ -46,6 +46,8 @@
 #include "genid.h"
 #include "logmsg.h"
 
+extern int gbl_debug_omit_dta_write;
+
 /* if dta is not null, it will be tailed after the genid in btree data part */
 static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
                                void *ixdta, int ixnum, int rrn,
@@ -254,6 +256,11 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
     if (parent->attr->updategenids && participantstripid > 0) {
         *genid =
             set_participant_stripeid(bdb_state, participantstripid, *genid);
+    }
+
+    if (gbl_debug_omit_dta_write) {
+        //needs to be done here intstead of glue.c because need genid to be created because it is used to insert blob and idx
+        return rrn;
     }
 
     /* add data to the dta file, with key being rrn */
