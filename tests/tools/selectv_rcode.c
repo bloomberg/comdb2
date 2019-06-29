@@ -41,6 +41,7 @@ int intrans_effects_updaters = INITTHDS;
 int isolation = SOCKSQL;
 int fail_updater_error = 0;
 int time_is_up = 0;
+int allow_common_errors = 0;
 
 void usage(FILE *f)
 {
@@ -58,6 +59,8 @@ void usage(FILE *f)
     fprintf(f, "    -p <cnt>                     - number of point-in-time updaters\n");
     fprintf(f, "    -e <cnt>                     - number of in-trans-effects updaters\n");
     fprintf(f, "    -t <test-time>               - let test run for this many seconds\n");
+    fprintf(f, "    -a                           - disallow 'acceptable' errors\n");
+    fprintf(f, "    -A                           - allow 'acceptable' errors\n");
     fprintf(f, "    -h                           - this menu\n");
 }
 
@@ -100,6 +103,17 @@ static char *type_to_str(int type)
     }
 }
 
+void is_common_acceptable_error(cdb2_hndl_tp *db, int rc)
+{
+    switch(rc) {
+        /* Master lost transaction */
+        case -109:
+            fprintf(stderr, "Ignoring common error %d, %s\n", rc, cdb2_errstr(db));
+            return allow_common_errors;
+    }
+    return 0;
+}
+
 /*
  * SELECTV THREAD SQL:
  * SHOULD GET CONSTRAINTS ERRORS, BUT NOT VERIFY ERRORS
@@ -132,7 +146,8 @@ int selectv(cdb2_hndl_tp *db)
 
     /* SELECTV: only allowed constraints violation in any isolation level */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (rc != -103) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (rc != -103) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
@@ -140,7 +155,8 @@ int selectv(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (rc != -103) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (rc != -103) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
@@ -199,7 +215,8 @@ int selectv_update(cdb2_hndl_tp *db)
     }
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
         /* SELECTV + UPDATE: only allowed constraints violation in any isolation level */
-        if (rc != -103) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (rc != -103) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
@@ -207,7 +224,8 @@ int selectv_update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (rc != -103) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (rc != -103) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else
@@ -264,7 +282,8 @@ int update(cdb2_hndl_tp *db)
     }
     /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -280,7 +299,8 @@ int update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -345,7 +365,8 @@ int noselect_update(cdb2_hndl_tp *db)
     }
     /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (fail_updater_error) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (fail_updater_error) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else if (isolation == SERIALIZABLE) {
@@ -364,7 +385,8 @@ int noselect_update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (fail_updater_error) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (fail_updater_error) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else if (isolation == SERIALIZABLE) {
@@ -433,7 +455,8 @@ int intrans_effect_update(cdb2_hndl_tp *db)
     }
     /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -449,7 +472,8 @@ int intrans_effect_update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -490,7 +514,8 @@ int point_in_time_update(cdb2_hndl_tp *db)
 
     if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
                     "state = 1 AND began <= now() limit 15")) != CDB2_OK) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -507,7 +532,8 @@ int point_in_time_update(cdb2_hndl_tp *db)
 
     /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -523,7 +549,8 @@ int point_in_time_update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (isolation == SERIALIZABLE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
             if (rc != 230) {
                 fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
                 exit(1);
@@ -555,7 +582,8 @@ int single_statement_noselect_update(cdb2_hndl_tp *db)
 
     if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
                     "state = 1 AND began <= now() limit 15")) != CDB2_OK) {
-        if (fail_updater_error) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (fail_updater_error) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else if (isolation == SERIALIZABLE) {
@@ -574,7 +602,8 @@ int single_statement_noselect_update(cdb2_hndl_tp *db)
     }
 
     if ((rc = cdb2_next_record(db)) != CDB2_OK) {
-        if (fail_updater_error) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (fail_updater_error) {
             fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
             exit(1);
         } else if (isolation == SERIALIZABLE) {
@@ -718,7 +747,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:fh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faAh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -769,6 +798,12 @@ int main(int argc, char *argv[]) {
                 break;
             case 'f':
                 fail_updater_error = 1;
+                break;
+            case 'a':
+                allow_common_errors = 0;
+                break;
+            case 'A':
+                allow_common_errors = 1;
                 break;
             case 'h':
                 usage(stdout);
