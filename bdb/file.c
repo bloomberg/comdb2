@@ -323,7 +323,7 @@ static int is_datafile_striped(bdb_state_type *bdb_state, int dtanum)
 {
     if (bdb_state->bdbtype != BDBTYPE_TABLE) {
         return 0;
-    } else if (bdb_state->attr->dtastripe > 0) {
+    } else if (bdb_state->nstripes > 0) {
         if (0 == dtanum)
             return 1;
         else if (bdb_state->attr->blobstripe > 0)
@@ -338,7 +338,7 @@ static int is_datafile_striped(bdb_state_type *bdb_state, int dtanum)
 int bdb_get_datafile_num_files(bdb_state_type *bdb_state, int dtanum)
 {
     if (is_datafile_striped(bdb_state, dtanum))
-        return bdb_state->attr->dtastripe;
+        return bdb_state->nstripes;
     else
         return 1;
 }
@@ -553,7 +553,7 @@ int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
         if (filenum == 0) {
             /* data */
             if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                bdb_state->attr->dtastripe > 0)
+                bdb_state->nstripes > 0)
                 isstriped = 1;
         } else {
             /* blob */
@@ -619,7 +619,7 @@ static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid,
         if (bdb_state->attr->blobstripe > 0)
             isstriped = 1;
     } else if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-               bdb_state->attr->dtastripe > 0)
+               bdb_state->nstripes > 0)
         isstriped = 1;
 
     return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, isstriped,
@@ -712,7 +712,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
             src_version_num = src_data_genid;
             dst_version_num = dst_data_genid;
             if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                bdb_state->attr->dtastripe > 0)
+                bdb_state->nstripes > 0)
                 isstriped = 1;
         }
 
@@ -895,7 +895,7 @@ retry:
             if (bdb_state->attr->blobstripe > 0)
                 isstriped = 1;
         } else if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                   bdb_state->attr->dtastripe > 0)
+                   bdb_state->nstripes > 0)
             isstriped = 1;
 
         /*save all of the stripe's names*/
@@ -4477,7 +4477,7 @@ deadlock_again:
         int stripe;
         unsigned long long master_cmpcontext;
 
-        for (stripe = 0; stripe < bdb_state->attr->dtastripe; stripe++) {
+        for (stripe = 0; stripe < bdb_state->nstripes; stripe++) {
             DBC *dbcp;
             DB *dbp;
             DBT dbt_key, dbt_data;
@@ -5268,8 +5268,8 @@ bdb_state_type *bdb_clone_handle_with_other_data_files(
     *new_bdb_state = *clone_bdb_state;
 
     /* overwrite the data file pointers */
-    maxstrnum = (data_files_bdb_state->attr->dtastripe)
-                    ? data_files_bdb_state->attr->dtastripe
+    maxstrnum = (data_files_bdb_state->nstripes)
+                    ? data_files_bdb_state->nstripes
                     : 1;
     for (strnum = 0; strnum < maxstrnum; ++strnum)
         new_bdb_state->dbp_data[0][strnum] =
@@ -7034,7 +7034,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         return 0;
 
     if (dtanum == 0 || bdb_state->attr->blobstripe)
-        numstripes = bdb_state->attr->dtastripe;
+        numstripes = bdb_state->nstripes;
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
         char bdbname[PATH_MAX], physname[PATH_MAX];
@@ -7209,10 +7209,10 @@ void bdb_verify_dbreg(bdb_state_type *bdb_state)
                 for (blob = 0; blob < s->numdtafiles; blob++) {
                     int nstripes;
                     if (blob == 0)
-                        nstripes = bdb_state->attr->dtastripe;
+                        nstripes = bdb_state->nstripes;
                     else
                         nstripes = bdb_state->attr->blobstripe
-                                       ? bdb_state->attr->dtastripe
+                                       ? bdb_state->nstripes
                                        : 1;
 
                     for (stripe = 0; stripe < nstripes; stripe++) {
@@ -8185,7 +8185,7 @@ void bdb_set_key_compression(bdb_state_type *bdb_state)
         flags = DB_PFX_COMP;
         if (bdb_state->inplace_updates)
             flags |= DB_SFX_COMP;
-        for (i = 0; i < bdb_state->attr->dtastripe; ++i) {
+        for (i = 0; i < bdb_state->nstripes; ++i) {
             db = bdb_state->dbp_data[0][i];
             db->set_compression_flags(db, flags);
         }
@@ -8434,4 +8434,8 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     closedir(dirp);
     free(buf);
     return 0;
+}
+
+int bdb_get_dtastripe(bdb_state_type *bdb_state) {
+    return bdb_state->nstripes;
 }

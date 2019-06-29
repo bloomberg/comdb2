@@ -127,8 +127,8 @@ int lkprintf(loglvl lvl, const char *fmt, ...)
    indexed dtastripe (where add/upd are stored)
  */
 #define IS_VALID_DTA(id)                                                       \
-    ((id) >= 0 && (((id) < cur->state->attr->dtastripe) ||                     \
-                   ((id) == cur->state->attr->dtastripe && cur->addcur)))
+    ((id) >= 0 && (((id) < cur->state->nstripes) ||                     \
+                   ((id) == cur->state->nstripes && cur->addcur)))
 
 hash_t *logfile_pglogs_repo = NULL;
 static unsigned first_logfile;
@@ -350,7 +350,7 @@ static inline int calculate_discard_pages(bdb_cursor_impl_t *cur)
     bpoolsize = gb * GIGABYTE + bytes;
 
     /* Calculate the table size. */
-    for (ii = 0; ii < cur->state->attr->dtastripe; ii++) {
+    for (ii = 0; ii < cur->state->nstripes; ii++) {
         db = bdb_state->dbp_data[0][ii];
         db->get_numpages(db, &numpages);
         db->get_pagesize(db, &pagesize);
@@ -4178,7 +4178,7 @@ static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr)
     cur->idx = dtafile;
     */
 
-    if (dtafile == cur->state->attr->dtastripe) {
+    if (dtafile == cur->state->nstripes) {
         /* add stripe is simple, close the shared persistent one and return */
         if (!cur->addcur) {
             if (cur->trak) {
@@ -5523,7 +5523,7 @@ step1:
 
     /* are we on the shadow "add" stripe ? */
     if (!cur->rl && !got_rl && cur->type == BDBC_DT &&
-        cur->idx == cur->state->attr->dtastripe && cur->addcur) {
+        cur->idx == cur->state->nstripes && cur->addcur) {
         crt_how = how;
         int skip;
 
@@ -6143,7 +6143,7 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
     if (cur->type == BDBC_DT && (how == DB_FIRST || how == DB_LAST)) {
         int switch_stripes = 0;
         int dtafile =
-            (how == DB_FIRST) ? 0 : (cur->state->attr->dtastripe -
+            (how == DB_FIRST) ? 0 : (cur->state->nstripes -
                                      ((cur->addcur) ? 0 : 1)); /* last stripe */
 
         if (cur->data) {
@@ -6155,7 +6155,7 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
             switch_stripes = 1;
         }
         if (switch_stripes) {
-            if (!cur->invalidated || dtafile == cur->state->attr->dtastripe) {
+            if (!cur->invalidated || dtafile == cur->state->nstripes) {
                 cur->invalidated = 0;
                 rc = bdb_switch_stripe(cur, dtafile, bdberr);
                 if (rc)
@@ -6661,15 +6661,6 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         datalen_sd = pdatalen_sd;
     }
 
-    /* Non-genid databases shouldn't make it this far. I REALLY hope it's
-       caught before it makes it this far. */
-    if (cur->state->attr->genids == 0)
-        return -1;
-
-    /* Not supported for non-dtastripe. Tough luck. */
-    if (cur->state->attr->dtastripe == 0)
-        return -1;
-
     if (!data_rl && !data_sd) {
         /*
 
@@ -7083,7 +7074,7 @@ int bdb_check_pageno(bdb_state_type *p_bdb_state, uint32_t pgno)
         if (bdb_state) {
             for (j = 0; j < bdb_state->numdtafiles; j++) {
                 /* for each stripe */
-                for (k = 0; k < bdb_state->attr->dtastripe; k++) {
+                for (k = 0; k < bdb_state->nstripes; k++) {
                     /* this could be more smart, treat meta, dta and
                        blob based on attr; but I only want a simple DB set
                        walk:(
@@ -7831,7 +7822,7 @@ static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
         open_cur = open_pcur_ifn->impl;
 
         /* we updated the shadows (i.e. inserted stuff into them) */
-        if (!open_cur->sd && open_cur->idx < open_cur->state->attr->dtastripe) {
+        if (!open_cur->sd && open_cur->idx < open_cur->state->nstripes) {
             /*
              * New data.  It is time to get my shadow cursor.  Use 'CREATE'
              * here:
@@ -8169,7 +8160,7 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
         open_cur = open_pcur_ifn->impl;
 
         /* we updated the shadows (i.e. inserted stuff into them) */
-        if (!open_cur->sd && open_cur->idx < open_cur->state->attr->dtastripe) {
+        if (!open_cur->sd && open_cur->idx < open_cur->state->nstripes) {
             /*
              * New data.  It is time to get my shadow cursor.  Use 'CREATE'
              * here:
@@ -8682,7 +8673,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
     pthread_attr_t attr;
     if (ixnum < 0) { // data
         db = state->dbp_data[0];
-        stripes = state->attr->dtastripe;
+        stripes = state->nstripes;
         parallel_count = gbl_parallel_count;
         Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN

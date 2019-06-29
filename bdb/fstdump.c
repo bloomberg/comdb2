@@ -336,7 +336,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length)
 {
     fstdump_t *common = fstdump->common;
-    int rc, rrn;
+    int rc;
     unsigned long long genid;
     unsigned char *retkey = NULL;
     unsigned long long lastkey;
@@ -359,17 +359,10 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
 
     /* start dumping at rrn 2, unless this is a stripey db in which case
      * we just dump every record. */
-    if (!common->bdb_state->attr->dtastripe) {
-        rrn = 2;
-        key.data = &rrn;
-        key.size = sizeof(int);
-        key.ulen = sizeof(int);
-    } else {
-        genid = 0;
-        key.data = &genid;
-        key.size = sizeof(genid);
-        key.ulen = sizeof(genid);
-    }
+    genid = 0;
+    key.data = &genid;
+    key.size = sizeof(genid);
+    key.ulen = sizeof(genid);
 
     for (;;) {
         int ms_before, ms_after, ms_diff;

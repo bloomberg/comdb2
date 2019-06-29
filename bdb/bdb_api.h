@@ -16,8 +16,6 @@
 
 /*
  * bdb layer public api
- *
- * $Id$
  */
 
 #ifndef __bdb_api_h__
@@ -2146,4 +2144,7 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
  * Otherwise unpack the payload into heap memory. */
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
+
+int bdb_get_dtastripe(bdb_state_type *bdb_state);
+
 #endif

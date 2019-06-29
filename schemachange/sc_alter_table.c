@@ -373,8 +373,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int i;
     char new_prefix[32];
     int foundix;
+    int nstripes;
 
     struct scinfo scinfo;
+
+    nstripes = db_get_dtastripe(iq->usedb, tran);
 
 #ifdef DEBUG_SC
     printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -407,7 +410,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
+    newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1, nstripes);
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
@@ -633,7 +636,7 @@ errout:
 
         live_sc_off(db);
 
-        for (i = 0; i < gbl_dtastripe; i++) {
+        for (i = 0; i < nstripes; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
                     i, newdb->sc_genids[i]);
         }
@@ -924,6 +927,8 @@ int do_upgrade_table_int(struct schema_change_type *s)
 
     s->db = db;
 
+    int nstripes = db_get_dtastripe(db, NULL);
+
     if (s->start_genid != 0) s->scanmode = SCAN_DUMP;
 
     // check whether table is ready for upgrade
@@ -958,7 +963,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         else
             sc_errf(s, "upgrade_all_records failed\n");
 
-        for (i = 0; i < gbl_dtastripe; i++) {
+        for (i = 0; i < nstripes; i++) {
             sc_errf(s, "  > stripe %2d was at 0x%016llx\n", i,
                     db->sc_genids[i]);
         }

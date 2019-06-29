@@ -1122,7 +1122,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
             add_blob = 1;
         } else if (rc != 0) {
             bdb_c_get_error(bdb_state, tran->tid, &dbcp, rc,
-                            bdb_state->attr->dtastripe ? BDBERR_DTA_MISMATCH
+                            bdb_state->nstripes ? BDBERR_DTA_MISMATCH
                                                        : BDBERR_RRN_NOTFOUND,
                             &bdberr, "bdb_prim_updvrfy_int");
             if (bdberr == BDBERR_DEADLOCK)

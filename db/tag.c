@@ -7011,6 +7011,8 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
+    int nstripes = db_get_dtastripe(db, tran);
+
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
@@ -7041,7 +7043,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         goto err;
     }
     newdb->meta = db->meta;
-    newdb->dtastripe = gbl_dtastripe;
+    newdb->dtastripe = nstripes;
 
     /* reopen db no tran - i.e. auto commit */
     newdb->handle = bdb_open_more(

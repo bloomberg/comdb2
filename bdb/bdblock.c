@@ -689,9 +689,6 @@ static int get_threadid(bdb_state_type *bdb_state)
 
     highest = 16;
 
-    if (!bdb_state->attr->dtastripe)
-        return 0;
-
     if (bdb_state->attr->dtastripe == 1)
         return 0;
 

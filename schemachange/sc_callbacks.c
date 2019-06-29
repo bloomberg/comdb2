@@ -168,7 +168,7 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long *sc_genids)
 {
     int stripe = get_dtafile_from_genid(genid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
+    if (stripe < 0 || stripe >= bdb_get_dtastripe(bdb_state)) {
         logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
                __func__, genid, stripe);
         abort();
@@ -186,6 +186,7 @@ unsigned long long get_genid_stripe_pointer(unsigned long long genid,
                                             unsigned long long *sc_genids)
 {
     int stripe = get_dtafile_from_genid(genid);
+    // TODO: can this ever be out of range?
     if (stripe < 0 || stripe >= gbl_dtastripe) {
         logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
                __func__, genid, stripe);

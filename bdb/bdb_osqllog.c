@@ -2758,7 +2758,7 @@ static int bdb_osql_adjust_pageorder_cursors(bdb_cursor_impl_t *hostcur,
         }
 
         /* Add to skip-list while i'm traversing the virtual stripe. */
-        if (cur->laststripe == cur->state->attr->dtastripe) {
+        if (cur->laststripe == cur->state->nstripes) {
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "cur %p is on the virtual stripe: force a skip "
                                 "of genid %llx.\n",

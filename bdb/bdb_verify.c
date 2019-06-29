@@ -339,7 +339,7 @@ static int bdb_verify_ll(
     now = last = comdb2_time_epochms();
 
     /* scan 1 - run through data, verify all the keys and blobs */
-    for (dtastripe = 0; dtastripe < bdb_state->attr->dtastripe; dtastripe++) {
+    for (dtastripe = 0; dtastripe < bdb_state->nstripes; dtastripe++) {
         nrecs = 0;
         nrecs_progress = 0;
         dbt_data.flags = DB_DBT_USERMEM;

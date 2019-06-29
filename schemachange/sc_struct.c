@@ -800,6 +800,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int foundix = -1;
     int bthashsz;
     void *old_bdb_handle, *new_bdb_handle;
+    int nstripes;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -811,6 +812,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         logmsg(LOGMSG_ERROR, "reload_schema: invalid table %s\n", table);
         return -1;
     }
+    nstripes = db_get_dtastripe(db, tran);
 
     if (csc2) {
         /* genuine schema change. */
@@ -842,7 +844,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
         newdb->meta = db->meta;
-        newdb->dtastripe = gbl_dtastripe;
+        newdb->dtastripe = nstripes;
 
         changed = ondisk_schema_changed(table, newdb, NULL, NULL);
         /* let this fly, which will be ok for fastinit;

@@ -1259,6 +1259,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int ii;
     s->sc_thd_failed = 0;
 
+    int nstripes = db_get_dtastripe(from, NULL);
+
     data.curkey = data.key1;
     data.lastkey = data.key2;
     data.from = from;
@@ -1327,10 +1329,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     data.cmembers = calloc(1, sizeof(struct common_members));
     int sc_threads =
         bdb_attr_get(data.from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS);
-    if (sc_threads <= 0 || sc_threads > gbl_dtastripe) {
+    if (sc_threads <= 0 || sc_threads > nstripes) {
         bdb_attr_set(data.from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS,
-                     gbl_dtastripe);
-        sc_threads = gbl_dtastripe;
+                     nstripes);
+        sc_threads = nstripes;
     }
     data.cmembers->maxthreads = sc_threads;
     data.cmembers->is_decrease_thrds = bdb_attr_get(
@@ -1446,8 +1448,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         convert_records_thd(&data);
         outrc = data.outrc;
     } else {
-        struct convert_record_data threadData[gbl_dtastripe];
-        int threadSkipped[gbl_dtastripe];
+        struct convert_record_data threadData[nstripes];
+        int threadSkipped[nstripes];
         pthread_attr_t attr;
         int rc = 0;
 
@@ -1458,7 +1460,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
-        for (ii = 0; ii < gbl_dtastripe; ++ii) {
+        for (ii = 0; ii < nstripes; ++ii) {
             /* create a copy of the data, modifying the necessary
              * thread specific values
              */
@@ -1495,7 +1497,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         /* wait for all convert threads to complete */
-        for (ii = 0; ii < gbl_dtastripe; ++ii) {
+        for (ii = 0; ii < nstripes; ++ii) {
             void *ret;
 
             if (threadSkipped[ii]) continue;
@@ -1869,8 +1871,11 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     int idx;
     int rc = 0;
     int outrc = 0;
+    int nstripes;
 
     struct convert_record_data data = {0};
+
+    nstripes = db_get_dtastripe(db, NULL);
 
     s->sc_thd_failed = 0;
 
@@ -1894,7 +1899,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         upgrade_records_thd(&data);
         outrc = data.outrc;
     } else {
-        struct convert_record_data thread_data[gbl_dtastripe];
+        struct convert_record_data thread_data[nstripes];
         pthread_attr_t attr;
         void *ret;
 
@@ -1905,7 +1910,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-        for (idx = 0; idx != gbl_dtastripe; ++idx) {
+        for (idx = 0; idx != nstripes; ++idx) {
             thread_data[idx] = data;
             thread_data[idx].stripe = idx;
             sc_printf(thread_data[idx].s,
@@ -1930,7 +1935,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             for (; idx >= 0; --idx)
                 pthread_cancel(thread_data[idx].tid);
         } else {
-            for (idx = 0; idx != gbl_dtastripe; ++idx) {
+            for (idx = 0; idx != nstripes; ++idx) {
                 rc = pthread_join(thread_data[idx].tid, &ret);
                 /* if join failed */
                 if (rc) {
@@ -2813,8 +2818,9 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
                                     DBT *logdta)
 {
     int rc = 0;
+    int nstripes = bdb_get_dtastripe(data->to->handle);
 
-    if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
+    if (rec->dtastripe < 0 || rec->dtastripe >= nstripes) {
         logmsg(LOGMSG_ERROR,
                "%s:%d rec->dtastripe %d out of range, type %d, lsn[%u:%u]\n",
                __func__, __LINE__, rec->dtastripe, rec->type, rec->lsn.file,

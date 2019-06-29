@@ -48,6 +48,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         return SC_TABLE_DOESNOT_EXIST;
     }
 
+    int nstripes = db_get_dtastripe(db, tran);
+
     if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
         sc_errf(s, "Can't fastinit tables with foreign constraints\n");
@@ -73,7 +75,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 
-    newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1);
+    newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1, nstripes);
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);

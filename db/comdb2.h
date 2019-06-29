@@ -3615,4 +3615,7 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
+
 #endif /* !INCLUDED_COMDB2_H */
