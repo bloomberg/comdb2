@@ -29,7 +29,7 @@ enum {
     SERIALIZABLE        = 4
 };
 
-#define INITTHDS 5
+#define INITTHDS 4
 
 int selectv_updaters = INITTHDS;
 int updaters = INITTHDS;
@@ -37,6 +37,7 @@ int selectvers = INITTHDS;
 int noselect_updaters = INITTHDS;
 int single_statement_noselect_updaters = INITTHDS;
 int point_in_time_updaters = INITTHDS;
+int intrans_effects_updaters = INITTHDS;
 int isolation = SOCKSQL;
 int fail_updater_error = 0;
 int time_is_up = 0;
@@ -55,6 +56,7 @@ void usage(FILE *f)
     fprintf(f, "    -S <cnt>                     - standalone no-select updaters td count\n");
     fprintf(f, "    -V <cnt>                     - number of selectv-ers\n");
     fprintf(f, "    -p <cnt>                     - number of point-in-time updaters\n");
+    fprintf(f, "    -e <cnt>                     - number of in-trans-effects updaters\n");
     fprintf(f, "    -t <test-time>               - let test run for this many seconds\n");
     fprintf(f, "    -h                           - this menu\n");
 }
@@ -65,7 +67,8 @@ enum {
     SELECTV_UPDATER_THREAD              = 3,
     NOSELECT_UPDATER                    = 4,
     SINGLE_STATEMENT_NOSELECT_UPDATER   = 5,
-    POINT_IN_TIME_UPDATER               = 6
+    POINT_IN_TIME_UPDATER               = 6,
+    INTRANS_EFFECT_UPDATER              = 7
 };
 
 struct thread_num_type
@@ -89,6 +92,8 @@ static char *type_to_str(int type)
             return "single_statement_noselect_updater";
         case POINT_IN_TIME_UPDATER:
             return "point_in_time_updater";
+        case INTRANS_EFFECT_UPDATER:
+            return "intrans_effect_updater";
         default:
             abort();
             break;
@@ -380,6 +385,88 @@ int noselect_update(cdb2_hndl_tp *db)
 }
 
 /*
+ * GET-INTRANS-EFFECTS UPDATER THREAD SQL
+ *
+ * SELECT i.rqstid,instid,began from jobinstance i 
+ *          LEFT JOIN dbgopts d ON d.rqstid=i.rqstid 
+ *          WHERE state=1 AND began <= now() limit 15
+ * BEGIN
+ * UPDATE jobinstance SET instid = instdid WHERE instid = @x 
+ * (get-effects-of-these)
+ * COMMIT
+ */
+int intrans_effect_update(cdb2_hndl_tp *db)
+{
+    int rc;
+    int64_t *instids = NULL;
+    int cnt = 0;
+    int got_error = 0;
+
+    cdb2_clearbindings(db);
+    if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance "
+            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
+            "<= now() limit 15")) != CDB2_OK) {
+        fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
+        exit(1);
+    }
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
+        instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
+    }
+    assert(rc == CDB2_OK_DONE);
+    if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
+        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
+        exit(1);
+    }
+    for (int i = 0; i < cnt; i++) {
+        int64_t instid = instids[i];
+        cdb2_clearbindings(db);
+        if ((rc = cdb2_bind_param(db, "instid", CDB2_INTEGER, &instid, sizeof(instid))) != 0) {
+            fprintf(stderr, "line %d error binding, %s\n", __LINE__, cdb2_errstr(db));
+            exit(1);
+        }
+        if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
+                        "instid = @instid")) != CDB2_OK) {
+            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
+            exit(1);
+        }
+    }
+    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
+    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
+        if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
+    }
+
+    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+        if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
+    }
+    return got_error;
+}
+
+/*
  * POINT-IN-TIME UPDATER THREAD SQL
  *
  * BEGIN TRANSACTION AS OF DATETIME <now - 10 seconds>
@@ -571,6 +658,17 @@ void *thd(void *arg) {
         exit(1);
     }
 
+    if (type == INTRANS_EFFECT_UPDATER) 
+        rc = cdb2_run_statement(db, "set intransresults on");
+    else
+        rc = cdb2_run_statement(db, "set intransresults off");
+
+    if (rc != CDB2_OK) {
+        fprintf(stderr, "line %d run_statement error, %d, %s\n", __LINE__,
+                rc, cdb2_errstr(db));
+        exit(1);
+    }
+
     set_isolation(db);
 
     while(!time_is_up) {
@@ -595,11 +693,14 @@ void *thd(void *arg) {
             case POINT_IN_TIME_UPDATER:
                 numerrs += point_in_time_update(db);
                 break;
+            case INTRANS_EFFECT_UPDATER:
+                numerrs += intrans_effect_update(db);
+                break;
         }
         iterations++;
     }
 
-    if (type == POINT_IN_TIME_UPDATER)
+    if (type == POINT_IN_TIME_UPDATER || type == INTRANS_EFFECT_UPDATER)
         assert(numerrs > 0);
 
     cdb2_close(db);
@@ -617,7 +718,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:i:t:fh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:fh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -650,6 +751,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'S':
                 single_statement_noselect_updaters = atoi(optarg);
+                break;
+            case 'e':
+                intrans_effects_updaters = atoi(optarg);
                 break;
             case 'p':
                 point_in_time_updaters = atoi(optarg);
@@ -696,7 +800,8 @@ int main(int argc, char *argv[]) {
 
     pthread_t *threads;
     nthreads = selectv_updaters + updaters + selectvers + noselect_updaters +
-        single_statement_noselect_updaters + point_in_time_updaters;
+        single_statement_noselect_updaters + point_in_time_updaters +
+        intrans_effects_updaters;
     threads = malloc(sizeof(pthread_t) * nthreads);
 
     if (threads == NULL) {
@@ -769,6 +874,19 @@ int main(int argc, char *argv[]) {
         t->tdtype = POINT_IN_TIME_UPDATER;
         ix = updaters+selectv_updaters+selectvers+noselect_updaters+
             single_statement_noselect_updaters+i;
+        int rc = pthread_create(&threads[ix], NULL, thd, (void *)t);
+        if (rc) {
+            fprintf(stderr, "Can't create thread: %d %s\n", rc, strerror(rc));
+            return 1;
+        }
+    }
+
+    for (int i = 0 ; i < intrans_effects_updaters; i++) {
+        struct thread_num_type *t = (struct thread_num_type *)malloc(sizeof(*t));
+        t->tdnum = i;
+        t->tdtype = INTRANS_EFFECT_UPDATER;
+        ix = updaters+selectv_updaters+selectvers+noselect_updaters+
+            single_statement_noselect_updaters+point_in_time_updaters+i;
         int rc = pthread_create(&threads[ix], NULL, thd, (void *)t);
         if (rc) {
             fprintf(stderr, "Can't create thread: %d %s\n", rc, strerror(rc));
