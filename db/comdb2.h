@@ -3573,4 +3573,7 @@ void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 
 int backout_schema_changes(struct ireq *iq, tran_type *tran);
 int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
+
+extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
+
 #endif /* !INCLUDED_COMDB2_H */

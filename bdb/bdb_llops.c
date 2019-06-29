@@ -75,10 +75,10 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
             }
         }
     } else {
-        if (stripe < 0 || stripe >= bdb_state->attr->dtastripe) {
+        if (stripe < 0 || stripe >= bdb_state->nstripes) {
             *errstr =
                 comdb2_asprintf("stripe out of range (%d, db has %d stripes)",
-                                stripe, bdb_state->attr->dtastripe);
+                                stripe, bdb_state->nstripes);
             rc = -1;
             goto done;
         }
@@ -239,10 +239,10 @@ int bdb_llop_del(bdb_state_type *bdb_state, void *trans, int stripe,
             goto done;
         }
     } else {
-        if (stripe < 0 || stripe >= bdb_state->attr->dtastripe) {
+        if (stripe < 0 || stripe >= bdb_state->nstripes) {
             *errstr =
                 comdb2_asprintf("stripe out of range (%d, db has %d stripes)",
-                                stripe, bdb_state->attr->dtastripe);
+                                stripe, bdb_state->nstripes);
             rc = -1;
             goto done;
         }
@@ -344,10 +344,10 @@ void *bdb_llop_find(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
             goto done;
         }
     } else {
-        if (stripe < 0 || stripe >= bdb_state->attr->dtastripe) {
+        if (stripe < 0 || stripe >= bdb_state->nstripes) {
             *errstr =
                 comdb2_asprintf("stripe out of range (%d, db has %d stripes)",
-                                stripe, bdb_state->attr->dtastripe);
+                                stripe, bdb_state->nstripes);
             rc = -1;
             goto done;
         }

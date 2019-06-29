@@ -19,7 +19,7 @@
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                  struct schema_change_type *s, int dbnum,
-                                 int foundix, int version);
+                                 int foundix, int version, int nstripes);
 
 void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
                              struct dbtable *newdb);

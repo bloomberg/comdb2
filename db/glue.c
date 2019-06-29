@@ -5737,12 +5737,15 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
                            unsigned long long *genid)
 {
     int stripe;
+    int nstripes;
     int rc;
     int bdberr = 0;
     int genid_timestamp;
     uint8_t ver;
 
-    for (stripe = 0; stripe < gbl_dtastripe; stripe++) {
+    nstripes = db_get_dtastripe(iq->usedb, tran);
+
+    for (stripe = 0; stripe < nstripes; stripe++) {
         rc = bdb_find_oldest_genid(iq->usedb->handle, tran, stripe, rec, reclen,
                                    maxlen, genid, &ver, &bdberr);
         if (rc && bdberr == BDBERR_DEADLOCK)

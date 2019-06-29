@@ -543,6 +543,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         dbt_old_key.size = sizeof(genid);
         memcpy(dbt_old_key.data, &genid, dbt_old_key.size);
 
+    /* scan 1 - run through data, verify all the keys and blobs */
+    for (dtastripe = 0; dtastripe < bdb_state->nstripes; dtastripe++) {
         dbt_data.flags = DB_DBT_USERMEM;
         dbt_data.ulen = sizeof(databuf);
         dbt_data.data = databuf;

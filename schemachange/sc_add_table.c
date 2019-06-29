@@ -103,6 +103,7 @@ int add_table_to_environment(char *table, const char *csc2,
 {
     int rc;
     struct dbtable *newdb;
+    int nstripes = db_get_dtastripe(iq->usedb, trans);
 
     if (s)
         s->newdb = newdb = NULL;
@@ -130,7 +131,7 @@ int add_table_to_environment(char *table, const char *csc2,
     if (newdb == NULL) {
         return SC_INTERNAL_ERROR;
     }
-    newdb->dtastripe = gbl_dtastripe;
+    newdb->dtastripe = nstripes;
 
     newdb->iq = iq;
 

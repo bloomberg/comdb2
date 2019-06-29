@@ -16,8 +16,6 @@
 
 /*
  * bdb layer public api
- *
- * $Id$
  */
 
 #ifndef __bdb_api_h__
@@ -2189,5 +2187,7 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
+
+int bdb_get_dtastripe(bdb_state_type *bdb_state);
 
 #endif

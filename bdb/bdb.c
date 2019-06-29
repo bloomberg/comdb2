@@ -577,41 +577,19 @@ static int bdb_get_first_data_length_int(bdb_state_type *bdb_state, int *bdberr)
         return -1;
     }
 
-    if (bdb_state->attr->dtastripe > 0) {
-        int stripen, length;
+    int stripen, length;
 
-        /* Look at each stripe file until we find some data. */
-        for (stripen = 0; stripen < bdb_state->attr->dtastripe; stripen++) {
-            length = bdb_get_first_data_length_dbp(
+    /* Look at each stripe file until we find some data. */
+    for (stripen = 0; stripen < bdb_state->nstripes; stripen++) {
+        length = bdb_get_first_data_length_dbp(
                 bdb_state, bdb_state->dbp_data[stripen][0], 1, 1, bdberr);
 
-            if (length >= 0 || *bdberr != BDBERR_FETCH_DTA)
-                break;
-        }
-
-        /* No genid adjustments needed */
-        return length;
-    } else {
-        int length;
-
-        length = bdb_get_first_data_length_dbp(
-            bdb_state, bdb_state->dbp_data[0][0], 1, 1, bdberr);
-
-        if (length >= 0) {
-            /* Deduct length of genids */
-            if (bdb_state->attr->genids) {
-                length -= 8;
-                if (length < 0) {
-                    logmsg(LOGMSG_ERROR, "bdb_get_first_data_length_int: genid "
-                                    "adjusted length is %d\n",
-                            length);
-                    length = 0;
-                }
-            }
-        }
-
-        return length;
+        if (length >= 0 || *bdberr != BDBERR_FETCH_DTA)
+            break;
     }
+
+    /* No genid adjustments needed */
+    return length;
 }
 
 int bdb_get_first_data_length(bdb_state_type *bdb_state, int *bdberr)
@@ -642,10 +620,7 @@ int bdb_get_first_index_length_int(bdb_state_type *bdb_state, int ixnum,
 
     if (length >= 0) {
         if (bdb_keycontainsgenid(bdb_state, ixnum)) {
-            if (bdb_state->attr->dtastripe > 0)
-                length -= 8; /* subtract genid length */
-            else
-                length -= 4; /* subtract rrn length */
+            length -= 8; /* subtract genid length */
         }
     }
 

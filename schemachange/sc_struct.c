@@ -925,6 +925,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int rc;
     int bdberr;
     int bthashsz;
+    void *old_bdb_handle, *new_bdb_handle;
+    int nstripes;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -936,12 +938,102 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         logmsg(LOGMSG_ERROR, "reload_schema: invalid table %s\n", table);
         return -1;
     }
+    nstripes = db_get_dtastripe(db, tran);
 
     if (csc2) {
         /* genuine schema change. */
         dyns_init_globals();
         int rc = reload_csc2_schema(db, tran, csc2, table);
         dyns_cleanup_globals();
+        struct dbtable *newdb;
+        int changed = 0;
+
+        rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
+        if (rc != 0) {
+            return rc;
+        }
+
+        foundix = getdbidxbyname(table);
+        if (foundix == -1) {
+            logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
+            exit(1);
+        }
+
+        /* TODO remove NULL arg; pre-llmeta holdover */
+        newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0);
+        if (newdb == NULL) {
+            /* shouldn't happen */
+            backout_schemas(table);
+            return 1;
+        }
+        newdb->dbnum = db->dbnum;
+        if (add_cmacc_stmt(newdb, 1) != 0) {
+            /* can happen if new schema has no .DEFAULT tag but needs one */
+            backout_schemas(table);
+            return 1;
+        }
+        newdb->meta = db->meta;
+        newdb->dtastripe = nstripes;
+
+        changed = ondisk_schema_changed(table, newdb, NULL, NULL);
+        /* let this fly, which will be ok for fastinit;
+           master will catch early non-fastinit cases */
+        if (changed < 0 && changed != SC_BAD_NEW_FIELD) {
+            if (changed == -2) {
+                logmsg(LOGMSG_ERROR, "Error reloading schema!\n");
+            }
+            /* shouldn't happen */
+            backout_schemas(table);
+            return 1;
+        }
+
+        old_bdb_handle = db->handle;
+
+        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
+               bdb_isopen(db->handle));
+
+        /* the master doesn't tell the replicants to close the db
+         * ahead of time */
+        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
+            return 1;
+        }
+
+        /* reopen db */
+        newdb->handle = bdb_open_more_tran(
+            table, thedb->basedir, newdb->lrl, newdb->nix,
+            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
+        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
+               newdb->handle, bdberr);
+        if (bdberr != 0 || newdb->handle == NULL) return 1;
+
+        new_bdb_handle = newdb->handle;
+
+        rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
+            abort();
+        }
+
+        set_odh_options_tran(newdb, tran);
+        transfer_db_settings(db, newdb);
+        restore_constraint_pointers(db, newdb);
+
+        /* create new csc2 file and modify lrl to reflect that (takes
+         * llmeta into account and does the right thing ) */
+        rc = write_csc2_file(db, csc2);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "Failed to write table .csc2 file\n");
+            return -1;
+        }
+
+        free_db_and_replace(db, newdb);
+        fix_constraint_pointers(db, newdb);
+
+        rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
         if (rc)
             return rc;
     } else {

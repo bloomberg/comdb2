@@ -959,6 +959,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     struct dbtable *newdb;
     int bdberr;
     int rc;
+    int nstripes;
 
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
@@ -967,6 +968,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         unlock_schema_lk();
         return rc;
     }
+    nstripes = db_get_dtastripe(db, NULL);
 
     /* Shouldn't get here */
     if (s->addonly) {
@@ -1005,7 +1007,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         return -1;
     }
 
-    newdb->dtastripe = gbl_dtastripe;
+    newdb->dtastripe = nstripes;
     newdb->odh = s->headers;
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;

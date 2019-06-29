@@ -455,14 +455,14 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                       struct schema_change_type *s, int dbnum,
-                                      int foundix, int schema_version)
+                                      int foundix, int schema_version, int nstripes)
 {
     struct dbtable *newdb =
         newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
 
     if (newdb == NULL) return NULL;
 
-    newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
+    newdb->dtastripe = nstripes; // we have only one setting currently
     newdb->odh = s->headers;
     /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;

@@ -140,7 +140,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
     if (parent && parent->shadow_tran) {
         if ((parent->used_sd && parent->lastkeylen == 0) ||
             (parent->used_rl &&
-             parent->state->attr->dtastripe == parent->laststripe) ||
+             parent->state->nstripes == parent->laststripe) ||
             (parent->invalidated)) {
             try_shadow_table = 1;
             dbnum = get_dbnum_by_handle(bdb_state);
@@ -642,7 +642,7 @@ static int bdb_fetch_int_ll(
         if (ixlen != 0 && ixlen != sizeof(unsigned long long)) {
             logmsg(LOGMSG_ERROR, "%s: data file ixfind badargs: not dtastripe: %d "
                             "or non zero key length: %d\n",
-                    __func__, bdb_state->attr->dtastripe, ixlen);
+                    __func__, bdb_state->nstripes, ixlen);
             *bdberr = BDBERR_BADARGS;
             *rrn = 0;
             return -1;
@@ -704,7 +704,7 @@ static int bdb_fetch_int_ll(
             else {
                 dtafile = get_dtafile_from_genid(*(unsigned long long *)ix);
 
-                if (dtafile < 0 || dtafile >= bdb_state->attr->dtastripe) {
+                if (dtafile < 0 || dtafile >= bdb_state->nstripes) {
                     logmsg(LOGMSG_ERROR, 
                             "%s: dtafile=%d out of range genid %016llx\n",
                             __func__, dtafile, *(unsigned long long *)ix);
@@ -775,7 +775,7 @@ static int bdb_fetch_int_ll(
 
             dtafile = get_dtafile_from_genid(*(unsigned long long *)lastix);
 
-            if (dtafile < 0 || dtafile >= bdb_state->attr->dtastripe) {
+            if (dtafile < 0 || dtafile >= bdb_state->nstripes) {
                 logmsg(LOGMSG_ERROR, "%s: dtafile=%d out of range\n", __func__,
                         dtafile);
                 *bdberr = BDBERR_BADARGS;
@@ -1330,7 +1330,7 @@ before_first_lookup:
                         /* if we're looking through the data itself and we
                          * have more stripes to check */
                         if (ixnum == -1 &&
-                            dtafile < bdb_state->attr->dtastripe - 1)
+                            dtafile < bdb_state->nstripes - 1)
                             goto before_first_lookup;
                     } else if (rc == DB_NOTFOUND) {
                         outrc = 99;
@@ -1338,7 +1338,7 @@ before_first_lookup:
                         /* if we're looking through the data itself */
                         if (ixnum == -1) {
                             /* if we have more stripes to check */
-                            if (dtafile < bdb_state->attr->dtastripe - 1)
+                            if (dtafile < bdb_state->nstripes - 1)
                                 goto before_first_lookup;
 
                             /* if we found a record in a previous stripe */
@@ -1791,7 +1791,7 @@ before_first_lookup:
 
                 /* if we're looking through
                    the data itself and we have more stripes to check */
-                if (ixnum == -1 && dtafile < bdb_state->attr->dtastripe - 1)
+                if (ixnum == -1 && dtafile < bdb_state->nstripes - 1)
                     goto before_first_lookup;
             } else if (rc == DB_NOTFOUND) {
                 outrc = 99;
@@ -1799,7 +1799,7 @@ before_first_lookup:
                 /* if we're looking through the data itself */
                 if (ixnum == -1) {
                     /* if we have more stripes to check */
-                    if (dtafile < bdb_state->attr->dtastripe - 1)
+                    if (dtafile < bdb_state->nstripes - 1)
                         goto before_first_lookup;
 
                     /* if we found a record in a previous stripe */
@@ -2083,7 +2083,7 @@ err:
             dtafile = get_dtafile_from_genid(foundgenid);
 
             /* if dtafile is out of range then database must be corrupt */
-            if (dtafile < 0 || dtafile >= bdb_state->attr->dtastripe) {
+            if (dtafile < 0 || dtafile >= bdb_state->nstripes) {
                 logmsg(LOGMSG_ERROR, "bdb_fetch_int: dtafile=%d out of range\n",
                         dtafile);
                 *bdberr = BDBERR_MISC;
@@ -4093,7 +4093,7 @@ int bdb_fetch_next_dtastripe_record(bdb_state_type *bdb_state,
     int cur_stripe;
 
     /* if stripe is valid */
-    if (*p_stripe >= 0 && *p_stripe < bdb_state->attr->dtastripe)
+    if (*p_stripe >= 0 && *p_stripe < bdb_state->nstripes)
         cur_stripe = *p_stripe;
     else
         cur_stripe = 0;

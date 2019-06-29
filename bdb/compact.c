@@ -83,7 +83,7 @@ static int bdb_compact_table_int(bdb_state_type *bdb_state, int *bdberr,
     }
 
     /* we're provide this only for stripped data */
-    if (!bdb_state->attr->dtastripe /*|| !bdb_state->attr->blobstripe*/) {
+    if (!bdb_state->nstripes /*|| !bdb_state->attr->blobstripe*/) {
         logmsg(LOGMSG_ERROR, "bdb_compact_table_int: btree compaction is only "
                         "allowed for stripped data.\n");
         return -1;
@@ -96,7 +96,7 @@ static int bdb_compact_table_int(bdb_state_type *bdb_state, int *bdberr,
     for (j = 0; j < bdb_state->numdtafiles; j++) {
 
         int limit =
-            (j == 0) ? bdb_state->attr->dtastripe : bdb_state->attr->blobstripe;
+            (j == 0) ? bdb_state->nstripes : bdb_state->attr->blobstripe;
 
         for (i = 0; i < limit; i++) {
 

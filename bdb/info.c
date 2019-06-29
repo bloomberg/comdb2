@@ -461,7 +461,7 @@ void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
         }
 
         for (df = 0; df < bdb_state->numdtafiles; df++) {
-            for (st = 0; st < bdb_state->attr->dtastripe; st++) {
+            for (st = 0; st < bdb_state->nstripes; st++) {
                 logmsgf(LOGMSG_USER, out, "%s datafile %u stripe %u\n", bdb_state->name, df,
                         st);
                 __db_dump_freepages(bdb_state->dbp_data[df][st], out);
@@ -479,7 +479,7 @@ void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
         __db_dump_freepages(bdb_state->dbp_ix[ixnum], out);
         return;
     } else {
-        if (stripe < 0 || stripe >= bdb_state->attr->dtastripe) {
+        if (stripe < 0 || stripe >= bdb_state->nstripes) {
             logmsgf(LOGMSG_USER, out, "stripe is out of range\n");
             return;
         }
@@ -1059,7 +1059,7 @@ void bdb_dump_cursors(bdb_state_type *bdb_state, FILE *out)
 
         if (db) {
             for (blob = 0; blob < db->numdtafiles; blob++) {
-                for (stripe = 0; stripe < bdb_state->attr->dtastripe + 1 &&
+                for (stripe = 0; stripe < bdb_state->nstripes + 1 &&
                                  db->dbp_data[blob][stripe];
                      stripe++) {
                     logmsg(LOGMSG_USER, "%s dta %d stripe %d:\n", db->name, blob, stripe);
@@ -1144,7 +1144,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
     unsigned int npages;
     uint64_t total_npages = 0;
 
-    numstripes = bdb_state->attr->dtastripe ? bdb_state->attr->dtastripe : 1;
+    numstripes = bdb_state->nstripes ? bdb_state->nstripes : 1;
 
     for (stripe = 0; stripe < numstripes; stripe++) {
         for (blobno = 0; blobno < MAXDTAFILES; blobno++) {
