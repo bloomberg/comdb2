@@ -103,13 +103,14 @@ static char *type_to_str(int type)
     }
 }
 
-void is_common_acceptable_error(cdb2_hndl_tp *db, int rc)
+int is_common_acceptable_error(cdb2_hndl_tp *db, int rc)
 {
     switch(rc) {
         /* Master lost transaction */
         case -109:
             fprintf(stderr, "Ignoring common error %d, %s\n", rc, cdb2_errstr(db));
             return allow_common_errors;
+            break;
     }
     return 0;
 }
