@@ -31,6 +31,7 @@ enum {
 
 #define INITTHDS 4
 
+int serialize_reads_like_writes = 0;
 int selectv_updaters = INITTHDS;
 int updaters = INITTHDS;
 int selectvers = INITTHDS;
@@ -59,6 +60,7 @@ void usage(FILE *f)
     fprintf(f, "    -p <cnt>                     - number of point-in-time updaters\n");
     fprintf(f, "    -e <cnt>                     - number of in-trans-effects updaters\n");
     fprintf(f, "    -t <test-time>               - let test run for this many seconds\n");
+    fprintf(f, "    -R                           - serialize reads like writes\n");
     fprintf(f, "    -a                           - disallow 'acceptable' errors\n");
     fprintf(f, "    -A                           - allow 'acceptable' errors\n");
     fprintf(f, "    -h                           - this menu\n");
@@ -346,7 +348,9 @@ int noselect_update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    assert(rc == CDB2_OK_DONE);
+    if (rc != CDB2_OK_DONE) {
+        assert(serialize_reads_like_writes && rc == 230);
+    }
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
         fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
@@ -436,7 +440,9 @@ int intrans_effect_update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    assert(rc == CDB2_OK_DONE);
+    if (rc != CDB2_OK_DONE) {
+        assert(serialize_reads_like_writes && rc == 230);
+    }
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
         fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
@@ -748,7 +754,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faAh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -805,6 +811,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'A':
                 allow_common_errors = 1;
+                break;
+            case 'R':
+                serialize_reads_like_writes = 1;
                 break;
             case 'h':
                 usage(stdout);
