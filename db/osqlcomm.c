@@ -50,6 +50,7 @@
 #include "sc_struct.h"
 #include <compat.h>
 #include <unistd.h>
+#include <assert.h>
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
@@ -457,6 +458,7 @@ static uint8_t *osqlcomm_rpl_type_put(const osql_rpl_t *p_osql_rpl,
                     p_buf_end);
     p_buf = buf_no_net_put(&(p_osql_rpl->padding), sizeof(p_osql_rpl->padding),
                            p_buf, p_buf_end);
+    assert(p_osql_rpl->sid != 0);
     p_buf =
         buf_put(&(p_osql_rpl->sid), sizeof(p_osql_rpl->sid), p_buf, p_buf_end);
 
@@ -493,12 +495,16 @@ enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
 BB_COMPILE_TIME_ASSERT(osqlcomm_rpl_uuid_type_len,
                        sizeof(osql_uuid_rpl_t) == OSQLCOMM_UUID_RPL_TYPE_LEN);
 
+uuid_t zero_uuid = {0};
+
 static uint8_t *osqlcomm_uuid_rpl_type_put(const osql_uuid_rpl_t *p_osql_rpl,
                                            uint8_t *p_buf,
                                            const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN > (p_buf_end - p_buf))
         return NULL;
+
+    assert(memcmp(&p_osql_rpl->uuid, &zero_uuid, sizeof(uuid_t)));
 
     p_buf = buf_put(&(p_osql_rpl->type), sizeof(p_osql_rpl->type), p_buf,
                     p_buf_end);
