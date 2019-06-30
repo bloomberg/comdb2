@@ -71,21 +71,22 @@ function run_tests
 {
     typeset func="run_tests"
     typeset strict_mode=$(disallow_update_fail)
+    typeset reads_like_writes=$(serialize_reads_like_writes)
 
     start=$(date +%s)
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i socksql
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i socksql
     export r=$?
     [[ $r != 0 ]] && failexit "socksql selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i reccom
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i reccom
     export r=$?
     [[ $r != 0 ]] && failexit "read committed selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i snapshot
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i snapshot
     export r=$?
     [[ $r != 0 ]] && failexit "snapshot selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode -i serial
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i serial
     export r=$?
     [[ $r != 0 ]] && failexit "serial selectv rcodes"
 }

@@ -361,7 +361,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             serial_error = 1;
     }
 
-    if (serial_error) {
+    if (serial_error && force_master) {
         clnt->osql.xerr.errval = ERR_NOTSERIAL;
         errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
         rc = SQLITE_ABORT;
@@ -396,14 +396,22 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* Preserve the sentops optimization */
     if (clnt->osql.is_reorder_on && (force_master || sentops)) {
-        if (clnt->arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-        }
+        if (serial_error) {
+            clnt->osql.xerr.errval = ERR_NOTSERIAL;
+            errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
+            osql_sock_abort(clnt, osqlreq_type);
+            rc = SQLITE_ABORT;
+            goto goback;
+        } else {
+            if (clnt->arr) {
+                rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+                sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+            }
 
-        if (clnt->selectv_arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+            if (clnt->selectv_arr) {
+                rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+                sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+            }
         }
     }
 
