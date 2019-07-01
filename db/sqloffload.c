@@ -394,15 +394,21 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
+    assert((usedb_only && sentops == 0) ||
+           (!usedb_only && sentops > 0));
+
     /* Preserve the sentops optimization */
     if (clnt->osql.is_reorder_on && (force_master || sentops)) {
+#if 0
         if (serial_error) {
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
             errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
             osql_sock_abort(clnt, osqlreq_type);
             rc = SQLITE_ABORT;
             goto goback;
-        } else {
+        } 
+#endif
+        {
             if (clnt->arr) {
                 rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
                 sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
