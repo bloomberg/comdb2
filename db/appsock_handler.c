@@ -388,7 +388,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     total_appsock_conns++;
     Pthread_mutex_lock(&appsock_conn_lk);
     active_appsock_conns++;
-    Pthread_mutex_lock(&appsock_conn_lk);
+    Pthread_mutex_unlock(&appsock_conn_lk);
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
         logmsg(LOGMSG_WARN,
