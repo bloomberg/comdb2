@@ -963,8 +963,9 @@ static int bdb_verify_blobs(verify_td_params *par, unsigned int lid, int *ret)
     DBT dbt_blob_key = {0}, dbt_blob_data = {0};
     int rc;
     int nblobs = get_numblobs(par->db_table);
-    printf("AZ: numblobs %d\n", nblobs);
-    int blobno;
+            char dumbuf;
+            unsigned long long genid;
+            DBT dbt_dta_check_key = {0}, dbt_dta_check_data = {0};
 
     DBT dbt_data = {0};
     bzero(&dbt_data, sizeof(DBT));
@@ -983,10 +984,10 @@ static int bdb_verify_blobs(verify_td_params *par, unsigned int lid, int *ret)
     bdb_state_type *bdb_state = par->bdb_state;
 
     /* scan 3: scan each blob, verify data exists */
-    for (blobno = 0; blobno < nblobs; blobno++) {
+    for (int blobno = 0; blobno < nblobs; blobno++) {
         for (int dtastripe = 0; dtastripe < bdb_state->attr->blobstripe;
              dtastripe++) {
-            unsigned long long genid;
+            printf("AZ: blobno %d, dtastripe %d\n", blobno, dtastripe);
             db = bdb_state->dbp_data[blobno + 1][dtastripe];
 
             if (!db) {
@@ -1007,14 +1008,12 @@ static int bdb_verify_blobs(verify_td_params *par, unsigned int lid, int *ret)
             dbt_key.ulen = dbt_key.size = sizeof(unsigned long long);
             dbt_key.data = &genid;
             dbt_key.flags = DB_DBT_USERMEM;
-            char dumbuf;
             dbt_data.data = &dumbuf;
             dbt_data.ulen = 1;
             dbt_data.doff = 0;
             dbt_data.dlen = 0;
             dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
 
-            DBT dbt_dta_check_key = {0}, dbt_dta_check_data = {0};
             dbt_dta_check_key.ulen = sizeof(int);
             dbt_dta_check_key.data = &genid;
             dbt_dta_check_key.flags = DB_DBT_USERMEM;
