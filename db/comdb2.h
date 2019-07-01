@@ -3564,7 +3564,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   int is_alter);
 int verify_check_constraints(struct dbtable *table, uint8_t *rec,
                              blob_buffer_t *blobs, size_t maxblobs,
-                             int is_alter, int *check_status);
+                             int is_alter);
 /* Authentication types for users */
 enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 

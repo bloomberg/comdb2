@@ -12127,8 +12127,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
     rc =
         run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, &mout, &exist);
     if (rc || !exist) {
-        logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n",
+               __func__, rc);
         rc = -1;
         goto done;
     }
@@ -12349,29 +12349,30 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     return *t;
 }
 
+/* Verify all CHECK constraints against this record.
+ * @return
+ *     <1 : Internal error
+ *     0  : Success
+ *     >1 : (n+1)th CHECK constraint failed
+ * */
 int verify_check_constraints(struct dbtable *table, uint8_t *rec,
                              blob_buffer_t *blobs, size_t maxblobs,
-                             int is_alter,
-                             int *check_status /* 0 - Pass, 1 - Fail */)
+                             int is_alter)
 {
     struct schema *sc;
     strbuf *sql;
     Mem *m = NULL;
     Mem mout = {{0}};
-    int rc = 0;
+    int rc = 0; /* Assume all checks succeeded. */
 
     /* Skip if there are no CHECK constraints. */
-    if (table->n_check_constraints < 1) {
-        *check_status = 0;
-        return rc;
+    if (table->n_check_constraints <= 0) {
+        return 0;
     }
-
-    /* Let's start by assuming that the check failed. */
-    *check_status = 1;
 
     if (!rec) {
         logmsg(LOGMSG_ERROR, "%s: invalid input\n", __func__);
-        return 1;
+        return -1;
     }
 
     sc = table->schema;
@@ -12386,7 +12387,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
     if (m == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
-        rc = 1;
+        rc = -1;
         goto done;
     }
 
@@ -12397,6 +12398,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to get field from record",
                    __func__);
+            rc = -1;
             goto done;
         }
     }
@@ -12429,28 +12431,30 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         clnt.schema_mems = &sm;
 
         rc = dispatch_sql_query(&clnt);
+        if (rc) {
+            rc = -1;
+            goto done;
+        }
 
         /* CHECK constraint has passed if we get 1 or NULL. */
         assert(clnt.has_sqliterow);
         if (sm.min->flags & MEM_Int) {
             if (sm.mout->u.i == 0) {
-                /* Failed */
-                *check_status = 1;
+                /* CHECK constraint failed */
+                rc = i + 1;
             } else {
-                /* Passed */
-                *check_status = 0;
+                /* Check constraint passed */
             }
         } else if (sm.min->flags & MEM_Null) {
-            /* Passed */
-            *check_status = 0;
+            /* Check constraint passed */
         } else {
-            /* Failed */
-            *check_status = 1;
+            /* CHECK constraint failed */
+            rc = i + 1;
         }
 
         end_internal_sql_clnt(&clnt);
 
-        if (*check_status == 1) {
+        if (rc) {
             /* Check failed, no need to continue. */
             break;
         }

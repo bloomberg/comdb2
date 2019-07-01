@@ -5973,6 +5973,9 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case ERR_NOT_DURABLE:
         return CDB2ERR_CHANGENODE;
 
+    case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
+        return CDB2ERR_CHECK_CONSTRAINT;
+
     default:
         return DB_ERR_INTR_GENERIC;
     }

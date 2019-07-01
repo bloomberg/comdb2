@@ -1,7 +1,7 @@
 (test='1. Test CHECK CONSTRAINT behavior')
 (rows inserted=1)
-[INSERT INTO t1 VALUES('greenish')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
-[INSERT INTO t1 VALUES('black')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES('greenish')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
+[INSERT INTO t1 VALUES('black')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
 (color='red')
 (test='2. ALTER TABLE')
 (csc2='schema
@@ -28,7 +28,7 @@ constraints
 	}
 ')
 (color='blue')
-[INSERT INTO t1 VALUES('white')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES('white')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
 (csc2='schema
 	{
 		cstring color[11] null = yes 
@@ -44,21 +44,21 @@ constraints
 [CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))] failed with rc 240 malformed database schema (t1) - subqueries prohibited in CHECK constraints
 (test='4. Test for updates')
 (rows inserted=1)
-[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 304 CHECK constraint violation unable to update record rc = 320
+[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3DCCE6D2' unable to update record rc = 320
 (i=1)
 (test='5. Test for some obscure expressions')
-[INSERT INTO t1 VALUES(1)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
-[INSERT INTO t1 VALUES(11)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_50FF6780' unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_50FF6780' unable to add record rc = 320
 (rows inserted=1)
 (rows inserted=1)
-[INSERT INTO t1 VALUES(1)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
-[INSERT INTO t1 VALUES(11)] failed with rc 304 CHECK constraint violation unable to add record rc = 320
-[INSERT INTO t1 VALUES("aaa")] failed with rc 304 CHECK constraint violation unable to add record rc = 320
-[INSERT INTO t1 VALUES("aaa")] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_D376ECF2' unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_D376ECF2' unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_688DD408' unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_1E2CE26C' unable to add record rc = 320
 (test='6. Test for strings')
-[INSERT INTO t1 VALUES('foo')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES('foo')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_BB206189' unable to add record rc = 320
 (rows inserted=1)
 (v='bar')
-[INSERT INTO t1 VALUES('foo')] failed with rc 304 CHECK constraint violation unable to add record rc = 320
+[INSERT INTO t1 VALUES('foo')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3AA1A76' unable to add record rc = 320
 (rows inserted=1)
 (v='bar')

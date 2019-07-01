@@ -377,16 +377,16 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
-    int check_status;
-    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
-                                  &check_status);
-    if (rc != 0) {
-        reqerrstrhdr(iq, "Internal error during CHECK constraint");
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
+    if (rc < 0) {
+        reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;
         rc = retrc = ERR_INTERNAL;
         ERR;
-    } else if (check_status != 0) {
-        reqerrstrhdr(iq, "CHECK constraint violation");
+    } else if (rc > 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation ");
+        reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
+                  iq->usedb->check_constraints[rc-1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
         ERR;
@@ -1140,16 +1140,16 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         add_idx_blobs = add_blobs_buf;
     }
 
-    int check_status;
-    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0,
-                                  &check_status);
-    if (rc != 0) {
-        reqerrstrhdr(iq, "Internal error during CHECK constraint");
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
+    if (rc < 0) {
+        reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;
         rc = retrc = ERR_INTERNAL;
         ERR;
-    } else if (check_status != 0) {
-        reqerrstrhdr(iq, "CHECK constraint violation");
+    } else if (rc > 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation ");
+        reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
+                  iq->usedb->check_constraints[rc-1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
         ERR;
