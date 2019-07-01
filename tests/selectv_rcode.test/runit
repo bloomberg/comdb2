@@ -55,7 +55,7 @@ function serialize_reads_like_writes
 {
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'serialize_reads_like_writes'")
     if [[ "$x" == "ON" ]]; then
-        echo "-S"
+        echo "-R"
     fi
 }
 

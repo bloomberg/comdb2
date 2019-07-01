@@ -42,7 +42,7 @@ int intrans_effects_updaters = INITTHDS;
 int isolation = SOCKSQL;
 int fail_updater_error = 0;
 int time_is_up = 0;
-int allow_common_errors = 0;
+int allow_common_errors = 1;
 
 void usage(FILE *f)
 {
@@ -110,6 +110,7 @@ int is_common_acceptable_error(cdb2_hndl_tp *db, int rc)
     switch(rc) {
         /* Master lost transaction */
         case -109:
+        case 203:
             fprintf(stderr, "Ignoring common error %d, %s\n", rc, cdb2_errstr(db));
             return allow_common_errors;
             break;
@@ -145,7 +146,7 @@ int selectv(cdb2_hndl_tp *db)
     }
     while ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) 
         ;
-    assert(rc == CDB2_OK_DONE);
+    assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
 
     /* SELECTV: only allowed constraints violation in any isolation level */
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
@@ -202,7 +203,7 @@ int selectv_update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    assert(rc == CDB2_OK_DONE);
+    assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
     for (int i = 0; i < cnt; i++) {
         int64_t instid = instids[i];
         cdb2_clearbindings(db);
@@ -269,7 +270,7 @@ int update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    assert(rc == CDB2_OK_DONE);
+    assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
     for (int i = 0; i < cnt; i++) {
         int64_t instid = instids[i];
         cdb2_clearbindings(db);
@@ -348,7 +349,7 @@ int noselect_update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    if (rc != CDB2_OK_DONE) {
+    if (rc != CDB2_OK_DONE && !is_common_acceptable_error(db, rc)) {
         assert(serialize_reads_like_writes && rc == 230);
     }
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
@@ -440,7 +441,7 @@ int intrans_effect_update(cdb2_hndl_tp *db)
         instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
         instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
     }
-    if (rc != CDB2_OK_DONE) {
+    if (rc != CDB2_OK_DONE && !is_common_acceptable_error(db, rc)) {
         assert(serialize_reads_like_writes && rc == 230);
     }
     if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
