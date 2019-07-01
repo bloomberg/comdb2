@@ -890,28 +890,27 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
 /*        TRANSACTIONAL INDEX ROUTINES        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-int ix_isnullk(void *db_table, void *key, int ixnum)
+int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
 {
-    struct dbtable *db = db_table;
     struct schema *dbixschema;
     int ifld;
-    if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
+    if (!tbl || !key || ixnum < 0 || ixnum >= tbl->nix) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: bad args, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum);
+            "ix_isnullk: bad args, tbl = %p, key = %p, ixnum = %d\n",
+            tbl, key, ixnum);
         return 0;
     }
-    if (db->ix_dupes[ixnum]) {
+    if (tbl->ix_dupes[ixnum]) {
         return 0;
     }
-    if (!db->ix_nullsallowed[ixnum]) {
+    if (!tbl->ix_nullsallowed[ixnum]) {
         return 0;
     }
-    dbixschema = db->ixschema[ixnum];
+    dbixschema = tbl->ixschema[ixnum];
     if (!dbixschema) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: missing schema, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum);
+            "ix_isnullk: missing schema, tbl = %p, key = %p, ixnum = %d\n",
+            tbl, key, ixnum);
         return 0;
     }
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
@@ -921,15 +920,15 @@ int ix_isnullk(void *db_table, void *key, int ixnum)
             int offset = dbixfield->offset;
             if (offset >= 0 && stype_is_null((bkey + offset))) {
                 /* fprintf(stderr,
-                    "ix_isnullk: found NULL, db = %p, key = %p, ixnum = %d, ifld = %d\n",
-                    db, key, ixnum, ifld); */
+                    "ix_isnullk: found NULL, tbl = %p, key = %p, ixnum = %d, ifld = %d\n",
+                    tbl, key, ixnum, ifld); */
                 return 1;
             }
         }
     }
     /* fprintf(stderr,
-        "ix_isnullk: no NULL, db = %p, key = %p, ixnum = %d\n",
-        db, key, ixnum); */
+        "ix_isnullk: no NULL, tbl = %p, key = %p, ixnum = %d\n",
+        tbl, key, ixnum); */
     return 0;
 }
 

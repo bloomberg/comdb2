@@ -176,11 +176,10 @@ retry:
     }
 }
 
-static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
+static int verify_blobsizes_callback(const dbtable *tbl, void *dta, int blobsizes[16],
                                      int offset[16], int *nblobs)
 {
     int i;
-    struct dbtable *db = parm;
     struct schema *s;
     int blobix = 0;
     int rc;
@@ -190,8 +189,8 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
 
     *nblobs = 0;
 
-    for (i = 0; i < db->schema->nmembers; i++) {
-        s = db->schema;
+    for (i = 0; i < tbl->schema->nmembers; i++) {
+        s = tbl->schema;
         if (s->member[i].type == SERVER_BLOB ||
             s->member[i].type == SERVER_VUTF8 ||
             s->member[i].type == SERVER_BLOB2) {
@@ -204,9 +203,8 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
                     sizeof(int), &isnull, &outsz, NULL, NULL);
                 if (rc)
                     return rc;
-                /* tell bdb that the record fits in the inline portion and that
-                 * it should
-                 * verify that the blob DOESN'T exist */
+                /* tell bdb that the record fits in the inline portion
+                 * and that it should make sure that the blob DOESN'T exist */
                 blobsizes[blobix] = ntohl(sz);
                 if (s->member[i].type == SERVER_VUTF8 ||
                     s->member[i].type == SERVER_BLOB2) {
@@ -220,23 +218,23 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
         /* TODO: vutf8 */
     }
     *nblobs = blobix;
+    assert (blobix != tbl->schema->numblobs);
     return 0;
 }
 
-static int verify_formkey_callback(void *parm, void *dta, void *blob_parm,
+static int verify_formkey_callback(const dbtable *tbl, void *dta, void *blob_parm,
                                    int ix, void *keyout, int *keysz)
 {
-    struct dbtable *db = parm;
     int rc;
 
-    *keysz = get_size_of_schema(db->ixschema[ix]);
+    *keysz = get_size_of_schema(tbl->ixschema[ix]);
     /*
-    rc = stag_to_stag_buf(db->tablename, ".ONDISK", (const char*) dta,
+    rc = stag_to_stag_buf(tbl->tablename, ".ONDISK", (const char*) dta,
     struct convert_failure reason;
-    db->ixschema[ix]->tag, keyout, &reason);
+    tbl->ixschema[ix]->tag, keyout, &reason);
      */
-    rc = create_key_from_ondisk_blobs(db, ix, NULL, NULL, NULL, ".ONDISK", dta,
-                                      0 /*not needed*/, db->ixschema[ix]->tag,
+    rc = create_key_from_ondisk_blobs(tbl, ix, NULL, NULL, NULL, ".ONDISK", dta,
+                                      0 /*not needed*/, tbl->ixschema[ix]->tag,
                                       keyout, NULL, blob_parm, MAXBLOBS, NULL);
 
     return rc;

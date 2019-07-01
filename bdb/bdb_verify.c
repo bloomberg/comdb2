@@ -39,7 +39,8 @@
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
-extern int ix_isnullk(void *db_table, void *key, int ixnum);
+extern int get_numblobs(const dbtable *tbl);
+extern int ix_isnullk(const dbtable *db_table, void *key, int ixnum);
 extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
@@ -961,7 +962,8 @@ static int bdb_verify_blobs(verify_td_params *par, unsigned int lid, int *ret)
     DBT dbt_key = {0};
     DBT dbt_blob_key = {0}, dbt_blob_data = {0};
     int rc;
-    int nblobs = 0;
+    int nblobs = get_numblobs(par->db_table);
+    printf("AZ: numblobs %d\n", nblobs);
     int blobno;
 
     DBT dbt_data = {0};
@@ -1059,7 +1061,7 @@ static int bdb_verify_blobs(verify_td_params *par, unsigned int lid, int *ret)
                 rc = cdata->c_get(cdata, &dbt_dta_check_key,
                                   &dbt_dta_check_data, DB_SET);
                 if (rc == DB_NOTFOUND) {
-                    ret = 1;
+                    *ret = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx orphaned blob %d\n", genid_flipped, blobno);
                 }
                 else if (rc) {

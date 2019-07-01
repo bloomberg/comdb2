@@ -5986,6 +5986,11 @@ int get_schema_blob_count(const char *table, const char *ctag)
     return sc->numblobs;
 }
 
+int get_numblobs(const dbtable *tbl)
+{
+    return tbl->schema->numblobs;
+}
+
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
 {
     int ii;
@@ -7373,7 +7378,7 @@ short field_decimal_quantum(struct dbtable *db, struct schema *s, int fnum,
  * In the case of indexes, this is stored as a column attribute in the data part
  *
  */
-int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutbuf,
+int extract_decimal_quantum(const struct dbtable *db, int ix, char *inbuf, char *poutbuf,
                             int outbuf_max, int *outlen)
 {
     struct schema *s;
@@ -7443,7 +7448,7 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
 }
 
 int create_key_from_ondisk_sch_blobs(
-    struct dbtable *db, struct schema *fromsch, int ixnum, char **tail, int *taillen,
+    const struct dbtable *db, struct schema *fromsch, int ixnum, char **tail, int *taillen,
     char *mangled_key, const char *fromtag, const char *inbuf, int inbuflen,
     const char *totag, char *outbuf, struct convert_failure *reason,
     blob_buffer_t *inblobs, int maxblobs, const char *tzname)
@@ -7546,7 +7551,7 @@ inline int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail,
 }
 
 inline int create_key_from_ondisk_blobs(
-    struct dbtable *db, int ixnum, char **tail, int *taillen, char *mangled_key,
+    const struct dbtable *db, int ixnum, char **tail, int *taillen, char *mangled_key,
     const char *fromtag, const char *inbuf, int inbuflen, const char *totag,
     char *outbuf, struct convert_failure *reason, blob_buffer_t *inblobs,
     int maxblobs, const char *tzname)

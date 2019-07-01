@@ -655,7 +655,7 @@ typedef struct timepart_views timepart_views_t;
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
  */
-struct dbtable {
+typedef struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
     char *tablename;
@@ -828,7 +828,7 @@ struct dbtable {
 
     bool disableskipscan : 1;
     bool do_local_replication : 1;
-};
+} dbtable;
 
 struct log_delete_state {
     int filenum;
@@ -916,8 +916,8 @@ struct dbenv {
 
     /* tables and queues */
     int num_dbs;
-    struct dbtable **dbs;
-    struct dbtable static_table;
+    dbtable **dbs;
+    dbtable static_table;
     hash_t *db_hash;
     int num_qdbs;
     struct dbtable **qdbs;
@@ -2018,7 +2018,7 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
                 unsigned long long context);
 
 /*index routines*/
-int ix_isnullk(void *db_table, void *key, int ixnum);
+int ix_isnullk(const dbtable *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
