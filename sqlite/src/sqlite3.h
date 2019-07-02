@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.29.0"
 #define SQLITE_VERSION_NUMBER 3029000
-#define SQLITE_SOURCE_ID      "2019-06-19 18:28:58 50e1cbb99f898c66b32c124893f9870942650cc6cfcc52c4de98aa4b9083ea72"
+#define SQLITE_SOURCE_ID      "2019-07-02 12:35:36 9fc6e10bc41f9129dfa61d4cc15f138df08e7072782478b3364575f376359acc"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -2263,14 +2263,18 @@ struct sqlite3_mem_methods {
 ** <dt>SQLITE_DBCONFIG_DQS_DML</td>
 ** <dd>The SQLITE_DBCONFIG_DQS_DML option activates or deactivates
 ** the legacy [double-quoted string literal] misfeature for DML statement
-** only, that is DELETE, INSERT, SELECT, and UPDATE statements.
+** only, that is DELETE, INSERT, SELECT, and UPDATE statements. The
+** default value of this setting is determined by the [-DSQLITE_DQS]
+** compile-time option.
 ** </dd>
 **
 ** [[SQLITE_DBCONFIG_DQS_DDL]]
 ** <dt>SQLITE_DBCONFIG_DQS_DDL</td>
 ** <dd>The SQLITE_DBCONFIG_DQS option activates or deactivates
 ** the legacy [double-quoted string literal] misfeature for DDL statements,
-** such as CREATE TABLE and CREATE INDEX.
+** such as CREATE TABLE and CREATE INDEX. The
+** default value of this setting is determined by the [-DSQLITE_DQS]
+** compile-time option.
 ** </dd>
 ** </dl>
 */
