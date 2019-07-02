@@ -21,6 +21,14 @@ struct SBUF2;
 struct bdb_state_type;
 typedef struct dbtable dbtable;
 
+typedef enum {PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB} processing_type;
+typedef struct processing_info {
+    processing_type type;
+    int8_t blobno;
+    int8_t dtastripe;
+    int8_t index;
+} processing_info;
+
 typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
@@ -39,10 +47,12 @@ typedef struct {
     int (*lua_callback)(void *, const char *);
     void *lua_params;
     void *callback_blob_buf;
+    processing_info *info;
     int progress_report_seconds;
     int attempt_fix;
+    uint8_t verify_failed;
+    uint8_t client_dropped_connection;
 } verify_td_params;
-
 
 
 int bdb_verify(verify_td_params *par);
