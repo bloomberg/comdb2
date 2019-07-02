@@ -959,34 +959,6 @@ exec procedure rcodes()
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-create procedure tmptbls version 'sptest' {
-local function func(tbls)
-    for i, tbl in ipairs(tbls) do
-        tbl:insert({i=i})
-    end
-end
-local function main()
-    local tbl = db:table("tbl", {{"i", "int"}})
-    for i = 1, 20 do
-        local tbls = {}
-        for j = 1, i do
-            table.insert(tbls, tbl)
-        end
-        db:create_thread(func, tbls)
-    end
-    db:sleep(2) -- enough time for threads to finish
-    db:exec("select i, count(*) from tbl group by i"):emit()
-end
-}$$
-put default procedure tmptbls 'sptest'
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
-EOF
-
-cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure reset_test version 'sptest' {
 local total = 100
 local function setup()
@@ -1309,308 +1281,90 @@ EOF
 
 cdb2sql $SP_OPTIONS "exec procedure tmp_tbl_and_thread()" | sort
 
+cdb2sql $SP_OPTIONS - > /dev/null 2>&1 <<'EOF'
+create table no_ddl_t1(x INT)$$
+create table no_ddl_t2(x BLOB)$$
+create table no_ddl_t3(x INT)$$
+create index no_ddl_t1_i1 on no_ddl_t1(x)$$
+create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {}$$
+create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {}$$
+put password 'password' for 'auth_test_user'
+create lua scalar function no_ddl_proc1
+create lua aggregate function no_ddl_proc2
+create lua consumer no_ddl_proc1 on (table no_ddl_t1 for insert)
+create table comdb2_logical_cron (name cstring(128) primary key, value int)$$
+create table test_drop_tp_0(i int)$$
+create time partition on test_drop_tp_0 as test_drop_tp period 'manual' retention 2 start '1'
+EOF
+
 cdb2sql $SP_OPTIONS - <<'EOF'
-create table no_ddl_t1(x INT);$$
-create table no_ddl_t2(x BLOB);$$
-create table no_ddl_t3(x INT);$$
-create index no_ddl_t1_i1 on no_ddl_t1(x);$$
--- No support for user-defined views...
--- This will cause DROP VIEW to have an rc of 1 instead of 23 (below)
--- create view no_ddl_v1 as select 1;$$
-create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {};$$
-create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {};$$
-put password 'password' for 'auth_test_user';$$
-create lua scalar function no_ddl_proc1;$$
-create lua aggregate function no_ddl_proc1;$$
 create procedure no_ddl_test1 version 'sp_no_ddl_test1' {
 local function main()
-  local ddl_row1, ddl_rc1 = db:exec_with_ddl("CREATE TEMP TABLE no_ddl_tmp1(x INT);")
-  if ddl_rc1 == 0 then
-    db:emit("CREATE TEMP TABLE WITH DDL PASS")
-  else
-    db:emit("CREATE TEMP TABLE WITH DDL FAIL "..ddl_rc1)
-  end
-  local ddl_row2, ddl_rc2 = db:exec_with_ddl("CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x);")
-  if ddl_rc2 == 0 then
-    db:emit("CREATE TEMP INDEX WITH DDL PASS")
-  else
-    db:emit("CREATE TEMP INDEX WITH DDL FAIL "..ddl_rc2)
-  end
-  local ddl_row3, ddl_rc3 = db:exec_with_ddl("CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END;")
-  if ddl_rc3 == 0 then
-    db:emit("CREATE TEMP TRIGGER WITH DDL PASS")
-  else
-    db:emit("CREATE TEMP TRIGGER WITH DDL FAIL "..ddl_rc3)
-  end
-  local ddl_row4, ddl_rc4 = db:exec_with_ddl("CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1;")
-  if ddl_rc4 == 0 then
-    db:emit("CREATE TEMP VIEW WITH DDL PASS")
-  else
-    db:emit("CREATE TEMP VIEW WITH DDL FAIL "..ddl_rc4)
-  end
-  local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\';")
-  if ddl_rc5 == 0 then
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS")
-  else
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL FAIL "..ddl_rc5)
-  end
-  local row1, rc1 = db:exec("CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x);")
-  if rc1 == 0 then
-    db:emit("CREATE INDEX FAIL")
-  else
-    db:emit("CREATE INDEX PASS "..rc1)
-  end
-  local row2, rc2 = db:exec("CREATE TABLE t1(x INT);")
-  if rc2 == 0 then
-    db:emit("CREATE TABLE FAIL")
-  else
-    db:emit("CREATE TABLE PASS "..rc2)
-  end
-  local tab1, tab1rc = db:table("no_ddl_tmp2", {{"x", "INT"}})
-  if tab1rc == 0 then
-    db:emit("DB:TABLE PASS")
-  else
-    db:emit("DB:TABLE FAIL")
-  end
-  local row3, rc3 = db:exec("CREATE TEMP INDEX no_ddl_tmp1_i2 ON no_ddl_tmp1(x);")
-  if rc3 == 0 then
-    db:emit("CREATE TEMP INDEX FAIL")
-  else
-    db:emit("CREATE TEMP INDEX PASS "..rc3)
-  end
-  local row4, rc4 = db:exec("CREATE TEMP TABLE tmp1(x INT);")
-  if rc4 == 0 then
-    db:emit("CREATE TEMP TABLE FAIL")
-  else
-    db:emit("CREATE TEMP TABLE PASS "..rc4)
-  end
-  local row5, rc5 = db:exec("CREATE TEMP TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END;")
-  if rc5 == 0 then
-    db:emit("CREATE TEMP TRIGGER FAIL")
-  else
-    db:emit("CREATE TEMP TRIGGER PASS "..rc5)
-  end
-  local row6, rc6 = db:exec("CREATE TEMP VIEW v1 AS SELECT 1;")
-  if rc6 == 0 then
-    db:emit("CREATE TEMP VIEW FAIL")
-  else
-    db:emit("CREATE TEMP VIEW PASS "..rc6)
-  end
-  local row7, rc7 = db:exec("CREATE TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END;")
-  if rc7 == 0 then
-    db:emit("CREATE TRIGGER FAIL")
-  else
-    db:emit("CREATE TRIGGER PASS "..rc7)
-  end
-  local row8, rc8 = db:exec("CREATE VIEW v1 AS SELECT 1;")
-  if rc8 == 0 then
-    db:emit("CREATE VIEW FAIL")
-  else
-    db:emit("CREATE VIEW PASS "..rc8)
-  end
-  local row9, rc9 = db:exec("DROP INDEX no_ddl_t1_i1;")
-  if rc9 == 0 then
-    db:emit("DROP INDEX FAIL")
-  else
-    db:emit("DROP INDEX PASS "..rc9)
-  end
-  local row10, rc10 = db:exec("DROP TABLE no_ddl_tmp2;")
-  if rc10 == 0 then
-    db:emit("DROP TABLE FAIL")
-  else
-    db:emit("DROP TABLE PASS "..rc10)
-  end
-  local row11, rc11 = db:exec("DROP INDEX no_ddl_tmp1_i1;")
-  if rc11 == 0 then
-    db:emit("DROP TEMP INDEX FAIL")
-  else
-    db:emit("DROP TEMP INDEX PASS "..rc11)
-  end
-  local row12, rc12 = db:exec("DROP TABLE no_ddl_tmp1;")
-  if rc12 == 0 then
-    db:emit("DROP TEMP TABLE FAIL")
-  else
-    db:emit("DROP TEMP TABLE PASS "..rc12)
-  end
-  local row13, rc13 = db:exec("DROP TRIGGER no_ddl_tmp1_tr1;")
-  if rc11 == 0 then
-    db:emit("DROP TEMP TRIGGER FAIL")
-  else
-    db:emit("DROP TEMP TRIGGER PASS "..rc13)
-  end
-  local row14, rc14 = db:exec("DROP VIEW no_ddl_tv1;")
-  if rc14 == 0 then
-    db:emit("DROP TEMP VIEW FAIL")
-  else
-    db:emit("DROP TEMP VIEW PASS "..rc14)
-  end
-  -- NOTE: Cannot drop trigger because they cannot be created.
-  -- local row15, rc15 = db:exec("DROP TRIGGER no_ddl_t1_tr1;")
-  -- if rc15 == 0 then
-  --   db:emit("DROP TRIGGER FAIL")
-  -- else
-  --   db:emit("DROP TRIGGER PASS "..rc15)
-  -- end
-  local row16, rc16 = db:exec("DROP VIEW no_ddl_v1;")
-  if rc16 == 0 then
-    db:emit("DROP VIEW FAIL")
-  else
-    db:emit("DROP VIEW PASS "..rc16)
-  end
-  local row17, rc17 = db:exec("ALTER TABLE no_ddl_t1 ADD COLUMN y INT;")
-  if rc17 == 0 then
-    db:emit("ALTER TABLE FAIL")
-  else
-    db:emit("ALTER TABLE PASS "..rc17)
-  end
-  local row18, rc18 = db:exec("REBUILD no_ddl_t1;")
-  if rc18 == 0 then
-    db:emit("REBUILD TABLE FAIL")
-  else
-    db:emit("REBUILD TABLE PASS "..rc18)
-  end
-  local row19, rc19 = db:exec("REBUILD INDEX no_ddl_t1 no_ddl_t1_i1;")
-  if rc19 == 0 then
-    db:emit("REBUILD INDEX FAIL")
-  else
-    db:emit("REBUILD INDEX PASS "..rc19)
-  end
-  local row20, rc20 = db:exec("REBUILD DATA no_ddl_t1;")
-  if rc20 == 0 then
-    db:emit("REBUILD DATA FAIL")
-  else
-    db:emit("REBUILD DATA PASS "..rc20)
-  end
-  local row21, rc21 = db:exec("REBUILD DATABLOB no_ddl_t2;")
-  if rc21 == 0 then
-    db:emit("REBUILD DATABLOB FAIL")
-  else
-    db:emit("REBUILD DATABLOB PASS "..rc21)
-  end
-  local row22, rc22 = db:exec("TRUNCATE TABLE no_ddl_t1;")
-  if rc22 == 0 then
-    db:emit("TRUNCATE TABLE FAIL")
-  else
-    db:emit("TRUNCATE TABLE PASS "..rc22)
-  end
-  local row23, rc23 = db:exec("CREATE PROCEDURE nestedtest1 VERSION \'spnestedtest1\' {}")
-  if rc23 == 0 then
-    db:emit("CREATE PROCEDURE FAIL")
-  else
-    db:emit("CREATE PROCEDURE PASS "..rc23)
-  end
-  local row24, rc24 = db:exec("DROP PROCEDURE no_ddl_proc1;")
-  if rc24 == 0 then
-    db:emit("DROP PROCEDURE FAIL")
-  else
-    db:emit("DROP PROCEDURE PASS "..rc24)
-  end
-  local row25, rc25 = db:exec("CREATE TIME PARTITION ON no_ddl_t3 AS p1 PERIOD \'DAILY\' RETENTION 30 START \'2018-04-30\';")
-  if rc25 == 0 then
-    db:emit("CREATE TIME PARTITION FAIL")
-  else
-    db:emit("CREATE TIME PARTITION PASS "..rc25)
-  end
-  local row26, rc26 = db:exec("DROP TIME PARTITION no_ddl_t3_p1;")
-  if rc26 == 0 then
-    db:emit("DROP TIME PARTITION FAIL")
-  else
-    db:emit("DROP TIME PARTITION PASS "..rc26)
-  end
-  local row27, rc27 = db:exec("GET KW;")
-  if rc27 == 0 then
-    db:emit("GET TUNABLE FAIL")
-  else
-    db:emit("GET TUNABLE PASS "..rc27)
-  end
-  local row28, rc28 = db:exec("PUT AUTHENTICATION ON;")
-  if rc28 == 0 then
-    db:emit("PUT TUNABLE FAIL")
-  else
-    db:emit("PUT TUNABLE PASS "..rc28)
-  end
-  local row29, rc29 = db:exec("GRANT OP TO \'auth_test_user\';")
-  if rc29 == 0 then
-    db:emit("GRANT FAIL")
-  else
-    db:emit("GRANT PASS "..rc29)
-  end
-  local row30, rc30 = db:exec("REVOKE OP TO \'auth_test_user\';")
-  if rc30 == 0 then
-    db:emit("REVOKE FAIL")
-  else
-    db:emit("REVOKE PASS "..rc30)
-  end
-  local row31, rc31 = db:exec("CREATE LUA SCALAR FUNCTION no_ddl_proc2;")
-  if rc31 == 0 then
-    db:emit("CREATE LUA SCALAR FUNCTION FAIL")
-  else
-    db:emit("CREATE LUA SCALAR FUNCTION PASS "..rc31)
-  end
-  local row32, rc32 = db:exec("DROP LUA SCALAR FUNCTION no_ddl_proc2;")
-  if rc32 == 0 then
-    db:emit("DROP LUA SCALAR FUNCTION FAIL")
-  else
-    db:emit("DROP LUA SCALAR FUNCTION PASS "..rc32)
-  end
-  local row33, rc33 = db:exec("CREATE LUA AGGREGATE FUNCTION no_ddl_proc2;")
-  if rc33 == 0 then
-    db:emit("CREATE LUA AGGREGATE FUNCTION FAIL")
-  else
-    db:emit("CREATE LUA AGGREGATE FUNCTION PASS "..rc33)
-  end
-  local row34, rc34 = db:exec("DROP LUA AGGREGATE FUNCTION no_ddl_proc2;")
-  if rc34 == 0 then
-    db:emit("DROP LUA AGGREGATE FUNCTION FAIL")
-  else
-    db:emit("DROP LUA AGGREGATE FUNCTION PASS "..rc34)
-  end
-  local row35, rc35 = db:exec("CREATE LUA TRIGGER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x);")
-  if rc35 == 0 then
-    db:emit("CREATE LUA TRIGGER FAIL")
-  else
-    db:emit("CREATE LUA TRIGGER PASS "..rc35)
-  end
-  local row36, rc36 = db:exec("DROP LUA TRIGGER no_ddl_proc1;")
-  if rc36 == 0 then
-    db:emit("DROP LUA TRIGGER FAIL")
-  else
-    db:emit("DROP LUA TRIGGER PASS "..rc36)
-  end
-  local row37, rc37 = db:exec("CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x);")
-  if rc37 == 0 then
-    db:emit("CREATE LUA CONSUMER FAIL")
-  else
-    db:emit("CREATE LUA CONSUMER PASS "..rc37)
-  end
-  local row38, rc38 = db:exec("DROP LUA CONSUMER no_ddl_proc1;")
-  if rc38 == 0 then
-    db:emit("DROP LUA CONSUMER FAIL")
-  else
-    db:emit("DROP LUA CONSUMER PASS "..rc38)
-  end
-end};$$
-EOF
+    local t = db:table("no_ddl_tmp1", {{"x", "int"}})
+    if t == nil then
+        db:emit("tmp table failed")
+    end
+    local ddl_stmts = {
+        "CREATE TEMP TABLE no_ddl_tmp0(x INT)",
+        "DROP TABLE no_ddl_tmp1",
+        "CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x)",
+        "CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END",
+        "CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1",
+        "PUT TUNABLE allow_lua_print 'OFF'",
+        "CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x)",
+        "CREATE TABLE t1(x INT)",
+        "CREATE TEMP INDEX no_ddl_tmp1_i2 ON no_ddl_tmp1(x)",
+        "CREATE TEMP TABLE tmp1(x INT)",
+        "CREATE TEMP TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END",
+        "CREATE TEMP VIEW v1 AS SELECT 1",
+        "CREATE TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END",
+        "CREATE VIEW v1 AS SELECT 1",
+        "DROP INDEX no_ddl_t1_i1",
+        "DROP INDEX no_ddl_tmp1_i1",
+        "DROP lua consumer no_ddl_proc1",
+        "ALTER TABLE no_ddl_t1 ADD COLUMN y INT",
+        "REBUILD no_ddl_t1",
+        "REBUILD INDEX no_ddl_t1 no_ddl_t1_i1",
+        "REBUILD DATA no_ddl_t1",
+        "REBUILD DATABLOB no_ddl_t2",
+        "TRUNCATE TABLE no_ddl_t1",
+        "CREATE PROCEDURE nestedtest1 VERSION 'spnestedtest1' {}",
+        "DROP PROCEDURE no_ddl_proc1 'sp_no_ddl_proc1'",
+        "CREATE TIME PARTITION ON no_ddl_t3 AS p1 PERIOD 'DAILY' RETENTION 30 START '2018-04-30'",
+        "DROP TIME PARTITION no_ddl_t3_p1",
+        "GET KW",
+        "PUT AUTHENTICATION ON",
+        "GRANT OP TO 'auth_test_user'",
+        "REVOKE OP TO 'auth_test_user'",
+        "CREATE LUA SCALAR FUNCTION no_ddl_proc2",
+        "DROP LUA SCALAR FUNCTION no_ddl_proc2",
+        "CREATE LUA AGGREGATE FUNCTION no_ddl_proc2",
+        "DROP LUA AGGREGATE FUNCTION no_ddl_proc2",
+        "CREATE LUA TRIGGER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)",
+        "DROP LUA TRIGGER no_ddl_proc1",
+        "CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)",
+        "DROP LUA CONSUMER no_ddl_proc1",
+        "DROP TIME PARTITION test_drop_tp",
+    }
 
-cdb2sql $SP_OPTIONS - <<'EOF'
--- WARNING: Creating a time partition is fundamnetally an asynchronous operation that may
---          cause subsequent 'database schema has changed' style errors in the subsequent
---          stored procedure execution.  The sleep below is designed to work around this
---          issue; however, the timing may need to be adjusted in the future.
-create time partition on no_ddl_t3 as no_ddl_t3_p1 period 'daily' retention 30 start '2018-04-30';$$
-EOF
+    db:column_type("int", 1)
+    db:column_type("int", 2)
+    db:column_type("text", 3)
 
-cdb2sql $SP_OPTIONS - <<'EOF'
-select sleep(20);
-EOF
+    db:column_name("exec_rc", 1)
+    db:column_name("prepare_rc", 2)
+    db:column_name("ddl", 3)
 
-cdb2sql $SP_OPTIONS - <<'EOF'
-put default procedure no_ddl_test1 'sp_no_ddl_test1';
-EOF
-
-cdb2sql $SP_OPTIONS - <<'EOF'
-put tunable allow_lua_exec_with_ddl 'on';
-exec procedure no_ddl_test1();
+    local stmt0, stmt1
+    local rc0, rc1
+    for _, ddl in ipairs(ddl_stmts) do
+        stmt0, rc0 = db:exec(ddl)
+        stmt1, rc1 = db:prepare(ddl)
+        db:emit(rc0, rc1, ddl)
+    end
+end}$$
+put default procedure no_ddl_test1 'sp_no_ddl_test1'
+exec procedure no_ddl_test1()
 EOF
 
 cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'

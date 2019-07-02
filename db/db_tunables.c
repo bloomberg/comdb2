@@ -38,7 +38,6 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
-extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;

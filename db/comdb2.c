@@ -150,7 +150,6 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
-int gbl_allow_lua_exec_with_ddl = 0;
 int gbl_allow_lua_dynamic_libs = 0;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
