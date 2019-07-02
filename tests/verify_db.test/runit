@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
+    CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 
+fi
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertcnt ()
+{
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "tbl $tbl count is now $cnt but should be $target"
+    fi
+}
+
+assert_vers()
+{
+    local loc_tbl=$1
+    local target=$2
+    local newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$loc_tbl')")
+    if [[ $newver != $target ]] ; then
+        failexit "newver is now $newver but should be $target"
+    fi
+}
+
+assert_schema()
+{
+    tbl=$1
+    schema=$2
+
+    echo "make sure that the current schema is $schema"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
+
+    if ! diff -Bw schema.out $schema ; then 
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
+        failexit "final schema is not same as $schema: diff schema.out $schema"
+    fi
+}
+
+do_verify()
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+
+nout=0
+insert_records()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    insfl=insert${nout}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'aabbccddeeffaabbccddeeffaabbccddeeffaabbccddeeffaabbccddeeffaabbccddeeffaabbccddeeffaabbccddeeff$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8whichiwillmakealongstringsothatitgetswrittentothebloboverflowdatafiles$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        if [ $? -ne 0 ]; then 
+            sleep 1
+            continue
+        fi
+        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
+        let j=j+1
+    done
+    echo "done inserting round $nout"
+}
+
+
+assertres ()
+{
+    if [ $# != 2 ] ; then 
+        failexit "number of parameters passed is $# but expecting 2"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+master=`getmaster`
+
+echo "db verify after inserting tests"
+
+assert_vers t1 0
+assert_schema t1 alltypes.csc2
+
+let NEWNUMREC=100
+insert_records 1 $NEWNUMREC
+assertcnt t1 $NEWNUMREC
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+
+insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
+assertcnt t1 $((NEWNUMREC*2))
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_nodta.out
+
+echo "checking for nodta verify out"
+if ! diff verify_nodta.out verify_nodta.expected ; then
+    failexit "diff ${PWD}/{verify_nodta.out,verify_nodta.expected}"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+insert_records 1 $NEWNUMREC
+assertcnt t1 $NEWNUMREC
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+
+insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
+echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNUMREC
+assertcnt t1 $NEWNUMREC
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_noidx.out
+
+
+echo "checking for idx verify out"
+if ! diff verify_noidx.out verify_noidx.expected ; then
+    failexit "diff ${PWD}/{verify_noidx.out,verify_noidx.expected}"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
+
+insert_records 1 $NEWNUMREC
+echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNUMREC
+assertcnt t1 $NEWNUMREC
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+
+insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
+assertcnt t1 $((NEWNUMREC*2))
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_noblob.out
+
+echo "checking for blob verify out"
+if ! diff verify_noblob.out verify_noblob.expected ; then
+    failexit "diff ${PWD}/{verify_noblob.out,verify_noblob.expected}"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+insert_records 1 $NEWNUMREC
+assertcnt t1 $NEWNUMREC
+
+
+echo "Success"
