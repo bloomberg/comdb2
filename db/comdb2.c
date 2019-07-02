@@ -335,6 +335,9 @@ int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
+int gbl_debug_omit_dta_write;
+int gbl_debug_omit_idx_write;
+int gbl_debug_omit_blob_write;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;

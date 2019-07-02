@@ -1060,7 +1060,7 @@ static int bdb_verify_ll(
                                   &dbt_dta_check_data, DB_SET);
                 if (rc == DB_NOTFOUND) {
                     ret = 1;
-                    locprint(sb, lua_callback, lua_params, "!%016llx orphaned blob\n", genid_flipped);
+                    locprint(sb, lua_callback, lua_params, "!%016llx orphaned blob %d\n", genid_flipped, blobno);
                 }
                 else if (rc) {
                     ret = 1;

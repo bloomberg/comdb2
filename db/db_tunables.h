@@ -1192,6 +1192,18 @@ REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
                  "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
                  &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.omit_dta_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_dta_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_idx_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_idx_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_blob_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,

@@ -301,6 +301,9 @@ extern int gbl_selectv_writelock;
 int gbl_debug_tmptbl_corrupt_mem;
 
 extern int gbl_clean_exit_on_sigterm;
+extern int gbl_debug_omit_dta_write;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
 
 /*
   =========================================================
