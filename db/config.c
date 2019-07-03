@@ -108,8 +108,9 @@ struct read_lrl_option_type {
 
 void print_version_and_exit()
 {
-    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s]\n",
-           gbl_db_version, gbl_db_codename, gbl_db_semver, gbl_db_buildtype);
+    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s] [%s]\n",
+           gbl_db_version, gbl_db_codename, gbl_db_semver,
+           gbl_db_git_version_sha, gbl_db_buildtype);
     exit(2);
 }
 
