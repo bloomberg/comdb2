@@ -219,6 +219,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
+    int ret = 0;
     int rc;
     int blobsizes[16];
     int bloboffs[16];
@@ -244,17 +245,31 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     dbt_key.data = keybuf;
 
     db = bdb_state->dbp_data[0][dtastripe];
-    rc = db->paired_cursor_from_lid(db, par->lid, &cdata, 0);
+    unsigned int lid = par->lid;
+    if (par->parallel_verify) {
+        BDB_READLOCK("bdb_verify");
+
+        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
+                        DB_LOCK_ID_READONLY)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
+            par->verify_failed = 1;
+            ret = rc;
+            goto done;
+        }
+    }
+
+    rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
-        return rc;
+        ret = rc;
+        goto done;
     }
     uint8_t ver;
     rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                          DB_FIRST);
     if (rc == DB_NOTFOUND) {
         cdata->c_close(cdata);
-        return 0;
+        goto done;
     }
 
     while (rc == 0) {
@@ -267,8 +282,9 @@ static int bdb_verify_data_stripe(verify_td_params *par)
         if ((now - last) > 1000) {
             if (dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
-                logmsg(LOGMSG_WARN, "condb2sc connection closed, stopped verify\n");
-                return rc;
+                logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+                par->client_dropped_connection = 1;
+                goto done;
             }
         }
 
@@ -280,7 +296,8 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                         nrecs_progress / par->progress_report_seconds);
             if(rc) {
                 par->client_dropped_connection = 1;
-                return par->verify_failed; //dropped connection
+                ret = par->verify_failed; //dropped connection
+                goto done;
             }
             last = now;
             nrecs_progress = 0;
@@ -341,17 +358,17 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                     par->verify_failed = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx unknown dtafile\n",
                                 genid_flipped);
-                    return 0;
+                    goto done;
                 }
                 blobdb =
                     get_dbp_from_genid(bdb_state, blobno + 1, genid, NULL);
 
-                rc = blobdb->paired_cursor_from_lid(blobdb, par->lid, &cblob, 0);
+                rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                 if (rc) {
                     par->verify_failed = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx cursor on blob %d rc %d\n",
                                 genid_flipped, blobno, rc);
-                    return 0;
+                    goto done;
                 }
 
                 /* Note: we have to fetch the whole blob here because with
@@ -417,8 +434,10 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                         rc = par->add_blob_buffer_callback(
                             par->callback_blob_buf, dbt_blob_data.data,
                             dbt_blob_data.size, blobno);
-                        if (rc)
-                            return rc;
+                        if (rc) {
+                            ret = rc;
+                            goto done;
+                        }
                     }
 
                     if (dbt_blob_data.data && had_errors == 0)
@@ -428,12 +447,13 @@ static int bdb_verify_data_stripe(verify_td_params *par)
             }
             if (par->attempt_fix && had_errors && !had_irrecoverable_errors) {
                 rc = fix_blobs(bdb_state, db, &cdata, genid, nblobs,
-                               bloboffs, realblobsz, par->lid);
+                               bloboffs, realblobsz, lid);
                 if (rc) {
                     logmsg(LOGMSG_ERROR, "fix_blobs rc %d\n", rc);
                     /* close? */
                     par->free_blob_buffer_callback(par->callback_blob_buf);
-                    return rc;
+                    ret = rc;
+                    goto done;
                 }
             }
         }
@@ -443,13 +463,14 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                                            par->callback_blob_buf);
         for (int ix = 0; ix < bdb_state->numix; ix++) {
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
-                bdb_state->dbp_ix[ix], par->lid, &ckey, 0);
+                bdb_state->dbp_ix[ix], lid, &ckey, 0);
             if (rc) {
                 ckey = NULL;
                 par->free_blob_buffer_callback(par->callback_blob_buf);
                 logmsg(LOGMSG_ERROR, "unexpected rc opening cursor for ix %d: %d\n", ix,
                        rc);
-                return rc;
+                ret = rc;
+                goto done;
             }
 
             int keylen;
@@ -461,7 +482,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                          "!%016llx ix %d formkey rc %d\n", genid_flipped,
                          ix, rc);
                 ckey->c_close(ckey);
-                return 0;
+                goto done;
             }
 
             /* set up key */
@@ -540,11 +561,16 @@ static int bdb_verify_data_stripe(verify_td_params *par)
         par->verify_failed = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!dtastripe %d c_get unexpected rc %d\n", dtastripe,
                     rc);
-        return rc;
+        ret = rc;
+        goto done;
     }
     cdata->c_close(cdata);
+
+done:
+    if (par->parallel_verify)
+        BDB_RELLOCK();
     free(par->info);
-    return 0;
+    return ret;
 }
 
 static int bdb_verify_data(verify_td_params *par)
@@ -571,6 +597,7 @@ static int bdb_verify_key(verify_td_params *par)
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
     unsigned char verify_keybuf[18 * 1024];
+    int ret = 0;
     int rc;
     int blobsizes[16];
     int bloboffs[16];
@@ -605,12 +632,26 @@ static int bdb_verify_key(verify_td_params *par)
     int64_t nrecs = 0;
     int nrecs_progress = 0;
     int ix = par->info->index;
+    unsigned int lid = par->lid;
+
+    if (par->parallel_verify) {
+        BDB_READLOCK("bdb_verify");
+
+        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
+                        DB_LOCK_ID_READONLY)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
+            par->verify_failed = 1;
+            ret = rc;
+            goto done;
+        }
+    }
+
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
-        bdb_state->dbp_ix[ix], par->lid, &ckey, 0);
+        bdb_state->dbp_ix[ix], lid, &ckey, 0);
     if (rc) {
         par->verify_failed = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d cursor rc %d\n", ix, rc);
-        return 0;
+        goto done;
     }
     rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_FIRST);
     if (rc && rc != DB_NOTFOUND) {
@@ -627,9 +668,9 @@ static int bdb_verify_key(verify_td_params *par)
         if ((now - last) > 1000) {
             if (dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
-                logmsg(LOGMSG_WARN, "condb2sc connection closed, stopped verify\n");
+                logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
                 par->client_dropped_connection = 1;
-                return rc;
+                goto done;
             }
         }
 
@@ -662,7 +703,7 @@ static int bdb_verify_key(verify_td_params *par)
 
         /* make sure the data entry exists: */
         db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
-        rc = db->paired_cursor_from_lid(db, par->lid, &cdata, 0);
+        rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
         if (rc) {
             par->verify_failed = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d rc %d\n", genid_flipped, ix,
@@ -716,18 +757,18 @@ static int bdb_verify_key(verify_td_params *par)
                     if (dtafile < 0) {
                         sbuf2printf(par->sb, "!%016llx unknown dtafile\n",
                                     genid_flipped);
-                        return 0;
+                        goto done;
                     }
                     blobdb = get_dbp_from_genid(bdb_state, blobno + 1,
                                                 genid, NULL);
 
-                    rc = blobdb->paired_cursor_from_lid(blobdb, par->lid, &cblob,
+                    rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob,
                                                         0);
                     if (rc) {
                         sbuf2printf(par->sb,
                                     "!%016llx cursor on blob %d rc %d\n",
                                     genid_flipped, blobno, rc);
-                        return 0;
+                        goto done;
                     }
 
                     /* Note: we have to fetch the whole blob here because
@@ -791,8 +832,10 @@ static int bdb_verify_key(verify_td_params *par)
                             rc = par->add_blob_buffer_callback(
                                 par->callback_blob_buf, dbt_blob_data.data,
                                 dbt_blob_data.size, blobno);
-                            if (rc)
-                                return rc;
+                            if (rc) {
+                                ret = rc;
+                                goto done;
+                            }
                         }
 
                         if (dbt_blob_data.data && had_errors == 0)
@@ -931,8 +974,12 @@ static int bdb_verify_key(verify_td_params *par)
         locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d close cursor rc %d\n", genid, ix,
                     rc);
     }
+
+done:
+    if (par->parallel_verify)
+        BDB_RELLOCK();
     free(par->info);
-    return 0;
+    return ret;
 }
 
 static int bdb_verify_keys(verify_td_params *par)
@@ -954,7 +1001,7 @@ static void bdb_verify_blob(verify_td_params *par)
 {
     DBC *cdata = NULL;
     DBC *cblob;
-    int rc;
+    int rc = 0;
 
     bdb_state_type *bdb_state = par->bdb_state;
     int blobno = par->info->blobno;
@@ -969,11 +1016,24 @@ static void bdb_verify_blob(verify_td_params *par)
         return;
     }
 
-    rc = db->paired_cursor_from_lid(db, par->lid, &cblob, 0);
+    unsigned int lid = par->lid;
+
+    if (par->parallel_verify) {
+        BDB_READLOCK("bdb_verify");
+
+        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
+                        DB_LOCK_ID_READONLY)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
+            par->verify_failed = 1;
+            goto done;
+        }
+    }
+
+    rc = db->paired_cursor_from_lid(db, lid, &cblob, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d blobno %d cursor rc %d\n", dtastripe,
                blobno, rc);
-        return;
+        goto done;
     }
 
     char dumbuf;
@@ -1031,12 +1091,12 @@ static void bdb_verify_blob(verify_td_params *par)
         }
 
         rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
-            bdb_state->dbp_data[0][stripe], par->lid, &cdata, 0);
+            bdb_state->dbp_data[0][stripe], lid, &cdata, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "dtastripe %d genid %016llx cursor rc %d\n", stripe,
                    genid_flipped, rc);
             rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
-            return;
+            goto done;
         }
         rc = cdata->c_get(cdata, &dbt_dta_check_key,
                           &dbt_dta_check_data, DB_SET);
@@ -1059,6 +1119,10 @@ static void bdb_verify_blob(verify_td_params *par)
         logmsg(LOGMSG_ERROR, "fetch blob rc %d\n", rc);
 
     cblob->c_close(cblob);
+
+done:
+    if (par->parallel_verify)
+        BDB_RELLOCK();
     free(par->info);
 }
 
@@ -1101,7 +1165,6 @@ static int bdb_verify_ll(verify_td_params *par)
 int bdb_verify(verify_td_params *par)
 {
     int rc;
-    DB_LOCKREQ rq = {0};
     bdb_state_type *bdb_state = par->bdb_state;
 
     BDB_READLOCK("bdb_verify");
@@ -1115,6 +1178,7 @@ int bdb_verify(verify_td_params *par)
 
     rc = bdb_verify_ll(par); 
 
+    DB_LOCKREQ rq = {0};
     rq.op = DB_LOCK_PUT_ALL;
     bdb_state->dbenv->lock_vec(bdb_state->dbenv, par->lid, 0, &rq, 1, NULL);
     bdb_state->dbenv->lock_id_free(bdb_state->dbenv, par->lid);

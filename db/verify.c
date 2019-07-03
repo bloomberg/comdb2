@@ -320,7 +320,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
             verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
-            NULL, progress_report_seconds, attempt_fix, 0
+            NULL, progress_report_seconds, attempt_fix, 0, 0, 0, 0
         };
         rc = bdb_verify(&par);
     }

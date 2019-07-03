@@ -51,6 +51,7 @@ typedef struct {
     int progress_report_seconds;
     int attempt_fix;
     unsigned int lid;  // transaction locker id, if 0 create your own
+    uint8_t parallel_verify;
     uint8_t verify_failed;
     uint8_t client_dropped_connection;
 } verify_td_params;
