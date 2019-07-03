@@ -1518,6 +1518,7 @@ extern int gbl_trigger_timepart;
 extern const char gbl_db_version[];
 extern const char gbl_db_semver[];
 extern const char gbl_db_codename[];
+extern const char gbl_db_buildtype[];
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_verbose_toblock_backouts;
