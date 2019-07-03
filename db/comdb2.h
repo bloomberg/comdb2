@@ -644,6 +644,7 @@ typedef struct dbtable {
     shard_limits_t *sharding;
 
     int numblobs;
+    int nstripes;
 
     /* we do not necessarily have as many sql indexes as there are comdb2
      * indexes - only indexes free of <DESCEND> can be advertised to sqlite.
@@ -2335,7 +2336,7 @@ int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
 
 void cleanup_newdb(struct dbtable *);
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                             int dbnum, int dbix, int is_foreign);
+                             int dbnum, int dbix, int is_foreign, int nstripes);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
 int init_check_constraints(struct dbtable *tbl);
@@ -3575,5 +3576,6 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran);
 int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
 
 extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
+extern int db_get_dtastripe_by_name(const char *tablename, tran_type *tran);
 
 #endif /* !INCLUDED_COMDB2_H */

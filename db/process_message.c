@@ -5192,11 +5192,11 @@ int query_limit_cmd(char *line, int llen, int toff)
     return 0;
 }
 
-extern int db_get_dtastripe(struct dbtable *db, tran_type *tran) {
+int db_get_dtastripe_by_name(const char *tablename, tran_type *tran) {
     char *stripestr;
     int nstripes;
     int rc;
-    rc = bdb_get_table_parameter_tran(db->tablename, "dtastripe", &stripestr, tran);
+    rc = bdb_get_table_parameter_tran(tablename, "dtastripe", &stripestr, tran);
     if (rc)
         nstripes = gbl_dtastripe;
     else {
@@ -5204,4 +5204,8 @@ extern int db_get_dtastripe(struct dbtable *db, tran_type *tran) {
         free(stripestr);
     }
     return nstripes;
+}
+
+int db_get_dtastripe(struct dbtable *db, tran_type *tran) {
+    return db_get_dtastripe_by_name(db->tablename, tran);
 }

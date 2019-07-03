@@ -600,7 +600,7 @@ int do_dryrun(struct schema_change_type *s)
         goto done;
     }
 
-    newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0, 1);
+    newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0, 1, 0);
     if (!newdb) {
         rc = -1;
         goto done;
@@ -1001,7 +1001,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     if (s->dbnum != -1) db->dbnum = s->dbnum;
 
     db->sc_to = newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0, nstripes);
 
     if (newdb == NULL) {
         return -1;

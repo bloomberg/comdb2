@@ -1009,7 +1009,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     return -1;
                 }
             }
-
             dyns_init_globals();
             rc = new_table_from_schema(dbenv, tblname, fname, dbnum, tok);
             dyns_cleanup_globals();

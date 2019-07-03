@@ -6995,7 +6995,7 @@ struct schema *create_version_schema(char *csc2, int version,
         goto err;
     }
 
-    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0);
+    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0, 1);
     if (ver_db == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7113,7 +7113,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
 
     dbtable *newdb = newdb_from_schema(db->dbenv, db->tablename, NULL,
-                                       db->dbnum, foundix, 0);
+                                       db->dbnum, foundix, 0, nstripes);
     if (newdb == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7145,7 +7145,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, arg_tran, 0, &bdberr);
+        newdb->numblobs + 1, db->nstripes, thedb->bdb_env, arg_tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

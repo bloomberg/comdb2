@@ -955,7 +955,10 @@ int bdb_get_active_stripe_int(bdb_state_type *bdb_state)
 
     id = (size_t)pthread_getspecific(parent->tid_key);
 
-    return id % bdb_state->attr->dtastripe;
+    if (bdb_state->parent)
+        return id % bdb_state->nstripes;
+    else
+        return id % bdb_state->attr->dtastripe;
 }
 
 int bdb_get_active_stripe(bdb_state_type *bdb_state)

@@ -458,7 +458,7 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                       int foundix, int schema_version, int nstripes)
 {
     struct dbtable *newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0, nstripes);
 
     if (newdb == NULL) return NULL;
 
