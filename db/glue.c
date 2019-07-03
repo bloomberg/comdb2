@@ -146,6 +146,9 @@ struct net_morestripe_msg {
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
+extern int gbl_use_fastseed_for_comdb2_seqno;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
 
 extern int get_physical_transaction(bdb_state_type *bdb_state,
                                     tran_type *logical_tran,
@@ -974,6 +977,9 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
+    if (gbl_debug_omit_idx_write) {
+        return 0;
+    }
     int rc;
     ACCUMULATE_TIMING(CHR_IXADDK,
                       rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
@@ -1276,18 +1282,14 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
              size_t length, int rrn, unsigned long long genid, int odhready)
 {
-    return blob_add_auxdb(AUXDB_NONE, iq, trans, blobno, data, length, rrn,
-                          genid, odhready);
-}
+    if (gbl_debug_omit_blob_write) {
+        return 0;
+    }
 
-int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid,
-                   int odhready)
-{
     struct dbtable *db = iq->usedb;
     int bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
@@ -5780,7 +5782,6 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
     return rc;
 }
 
-extern int gbl_use_fastseed_for_comdb2_seqno;
 long long get_unique_longlong(struct dbenv *env)
 {
     long long id = 0;

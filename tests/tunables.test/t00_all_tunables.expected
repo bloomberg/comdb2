@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=915)
+(TUNABLES_COUNT=914)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -19,7 +19,6 @@
 (name='allow_broken_datetimes', description='Allow broken datetimes', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_key_typechange', description='allow_key_typechange', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_lua_dynamic_libs', description='Enable to allow use of dynamic libraries (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
-(name='allow_lua_exec_with_ddl', description='Enable to allow use of SQL DDL commands from inside of Lua stored procedures (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_lua_print', description='Enable to allow stored procedures to print trace on DB's stdout. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='allow_mismatched_tag_size', description='Allow variants in padding in static tag struct sizes', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_negative_column_size', description='Allow negative column size in csc2 schema. Added mostly for backwards compatibility. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
