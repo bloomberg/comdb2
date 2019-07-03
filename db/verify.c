@@ -421,6 +421,7 @@ int parallel_verify()
     thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
 
 
+    //bdb_parallel_verify();
     //dispatch work
     //wait for all threads to finish
     //return error code and output

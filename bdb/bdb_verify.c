@@ -1162,6 +1162,12 @@ static int bdb_verify_ll(verify_td_params *par)
     return par->verify_failed;
 }
 
+int bdb_verify_test(verify_td_params *par)
+{
+    par->parallel_verify = 1;
+    return bdb_verify_ll(par);
+}
+
 int bdb_verify(verify_td_params *par)
 {
     int rc;
