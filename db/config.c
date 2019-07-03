@@ -90,6 +90,8 @@ static const char *help_text = {
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
     "        --tunable                  override tunable\n"
+    "        --help                     displays this help text and exit\n"
+    "        --version                  displays version information and exit\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
