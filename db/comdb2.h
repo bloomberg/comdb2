@@ -2284,9 +2284,6 @@ int dat_highrrn(struct ireq *iq, int *out_highrrn);
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
              size_t length, int rrn, unsigned long long genid, int odhready);
-int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid,
-                   int odhready);
 
 int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
              int blobno);

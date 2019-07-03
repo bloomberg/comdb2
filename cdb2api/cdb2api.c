@@ -31,11 +31,14 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "cdb2api.h"
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
+#include <fcntl.h>
 
 /*
 *******************************************************************************
@@ -305,6 +308,20 @@ static void reset_the_configuration(void)
     reset_sockpool();
 }
 
+static SBUF2 *sbuf2openread(const char *filename)
+{
+    int fd;
+    SBUF2 *s;
+
+    if ((fd = open(filename, O_RDONLY, 0)) < 0 ||
+        (s = sbuf2open(fd, 0)) == NULL) {
+        if (fd >= 0)
+            close(fd);
+        return NULL;
+    }
+    return s;
+}
+
 #if defined(__APPLE__)
 #include <libproc.h>
 
@@ -328,21 +345,21 @@ static char *proc_cmdline_getargv0(void)
     static char argv0[PATH_MAX];
 
     snprintf(procname, sizeof(procname), "/proc/self/cmdline");
-    FILE *f = fopen(procname, "r");
-    if (f == NULL) {
+    SBUF2 *s = sbuf2openread(procname);
+    if (s == NULL) {
         fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
                 strerror(errno));
         return NULL;
     }
 
-    if (fgets(argv0, PATH_MAX, f) == NULL) {
+    if ((sbuf2gets(argv0, PATH_MAX, s)) < 0) {
         fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
                 strerror(errno));
-        fclose(f);
+        sbuf2close(s);
         return NULL;
     }
 
-    fclose(f);
+    sbuf2close(s);
     return argv0;
 }
 #endif
@@ -717,7 +734,6 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     return 0;
 }
 
-#include <fcntl.h>
 static int lclconn(int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
@@ -1122,11 +1138,11 @@ void cdb2_set_sockpool(const char *sp_path)
     SOCKPOOL_OTHER_NAME = strdup(sp_path);
 }
 
-static inline int get_char(FILE *fp, const char *buf, int *chrno)
+static inline int get_char(SBUF2 *s, const char *buf, int *chrno)
 {
     int ch;
-    if (fp) {
-        ch = getc(fp);
+    if (s) {
+        ch = sbuf2getc(s);
     } else {
         ch = buf[*chrno];
         *chrno += 1;
@@ -1134,12 +1150,12 @@ static inline int get_char(FILE *fp, const char *buf, int *chrno)
     return ch;
 }
 
-static int read_line(char *line, int maxlen, FILE *fp, const char *buf,
+static int read_line(char *line, int maxlen, SBUF2 *s, const char *buf,
                      int *chrno)
 {
-    int ch = get_char(fp, buf, chrno);
+    int ch = get_char(s, buf, chrno);
     while (ch == ' ' || ch == '\n')
-        ch = get_char(fp, buf, chrno); // consume empty lines
+        ch = get_char(s, buf, chrno); // consume empty lines
 
     int count = 0;
     while ((ch != '\n') && (ch != EOF) && (ch != '\0')) {
@@ -1147,7 +1163,7 @@ static int read_line(char *line, int maxlen, FILE *fp, const char *buf,
         count++;
         if (count >= maxlen)
             return count;
-        ch = get_char(fp, buf, chrno);
+        ch = get_char(s, buf, chrno);
     }
     if (count == 0)
         return -1;
@@ -1188,7 +1204,7 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 }
 #endif
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
+static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                               const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][64], int *num_hosts,
                               int *comdb2db_num, const char *dbname,
@@ -1199,7 +1215,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
     int line_no = 0;
 
     debugprint("entering\n");
-    while (read_line((char *)&line, sizeof(line), fp, buf, &line_no) != -1) {
+    while (read_line((char *)&line, sizeof(line), s, buf, &line_no) != -1) {
         char *last = NULL;
         char *tok = NULL;
         tok = strtok_r(line, " :", &last);
@@ -1442,7 +1458,7 @@ static int read_available_comdb2db_configs(
     int *num_db_hosts, int *dbnum)
 {
     char filename[PATH_MAX];
-    FILE *fp;
+    SBUF2 *s;
     int fallback_on_bb_bin = 1;
 
     if (hndl)
@@ -1469,12 +1485,12 @@ static int read_available_comdb2db_configs(
         fallback_on_bb_bin = 0;
     } else {
         if (*CDB2DBCONFIG_NOBBENV != '\0') {
-            fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
-            if (fp != NULL) {
-                read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
+            s = sbuf2openread(CDB2DBCONFIG_NOBBENV);
+            if (s != NULL) {
+                read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
                                   num_hosts, comdb2db_num, dbname, db_hosts,
                                   num_db_hosts, dbnum, send_stack);
-                fclose(fp);
+                sbuf2close(s);
                 fallback_on_bb_bin = 0;
             }
         }
@@ -1486,21 +1502,21 @@ static int read_available_comdb2db_configs(
      * can't find the file in any standard location, look at /bb/bin
      * Once deployment details for comdb2db.cfg solidify, this will go away. */
     if (fallback_on_bb_bin) {
-        fp = fopen(CDB2DBCONFIG_TEMP_BB_BIN, "r");
-        if (fp != NULL) {
-            read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
+        s = sbuf2openread(CDB2DBCONFIG_TEMP_BB_BIN);
+        if (s != NULL) {
+            read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, send_stack);
-            fclose(fp);
+            sbuf2close(s);
         }
     }
 
-    fp = fopen(filename, "r");
-    if (fp != NULL) {
-        read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
+    s = sbuf2openread(filename);
+    if (s != NULL) {
+        read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
                           num_db_hosts, dbnum, send_stack);
-        fclose(fp);
+        sbuf2close(s);
     }
     pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
