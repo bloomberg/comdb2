@@ -113,10 +113,11 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
 
     if (is_union) {
         /* restriction allows us direct indexing in result set */
-        for (i=0;i<lst->nExpr;i++) {
-            assert(lst->a[i].pExpr->op == TK_INTEGER && 
-                    (lst->a[i].pExpr->flags & EP_IntValue));
-            (*order_dir)[i] = lst->a[i].pExpr->u.iValue * (((*order_dir)[i])?-1:1);
+        for (i = 0; i < lst->nExpr; i++) {
+            assert(lst->a[i].pExpr->op == TK_INTEGER &&
+                   (lst->a[i].pExpr->flags & EP_IntValue));
+            (*order_dir)[i] =
+                lst->a[i].pExpr->u.iValue * (((*order_dir)[i]) ? -1 : 1);
         }
     }
 
@@ -125,8 +126,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
 
 char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                               int *order_size, int **order_dir,
-                              struct params_info **pParamsOut,
-                              int is_union)
+                              struct params_info **pParamsOut, int is_union)
 {
     char *cols = NULL;
     const char *tbl = NULL;
@@ -158,9 +158,8 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
 
     if (p->pOrderBy) {
-        orderby =
-            describeExprList(v, p->pOrderBy, order_size, order_dir, pParamsOut,
-                             is_union);
+        orderby = describeExprList(v, p->pOrderBy, order_size, order_dir,
+                                   pParamsOut, is_union);
         if (!orderby) {
             sqlite3_free(where);
             return NULL;
@@ -450,9 +449,8 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     while (crt) {
         assert(crt == p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
-        *psub =
-            gen_oneselect(v, crt, pOffset, &node->order_size,
-                          &node->order_dir, 1);
+        *psub = gen_oneselect(v, crt, pOffset, &node->order_size,
+                              &node->order_dir, 1);
         crt->pLimit = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
