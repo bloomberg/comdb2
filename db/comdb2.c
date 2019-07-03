@@ -5173,6 +5173,7 @@ static void handle_resume_sc()
 
 #define TOOLS           \
    TOOL(cdb2_dump)      \
+   TOOL(cdb2_load)      \
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_stat)      \
    TOOL(cdb2_verify)

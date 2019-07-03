@@ -5,9 +5,9 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -24,9 +24,14 @@ static const char revid[] =
 #include <unistd.h>
 #endif
 
-#include "db_int.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
+
+#include <crc32c.h>
+#include <locks_wrap.h>
+#include <logmsg.h>
+#include <mem.h>
 
 typedef struct {			/* XXX: Globals. */
 	const char *progname;		/* Program name. */
@@ -42,22 +47,23 @@ typedef struct {			/* XXX: Globals. */
 	u_int32_t cache;		/* Env cache size. */
 } LDG;
 
-void	badend __P((DB_ENV *));
-void	badnum __P((DB_ENV *));
-int	configure __P((DB_ENV *, DB *, char **, char **, int *));
-int	convprintable __P((DB_ENV *, char *, char **));
-int	db_init __P((DB_ENV *, char *, u_int32_t, int *));
-int	dbt_rdump __P((DB_ENV *, DBT *));
-int	dbt_rprint __P((DB_ENV *, DBT *));
-int	dbt_rrecno __P((DB_ENV *, DBT *, int));
-int	dbt_to_recno __P((DB_ENV *, DBT *, db_recno_t *));
-int	digitize __P((DB_ENV *, int, int *));
-int	env_create __P((DB_ENV **, LDG *));
-int	load __P((DB_ENV *, char *, DBTYPE, char **, u_int, LDG *, int *));
-int	main __P((int, char *[]));
-int	rheader __P((DB_ENV *, DB *, DBTYPE *, char **, int *, int *));
-int	usage __P((void));
-int	version_check __P((const char *));
+static void	badend __P((DB_ENV *));
+static void	badnum __P((DB_ENV *));
+static int	configure __P((DB_ENV *, DB *, char **, char **, int *));
+static int	convprintable __P((DB_ENV *, char *, char **));
+static int	db_init (DB_ENV *, char *, u_int32_t, int *);
+static int	dbt_rdump __P((DB_ENV *, DBT *));
+static int	dbt_rprint __P((DB_ENV *, DBT *));
+static int	dbt_rrecno __P((DB_ENV *, DBT *, int));
+static int	dbt_to_recno __P((DB_ENV *, DBT *, db_recno_t *));
+static int	digitize __P((DB_ENV *, int, int *));
+static int	env_create __P((DB_ENV **, LDG *));
+static int	load __P((DB_ENV *, char *, DBTYPE, char **, u_int, LDG *, int *));
+static int	rheader __P((DB_ENV *, DB *, DBTYPE *, char **, int *, int *));
+static int	cdb2_load_usage(void);
+static int	version_check(const char *);
+
+extern pthread_key_t comdb2_open_key;
 
 #define	G(f)	((LDG *)dbenv->app_private)->f
 
@@ -67,10 +73,14 @@ int	version_check __P((const char *));
 #define	LDF_PASSWORD	0x04		/* Encrypt created databases. */
 
 int
-main(argc, argv)
+tool_cdb2_load_main(argc, argv)
 	int argc;
 	char *argv[];
 {
+	crc32c_init(0);
+	comdb2ma_init(0, 0);
+	io_override_set_std(stdout);
+
 	extern char *optarg;
 	extern int optind;
 	DBTYPE dbtype;
@@ -80,7 +90,7 @@ main(argc, argv)
 	int ch, existed, exitval, ret;
 	char **clist, **clp;
 
-	ldg.progname = "db_load";
+	ldg.progname = "cdb2_load";
 	ldg.lineno = 0;
 	ldg.endodata = ldg.endofile = 0;
 	ldg.version = 1;
@@ -88,6 +98,8 @@ main(argc, argv)
 	ldg.hdrbuf = NULL;
 	ldg.home = NULL;
 	ldg.passwd = NULL;
+
+	Pthread_key_create(&comdb2_open_key, NULL);
 
 	if ((ret = version_check(ldg.progname)) != 0)
 		return (ret);
@@ -150,19 +162,19 @@ main(argc, argv)
 				dbtype = DB_QUEUE;
 				break;
 			}
-			return (usage());
+			return (cdb2_load_usage());
 		case 'V':
 			printf("%s\n", db_version(NULL, NULL, NULL));
 			return (EXIT_SUCCESS);
 		case '?':
 		default:
-			return (usage());
+			return (cdb2_load_usage());
 		}
 	argc -= optind;
 	argv += optind;
 
 	if (argc != 1)
-		return (usage());
+		return (cdb2_load_usage());
 
 	/* Handle possible interruptions. */
 	__db_util_siginit();
@@ -208,7 +220,7 @@ shutdown:	exitval = 1;
  * load --
  *	Load a database.
  */
-int
+static int
 load(dbenv, name, argtype, clist, flags, ldg, existedp)
 	DB_ENV *dbenv;
 	char *name, **clist;
@@ -514,7 +526,7 @@ err:		rval = 1;
  * env_create --
  *	Create the environment and initialize it for error reporting.
  */
-int
+static int
 env_create(dbenvp, ldg)
 	DB_ENV **dbenvp;
 	LDG *ldg;
@@ -546,7 +558,7 @@ env_create(dbenvp, ldg)
  * db_init --
  *	Initialize the environment.
  */
-int
+static int
 db_init(dbenv, home, cache, is_private)
 	DB_ENV *dbenv;
 	char *home;
@@ -628,7 +640,7 @@ db_init(dbenv, home, cache, is_private)
  * configure --
  *	Handle command-line configuration options.
  */
-int
+static int
 configure(dbenv, dbp, clp, subdbp, keysp)
 	DB_ENV *dbenv;
 	DB *dbp;
@@ -701,7 +713,7 @@ nameerr:
  * rheader --
  *	Read the header message.
  */
-int
+static int
 rheader(dbenv, dbp, dbtypep, subdbp, checkprintp, keysp)
 	DB_ENV *dbenv;
 	DB *dbp;
@@ -914,7 +926,7 @@ badfmt:		dbp->errx(dbp, "line %lu: unexpected format", G(lineno));
  * function (which is, not coincidentally, also used for database naming)
  * means that outstr cannot contain any nuls.
  */
-int
+static int
 convprintable(dbenv, instr, outstrp)
 	DB_ENV *dbenv;
 	char *instr, **outstrp;
@@ -958,7 +970,7 @@ convprintable(dbenv, instr, outstrp)
  * dbt_rprint --
  *	Read a printable line into a DBT structure.
  */
-int
+static int
 dbt_rprint(dbenv, dbtp)
 	DB_ENV *dbenv;
 	DBT *dbtp;
@@ -1036,7 +1048,7 @@ dbt_rprint(dbenv, dbtp)
  * dbt_rdump --
  *	Read a byte dump line into a DBT structure.
  */
-int
+static int
 dbt_rdump(dbenv, dbtp)
 	DB_ENV *dbenv;
 	DBT *dbtp;
@@ -1103,7 +1115,7 @@ dbt_rdump(dbenv, dbtp)
  * dbt_rrecno --
  *	Read a record number dump line into a DBT structure.
  */
-int
+static int
 dbt_rrecno(dbenv, dbtp, ishex)
 	DB_ENV *dbenv;
 	DBT *dbtp;
@@ -1158,7 +1170,7 @@ bad:		badend(dbenv);
 	return (0);
 }
 
-int
+static int
 dbt_to_recno(dbenv, dbt, recnop)
 	DB_ENV *dbenv;
 	DBT *dbt;
@@ -1176,7 +1188,7 @@ dbt_to_recno(dbenv, dbt, recnop)
  * digitize --
  *	Convert a character to an integer.
  */
-int
+static int
 digitize(dbenv, c, errorp)
 	DB_ENV *dbenv;
 	int c, *errorp;
@@ -1212,7 +1224,7 @@ digitize(dbenv, c, errorp)
  * badnum --
  *	Display the bad number message.
  */
-void
+static void
 badnum(dbenv)
 	DB_ENV *dbenv;
 {
@@ -1224,7 +1236,7 @@ badnum(dbenv)
  * badend --
  *	Display the bad end to input message.
  */
-void
+static void
 badend(dbenv)
 	DB_ENV *dbenv;
 {
@@ -1232,19 +1244,19 @@ badend(dbenv)
 }
 
 /*
- * usage --
+ * cdb2_load_usage --
  *	Display the usage message.
  */
-int
-usage()
+static int
+cdb2_load_usage()
 {
 	(void)fprintf(stderr, "%s\n\t%s\n",
-	    "usage: db_load [-nTV] [-c name=value] [-f file]",
+	    "usage: cdb2_load [-nTV] [-c name=value] [-f file]",
     "[-h home] [-P password] [-t btree | hash | recno | queue] db_file");
 	return (EXIT_FAILURE);
 }
 
-int
+static int
 version_check(progname)
 	const char *progname;
 {
