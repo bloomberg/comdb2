@@ -63,7 +63,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
+            newdb->numblobs + 1, newdb->nstripes, thedb->bdb_env, 0, &bdberr, trans);
         open_auxdbs(newdb, 1);
     } else {
         /* I am NOT master: open replicated db */
@@ -71,7 +71,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
+            newdb->numblobs + 1, newdb->nstripes, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
 
@@ -108,7 +108,8 @@ int add_table_to_environment(char *table, const char *csc2,
 {
     int rc;
     struct dbtable *newdb;
-    int nstripes = db_get_dtastripe(iq->usedb, trans);
+    // int nstripes = db_get_dtastripe(iq->usedb, trans);
+    int nstripes = 1 + rand() % gbl_dtastripe;
 
     if (s)
         s->newdb = newdb = NULL;
@@ -116,6 +117,10 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
         return -1;
     }
+
+    char nstripes_str[100];
+    snprintf(nstripes_str, sizeof(nstripes_str), "%d", nstripes);
+    bdb_set_table_parameter(trans, table, "dtastripe", nstripes_str);
 
     rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
 
@@ -131,7 +136,7 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
+    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0, nstripes);
 
     if (newdb == NULL) return SC_INTERNAL_ERROR;
 
@@ -164,6 +169,8 @@ int add_table_to_environment(char *table, const char *csc2,
         rc = -1;
         goto err;
     }
+
+    rc = bdb_set_table_parameter(trans, table, "dtastripe", "1");
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 

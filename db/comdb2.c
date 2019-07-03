@@ -1618,7 +1618,7 @@ void cleanup_newdb(struct dbtable *tbl)
 }
 
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                             int dbnum, int dbix, int is_foreign)
+                             int dbnum, int dbix, int is_foreign, int nstripes)
 {
     struct dbtable *tbl;
     int ii;
@@ -1777,6 +1777,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     }     /* if (n_constraints > 0) */
     tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
+    tbl->nstripes = nstripes;
     return tbl;
 }
 
@@ -2050,6 +2051,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
     struct dbtable *tbl;
+    int nstripes;
 
     /* load the tables from the low level metatable */
     if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
@@ -2123,7 +2125,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
         free(csc2text);
         csc2text = NULL;
-        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
+        nstripes = db_get_dtastripe_by_name(tblnames[i], tran);
+        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0, nstripes);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
                     __LINE__);
@@ -2131,6 +2134,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             break;
         }
         tbl->schema_version = ver;
+        tbl->nstripes = nstripes;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -3130,7 +3134,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
         return -1;
     }
-    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
+    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0, 1);
     if (tbl == NULL) {
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
         return -1;

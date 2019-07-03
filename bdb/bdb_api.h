@@ -448,7 +448,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
               const signed char ixrecnum[], const signed char ixdta[],
               const signed char ixcollattr[], const signed char ixnulls[],
-              int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr);
+              int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int *bdberr);
 
 /* same, but using a transaction */
 bdb_state_type *
@@ -456,7 +456,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
-                   int numdtafiles, bdb_state_type *parent_bdb_handle,
+                   int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing lite table */
@@ -495,7 +495,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
            const signed char ixrecnum[], const signed char ixdta[],
            const signed char ixcollattr[], const signed char ixnulls[],
-           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+           int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
 
 bdb_state_type *
@@ -503,7 +503,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
                 const signed char ixrecnum[], const signed char ixdta[],
                 const signed char ixcollattr[], const signed char ixnulls[],
-                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *);
 
 /* open a databasent.  no actual db files are created. */
