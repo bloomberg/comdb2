@@ -3348,9 +3348,6 @@ extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
-int io_override_set_std(FILE *f);
-FILE *io_override_get_std(void);
-
 void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
 const char *reqlog_get_origin(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
