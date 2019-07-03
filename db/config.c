@@ -67,12 +67,12 @@ static struct option long_options[] = {
     {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
-    {"version", no_argument, NULL, 'v'},
     {"create", no_argument, &gbl_create_mode, 1},
     {"fullrecovery", no_argument, &gbl_fullrecovery, 1},
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
     {"tunable", required_argument, NULL, 0},
+    {"version", no_argument, NULL, 'v'},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
@@ -106,7 +106,7 @@ struct read_lrl_option_type {
 
 void print_version_and_exit()
 {
-    logmsg(LOGMSG_USER, "comdb2 %s [%s] [%s] [%s]\n",
+    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s]\n",
            gbl_db_version, gbl_db_codename, gbl_db_semver, gbl_db_buildtype);
     exit(2);
 }
@@ -198,7 +198,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     int c;
     int options_idx;
 
-    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
         if (c == 'v') print_version_and_exit();
