@@ -137,6 +137,8 @@ struct schema_change_type {
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
 
+    int new_table_dtastripe;
+
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;
