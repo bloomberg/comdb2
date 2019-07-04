@@ -283,8 +283,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
-    int serial_error = 0;
-    int checked_arr = 0;
     int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
@@ -292,18 +290,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
-
-    /* If we have both always check serializable first to close
-     * a race: the selectv rcode should prevail */
-    if (clnt->selectv_arr && clnt->arr) {
-        currangearr_build_hash(clnt->arr);
-        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
-                                  &(clnt->arr->offset), 0)) {
-            serial_error = 1;
-        }
-        checked_arr = 1;
-    }
-
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
     if (clnt->selectv_arr &&
@@ -353,21 +339,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         return 0;
     }
 
-    /* Do replicant serializable check if we haven't yet */
-    if (clnt->arr && !checked_arr && !osql_shadtbl_has_selectv(clnt, &bdberr)) {
-        currangearr_build_hash(clnt->arr);
-        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
-                                  &(clnt->arr->offset), 0))
-            serial_error = 1;
-    }
-
-    if (serial_error && force_master) {
-        clnt->osql.xerr.errval = ERR_NOTSERIAL;
-        errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
-        rc = SQLITE_ABORT;
-        goto goback;
-    }
-
     clnt->osql.timings.commit_prep = osql_log_time();
 
     /* start the block processor session */
@@ -399,25 +370,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* Preserve the sentops optimization */
     if (clnt->osql.is_reorder_on && (force_master || sentops)) {
-#if 0
-        if (serial_error) {
-            clnt->osql.xerr.errval = ERR_NOTSERIAL;
-            errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
-            osql_sock_abort(clnt, osqlreq_type);
-            rc = SQLITE_ABORT;
-            goto goback;
-        } 
-#endif
-        {
-            if (clnt->arr) {
-                rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-                sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-            }
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
 
-            if (clnt->selectv_arr) {
-                rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-                sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-            }
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
     }
 
