@@ -313,7 +313,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
-  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
+  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN DTATRIPE
   ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
   LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
@@ -2360,9 +2360,21 @@ comdb2optfield(A) ::= PAGEORDER. {A = PAGE_ORDER;}
 comdb2optfield(A) ::= READONLY. {A = READ_ONLY;}
 comdb2optfield(A) ::= compress_blob(C). {A = C;}
 comdb2optfield(A) ::= compress_rec(C). {A = C;}
+comdb2optfield(A) ::= dtastripe(C) . {A = C;}
 
 %type odh {int}
 odh(A) ::= ODH OFF. {A = ODH_OFF;}
+
+%type dtastripe {int}
+dtastripe(A) ::= DTASTRIPE INTEGER(I). { 
+    int dtastripe = atoi(I.z);
+    if (dtastripe < 1 || dtastripe > 16) {
+        sqlite3ErrorMsg(pParse, "Out of range dtastripe value");
+        A = 0;
+    } else {
+        A = (dtastripe << 16); 
+    }
+}
 
 %type ipu {int}
 ipu(A) ::= IPU OFF. {A = IPU_OFF;}

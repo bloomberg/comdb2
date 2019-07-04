@@ -362,6 +362,7 @@ set all_graphs {
       {line REBUILD}
       {line REC {or CRLE LZ4 RLE ZLIB}}
       {line BLOBFIELD {or LZ4 RLE ZLIB}}
+      {line DTASTRIPE number}
     } ,} 
   }
 

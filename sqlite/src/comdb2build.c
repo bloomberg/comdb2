@@ -370,6 +370,9 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
     else
         sc->live = 1;
 
+    if (OPT_ON(opt, DTASTRIPE_MASK))
+        sc->new_table_dtastripe = (opt & DTASTRIPE_MASK) >> 16;
+
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 }

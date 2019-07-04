@@ -104,7 +104,9 @@ int add_table_to_environment(char *table, const char *csc2,
     int rc;
     struct dbtable *newdb;
     // int nstripes = db_get_dtastripe(iq->usedb, trans);
-    int nstripes = 1 + rand() % gbl_dtastripe;
+    int nstripes = s->new_table_dtastripe;
+    if (nstripes == 0)
+        nstripes = gbl_dtastripe;
 
     if (s)
         s->newdb = newdb = NULL;

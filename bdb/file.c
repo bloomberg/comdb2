@@ -4186,6 +4186,11 @@ deadlock_again:
 
                 return -1;
             }
+
+            char stripestr[100];
+            bdb_state->nstripes = 1;
+            snprintf(stripestr, sizeof(stripestr), "%d", bdb_state->nstripes);
+            bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", stripestr);
         }
 
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
