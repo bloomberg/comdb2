@@ -6624,8 +6624,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     p_buf_end = p_buf + msglen;
     p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
 
-    printf("get: dtastripe %d\n", sc->new_table_dtastripe);
-
     if (p_buf == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to read schema change object\n",
                __func__, __LINE__);
