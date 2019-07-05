@@ -885,8 +885,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_passed++;
         } else {
             /* queue work */
-            if (pool->queued_callback)
-                pool->queued_callback(work);
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
@@ -969,6 +967,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 listc_atl(&pool->queue, item);
             else
                 listc_abl(&pool->queue, item);
+
+            if (pool->queued_callback)
+                pool->queued_callback(work);
 
             if (listc_size(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = listc_size(&pool->queue);
