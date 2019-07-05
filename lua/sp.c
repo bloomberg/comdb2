@@ -1931,7 +1931,8 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
     SP sp = getsp(lua);
     if (sp) {
         lua_pop(lua, 1);
-        if (sp->num_instructions > sp->max_num_instructions) {
+        if ((sp->max_num_instructions > 0) &&
+            (sp->num_instructions > sp->max_num_instructions)) {
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",

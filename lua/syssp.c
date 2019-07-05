@@ -402,12 +402,16 @@ static int db_send(Lua L) {
     char buf[1024];
     int rownum = 1;
     char *cmd;
+    SP sp = getsp(L);
+
+    if (sp) {
+        sp->max_num_instructions = 1000000; //allow large number of steps
+    }
 
     if (!lua_isstring(L, 1))
         return luaL_error(L, "Expected string argument");
 
     if (gbl_uses_password) {
-      SP sp = getsp(L);
       if (sp && sp->clnt) {
           int bdberr;
           if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
