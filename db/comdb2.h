@@ -1421,6 +1421,9 @@ struct ireq {
 
     int written_row_count;
     int sc_running;
+
+    int tables_modified[MAXTABLES/8];
+    int modified_systables;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

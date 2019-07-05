@@ -126,6 +126,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t reclen = p_buf_rec_end - p_buf_rec;
     unsigned long long vgenid = 0;
 
+    // keep track of tables we modified in this transaction
+    bset(iq->tables_modified, iq->usedb->dbs_idx);
+    if (iq->usedb->disallow_drop)
+        iq->modified_systables = 1;
+
     *ixfailnum = -1;
 
     if (!blobs) {

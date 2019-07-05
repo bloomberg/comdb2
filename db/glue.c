@@ -169,6 +169,8 @@ static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs);
 
+static int systables_modified_callback(void *bdb_handle, int ntables, char **tables);
+
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
 
@@ -494,6 +496,38 @@ int trans_abort_shadow(void **trans, int *bdberr)
     return rc;
 }
 
+static int log_modified_systables(bdb_state_type *bdb_state, void *trans, 
+                                  struct ireq *iq, int *ntables, 
+                                  char ***tblout) {
+    *ntables = 0;
+    char **tables_out;
+    if (!iq->modified_systables)
+        return 0;
+    int space_needed = 0;
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *tbl = thedb->dbs[i];
+        if (tbl->disallow_drop && btst(iq->tables_modified, i)) {
+            space_needed += strlen(tbl->tablename)+1;
+            (*ntables)++;
+        }
+    }
+    tables_out = malloc(sizeof(char**) * *ntables);
+    char *tables = malloc(space_needed);
+    for (int i = 0, j = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *tbl = thedb->dbs[i];
+        if (tbl->disallow_drop && btst(iq->tables_modified, i)) {
+            strcpy(tables, tbl->tablename);
+            tables += strlen(tbl->tablename);
+            tables_out[j++] = strdup(tbl->tablename);
+        }
+    }
+    *tblout = tables_out;
+    
+    int rc = bdb_llog_systables_modified_log(bdb_state, trans, *ntables, tables, space_needed);
+    printf("log rc %d\n", rc);
+    return rc;
+}
+
 static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                                    struct ireq *iq, void *trans,
                                    db_seqnum_type *seqnum, int logical,
@@ -502,6 +536,16 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 {
     int bdberr;
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size";
+    int nsystables;
+    char **tables = NULL;
+    int tran_is_parent = bdb_tran_is_parent(trans);
+
+    int rc = log_modified_systables(bdb_handle, trans, iq, &nsystables, &tables);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "*ERROR* log_modified_systables:failed err %d\n", rc);
+        return ERR_INTERNAL;
+    }
+
     if (!logical)
         bdb_tran_commit_with_seqnum_size(
             bdb_handle, trans, (seqnum_type *)seqnum, &iq->txnsize, &bdberr);
@@ -512,13 +556,16 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size done";
     if (bdberr != 0) {
-        if (bdberr == BDBERR_DEADLOCK)
-            return RC_INTERNAL_RETRY;
+        if (bdberr == BDBERR_DEADLOCK) {
+            rc = RC_INTERNAL_RETRY;
+            goto bad;
+        }
 
         if (bdberr == BDBERR_READONLY) {
             /* I was downgraded in the middle..
                return NOMASTER so client retries. */
-            return ERR_NOMASTER;
+            rc = ERR_NOMASTER;
+            goto bad;
         } else if (logical && bdberr == BDBERR_ADD_DUPE) {
             /*
                bdb_tran_commit_logical_with_seqnum_size takes care of aborting
@@ -528,11 +575,28 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                have a parent that commits and a child that aborts.  It's
                ugly, but we need to live with it.  Ideas?  I am all ears.
             */
-            return IX_DUP;
+            rc = IX_DUP;
+            goto bad;
         }
         logmsg(LOGMSG_ERROR, "*ERROR* trans_commit:failed err %d\n", bdberr);
-        return ERR_INTERNAL;
+        rc = ERR_INTERNAL;
+        goto bad;
     }
+
+    if (nsystables > 0 && !tran_is_parent) {
+        // systables_modified_callback will free the arguments passed to it
+        // don't free them again below
+        systables_modified_callback(bdb_handle, nsystables, tables);
+        tables = NULL;
+    }
+
+bad:
+    if (tables) {
+        for (int i = 0; i < nsystables; i++)
+            free(tables[i]);
+        free(tables);
+    }
+
     return 0;
 }
 
@@ -3029,6 +3093,16 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
     return 0;
 }
 
+static int systables_modified_callback(void *bdb_handle, int ntables, char **tables) {
+    printf("callback called: %d tables modified\n", ntables);
+    for (int i = 0; i < ntables; i++) {
+        printf("   %s\n", tables[i]);
+        free(tables[i]);
+    }
+    free(tables);
+    return 0;
+}
+
 /*status of sync subsystem */
 void backend_sync_stat(struct dbenv *dbenv)
 {
@@ -3634,6 +3708,8 @@ int open_bdb_env(struct dbenv *dbenv)
                      (BDB_CALLBACK_FP)osql_checkboard_check_down_nodes);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_SERIALCHECK,
                      serial_check_callback);
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_SYSTABLES_MODIFIED,
+                     systables_modified_callback);
 /*
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_UNDOSERIAL,
             osql_checkboard_foreach_serial);

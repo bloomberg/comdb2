@@ -84,6 +84,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
     llog_undo_del_ix_lk_args *del_ix_lk;
     llog_undo_upd_dta_lk_args *upd_dta_lk;
     llog_undo_upd_ix_lk_args *upd_ix_lk;
+    llog_systables_modified_args *systbl;
 
     llog_blkseq_args *blkseq;
 
@@ -277,6 +278,13 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
             return rc;
         logp = c_log_bench;
         rc = handle_commit_log_bench(dbenv, rectype, c_log_bench, lsn, op);
+        break;
+
+    case DB_llog_systables_modified:
+        rc = llog_systables_modified_read(dbenv, log_rec->data, &systbl);
+        if (rc)
+            return rc;
+        rc = bdb_handle_systables_modified(dbenv, systbl, lsn, op);
         break;
 
     default:

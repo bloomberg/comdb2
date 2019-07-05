@@ -264,3 +264,10 @@ DBT lock2     DBT s
 POINTER prevllsn  DB_LSN * lu
 END
 
+/*
+ * List system tables that were modified in a transaction 
+ */ 
+BEGIN systables_modified 10022
+ARG ntables int d
+DBT tables  DBT s
+END

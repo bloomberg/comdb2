@@ -2702,3 +2702,9 @@ int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran)
     return bdb_state->dbenv->set_tran_lowpri(bdb_state->dbenv,
                                              tran->tid->txnid);
 }
+
+int bdb_tran_is_parent(void *tran) {
+    tran_type *trans = (tran_type *) tran;
+    int rc = trans->parent ? 0 : 1;
+    return rc;
+}

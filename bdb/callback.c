@@ -102,6 +102,9 @@ void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
     case BDB_CALLBACK_SERIALCHECK:
         bdb_callback->serialcheck_rtn = (SERIALCHECK)callback_rtn;
         break;
+    case BDB_CALLBACK_SYSTABLES_MODIFIED:
+        bdb_callback->systables_modified_rtn = (SYSTABLES_MODIFIED)callback_rtn;
+        break;
     /*
         case BDB_CALLBACK_UNDOSHADOW:
             bdb_callback->undoshadow_rtn = (UNDOSHADOWFP) callback_rtn;
