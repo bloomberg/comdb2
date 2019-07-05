@@ -3234,8 +3234,7 @@ static int llmeta_set_qdbs(void)
     return rc;
 }
 
-static int init_sqlite_table(struct dbenv *dbenv, char *table)
-{
+static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int removable) {
     int rc;
     dbtable *tbl;
 
@@ -3321,6 +3320,17 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
     }
+}
+
+static int init_materialized_system_tables(struct dbenv *dbenv) {
+    static const char *test = 
+"schema {"
+"   int id"
+"}";
+
+    M
+    int rc = init_system_table(dbenv, "comdb2_test", test, 0);
+    return rc;
 }
 
 static int init_sqlite_tables(struct dbenv *dbenv)
@@ -3877,9 +3887,11 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-        if (!gbl_legacy_defaults)
+        if (!gbl_legacy_defaults) {
             if (init_sqlite_tables(thedb))
                 return -1;
+        }
+        init_materialized_system_tables(thedb);
     } else if (thedb->num_dbs != 0) {
         /* if we are using low level meta table and this isn't the create
          * pass, we shouldn't see any table definitions in the lrl. they
