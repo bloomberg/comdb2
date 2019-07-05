@@ -3078,8 +3078,7 @@ static int llmeta_set_qdbs(void)
     return rc;
 }
 
-static int init_sqlite_table(struct dbenv *dbenv, char *table)
-{
+static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int removable) {
     int rc;
     struct dbtable *tbl;
 
@@ -3088,46 +3087,6 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
 
     dbenv->dbs =
         realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
-
-    /* This used to just pull from installed files.  Let's just do it from memory
-       so comdb2 can run standalone with no support files. */
-    const char *sqlite_stat1 = 
-"tag ondisk { "
-"    cstring tbl[64] "
-"    cstring idx[64] null=yes "
-"    cstring stat[4096] "
-"} "
-" "
-"keys { "
-"    \"0\" = tbl + idx "
-"} ";
-
-    const char *sqlite_stat4 =
-"tag ondisk "
-"{ "
-"    cstring tbl[64] "
-"    cstring idx[64] "
-"    int     samplelen "
-"    byte    sample[1024] /* entire record in sqlite format */ "
-"} "
-" "
-"keys "
-"{ "
-"    dup \"0\" = tbl + idx "
-"} ";
-
-    const char *schema;
-
-    if (strcmp(table, "sqlite_stat1") == 0) {
-       schema = sqlite_stat1;
-    }
-    else if (strcmp(table, "sqlite_stat4") == 0) {
-       schema = sqlite_stat4;
-    }
-    else {
-       logmsg(LOGMSG_ERROR, "unknown sqlite table \"%s\"\n", table);
-       return -1;
-    }
 
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
@@ -3167,14 +3126,51 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
     }
 }
 
+static int init_materialized_system_tables(struct dbenv *dbenv) {
+    static const char *test = 
+"schema {"
+"   int id"
+"}";
+
+    int rc = init_system_table(dbenv, "comdb2_test", test, 0);
+    return rc;
+}
+
 static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
-    rc = init_sqlite_table(dbenv, "sqlite_stat1");
+    /* This used to just pull from installed files.  Let's just do it from memory
+       so comdb2 can run standalone with no support files. */
+    static const char *sqlite_stat1 = 
+"tag ondisk { "
+"    cstring tbl[64] "
+"    cstring idx[64] null=yes "
+"    cstring stat[4096] "
+"} "
+" "
+"keys { "
+"    \"0\" = tbl + idx "
+"} ";
+
+    static const char *sqlite_stat4 =
+"tag ondisk "
+"{ "
+"    cstring tbl[64] "
+"    cstring idx[64] "
+"    int     samplelen "
+"    byte    sample[1024] /* entire record in sqlite format */ "
+"} "
+" "
+"keys "
+"{ "
+"    dup \"0\" = tbl + idx "
+"} ";
+
+    rc = init_system_table(dbenv, "sqlite_stat1", sqlite_stat1, 1);
     if (rc)
         return rc;
     /* There's no 2 or 3.  There used to be 2.  There was never 3. */
-    rc = init_sqlite_table(dbenv, "sqlite_stat4");
+    rc = init_system_table(dbenv, "sqlite_stat4", sqlite_stat4, 1);
     if (rc)
         return rc;
     return 0;
@@ -3713,9 +3709,11 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-        if (!gbl_legacy_defaults)
+        if (!gbl_legacy_defaults) {
             if (init_sqlite_tables(thedb))
                 return -1;
+        }
+        init_materialized_system_tables(thedb);
     } else if (thedb->num_dbs != 0) {
         /* if we are using low level meta table and this isn't the create
          * pass, we shouldn't see any table definitions in the lrl. they
