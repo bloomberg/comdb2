@@ -39,7 +39,7 @@ struct systable {
 
 extern pthread_key_t query_info_key;
 
-static int get_tables(void **data, int *npoints) {
+static int get_systables(void **data, int *npoints) {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     sqlite3 *sqldb = thd->clnt->thd->sqldb;
     struct systable *systables;
@@ -60,13 +60,13 @@ static int get_tables(void **data, int *npoints) {
     for (int tbl = 0; tbl < thedb->num_dbs; tbl++) {
         struct dbtable *db = thedb->dbs[tbl];
         if (db->disallow_drop)
-            systables[i++].name = db->tablename;
+            systables[i++].name = strdup(db->tablename);
     }
     *data = systables;
     return 0;
 }
 
-static void free_tables(void *p, int n) {
+static void free_systables(void *p, int n) {
     struct systable *t = (struct systable*) p;
     for (int i = 0; i < n; i++) {
         free(t[i].name);
@@ -76,7 +76,7 @@ static void free_tables(void *p, int n) {
 
 int systblSystablesInit(sqlite3 *db) {
     return create_system_table(db, "comdb2_systables",
-            &systblSystablesModule, get_tables, free_tables,
+            &systblSystablesModule, get_systables, free_systables,
             sizeof(struct systable),
             CDB2_CSTRING, "name", -1, offsetof(struct systable, name),
             SYSTABLE_END_OF_FIELDS);
