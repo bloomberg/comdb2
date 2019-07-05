@@ -4106,9 +4106,13 @@ deadlock_again:
                 return -1;
             }
 
-            char stripestr[100];
-            snprintf(stripestr, sizeof(stripestr), "%d", bdb_state->nstripes);
-            bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", stripestr);
+            char parmstr[100];
+            snprintf(parmstr, sizeof(parmstr), "%d", bdb_state->nstripes);
+            bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", parmstr);
+            if (flags & BDB_TABLE_OPEN_DISALLOW_DROP) {
+                bdb_set_table_parameter(&tran, bdb_state->name, "disallow_drop", "1");
+                bdb_state->disallow_drop = 1;
+            }
         }
 
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
@@ -8451,4 +8455,12 @@ int bdb_get_dtastripe(bdb_state_type *bdb_state) {
 void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe) {
     assert(dtastripe > 0 && dtastripe < 17);
     bdb_state->nstripes = dtastripe; 
+}
+
+int bdb_get_disallow_drop(bdb_state_type *bdb_state) {
+    return bdb_state->disallow_drop;
+}
+
+void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow) {
+    bdb_state->disallow_drop = disallow;
 }

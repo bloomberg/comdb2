@@ -1038,7 +1038,9 @@ struct bdb_state_tag {
     pthread_cond_t sc_redo_wait;
     LISTC_T(struct sc_redo_lsn) sc_redo_list;
 
+    /* parameters we want to persist in llmeta via bdb_set_table_parameter */
     int nstripes;
+    int disallow_drop;
 };
 
 /* define our net user types */

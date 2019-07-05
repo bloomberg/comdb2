@@ -138,6 +138,7 @@ struct schema_change_type {
     int is_afunc; /* lua agg func */
 
     int new_table_dtastripe;
+    int disallow_drop;
 
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */

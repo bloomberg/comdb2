@@ -1778,6 +1778,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->nstripes = nstripes;
+    tbl->disallow_drop = 0;
     return tbl;
 }
 
@@ -2052,6 +2053,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     char *tblnames[MAX_NUM_TABLES];
     struct dbtable *tbl;
     int nstripes;
+    int disallow_drop;
 
     /* load the tables from the low level metatable */
     if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
@@ -2126,6 +2128,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         free(csc2text);
         csc2text = NULL;
         nstripes = db_get_dtastripe_by_name(tblnames[i], tran);
+        disallow_drop = db_get_disallow_drop_by_name(tblnames[i], tran);
         tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0, nstripes);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
@@ -2135,6 +2138,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
         tbl->schema_version = ver;
         tbl->nstripes = nstripes;
+        tbl->disallow_drop = disallow_drop;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -3078,7 +3082,7 @@ static int llmeta_set_qdbs(void)
     return rc;
 }
 
-static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int removable) {
+static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int disallow_drop) {
     int rc;
     struct dbtable *tbl;
 
@@ -3098,6 +3102,7 @@ static int init_system_table(struct dbenv *dbenv, char *table, const char *schem
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
         return -1;
     }
+    tbl->disallow_drop = disallow_drop;
     tbl->dbs_idx = dbenv->num_dbs;
     tbl->csc2_schema = strdup(schema);
     dbenv->dbs[dbenv->num_dbs++] = tbl;
@@ -3132,7 +3137,7 @@ static int init_materialized_system_tables(struct dbenv *dbenv) {
 "   int id"
 "}";
 
-    int rc = init_system_table(dbenv, "comdb2_test", test, 0);
+    int rc = init_system_table(dbenv, "comdb2_test", test, 1);
     return rc;
 }
 
@@ -3166,11 +3171,11 @@ static int init_sqlite_tables(struct dbenv *dbenv)
 "    dup \"0\" = tbl + idx "
 "} ";
 
-    rc = init_system_table(dbenv, "sqlite_stat1", sqlite_stat1, 1);
+    rc = init_system_table(dbenv, "sqlite_stat1", sqlite_stat1, 0);
     if (rc)
         return rc;
     /* There's no 2 or 3.  There used to be 2.  There was never 3. */
-    rc = init_system_table(dbenv, "sqlite_stat4", sqlite_stat4, 1);
+    rc = init_system_table(dbenv, "sqlite_stat4", sqlite_stat4, 0);
     if (rc)
         return rc;
     return 0;
@@ -5897,6 +5902,39 @@ static void create_service_file(const char *lrlname)
     fclose(f);
 #endif
     return;
+}
+
+
+int db_get_dtastripe_by_name(const char *tablename, tran_type *tran) {
+    char *stripestr;
+    int nstripes;
+    int rc;
+    rc = bdb_get_table_parameter_tran(tablename, "dtastripe", &stripestr, tran);
+    if (rc)
+        nstripes = gbl_dtastripe;
+    else {
+        nstripes = atoi(stripestr);
+        free(stripestr);
+    }
+    return nstripes;
+}
+
+int db_get_dtastripe(struct dbtable *db, tran_type *tran) {
+    return db_get_dtastripe_by_name(db->tablename, tran);
+}
+
+extern int db_get_disallow_drop_by_name(const char *tablename, tran_type *tran) {
+    char *str;
+    int val = 0;
+    int rc;
+    rc = bdb_get_table_parameter_tran(tablename, "disallow_drop", &str, tran);
+    if (rc)
+        val = 1;
+    else {
+        val = atoi(str);
+        free(str);
+    }
+    return val;
 }
 
 #undef QUOTE

@@ -771,7 +771,14 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
-    case SQLITE_DROP_TABLE:
+    case SQLITE_DROP_TABLE: {
+        if (zArg1) {
+            struct dbtable *db = get_dbtable_by_name(zArg1);
+            if (db && db->disallow_drop)
+                return SQLITE_DENY;
+        }
+        /* fallthrough */
+    }
     case SQLITE_DROP_TEMP_INDEX:
     case SQLITE_DROP_TEMP_TABLE:
     case SQLITE_DROP_TEMP_TRIGGER:
