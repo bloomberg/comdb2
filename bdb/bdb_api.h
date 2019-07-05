@@ -90,6 +90,7 @@ enum {
     BDB_CALLBACK_NODE_IS_DOWN,
     BDB_CALLBACK_SERIALCHECK,
     BDB_CALLBACK_ADMIN_APPSOCK,
+    BDB_CALLBACK_SYSTABLES_MODIFIED
 };
 
 enum { BDB_REPFAIL_NET, BDB_REPFAIL_TIMEOUT, BDB_REPFAIL_RMTBDB };
@@ -383,6 +384,9 @@ struct bdb_osql_log;
 typedef void (*UNDOSHADOWFP)(struct bdb_osql_log *);
 
 typedef int (*BDB_CALLBACK_FP)();
+
+typedef int (*SYSTABLES_MODIFIED)(bdb_state_type *bdb_handle, int ntables, char **tables);
+
 bdb_callback_type *bdb_callback_create(void);
 void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
                       BDB_CALLBACK_FP callback_rtn);
@@ -2154,5 +2158,8 @@ void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
 
 int bdb_get_disallow_drop(bdb_state_type *bdb_state);
 void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow);
+
+int bdb_tran_is_parent(void *tran);
+int bdb_llog_systables_modified_log(bdb_state_type *bdb_state, void *trans, int ntables, void *tables, int tables_len);
 
 #endif

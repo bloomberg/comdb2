@@ -102,6 +102,7 @@
 #include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
+#include "llog_ext.h"
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -8464,3 +8465,37 @@ int bdb_get_disallow_drop(bdb_state_type *bdb_state) {
 void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow) {
     bdb_state->disallow_drop = disallow;
 }
+
+int bdb_handle_systables_modified(DB_ENV *dbenv, 
+        llog_systables_modified_args *systbl, DB_LSN *lsn, db_recops op) {
+
+    printf("systables modified!\n");
+
+    if (op == DB_TXN_PRINT) {
+        printf("[%u][%u] CUSTOM: systables_modified: txnid %x"
+               " prevlsn[" PR_LSN "] ntables %d\n",
+               lsn->file, lsn->offset, systbl->txnid->txnid,
+               PARM_LSN(systbl->prev_lsn), systbl->ntables);
+    }
+
+    // HERE: if op is recovery or forward, build a list of strings, and
+    // call bdb callback
+
+    *lsn = systbl->prev_lsn;
+
+    return 0;
+}
+
+int bdb_llog_systables_modified_log(bdb_state_type *bdb_state, void *trans, 
+        int ntables, void *tables, int tables_len) {
+    tran_type *t = (tran_type*) trans;
+
+    DBT dbt = {0};
+    DB_LSN lsnout;
+    dbt.data = tables;
+    dbt.size = tables_len;
+    int rc = llog_systables_modified_log(bdb_state->dbenv, t->tid, &lsnout,
+            0, ntables, &dbt);
+    return rc;
+}
+

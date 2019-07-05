@@ -1421,6 +1421,9 @@ struct ireq {
     bool sc_should_abort : 1;
 
     int written_row_count;
+
+    int tables_modified[MAXTABLES/8];
+    int modified_systables;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
