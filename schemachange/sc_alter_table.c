@@ -377,8 +377,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     struct scinfo scinfo;
 
-    nstripes = db_get_dtastripe(iq->usedb, tran);
-
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
@@ -391,6 +389,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
+    nstripes = db_get_dtastripe(db, tran);
 
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
