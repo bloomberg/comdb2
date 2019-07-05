@@ -374,6 +374,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     char new_prefix[32];
     int foundix;
     int nstripes;
+    int disallow_drop;
 
     struct scinfo scinfo;
 
@@ -390,6 +391,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_DOESNOT_EXIST;
     }
     nstripes = db_get_dtastripe(db, tran);
+    disallow_drop = db_get_disallow_drop_by_name(db->tablename, tran);
 
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
@@ -429,6 +431,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
+    newdb->disallow_drop = disallow_drop;
 
     newdb->iq = iq;
 
@@ -554,7 +557,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
                          newdb->instant_schema_change, newdb->schema_version,
                          s->compress, s->compress_blobs, datacopy_odh,
-                         dtastripe);
+                         dtastripe, s->disallow_drop);
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
      * restore them to their previous values if we are resuming */

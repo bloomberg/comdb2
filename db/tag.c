@@ -6692,8 +6692,9 @@ static void update_fld_hints(dbtable *tbl)
     bdb_set_fld_hints(tbl->handle, hints);
 }
 
-void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh, int dtastripe)
+void set_bdb_option_flags(struct dbtable *db, int odh, int ipu, int isc, int ver,
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe,
+                          int disallow_drop)
 {
     update_fld_hints(tbl);
     bdb_state_type *handle = tbl->handle;
@@ -6704,6 +6705,7 @@ void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
     bdb_set_dtastripe(handle, dtastripe);
+    bdb_set_disallow_drop(handle, disallow_drop);
 }
 
 void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
@@ -7095,6 +7097,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     char *csc2 = NULL;
 
     int nstripes = db_get_dtastripe(db, tran);
+    int disallow_drop = db_get_disallow_drop_by_name(db->tablename, tran);
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
@@ -7137,6 +7140,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
 
     newdb->meta = db->meta;
     newdb->dtastripe = nstripes;
+    newdb->disallow_drop = disallow_drop;
 
     extern int gbl_rowlocks;
     tran_type *arg_tran = gbl_rowlocks ? NULL : tran;

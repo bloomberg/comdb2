@@ -415,6 +415,10 @@ bdb_state_type *bdb_clone_handle_with_other_data_files(
     const bdb_state_type *data_files_bdb_state);
 void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state);
 
+enum bdb_table_open_flags {
+    BDB_TABLE_OPEN_DISALLOW_DROP = 1
+};
+
 /*
   bdb_open_more() : "open" a new database. associate this db transactionally
                      with the bdb_handle from a prior bdb_open() call.
@@ -2190,5 +2194,8 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 
 int bdb_get_dtastripe(bdb_state_type *bdb_state);
 void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
+
+int bdb_get_disallow_drop(bdb_state_type *bdb_state);
+void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow);
 
 #endif

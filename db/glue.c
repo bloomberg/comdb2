@@ -3920,6 +3920,9 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         db = dbenv->dbs[ii];
 
+        if (db->disallow_drop)
+            flags |= BDB_TABLE_OPEN_DISALLOW_DROP;
+
         if (db->dbnum)
             logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename,
                    db->dbnum);
@@ -4084,12 +4087,14 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         }
 
         int dtastripe = db_get_dtastripe_by_name(d->tablename, tran);
+        int disallow_drop = db_get_disallow_drop_by_name(d->tablename, tran);
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(tbl, tbl->odh, tbl->inplace_updates,
                              tbl->instant_schema_change, tbl->schema_version,
-                             compress, compress_blobs, datacopy_odh, dtastripe);
+                             compress, compress_blobs, datacopy_odh,
+                             dtastripe, disallow_drop);
 
         ctrace("Table %s  "
                "ver %d  "

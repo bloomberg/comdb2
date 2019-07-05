@@ -115,9 +115,11 @@ int add_table_to_environment(char *table, const char *csc2,
         return -1;
     }
 
-    char nstripes_str[100];
-    snprintf(nstripes_str, sizeof(nstripes_str), "%d", nstripes);
-    bdb_set_table_parameter(trans, table, "dtastripe", nstripes_str);
+    char parmstr[100];
+    snprintf(parmstr, sizeof(parmstr), "%d", nstripes);
+    bdb_set_table_parameter(trans, table, "dtastripe", parmstr);
+    snprintf(parmstr, sizeof(parmstr), "%d", s->disallow_drop);
+    bdb_set_table_parameter(trans, table, "disallow_drop", parmstr);
 
     rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
 
@@ -276,7 +278,7 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
        will have to be changed manually by the operator */
     set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
                          db->schema_version, s->compress, s->compress_blobs,
-                         1, s->new_table_dtastripe);
+                         1, s->new_table_dtastripe, s->disallow_drop);
 
     return 0;
 }
