@@ -26,170 +26,60 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "sql.h"
+#include "ezsystables.h"
 
-/* systbl_tables_cursor is a subclass of sqlite3_vtab_cursor which serves
-** as the underlying cursor to enumerate the rows in this vtable. The 
-** rows in this vtable are of course the list of tables in the database.
-** That is, "select name from sqlite_master where type='table'"
-*/
-typedef struct systbl_tables_cursor systbl_tables_cursor;
-struct systbl_tables_cursor {
-  sqlite3_vtab_cursor base;  /* Base class - must be first */
-  sqlite3_int64 iRowid;      /* The rowid */
+#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
+          && !defined(SQLITE_OMIT_VIRTUALTABLE) */
+
+/* This initializes this table but also a bunch of other schema tables
+** that fall under the similar use. */
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+extern int sqlite3CompletionVtabInit(sqlite3 *);
+
+static sqlite3_module systblTablesModule = {
+    .access_flag = CDB2_ALLOW_USER,
 };
 
-static int systblTablesConnect(
-  sqlite3 *db,
-  void *pAux,
-  int argc,
-  const char *const*argv,
-  sqlite3_vtab **ppVtab,
-  char **pErr
-){
-  sqlite3_vtab *pNew;
-  int rc;
-
-  rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_tables(tablename)");
-  if( rc==SQLITE_OK ){
-    pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
-    if( pNew==0 ) return SQLITE_NOMEM;
-    memset(pNew, 0, sizeof(*pNew));
-  }
-  return rc;
-}
-
-/*
-** Destructor for sqlite3_vtab objects.
-*/
-static int systblTablesDisconnect(sqlite3_vtab *pVtab){
-  sqlite3_free(pVtab);
-  return SQLITE_OK;
-}
-
-/*
-** Constructor for systbl_tables_cursor objects.
-*/
-static int systblTablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
-  systbl_tables_cursor *pCur;
-
-  pCur = sqlite3_malloc( sizeof(*pCur) );
-  if( pCur==0 ) return SQLITE_NOMEM;
-  memset(pCur, 0, sizeof(*pCur));
-  *ppCursor = &pCur->base;
-
-  comdb2_next_allowed_table(&pCur->iRowid);
-
-  return SQLITE_OK;
-}
-
-/*
-** Destructor for systbl_tables_cursor.
-*/
-static int systblTablesClose(sqlite3_vtab_cursor *cur){
-  sqlite3_free(cur);
-  return SQLITE_OK;
-}
-
-/*
-** Advance to the next table name from thedb.
-*/
-static int systblTablesNext(sqlite3_vtab_cursor *cur){
-  systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
-  pCur->iRowid++;
-  comdb2_next_allowed_table(&pCur->iRowid);
-  return SQLITE_OK;
-}
-
-/*
-** Return the table name for the current row.
-*/
-static int systblTablesColumn(
-  sqlite3_vtab_cursor *cur,
-  sqlite3_context *ctx,
-  int i
-){
-  systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  char *x = pDb->tablename;
-
-  sqlite3_result_text(ctx, x, -1, NULL);
-  return SQLITE_OK;
-}
-
-/*
-** Return the rowid for the current row. The rowid is the just the
-** index of this table into the db array.
-*/
-static int systblTablesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
-  systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
-
-  *pRowid = pCur->iRowid;
-  return SQLITE_OK;
-}
-
-/*
-** Return TRUE if the cursor has been moved off of the last row of output.
-*/
-static int systblTablesEof(sqlite3_vtab_cursor *cur){
-  systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
-
-  return pCur->iRowid >= thedb->num_dbs;
-}
-
-/*
-** This method is called to "rewind" the series_cursor object back
-** to the first row of output.  This method is always called at least
-** once prior to any call to seriesColumn() or seriesRowid() or
-** seriesEof().
-*/
-static int systblTablesFilter(
-  sqlite3_vtab_cursor *pVtabCursor,
-  int idxNum, const char *idxStr,
-  int argc, sqlite3_value **argv
-){
-  systbl_tables_cursor *pCur = (systbl_tables_cursor*)pVtabCursor;
-  pCur->iRowid = 0;
-  comdb2_next_allowed_table(&pCur->iRowid);
-  return SQLITE_OK;
-}
-
-/*
-** There is no way to really take advantage of this at the moment.
-** The output of this table is a mostly unordered list of strings.
-*/
-static int systblTablesBestIndex(
-  sqlite3_vtab *tab,
-  sqlite3_index_info *pIdxInfo
-){
-  return SQLITE_OK;
-}
-
-const sqlite3_module systblTablesModule = {
-  0,                         /* iVersion */
-  0,                         /* xCreate */
-  systblTablesConnect,       /* xConnect */
-  systblTablesBestIndex,     /* xBestIndex */
-  systblTablesDisconnect,    /* xDisconnect */
-  0,                         /* xDestroy */
-  systblTablesOpen,          /* xOpen - open a cursor */
-  systblTablesClose,         /* xClose - close a cursor */
-  systblTablesFilter,        /* xFilter - configure scan constraints */
-  systblTablesNext,          /* xNext - advance a cursor */
-  systblTablesEof,           /* xEof - check for end of scan */
-  systblTablesColumn,        /* xColumn - read data */
-  systblTablesRowid,         /* xRowid - read data */
-  0,                         /* xUpdate */
-  0,                         /* xBegin */
-  0,                         /* xSync */
-  0,                         /* xCommit */
-  0,                         /* xRollback */
-  0,                         /* xFindMethod */
-  0,                         /* xRename */
-  0,                         /* xSavepoint */
-  0,                         /* xRelease */
-  0,                         /* xRollbackTo */
-  0,                         /* xShadowName */
+struct table {
+    char *name;
 };
+
+static int get_tables(void **data, int *npoints) {
+    struct table *tables;
+
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *db = thedb->dbs[i];
+        if (!db->disallow_drop)
+            (*npoints)++;
+    }
+    tables = malloc(sizeof(struct table) * *npoints);
+
+    int i = 0;
+    for (int tbl = 0; tbl < thedb->num_dbs; tbl++) {
+        struct dbtable *db = thedb->dbs[tbl];
+        if (!db->disallow_drop)
+            tables[i++].name = strdup(db->tablename);
+    }
+    *data = tables;
+    return 0;
+}
+
+static void free_tables(void *p, int n) {
+    struct table *t = (struct table *)p;
+    for (int i = 0; i < n; i++) {
+        free(t[i].name);
+    }
+    free(t);
+}
+
+int systblTablesInit(sqlite3 *db) {
+    return create_system_table(db, "comdb2_tables",
+            &systblTablesModule, get_tables, free_tables,
+            sizeof(struct table),
+            CDB2_CSTRING, "name", -1, offsetof(struct table, name),
+            SYSTABLE_END_OF_FIELDS);
+}
+
 
 /* This initializes this table but also a bunch of other schema tables
 ** that fall under the similar use. */
@@ -200,9 +90,11 @@ int comdb2SystblInit(
 ){
   int rc = SQLITE_OK;
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-  rc = sqlite3_create_module(db, "comdb2_tables", &systblTablesModule, 0);
+  rc = systblSystablesInit(db);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_columns", &systblColumnsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = systblTablesInit(db);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_keys", &systblKeysModule, 0);
   if (rc == SQLITE_OK)
@@ -252,8 +144,6 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_logical_operations", &systblLogicalOpsModule, 0);
-  if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
   if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);
   if (rc == SQLITE_OK)

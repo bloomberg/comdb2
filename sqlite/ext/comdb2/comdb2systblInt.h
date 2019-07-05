@@ -7,7 +7,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-const sqlite3_module systblTablesModule;
 const sqlite3_module systblColumnsModule;
 const sqlite3_module systblKeysModule;
 const sqlite3_module systblFieldsModule;
@@ -37,7 +36,6 @@ const sqlite3_module systblMetricsModule;
 const sqlite3_module systblTimeseriesModule;
 const sqlite3_module systblReplStatsModule;
 const sqlite3_module systblLogicalOpsModule;
-const sqlite3_module systblSystabsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
@@ -53,6 +51,7 @@ int systblFingerprintsInit(sqlite3 *);
 int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);
 int systblSQLIndexStatsInit(sqlite3 *);
+int systblSystablesInit(sqlite3 *db);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
