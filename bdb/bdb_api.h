@@ -2189,5 +2189,6 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 int bdb_iam_master(bdb_state_type *bdb_state);
 
 int bdb_get_dtastripe(bdb_state_type *bdb_state);
+void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
 
 #endif

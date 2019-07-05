@@ -6693,7 +6693,7 @@ static void update_fld_hints(dbtable *tbl)
 }
 
 void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh)
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe)
 {
     update_fld_hints(tbl);
     bdb_state_type *handle = tbl->handle;
@@ -6703,6 +6703,7 @@ void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
     bdb_set_csc2_version(handle, ver);
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
+    bdb_set_dtastripe(handle, dtastripe);
 }
 
 void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)

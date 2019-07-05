@@ -4188,12 +4188,12 @@ deadlock_again:
             }
 
             char stripestr[100];
-            bdb_state->nstripes = 1;
             snprintf(stripestr, sizeof(stripestr), "%d", bdb_state->nstripes);
             bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", stripestr);
         }
 
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
+            printf("%s: have %d stripes\n", bdb_state->name, bdb_get_datafile_num_files(bdb_state, dtanum));
             for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
                  strnum >= 0; strnum--) {
                 DB *dbp;
@@ -4278,7 +4278,7 @@ deadlock_again:
                     rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                                    db_mode);
                     logmsg(
-                        LOGMSG_DEBUG,
+                        LOGMSG_WARN,
                         "dbp->open %s type=%d dbp=%p txn=%p rc %d flags=0x%X\n",
                         tmpname, dbp->type, dbp, tid, rc, dbp->flags);
                 } while ((tid == NULL) && iter++ < 100 &&
@@ -5595,6 +5595,8 @@ static bdb_state_type *bdb_open_int(
     bdb_state->numdtafiles = numdtafiles;
     bdb_state->nstripes = nstripes;
     bdb_state->numix = numix;
+
+    printf("open %s nstripes %d\n", bdb_state->name, bdb_state->nstripes);
 
     if (bdb_state->numix) {
         for (i = 0; i < numix; i++) {
@@ -8549,4 +8551,9 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
 
 int bdb_get_dtastripe(bdb_state_type *bdb_state) {
     return bdb_state->nstripes;
+}
+
+void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe) {
+    assert(dtastripe > 0 && dtastripe < 17);
+    bdb_state->nstripes = dtastripe; 
 }

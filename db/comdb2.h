@@ -3400,7 +3400,7 @@ extern int gbl_check_wrong_db;
 extern int gbl_debug_sql_opcodes;
 
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh);
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe);
 
 void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr,
                                 int persist);

@@ -43,6 +43,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->persistent_seq = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
+    sc->new_table_dtastripe = gbl_dtastripe;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
@@ -537,8 +538,13 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf,
                                p_buf_end);
+
     p_buf = (uint8_t*)buf_get(&s->new_table_dtastripe, sizeof(s->new_table_dtastripe),
                               p_buf, p_buf_end);
+
+    if (s->new_table_dtastripe == 0)
+        s->new_table_dtastripe = gbl_dtastripe;
+
     return p_buf;
 }
 
