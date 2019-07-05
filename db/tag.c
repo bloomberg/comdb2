@@ -6642,7 +6642,7 @@ static void update_fld_hints(struct dbtable *db)
 }
 
 void set_bdb_option_flags(struct dbtable *db, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh)
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe)
 {
     update_fld_hints(db);
     bdb_state_type *handle = db->handle;
@@ -6652,6 +6652,7 @@ void set_bdb_option_flags(struct dbtable *db, int odh, int ipu, int isc, int ver
     bdb_set_csc2_version(handle, ver);
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
+    bdb_set_dtastripe(handle, dtastripe);
 }
 
 /* Compute map of dbstores used in vtag_to_ondisk */

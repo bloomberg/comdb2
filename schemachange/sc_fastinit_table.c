@@ -128,7 +128,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
        so we can't set meta options until we're there. */
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
                          newdb->instant_schema_change, newdb->schema_version,
-                         s->compress, s->compress_blobs, datacopy_odh);
+                         s->compress, s->compress_blobs, datacopy_odh, 
+                         s->new_table_dtastripe);
 
     MEMORY_SYNC;
 

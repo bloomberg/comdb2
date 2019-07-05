@@ -42,6 +42,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->instant_sc = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
+    sc->new_table_dtastripe = gbl_dtastripe;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
@@ -296,8 +297,6 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
                     p_buf_end);
 
-    printf("put: %d\n", s->new_table_dtastripe);
-
     p_buf = buf_put(&s->new_table_dtastripe, sizeof(s->new_table_dtastripe), p_buf,
                     p_buf_end);
 
@@ -524,10 +523,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
                                p_buf, p_buf_end);
 
-    printf("get: %d\n", s->new_table_dtastripe);
-    if (s->new_table_dtastripe == 0) {
-        printf("hi?\n");
-    }
+    if (s->new_table_dtastripe == 0)
+        s->new_table_dtastripe = gbl_dtastripe;
 
     p_buf = (uint8_t*)buf_get(&s->new_table_dtastripe, sizeof(s->new_table_dtastripe),
                               p_buf, p_buf_end);

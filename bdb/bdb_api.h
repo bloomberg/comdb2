@@ -2146,5 +2146,6 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
 
 int bdb_get_dtastripe(bdb_state_type *bdb_state);
+void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
 
 #endif

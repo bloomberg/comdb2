@@ -4310,11 +4310,14 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
             bdb_handle_dbp_add_hash(d->handle, bthashsz);
         }
 
+        int dtastripe = db_get_dtastripe_by_name(db->tablename, tran);
+
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(d, d->odh, d->inplace_updates,
                              d->instant_schema_change, d->schema_version,
-                             compress, compress_blobs, datacopy_odh);
+                             compress, compress_blobs, datacopy_odh,
+                             dtastripe);
 
         ctrace("Table %s  "
                "ver %d  "
