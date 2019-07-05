@@ -5929,7 +5929,7 @@ extern int db_get_disallow_drop_by_name(const char *tablename, tran_type *tran) 
     int rc;
     rc = bdb_get_table_parameter_tran(tablename, "disallow_drop", &str, tran);
     if (rc)
-        val = 1;
+        val = 0;
     else {
         val = atoi(str);
         free(str);
