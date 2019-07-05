@@ -4083,7 +4083,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
             bdb_handle_dbp_add_hash(tbl->handle, bthashsz);
         }
 
-        int dtastripe = db_get_dtastripe_by_name(db->tablename, tran);
+        int dtastripe = db_get_dtastripe_by_name(d->tablename, tran);
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
