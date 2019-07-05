@@ -518,6 +518,8 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 |Logical Operation| `CDB2_AT_EXIT_RUN_STATEMENT` | The callback is invoked when exiting `cdb2_run_statement()` or `cdb2_run_statement_typed()`. |
 |Logical Operation| `CDB2_AT_ENTER_NEXT_RECORD` | The callback is invoked when entering `cdb2_next_record()`. |
 |Logical Operation| `CDB2_AT_EXIT_NEXT_RECORD` | The callback is invoked when exiting `cdb2_next_record()`. |
+|Lifecyle| `CDB2_BEFORE_DISCOVERY` | The callback is invoked before database destination discovery. |
+|Lifecyle| `CDB2_AFTER_DISCOVERY` | The callback is invoked after database destination discovery. |
 |Lifecyle| `CDB2_AT_OPEN` | The callback is invoked at handle creation. |
 |Lifecyle| `CDB2_AT_CLOSE` | The callback is invoked at handle destruction. |
 
@@ -557,6 +559,7 @@ Besides the user argument, one can request additional arguments by setting `argc
 | `CDB2_AT_EXIT_RUN_STATEMENT` | The server hostname | The database port | The SQL query | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_ENTER_NEXT_RECORD` | The server hostname | The database port | N/A | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_EXIT_NEXT_RECORD` | The server hostname | The database port | N/A | See [cdb2api errors](#cdb2api-errors) |
+| `CDB2_AT_DISCOVERY` | N/A | N/A | N/A | N/A |
 | `CDB2_AT_OPEN` | N/A | N/A | N/A | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_CLOSE` | N/A | N/A | N/A | See [cdb2api errors](#cdb2api-errors) |
 
