@@ -1302,7 +1302,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
 }
 
 static inline void set_asof_snapshot(struct sqlclntstate *clnt, int val,
-        const char *func, int line)
+                                     const char *func, int line)
 {
     clnt->is_asof_snapshot = val;
 }
@@ -1332,7 +1332,7 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
 }
 
 void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
-        const char *func, int line)
+                             const char *func, int line)
 {
     clnt->sent_data_to_client = val;
 }
@@ -1546,12 +1546,12 @@ inline int replicant_can_retry(struct sqlclntstate *clnt)
         return 0;
 
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-        clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
         !get_asof_snapshot(clnt) && gbl_snapshot_serial_verify_retry)
         return !clnt->sent_data_to_client;
 
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-        clnt->dbtran.mode != TRANLEVEL_SERIAL;
+           clnt->dbtran.mode != TRANLEVEL_SERIAL;
 }
 
 static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
@@ -1570,8 +1570,8 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
 
     /* Verify error can be retried in reccom or lower */
     return (rc == CDB2ERR_VERIFY_ERROR) &&
-        (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
-        (clnt->dbtran.mode != TRANLEVEL_SERIAL);
+           (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
+           (clnt->dbtran.mode != TRANLEVEL_SERIAL);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -2031,8 +2031,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         /* if this is a verify error and we are not running in
            snapshot/serializable mode, repeat this request ad nauseam
            (Alex and Sam made me do it) */
-        if (replicant_can_retry_rc(clnt, rc) &&
-            !clnt->has_recording && clnt->osql.replay != OSQL_RETRY_LAST) {
+        if (replicant_can_retry_rc(clnt, rc) && !clnt->has_recording &&
+            clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
                         "Fail to add commit to transaction replay session\n");
@@ -3640,8 +3640,8 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             irc = (clnt->osql.error_is_remote)
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
-            if (replicant_can_retry_rc(clnt, irc) &&
-                !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
+            if (replicant_can_retry_rc(clnt, irc) && !clnt->has_recording &&
+                clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
         }
@@ -3649,7 +3649,7 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
         if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
             /* if this is still a verify error but we tried to many times,
                send error back anyway by resetting the replay field */
-            if (replicant_can_retry_rc(clnt, irc)  &&
+            if (replicant_can_retry_rc(clnt, irc) &&
                 clnt->osql.replay == OSQL_RETRY_LAST) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }

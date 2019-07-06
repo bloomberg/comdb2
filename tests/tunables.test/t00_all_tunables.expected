@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=914)
+(TUNABLES_COUNT=915)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -769,6 +769,7 @@
 (name='slowrep_incoherent_mintime', description='Ignore replicantion events faster than this.', type='INTEGER', value='2', read_only='N')
 (name='slowwrite', description='', type='INTEGER', value='0', read_only='Y')
 (name='snapisol', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='snapshot_serial_verify_retry', description='Automatic retries on verify errors for clients that haven't read results.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='sort_nulls_with_header', description='Using record headers in key sorting. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='sosql_ddl_max_commit_wait_sec', description='Wait for the master to commit a DDL transaction for up to this long.', type='INTEGER', value='259200', read_only='N')
 (name='sosql_max_commit_wait_sec', description='Wait for the master to commit a transaction for up to this long.', type='INTEGER', value='600', read_only='N')

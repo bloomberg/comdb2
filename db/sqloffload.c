@@ -537,14 +537,14 @@ int selectv_range_commit(struct sqlclntstate *clnt)
         rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR,
-                    "%s: failed to start socksql transaction rc=%d\n",
-                    __func__, rc);
+                   "%s: failed to start socksql transaction rc=%d\n", __func__,
+                   rc);
             if (rc != SQLITE_ABORT)
                 rc = SQLITE_CLIENT_CHANGENODE;
             return rc;
         }
-        sql_debug_logf(clnt, __func__, __LINE__,
-                "osql_sock_start returns %d\n", rc);
+        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
+                       rc);
     }
 
     rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
