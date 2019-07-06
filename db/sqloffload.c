@@ -365,9 +365,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
-    assert((usedb_only && sentops == 0) ||
-           (!usedb_only && sentops > 0));
-
     /* Preserve the sentops optimization */
     if (clnt->osql.is_reorder_on && (force_master || sentops)) {
         if (clnt->arr) {

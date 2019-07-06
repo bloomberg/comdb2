@@ -29,7 +29,7 @@ enum {
     SERIALIZABLE        = 4
 };
 
-#define INITTHDS 4
+#define INITTHDS 3
 
 int serialize_reads_like_writes = 0;
 int selectv_updaters = INITTHDS;
