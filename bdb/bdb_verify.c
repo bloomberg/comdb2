@@ -556,7 +556,6 @@ static int bdb_verify_data_stripe(verify_td_params *par)
         dbt_key.ulen = sizeof(keybuf);
         dbt_key.data = keybuf;
 
-        uint8_t ver;
         rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                              DB_NEXT);
     }
