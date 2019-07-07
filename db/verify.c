@@ -416,6 +416,7 @@ int parallel_verify()
     thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
     thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
     thdpool_set_minthds(gbl_verify_thdpool, 1);
+    thdpool_set_maxthds(gbl_verify_thdpool, 8); //TODO: make this an attr
     thdpool_set_linger(gbl_verify_thdpool, 10);
 
     thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
