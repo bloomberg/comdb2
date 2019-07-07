@@ -8466,22 +8466,53 @@ void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow) {
     bdb_state->disallow_drop = disallow;
 }
 
-int bdb_handle_systables_modified(DB_ENV *dbenv, 
-        llog_systables_modified_args *systbl, DB_LSN *lsn, db_recops op) {
+__thread struct systables_change *systable_changes;
 
-    printf("systables modified!\n");
+int bdb_handle_systables_modified(DB_ENV *dbenv, 
+        llog_systables_modified_args *args, DB_LSN *lsn, db_recops op) {
 
     if (op == DB_TXN_PRINT) {
         printf("[%u][%u] CUSTOM: systables_modified: txnid %x"
                " prevlsn[" PR_LSN "] ntables %d\n",
-               lsn->file, lsn->offset, systbl->txnid->txnid,
-               PARM_LSN(systbl->prev_lsn), systbl->ntables);
+               lsn->file, lsn->offset, args->txnid->txnid,
+               PARM_LSN(args->prev_lsn), args->ntables);
     }
-
-    // HERE: if op is recovery or forward, build a list of strings, and
-    // call bdb callback
-
-    *lsn = systbl->prev_lsn;
+    else if (op == DB_TXN_APPLY) {
+        bdb_state_type *bdb_state = gbl_bdb_state;
+        if (bdb_state) {
+            char **tables;
+            tables = malloc(args->ntables * sizeof(char*));
+            char *s = args->tables.data;
+            for (int i = 0; i < args->ntables; i++) {
+                tables[i] = strdup(s);
+                s += strlen(s)+1;
+            }
+            /* Careful - the transaction that modified these records is still active, 
+             * though only the commit record is left, so it's "guaranteed" to succeed.
+             * Two options: we can dispatch the callback to another thread, or we can
+             * pass the tables from this record back to the caller (replication 
+             * thread), it remembers that an event occured, and defers running it
+             * until after commit.  There's no "current transaction" object to link 
+             * with, so we leave it in a pthread_key and retrieve it on commit.
+             * Applying this event happens after the transaction is committed, so other
+             * transactions can see the values committed by the transaction, but
+             * before the changes are applied.
+             *
+             * */
+            if (systable_changes) {
+                for(int i = 0; i < systable_changes->ntables; i++) {
+                    free(systable_changes->tables[i]);
+                }
+                free(systable_changes->tables);
+                free(systable_changes);
+                systable_changes = NULL;
+            }
+            systable_changes = malloc(sizeof(struct systables_change));
+            systable_changes->ntables = args->ntables;
+            systable_changes->tables = tables;
+        }
+    }
+    *lsn = args->prev_lsn;
 
     return 0;
 }
