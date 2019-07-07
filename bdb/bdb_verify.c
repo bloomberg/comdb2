@@ -36,6 +36,7 @@
 
 #include "genid.h"
 #include "logmsg.h"
+#include "tohex.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -219,7 +220,6 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
-    int ret = 0;
     int rc;
     int blobsizes[16];
     int bloboffs[16];
@@ -227,6 +227,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     int now, last;
     int64_t nrecs = 0;
     int nrecs_progress = 0;
+    int ret = 0;
 
     now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
@@ -484,6 +485,9 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                 ckey->c_close(ckey);
                 goto done;
             }
+    printf("AZ: stripe %d, ix %d, genid %lld, keylen %d, rc %d, expected_keybuf\n", 
+            dtastripe, ix, genid, keylen, rc);
+    hexdump(LOGMSG_ERROR, (const char *) expected_keybuf, keylen);
 
             /* set up key */
 
@@ -575,16 +579,15 @@ done:
 
 static int bdb_verify_data(verify_td_params *par)
 {
-
+    int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
-    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
+    for (int dtastripe = 0; !rc && dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
         par->info = malloc(sizeof(processing_info));
         par->info->type = PROCESS_DATA;
         par->info->dtastripe = dtastripe;
-        int rc = bdb_verify_data_stripe(par);
-        if (rc) return rc;
+        rc = bdb_verify_data_stripe(par);
     }
-    return 0;
+    return rc;
 }
 
 
@@ -1147,17 +1150,16 @@ static void bdb_verify_blobs(verify_td_params *par)
 
 static int bdb_verify_ll(verify_td_params *par)
 {
-    int rc;
     /* scan 1 - run through data, verify all the keys and blobs */
-    if((rc = bdb_verify_data(par)))
-        return rc;
+    int rc = bdb_verify_data(par);
 
     /* scan 2: scan each key, verify data exists */
-    if((rc = bdb_verify_keys(par)))
-        return rc;
+    if (!rc)
+        rc = bdb_verify_keys(par);
 
     /* scan 3: scan each blob, verify data exists */
-    bdb_verify_blobs(par);
+    if (!rc)
+        bdb_verify_blobs(par);
 
     return par->verify_failed;
 }
