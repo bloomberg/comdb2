@@ -169,7 +169,7 @@ static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs);
 
-static int systables_modified_callback(void *bdb_handle, int ntables, char **tables);
+static int systables_modified_callback(void *bdb_handle, void *tran_type, int ntables, char **tables);
 
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
@@ -512,17 +512,20 @@ static int log_modified_systables(bdb_state_type *bdb_state, void *trans,
         }
     }
     tables_out = malloc(sizeof(char**) * *ntables);
-    char *tables = malloc(space_needed);
+    char *s, *tables;
+    s = tables = malloc(space_needed);
     for (int i = 0, j = 0; i < thedb->num_dbs; i++) {
         struct dbtable *tbl = thedb->dbs[i];
         if (tbl->disallow_drop && btst(iq->tables_modified, i)) {
-            strcpy(tables, tbl->tablename);
-            tables += strlen(tbl->tablename);
+            strcpy(s, tbl->tablename);
+            s += strlen(tbl->tablename);
             tables_out[j++] = strdup(tbl->tablename);
         }
     }
     *tblout = tables_out;
     
+    fsnapf(stdout, tables, space_needed);
+
     int rc = bdb_llog_systables_modified_log(bdb_state, trans, *ntables, tables, space_needed);
     printf("log rc %d\n", rc);
     return rc;
@@ -539,11 +542,23 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     int nsystables;
     char **tables = NULL;
     int tran_is_parent = bdb_tran_is_parent(trans);
+    int rc = 0;
 
-    int rc = log_modified_systables(bdb_handle, trans, iq, &nsystables, &tables);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "*ERROR* log_modified_systables:failed err %d\n", rc);
-        return ERR_INTERNAL;
+    if (!tran_is_parent) {
+        rc = log_modified_systables(bdb_handle, trans, iq, &nsystables, &tables);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "*ERROR* log_modified_systables:failed err %d\n", rc);
+            return ERR_INTERNAL;
+        }
+
+        if (nsystables > 0) {
+            // systables_modified_callback will free the arguments passed to it
+            // don't free them again below
+            // note - this gets called before we commit, with the locks
+            // still held
+            systables_modified_callback(bdb_handle, trans, nsystables, tables);
+            tables = NULL;
+        }
     }
 
     if (!logical)
@@ -583,13 +598,6 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         goto bad;
     }
 
-    if (nsystables > 0 && !tran_is_parent) {
-        // systables_modified_callback will free the arguments passed to it
-        // don't free them again below
-        systables_modified_callback(bdb_handle, nsystables, tables);
-        tables = NULL;
-    }
-
 bad:
     if (tables) {
         for (int i = 0; i < nsystables; i++)
@@ -597,7 +605,7 @@ bad:
         free(tables);
     }
 
-    return 0;
+    return rc;
 }
 
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum)
@@ -3093,8 +3101,12 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
     return 0;
 }
 
-static int systables_modified_callback(void *bdb_handle, int ntables, char **tables) {
+static int systables_modified_callback(void *bdb_handle, void *trans, int ntables, char **tables) {
     printf("callback called: %d tables modified\n", ntables);
+
+    /* On the master, we'll have a real trans handle.  On the replicant, we're
+     * being called directly by recovery, and don't have one. */
+
     for (int i = 0; i < ntables; i++) {
         printf("   %s\n", tables[i]);
         free(tables[i]);

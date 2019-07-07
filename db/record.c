@@ -95,6 +95,20 @@ static inline bool has_constraint(int flags)
     return !(flags & RECFLAGS_NO_CONSTRAINTS);
 }
 
+/* Keep track of tables we modified in this transaction
+ * TODO: if there was a schema change since this transaction
+ * started, table numbers could have changed.  One easy and
+ * lame way to handle this is to just return deadlock here.
+ * Harder case is if a schema change happens before this starts
+ * but completes before the log record reaches the replicant.
+ * Not sure how to handle that yet...
+ */
+static void table_modified(struct ireq *iq) {
+    bset(iq->tables_modified, iq->usedb->dbs_idx);
+    if (iq->usedb->disallow_drop)
+        iq->modified_systables = 1;
+}
+
 /*
  * For logical_livesc, function returns ERR_VERIFY if
  * the record being added is already in the btree.
@@ -126,10 +140,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t reclen = p_buf_rec_end - p_buf_rec;
     unsigned long long vgenid = 0;
 
-    // keep track of tables we modified in this transaction
-    bset(iq->tables_modified, iq->usedb->dbs_idx);
-    if (iq->usedb->disallow_drop)
-        iq->modified_systables = 1;
+    table_modified(iq);
 
     *ixfailnum = -1;
 
@@ -715,6 +726,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     blob_buffer_t del_blobs_buf[MAXBLOBS] = {{0}};
     blob_buffer_t *add_idx_blobs = NULL;
     blob_buffer_t *del_idx_blobs = NULL;
+
+    table_modified(iq);
 
     if (p_buf_vrec && (p_buf_vrec_end - p_buf_vrec) != reclen) {
         if (iq->debug)
@@ -1535,6 +1548,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int got_oldblobs = 0;
     blob_buffer_t blobs_buf[MAXBLOBS] = {{0}};
     blob_buffer_t *del_idx_blobs = NULL;
+
+    table_modified(iq);
 
     *ixfailnum = -1;
 
