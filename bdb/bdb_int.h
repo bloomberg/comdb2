@@ -1868,6 +1868,13 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
                                   DBT *data, DBT *data2, int updateid,
                                   void **freeptr, void *stackbuf, int odhready);
+
+struct systables_change {
+    int ntables;
+    char **tables;
+};
+
+
 int bdb_handle_systables_modified(DB_ENV *dbenv, llog_systables_modified_args *systbl, 
                                   DB_LSN *lsn, db_recops op);
 
