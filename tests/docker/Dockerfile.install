@@ -16,6 +16,7 @@ RUN apt-get update && \
     libunwind-dev \
     libz-dev \
     make \
+    ninja-build \
     ncurses-dev \
     protobuf-c-compiler \
     tcl \
@@ -37,7 +38,9 @@ RUN apt-get update && \
     strace \
     gdb \
     openssh-server \
-    psmisc
+    psmisc \
+    vim \
+    less
 
 COPY . /comdb2
 
@@ -45,12 +48,13 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake -DWITH_TCL=1 .. && \
-    make -j4 && \
-    make -j4 test-tools && \
-    make install &&  \
+    cmake -DWITH_TCL=1 -DCMAKE_BUILD_TYPE=Debug -G Ninja .. && \
+    time ninja && \
+    ninja test-tools && \
+    ninja install &&  \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
+    cp /comdb2/tests/docker/makedb / && \
     apt-get clean
 
 ENV PATH      $PATH:/opt/bb/bin

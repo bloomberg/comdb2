@@ -385,7 +385,7 @@ typedef void (*UNDOSHADOWFP)(struct bdb_osql_log *);
 
 typedef int (*BDB_CALLBACK_FP)();
 
-typedef int (*SYSTABLES_MODIFIED)(bdb_state_type *bdb_handle, int ntables, char **tables);
+typedef int (*SYSTABLES_MODIFIED_FP)(bdb_state_type *bdb_handle, void *trans, int ntables, char **tables);
 
 bdb_callback_type *bdb_callback_create(void);
 void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+if [[ $# -ne 1 ]]; then
+    echo >&2 Usage: dbname
+    exit 1
+fi
+
+dbname=$1
+
+echo "Creating db"
+/opt/bb/bin/comdb2 $dbname --create
+echo "cluster nodes $(cat /common/cluster)" >> /opt/bb/var/cdb2/$dbname/${dbname}.lrl
+
+echo "Copying to cluster"
+for host in $(cat /common/cluster); do
+    /opt/bb/bin/copycomdb2 /opt/bb/var/cdb2/$dbname/${dbname}.lrl $host:
+done
+
+echo "Bringing up"
+for host in $(cat /common/cluster); do
+    ssh -o StrictHostKeyChecking=no -tt $host /opt/bb/bin/comdb2 $dbname &> /common/${dbname}.${host}.out &
+done
+
+echo "Updating config"
+echo "$dbname 0 $(cat /common/cluster)" >> /opt/bb/etc/cdb2/config/comdb2db.cfg
+
+echo "Waiting for db to become available"
+out=$(cdb2sql -tabs ${dbname} dev 'select 1' 2>/dev/null)
+while [[ "$out" != "1" ]]; do
+    sleep 0.1
+    out=$(cdb2sql -tabs ${dbname} dev 'select 1' 2>/dev/null)
+done
+
+echo "Ready"
+cdb2sql -tabs ${dbname} dev 'select * from comdb2_cluster'

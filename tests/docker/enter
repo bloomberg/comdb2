@@ -1,0 +1,28 @@
+#!/bin/bash
+
+function usage() {
+    echo "Usage: $0 c (to enter client) | mN (to enter server node N)"
+    exit 1
+}
+
+what=$1
+if [[ -z "$what" ]]; then
+    usage
+fi
+
+if [[ "$what" = 'c' ]]; then
+    id=$(docker ps --filter label=what=testclient --format '{{.ID}}')
+elif [[ "$what" = m* ]]; then
+    n=${what##m}
+    id=$(docker ps --filter name=m${n} --format '{{.ID}}')
+else
+    usage
+fi
+
+if [[ -z "$id" ]]; then
+    echo "No matching container running?"
+    docker ps
+    exit 1
+fi
+
+docker exec -ti $id /bin/bash

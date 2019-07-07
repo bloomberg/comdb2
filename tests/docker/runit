@@ -23,10 +23,16 @@ while [[ $1 = -* ]]; do
     shift
 done
 
-
-if [[ "$src" = "" ]] || [[ "$numnodes" = "" ]]; then
-    echo "Usage: $0 -s source_directory -p nodeprefix -n numnodes [-c commands] [-f file]" >&2
-    exit 1
+# sensible defaults - use current source as path, 5 nodes, run forever
+# with nothing to do (so we can run commands manually)
+if [[ -z "$src" ]]; then 
+    src=$(realpath $(pwd)/../../)
+fi
+if [[ -z "$numnodes" ]]; then
+    numnodes=5
+fi
+if [[ -z "$commands" && -z "$script" ]]; then
+    commands="while :; do sleep 3600; done"
 fi
 
 prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"

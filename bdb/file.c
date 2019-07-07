@@ -8466,8 +8466,6 @@ void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow) {
     bdb_state->disallow_drop = disallow;
 }
 
-__thread struct systables_change *systable_changes;
-
 int bdb_handle_systables_modified(DB_ENV *dbenv, 
         llog_systables_modified_args *args, DB_LSN *lsn, db_recops op) {
 
@@ -8479,37 +8477,15 @@ int bdb_handle_systables_modified(DB_ENV *dbenv,
     }
     else if (op == DB_TXN_APPLY) {
         bdb_state_type *bdb_state = gbl_bdb_state;
-        if (bdb_state) {
+        if (bdb_state && bdb_state->callback->systables_modified_rtn) {
             char **tables;
             tables = malloc(args->ntables * sizeof(char*));
             char *s = args->tables.data;
             for (int i = 0; i < args->ntables; i++) {
                 tables[i] = strdup(s);
-                s += strlen(s)+1;
+                s += (strlen(s)+1);
             }
-            /* Careful - the transaction that modified these records is still active, 
-             * though only the commit record is left, so it's "guaranteed" to succeed.
-             * Two options: we can dispatch the callback to another thread, or we can
-             * pass the tables from this record back to the caller (replication 
-             * thread), it remembers that an event occured, and defers running it
-             * until after commit.  There's no "current transaction" object to link 
-             * with, so we leave it in a pthread_key and retrieve it on commit.
-             * Applying this event happens after the transaction is committed, so other
-             * transactions can see the values committed by the transaction, but
-             * before the changes are applied.
-             *
-             * */
-            if (systable_changes) {
-                for(int i = 0; i < systable_changes->ntables; i++) {
-                    free(systable_changes->tables[i]);
-                }
-                free(systable_changes->tables);
-                free(systable_changes);
-                systable_changes = NULL;
-            }
-            systable_changes = malloc(sizeof(struct systables_change));
-            systable_changes->ntables = args->ntables;
-            systable_changes->tables = tables;
+            bdb_state->callback->systables_modified_rtn(bdb_state, NULL, args->ntables, tables);
         }
     }
     *lsn = args->prev_lsn;
