@@ -323,7 +323,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
         (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
         verify_indexes_callback, db, lua_callback, lua_params,
-        NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
+        {0}, &verify_status, progress_report_seconds, attempt_fix, 0, 0
     };
     rc = bdb_verify(&par);
 
@@ -430,19 +430,21 @@ int parallel_verify(const char *table, SBUF2 *sb,
         goto done;
     }
 
-    gbl_verify_thdpool =
-        thdpool_create("verify_pool", sizeof(struct verify_thd_state));
+    if (!gbl_verify_thdpool) {
+        gbl_verify_thdpool =
+            thdpool_create("verify_pool", sizeof(struct verify_thd_state));
 
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_verify_thdpool);
+        if (gbl_exit_on_pthread_create_fail)
+            thdpool_set_exit(gbl_verify_thdpool);
 
-    thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
-    thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
-    thdpool_set_minthds(gbl_verify_thdpool, 1);
-    thdpool_set_maxthds(gbl_verify_thdpool, 8); //TODO: make this an attr
-    thdpool_set_linger(gbl_verify_thdpool, 10);
+        thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
+        thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
+        thdpool_set_minthds(gbl_verify_thdpool, 0);
+        thdpool_set_maxthds(gbl_verify_thdpool, 8); //TODO: make this an attr
+        thdpool_set_linger(gbl_verify_thdpool, 10);
 
-    thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
+        thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
+    }
 
 
     //bdb_parallel_verify();
@@ -451,16 +453,16 @@ int parallel_verify(const char *table, SBUF2 *sb,
         (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
         verify_indexes_callback, db, lua_callback, lua_params,
-        NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
+        {0}, &verify_status, progress_report_seconds, attempt_fix, 0, 0
     };
 
-    rc = bdb_verify(&par);
-
     //dispatch work
+    rc = bdb_verify_enqueue(&par, gbl_verify_thdpool);
+
     //wait for all verify threads to finish
-    thdpool_set_minthds(gbl_verify_thdpool, 0);
-    thdpool_stop(gbl_verify_thdpool);
     thrman_wait_type_exit(THRTYPE_VERIFY);
+
+    thdpool_stop(gbl_verify_thdpool);
 
     thdpool_destroy(&gbl_verify_thdpool);
 

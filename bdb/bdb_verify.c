@@ -233,7 +233,7 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
     now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
 
-    int dtastripe = par->info->dtastripe;
+    int dtastripe = par->info.dtastripe;
     nrecs = 0;
     nrecs_progress = 0;
     DBT dbt_data = {0};
@@ -554,15 +554,13 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
 
 static int bdb_verify_data(verify_td_params *par, unsigned int lid)
 {
-    par->info = malloc(sizeof(processing_info));
-    par->info->type = PROCESS_DATA;
+    par->info.type = PROCESS_DATA;
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; !rc && dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
-        par->info->dtastripe = dtastripe;
+        par->info.dtastripe = dtastripe;
         rc = bdb_verify_data_stripe(par, lid);
     }
-    free(par->info);
     return rc;
 }
 
@@ -610,7 +608,7 @@ static int bdb_verify_key(verify_td_params *par, unsigned int lid)
 
     int64_t nrecs = 0;
     int nrecs_progress = 0;
-    int ix = par->info->index;
+    int ix = par->info.index;
 
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
         bdb_state->dbp_ix[ix], lid, &ckey, 0);
@@ -944,16 +942,13 @@ static int bdb_verify_key(verify_td_params *par, unsigned int lid)
 
 static int bdb_verify_keys(verify_td_params *par, unsigned int lid)
 {
-    par->info = malloc(sizeof(processing_info));
-    par->info->type = PROCESS_KEY;
+    par->info.type = PROCESS_KEY;
     int rc = 0;
     /* scan 2: scan each key, verify data exists */
     for (int ix = 0; !rc && ix < par->bdb_state->numix; ix++) {
-        par->info->index = ix;
+        par->info.index = ix;
         rc = bdb_verify_key(par, lid);
     }
-
-    free(par->info);
     return rc;
 }
 
@@ -965,8 +960,8 @@ static void bdb_verify_blob(verify_td_params *par, unsigned int lid)
     int rc = 0;
 
     bdb_state_type *bdb_state = par->bdb_state;
-    int blobno = par->info->blobno;
-    int dtastripe = par->info->dtastripe;
+    int blobno = par->info.blobno;
+    int dtastripe = par->info.dtastripe;
     DB * db = bdb_state->dbp_data[blobno + 1][dtastripe];
 
     if (!db) {
@@ -1074,19 +1069,17 @@ static void bdb_verify_blob(verify_td_params *par, unsigned int lid)
 static void bdb_verify_blobs(verify_td_params *par, unsigned int lid)
 {
     int nblobs = get_numblobs(par->db_table);
-    par->info = malloc(sizeof(processing_info));
-    par->info->type = PROCESS_BLOB;
+    par->info.type = PROCESS_BLOB;
     for (int blobno = 0; blobno < nblobs; blobno++) {
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
              dtastripe++) {
 
             //info should be freed in the individual function that checks it
-            par->info->blobno = blobno;
-            par->info->dtastripe = dtastripe;
+            par->info.blobno = blobno;
+            par->info.dtastripe = dtastripe;
             bdb_verify_blob(par, lid);
         }
     }
-    free(par->info);
 }
 
 static int bdb_verify_ll(verify_td_params *par, unsigned int lid)
@@ -1105,23 +1098,22 @@ static int bdb_verify_ll(verify_td_params *par, unsigned int lid)
     return *par->verify_status;
 }
 
-void *bdb_verify_dispatcher(verify_td_params *par) 
+void bdb_verify_dispatcher(verify_td_params *par) 
 {
     bdb_state_type *bdb_state = par->bdb_state;
     int rc;
     unsigned int lid;
-    if (par->parallel_verify) {
-        BDB_READLOCK("bdb_verify");
-        
-        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
-                        DB_LOCK_ID_READONLY)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
-            *par->verify_status = 1;
-            return NULL;
-        }
+    assert (par->parallel_verify);
+    BDB_READLOCK("bdb_verify");
+    
+    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
+                    DB_LOCK_ID_READONLY)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
+        *par->verify_status = 1;
+        return;
     }
 
-    switch (par->info->type) {
+    switch (par->info.type) {
     case PROCESS_DATA:
         bdb_verify_data_stripe(par, lid);
         break;
@@ -1133,33 +1125,53 @@ void *bdb_verify_dispatcher(verify_td_params *par)
         break;
     }
 
-    if (par->parallel_verify)
-        BDB_RELLOCK();
-
-    free(par->info);
-    return NULL;
+    BDB_RELLOCK();
 }
 
-/* this will send work to thread pool */
-int bdb_verify_test(verify_td_params *par)
+static void bdb_verify_dispatcher_work_pp(struct thdpool *pool, void *work, void *thddata,
+                            int op)
+{
+    bdb_verify_dispatcher(work);
+}
+
+inline static void dispatch_work(verify_td_params *work, thdpool *verify_thdpool)
+{
+    if (verify_thdpool) {
+        int rc = thdpool_enqueue(verify_thdpool, 
+                bdb_verify_dispatcher_work_pp, work, 0, NULL, THDPOOL_FORCE_QUEUE);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error\n", __func__);
+            verify_thdpool = NULL;
+        }
+    }
+    if (!verify_thdpool) {
+        bdb_verify_dispatcher(work);
+        free(work);
+    }
+}
+
+/* this is how we will send work to thread pool */
+int bdb_verify_enqueue(verify_td_params *par, thdpool *verify_thdpool)
 {
     par->parallel_verify = 1;
 
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
-        par->info = malloc(sizeof(processing_info));
-        par->info->type = PROCESS_DATA;
-        par->info->dtastripe = dtastripe;
-        bdb_verify_dispatcher(par);
+        verify_td_params *work = malloc(sizeof(verify_td_params));
+        memcpy(work, par, sizeof(verify_td_params));
+        work->info.type = PROCESS_DATA;
+        work->info.dtastripe = dtastripe;
+        dispatch_work(work, verify_thdpool);
     }
 
 
     /* scan 2: scan each key, verify data exists */
     for (int ix = 0; ix < par->bdb_state->numix; ix++) {
-        par->info = malloc(sizeof(processing_info));
-        par->info->type = PROCESS_KEY;
-        par->info->index = ix;
-        bdb_verify_dispatcher(par);
+        verify_td_params *work = malloc(sizeof(verify_td_params));
+        memcpy(work, par, sizeof(verify_td_params));
+        work->info.type = PROCESS_KEY;
+        work->info.index = ix;
+        dispatch_work(work, verify_thdpool);
     }
 
     /* scan 3: scan each blob, verify data exists */
@@ -1167,13 +1179,12 @@ int bdb_verify_test(verify_td_params *par)
     for (int blobno = 0; blobno < nblobs; blobno++) {
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
              dtastripe++) {
-
-            //info should be freed in the individual function that checks it
-            par->info = malloc(sizeof(processing_info));
-            par->info->type = PROCESS_BLOB;
-            par->info->blobno = blobno;
-            par->info->dtastripe = dtastripe;
-            bdb_verify_dispatcher(par);
+            verify_td_params *work = malloc(sizeof(verify_td_params));
+            memcpy(work, par, sizeof(verify_td_params));
+            work->info.type = PROCESS_BLOB;
+            work->info.blobno = blobno;
+            work->info.dtastripe = dtastripe;
+            dispatch_work(work, verify_thdpool);
         }
     }
 
@@ -1182,7 +1193,7 @@ int bdb_verify_test(verify_td_params *par)
 
 int bdb_verify(verify_td_params *par)
 {
-    return bdb_verify_test(par);
+    return bdb_verify_enqueue(par, NULL);
     int rc;
     unsigned int lid;
     bdb_state_type *bdb_state = par->bdb_state;

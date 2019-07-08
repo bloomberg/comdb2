@@ -19,6 +19,7 @@
 
 struct SBUF2;
 struct bdb_state_type;
+typedef struct thdpool thdpool;
 typedef struct dbtable dbtable;
 
 typedef enum {PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB} processing_type;
@@ -46,7 +47,7 @@ typedef struct {
     void *callback_parm;
     int (*lua_callback)(void *, const char *);
     void *lua_params;
-    processing_info *info;
+    processing_info info;
     uint8_t *verify_status; //0 success, 1 failure
     int progress_report_seconds;
     int attempt_fix;
@@ -56,6 +57,7 @@ typedef struct {
 
 
 int bdb_verify(verify_td_params *par);
+int bdb_verify_enqueue(verify_td_params *par, thdpool *verify_thdpool);
 
 
 #endif
