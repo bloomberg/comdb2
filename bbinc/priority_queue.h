@@ -21,15 +21,18 @@
 
 typedef int priority_t;
 
-typedef struct priority_queue_item_tag {
+struct priority_queue_item_tag {
   priority_t priority;
   void *pData;
   LINKC_T(struct priority_queue_item_tag) link;
-} priority_queue_item_t;
+};
 
-typedef struct priority_queue_tag {
+struct priority_queue_tag {
   LISTC_T(struct priority_queue_tag) list;
-} priority_queue_t;
+};
+
+typedef struct priority_queue_item_tag priority_queue_item_t;
+typedef struct priority_queue_tag priority_queue_t;
 
 /* create a queue */
 priority_queue_t *priority_queue_new();
