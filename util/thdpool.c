@@ -976,14 +976,12 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             }
             pool->num_enqueued++;
             int queue_rc = priority_queue_add(&pool->queue, priority, item);
-            if (priority_queue_count(&pool->queue) > pool->peakqueue) {
-                pool->peakqueue = priority_queue_count(&pool->queue);
 
             if (queue_rc == 0 && pool->queued_callback)
                 pool->queued_callback(work);
 
-            if (listc_size(&pool->queue) > pool->peakqueue) {
-                pool->peakqueue = listc_size(&pool->queue);
+            if (priority_queue_count(&pool->queue) > pool->peakqueue) {
+                pool->peakqueue = priority_queue_count(&pool->queue);
             }
         }
 
