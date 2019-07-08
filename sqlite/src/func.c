@@ -769,6 +769,12 @@ static void comdb2SysinfoFunc(
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
     sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
+  }else if( sqlite3_stricmp(zName, "version")==0 ){
+    char *zVersion = sqlite3_mprintf("[%s] [%s] [%s] [%s] [%s]", gbl_db_version,
+                                     gbl_db_codename, gbl_db_semver,
+                                     gbl_db_git_version_sha, gbl_db_buildtype);
+    sqlite3_result_text(context, zVersion, -1, SQLITE_TRANSIENT);
+    sqlite3_free(zVersion);
   }
 }
 

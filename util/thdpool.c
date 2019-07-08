@@ -897,8 +897,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_passed++;
         } else {
             /* queue work */
-            if (pool->queued_callback)
-                pool->queued_callback(work);
             if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
@@ -977,9 +975,15 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
             pool->num_enqueued++;
-            priority_queue_add(&pool->queue, priority, item);
+            int queue_rc = priority_queue_add(&pool->queue, priority, item);
             if (priority_queue_count(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = priority_queue_count(&pool->queue);
+
+            if (queue_rc == 0 && pool->queued_callback)
+                pool->queued_callback(work);
+
+            if (listc_size(&pool->queue) > pool->peakqueue) {
+                pool->peakqueue = listc_size(&pool->queue);
             }
         }
 
