@@ -21,7 +21,7 @@ else
 	done
 fi
 
-sleep 1
+sleep 10
 
 testname='t00'
 echo preparing db for $testname
