@@ -158,6 +158,8 @@ struct schema_change_type {
     int finalize_only; /* only commit the schema change */
 
     pthread_mutex_t mtx; /* mutex for thread sync */
+    pthread_mutex_t mtxStart; /* mutex for thread start */
+    pthread_cond_t condStart; /* condition var for thread sync */
     int sc_rc;
 
     struct ireq *iq;

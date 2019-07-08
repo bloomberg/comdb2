@@ -5618,7 +5618,7 @@ void sqlite3ClearTempRegCache(Parse *pParse){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "vdbeInt.h"
 
-static char *print_mem(Mem *m){
+char *print_mem(Mem *m){
   int flg = m->flags & MEM_TypeMask;
   char *hex = "0123456789ABCDEF";
 

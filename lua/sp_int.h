@@ -47,7 +47,6 @@ struct stored_proc {
     int bufsz;
     int num_instructions;
     int max_num_instructions;
-    int had_allow_lua_exec_with_ddl;
     int had_allow_lua_dynamic_libs;
     uint8_t *buf;
     char *error;

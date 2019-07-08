@@ -571,7 +571,7 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     } else {
         while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
             if (thd->pool->maxqueueagems > 0 &&
-                comdb2_time_epochms() - work->queue_time_ms >
+                comdb2_time_epochms() - next->queue_time_ms >
                     thd->pool->maxqueueagems) {
                 if (thd->pool->dque_fn)
                     thd->pool->dque_fn(thd->pool, next, 1);
@@ -656,6 +656,7 @@ static void *thdpool_thd(void *voidarg)
 
             /* Get work.  If there is no work then place us on the free
              * list and wait for work. */
+            memset(&work, 0, sizeof(struct workitem)); /* work is output, zero first */
             while (!get_work_ll(thd, &work)) {
                 int rc = 0;
                 if (listc_size(&pool->thdlist) > pool->minnthd && !ts) {
@@ -885,8 +886,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_passed++;
         } else {
             /* queue work */
-            if (pool->queued_callback)
-                pool->queued_callback(work);
             if (listc_size(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
@@ -969,6 +968,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 listc_atl(&pool->queue, item);
             else
                 listc_abl(&pool->queue, item);
+
+            if (pool->queued_callback)
+                pool->queued_callback(work);
 
             if (listc_size(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = listc_size(&pool->queue);

@@ -32,11 +32,6 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("allow_lua_exec_with_ddl",
-                 "Enable to allow use of SQL DDL commands from inside of Lua "
-                 "stored procedures (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl, NOARG, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
