@@ -71,7 +71,7 @@ int priority_queue_add(
     return 0;
   }
 
-  if (p == PRIORITY_T_TAIL)
+  if ((p == PRIORITY_T_TAIL) || (p == PRIORITY_T_DEFAULT))
   {
     listc_abl(&q->list, i);
     return 0;
