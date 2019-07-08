@@ -2192,7 +2192,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
 
-
     if (!clnt.admin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
