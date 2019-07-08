@@ -20,7 +20,7 @@
 #include <limits.h>
 #include <list.h>
 
-typedef int priority_t;
+typedef long long priority_t;
 
 #ifndef PRIORITY_T_INVALID
 #define PRIORITY_T_INVALID ((priority_t)-1)
@@ -31,19 +31,19 @@ typedef int priority_t;
 #endif /* PRIORITY_T_HIGHEST */
 
 #ifndef PRIORITY_T_LOWEST
-#define PRIORITY_T_LOWEST ((priority_t)INT_MAX-3)
+#define PRIORITY_T_LOWEST ((priority_t)LLONG_MAX-3)
 #endif /* PRIORITY_T_LOWEST */
 
 #ifndef PRIORITY_T_HEAD
-#define PRIORITY_T_HEAD ((priority_t)INT_MAX-2)
+#define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-2)
 #endif /* PRIORITY_T_HEAD */
 
 #ifndef PRIORITY_T_TAIL
-#define PRIORITY_T_TAIL ((priority_t)INT_MAX-1)
+#define PRIORITY_T_TAIL ((priority_t)LLONG_MAX-1)
 #endif /* PRIORITY_T_TAIL */
 
 #ifndef PRIORITY_T_DEFAULT
-#define PRIORITY_T_DEFAULT ((priority_t)INT_MAX)
+#define PRIORITY_T_DEFAULT ((priority_t)LLONG_MAX)
 #endif /* PRIORITY_T_DEFAULT */
 
 struct priority_queue_item_tag {
