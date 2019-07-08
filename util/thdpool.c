@@ -271,7 +271,7 @@ void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
     LOCK(&pool->mutex)
     {
         priority_queue_item_t *item;
-        LISTC_FOR_EACH(&pool->queue->list, item, link)
+        LISTC_FOR_EACH(&pool->queue.list, item, link)
         {
             (foreach_fn)(pool, item->pData, user);
         }
