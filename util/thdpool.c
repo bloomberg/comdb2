@@ -778,7 +778,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
 
-    /* If the special "enqueue at front" flag is set, only a default priority
+    /* If the special "enqueue at front" flag is set, only default priority
      * to highest (i.e. using a[nother] specific priority overrides flag). */
     if (enqueue_front && (priority == PRIORITY_T_DEFAULT))
         priority = PRIORITY_T_HEAD;

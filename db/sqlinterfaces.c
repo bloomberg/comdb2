@@ -6193,7 +6193,7 @@ void run_internal_sql(char *sql)
     start_internal_sql_clnt(&clnt);
     clnt.sql = skipws(sql);
 
-    dispatch_sql_query(&clnt);
+    dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
     if (clnt.query_rc || clnt.saved_errstr) {
         logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
                clnt.query_rc);
@@ -6406,7 +6406,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
     clnt->sql = skipws(sql);
-    dispatch_sql_query(clnt);
+    dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
     int rc = 0;
 
     if (clnt->query_rc || clnt->saved_errstr) {
