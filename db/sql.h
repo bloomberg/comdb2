@@ -511,6 +511,17 @@ struct clnt_ddl_context {
 
 /* Client specific sql state */
 struct sqlclntstate {
+    int seqNo;                 /* Monotonically increasing sequence number
+                                * assigned during dispatch.  This value is
+                                * not allowed to be zero.  Further, it must
+                                * be based on a value that is never reset
+                                * while the server is running.  This value
+                                * will be used as a proxy for the original
+                                * time of the client request, which impacts
+                                * the relative priority of queued SQL work
+                                * items.  This value should only be changed
+                                * by the dispatch_sql_query() function. */
+
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;

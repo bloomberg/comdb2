@@ -165,6 +165,7 @@ int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
+int gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 void rcache_init(size_t, size_t);
@@ -4541,6 +4542,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
 
+    clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
+
     if (self) {
         if (clnt->exec_lua_thread)
             thrman_set_subtype(self, THRSUBTYPE_LUA_SQL);
@@ -4579,7 +4582,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags,
-                              PRIORITY_T_DEFAULT)) != 0) {
+                              (priority_t)clnt->seqNo)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
