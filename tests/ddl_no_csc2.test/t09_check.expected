@@ -62,3 +62,7 @@ constraints
 [INSERT INTO t1 VALUES('foo')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3AA1A76' unable to add record rc = 320
 (rows inserted=1)
 (v='bar')
+(test='7. TRUNCATE TABLE')
+(rows inserted=3)
+(COUNT(*)=3=1)
+(COUNT(*)=0=1)
