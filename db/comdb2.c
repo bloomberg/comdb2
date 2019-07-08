@@ -190,6 +190,7 @@ const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERS
 const char gbl_db_version[] = QUOTE(COMDB2_BUILD_VERSION);
 const char gbl_db_semver[] = QUOTE(COMDB2_SEMVER);
 const char gbl_db_codename[] = QUOTE(COMDB2_CODENAME);
+const char gbl_db_buildtype[] = QUOTE(COMDB2_BUILD_TYPE);
 
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;

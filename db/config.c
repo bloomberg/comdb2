@@ -72,6 +72,7 @@ static struct option long_options[] = {
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
     {"tunable", required_argument, NULL, 0},
+    {"version", no_argument, NULL, 'v'},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
@@ -89,6 +90,8 @@ static const char *help_text = {
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
     "        --tunable                  override tunable\n"
+    "        --help                     displays this help text and exit\n"
+    "        --version                  displays version information and exit\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -102,6 +105,14 @@ struct read_lrl_option_type {
     const char *lrlname;
     const char *dbname;
 };
+
+void print_version_and_exit()
+{
+    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s] [%s]\n",
+           gbl_db_version, gbl_db_codename, gbl_db_semver,
+           gbl_db_git_version_sha, gbl_db_buildtype);
+    exit(2);
+}
 
 void print_usage_and_exit()
 {
@@ -190,9 +201,10 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     int c;
     int options_idx;
 
-    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
+        if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
 
         switch (options_idx) {
