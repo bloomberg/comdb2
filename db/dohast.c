@@ -114,10 +114,8 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
     if (is_union) {
         /* restriction allows us direct indexing in result set */
         for (i = 0; i < lst->nExpr; i++) {
-            assert(lst->a[i].pExpr->op == TK_INTEGER &&
-                   (lst->a[i].pExpr->flags & EP_IntValue));
             (*order_dir)[i] =
-                lst->a[i].pExpr->u.iValue * (((*order_dir)[i]) ? -1 : 1);
+                lst->a[i].u.x.iOrderByCol * (((*order_dir)[i]) ? -1 : 1);
         }
     }
 
