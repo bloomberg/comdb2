@@ -80,13 +80,13 @@ int priority_queue_add(
 void *priority_queue_next(
   priority_queue_t *q
 ){
-  if ((q == NULL) || (q->list == NULL)) return NULL;
+  if (q == NULL) return NULL;
   return listc_rtl(&q->list);
 }
 
 int priority_queue_count(
   priority_queue_t *q
 ){
-  if ((q == NULL) || (q->list == NULL)) return -1;
+  if (q == NULL) return -1;
   return listc_size(&q->list);
 }
