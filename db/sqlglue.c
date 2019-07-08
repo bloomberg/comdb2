@@ -12152,9 +12152,9 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                __func__, rc, f->name, mout.flags, f->type);
         goto done;
     }
+done:
     if (mout.zMalloc)
         free(mout.zMalloc);
-done:
     strbuf_free(sql);
     if (rc)
         return -1;
