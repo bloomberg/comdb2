@@ -1450,9 +1450,20 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
         b = conns->conns[order[idx_b]].que->lst.top->obj;
 
         for (i = 0; i < conns->order_size /*conns->ncols*/; i++) {
-            ret = sqlite3MemCompare(&a[i], &b[i], NULL);
+            int orderby_idx = (conns->order_dir[i] > 0)
+                                  ? conns->order_dir[i]
+                                  : (-conns->order_dir[i]);
+            assert(orderby_idx > 0);
+            orderby_idx--;
+            if (gbl_dohsql_verbose) {
+                extern char *print_mem(Mem * m);
+                logmsg(LOGMSG_USER, "%lu COMPARE %s <> %s\n", pthread_self(),
+                       print_mem(&a[orderby_idx]), print_mem(&b[orderby_idx]));
+            }
+
+            ret = sqlite3MemCompare(&a[orderby_idx], &b[orderby_idx], NULL);
             if (ret) {
-                if (conns->order_dir[i])
+                if (conns->order_dir[i] < 0)
                     ret = -ret;
                 break;
             }

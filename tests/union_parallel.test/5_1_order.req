@@ -69,5 +69,5 @@ update t set a=a limit 1
 select a as col from t union all select c from t2 union all select e from t3 order by col limit 1 offset 14
 update t set a=a limit 1
 select a as col from t union all select c from t2 union all select e from t3 order by col limit -3 offset -1
-
-
+select a as col, 2 as ord from t union all select c, 1 as ord from t2 order by ord, col
+select a as col, 2 as ord from t union all select c, 1 as ord from t2 order by ord desc, col
