@@ -212,7 +212,7 @@ static void printhex(SBUF2 *sb, int (*lua_callback)(void *, const char *),
 }
 
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
-static int bdb_verify_data_stripe(verify_td_params *par)
+static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
@@ -245,7 +245,6 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     dbt_key.data = keybuf;
 
     db = bdb_state->dbp_data[0][dtastripe];
-    unsigned int lid = par->lid;
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
@@ -283,7 +282,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                         nrecs_progress / par->progress_report_seconds);
             if(rc) {
                 par->client_dropped_connection = 1;
-                return par->verify_failed;
+                return *par->verify_status;
             }
             last = now;
             nrecs_progress = 0;
@@ -293,7 +292,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
         unsigned long long genid;
         /* is it the right size? */
         if (dbt_key.size != sizeof(genid)) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!bad genid sz %d\n", dbt_key.size);
             goto next_record;
         }
@@ -320,7 +319,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
         rc = par->get_blob_sizes_callback(par->callback_parm, dbt_data.data,
                                      blobsizes, bloboffs, &nblobs);
         if (rc) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx blob size rc %d\n", genid, rc);
         } else {
             /* verify blobs */
@@ -341,7 +340,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
 
                 dtafile = get_dtafile_from_genid(genid);
                 if (dtafile < 0) {
-                    par->verify_failed = 1;
+                    *par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx unknown dtafile\n",
                                 genid_flipped);
                     return 0;
@@ -351,7 +350,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
 
                 rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                 if (rc) {
-                    par->verify_failed = 1;
+                    *par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx cursor on blob %d rc %d\n",
                                 genid_flipped, blobno, rc);
                     return 0;
@@ -378,14 +377,14 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                     if (blobsizes[blobno] != -1 &&
                         blobsizes[blobno] != -2) {
                         had_errors = 1;
-                        par->verify_failed = 1;
+                        *par->verify_status = 1;
                         locprint(par->sb, par->lua_callback, par->lua_params,
                             "!%016llx no blob %d found expected sz %d\n",
                             genid_flipped, blobno, blobsizes[blobno]);
                     }
                 } else if (rc) {
                     had_irrecoverable_errors = 1;
-                    par->verify_failed = 1;
+                    *par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx blob %d rc %d\n",
                                 genid_flipped, blobno, rc);
                     had_errors = 1;
@@ -394,13 +393,13 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                 if (rc == 0) {
                     realblobsz[blobno] = dbt_blob_data.size;
                     if (blobsizes[blobno] == -1) {
-                        par->verify_failed = 1;
+                        *par->verify_status = 1;
                         locprint(par->sb, par->lua_callback, par->lua_params,
                             "!%016llx blob %d null but found blob\n",
                             genid_flipped, blobno);
                         had_errors = 1;
                     } else if (blobsizes[blobno] == -2) {
-                        par->verify_failed = 1;
+                        *par->verify_status = 1;
                         locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx blob %d size %d expected "
                                         "none (inline vutf8)\n",
                                     genid_flipped, blobno,
@@ -408,7 +407,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
                         had_errors = 1;
                     } else if (blobsizes[blobno] != -1 &&
                                dbt_blob_data.size != blobsizes[blobno]) {
-                        par->verify_failed = 1;
+                        *par->verify_status = 1;
                         locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx blob %d size mismatch "
                                         "got %d expected %d\n",
                                     genid_flipped, blobno,
@@ -459,7 +458,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
             rc = par->formkey_callback(par->callback_parm, databuf, par->callback_blob_buf,
                                   ix, expected_keybuf, &keylen);
             if (rc) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
                          "!%016llx ix %d formkey rc %d\n", genid_flipped,
                          ix, rc);
@@ -501,24 +500,24 @@ static int bdb_verify_data_stripe(verify_td_params *par)
             if (!(has_keys & (1ULL << ix))) {
                 if (!rc &&
                     (bdb_state->ixdups[ix] || genid == verify_genid)) {
-                    par->verify_failed = 1;
+                    *par->verify_status = 1;
                     locprint(
                         par->sb, par->lua_callback, par->lua_params,
                         "!%016llx ix %d expect notfound but got an index\n",
                         genid_flipped, ix);
                 }
             } else if (rc == DB_NOTFOUND) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb,  par->lua_callback, par->lua_params,
                         "!%016llx ix %d missing key\n", genid_flipped, ix);
             }
             else if (rc) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d fetch rc %d\n",
                             genid_flipped, ix, rc);
             }
             else if (genid != verify_genid) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d genid mismatch %016llx\n",
                             genid_flipped, ix, verify_genid);
             }
@@ -542,7 +541,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     }
     if (rc != DB_NOTFOUND) {
         cdata->c_close(cdata);
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!dtastripe %d c_get unexpected rc %d\n", dtastripe,
                     rc);
         return rc;
@@ -551,7 +550,7 @@ static int bdb_verify_data_stripe(verify_td_params *par)
     return 0;
 }
 
-static int bdb_verify_data(verify_td_params *par)
+static int bdb_verify_data(verify_td_params *par, unsigned int lid)
 {
     par->info = malloc(sizeof(processing_info));
     par->info->type = PROCESS_DATA;
@@ -559,14 +558,14 @@ static int bdb_verify_data(verify_td_params *par)
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; !rc && dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
         par->info->dtastripe = dtastripe;
-        rc = bdb_verify_data_stripe(par);
+        rc = bdb_verify_data_stripe(par, lid);
     }
     free(par->info);
     return rc;
 }
 
 
-static int bdb_verify_key(verify_td_params *par)
+static int bdb_verify_key(verify_td_params *par, unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
@@ -609,18 +608,17 @@ static int bdb_verify_key(verify_td_params *par)
     int64_t nrecs = 0;
     int nrecs_progress = 0;
     int ix = par->info->index;
-    unsigned int lid = par->lid;
 
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
         bdb_state->dbp_ix[ix], lid, &ckey, 0);
     if (rc) {
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d cursor rc %d\n", ix, rc);
         return 0;
     }
     rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_FIRST);
     if (rc && rc != DB_NOTFOUND) {
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d first rc %d\n", ix, rc);
     }
     while (rc == 0) {
@@ -650,7 +648,7 @@ static int bdb_verify_key(verify_td_params *par)
         }
 
         if (dbt_data.size < sizeof(unsigned long long)) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params,
                      "!ix %d unexpected length %d\n", ix, dbt_data.size);
             goto next_key;
@@ -670,7 +668,7 @@ static int bdb_verify_key(verify_td_params *par)
         db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
         rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
         if (rc) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d rc %d\n", genid_flipped, ix,
                         rc);
             goto next_key;
@@ -679,14 +677,14 @@ static int bdb_verify_key(verify_td_params *par)
         rc = bdb_cget_unpack(bdb_state, cdata, &dbt_dta_check_key,
                              &dbt_dta_check_data, &ver, DB_SET);
         if (rc == DB_NOTFOUND) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d orphaned ", genid_flipped, ix);
             printhex(par->sb, par->lua_callback, par->lua_params, dbt_key.data, dbt_key.size);
             locprint(par->sb, par->lua_callback, par->lua_params, "\n");
 
             goto next_key;
         } else if (rc) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d dta rc %d\n", genid_flipped, ix,
                         rc);
             goto next_key;
@@ -815,14 +813,14 @@ static int bdb_verify_key(verify_td_params *par)
         par->free_blob_buffer_callback(par->callback_blob_buf);
 
         if (dbt_key.size < keylen) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d key size %d < formed key %d\n",
                         genid_flipped, ix, dbt_key.size, keylen);
             goto next_key;
         }
 
         if (memcmp(expected_keybuf, dbt_key.data, keylen)) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d key mismatch\n", genid_flipped,
                         ix);
             goto next_key;
@@ -832,7 +830,7 @@ static int bdb_verify_key(verify_td_params *par)
             keylen += sizeof(unsigned long long);
 
         if (keylen != dbt_key.size) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params,
                 "!%016llx ix %d key size mismatch expected %d got %d\n",
                 genid_flipped, ix, keylen, dbt_key.size);
@@ -864,7 +862,7 @@ static int bdb_verify_key(verify_td_params *par)
             }
 
             if (expected_size != bdb_state->lrl) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d dtacpy payload wrong size "
                                 "expected %d got %d\n",
                             genid_flipped, ix, bdb_state->lrl,
@@ -874,7 +872,7 @@ static int bdb_verify_key(verify_td_params *par)
 
             if (memcmp(expected_data, dbt_dta_check_data.data,
                        bdb_state->lrl)) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d dtacpy data mismatch\n",
                             genid_flipped, ix);
                 goto next_key;
@@ -883,7 +881,7 @@ static int bdb_verify_key(verify_td_params *par)
         } else if (bdb_state->ixcollattr[ix]) {
             if (dbt_data.size != (sizeof(unsigned long long) +
                                   4 * bdb_state->ixcollattr[ix])) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
                          "!%016llx ix %d decimal payload wrong size "
                          "expected %zu got %d\n",
@@ -896,7 +894,7 @@ static int bdb_verify_key(verify_td_params *par)
             memcpy(&genid_right, (uint8_t *)dbt_data.data, sizeof(genid));
         } else {
             if (dbt_data.size != sizeof(unsigned long long)) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
                     "!%016llx ix %d payload wrong size expected 8 got %d\n",
                     genid_flipped, ix, dbt_data.size);
@@ -910,7 +908,7 @@ static int bdb_verify_key(verify_td_params *par)
                    sizeof(genid_left));
             masked_genid = get_search_genid(bdb_state, genid);
             if (memcmp(&genid_left, &masked_genid, sizeof(genid))) {
-                par->verify_failed = 1;
+                *par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d dupe key genid != dta "
                                 "genid %016llx (%016llx)\n",
                             genid_left, ix, masked_genid, genid);
@@ -918,7 +916,7 @@ static int bdb_verify_key(verify_td_params *par)
         }
 
         if (memcmp(&genid_right, &genid, sizeof(genid))) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params,
                 "!%016llx ix %d dupe key genid != dta genid %016llx\n",
                 genid_right, ix, genid);
@@ -928,12 +926,12 @@ static int bdb_verify_key(verify_td_params *par)
         rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_NEXT);
     }
     if (rc && rc != DB_NOTFOUND) {
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d first rc %d\n", ix, rc);
     }
     rc = ckey->c_close(ckey);
     if (rc) {
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx ix %d close cursor rc %d\n", genid, ix,
                     rc);
     }
@@ -941,7 +939,7 @@ static int bdb_verify_key(verify_td_params *par)
     return 0;
 }
 
-static int bdb_verify_keys(verify_td_params *par)
+static int bdb_verify_keys(verify_td_params *par, unsigned int lid)
 {
     par->info = malloc(sizeof(processing_info));
     par->info->type = PROCESS_KEY;
@@ -949,7 +947,7 @@ static int bdb_verify_keys(verify_td_params *par)
     /* scan 2: scan each key, verify data exists */
     for (int ix = 0; !rc && ix < par->bdb_state->numix; ix++) {
         par->info->index = ix;
-        rc = bdb_verify_key(par);
+        rc = bdb_verify_key(par, lid);
     }
 
     free(par->info);
@@ -957,7 +955,7 @@ static int bdb_verify_keys(verify_td_params *par)
 }
 
 
-static void bdb_verify_blob(verify_td_params *par)
+static void bdb_verify_blob(verify_td_params *par, unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *cblob;
@@ -969,14 +967,12 @@ static void bdb_verify_blob(verify_td_params *par)
     DB * db = bdb_state->dbp_data[blobno + 1][dtastripe];
 
     if (!db) {
-        par->verify_failed = 1;
+        *par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "incorrect number of blobs? blob index %d "
                         "stripe %d has no DB\n",
                     blobno, dtastripe);
         return;
     }
-
-    unsigned int lid = par->lid;
 
     rc = db->paired_cursor_from_lid(db, lid, &cblob, 0);
     if (rc) {
@@ -1050,11 +1046,11 @@ static void bdb_verify_blob(verify_td_params *par)
         rc = cdata->c_get(cdata, &dbt_dta_check_key,
                           &dbt_dta_check_data, DB_SET);
         if (rc == DB_NOTFOUND) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx orphaned blob %d\n", genid_flipped, blobno);
         }
         else if (rc) {
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx get rc %d\n", genid_flipped, rc);
         }
 
@@ -1072,7 +1068,7 @@ static void bdb_verify_blob(verify_td_params *par)
 
 
 /* scan 3: scan each blob, verify data exists */
-static void bdb_verify_blobs(verify_td_params *par)
+static void bdb_verify_blobs(verify_td_params *par, unsigned int lid)
 {
     int nblobs = get_numblobs(par->db_table);
     par->info = malloc(sizeof(processing_info));
@@ -1084,52 +1080,53 @@ static void bdb_verify_blobs(verify_td_params *par)
             //info should be freed in the individual function that checks it
             par->info->blobno = blobno;
             par->info->dtastripe = dtastripe;
-            bdb_verify_blob(par);
+            bdb_verify_blob(par, lid);
         }
     }
     free(par->info);
 }
 
-static int bdb_verify_ll(verify_td_params *par)
+static int bdb_verify_ll(verify_td_params *par, unsigned int lid)
 {
     /* scan 1 - run through data, verify all the keys and blobs */
-    int rc = bdb_verify_data(par);
+    int rc = bdb_verify_data(par, lid);
 
     /* scan 2: scan each key, verify data exists */
     if (!rc)
-        rc = bdb_verify_keys(par);
+        rc = bdb_verify_keys(par, lid);
 
     /* scan 3: scan each blob, verify data exists */
     if (!rc)
-        bdb_verify_blobs(par);
+        bdb_verify_blobs(par, lid);
 
-    return par->verify_failed;
+    return *par->verify_status;
 }
 
 void *bdb_verify_dispatcher(verify_td_params *par) 
 {
     bdb_state_type *bdb_state = par->bdb_state;
     int rc;
+    unsigned int lid;
     if (par->parallel_verify) {
         BDB_READLOCK("bdb_verify");
         
-        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &par->lid,
+        if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
                         DB_LOCK_ID_READONLY)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
-            par->verify_failed = 1;
+            *par->verify_status = 1;
             return NULL;
         }
     }
 
     switch (par->info->type) {
     case PROCESS_DATA:
-        bdb_verify_data_stripe(par);
+        bdb_verify_data_stripe(par, lid);
         break;
     case PROCESS_KEY:
-        bdb_verify_key(par);
+        bdb_verify_key(par, lid);
         break;
     case PROCESS_BLOB:
-        bdb_verify_blob(par);
+        bdb_verify_blob(par, lid);
         break;
     }
 
@@ -1177,30 +1174,31 @@ int bdb_verify_test(verify_td_params *par)
         }
     }
 
-    return par->verify_failed;
+    return *par->verify_status;
 }
 
 int bdb_verify(verify_td_params *par)
 {
-    return bdb_verify_test(par);
+    //return bdb_verify_test(par);
     int rc;
+    unsigned int lid;
     bdb_state_type *bdb_state = par->bdb_state;
 
     BDB_READLOCK("bdb_verify");
 
-    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &par->lid,
+    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
                                               DB_LOCK_ID_READONLY)) != 0) {
         BDB_RELLOCK();
         logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
         return rc;
     }
 
-    rc = bdb_verify_ll(par); 
+    rc = bdb_verify_ll(par, lid); 
 
     DB_LOCKREQ rq = {0};
     rq.op = DB_LOCK_PUT_ALL;
-    bdb_state->dbenv->lock_vec(bdb_state->dbenv, par->lid, 0, &rq, 1, NULL);
-    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, par->lid);
+    bdb_state->dbenv->lock_vec(bdb_state->dbenv, lid, 0, &rq, 1, NULL);
+    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
 
     BDB_RELLOCK();
 

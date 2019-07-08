@@ -302,12 +302,14 @@ static int verify_table_int(const char *table, SBUF2 *sb,
     int rc;
     void *tran = NULL;
     struct dbtable *db = NULL;
+    uint8_t verify_status = 0;
 
     rdlock_schema_lk();
     rc = get_tbl_and_lock_in_tran(table, sb, &db, &tran);
     unlock_schema_lk();
 
     if (rc) {
+        logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
         if (sb)
             sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
@@ -320,7 +322,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
             verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
-            NULL, progress_report_seconds, attempt_fix, 0, 0, 0, 0
+            NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
         };
         rc = bdb_verify(&par);
     }
@@ -404,15 +406,33 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
     state->thr_self = thrman_register(THRTYPE_VERIFY);
 }
 
-int parallel_verify()
+int parallel_verify(const char *table, SBUF2 *sb,
+                    int progress_report_seconds, int attempt_fix,
+                    int (*lua_callback)(void *, const char *),
+                    void *lua_params)
 {
+    int rc;
+    void *tran = NULL;
+    struct dbtable *db = NULL;
+    uint8_t verify_status = 0;
+
+    rdlock_schema_lk();
+    rc = get_tbl_and_lock_in_tran(table, sb, &db, &tran);
+    unlock_schema_lk();
+
+    if (rc) {
+        if (sb)
+            sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
+        return 1;
+    }
+
+
     gbl_verify_thdpool =
         thdpool_create("verify_pool", sizeof(struct verify_thd_state));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_verify_thdpool);
 
-    /* Nice small stack so we can handle lots of connections */
     thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
     thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
     thdpool_set_minthds(gbl_verify_thdpool, 1);
@@ -423,8 +443,36 @@ int parallel_verify()
 
 
     //bdb_parallel_verify();
+    verify_td_params par = {
+        sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
+        (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
+        verify_indexes_callback, db, lua_callback, lua_params, NULL,
+        NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
+    };
+
+    rc = bdb_verify(&par);
+
     //dispatch work
-    //wait for all threads to finish
-    //return error code and output
-    return 0;
+    //wait for all verify threads to finish
+    thdpool_set_minthds(gbl_verify_thdpool, 0);
+    thdpool_stop(gbl_verify_thdpool);
+    thrman_wait_type_exit(THRTYPE_VERIFY);
+
+    thdpool_destroy(&gbl_verify_thdpool);
+
+    int bdberr;
+    if (tran)
+        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+
+    if (rc) {
+        logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
+        if (sb)
+            sbuf2printf(sb, "FAILED\n");
+    } else if (sb)
+        sbuf2printf(sb, "SUCCESS\n");
+
+    sbuf2flush(sb);
+
+    return verify_status;
 }
