@@ -21,12 +21,14 @@
 priority_queue_t *priority_queue_new()
 {
   priority_queue_t *q = calloc(1, sizeof(priority_queue_t));
+  priority_queue_initialize(q);
+  return q;
+}
 
+void priority_queue_initialize(priority_queue_t *q){
   if (q != NULL) {
     listc_init(&q->list, offsetof(priority_queue_item_t, link));
   }
-
-  return q;
 }
 
 void priority_queue_free(priority_queue_t **pq){
