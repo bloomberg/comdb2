@@ -29,6 +29,7 @@ extern "C" {
 
 #include <stdio.h>
 #include <inttypes.h>
+#include <priority_queue.h>
 
 struct thdpool;
 
@@ -100,7 +101,8 @@ enum {
     THDPOOL_FORCE_QUEUE = 0x4
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags);
+                    int queue_override, char *persistent_info, uint32_t flags,
+                    priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);

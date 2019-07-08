@@ -270,7 +270,15 @@ void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
 {
     LOCK(&pool->mutex)
     {
-        priority_queue_foreach(&pool->queue, pool, foreach_fn, user);
+        /*
+        ** NOTE: This cast from thdpool_foreach_fn to
+        **       priority_queue_foreach_fn is "safe"
+        **       because they have more-or-less the
+        **       same type signature (i.e. they both
+        **       take three pointers).
+        */
+        priority_queue_foreach(&pool->queue, pool,
+                (priority_queue_foreach_fn)foreach_fn, user);
     }
     UNLOCK(&pool->mutex);
 }
@@ -763,11 +771,17 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags)
+                    int queue_override, char *persistent_info, uint32_t flags,
+                    priority_t priority)
 {
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
+
+    /* If the special "enqueue at front" flag is set, only a default priority
+     * to highest (i.e. using a[nother] specific priority overrides flag). */
+    if (enqueue_front && (priority == PRIORITY_T_DEFAULT))
+        priority = PRIORITY_T_HEAD;
 
     /* If queue_override is true, try to enqueue unless hitting maxqoverride;
        If force_queue is true, enqueue regardless. */
@@ -963,7 +977,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
             pool->num_enqueued++;
-            priority_t priority = rand() % 1000; /* TODO: Calculate this. */
             priority_queue_add(&pool->queue, priority, item);
             if (priority_queue_count(&pool->queue) > pool->peakqueue) {
                 pool->peakqueue = priority_queue_count(&pool->queue);

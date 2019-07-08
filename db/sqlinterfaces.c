@@ -4578,13 +4578,15 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags,
+                              PRIORITY_T_DEFAULT)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
-                                 flags | THDPOOL_FORCE_QUEUE);
+                                 flags | THDPOOL_FORCE_QUEUE,
+                                 PRIORITY_T_DEFAULT);
         }
 
         if (rc) {

@@ -17,9 +17,34 @@
 #ifndef __PRIORITY_QUEUE_H___
 #define __PRIORITY_QUEUE_H___
 
+#include <limits.h>
 #include <list.h>
 
 typedef int priority_t;
+
+#ifndef PRIORITY_T_INVALID
+#define PRIORITY_T_INVALID ((priority_t)-1)
+#endif /* PRIORITY_T_INVALID */
+
+#ifndef PRIORITY_T_HIGHEST
+#define PRIORITY_T_HIGHEST ((priority_t)0)
+#endif /* PRIORITY_T_HIGHEST */
+
+#ifndef PRIORITY_T_LOWEST
+#define PRIORITY_T_LOWEST ((priority_t)INT_MAX-3)
+#endif /* PRIORITY_T_LOWEST */
+
+#ifndef PRIORITY_T_HEAD
+#define PRIORITY_T_HEAD ((priority_t)INT_MAX-2)
+#endif /* PRIORITY_T_HEAD */
+
+#ifndef PRIORITY_T_TAIL
+#define PRIORITY_T_TAIL ((priority_t)INT_MAX-1)
+#endif /* PRIORITY_T_TAIL */
+
+#ifndef PRIORITY_T_DEFAULT
+#define PRIORITY_T_DEFAULT ((priority_t)INT_MAX)
+#endif /* PRIORITY_T_DEFAULT */
 
 struct priority_queue_item_tag {
   priority_t priority;
@@ -54,6 +79,6 @@ void *priority_queue_next(priority_queue_t *q);
 int priority_queue_count(priority_queue_t *q);
 
 /* call function for each item in queue */
-void priority_queue_foreach(void *p1, priority_queue_foreach_fn fn, void *p2);
+void priority_queue_foreach(priority_queue_t *q, void *p1, priority_queue_foreach_fn fn, void *p2);
 
 #endif /* __PRIORITY_QUEUE_H___ */

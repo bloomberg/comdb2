@@ -65,6 +65,18 @@ int priority_queue_add(
   i->priority = p;
   i->pData = o;
 
+  if (p == PRIORITY_T_HEAD)
+  {
+    listc_atl(&q->list, i);
+    return 0;
+  }
+
+  if (p == PRIORITY_T_TAIL)
+  {
+    listc_abl(&q->list, i);
+    return 0;
+  }
+
   priority_queue_item_t *tmp, *iter;
 
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
