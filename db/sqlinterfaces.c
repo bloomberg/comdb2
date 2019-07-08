@@ -4534,6 +4534,21 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
+static priority_t combinePriorities(
+  priority_t priority1,
+  priority_t priority2
+){
+  switch( priority1 ){
+    case PRIORITY_T_HEAD:
+    case PRIORITY_T_TAIL:
+      return priority1;
+    case PRIORITY_T_DEFAULT:
+      return priority2;
+    default:
+      return priority1 + priority2;
+  }
+}
+
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
@@ -4543,6 +4558,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
     int q_depth_tag_and_sql;
 
     clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
+    priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
+    clnt->priority = combinePriorities(priority, localPriority);
 
     if (self) {
         if (clnt->exec_lua_thread)
@@ -4577,19 +4594,18 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
     time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
-    priority_t newPriority = PRIORITY_T_HIGHEST + clnt->seqNo; /* TODO: Dynamic. */
     sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags, newPriority)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags, clnt->priority)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
                                  flags | THDPOOL_FORCE_QUEUE,
-                                 newPriority);
+                                 clnt->priority);
         }
 
         if (rc) {
