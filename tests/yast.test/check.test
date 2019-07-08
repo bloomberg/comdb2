@@ -113,10 +113,8 @@ do_test check-1.17 {
 } {4 11.000000}
 
 do_test check-2.1 {
-#TODO: (NC) fixme, double-quoted strings in check expression would fail in
-#csc2 parser.
   execsql {
-    CREATE TABLE t2( x INTEGER, y REAL, z VARCHAR(100), CONSTRAINT one CHECK( typeof(coalesce(x,0))=='integer' ), CONSTRAINT two CHECK( typeof(coalesce(y,0.1))=='real' ), CONSTRAINT three CHECK( typeof(coalesce(z,''))=='text' ));
+    CREATE TABLE t2( x INTEGER, y REAL, z VARCHAR(100), CONSTRAINT one CHECK( typeof(coalesce(x,0))=="integer" ), CONSTRAINT two CHECK( typeof(coalesce(y,0.1))=='real' ), CONSTRAINT three CHECK( typeof(coalesce(z,''))=='text' ));
   }
 } {}
 do_test check-2.2 {
