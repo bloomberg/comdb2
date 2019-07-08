@@ -37,6 +37,7 @@
 #include "genid.h"
 #include "logmsg.h"
 #include "tohex.h"
+#include "blob_buffer.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -227,6 +228,7 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
     int now, last;
     int64_t nrecs = 0;
     int nrecs_progress = 0;
+    blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
     now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
@@ -417,7 +419,7 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
 
                     if (blobsizes[blobno] >= 0 && realblobsz[blobno] >= 0) {
                         rc = par->add_blob_buffer_callback(
-                            par->callback_blob_buf, dbt_blob_data.data,
+                            blob_buf, dbt_blob_data.data,
                             dbt_blob_data.size, blobno);
                         if (rc)
                             return rc;
@@ -434,7 +436,7 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
                 if (rc) {
                     logmsg(LOGMSG_ERROR, "fix_blobs rc %d\n", rc);
                     /* close? */
-                    par->free_blob_buffer_callback(par->callback_blob_buf);
+                    par->free_blob_buffer_callback(blob_buf);
                     return rc;
                 }
             }
@@ -442,20 +444,20 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
 
         unsigned long long has_keys;
         has_keys = par->verify_indexes_callback(par->callback_parm, dbt_data.data,
-                                           par->callback_blob_buf);
+                                           blob_buf);
         for (int ix = 0; ix < bdb_state->numix; ix++) {
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
                 bdb_state->dbp_ix[ix], lid, &ckey, 0);
             if (rc) {
                 ckey = NULL;
-                par->free_blob_buffer_callback(par->callback_blob_buf);
+                par->free_blob_buffer_callback(blob_buf);
                 logmsg(LOGMSG_ERROR, "unexpected rc opening cursor for ix %d: %d\n", ix,
                        rc);
                 return rc;
             }
 
             int keylen;
-            rc = par->formkey_callback(par->callback_parm, databuf, par->callback_blob_buf,
+            rc = par->formkey_callback(par->callback_parm, databuf, blob_buf,
                                   ix, expected_keybuf, &keylen);
             if (rc) {
                 *par->verify_status = 1;
@@ -524,7 +526,7 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
 
             ckey->c_close(ckey);
         }
-        par->free_blob_buffer_callback(par->callback_blob_buf);
+        par->free_blob_buffer_callback(blob_buf);
 
         sbuf2flush(par->sb);
     next_record:
@@ -579,6 +581,7 @@ static int bdb_verify_key(verify_td_params *par, unsigned int lid)
     int bloboffs[16];
     int nblobs = 0;
     int now, last;
+    blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
     now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
@@ -793,7 +796,7 @@ static int bdb_verify_key(verify_td_params *par, unsigned int lid)
                         if (blobsizes[blobno] >= 0 &&
                             realblobsz[blobno] >= 0) {
                             rc = par->add_blob_buffer_callback(
-                                par->callback_blob_buf, dbt_blob_data.data,
+                                blob_buf, dbt_blob_data.data,
                                 dbt_blob_data.size, blobno);
                             if (rc)
                                 return rc;
@@ -808,9 +811,9 @@ static int bdb_verify_key(verify_td_params *par, unsigned int lid)
         }
 
         rc = par->formkey_callback(par->callback_parm, dbt_dta_check_data.data,
-                              par->callback_blob_buf, ix, expected_keybuf,
+                              blob_buf, ix, expected_keybuf,
                               &keylen);
-        par->free_blob_buffer_callback(par->callback_blob_buf);
+        par->free_blob_buffer_callback(blob_buf);
 
         if (dbt_key.size < keylen) {
             *par->verify_status = 1;
@@ -1179,7 +1182,7 @@ int bdb_verify_test(verify_td_params *par)
 
 int bdb_verify(verify_td_params *par)
 {
-    //return bdb_verify_test(par);
+    return bdb_verify_test(par);
     int rc;
     unsigned int lid;
     bdb_state_type *bdb_state = par->bdb_state;

@@ -269,7 +269,7 @@ static unsigned long long verify_indexes_callback(void *parm, void *dta,
 
 // call this with schema lock
 static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
-                                    struct dbtable **db, void **tran)
+                                    struct dbtable **db, tran_type **tran)
 {
     int bdberr;
     struct dbtable *locdb = get_dbtable_by_name(table);
@@ -300,7 +300,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
 {
     int bdberr;
     int rc;
-    void *tran = NULL;
+    tran_type *tran = NULL;
     struct dbtable *db = NULL;
     uint8_t verify_status = 0;
 
@@ -313,20 +313,21 @@ static int verify_table_int(const char *table, SBUF2 *sb,
         if (sb)
             sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
-    } else {
-        assert(tran && "tran is null but should not be");
-        assert(db && "db is null but should not be");
-        blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
-        verify_td_params par = {
-            sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
-            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
-            verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
-            verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
-            NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
-        };
-        rc = bdb_verify(&par);
+        goto done;
     }
 
+    assert(tran && "tran is null but should not be");
+    assert(db && "db is null but should not be");
+    verify_td_params par = {
+        sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
+        (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
+        verify_indexes_callback, db, lua_callback, lua_params,
+        NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
+    };
+    rc = bdb_verify(&par);
+
+done:
     if (tran)
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
@@ -412,7 +413,8 @@ int parallel_verify(const char *table, SBUF2 *sb,
                     void *lua_params)
 {
     int rc;
-    void *tran = NULL;
+    int bdberr;
+    tran_type *tran = NULL;
     struct dbtable *db = NULL;
     uint8_t verify_status = 0;
 
@@ -421,11 +423,12 @@ int parallel_verify(const char *table, SBUF2 *sb,
     unlock_schema_lk();
 
     if (rc) {
+        logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
         if (sb)
             sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
-        return 1;
+        rc = 1;
+        goto done;
     }
-
 
     gbl_verify_thdpool =
         thdpool_create("verify_pool", sizeof(struct verify_thd_state));
@@ -447,7 +450,7 @@ int parallel_verify(const char *table, SBUF2 *sb,
         sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
         (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
-        verify_indexes_callback, db, lua_callback, lua_params, NULL,
+        verify_indexes_callback, db, lua_callback, lua_params,
         NULL, &verify_status, progress_report_seconds, attempt_fix, 0, 0
     };
 
@@ -461,7 +464,7 @@ int parallel_verify(const char *table, SBUF2 *sb,
 
     thdpool_destroy(&gbl_verify_thdpool);
 
-    int bdberr;
+done:
     if (tran)
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 

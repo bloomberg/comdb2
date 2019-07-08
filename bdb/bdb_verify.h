@@ -46,7 +46,6 @@ typedef struct {
     void *callback_parm;
     int (*lua_callback)(void *, const char *);
     void *lua_params;
-    void *callback_blob_buf;
     processing_info *info;
     uint8_t *verify_status; //0 success, 1 failure
     int progress_report_seconds;
