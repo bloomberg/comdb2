@@ -4380,6 +4380,9 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
 
+    assert(clnt->seqNo > 0);
+    assert(clnt->priority >= PRIORITY_T_HIGHEST);
+
     assert(sqlthd);
     sqlthd->clnt = clnt;
     clnt->thd = thd;
@@ -4535,8 +4538,8 @@ static int send_heartbeat(struct sqlclntstate *clnt)
     } while (0)
 
 static priority_t combinePriorities(
-  priority_t priority1,
-  priority_t priority2
+  priority_t priority1, /* base, second arg to dispatch_sql_query(). */
+  priority_t priority2  /* offset, calculated based on sequence number. */
 ){
   switch( priority1 ){
     case PRIORITY_T_HEAD:
