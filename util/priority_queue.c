@@ -83,7 +83,9 @@ void *priority_queue_next(
   priority_queue_t *q
 ){
   if (q == NULL) return NULL;
-  return listc_rtl(&q->list);
+  priority_queue_item_t *i = listc_rtl(&q->list);
+  if (i == NULL) return NULL;
+  return i->pData;
 }
 
 int priority_queue_count(
