@@ -228,8 +228,8 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s'\n", tblname);
         rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
         char buf[128] = {0};
