@@ -165,7 +165,7 @@ int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
-int gbl_clnt_seq_no = 0;
+long long gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 void rcache_init(size_t, size_t);
