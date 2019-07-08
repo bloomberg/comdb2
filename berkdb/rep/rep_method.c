@@ -1362,7 +1362,8 @@ phase2:
 				done, rep->votes, rep->nsites);
 #endif
 		if (send_vote == rep->eid && done) {
-			__rep_elect_master(dbenv, rep, eidp);
+            if (nsites == 1)
+                __rep_elect_master(dbenv, rep, eidp);
 			logmsg(LOGMSG_DEBUG, "%s line %d elected master %s current-egen "
 					"%d\n", __func__, __LINE__, rep->eid, rep->egen);
 			ret = 0;
