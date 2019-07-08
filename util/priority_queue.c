@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <stdlib.h>
 #include <errno.h>
 #include "priority_queue.h"
 

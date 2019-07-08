@@ -24,18 +24,18 @@ typedef int priority_t;
 typedef struct priority_queue_item_tag {
   priority_t priority;
   void *pData;
-  LINKC_T(priority_queue_item_t) link;
+  LINKC_T(struct priority_queue_item_tag) link;
 } priority_queue_item_t;
 
 typedef struct priority_queue_tag {
-  LISTC_T(priority_queue_item_t) list;
+  LISTC_T(struct priority_queue_tag) list;
 } priority_queue_t;
 
 /* create a queue */
 priority_queue_t *priority_queue_new();
 
 /* return all resources for queue, free mem */
-void priority_queue_free(priority_queue_t *q);
+void priority_queue_free(priority_queue_t **pq);
 
 /* add to end of queue.  0==success */
 int priority_queue_add(priority_queue_t *q, priority_t p, void *o);
