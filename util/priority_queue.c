@@ -94,3 +94,17 @@ int priority_queue_count(
   if (q == NULL) return -1;
   return listc_size(&q->list);
 }
+
+void priority_queue_foreach(
+  priority_queue_t *q,
+  void *p1,
+  priority_queue_foreach_fn fn,
+  void *p2
+){
+  if (q == NULL) return;
+  priority_queue_item_t *tmp, *iter;
+  LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
+  {
+    (fn)(p1, iter->pData, p2);
+  }
+}

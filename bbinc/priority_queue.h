@@ -33,6 +33,7 @@ struct priority_queue_tag {
 
 typedef struct priority_queue_item_tag priority_queue_item_t;
 typedef struct priority_queue_tag priority_queue_t;
+typedef void (*priority_queue_foreach_fn)(void *p1, void *pData, void *p2);
 
 /* create a queue */
 priority_queue_t *priority_queue_new();
@@ -51,5 +52,8 @@ void *priority_queue_next(priority_queue_t *q);
 
 /* return num items on queue */
 int priority_queue_count(priority_queue_t *q);
+
+/* call function for each item in queue */
+void priority_queue_foreach(void *p1, priority_queue_foreach_fn fn, void *p2);
 
 #endif /* __PRIORITY_QUEUE_H___ */
