@@ -28,7 +28,7 @@ struct priority_queue_item_tag {
 };
 
 struct priority_queue_tag {
-  LISTC_T(struct priority_queue_tag) list;
+  LISTC_T(struct priority_queue_item_tag) list;
 };
 
 typedef struct priority_queue_item_tag priority_queue_item_t;
