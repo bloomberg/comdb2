@@ -4382,6 +4382,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     assert(clnt->seqNo > 0);
     assert(clnt->priority >= PRIORITY_T_HIGHEST);
+    assert(clnt->priority != PRIORITY_T_INVALID);
+    assert(clnt->priority != PRIORITY_T_HEAD);
+    assert(clnt->priority != PRIORITY_T_TAIL);
+    assert(clnt->priority != PRIORITY_T_DEFAULT);
 
     assert(sqlthd);
     sqlthd->clnt = clnt;

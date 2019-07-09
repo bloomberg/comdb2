@@ -19,23 +19,38 @@
 
 #include "sql.h"
 
-struct comdb2_ruleset {
+enum ruleset_action {
+  RULESET_ACT_NONE = 0,
+  RULESET_ACT_REJECT = 1,
+  RULESET_ACT_LOW_PRIO = 2,
+  RULESET_ACT_HIGH_PRIO = 3
+};
+
+struct ruleset_item {
+  enum ruleset_action action;       /* If this rule is matched, what should be
+                                     * done in respone? */
+
   char *zOriginUser;                /* Obtained via unknown means.  If not NULL
                                      * this will be matched against using exact
                                      * case-insensitive string comparisons. */
+
   char *zOriginHost;                /* Obtained via "clnt->origin_host".  If not
                                      * NULL this will be matched using exact
                                      * case-insensitive string comparisons. */
+
   char *zOriginTask;                /* Obtained via "clnt->conninfo.pename".  If
                                      * not NULL this be matched using exact
                                      * case-insensitive string comparisons. */
+
   char *zUser;                      /* Obtained via "clnt->have_user" /
                                      * "clnt->user".  If not NULL this be
                                      * matched using exact case-insensitive
                                      * string comparisons. */
+
   char *zSql;                       /* Obtained via "clnt->sql".  If not NULL
                                      * this be matched using exact
                                      * case-insensitive string comparisons. */
+
   char aFingerprint[FINGERPRINTSZ]; /* Obtained via "reqlogger->fingerprint".
                                      * If not all zeros, this will be matched
                                      * using memcmp(). */
