@@ -111,6 +111,30 @@ function getmaster {
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
+
+
+#make sure verify behaves as we expect
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify.out
+echo "Usage: verify(\"<table>\")
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+if ! diff verify.exp verify.out ; then
+    failexit "Verify did not fail correctly, see verify.out"
+fi
+
+echo "Table \"nonexistent\" does not exist.
+[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
+if ! diff verify.exp verify.out ; then
+    failexit "Verify did not fail correctly, see verify.out"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+if ! grep succeeded verify.out > /dev/null ; then
+    failexit "Verify did not succeed, see verify.out"
+fi
+
+
+
 master=`getmaster`
 
 echo "db verify after inserting tests"
@@ -132,7 +156,7 @@ else
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" > verify_nodta.tmp
 fi
 
-grep 0000000 verify_nodta.tmp | sed 's/0000000[^ ]*//g' &> verify_nodta.out
+grep 0000000 verify_nodta.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_nodta.out
 
 echo "checking for nodta verify out"
 if ! diff verify_nodta.out verify_nodta.expected ; then
@@ -151,7 +175,7 @@ insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2))
 echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_noidx.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' | sort &> verify_noidx.out
 
 
 echo "checking for idx verify out"
@@ -172,7 +196,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blo
 insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
 assertcnt t1 $((NEWNUMREC*2))
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_noblob.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' | sort &> verify_noblob.out
 
 echo "checking for blob verify out"
 if ! diff verify_noblob.out verify_noblob.expected ; then
