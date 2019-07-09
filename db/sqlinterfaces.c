@@ -6214,7 +6214,7 @@ void run_internal_sql(char *sql)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.work.sql = skipws(sql);
+    clnt.work.zSql = skipws(sql);
 
     dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
     if (clnt.query_rc || clnt.saved_errstr) {

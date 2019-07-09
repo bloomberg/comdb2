@@ -2275,7 +2275,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
-        clnt.work.sql = sql_query->sql_query;
+        clnt.work.zSql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
         if (!clnt.in_client_trans) {
@@ -2360,8 +2360,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.heartbeat = 1;
         ATOMIC_ADD(gbl_nnewsql, 1);
 
-        if (clnt.had_errors && strncasecmp(clnt.work.sql, "commit", 6) &&
-            strncasecmp(clnt.work.sql, "rollback", 8)) {
+        if (clnt.had_errors && strncasecmp(clnt.work.zSql, "commit", 6) &&
+            strncasecmp(clnt.work.zSql, "rollback", 8)) {
             if (clnt.in_client_trans == 0) {
                 clnt.had_errors = 0;
                 /* tell blobmem that I want my priority back

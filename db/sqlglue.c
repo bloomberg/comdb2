@@ -1048,7 +1048,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                         once = 0;
                     }
                     ctrace("!sqlite3IsNumber \"%.*s\" %s\n", m->n, m->z,
-                           clnt->work.sql);
+                           clnt->work.zSql);
                 }
             }
         }
@@ -8889,7 +8889,7 @@ void sql_dump_running_statements(void)
         localtime_r((time_t *)&t, &tm);
         Pthread_mutex_lock(&thd->lk);
 
-        if (thd->clnt && thd->clnt->work.sql) {
+        if (thd->clnt && thd->clnt->work.zSql) {
             if (thd->clnt->osql.rqid) {
                 uuidstr_t us;
                 snprintf(rqid, sizeof(rqid), "txn %016llx %s",
@@ -8904,7 +8904,7 @@ void sql_dump_running_statements(void)
             snap_uid_t snap;
             get_cnonce(thd->clnt, &snap);
             log_cnonce(snap.key, snap.keylen);
-            logmsg(LOGMSG_USER, "%s\n", thd->clnt->work.sql);
+            logmsg(LOGMSG_USER, "%s\n", thd->clnt->work.zSql);
 
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -10757,7 +10757,7 @@ const char *comdb2_get_sql(void)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     if (thd)
-        return thd->clnt->work.sql;
+        return thd->clnt->work.zSql;
 
     return NULL;
 }
@@ -11039,7 +11039,7 @@ void stat4dump(int more, char *table, int istrace)
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
-    clnt.work.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
+    clnt.work.zSql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
 
     struct sql_thread *thd = start_sql_thread();
     get_copy_rootpages(thd);
@@ -11052,7 +11052,7 @@ void stat4dump(int more, char *table, int istrace)
         goto put;
     }
     clnt.no_transaction = 1;
-    if ((rc = sqlite3_exec(db, clnt.work.sql, NULL, NULL, NULL)) != SQLITE_OK) {
+    if ((rc = sqlite3_exec(db, clnt.work.zSql, NULL, NULL, NULL)) != SQLITE_OK) {
         goto close;
     }
     int (*outFunc)(const char *fmt, ...) = printf_logmsg_wrap;
@@ -11887,7 +11887,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.work.sql = sql;
+    clnt.work.zSql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;
 
