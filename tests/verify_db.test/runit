@@ -126,8 +126,12 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta
 
 insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
 assertcnt t1 $((NEWNUMREC*2))
+CMD="exec procedure sys.cmd.verify('t1')"
+if [[ $DBNAME == *"parallelgenerated"* ]] ; then
+    CMD="exec procedure sys.cmd.verify('t1','parallel')"
+fi
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_nodta.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default $CMD | grep 0000000 | sed 's/0000000[^ ]*//g' &> verify_nodta.out
 
 echo "checking for nodta verify out"
 if ! diff verify_nodta.out verify_nodta.expected ; then

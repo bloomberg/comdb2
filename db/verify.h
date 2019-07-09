@@ -23,4 +23,8 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
              int attempt_fix, 
              int (*lua_callback)(void *, const char *), void *lua_params);
 
+int parallel_verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+             int attempt_fix, 
+             int (*lua_callback)(void *, const char *), void *lua_params);
+
 #endif

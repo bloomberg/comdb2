@@ -1131,7 +1131,11 @@ void bdb_verify_dispatcher(verify_td_params *par)
 static void bdb_verify_dispatcher_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
-    bdb_verify_dispatcher(work);
+    verify_td_params *par = work; 
+    bdb_state_type *bdb_state = par->bdb_state;
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+    bdb_verify_dispatcher(par);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
 }
 
 inline static void dispatch_work(verify_td_params *work, thdpool *verify_thdpool)

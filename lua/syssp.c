@@ -210,7 +210,18 @@ static int db_comdb_verify(Lua L) {
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *tblname = NULL;
     if (lua_isstring(L, 1)) {
-        tblname = (char *) lua_tostring(L, -1);
+        tblname = (char *) lua_tostring(L, -2);
+    }
+    int parallel = 0;
+
+    {
+        logmsg(LOGMSG_ERROR, "Usage: -2 %s\n", (char *) lua_tostring(L, -1));
+    }
+
+    if (lua_isstring(L, 2)) {
+        char *mode = (char *) lua_tostring(L, -1);
+        if (strcmp(mode, "parallel") == 0)
+            parallel = 1;
     }
 
     char *cols[] = {"out"};
@@ -228,7 +239,10 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+        if (parallel)
+            rc = parallel_verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+        else
+            rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
@@ -631,8 +645,8 @@ static struct sp_source syssps[] = {
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
-        "local function main(tbl)\n"
-        "sys.comdb_verify(tbl)\n"
+        "local function main(tbl, mode)\n"
+        "    sys.comdb_verify(tbl, mode)\n"
         "end\n",
         NULL
     }

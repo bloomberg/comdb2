@@ -407,7 +407,7 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
     state->thr_self = thrman_register(THRTYPE_VERIFY);
 }
 
-int parallel_verify(const char *table, SBUF2 *sb,
+int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
                     int (*lua_callback)(void *, const char *),
                     void *lua_params)
@@ -437,7 +437,7 @@ int parallel_verify(const char *table, SBUF2 *sb,
         if (gbl_exit_on_pthread_create_fail)
             thdpool_set_exit(gbl_verify_thdpool);
 
-        thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
+        //thdpool_set_stack_size(gbl_verify_thdpool, BDB_ATTR_VERIFY_THREAD_STACKSZ);
         thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
         thdpool_set_minthds(gbl_verify_thdpool, 0);
         thdpool_set_maxthds(gbl_verify_thdpool, 8); //TODO: make this an attr
@@ -447,7 +447,6 @@ int parallel_verify(const char *table, SBUF2 *sb,
     }
 
 
-    //bdb_parallel_verify();
     verify_td_params par = {
         sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
         (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
@@ -456,15 +455,15 @@ int parallel_verify(const char *table, SBUF2 *sb,
         {0}, &verify_status, progress_report_seconds, attempt_fix, 0, 0
     };
 
-    //dispatch work
+    // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&par, gbl_verify_thdpool);
 
     //wait for all verify threads to finish
     thrman_wait_type_exit(THRTYPE_VERIFY);
 
-    thdpool_stop(gbl_verify_thdpool);
-
-    thdpool_destroy(&gbl_verify_thdpool);
+    //cleanup via the following two:
+    //thdpool_stop(gbl_verify_thdpool);
+    //thdpool_destroy(&gbl_verify_thdpool);
 
 done:
     if (tran)
