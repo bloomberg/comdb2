@@ -2991,7 +2991,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     thd = calloc(sizeof(dbthread_type), 1);
     thd->lua = newlua;
     thd->sp = newsp;
-    thd->sql = sp->clnt->sql;
+    thd->sql = sp->clnt->work.zSql;
     thd->clnt = sp->clnt;
     thd->status = THREAD_STATUS_DISPATCH_WAITING;
     Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
@@ -6232,7 +6232,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err)
 {
-    const char *s = clnt->sql;
+    const char *s = clnt->work.zSql;
     char spname[MAX_SPNAME];
     long long sprc = 0;
     int rc, args, new_vm;
