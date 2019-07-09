@@ -1787,7 +1787,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     return tbl;
 }
 
-static int init_check_constraints(struct dbtable *tbl)
+int init_check_constraints(struct dbtable *tbl)
 {
     char *consname = NULL;
     char *check_expr = NULL;

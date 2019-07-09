@@ -2344,6 +2344,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                              int dbnum, int dbix, int is_foreign);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
+int init_check_constraints(struct dbtable *tbl);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);

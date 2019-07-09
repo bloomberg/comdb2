@@ -139,6 +139,13 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
+    if (init_check_constraints(newdb)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to initialize check constraint(s)\n",
+               __func__);
+        rc = SC_CSC2_ERROR;
+        goto err;
+    }
+
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
         logmsg(LOGMSG_ERROR, "%s: Verify constraints failed \n", __func__);
