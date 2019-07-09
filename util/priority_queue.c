@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include "priority_queue.h"
@@ -56,6 +57,8 @@ int priority_queue_add(
   priority_t p,
   void *o
 ){
+  assert(p != PRIORITY_T_DEFAULT);
+
   if ((q == NULL) || (o == NULL)) return EINVAL;
 
   priority_queue_item_t *i = calloc(1, sizeof(priority_queue_item_t));
