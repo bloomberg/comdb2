@@ -3137,8 +3137,20 @@ static int init_materialized_system_tables(struct dbenv *dbenv) {
 "   int id"
 "}";
 
+    static const char *fingerprint_tunables = 
+"schema {"
+"   byte fingerprint[16]"
+"   int  longreq_threshold"
+"}";
+
     int rc = init_system_table(dbenv, "comdb2_test", test, 1);
+    if (rc == 0)
+        rc = init_system_table(dbenv, "comdb2_fingerprint_tunables", fingerprint_tunables, 1);
     return rc;
+}
+
+// TODO: call on master upgrade?
+void upgrade_materialized_system_tables(struct dbenv *dbenv) {
 }
 
 static int init_sqlite_tables(struct dbenv *dbenv)

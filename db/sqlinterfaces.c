@@ -4540,6 +4540,9 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
+static int64_t gbl_fingerprint_tunables_gen;
+static pthread_mutex_t fingerprint_tunables_lk = PTHREAD_MUTEX_INITIALIZER;
+
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
@@ -4547,8 +4550,17 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     int rc;
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
+    int64_t fingerprint_tunables_gen;
 
-    printf("dispatch %s\n", clnt->sql);
+    fingerprint_tunables_gen = systable_get_gen("comdb2_fingerprint_tunables");
+    if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+        if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+            Pthread_mutex_lock(&fingerprint_tunables_lk);
+            gbl_fingerprint_tunables_gen = fingerprint_tunables_gen;
+            update_fingerprint_tunables();
+            Pthread_mutex_unlock(&fingerprint_tunables_lk);
+        }
+    }
 
     if (self) {
         if (clnt->exec_lua_thread)
@@ -6191,7 +6203,7 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
+int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
@@ -6218,6 +6230,7 @@ void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbac
         clnt.dbglog = NULL;
     }
 
+    int rc = clnt.query_rc;
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
@@ -6225,10 +6238,12 @@ void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbac
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+
+    return rc;
 }
 
 void run_internal_sql(char *sql) {
-    return run_internal_sql_with_callbacks(sql, NULL);
+    (void) run_internal_sql_with_callbacks(sql, NULL);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

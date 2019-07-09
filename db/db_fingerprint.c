@@ -32,6 +32,37 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
+// NOTE: must be called with gbl_fingerprint_hash_mu locked
+struct fingerprint_track *find_fingerprint(char *fingerprint) {
+    struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
+    if (t == NULL) {
+        /* make sure we haven't generated an unreasonable number of these */
+        int nents;
+        hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &nents, NULL, NULL);
+        if (nents >= gbl_fingerprint_max_queries) {
+            static int complain_once = 1;
+            if (complain_once) {
+                logmsg(LOGMSG_WARN,
+                        "Stopped tracking fingerprints, hit max #queries %d.\n",
+                        gbl_fingerprint_max_queries);
+                complain_once = 0;
+            }
+            Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+            return NULL;
+        }
+        t = calloc(1, sizeof(struct fingerprint_track));
+        memcpy(t->fingerprint, fingerprint, FINGERPRINTSZ);
+        t->count = 0;
+        t->cost = 0;
+        t->time = 0;
+        t->rows = 0;
+        t->zNormSql = NULL;
+        t->nNormSql = 0;
+        hash_add(gbl_fingerprint_hash, t);
+    }
+    return t;
+}
+
 void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t nrows, struct reqlogger *logger) {
     assert(zSql);
@@ -45,49 +76,53 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
     MD5Final(fingerprint, &ctx);
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
-    struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
+    struct fingerprint_track *t = find_fingerprint((char*) fingerprint);
     if (t == NULL) {
-        /* make sure we haven't generated an unreasonable number of these */
-        int nents;
-        hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &nents, NULL, NULL);
-        if (nents >= gbl_fingerprint_max_queries) {
-            static int complain_once = 1;
-            if (complain_once) {
-                logmsg(LOGMSG_WARN,
-                       "Stopped tracking fingerprints, hit max #queries %d.\n",
-                       gbl_fingerprint_max_queries);
-                complain_once = 0;
-            }
-            Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
-            goto done;
-        }
-        t = calloc(1, sizeof(struct fingerprint_track));
-        memcpy(t->fingerprint, fingerprint, FINGERPRINTSZ);
-        t->count = 1;
-        t->cost = cost;
-        t->time = time;
-        t->rows = nrows;
+        Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+        return;
+    }
+    if (t->zNormSql == NULL) {
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
-        hash_add(gbl_fingerprint_hash, t);
         if (gbl_verbose_normalized_queries) {
             char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
             util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
-                   fp, zSql, t->zNormSql);
+                    fp, zSql, t->zNormSql);
         }
-    } else {
-        t->count++;
-        t->cost += cost;
-        t->time += time;
-        t->rows += nrows;
-        assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
-        assert( t->zNormSql!=zNormSql );
-        assert( t->nNormSql==nNormSql );
-        assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
-    }
+    } 
+    t->count++;
+    t->cost += cost;
+    t->time += time;
+    t->rows += nrows;
+    assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
+    assert( t->zNormSql!=zNormSql );
+    assert( t->nNormSql==nNormSql );
+    assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     reqlog_set_fingerprint(logger, (const char*)fingerprint, FINGERPRINTSZ);
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
-done:
-    ; /* NOTE: Do nothing, silence compiler warning. */
+}
+
+static int update_fingerprint_tunables_write_response_callback(struct sqlclntstate *a, int type, void *data, int n) {
+    if (type == RESPONSE_ROW) {
+        struct response_data *rsp = (struct response_data*) data;
+        sqlite3_stmt *stmt = rsp->stmt;
+        int ncols = sqlite3_column_count(stmt);
+        for (int i = 0; i < ncols; i++) {
+            const unsigned char *fingerprint;
+            int threshold;
+
+            fingerprint = sqlite3_column_text(stmt, 0);
+            threshold = sqlite3_column_int(stmt, 1);
+            printf("fingerprint %s threshold %d\n", fingerprint, threshold);
+        }
+    }
+    return 0;
+}
+
+void update_fingerprint_tunables(void) {
+    struct plugin_callbacks plugin;
+    msys_init_default_callbacks(&plugin);
+    plugin.write_response = update_fingerprint_tunables_write_response_callback;
+    run_internal_sql_with_callbacks("select fingerprint, longreq_threshold from comdb2_fingerprint_tunables", &plugin);
 }
