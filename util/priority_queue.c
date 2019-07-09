@@ -57,7 +57,8 @@ int priority_queue_add(
   priority_t p,
   void *o
 ){
-  assert(p != PRIORITY_T_DEFAULT);
+  assert(p >= PRIORITY_T_HIGHEST);
+  assert(p != PRIORITY_T_INVALID);
 
   if ((q == NULL) || (o == NULL)) return EINVAL;
 
@@ -81,17 +82,22 @@ int priority_queue_add(
     return 0;
   }
 
+  if (p == PRIORITY_T_DEFAULT)
+    p = PRIORITY_T_LOWEST;
+
   priority_queue_item_t *tmp, *iter;
 
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
   {
     if (iter->priority >= p) {
+      assert(p != PRIORITY_T_DEFAULT);
       i->priority = p;
       listc_add_before(&q->list, i, iter);
       return 0;
     }
   }
 
+  assert(p != PRIORITY_T_DEFAULT);
   i->priority = p;
   listc_abl(&q->list, i);
   return 0;
