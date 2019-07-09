@@ -15,6 +15,8 @@ set(src
   dbglog_iface.c
   dbqueuedb.c
   debug.c
+  dohsql.c
+  dohast.c
   endian.c
   envstubs.c
   errstat.c
@@ -32,8 +34,10 @@ set(src
   indices.c
   localrep.c
   lrucache.c
+  machclass.c
   marshal.c
   memdebug.c
+  msystable.c
   osql_srs.c
   osqlblkseq.c
   osqlblockproc.c
@@ -43,6 +47,7 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
+  osqluprec.c
   phys_rep.c
   plugin_handler.c
   prefault.c
@@ -61,6 +66,7 @@ set(src
   resource.c
   rmtpolicy.c
   rowlocks_bench.c
+  shard_range.c
   sigutil.c
   sltdbt.c
   socket_interfaces.c
@@ -89,11 +95,6 @@ set(src
   logical_cron.c
   views_persist.c
   watchdog.c
-  shard_range.c
-  dohsql.c
-  dohast.c
-  machclass.c
-  osqluprec.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c

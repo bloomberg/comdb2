@@ -5171,6 +5171,10 @@ static priority_t combinePriorities(
 }
 
 static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int64_t gbl_fingerprint_tunables_gen;
+static pthread_mutex_t fingerprint_tunables_lk = PTHREAD_MUTEX_INITIALIZER;
+
+int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
     char *sqlcpy;
@@ -5185,6 +5189,18 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
     assert(priority_is_valid(clnt->priority, 1));
+
+    int64_t fingerprint_tunables_gen;
+
+    fingerprint_tunables_gen = systable_get_gen("comdb2_fingerprint_tunables");
+    if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+        if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+            Pthread_mutex_lock(&fingerprint_tunables_lk);
+            gbl_fingerprint_tunables_gen = fingerprint_tunables_gen;
+            update_fingerprint_tunables();
+            Pthread_mutex_unlock(&fingerprint_tunables_lk);
+        }
+    }
 
     struct thr_handle *self = thrman_self();
     if (self) {
@@ -6959,7 +6975,7 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
+int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
@@ -6991,7 +7007,7 @@ void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbac
 }
 
 void run_internal_sql(char *sql) {
-    return run_internal_sql_with_callbacks(sql, NULL);
+    (void) run_internal_sql_with_callbacks(sql, NULL);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

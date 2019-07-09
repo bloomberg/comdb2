@@ -74,6 +74,9 @@ struct fingerprint_track {
     size_t nNormSql;  /* Length of normalized SQL query */
     char ** cachedColNames; /* Cached column names from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
+    int longreqLimit;  /* -1 - no limit, otherwise limit at 
+                          which we generate a long request 
+                          warning for the query */
 };
 
 typedef struct stmt_hash_entry {
@@ -1330,6 +1333,9 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
  */
 int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
 
-void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks);
+int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks);
+
+void update_fingerprint_tunables(void);
+void msys_init_default_callbacks(struct plugin_callbacks *c);
 
 #endif /* _SQL_H_ */
