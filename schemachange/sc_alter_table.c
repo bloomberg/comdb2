@@ -418,7 +418,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->iq = iq;
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");

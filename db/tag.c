@@ -7047,6 +7047,15 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+
+    /* Initialize table's check constraint members. */
+    rc = init_check_constraints(newdb);
+    if (rc) {
+	logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+	       newdb->tablename);
+        goto err;
+    }
+
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 

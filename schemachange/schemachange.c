@@ -589,7 +589,7 @@ int do_dryrun(struct schema_change_type *s)
     newdb->odh = s->headers;
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         goto fail;
     }
 
@@ -958,7 +958,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout_schemas(newdb->tablename);
         abort();
     }
