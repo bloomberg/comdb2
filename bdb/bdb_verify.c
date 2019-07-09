@@ -260,7 +260,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         return 0;
     }
 
-    while (rc == 0) {
+    while (rc == 0 && !par->client_dropped_connection) {
+        ATOMIC_ADD(par->records_processed, 1);
         nrecs++;
         nrecs_progress++;
 
@@ -616,7 +617,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d first rc %d\n", ix, rc);
     }
-    while (rc == 0) {
+    while (rc == 0 && !par->client_dropped_connection) {
+        ATOMIC_ADD(par->records_processed, 1);
         nrecs++;
         nrecs_progress++;
 
@@ -998,7 +1000,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
     dbt_dta_check_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
 
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
-    while (rc == 0) {
+    while (rc == 0 && !par->client_dropped_connection) {
+        ATOMIC_ADD(par->records_processed, 1);
         int stripe;
         unsigned long long genid_flipped;
 
@@ -1069,7 +1072,9 @@ static void bdb_verify_blobs(verify_common_t *par, unsigned int lid)
     }
 }
 
-static int bdb_verify_ll(verify_common_t *par, unsigned int lid)
+/* sequential processing of the stripes, keys, blobs
+ */
+static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 {
     /* scan 1 - run through data, verify all the keys and blobs */
     int rc = bdb_verify_data(par, lid);
@@ -1130,7 +1135,10 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work, void *t
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
 }
 
-inline static void dispatch_work(td_processing_info_t *work, thdpool *verify_thdpool)
+/* Enqueue work object onto verify_thdpool if parameter is non NULL.
+ * If verify_thdpool is NULL then processing occurs sequentially.
+ */
+inline static void enqueue_work(td_processing_info_t *work, thdpool *verify_thdpool)
 {
     // this function is called sequentially, no need for atomics
     work->common_params->threads_spawned++;
@@ -1139,7 +1147,9 @@ inline static void dispatch_work(td_processing_info_t *work, thdpool *verify_thd
         int rc = thdpool_enqueue(verify_thdpool, 
                 bdb_verify_handler_work_pp, work, 0, NULL, THDPOOL_FORCE_QUEUE);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error\n", __func__);
+            logmsg(LOGMSG_ERROR, 
+                   "%s:thdpool_enqueue error, proceeding sequentially\n",
+                   __func__);
             verify_thdpool = NULL;
         } 
     }
@@ -1149,7 +1159,10 @@ inline static void dispatch_work(td_processing_info_t *work, thdpool *verify_thd
     }
 }
 
-/* this is how we will send work to thread pool */
+/* Enqueue onto verify_thdpool for processing all data stripes, 
+ * all keys, and all blobs.
+ * If verify_thdpool is null, processing will be performed serially.
+ */
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
@@ -1161,7 +1174,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         memcpy(work, info, sizeof(*work));
         work->type = PROCESS_DATA;
         work->dtastripe = dtastripe;
-        dispatch_work(work, verify_thdpool);
+        enqueue_work(work, verify_thdpool);
     }
 
 
@@ -1171,7 +1184,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         memcpy(work, info, sizeof(*work));
         work->type = PROCESS_KEY;
         work->index = ix;
-        dispatch_work(work, verify_thdpool);
+        enqueue_work(work, verify_thdpool);
     }
 
     /* scan 3: scan each blob, verify data exists */
@@ -1184,7 +1197,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             work->type = PROCESS_BLOB;
             work->blobno = blobno;
             work->dtastripe = dtastripe;
-            dispatch_work(work, verify_thdpool);
+            enqueue_work(work, verify_thdpool);
         }
     }
 
@@ -1195,6 +1208,7 @@ int bdb_verify(verify_common_t *par)
 {
     td_processing_info_t info = { .common_params = par };
     return bdb_verify_enqueue(&info, NULL);
+
     int rc;
     unsigned int lid;
     bdb_state_type *bdb_state = par->bdb_state;
@@ -1208,7 +1222,7 @@ int bdb_verify(verify_common_t *par)
         return rc;
     }
 
-    rc = bdb_verify_ll(par, lid); 
+    rc = bdb_verify_sequential(par, lid); 
 
     DB_LOCKREQ rq = {0};
     rq.op = DB_LOCK_PUT_ALL;
