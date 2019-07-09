@@ -985,10 +985,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 return -1;
             }
 
-	    /* Initialize table's check constraint members. */
-	    if (init_check_constraints(db)) {
-		logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-		       db->tablename);
+            /* Initialize table's check constraint members. */
+            if (init_check_constraints(db)) {
+                logmsg(LOGMSG_ERROR,
+                       "Failed to load check constraints for %s\n",
+                       db->tablename);
                 return -1;
             }
         } else {

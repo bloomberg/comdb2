@@ -1747,7 +1747,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             return NULL;
         }
         for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt, &flags);
+            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt,
+                                        &flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
                         tbl->n_constraints);

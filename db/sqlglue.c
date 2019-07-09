@@ -2014,7 +2014,9 @@ static int do_syntax_check(struct dbtable *tbl)
 {
     return ((gbl_partial_indexes && tbl->ix_partial) ||
             (gbl_expressions_indexes && tbl->ix_expr) ||
-            (tbl->n_check_constraints > 0)) ? 1 : 0;
+            (tbl->n_check_constraints > 0))
+               ? 1
+               : 0;
 }
 
 #define INDEXES_THREAD_MEMORY 1048576

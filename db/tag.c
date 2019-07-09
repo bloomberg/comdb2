@@ -7051,8 +7051,8 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     /* Initialize table's check constraint members. */
     rc = init_check_constraints(newdb);
     if (rc) {
-	logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-	       newdb->tablename);
+        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+               newdb->tablename);
         goto err;
     }
 

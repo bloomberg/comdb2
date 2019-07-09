@@ -553,11 +553,10 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
         logmsg(LOGMSG_DEBUG, "%s:%d internal error during CHECK constraint\n",
                __func__, __LINE__);
         return ERR_CONSTR;
-    }
-    else if (rc > 0) {
+    } else if (rc > 0) {
         logmsg(LOGMSG_DEBUG, "%s:%d CHECK constraint failed for '%s'\n",
                __func__, __LINE__,
-               data->iq.usedb->check_constraints[rc-1].consname);
+               data->iq.usedb->check_constraints[rc - 1].consname);
         return ERR_CONSTR;
     }
 

@@ -386,7 +386,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     } else if (rc > 0) {
         reqerrstrhdr(iq, "CHECK constraint violation ");
         reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
-                  iq->usedb->check_constraints[rc-1].consname);
+                  iq->usedb->check_constraints[rc - 1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
         ERR;
@@ -1149,7 +1149,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     } else if (rc > 0) {
         reqerrstrhdr(iq, "CHECK constraint violation ");
         reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
-                  iq->usedb->check_constraints[rc-1].consname);
+                  iq->usedb->check_constraints[rc - 1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
         ERR;
