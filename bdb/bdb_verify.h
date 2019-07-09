@@ -23,13 +23,8 @@ typedef struct thdpool thdpool;
 typedef struct dbtable dbtable;
 
 typedef enum {PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB} processing_type;
-typedef struct processing_info {
-    processing_type type;
-    int8_t blobno;
-    int8_t dtastripe;
-    int8_t index;
-} processing_info;
 
+// common data for all verify threads
 typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
@@ -44,20 +39,31 @@ typedef struct {
     void (*free_blob_buffer_callback)(void *parm);
     unsigned long long (*verify_indexes_callback)(void *parm, void *dta,
                                                   void *blob_parm);
-    void *callback_parm;
     int (*lua_callback)(void *, const char *);
     void *lua_params;
-    processing_info info;
-    uint8_t *verify_status; //0 success, 1 failure
+    unsigned long long records_processed; // atomic inc: for progres report
     int progress_report_seconds;
     int attempt_fix;
+    int threads_spawned;
+    int threads_completed; //atomic inc
     uint8_t parallel_verify;
     uint8_t client_dropped_connection;
-} verify_td_params;
+    uint8_t verify_status; //0 success, 1 failure
+} verify_common_t;
+
+// verify per thread processing info
+typedef struct td_processing_info {
+   verify_common_t *common_params;
+    processing_type type;
+    int8_t blobno;
+    int8_t dtastripe;
+    int8_t index;
+} td_processing_info_t;
 
 
-int bdb_verify(verify_td_params *par);
-int bdb_verify_enqueue(verify_td_params *par, thdpool *verify_thdpool);
+
+int bdb_verify(verify_common_t *par);
+int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool);
 
 
 #endif
