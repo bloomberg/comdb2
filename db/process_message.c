@@ -85,6 +85,7 @@ extern int __berkdb_read_alarm_ms;
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 #include "osqluprec.h"
+#include "sql.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -642,6 +643,184 @@ void *clean_exit_thd(void *unused)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     clean_exit();
     return NULL;
+}
+
+static int testsys_write_response(struct sqlclntstate *a, int type, void *data, int n) {
+    if (type == RESPONSE_ROW) {
+        struct response_data *rsp = (struct response_data*) data;
+        sqlite3_stmt *stmt = rsp->stmt;
+        int ncols = sqlite3_column_count(stmt);
+        printf("type %d sqlmp %p ncols %d\n", type, stmt, ncols);
+        for (int i = 0; i < ncols; i++) {
+            printf(" %d %s\n", i, sqlite3_column_name(stmt, i));
+        }
+    }
+    return 0;
+}
+static int testsys_read_response(struct sqlclntstate *a, int b, void *c, int d)
+{
+    return -1;
+}
+static void *testsys_save_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return strdup(clnt->sql);
+}
+static void *testsys_restore_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    clnt->sql = arg;
+    return NULL;
+}
+static void *testsys_destroy_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    free(arg);
+    return NULL;
+}
+static void *testsys_print_stmt(struct sqlclntstate *clnt, void *arg)
+{
+    return arg;
+}
+static int testsys_param_count(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
+{
+    return -1;
+}
+static int testsys_param_value(struct sqlclntstate *a, struct param_data *b, int c)
+{
+    return -1;
+}
+static int testsys_override_count(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_override_type(struct sqlclntstate *a, int b)
+{
+    return 0;
+}
+static int testsys_clr_cnonce(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_has_cnonce(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_set_cnonce(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
+{
+    return -1;
+}
+static int testsys_get_snapshot(struct sqlclntstate *a, int *b, int *c)
+{
+    return -1;
+}
+static int testsys_upd_snapshot(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_clr_snapshot(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_has_high_availability(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_set_high_availability(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_clr_high_availability(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int testsys_get_high_availability(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_has_parallel_sql(struct sqlclntstate *a)
+{
+    return 0;
+}
+static void testsys_add_steps(struct sqlclntstate *a, double b)
+{
+}
+static void testsys_setup_client_info(struct sqlclntstate *a, struct sqlthdstate *b, char *c)
+{
+}
+static int testsys_skip_row(struct sqlclntstate *a, uint64_t b)
+{
+    return 0;
+}
+static int testsys_log_context(struct sqlclntstate *a, struct reqlogger *b)
+{
+    return 0;
+}
+static uint64_t testsys_get_client_starttime(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_get_client_retries(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int testsys_send_intrans_response(struct sqlclntstate *a)
+{
+    return 1;
+}
+
+void systable_test(void) {
+    char *sql = "select * from comdb2_test";
+    struct plugin_callbacks callbacks = {
+        .write_response = testsys_write_response,
+        .read_response = testsys_read_response,
+        .save_stmt = testsys_save_stmt,
+        .restore_stmt = testsys_restore_stmt,
+        .destroy_stmt = testsys_destroy_stmt,
+        .print_stmt = testsys_print_stmt,
+        .param_count = testsys_param_count,
+        .param_index = testsys_param_index,
+        .param_value = testsys_param_value,
+        .override_count = testsys_override_count,
+        .override_type = testsys_override_type,
+        .has_cnonce = testsys_has_cnonce,
+        .set_cnonce = testsys_set_cnonce,
+        .clr_cnonce = testsys_clr_cnonce,
+        .get_cnonce = testsys_get_cnonce,
+        .get_snapshot = testsys_get_snapshot,
+        .upd_snapshot = testsys_upd_snapshot,
+        .clr_snapshot = testsys_clr_snapshot,
+        .has_high_availability = testsys_has_high_availability,
+        .set_high_availability = testsys_set_high_availability,
+        .clr_high_availability = testsys_clr_high_availability,
+        .get_high_availability = testsys_get_high_availability,
+        .has_parallel_sql = testsys_has_parallel_sql,
+        .add_steps = testsys_add_steps,
+        .setup_client_info = testsys_setup_client_info,
+        .skip_row = testsys_skip_row,
+        .log_context = testsys_log_context,
+        .get_client_starttime = testsys_get_client_starttime,
+        .get_client_retries = testsys_get_client_retries,
+        .send_intrans_response = testsys_send_intrans_response,
+        .column_count = NULL,
+        .column_type = NULL,
+        .column_int64 = NULL,
+        .column_double = NULL,
+        .column_text = NULL,
+        .column_bytes = NULL,
+        .column_blob = NULL,
+        .column_datetime = NULL,
+        .column_interval = NULL,
+        .state = NULL,
+        .next_row = NULL
+    };
+
+    run_internal_sql_with_callbacks(sql, &callbacks);
 }
 
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
@@ -4931,6 +5110,17 @@ clipper_usage:
             thdpool_print_stats(stdout, gbl_verify_thdpool);
         else
             logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
+    } else if (tokcmp(tok, ltok, "systest") == 0) {
+#if 0
+        static int lastgen = 0;
+        int gen = systable_get_gen("comdb2_test");
+        if (gen != lastgen) {
+            printf("gen %d last %d\n", gen, lastgen);
+            systable_test();
+            lastgen = gen;
+        }
+#endif
+        systable_test();
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;

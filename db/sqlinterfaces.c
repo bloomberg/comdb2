@@ -6959,13 +6959,20 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql(char *sql)
+void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+
     clnt.sql = skipws(sql);
 
+    if (callbacks == NULL) 
+        start_internal_sql_clnt(&clnt);
+    else
+        clnt.plugin = *callbacks;
+
     dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
+    dispatch_sql_query(&clnt);
     if (clnt.query_rc || clnt.saved_errstr) {
         logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
                clnt.query_rc);
@@ -6981,6 +6988,10 @@ void run_internal_sql(char *sql)
     }
 
     end_internal_sql_clnt(&clnt);
+}
+
+void run_internal_sql(char *sql) {
+    return run_internal_sql_with_callbacks(sql, NULL);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

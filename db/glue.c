@@ -89,6 +89,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "time_accounting.h"
+#include "plhash.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -3101,16 +3102,56 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
     return 0;
 }
 
+static pthread_mutex_t systables_gen_lk = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *systable_gens;
+struct systable_gen {
+    char *systable;
+    int64_t version;
+};
+
+static pthread_once_t systables_hash_once_control = PTHREAD_ONCE_INIT;
+static void systables_hash_once(void) {
+    systable_gens = hash_init_strptr(offsetof(struct systable_gen, systable));
+}
+
+int64_t systable_get_gen(const char *table) {
+    struct systable_gen *gen;
+    int64_t version;
+    pthread_once(&systables_hash_once_control, systables_hash_once);
+
+    Pthread_mutex_lock(&systables_gen_lk);
+    gen = hash_find(systable_gens, &table);
+    if (gen == NULL) {
+        gen = malloc(sizeof(struct systable_gen));
+        gen->systable = strdup(table);
+        gen->version = 1;
+        hash_add(systable_gens, gen);
+    }
+    version = gen->version;
+    Pthread_mutex_unlock(&systables_gen_lk);
+    return version;
+}
+
 static int systables_modified_callback(void *bdb_handle, void *trans, int ntables, char **tables) {
-    printf("callback called: %d tables modified\n", ntables);
+    pthread_once(&systables_hash_once_control, systables_hash_once);
+    struct systable_gen *gen;
 
     /* On the master, we'll have a real trans handle.  On the replicant, we're
      * being called directly by recovery, and don't have one. */
-
+    Pthread_mutex_lock(&systables_gen_lk);
     for (int i = 0; i < ntables; i++) {
-        printf("   %s\n", tables[i]);
+        gen = hash_find(systable_gens, &tables[i]);
+        if (gen == NULL) {
+            gen = malloc(sizeof(struct systable_gen));
+            gen->systable = strdup(tables[i]);
+            gen->version = 0;
+            hash_add(systable_gens, gen);
+        }
+        gen->version++;
+        printf("modified: %s -> %"PRId64"\n", tables[i], gen->version);
         free(tables[i]);
     }
+    Pthread_mutex_unlock(&systables_gen_lk);
     free(tables);
     return 0;
 }

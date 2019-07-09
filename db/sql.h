@@ -1330,4 +1330,6 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
  */
 int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
 
+void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks);
+
 #endif /* _SQL_H_ */
