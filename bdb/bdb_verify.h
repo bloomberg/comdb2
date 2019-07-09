@@ -44,8 +44,8 @@ typedef struct {
     unsigned long long records_processed; // atomic inc: for progres report
     int progress_report_seconds;
     int attempt_fix;
-    int threads_spawned;
-    int threads_completed; //atomic inc
+    unsigned short threads_spawned;
+    unsigned short threads_completed; //atomic inc
     uint8_t parallel_verify;
     uint8_t client_dropped_connection;
     uint8_t verify_status; //0 success, 1 failure

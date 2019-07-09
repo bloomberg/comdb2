@@ -32,6 +32,7 @@
 #include <bdb_api.h>
 #include <bdb_verify.h>
 #include <bdb/locks.h>
+#include <unistd.h>
 
 struct thdpool *gbl_verify_thdpool;
 static int parallel_verify_table(const char *table, SBUF2 *sb,
@@ -472,10 +473,12 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
     // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
 
-    //wait for all verify threads to finish
-    thrman_wait_type_exit(THRTYPE_VERIFY);
+    // wait for all our enqueued work items to complete for this verify
+    while(par.threads_spawned > par.threads_completed)
+        sleep(1);
 
     //cleanup via the following two:
+    //thrman_wait_type_exit(THRTYPE_VERIFY);
     //thdpool_stop(gbl_verify_thdpool);
     //thdpool_destroy(&gbl_verify_thdpool);
 

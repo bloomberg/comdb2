@@ -38,6 +38,7 @@
 #include "logmsg.h"
 #include "tohex.h"
 #include "blob_buffer.h"
+#include "comdb2_atomic.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -1084,7 +1085,10 @@ static int bdb_verify_ll(verify_common_t *par, unsigned int lid)
     return par->verify_status;
 }
 
-void bdb_verify_dispatcher(td_processing_info_t *info) 
+/* this function serves as a wrapper around calling
+ * individual functions to verify data, key, and blob
+ */
+void bdb_verify_handler(td_processing_info_t *info) 
 {
     verify_common_t *par = info->common_params;
     bdb_state_type *bdb_state = par->bdb_state;
@@ -1113,30 +1117,34 @@ void bdb_verify_dispatcher(td_processing_info_t *info)
     }
 
     BDB_RELLOCK();
+    ATOMIC_ADD(par->threads_completed, 1);
 }
 
-static void bdb_verify_dispatcher_work_pp(struct thdpool *pool, void *work, void *thddata,
+static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
     td_processing_info_t *info = work; 
     bdb_state_type *bdb_state = info->common_params->bdb_state;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-    bdb_verify_dispatcher(info);
+    bdb_verify_handler(info);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
 }
 
 inline static void dispatch_work(td_processing_info_t *work, thdpool *verify_thdpool)
 {
+    // this function is called sequentially, no need for atomics
+    work->common_params->threads_spawned++;
+
     if (verify_thdpool) {
         int rc = thdpool_enqueue(verify_thdpool, 
-                bdb_verify_dispatcher_work_pp, work, 0, NULL, THDPOOL_FORCE_QUEUE);
+                bdb_verify_handler_work_pp, work, 0, NULL, THDPOOL_FORCE_QUEUE);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error\n", __func__);
             verify_thdpool = NULL;
-        }
+        } 
     }
     if (!verify_thdpool) {
-        bdb_verify_dispatcher(work);
+        bdb_verify_handler(work);
         free(work);
     }
 }
