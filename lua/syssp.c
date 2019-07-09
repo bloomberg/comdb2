@@ -212,16 +212,16 @@ static int db_comdb_verify(Lua L) {
     if (lua_isstring(L, 1)) {
         tblname = (char *) lua_tostring(L, -2);
     }
-    int parallel = 0;
+    verify_mode_t mode = VERIFY_DEFAULT;
 
     if (lua_isstring(L, 2)) {
-        char *mode = (char *) lua_tostring(L, -1);
-        if (strcmp(mode, "parallel") == 0) {
-            parallel = 1;
+        char *m = (char *) lua_tostring(L, -1);
+        if (strcmp(m, "parallel") == 0) {
+            mode = VERIFY_PARALLEL;
         }
     }
 
-    if (parallel)
+    if (mode == VERIFY_PARALLEL)
         logmsg(LOGMSG_ERROR, "Verify in parallel mode for table %s\n", tblname);
     else
         logmsg(LOGMSG_ERROR, "Verify in for table %s\n", tblname);
@@ -241,10 +241,7 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        if (parallel)
-            rc = parallel_verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
-        else
-            rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L, mode); //freq 1, fix 0
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {

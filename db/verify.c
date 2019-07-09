@@ -34,6 +34,10 @@
 #include <bdb/locks.h>
 
 struct thdpool *gbl_verify_thdpool;
+static int parallel_verify_table(const char *table, SBUF2 *sb,
+                    int progress_report_seconds, int attempt_fix,
+                    int (*lua_callback)(void *, const char *),
+                    void *lua_params);
 
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
@@ -365,8 +369,10 @@ static void *verify_td(void *arg)
 
 int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
                  int attempt_fix, int (*lua_callback)(void *, const char *),
-                 void *lua_params)
+                 void *lua_params, verify_mode_t mode)
 {
+    if (mode == VERIFY_PARALLEL)
+        return parallel_verify_table(table, sb, progress_report_seconds, attempt_fix, lua_callback, lua_params);
     int rc;
     struct verify_args v;
     pthread_attr_t attr;
@@ -407,7 +413,7 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
     state->thr_self = thrman_register(THRTYPE_VERIFY);
 }
 
-int parallel_verify_table(const char *table, SBUF2 *sb,
+static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
                     int (*lua_callback)(void *, const char *),
                     void *lua_params)
