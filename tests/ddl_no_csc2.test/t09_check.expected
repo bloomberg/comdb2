@@ -66,3 +66,23 @@ constraints
 (rows inserted=3)
 (COUNT(*)=3=1)
 (COUNT(*)=0=1)
+(test='8. Multiple check constraints')
+(name='FK', type='FOREIGN KEY', tablename='t2', keyname='$KEY_1E994F88', foreigntablename='t1', foreignkeyname='$KEY_877B2989', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='CONS1', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i > 10')
+(name='$CONSTRAINT_9C3BA03F', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i < 100')
+[INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320
+[INSERT INTO t2 values(11)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '$KEY_877B2989'
+[INSERT INTO t2 values(111)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9C3BA03F' unable to add record rc = 320
+(rows inserted=3)
+[INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320
+(rows inserted=1)
+[INSERT INTO t2 values(111)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9C3BA03F' unable to add record rc = 320
+(i=1)
+(i=11)
+(i=111)
+(test='9. Check expression using a keyword')
+[CREATE TABLE t1(order VARCHAR(100), CHECK(order IN ("aaa")))] failed with rc -3 near "order": syntax error
+[CREATE TABLE t1("order" VARCHAR(100), CHECK(order IN ("aaa")))] failed with rc -3 near "order": syntax error
+[INSERT INTO t1 VALUES('aaaa')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_A48D84B' unable to add record rc = 320
+(rows inserted=1)
+(order='aaa')

@@ -86,3 +86,26 @@ TRUNCATE t1;
 SELECT COUNT(*)=0 FROM t1;
 DROP TABLE t1;
 
+SELECT '8. Multiple check constraints' as test;
+CREATE TABLE t1(i INT UNIQUE)$$
+CREATE TABLE t2(i INT UNIQUE, CONSTRAINT "FK" FOREIGN KEY (i) REFERENCES t1(i), CONSTRAINT "CONS1" CHECK (i > 10), CHECK (i < 100))$$
+SELECT * FROM comdb2_constraints;
+INSERT INTO t2 values(1);
+INSERT INTO t2 values(11);
+INSERT INTO t2 values(111);
+INSERT INTO t1 VALUES(1), (11), (111);
+INSERT INTO t2 values(1);
+INSERT INTO t2 values(11);
+INSERT INTO t2 values(111);
+SELECT * FROM t1;
+DROP TABLE t2;
+DROP TABLE t1;
+
+SELECT '9. Check expression using a keyword' as test;
+CREATE TABLE t1(order VARCHAR(100), CHECK(order IN ("aaa")))$$
+CREATE TABLE t1("order" VARCHAR(100), CHECK(order IN ("aaa")))$$
+CREATE TABLE t1("order" VARCHAR(100), CHECK("order" IN ("aaa")))$$
+INSERT INTO t1 VALUES('aaaa');
+INSERT INTO t1 VALUES('aaa');
+SELECT * FROM t1;
+DROP TABLE t1;
