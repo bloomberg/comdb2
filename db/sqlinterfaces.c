@@ -4556,7 +4556,7 @@ static priority_t combinePriorities(
   }
 }
 
-int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
     char *sqlcpy;
