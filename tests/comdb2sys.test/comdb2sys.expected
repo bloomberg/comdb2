@@ -83,9 +83,9 @@
 [select * from comdb2_tablesizes order by tablename] rc 0
 (KEYWORDS_COUNT=210)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=66)
+(RESERVED_KW=65)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=144)
+(NONRESERVED_KW=145)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
@@ -113,7 +113,7 @@
 (name='GROUP', reserved='Y')
 (name='HAVING', reserved='Y')
 (name='IN', reserved='Y')
-(name='INCREMENT', reserved='Y')
+(name='INCREMENT', reserved='N')
 (name='INDEX', reserved='Y')
 (name='INDEXED', reserved='Y')
 (name='INNER', reserved='Y')
