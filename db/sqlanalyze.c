@@ -155,7 +155,7 @@ static int run_sql_part_trans(sqlite3 *sqldb, struct sqlclntstate *client,
     char *msg;
 
     /* set sql and analyze flavor */
-    client->sql = sql;
+    client->work.zSql = sql;
 
     /* set thread info */
     struct sql_thread *thd = pthread_getspecific(query_info_key);

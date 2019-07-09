@@ -3073,7 +3073,7 @@ static void normalize_stmt_and_store(
   if (gbl_fingerprint_queries) {
     const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
     if (zNormSql) {
-      clnt->zNormSql = strdup(zNormSql);
+      clnt->work.zNormSql = strdup(zNormSql);
     } else if (gbl_verbose_normalized_queries) {
       logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
     }

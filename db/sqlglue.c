@@ -2032,7 +2032,7 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 
     reset_clnt(&client, NULL, 1);
     client.sb = NULL;
-    client.sql = (char *)temp;
+    client.work.zSql= (char *)temp;
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
 
@@ -2066,7 +2066,7 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     }
     got_curtran = 1;
 
-    rc = sqlite3_exec(hndl, client.sql, NULL, NULL, &err);
+    rc = sqlite3_exec(hndl, client.work.zSql, NULL, NULL, &err);
 done:
     if (err) {
         logmsg(LOGMSG_ERROR, "New indexes syntax error: \"%s\"\n", err);
@@ -12274,7 +12274,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     strncpy0(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.sql = (char *)query;
+    client.work.zSql = (char *)query;
     client.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
