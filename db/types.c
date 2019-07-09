@@ -3720,6 +3720,10 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
      * in the out buffer, then the string will just be transfered from one blob
      * to another */
     if (len > in_len && len > out_len) {
+
+        if (!outblob)
+            return -1;
+
         /* This only copies if we've passed in both an inblob and outblob, but
          * like
          * our blob-conversion code, it will always return success, whether or
@@ -3796,6 +3800,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             outblob->length = len;
             outblob->exists = 1;
             outblob->collected = 1;
+        } else {
+            return -1;
         }
     }
 
