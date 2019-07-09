@@ -62,17 +62,18 @@ int priority_queue_add(
 
   if (i == NULL) return ENOMEM;
 
-  i->priority = p;
   i->pData = o;
 
   if (p == PRIORITY_T_HEAD)
   {
+    i->priority = PRIORITY_T_HIGHEST;
     listc_atl(&q->list, i);
     return 0;
   }
 
-  if ((p == PRIORITY_T_TAIL) || (p == PRIORITY_T_DEFAULT))
+  if (p == PRIORITY_T_TAIL)
   {
+    i->priority = PRIORITY_T_LOWEST;
     listc_abl(&q->list, i);
     return 0;
   }
@@ -82,11 +83,13 @@ int priority_queue_add(
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
   {
     if (iter->priority >= p) {
+      i->priority = p;
       listc_add_before(&q->list, i, iter);
       return 0;
     }
   }
 
+  i->priority = p;
   listc_abl(&q->list, i);
   return 0;
 }
@@ -98,6 +101,14 @@ void *priority_queue_next(
   priority_queue_item_t *i = listc_rtl(&q->list);
   if (i == NULL) return NULL;
   return i->pData;
+}
+
+priority_t priority_queue_highest(
+  priority_queue_t *q
+){
+  if (q == NULL) return PRIORITY_T_INVALID;
+  priority_queue_item_t *i = listc_ptl(&q->list);
+  return (i != NULL) ? i->priority : PRIORITY_T_INVALID;
 }
 
 int priority_queue_count(

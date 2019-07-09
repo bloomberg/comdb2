@@ -75,6 +75,9 @@ int priority_queue_add(priority_queue_t *q, priority_t p, void *o);
 /* dequeue next item off queue.  null if empty queue */
 void *priority_queue_next(priority_queue_t *q);
 
+/* return the priority of the highest priority item */
+priority_t priority_queue_highest(priority_queue_t *q);
+
 /* return num items on queue */
 int priority_queue_count(priority_queue_t *q);
 

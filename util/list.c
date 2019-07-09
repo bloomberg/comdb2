@@ -294,3 +294,13 @@ int listc_size(listc_t *l)
 #endif
     return l->count;
 }
+
+void *listc_ptl(listc_t *l)
+{
+    return l->top;
+}
+
+void *listc_pbl(listc_t *l)
+{
+    return l->bot;
+}
