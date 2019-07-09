@@ -516,10 +516,6 @@ struct clnt_ddl_context {
 struct sqlworkstate {
     char *zSql;     /* Original SQL query for this work. */
     char *zNormSql; /* Normalized version of original SQL query. */
-    char aSqlHash[FINGERPRINTSZ]; /* MD5 digest of original SQL query. */
-    sqlite3 *pStmtDb;    /* Database statement was prepared against. */
-    sqlite3_stmt *pStmt; /* Prepared statement for original SQL query. */
-    arch_tid iStmtTid;   /* Thread where statement was prepared. */
 };
 
 /* Client specific sql state */
@@ -545,15 +541,8 @@ struct sqlclntstate {
 
     struct sqlworkstate work;  /* This is the primary data related to the SQL
                                 * client request in progress.  This includes
-                                * the original SQL query, its normalized
-                                * variant (if applicable), and its prepared
-                                * statement (if available).  The prepared
-                                * statement contained within this structure
-                                * cannot be used unless the database pointer
-                                * and thread identifier (also located within
-                                * this structure) exactly match those in use
-                                * by the running thread (i.e. because the
-                                * underlying memory may be gone). */
+                                * the original SQL query and its normalized
+                                * variant (if applicable). */
 
     /* appsock plugin specific data */
     void *appdata;
