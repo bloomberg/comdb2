@@ -4548,6 +4548,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
 
+    printf("dispatch %s\n", clnt->sql);
+
     if (self) {
         if (clnt->exec_lua_thread)
             thrman_set_subtype(self, THRSUBTYPE_LUA_SQL);
@@ -6189,11 +6191,17 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql(char *sql)
+void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+
     clnt.sql = skipws(sql);
+
+    if (callbacks == NULL) 
+        start_internal_sql_clnt(&clnt);
+    else
+        clnt.plugin = *callbacks;
 
     dispatch_sql_query(&clnt);
     if (clnt.query_rc || clnt.saved_errstr) {
@@ -6217,6 +6225,10 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+}
+
+void run_internal_sql(char *sql) {
+    return run_internal_sql_with_callbacks(sql, NULL);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

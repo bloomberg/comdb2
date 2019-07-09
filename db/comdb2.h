@@ -3627,4 +3627,6 @@ extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
 extern int db_get_dtastripe_by_name(const char *tablename, tran_type *tran);
 extern int db_get_disallow_drop_by_name(const char *tablename, tran_type *tran);
 
+int64_t systable_get_gen(const char *table);
+
 #endif /* !INCLUDED_COMDB2_H */

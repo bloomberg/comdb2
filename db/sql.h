@@ -1196,4 +1196,6 @@ void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
+void run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks);
+
 #endif
