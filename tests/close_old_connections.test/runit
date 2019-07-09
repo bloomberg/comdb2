@@ -17,11 +17,11 @@ if [[ -z "$CLUSTER" ]]; then
    cdb2sql -s ${CDB2_OPTIONS} -f sleep20.req $dbname default &
 else
 	for node in $CLUSTER; do
-           cdb2sql -s ${CDB2_OPTIONS} -f sleep20.req $dbname default &
+           cdb2sql -s ${CDB2_OPTIONS} --host $node -f sleep20.req $dbname &
 	done
 fi
 
-sleep 10
+sleep 1
 
 testname='t00'
 echo preparing db for $testname
@@ -43,7 +43,7 @@ if [[ -z "$CLUSTER" ]]; then
     cdb2sql -s ${CDB2_OPTIONS} -f sleep5.req $dbname default &
 else
 	for node in $CLUSTER; do
-            cdb2sql -s ${CDB2_OPTIONS} -f sleep5.req $dbname default &
+            cdb2sql -s ${CDB2_OPTIONS} --host $node -f sleep5.req $dbname &
 	done
 fi
 
