@@ -17,7 +17,9 @@
 #ifndef _COMDB2_RULESET_H_
 #define _COMDB2_RULESET_H_
 
-#include "sql.h"
+#ifndef FINGERPRINTSZ
+#define FINGERPRINTSZ 16 /* stolen from "sql.h" */
+#endif
 
 enum ruleset_action {
   RULESET_ACT_NONE = 0,
