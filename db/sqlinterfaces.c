@@ -1081,8 +1081,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(h->sql, clnt->zNormSql, h->cost, h->time,
+        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost, h->time,
                             clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -3064,9 +3064,9 @@ static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
   struct sql_state *rec
 ){
-  if (clnt->zNormSql) {
-    free(clnt->zNormSql);
-    clnt->zNormSql = 0;
+  if (clnt->work.zNormSql) {
+    free(clnt->work.zNormSql);
+    clnt->work.zNormSql = 0;
   }
   assert(rec && rec->stmt);
   assert(rec && rec->sql);
@@ -4859,9 +4859,9 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    if (clnt->zNormSql) {
-        free(clnt->zNormSql);
-        clnt->zNormSql = NULL;
+    if (clnt->work.zNormSql) {
+        free(clnt->work.zNormSql);
+        clnt->work.zNormSql = NULL;
     }
 
     destroy_hash(clnt->ddl_tables, free_it);
@@ -4994,9 +4994,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
-    if (clnt->zNormSql) {
-        free(clnt->zNormSql);
-        clnt->zNormSql = 0;
+    if (clnt->work.zNormSql) {
+        free(clnt->work.zNormSql);
+        clnt->work.zNormSql = 0;
     }
 
     clnt->arr = NULL;
@@ -6214,7 +6214,7 @@ void run_internal_sql(char *sql)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.sql = skipws(sql);
+    clnt.work.sql = skipws(sql);
 
     dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
     if (clnt.query_rc || clnt.saved_errstr) {

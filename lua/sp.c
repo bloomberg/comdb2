@@ -2551,7 +2551,7 @@ static void *dispatch_lua_thread(void *arg)
     clnt.appdata = parent_clnt->appdata;
     clnt.plugin = parent_clnt->plugin;
     clnt.sp = thd->sp;
-    clnt.sql = thd->sql;
+    clnt.work.sql = thd->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
@@ -6447,7 +6447,7 @@ void *exec_trigger(trigger_reg_t *reg)
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.sql = sql;
+    clnt.work.sql = sql;
     clnt.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);

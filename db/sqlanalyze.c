@@ -1353,7 +1353,7 @@ void handle_backout(SBUF2 *sb, char *table)
     if (rc == 0)
         sbuf2printf(sb, "SUCCESS\n");
     else {
-        sbuf2printf(sb, "?Error occured with query: '%s'\n", clnt.sql);
+        sbuf2printf(sb, "?Error occured with query: '%s'\n", clnt.work.sql);
         sbuf2printf(sb, "FAILED\n");
     }
 

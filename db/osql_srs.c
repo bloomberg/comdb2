@@ -191,7 +191,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
 
     item = malloc(sizeof(srs_tran_query_t));
     item->stmt = save_stmt(clnt);
-    item->iscommit = strcasecmp("commit", clnt->sql) == 0;
+    item->iscommit = strcasecmp("commit", clnt->work.sql) == 0;
     listc_abl(&osql->history->lst, item);
     clnt->added_to_hist = 1;
 

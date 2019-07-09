@@ -30,6 +30,7 @@
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
 #include "priority_queue.h"
+#include "comdb2_ruleset.h"
 
 #include "fdb_fend.h"
 #include <sp.h>
@@ -510,6 +511,17 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+/* This structure is designed to hold several pieces of data related to
+ * work-in-progress on client SQL requests. */
+struct sqlworkstate {
+    char *zSql;     /* Original SQL query for this work. */
+    char *zNormSql; /* Normalized version of original SQL query. */
+    char aSqlHash[FINGERPRINTSZ]; /* MD5 digest of original SQL query. */
+    sqlite3 *pStmtDb;    /* Database statement was prepared against. */
+    sqlite3_stmt *pStmt; /* Prepared statement for original SQL query. */
+    arch_tid iStmtTid;   /* Thread where statement was prepared. */
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     long long seqNo;           /* Monotonically increasing sequence number
@@ -531,6 +543,18 @@ struct sqlclntstate {
                                 * items.  This value should only be changed
                                 * by the dispatch_sql_query() function. */
 
+    struct sqlworkstate work;  /* This is the primary data related to the SQL
+                                * client request in progress.  This includes
+                                * the original SQL query, its normalized
+                                * variant (if applicable), and its prepared
+                                * statement (if available).  The prepared
+                                * statement contained within this structure
+                                * cannot be used unless the database pointer
+                                * and thread identifier (also located within
+                                * this structure) exactly match those in use
+                                * by the running thread (i.e. because the
+                                * underlying memory may be gone). */
+
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;
@@ -544,8 +568,6 @@ struct sqlclntstate {
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
-    char *sql;
-    char *zNormSql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
