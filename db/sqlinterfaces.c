@@ -4556,7 +4556,7 @@ static priority_t combinePriorities(
   }
 }
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
     char *sqlcpy;
@@ -4619,14 +4619,25 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
             free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->fail_dispatch) {
-                snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query\n",
-                         __func__);
+                snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query, rc=%d\n",
+                         __func__, rc);
                 handle_failed_dispatch(clnt, msg);
             }
 
-            return -1;
+            return rc;
         }
     }
+
+    return rc;
+}
+
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+{
+    int rc;
+    struct thr_handle *self = thrman_self();
+
+    rc = enqueue_sql_query(clnt, priority);
+    if (rc != 0) return rc;
 
     /* successful dispatch or queueing, enable heartbeats */
     Pthread_mutex_lock(&clnt->wait_mutex);
