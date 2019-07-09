@@ -22,19 +22,39 @@
 #endif
 
 enum ruleset_action {
-  RULESET_ACT_NONE = 0,
-  RULESET_ACT_REJECT = 1,
-  RULESET_ACT_LOW_PRIO = 2,
-  RULESET_ACT_HIGH_PRIO = 3
+  RULESET_A_NONE = 0,     /* Take no action. */
+
+  RULESET_A_REJECT = 1,   /* Reject the request.  May be combined with the
+                           * 'STOP' flag to make permanent. */
+
+  RULESET_A_UNREJECT = 2, /* Unreject the request. */
+
+  RULESET_A_LOW_PRIO = 3, /* Lower the priority of the request by the value
+                           * associated with this rule. */
+
+  RULESET_A_HIGH_PRIO = 4 /* Raise the priority of the request by the value
+                           * associated with this rule. */
+};
+
+enum ruleset_flags {
+  RULESET_F_NONE = 0,     /* No special behavior. */
+
+  RULESET_F_STOP = 1      /* Stop if the associated rule is matched.  No more
+                           * rules will be processed for this request -AND-
+                           * the request will NOT be retried. TODO: ? */
 };
 
 struct ruleset_item {
   enum ruleset_action action;       /* If this rule is matched, what should be
                                      * done in respone? */
 
-  char *zOriginUser;                /* Obtained via unknown means.  If not NULL
-                                     * this will be matched against using exact
-                                     * case-insensitive string comparisons. */
+  priority_t adjustment;            /* For rules which adjust the priority of
+                                     * of the work item, what is the (absolute)
+                                     * amount the priority should be adjusted?
+                                     */
+
+  enum ruleset_flags flags;         /* The behavioral flags associated with the
+                                     * rule, e.g. stop-on-match, etc. */
 
   char *zOriginHost;                /* Obtained via "clnt->origin_host".  If not
                                      * NULL this will be matched using exact
