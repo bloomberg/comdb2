@@ -214,15 +214,17 @@ static int db_comdb_verify(Lua L) {
     }
     int parallel = 0;
 
-    {
-        logmsg(LOGMSG_ERROR, "Usage: -2 %s\n", (char *) lua_tostring(L, -1));
-    }
-
     if (lua_isstring(L, 2)) {
         char *mode = (char *) lua_tostring(L, -1);
-        if (strcmp(mode, "parallel") == 0)
+        if (strcmp(mode, "parallel") == 0) {
             parallel = 1;
+        }
     }
+
+    if (parallel)
+        logmsg(LOGMSG_ERROR, "Verify in parallel mode for table %s\n", tblname);
+    else
+        logmsg(LOGMSG_ERROR, "Verify in for table %s\n", tblname);
 
     char *cols[] = {"out"};
     struct sqlclntstate *clnt = sp->clnt;

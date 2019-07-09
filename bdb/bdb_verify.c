@@ -467,9 +467,11 @@ static int bdb_verify_data_stripe(verify_td_params *par, unsigned int lid)
                 ckey->c_close(ckey);
                 return 0;
             }
+/*
     printf("AZ: stripe %d, ix %d, genid %lld, keylen %d, rc %d, expected_keybuf\n", 
             dtastripe, ix, genid, keylen, rc);
     hexdump(LOGMSG_ERROR, (const char *) expected_keybuf, keylen);
+*/
 
             /* set up key */
 
