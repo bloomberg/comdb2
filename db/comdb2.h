@@ -731,6 +731,7 @@ struct dbtable {
     /* CHECK constraints */
     check_constraint_t check_constraints[MAXCONSTRAINTS];
     int n_check_constraints;
+    char *check_constraint_query[MAXCONSTRAINTS];
 
     /* One of the DBTYPE_ constants. */
     int dbtype;

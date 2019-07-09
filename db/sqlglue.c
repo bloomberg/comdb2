@@ -12360,7 +12360,6 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
                              int is_alter)
 {
     struct schema *sc;
-    strbuf *sql;
     Mem *m = NULL;
     Mem mout = {{0}};
     int rc = 0; /* Assume all checks succeeded. */
@@ -12382,8 +12381,6 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         abort();
     }
 
-    sql = strbuf_new();
-
     m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
     if (m == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
@@ -12404,18 +12401,6 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     }
 
     for (int i = 0; i < table->n_check_constraints; i++) {
-        strbuf_clear(sql);
-        strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", table->tablename,
-                       sc->member[0].name);
-        for (int i = 1; i < sc->nmembers; ++i) {
-            strbuf_appendf(sql, ", %s", sc->member[i].name);
-        }
-        strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
-        for (int i = 1; i < sc->nmembers; ++i) {
-            strbuf_appendf(sql, ", @%s", sc->member[i].name);
-        }
-        strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
-                       table->check_constraints[i].expr, table->tablename);
 
         struct sqlclntstate clnt;
         struct schema_mem sm;
@@ -12426,7 +12411,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         start_internal_sql_clnt(&clnt);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
-        clnt.sql = (char *)strbuf_buf(sql);
+        clnt.sql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
 
@@ -12463,6 +12448,5 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 done:
     if (m)
         free(m);
-    strbuf_free(sql);
     return rc;
 }
