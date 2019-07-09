@@ -65,6 +65,7 @@ struct workitem {
     LINKC_T(struct workitem) linkv;
     int available;
     char *persistent_info;
+    priority_t priority;
 };
 
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);

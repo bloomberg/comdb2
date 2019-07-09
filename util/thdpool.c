@@ -990,6 +990,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         item->persistent_info = persistent_info;
         item->queue_time_ms = comdb2_time_epochms();
         item->available = 1;
+        item->priority = priority;
 
         /* Now wake up the thread with work to do. */
         if (!thd) {
