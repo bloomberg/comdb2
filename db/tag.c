@@ -3451,8 +3451,12 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
                     break;
                 tlen += todatalen;
             }
-            if (rc)
-                return -1;
+            if (rc) {
+                if ((to_field->type == CLIENT_BLOB || to_field->type == CLIENT_BLOB2 || to_field->type == CLIENT_VUTF8) && (flags & CONVERT_IGNORE_BLOBS))
+                    rc = 0;
+                else
+                    return -1;
+            }
         }
     }
 
