@@ -49,7 +49,7 @@ static int get_tables(void **data, int *npoints) {
 
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *db = thedb->dbs[i];
-        if (!db->disallow_drop)
+        if (!db->is_systable)
             (*npoints)++;
     }
     tables = malloc(sizeof(struct table) * *npoints);
@@ -57,7 +57,7 @@ static int get_tables(void **data, int *npoints) {
     int i = 0;
     for (int tbl = 0; tbl < thedb->num_dbs; tbl++) {
         struct dbtable *db = thedb->dbs[tbl];
-        if (!db->disallow_drop)
+        if (!db->is_systable)
             tables[i++].name = strdup(db->tablename);
     }
     *data = tables;

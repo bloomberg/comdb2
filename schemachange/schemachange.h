@@ -142,7 +142,7 @@ struct schema_change_type {
     int add_view;
     int drop_view;
     int new_table_dtastripe;
-    int disallow_drop;
+    int is_systable;
 
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */

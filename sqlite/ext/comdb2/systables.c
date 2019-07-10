@@ -47,7 +47,7 @@ static int get_systables(void **data, int *npoints) {
     *npoints = sqldb->aModule.count;
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *db = thedb->dbs[i];
-        if (db->disallow_drop)
+        if (db->is_systable)
             (*npoints)++;
     }
     systables = malloc(sizeof(struct systable) * *npoints);
@@ -59,7 +59,7 @@ static int get_systables(void **data, int *npoints) {
     }
     for (int tbl = 0; tbl < thedb->num_dbs; tbl++) {
         struct dbtable *db = thedb->dbs[tbl];
-        if (db->disallow_drop)
+        if (db->is_systable)
             systables[i++].name = strdup(db->tablename);
     }
     *data = systables;

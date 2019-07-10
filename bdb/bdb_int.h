@@ -1047,7 +1047,7 @@ struct bdb_state_tag {
 
     /* parameters we want to persist in llmeta via bdb_set_table_parameter */
     int nstripes;
-    int disallow_drop;
+    int is_systable;
 };
 
 #include <net_types.h>

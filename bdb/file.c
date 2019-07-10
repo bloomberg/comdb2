@@ -4193,8 +4193,8 @@ deadlock_again:
             snprintf(parmstr, sizeof(parmstr), "%d", bdb_state->nstripes);
             bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", parmstr);
             if (flags & BDB_TABLE_OPEN_DISALLOW_DROP) {
-                bdb_set_table_parameter(&tran, bdb_state->name, "disallow_drop", "1");
-                bdb_state->disallow_drop = 1;
+                bdb_set_table_parameter(&tran, bdb_state->name, "is_systable", "1");
+                bdb_state->is_systable = 1;
             }
         }
 
@@ -8561,12 +8561,12 @@ void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe) {
     bdb_state->nstripes = dtastripe; 
 }
 
-int bdb_get_disallow_drop(bdb_state_type *bdb_state) {
-    return bdb_state->disallow_drop;
+int bdb_get_is_systable(bdb_state_type *bdb_state) {
+    return bdb_state->is_systable;
 }
 
-void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow) {
-    bdb_state->disallow_drop = disallow;
+void bdb_set_is_systable(bdb_state_type *bdb_state, int is_systable) {
+    bdb_state->is_systable = is_systable;
 }
 
 int bdb_handle_systables_modified(DB_ENV *dbenv, 

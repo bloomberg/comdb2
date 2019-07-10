@@ -1055,7 +1055,7 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->schema_version, compr,
                          blob_compr, datacopy_odh, db_get_dtastripe(db, tran),
-                         db_get_disallow_drop_by_name(db->tablename, tran));
+                         db_get_is_systable_by_name(db->tablename, tran));
 
     /*
     if (db->schema_version < 0)

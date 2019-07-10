@@ -2199,8 +2199,8 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 int bdb_get_dtastripe(bdb_state_type *bdb_state);
 void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
 
-int bdb_get_disallow_drop(bdb_state_type *bdb_state);
-void bdb_set_disallow_drop(bdb_state_type *bdb_state, int disallow);
+int bdb_get_is_systable(bdb_state_type *bdb_state);
+void bdb_set_is_systable(bdb_state_type *bdb_state, int sys);
 
 int bdb_tran_is_parent(void *tran);
 int bdb_llog_systables_modified_log(bdb_state_type *bdb_state, void *trans, int ntables, void *tables, int tables_len);
