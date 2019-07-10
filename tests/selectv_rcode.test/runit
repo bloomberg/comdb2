@@ -67,26 +67,34 @@ function disallow_update_fail
     fi
 }
 
+function debug_flags
+{
+    if [[ "$debug" == "1" ]]; then
+        echo "-D"
+    fi
+}
+
 function run_tests
 {
     typeset func="run_tests"
     typeset strict_mode=$(disallow_update_fail)
     typeset reads_like_writes=$(serialize_reads_like_writes)
+    typeset dbug_flags=$(debug_flags)
 
     start=$(date +%s)
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i socksql
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i socksql
     export r=$?
     [[ $r != 0 ]] && failexit "socksql selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i reccom
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i reccom
     export r=$?
     [[ $r != 0 ]] && failexit "read committed selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i snapshot
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i snapshot
     export r=$?
     [[ $r != 0 ]] && failexit "snapshot selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes -i serial
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i serial
     export r=$?
     [[ $r != 0 ]] && failexit "serial selectv rcodes"
 }

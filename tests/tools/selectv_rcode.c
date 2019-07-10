@@ -42,6 +42,7 @@ int intrans_effects_updaters = INITTHDS;
 int isolation = SOCKSQL;
 int fail_updater_error = 0;
 int time_is_up = 0;
+int debug_trace = 0;
 int allow_common_errors = 1;
 
 void usage(FILE *f)
@@ -63,6 +64,7 @@ void usage(FILE *f)
     fprintf(f, "    -R                           - serialize reads like writes\n");
     fprintf(f, "    -a                           - disallow 'acceptable' errors\n");
     fprintf(f, "    -A                           - allow 'acceptable' errors\n");
+    fprintf(f, "    -D                           - set debug trace on handles\n");
     fprintf(f, "    -h                           - this menu\n");
 }
 
@@ -682,6 +684,9 @@ void *thd(void *arg) {
         exit(1);
     }
 
+    if (debug_trace)
+        cdb2_set_debug_trace(db);
+
     /* Allow retries if we're going to fail on verify error */
     if (fail_updater_error && (type == NOSELECT_UPDATER ||
                 type == SINGLE_STATEMENT_NOSELECT_UPDATER))
@@ -755,7 +760,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARDh")) != -1) {
         switch (opt) {
             case 'd':
                 dbname = optarg;
@@ -815,6 +820,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'R':
                 serialize_reads_like_writes = 1;
+                break;
+            case 'D':
+                debug_trace = 1;
                 break;
             case 'h':
                 usage(stdout);
