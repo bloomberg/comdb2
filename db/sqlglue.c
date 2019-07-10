@@ -80,7 +80,6 @@
 #include <sqlite3.h>
 
 #include "dbinc/debug.h"
-#include "sqlconstraints.h"
 #include "sqlinterfaces.h"
 
 #include "osqlsqlthr.h"
@@ -1656,6 +1655,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     strbuf_clear(sql);
     strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
 
+    /* Fields */
     for (field = 0; field < schema->nmembers; field++) {
         char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
@@ -1688,6 +1688,17 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         if (field != schema->nmembers - 1)
             strbuf_append(sql, ", ");
     }
+
+    /* CHECK constraints */
+    for (int i = 0; i < tbl->n_check_constraints; i++) {
+        strbuf_append(sql, ",");
+        if (tbl->check_constraints[i].consname) {
+            strbuf_appendf(sql, " constraint '%s'",
+                           tbl->check_constraints[i].consname);
+        }
+        strbuf_appendf(sql, " check (%s)", tbl->check_constraints[i].expr);
+    }
+
     strbuf_append(sql, ");");
     if (tbl->sql)
         free(tbl->sql);
@@ -1706,7 +1717,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     ctrace("%s\n", strbuf_buf(sql));
     tbl->nsqlix = 0;
 
-    /* do the indices */
+    /* Indices */
     for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
@@ -1996,9 +2007,23 @@ struct schema_mem {
     Mem *mout;
 };
 
+/* This function let's us skip the syntax check if there is no SQL
+ * in the CSC2 schema.
+ */
+static int do_syntax_check(struct dbtable *tbl)
+{
+    return ((gbl_partial_indexes && tbl->ix_partial) ||
+            (gbl_expressions_indexes && tbl->ix_expr) ||
+            (tbl->n_check_constraints > 0))
+               ? 1
+               : 0;
+}
+
 #define INDEXES_THREAD_MEMORY 1048576
-/* force an update on sqlite_master to test partial indexes syntax*/
-int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
+/* Force an update on sqlite_master to perform a syntax check for
+ * partial index and CHECK constraint expressions.
+ */
+int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
@@ -2010,8 +2035,9 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     master_entry_t *ents = NULL;
     int nents = 0;
 
-    if (!gbl_partial_indexes)
-        return -1;
+    if (!do_syntax_check(db)) {
+        return rc;
+    }
 
     sql_mem_init(NULL);
     thread_memcreate(INDEXES_THREAD_MEMORY);
@@ -2069,7 +2095,7 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     rc = sqlite3_exec(hndl, client.sql, NULL, NULL, &err);
 done:
     if (err) {
-        logmsg(LOGMSG_ERROR, "New indexes syntax error: \"%s\"\n", err);
+        logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
         if (iq)
             reqerrstr(iq, ERR_SC, "%s", err);
         sqlite3_free(err);
@@ -11852,6 +11878,9 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         pTo->n = 0;
         pTo->z = NULL;
         pTo->flags &= ~MEM_Dyn;
+        /* This would allow us to check the column type. */
+        if (psm->min)
+            psm->min->flags = pFrom->flags;
         if (pFrom->flags & (MEM_Blob | MEM_Str)) {
             if (pFrom->zMalloc && pFrom->szMalloc) {
                 pTo->szMalloc = pFrom->szMalloc;
@@ -11871,6 +11900,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
                 pTo->zMalloc[pFrom->n] = 0;
                 pTo->z = pTo->zMalloc;
             }
+        } else if (pFrom->flags & MEM_Int) {
+            pTo->u.i = pFrom->u.i;
         }
     }
     return 0;
@@ -12098,8 +12129,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
     rc =
         run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, &mout, &exist);
     if (rc || !exist) {
-        logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n",
+               __func__, rc);
         rc = -1;
         goto done;
     }
@@ -12123,8 +12154,9 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                __func__, rc, f->name, mout.flags, f->type);
         goto done;
     }
-    if (mout.zMalloc) free(mout.zMalloc);
 done:
+    if (mout.zMalloc)
+        free(mout.zMalloc);
     strbuf_free(sql);
     if (rc)
         return -1;
@@ -12317,4 +12349,106 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     hash_t *h = db->aDb[1].pBt[0].temp_tables;
     struct temptable *t = hash_find(h, &i);
     return *t;
+}
+
+/* Verify all CHECK constraints against this record.
+ * @return
+ *     <1 : Internal error
+ *     0  : Success
+ *     >1 : (n+1)th CHECK constraint failed
+ * */
+int verify_check_constraints(struct dbtable *table, uint8_t *rec,
+                             blob_buffer_t *blobs, size_t maxblobs,
+                             int is_alter)
+{
+    struct schema *sc;
+    Mem *m = NULL;
+    Mem mout = {{0}};
+    int rc = 0; /* Assume all checks succeeded. */
+
+    /* Skip if there are no CHECK constraints. */
+    if (table->n_check_constraints <= 0) {
+        return 0;
+    }
+
+    if (!rec) {
+        logmsg(LOGMSG_ERROR, "%s: invalid input\n", __func__);
+        return -1;
+    }
+
+    sc = table->schema;
+    if (sc == NULL) {
+        logmsg(LOGMSG_FATAL, "No .ONDISK tag for table %s.\n",
+               table->tablename);
+        abort();
+    }
+
+    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
+    if (m == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
+        rc = -1;
+        goto done;
+    }
+
+    for (int i = 0; i < sc->nmembers; ++i) {
+        memset(&m[i], 0, sizeof(Mem));
+        rc = get_data_from_ondisk(sc, rec, blobs, maxblobs, i, &m[i], 0,
+                                  "America/New_York");
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get field from record",
+                   __func__);
+            rc = -1;
+            goto done;
+        }
+    }
+
+    for (int i = 0; i < table->n_check_constraints; i++) {
+
+        struct sqlclntstate clnt;
+        struct schema_mem sm;
+
+        sm.sc = sc;
+        sm.min = m;
+        sm.mout = &mout;
+
+        start_internal_sql_clnt(&clnt);
+        clnt.dbtran.mode = TRANLEVEL_SOSQL;
+        clnt.sql = table->check_constraint_query[i];
+        clnt.verify_indexes = 1;
+        clnt.schema_mems = &sm;
+
+        rc = dispatch_sql_query(&clnt);
+        if (rc) {
+            rc = -1;
+            goto done;
+        }
+
+        /* CHECK constraint has passed if we get 1 or NULL. */
+        assert(clnt.has_sqliterow);
+        if (sm.min->flags & MEM_Int) {
+            if (sm.mout->u.i == 0) {
+                /* CHECK constraint failed */
+                rc = i + 1;
+            } else {
+                /* Check constraint passed */
+            }
+        } else if (sm.min->flags & MEM_Null) {
+            /* Check constraint passed */
+        } else {
+            /* CHECK constraint failed */
+            rc = i + 1;
+        }
+
+        end_internal_sql_clnt(&clnt);
+
+        if (rc) {
+            /* Check failed, no need to continue. */
+            break;
+        }
+    }
+
+done:
+    if (m)
+        free(m);
+    return rc;
 }

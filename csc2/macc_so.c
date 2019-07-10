@@ -90,23 +90,46 @@ void dyns_disallow_bools(void) { allow_bools = 0; }
 
 int dyns_used_bools(void) { return used_bools; }
 
+#define CHECK_LEGACY_SCHEMA(A)                                                 \
+    do {                                                                       \
+        if (gbl_legacy_schema && (A)) {                                        \
+            csc2_syntax_error(                                                 \
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");         \
+            any_errors++;                                                      \
+            return;                                                            \
+        }                                                                      \
+    } while (0)
+
+#define DUP_CONSTRAINT_NAME_ERR(name)                                          \
+    do {                                                                       \
+        csc2_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES ARE "        \
+                   "NOT ALLOWED (variable '%s')\n",                            \
+                   current_line, name);                                        \
+        csc2_syntax_error("Error at line %3d: DUPLICATE CONSTRAINT NAMES "     \
+                          "ARE NOT ALLOWED (variable '%s')",                   \
+                          current_line, name);                                 \
+        any_errors++;                                                          \
+        return;                                                                \
+    } while (0)
+
 void start_constraint_list(char *keyname)
 {
+    ++nconstraints;
+
     if (nconstraints >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY CONSTRAINTS SPECIFIED. MAX %d\n",
                    MAXCNSTRTS);
         any_errors++;
         return;
     }
+
     constraints[nconstraints].flags = 0;
     constraints[nconstraints].ncnstrts = 0;
     constraints[nconstraints].lclkey = keyname;
-    /*  fprintf(stderr, "constraints for key %s\n", keyname);*/
 }
 
 void set_constraint_mod(int start, int op, int type)
 {
-    /*fprintf(stderr, "%d %d %d\n", start, op, type);*/
     if (type == 0)
         return;
     if (op == 0)
@@ -115,15 +138,34 @@ void set_constraint_mod(int start, int op, int type)
         constraints[nconstraints].flags |= CT_DEL_CASCADE;
 }
 
-void set_constraint_name(char *name)
+void set_constraint_name(char *name, enum ct_type type)
 {
-    constraints[nconstraints].consname = name;
-}
+    int i;
+    for (i = 0; i < nconstraints; i++) {
+        if (constraints[i].consname &&
+            !strcasecmp(constraints[i].consname, name)) {
+            DUP_CONSTRAINT_NAME_ERR(name);
+        }
+    }
+    for (i = 0; i < n_check_constraints; i++) {
+        if (check_constraints[i].consname &&
+            !strcasecmp(check_constraints[i].consname, name)) {
+            DUP_CONSTRAINT_NAME_ERR(name);
+        }
+    }
 
-void end_constraint_list(void)
-{
-    /*  fprintf(stderr, "constraint: end list\n");*/
-    nconstraints++;
+    switch (type) {
+    case CT_FKEY:
+        constraints[nconstraints].consname = name;
+        break;
+    case CT_CHECK:
+        check_constraints[n_check_constraints].consname = name;
+        break;
+    default:
+        abort();
+    }
+
+    return;
 }
 
 void add_constraint(char *tbl, char *key)
@@ -139,8 +181,18 @@ void add_constraint(char *tbl, char *key)
     constraints[nconstraints].ncnstrts++;
     constraints[nconstraints].table[cidx] = tbl;
     constraints[nconstraints].keynm[cidx] = key;
-    /*  fprintf(stderr, "constraint: tbl %s key %s %d\n",
-     * tbl,key,nconstraints);*/
+}
+
+void add_check_constraint(char *expr)
+{
+    CHECK_LEGACY_SCHEMA(1);
+    ++n_check_constraints;
+    /* We have to move past "where" and subsequent spaces. */
+    expr += sizeof("where");
+    while (*expr && isspace(*expr)) {
+        expr++;
+    }
+    check_constraints[n_check_constraints].expr = expr;
 }
 
 int constant(char *var)
@@ -787,11 +839,7 @@ void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
 void key_setuniqnulls(void)
 {
-    if (gbl_legacy_schema) {
-        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-        any_errors++;
-        return;
-    }
+    CHECK_LEGACY_SCHEMA(1);
     workkeyflag |= UNIQNULLS;
 }
 
@@ -988,12 +1036,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             current_line, tag, MAXIDXNAMELEN - 1);
     }
     if (where && strlen(where) != 0) {
-        if (gbl_legacy_schema) {
-            csc2_syntax_error(
-                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-            any_errors++;
-            return;
-        }
+        CHECK_LEGACY_SCHEMA(1);
         keys[ii]->where = csc2_strdup(where);
     } else {
         keys[ii]->where = NULL;
@@ -1038,12 +1081,7 @@ void key_piece_add(char *buf,
     char *cp, *tag;
 
     if (is_expr) {
-        if (gbl_legacy_schema) {
-            csc2_syntax_error(
-                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-            any_errors++;
-            return;
-        }
+        CHECK_LEGACY_SCHEMA(1);
         struct key *nk = (struct key *)csc2_malloc(sizeof(struct key));
         struct key *kp;
         int keyfields = 0;
@@ -1482,15 +1520,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             case T_DATETIME:
             case T_DATETIMEUS:
-                if (gbl_legacy_schema && (tables[ntables]
-                                              .sym[tables[ntables].nsym]
-                                              .fopts[i]
-                                              .opttype != FLDOPT_NULL)) {
-                    csc2_syntax_error(
-                        "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-                    any_errors++;
-                    return;
-                }
+                CHECK_LEGACY_SCHEMA((tables[ntables]
+                                         .sym[tables[ntables].nsym]
+                                         .fopts[i]
+                                         .opttype != FLDOPT_NULL));
             case T_PSTR:
             case T_CSTR:
             case T_VUTF8:
@@ -3216,15 +3249,13 @@ int dyns_get_table_field_count(char *tabletag)
 
 int dyns_get_constraint_count(void)
 {
-    if (nconstraints < 0)
-        return 0;
-    return nconstraints;
+    return nconstraints + 1;
 }
 
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
                            int *rulecnt, int *flags)
 {
-    if (idx < 0 || idx >= nconstraints)
+    if (idx < 0 || idx > nconstraints)
         return -1;
     *consname = constraints[idx].consname;
     *keyname = constraints[idx].lclkey;
@@ -3236,13 +3267,27 @@ int dyns_get_constraint_at(int idx, char **consname, char **keyname,
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm)
 {
     int rcnt = 0;
-    if (cidx < 0 || cidx >= nconstraints)
+    if (cidx < 0 || cidx > nconstraints)
         return -1;
     rcnt = constraints[cidx].ncnstrts;
-    if (ridx < 0 || ridx >= rcnt)
+    if (ridx < 0 || ridx > rcnt)
         return -1;
     *tblname = constraints[cidx].table[ridx];
     *keynm = constraints[cidx].keynm[ridx];
+    return 0;
+}
+
+int dyns_get_check_constraint_count(void)
+{
+    return n_check_constraints + 1;
+}
+
+int dyns_get_check_constraint_at(int idx, char **consname, char **expr)
+{
+    if (idx < 0 || idx > n_check_constraints)
+        return -1;
+    *consname = check_constraints[idx].consname;
+    *expr = check_constraints[idx].expr;
     return 0;
 }
 

@@ -84,6 +84,8 @@ int dyns_get_constraint_count(void);
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
                            int *rulecnt, int *flags);
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm);
+int dyns_get_check_constraint_count(void);
+int dyns_get_check_constraint_at(int idx, char **consname, char **expr);
 
 /* misc */
 void dyns_allow_bools(void);

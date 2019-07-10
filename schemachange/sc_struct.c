@@ -836,7 +836,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
         newdb->dbnum = db->dbnum;
-        if (add_cmacc_stmt(newdb, 1) != 0) {
+        if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
             /* can happen if new schema has no .DEFAULT tag but needs one */
             backout_schemas(table);
             return 1;

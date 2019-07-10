@@ -4450,6 +4450,9 @@ static void init_db_funcs(Lua L)
     lua_pushinteger(L, CDB2ERR_CONV_FAIL);
     lua_setfield(L, -2, "err_conv");
 
+    lua_pushinteger(L, CDB2ERR_CHECK_CONSTRAINT);
+    lua_setfield(L, -2, "err_check_constraint");
+
     lua_pushstring(L, "__index");
     lua_pushvalue(L, -2);
     lua_settable(L, -3); // db.metatable.__index = db.metatable
