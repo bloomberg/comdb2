@@ -1203,5 +1203,6 @@ int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callback
 
 void update_fingerprint_tunables(void);
 void msys_init_default_callbacks(struct plugin_callbacks *c);
+int get_fingerprint_threshold(char *fingerprint);
 
 #endif

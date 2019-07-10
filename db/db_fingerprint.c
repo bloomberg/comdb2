@@ -34,6 +34,7 @@ int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
 // NOTE: must be called with gbl_fingerprint_hash_mu locked
 struct fingerprint_track *find_fingerprint(char *fingerprint) {
+    if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
     struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
     if (t == NULL) {
         /* make sure we haven't generated an unreasonable number of these */
@@ -58,6 +59,7 @@ struct fingerprint_track *find_fingerprint(char *fingerprint) {
         t->rows = 0;
         t->zNormSql = NULL;
         t->nNormSql = 0;
+        t->longreqLimit = -1;
         hash_add(gbl_fingerprint_hash, t);
     }
     return t;
@@ -107,22 +109,47 @@ static int update_fingerprint_tunables_write_response_callback(struct sqlclntsta
     if (type == RESPONSE_ROW) {
         struct response_data *rsp = (struct response_data*) data;
         sqlite3_stmt *stmt = rsp->stmt;
-        int ncols = sqlite3_column_count(stmt);
-        for (int i = 0; i < ncols; i++) {
-            const unsigned char *fingerprint;
-            int threshold;
+        Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+        const unsigned char *fingerprint;
+        int threshold;
 
-            fingerprint = sqlite3_column_text(stmt, 0);
-            threshold = sqlite3_column_int(stmt, 1);
-            printf("fingerprint %s threshold %d\n", fingerprint, threshold);
-        }
+        fingerprint = sqlite3_column_blob(stmt, 0);
+        threshold = sqlite3_column_int(stmt, 1);
+        struct fingerprint_track *t = find_fingerprint((char*) fingerprint);
+        if (t)
+            t->longreqLimit = threshold;
+        Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
     }
     return 0;
 }
 
+static int reset_threshold(void *obj, void *p) {
+    struct fingerprint_track *t = (struct fingerprint_track*) obj;
+    t->longreqLimit = -1;
+    return 0;
+}
+
+static void reset_fingerprint_thresholds(void) {
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
+    hash_for(gbl_fingerprint_hash, reset_threshold, NULL);
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+}
+
 void update_fingerprint_tunables(void) {
     struct plugin_callbacks plugin;
+    reset_fingerprint_thresholds();
     msys_init_default_callbacks(&plugin);
     plugin.write_response = update_fingerprint_tunables_write_response_callback;
     run_internal_sql_with_callbacks("select fingerprint, longreq_threshold from comdb2_fingerprint_tunables", &plugin);
+}
+
+int get_fingerprint_threshold(char *fingerprint) {
+    struct fingerprint_track *t;
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    t = find_fingerprint(fingerprint);
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    if (t == NULL)
+        return -1;
+    return t->longreqLimit;
 }

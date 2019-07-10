@@ -67,32 +67,34 @@ static int fingerprints_callback(void **data, int *npoints)
                 pEntry = hash_first(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
                 while (pEntry != NULL) {
                     assert( copied<count );
-                    pFp[copied].fp_blob.value = calloc(FINGERPRINTSZ, sizeof(char));
-                    if (pFp[copied].fp_blob.value != NULL) {
-                        pFp[copied].fp_blob.size = FINGERPRINTSZ;
-                        memcpy(pFp[copied].fp_blob.value, pEntry->fingerprint,
-                               pFp[copied].fp_blob.size);
-                    } else {
-                        rc = SQLITE_NOMEM;
-                        break;
+                    if (pEntry->count > 0 && pEntry->zNormSql) {
+                        pFp[copied].fp_blob.value = calloc(FINGERPRINTSZ, sizeof(char));
+                        if (pFp[copied].fp_blob.value != NULL) {
+                            pFp[copied].fp_blob.size = FINGERPRINTSZ;
+                            memcpy(pFp[copied].fp_blob.value, pEntry->fingerprint,
+                                    pFp[copied].fp_blob.size);
+                        } else {
+                            rc = SQLITE_NOMEM;
+                            break;
+                        }
+                        pFp[copied].count = pEntry->count;
+                        pFp[copied].cost = pEntry->cost;
+                        pFp[copied].time = pEntry->time;
+                        pFp[copied].rows = pEntry->rows;
+                        if (pEntry->zNormSql != NULL) {
+                            pFp[copied].zNormSql = strdup(pEntry->zNormSql);
+                            pFp[copied].nNormSql = strlen(pEntry->zNormSql);
+                            assert( pFp[copied].nNormSql==pEntry->nNormSql );
+                        }
+                        copied++;
                     }
-                    pFp[copied].count = pEntry->count;
-                    pFp[copied].cost = pEntry->cost;
-                    pFp[copied].time = pEntry->time;
-                    pFp[copied].rows = pEntry->rows;
-                    if (pEntry->zNormSql != NULL) {
-                        pFp[copied].zNormSql = strdup(pEntry->zNormSql);
-                        pFp[copied].nNormSql = strlen(pEntry->zNormSql);
-                        assert( pFp[copied].nNormSql==pEntry->nNormSql );
-                    }
-                    copied++;
                     pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
                 }
                 if (rc == SQLITE_OK) {
                     *data = pFp;
-                    *npoints = count;
+                    *npoints = copied;
                 } else {
-                    release_callback(pFp, count);
+                    release_callback(pFp, copied);
                 }
             } else {
                 rc = SQLITE_NOMEM;
