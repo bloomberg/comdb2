@@ -2226,7 +2226,7 @@ int sqlite3IsRowid(const char *z){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3IsComdb2Rowid(Table *pTab, const char *z){
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-    if (pTab->pVTable)
+    if (IsVirtual(pTab))
         return 0;
 #endif
   return (sqlite3StrICmp(z, "COMDB2_ROWID") == 0);
@@ -2234,7 +2234,7 @@ int sqlite3IsComdb2Rowid(Table *pTab, const char *z){
 
 int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *z){
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-    if (pTab->pVTable)
+    if (IsVirtual(pTab))
         return 0;
 #endif
   if (comdb2genidcontainstime()){
