@@ -144,10 +144,15 @@ set all_graphs {
              {optx ( {loop /column-name ,} )}}
        {line
            {or
-             {line VALUES {loop {line ( {loop expr ,} )} ,}}
-             select-stmt
+               {line
+                   {or
+                       {line VALUES {loop {line ( {loop expr ,} )} ,}}
+                       select-stmt
+                   }
+                   {opt upsert-clause}
+               }
+               {line DEFAULT VALUES}
            }
-           {opt upsert-clause}
        }
   }
 
