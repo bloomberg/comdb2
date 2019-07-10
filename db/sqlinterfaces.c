@@ -1068,6 +1068,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
     h->time = comdb2_time_epochms() - thd->startms;
+    h->prepTime = thd->prepms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -1082,7 +1083,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (gbl_fingerprint_queries) {
         if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
             add_fingerprint(h->sql, clnt->zNormSql, h->cost, h->time,
-                            clnt->nrows, logger);
+                            h->prepTime, clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
