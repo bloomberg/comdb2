@@ -23,6 +23,7 @@
 #include "bdb_api.h"
 #include "net.h"
 #include "thread_stats.h"
+#include "sql.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -90,6 +91,7 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_file;
     int64_t minimum_truncation_offset;
     int64_t minimum_truncation_timestamp;
+    int64_t result_set_cache_hits;
 };
 
 static struct comdb2_metrics_store stats;
@@ -232,19 +234,24 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_deadlocks, NULL},
     {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts, NULL},
-    {"standing_queue_time", "How long the database has had a standing queue",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+    {"standing_queue_time", "How long the database has had a standing queue", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.standing_queue_time, NULL},
-#if 0
-    {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
-    {"minimum_truncation_offset", "Minimum truncation offset",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_offset, NULL},
-    {"minimum_truncation_timestamp", "Minimum truncation timestamp",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_timestamp, NULL},
-#endif
+
+ #if 0
+     {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
+      STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
+     {"minimum_truncation_offset", "Minimum truncation offset", 
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+      &stats.minimum_truncation_offset, NULL}, 
+     {"minimum_truncation_timestamp", "Minimum truncation timestamp", 
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+      &stats.minimum_truncation_timestamp, NULL}, 
+ #endif
+
+    {"result_set_cache_hits", "SQL result set cache hits",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+     &stats.result_set_cache_hits, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -468,6 +475,8 @@ int refresh_metrics(void)
     stats.minimum_truncation_offset = min_offset;
     stats.minimum_truncation_timestamp = min_timestamp;
 #endif
+    stats.result_set_cache_hits = gbl_cached_sql_hits;
+
     return 0;
 }
 

@@ -1314,6 +1314,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
        for socksql, recom, snapisol and serial */
     if (!strncasecmp(clnt->sql, "begin", 5)) {
         clnt->snapshot = 0;
+        comdb2_results_not_cachable();
 
         /*fprintf(stderr, "got begin\n");*/
         if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
@@ -1347,6 +1348,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
+        comdb2_results_not_cachable();
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
             clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
@@ -1363,6 +1365,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
+        comdb2_results_not_cachable();
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
             clnt->ctrl_sqlengine != SQLENG_STRT_STATE)
@@ -2259,7 +2262,7 @@ void init_sql_hint_table()
     sql_hints = lrucache_init(sqlhint_hash, sqlhint_cmp, free,
                               offsetof(sql_hint_hash_entry_type, lnk),
                               offsetof(sql_hint_hash_entry_type, sql_hint),
-                              sizeof(char *), gbl_max_sql_hint_cache);
+                              sizeof(char *), gbl_max_sql_hint_cache, 0);
 }
 
 void reinit_sql_hint_table()
@@ -2288,7 +2291,7 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
     Pthread_mutex_lock(&gbl_sql_lock);
     {
         if (lrucache_hasentry(sql_hints, &sql_hint) == 0) {
-            lrucache_add(sql_hints, entry);
+            lrucache_add(sql_hints, entry, 0);
         } else {
             free(entry);
             logmsg(LOGMSG_ERROR, "Client BUG: Two threads using same SQL tag.\n");
@@ -4140,6 +4143,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* All requests that do not require a sqlite engine are processed next,
      * rc != 0 means processing done */
     if ((rc = handle_non_sqlite_requests(thd, clnt, &outrc)) != 0) {
+        comdb2_results_not_cachable();
         return outrc;
     }
 
@@ -4849,14 +4853,22 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
+        listc_init(&clnt->response_fragments, offsetof(struct cached_response_fragment, lnk));
     }
     else {
-       clnt->sql_since_reset = 0;
-       clnt->num_resets++;
-       clnt->last_reset_time = comdb2_time_epoch();
-       clnt_change_state(clnt, CONNECTION_RESET);
-    }
+        clnt->sql_since_reset = 0;
+        clnt->num_resets++;
+        clnt->last_reset_time = comdb2_time_epoch();
+        clnt_change_state(clnt, CONNECTION_RESET);
 
+        struct cached_response_fragment *f;
+        f = listc_rtl(&clnt->response_fragments);
+        while (f) {
+            free(f);
+            f = listc_rtl(&clnt->response_fragments);
+        }
+    }
+    clnt->cached_response_size = 0;
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;

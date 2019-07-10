@@ -342,6 +342,8 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
    int precision = 0;
    assert(context->pVdbe);
 
+   comdb2_results_not_cachable();
+
    if (argc == 0) {
        precision = context->pVdbe->dtprec;
        if (precision != DTTZ_PREC_MSEC

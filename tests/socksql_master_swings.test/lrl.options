@@ -13,3 +13,4 @@ osql_send_startgen on
 dump_blkseq on
 extended_sql_debug_trace on
 nowatch
+result_cache_size 1048576

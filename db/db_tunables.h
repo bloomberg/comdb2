@@ -1726,4 +1726,7 @@ REGISTER_TUNABLE("serialize_reads_like_writes",
                  TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("result_cache_size", "SQL result cache size",
+                 TUNABLE_INT64, &gbl_result_cache_size, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
