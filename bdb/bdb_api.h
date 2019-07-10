@@ -417,7 +417,7 @@ bdb_state_type *bdb_clone_handle_with_other_data_files(
 void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state);
 
 enum bdb_table_open_flags {
-    BDB_TABLE_OPEN_DISALLOW_DROP = 1
+    BDB_TABLE_OPEN_SYSTEM_TABLE = 1
 };
 
 /*
