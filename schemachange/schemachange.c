@@ -908,7 +908,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     int bdberr;
     int rc;
     int nstripes;
-    int disallow_drop;
+    int is_systable;
 
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
@@ -918,7 +918,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         return rc;
     }
     nstripes = db_get_dtastripe(db, NULL);
-    disallow_drop = db_get_disallow_drop_by_name(db->tablename, NULL);
+    is_systable = db_get_is_systable_by_name(db->tablename, NULL);
 
     /* Shouldn't get here */
     if (s->addonly) {
@@ -961,7 +961,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
-    newdb->disallow_drop = disallow_drop;
+    newdb->is_systable = is_systable;
 
     if (add_cmacc_stmt(newdb, 1) != 0) {
         backout_schemas(newdb->tablename);

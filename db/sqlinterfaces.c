@@ -774,7 +774,7 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_TABLE: {
         if (zArg1) {
             struct dbtable *db = get_dbtable_by_name(zArg1);
-            if (db && db->disallow_drop)
+            if (db && db->is_systable)
                 return SQLITE_DENY;
         }
         /* fallthrough */

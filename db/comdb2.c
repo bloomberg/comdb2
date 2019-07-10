@@ -1778,7 +1778,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->nstripes = nstripes;
-    tbl->disallow_drop = 0;
+    tbl->is_systable = 0;
     return tbl;
 }
 
@@ -2053,7 +2053,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     char *tblnames[MAX_NUM_TABLES];
     struct dbtable *tbl;
     int nstripes;
-    int disallow_drop;
+    int is_systable;
 
     /* load the tables from the low level metatable */
     if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
@@ -2128,7 +2128,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         free(csc2text);
         csc2text = NULL;
         nstripes = db_get_dtastripe_by_name(tblnames[i], tran);
-        disallow_drop = db_get_disallow_drop_by_name(tblnames[i], tran);
+        is_systable = db_get_is_systable_by_name(tblnames[i], tran);
         tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0, nstripes);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
@@ -2138,7 +2138,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
         tbl->schema_version = ver;
         tbl->nstripes = nstripes;
-        tbl->disallow_drop = disallow_drop;
+        tbl->is_systable = is_systable;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -3082,7 +3082,7 @@ static int llmeta_set_qdbs(void)
     return rc;
 }
 
-static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int disallow_drop) {
+static int init_system_table(struct dbenv *dbenv, char *table, const char *schema, int is_systable) {
     int rc;
     struct dbtable *tbl;
 
@@ -3102,7 +3102,7 @@ static int init_system_table(struct dbenv *dbenv, char *table, const char *schem
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
         return -1;
     }
-    tbl->disallow_drop = disallow_drop;
+    tbl->is_systable = is_systable;
     tbl->dbs_idx = dbenv->num_dbs;
     tbl->csc2_schema = strdup(schema);
     dbenv->dbs[dbenv->num_dbs++] = tbl;
@@ -5935,11 +5935,11 @@ int db_get_dtastripe(struct dbtable *db, tran_type *tran) {
     return db_get_dtastripe_by_name(db->tablename, tran);
 }
 
-extern int db_get_disallow_drop_by_name(const char *tablename, tran_type *tran) {
+extern int db_get_is_systable_by_name(const char *tablename, tran_type *tran) {
     char *str;
     int val = 0;
     int rc;
-    rc = bdb_get_table_parameter_tran(tablename, "disallow_drop", &str, tran);
+    rc = bdb_get_table_parameter_tran(tablename, "is_systable", &str, tran);
     if (rc)
         val = 0;
     else {

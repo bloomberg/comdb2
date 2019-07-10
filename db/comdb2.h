@@ -830,7 +830,7 @@ struct dbtable {
     bool disableskipscan : 1;
     bool do_local_replication : 1;
 
-    bool disallow_drop : 1;
+    bool is_systable : 1;
 };
 
 struct log_delete_state {
@@ -3458,7 +3458,7 @@ extern int gbl_debug_sql_opcodes;
 
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh, int dtastripe,
-                          int disallow_drop);
+                          int is_systable);
 
 extern int gbl_debug_temptables;
 
@@ -3625,7 +3625,7 @@ extern int gbl_bpfunc_auth_gen;
 
 extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
 extern int db_get_dtastripe_by_name(const char *tablename, tran_type *tran);
-extern int db_get_disallow_drop_by_name(const char *tablename, tran_type *tran);
+extern int db_get_is_systable_by_name(const char *tablename, tran_type *tran);
 
 int64_t systable_get_gen(const char *table);
 

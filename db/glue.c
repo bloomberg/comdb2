@@ -538,7 +538,7 @@ static int log_modified_systables(bdb_state_type *bdb_state, void *trans,
     int space_needed = 0;
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *tbl = thedb->dbs[i];
-        if (tbl->disallow_drop && btst(iq->tables_modified, i)) {
+        if (tbl->is_systable && btst(iq->tables_modified, i)) {
             space_needed += strlen(tbl->tablename)+1;
             (*ntables)++;
         }
@@ -548,7 +548,7 @@ static int log_modified_systables(bdb_state_type *bdb_state, void *trans,
     s = tables = malloc(space_needed);
     for (int i = 0, j = 0; i < thedb->num_dbs; i++) {
         struct dbtable *tbl = thedb->dbs[i];
-        if (tbl->disallow_drop && btst(iq->tables_modified, i)) {
+        if (tbl->is_systable && btst(iq->tables_modified, i)) {
             strcpy(s, tbl->tablename);
             s += strlen(tbl->tablename);
             tables_out[j++] = strdup(tbl->tablename);
@@ -4296,7 +4296,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         db = dbenv->dbs[ii];
 
-        if (db->disallow_drop)
+        if (db->is_systable)
             flags |= BDB_TABLE_OPEN_DISALLOW_DROP;
 
         if (db->dbnum)
@@ -4443,14 +4443,14 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         }
 
         int dtastripe = db_get_dtastripe_by_name(d->tablename, tran);
-        int disallow_drop = db_get_disallow_drop_by_name(d->tablename, tran);
+        int is_systable = db_get_is_systable_by_name(d->tablename, tran);
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(d, d->odh, d->inplace_updates,
                              d->instant_schema_change, d->schema_version,
                              compress, compress_blobs, datacopy_odh,
-                             dtastripe, disallow_drop);
+                             dtastripe, is_systable);
 
         ctrace("Table %s  "
                "ver %d  "

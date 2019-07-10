@@ -811,7 +811,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int bthashsz;
     void *old_bdb_handle, *new_bdb_handle;
     int nstripes;
-    int disallow_drop;
+    int is_systable;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -824,7 +824,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         return -1;
     }
     nstripes = db_get_dtastripe(db, tran);
-    disallow_drop = db_get_disallow_drop_by_name(table, tran);
+    is_systable = db_get_is_systable_by_name(table, tran);
 
     if (csc2) {
         /* genuine schema change. */
@@ -857,7 +857,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         }
         newdb->meta = db->meta;
         newdb->dtastripe = nstripes;
-        newdb->disallow_drop = disallow_drop;
+        newdb->is_systable = is_systable;
 
         changed = ondisk_schema_changed(table, newdb, NULL, NULL);
         /* let this fly, which will be ok for fastinit;

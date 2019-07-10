@@ -105,7 +105,7 @@ static inline bool has_constraint(int flags)
  */
 static void table_modified(struct ireq *iq) {
     bset(iq->tables_modified, iq->usedb->dbs_idx);
-    if (iq->usedb->disallow_drop)
+    if (iq->usedb->is_systable)
         iq->modified_systables = 1;
 }
 
