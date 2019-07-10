@@ -63,12 +63,13 @@ enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
     char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
-    int64_t count;   /* Cumulative number of times executed */
-    int64_t cost;    /* Cumulative cost */
-    int64_t time;    /* Cumulative execution time */
-    int64_t rows;    /* Cumulative number of rows selected */
-    char *zNormSql;  /* The normalized SQL query */
-    size_t nNormSql; /* Length of normalized SQL query */
+    int64_t count;    /* Cumulative number of times executed */
+    int64_t cost;     /* Cumulative cost */
+    int64_t time;     /* Cumulative preparation and execution time */
+    int64_t prepTime; /* Cumulative preparation time only */
+    int64_t rows;     /* Cumulative number of rows selected */
+    char *zNormSql;   /* The normalized SQL query */
+    size_t nNormSql;  /* Length of normalized SQL query */
 };
 
 typedef struct stmt_hash_entry {
@@ -959,6 +960,7 @@ struct sql_hist {
     char *sql;
     double cost;
     int time;
+    int prepTime;
     int when;
     int64_t txnid;
     struct conninfo conn;
@@ -969,6 +971,7 @@ struct sql_thread {
     pthread_mutex_t lk;
     struct Btree *bt, *bttmp;
     int startms;
+    int prepms;
     int stime;
     int nmove;
     int nfind;
