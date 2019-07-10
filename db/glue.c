@@ -4046,7 +4046,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         db = dbenv->dbs[ii];
 
         if (db->is_systable)
-            flags |= BDB_TABLE_OPEN_DISALLOW_DROP;
+            flags |= BDB_TABLE_OPEN_SYSTEM_TABLE;
 
         if (db->dbnum)
             logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename,

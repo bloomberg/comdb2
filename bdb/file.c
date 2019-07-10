@@ -4192,7 +4192,7 @@ deadlock_again:
             char parmstr[100];
             snprintf(parmstr, sizeof(parmstr), "%d", bdb_state->nstripes);
             bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", parmstr);
-            if (flags & BDB_TABLE_OPEN_DISALLOW_DROP) {
+            if (flags & BDB_TABLE_OPEN_SYSTEM_TABLE) {
                 bdb_set_table_parameter(&tran, bdb_state->name, "is_systable", "1");
                 bdb_state->is_systable = 1;
             }
