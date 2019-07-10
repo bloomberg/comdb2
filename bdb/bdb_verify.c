@@ -67,7 +67,7 @@ static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *),
     return -1;
 }
 
-static int dropped_connection(SBUF2 *sb)
+int bdb_dropped_connection(SBUF2 *sb)
 {
     struct pollfd p;
     int rc;
@@ -234,8 +234,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
 
-    nrecs = 0;
-    nrecs_progress = 0;
     DBT dbt_data = {0};
     dbt_data.flags = DB_DBT_USERMEM;
     dbt_data.ulen = sizeof(databuf);
@@ -268,8 +266,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         now = comdb2_time_epochms();
 
         /* check if comdb2sc is killed */
-        if ((now - last) > 1000) {
-            if (dropped_connection(par->sb)) {
+        if (!par->parallel_verify && (now - last) > 1000) {
+            if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
                 logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
                 par->client_dropped_connection = 1;
@@ -625,8 +623,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         now = comdb2_time_epochms();
 
         /* check if comdb2sc is killed */
-        if ((now - last) > 1000) {
-            if (dropped_connection(par->sb)) {
+        if (!par->parallel_verify && (now - last) > 1000) {
+            if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
                 logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
                 par->client_dropped_connection = 1;

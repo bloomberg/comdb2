@@ -414,6 +414,7 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
     state->thr_self = thrman_register(THRTYPE_VERIFY);
 }
 
+
 static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
                     int (*lua_callback)(void *, const char *),
@@ -473,9 +474,15 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
     // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
 
+    sleep(1);
     // wait for all our enqueued work items to complete for this verify
-    while(par.threads_spawned > par.threads_completed)
+    while(par.threads_spawned > par.threads_completed) {
+        if (!par.client_dropped_connection && bdb_dropped_connection(par.sb)) {
+            logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+            par.client_dropped_connection = 1;
+        }
         sleep(1);
+    }
 
     //cleanup via the following two:
     //thrman_wait_type_exit(THRTYPE_VERIFY);

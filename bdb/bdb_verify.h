@@ -64,6 +64,7 @@ typedef struct td_processing_info {
 
 int bdb_verify(verify_common_t *par);
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool);
+int bdb_dropped_connection(SBUF2 *sb);
 
 
 #endif
