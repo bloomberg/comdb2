@@ -771,7 +771,14 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
-    case SQLITE_DROP_TABLE:
+    case SQLITE_DROP_TABLE: {
+        if (zArg1) {
+            struct dbtable *db = get_dbtable_by_name(zArg1);
+            if (db && db->is_systable)
+                return SQLITE_DENY;
+        }
+        /* fallthrough */
+    }
     case SQLITE_DROP_TEMP_INDEX:
     case SQLITE_DROP_TEMP_TABLE:
     case SQLITE_DROP_TEMP_TRIGGER:
@@ -4533,6 +4540,9 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
+static int64_t gbl_fingerprint_tunables_gen;
+static pthread_mutex_t fingerprint_tunables_lk = PTHREAD_MUTEX_INITIALIZER;
+
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
@@ -4540,6 +4550,17 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     int rc;
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
+    int64_t fingerprint_tunables_gen;
+
+    fingerprint_tunables_gen = systable_get_gen("comdb2_fingerprint_tunables");
+    if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+        if (fingerprint_tunables_gen != gbl_fingerprint_tunables_gen) {
+            Pthread_mutex_lock(&fingerprint_tunables_lk);
+            gbl_fingerprint_tunables_gen = fingerprint_tunables_gen;
+            update_fingerprint_tunables();
+            Pthread_mutex_unlock(&fingerprint_tunables_lk);
+        }
+    }
 
     if (self) {
         if (clnt->exec_lua_thread)
@@ -6185,11 +6206,17 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql(char *sql)
+int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
+
     clnt.sql = skipws(sql);
+
+    if (callbacks == NULL) 
+        start_internal_sql_clnt(&clnt);
+    else
+        clnt.plugin = *callbacks;
 
     dispatch_sql_query(&clnt);
     if (clnt.query_rc || clnt.saved_errstr) {
@@ -6206,6 +6233,7 @@ void run_internal_sql(char *sql)
         clnt.dbglog = NULL;
     }
 
+    int rc = clnt.query_rc;
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
@@ -6213,6 +6241,12 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
+
+    return rc;
+}
+
+void run_internal_sql(char *sql) {
+    (void) run_internal_sql_with_callbacks(sql, NULL);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {

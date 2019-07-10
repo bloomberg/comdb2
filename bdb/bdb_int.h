@@ -56,6 +56,7 @@
 #include "mem_bdb.h"
 #include "mem_override.h"
 #include "tunables.h"
+#include "llog_auto.h"
 
 /* Public ODH constants */
 enum {
@@ -689,6 +690,7 @@ struct bdb_callback_tag {
     UNDOSHADOWFP undoshadow_rtn;
     NODEDOWNFP nodedown_rtn;
     SERIALCHECK serialcheck_rtn;
+    SYSTABLES_MODIFIED_FP systables_modified_rtn;
 };
 
 struct waiting_for_lsn {
@@ -1037,6 +1039,10 @@ struct bdb_state_tag {
     pthread_mutex_t sc_redo_lk;
     pthread_cond_t sc_redo_wait;
     LISTC_T(struct sc_redo_lsn) sc_redo_list;
+
+    /* parameters we want to persist in llmeta via bdb_set_table_parameter */
+    int nstripes;
+    int is_systable;
 };
 
 /* define our net user types */
@@ -1898,4 +1904,14 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
                                   DBT *data, DBT *data2, int updateid,
                                   void **freeptr, void *stackbuf, int odhready);
+
+struct systables_change {
+    int ntables;
+    char **tables;
+};
+
+
+int bdb_handle_systables_modified(DB_ENV *dbenv, llog_systables_modified_args *systbl, 
+                                  DB_LSN *lsn, db_recops op);
+
 #endif /* __bdb_int_h__ */

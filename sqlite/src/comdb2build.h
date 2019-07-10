@@ -29,6 +29,8 @@
 #define PAGE_ORDER    0x4000
 #define READ_ONLY     0x8000
 
+#define DTASTRIPE_MASK 0xf0000
+
 #define REBUILD_ALL     1
 #define REBUILD_DATA    2
 #define REBUILD_BLOB    4

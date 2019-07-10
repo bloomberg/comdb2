@@ -26,155 +26,64 @@
 #include "hash.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
+#include "sql.h"
+#include "ezsystables.h"
 
-/*
-  comdb2_systabs: System tables
-*/
-
-typedef struct {
-    sqlite3_vtab_cursor base; /* Base class - must be first */
-    sqlite3_int64 rowid;      /* Row ID */
-    Hash *tabs;               /* Registered system tables */
-    HashElem *current;        /* Current system table */
-} systbl_systabs_cursor;
-
-typedef struct {
-    sqlite3_vtab base; /* Base class - must be first */
-    sqlite3 *db;       /* To access registered system tables */
-} systbl_systabs_vtab; /* such name !! */
-
-/* Column numbers (always keep the below table definition in sync). */
-enum { SYSTABS_COLUMN_NAME };
-
-static int systblSystabsConnect(sqlite3 *db, void *pAux, int argc,
-                                const char *const *argv, sqlite3_vtab **ppVtab,
-                                char **pErr)
-{
-    int rc;
-    systbl_systabs_vtab *systabs = NULL;
-
-    rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_systabs(\"name\")");
-
-    if (rc == SQLITE_OK) {
-        if ((systabs = sqlite3_malloc(sizeof(systbl_systabs_vtab))) == 0) {
-            return SQLITE_NOMEM;
-        }
-        memset(systabs, 0, sizeof(systbl_systabs_vtab));
-        systabs->db = db;
-    }
-
-    *ppVtab = (sqlite3_vtab *)systabs;
-
-    return rc;
-}
-
-static int systblSystabsBestIndex(sqlite3_vtab *tab,
-                                  sqlite3_index_info *pIdxInfo)
-{
-    return SQLITE_OK;
-}
-
-static int systblSystabsDisconnect(sqlite3_vtab *pVtab)
-{
-    sqlite3_free(pVtab);
-    return SQLITE_OK;
-}
-
-static int systblSystabsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
-{
-    systbl_systabs_vtab *tab = (systbl_systabs_vtab *)p;
-
-    systbl_systabs_cursor *cur = sqlite3_malloc(sizeof(systbl_systabs_cursor));
-    if (cur == 0) {
-        return SQLITE_NOMEM;
-    }
-    memset(cur, 0, sizeof(*cur));
-    cur->tabs = &tab->db->aModule;
-    cur->current = sqliteHashFirst(cur->tabs);
-
-    *ppCursor = &cur->base;
-    return SQLITE_OK;
-}
-
-static int systblSystabsClose(sqlite3_vtab_cursor *cur)
-{
-    sqlite3_free(cur);
-    return SQLITE_OK;
-}
-
-static int systblSystabsFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
-                               const char *idxStr, int argc,
-                               sqlite3_value **argv)
-{
-    systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)pVtabCursor;
-    pCur->rowid = 0;
-    return SQLITE_OK;
-}
-
-static int systblSystabsNext(sqlite3_vtab_cursor *cur)
-{
-    systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    pCur->current = sqliteHashNext(pCur->current);
-    pCur->rowid++;
-    return SQLITE_OK;
-}
-
-static int systblSystabsEof(sqlite3_vtab_cursor *cur)
-{
-    systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    return (pCur->rowid >= pCur->tabs->count) ? 1 : 0;
-}
-
-static int systblSystabsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
-                               int pos)
-{
-    systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    switch (pos) {
-    case SYSTABS_COLUMN_NAME:
-        sqlite3_result_text(ctx, pCur->current->pKey, -1, NULL);
-        break;
-    default:
-        assert(0);
-    };
-
-    return SQLITE_OK;
-}
-
-static int systblSystabsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid)
-{
-    systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    *pRowid = pCur->rowid;
-
-    return SQLITE_OK;
-}
-
-const sqlite3_module systblSystabsModule = {
-    0,                       /* iVersion */
-    0,                       /* xCreate */
-    systblSystabsConnect,    /* xConnect */
-    systblSystabsBestIndex,  /* xBestIndex */
-    systblSystabsDisconnect, /* xDisconnect */
-    0,                       /* xDestroy */
-    systblSystabsOpen,       /* xOpen - open a cursor */
-    systblSystabsClose,      /* xClose - close a cursor */
-    systblSystabsFilter,     /* xFilter - configure scan constraints */
-    systblSystabsNext,       /* xNext - advance a cursor */
-    systblSystabsEof,        /* xEof - check for end of scan */
-    systblSystabsColumn,     /* xColumn - read data */
-    systblSystabsRowid,      /* xRowid - read data */
-    0,                       /* xUpdate */
-    0,                       /* xBegin */
-    0,                       /* xSync */
-    0,                       /* xCommit */
-    0,                       /* xRollback */
-    0,                       /* xFindMethod */
-    0,                       /* xRename */
-    0,                       /* xSavepoint */
-    0,                       /* xRelease */
-    0,                       /* xRollbackTo */
-    0,                       /* xShadowName */
-    .access_flag = CDB2_ALLOW_ALL,
+static sqlite3_module systblSystablesModule = {
+    .access_flag = CDB2_ALLOW_USER,
 };
+
+struct systable {
+    char *name;
+};
+
+extern pthread_key_t query_info_key;
+
+static int get_systables(void **data, int *npoints) {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    sqlite3 *sqldb = thd->clnt->thd->sqldb;
+    struct systable *systables;
+
+    *npoints = sqldb->aModule.count;
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *db = thedb->dbs[i];
+        if (db->is_systable)
+            (*npoints)++;
+    }
+    systables = malloc(sizeof(struct systable) * *npoints);
+    int i;
+
+    HashElem *p;
+    for (p = sqliteHashFirst(&sqldb->aModule), i = 0; p; p = sqliteHashNext(p), i++) {
+        systables[i].name = strdup(p->pKey);
+    }
+    for (int tbl = 0; tbl < thedb->num_dbs; tbl++) {
+        struct dbtable *db = thedb->dbs[tbl];
+        if (db->is_systable)
+            systables[i++].name = strdup(db->tablename);
+    }
+    *data = systables;
+    return 0;
+}
+
+static void free_systables(void *p, int n) {
+    struct systable *t = (struct systable*) p;
+    for (int i = 0; i < n; i++) {
+        free(t[i].name);
+    }
+    free(t);
+}
+
+int systblSystablesInit(sqlite3 *db) {
+    return create_system_table(db, "comdb2_systables",
+            &systblSystablesModule, get_systables, free_systables,
+            sizeof(struct systable),
+            CDB2_CSTRING, "name", -1, offsetof(struct systable, name),
+            SYSTABLE_END_OF_FIELDS);
+}
+
+
+
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \
           && !defined(SQLITE_OMIT_VIRTUALTABLE) */

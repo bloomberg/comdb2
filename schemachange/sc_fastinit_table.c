@@ -48,6 +48,9 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         return SC_TABLE_DOESNOT_EXIST;
     }
 
+    int nstripes = db_get_dtastripe(db, tran);
+    int is_systable = db_get_is_systable_by_name(db->tablename, tran);
+
     if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
         sc_errf(s, "Can't fastinit tables with foreign constraints\n");
@@ -73,7 +76,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 
-    newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1);
+    newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1, nstripes);
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
@@ -81,6 +84,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     }
 
     newdb->iq = iq;
+    newdb->is_systable = is_systable;
 
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout_schemas(newdb->tablename);
@@ -126,7 +130,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
        so we can't set meta options until we're there. */
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
                          newdb->instant_schema_change, newdb->schema_version,
-                         s->compress, s->compress_blobs, datacopy_odh);
+                         s->compress, s->compress_blobs, datacopy_odh, 
+                         s->new_table_dtastripe, s->is_systable);
 
     MEMORY_SYNC;
 

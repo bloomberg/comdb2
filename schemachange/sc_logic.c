@@ -1048,7 +1048,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
             tmpname, db->dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
             db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
-            db->numblobs + 1, /* one main record + the blobs blobs */
+            db->numblobs + 1, db->nstripes, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, &bdberr);
 
         if (db->handle)
@@ -1071,7 +1071,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
             tmpname, db->dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
             db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
-            db->numblobs + 1, /* one main record + the blobs blobs */
+            db->numblobs + 1, db->nstripes, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, temp, &bdberr, tran);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__,

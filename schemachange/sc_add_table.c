@@ -58,7 +58,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
+            newdb->numblobs + 1, newdb->nstripes, thedb->bdb_env, 0, &bdberr, trans);
         open_auxdbs(newdb, 1);
     } else {
         /* I am NOT master: open replicated db */
@@ -66,7 +66,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
+            newdb->numblobs + 1, newdb->nstripes, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
 
@@ -103,6 +103,10 @@ int add_table_to_environment(char *table, const char *csc2,
 {
     int rc;
     struct dbtable *newdb;
+    // int nstripes = db_get_dtastripe(iq->usedb, trans);
+    int nstripes = s->new_table_dtastripe;
+    if (nstripes == 0)
+        nstripes = gbl_dtastripe;
 
     if (s)
         s->newdb = newdb = NULL;
@@ -110,6 +114,12 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
         return -1;
     }
+
+    char parmstr[100];
+    snprintf(parmstr, sizeof(parmstr), "%d", nstripes);
+    bdb_set_table_parameter(trans, table, "dtastripe", parmstr);
+    snprintf(parmstr, sizeof(parmstr), "%d", s->is_systable);
+    bdb_set_table_parameter(trans, table, "is_systable", parmstr);
 
     rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
 
@@ -125,11 +135,11 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
+    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0, nstripes);
 
     if (newdb == NULL) return SC_INTERNAL_ERROR;
 
-    newdb->dtastripe = gbl_dtastripe;
+    newdb->dtastripe = nstripes;
 
     newdb->iq = iq;
 
@@ -245,7 +255,8 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */
     set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
-                         db->schema_version, s->compress, s->compress_blobs, 1);
+                         db->schema_version, s->compress, s->compress_blobs,
+                         1, s->new_table_dtastripe, s->is_systable);
 
     return 0;
 }

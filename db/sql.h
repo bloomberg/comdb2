@@ -63,12 +63,15 @@ enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
     char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
-    int64_t count;   /* Cumulative number of times executed */
-    int64_t cost;    /* Cumulative cost */
-    int64_t time;    /* Cumulative execution time */
-    int64_t rows;    /* Cumulative number of rows selected */
-    char *zNormSql;  /* The normalized SQL query */
-    size_t nNormSql; /* Length of normalized SQL query */
+    int64_t count;     /* Cumulative number of times executed */
+    int64_t cost;      /* Cumulative cost */
+    int64_t time;      /* Cumulative execution time */
+    int64_t rows;      /* Cumulative number of rows selected */
+    char *zNormSql;    /* The normalized SQL query */
+    size_t nNormSql;   /* Length of normalized SQL query */
+    int longreqLimit;  /* -1 - no limit, otherwise limit at 
+                          which we generate a long request 
+                          warning for the query */
 };
 
 typedef struct stmt_hash_entry {
@@ -1195,5 +1198,11 @@ int gather_connection_info(struct connection_info **info, int *num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
+
+int run_internal_sql_with_callbacks(char *sql, struct plugin_callbacks *callbacks);
+
+void update_fingerprint_tunables(void);
+void msys_init_default_callbacks(struct plugin_callbacks *c);
+int get_fingerprint_threshold(char *fingerprint);
 
 #endif

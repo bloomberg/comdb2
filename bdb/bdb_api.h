@@ -16,8 +16,6 @@
 
 /*
  * bdb layer public api
- *
- * $Id$
  */
 
 #ifndef __bdb_api_h__
@@ -92,6 +90,7 @@ enum {
     BDB_CALLBACK_NODE_IS_DOWN,
     BDB_CALLBACK_SERIALCHECK,
     BDB_CALLBACK_ADMIN_APPSOCK,
+    BDB_CALLBACK_SYSTABLES_MODIFIED
 };
 
 enum { BDB_REPFAIL_NET, BDB_REPFAIL_TIMEOUT, BDB_REPFAIL_RMTBDB };
@@ -385,6 +384,9 @@ struct bdb_osql_log;
 typedef void (*UNDOSHADOWFP)(struct bdb_osql_log *);
 
 typedef int (*BDB_CALLBACK_FP)();
+
+typedef int (*SYSTABLES_MODIFIED_FP)(bdb_state_type *bdb_handle, void *trans, int ntables, char **tables);
+
 bdb_callback_type *bdb_callback_create(void);
 void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
                       BDB_CALLBACK_FP callback_rtn);
@@ -413,6 +415,10 @@ bdb_state_type *bdb_clone_handle_with_other_data_files(
     const bdb_state_type *clone_bdb_state,
     const bdb_state_type *data_files_bdb_state);
 void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state);
+
+enum bdb_table_open_flags {
+    BDB_TABLE_OPEN_SYSTEM_TABLE = 1
+};
 
 /*
   bdb_open_more() : "open" a new database. associate this db transactionally
@@ -450,7 +456,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
               const signed char ixrecnum[], const signed char ixdta[],
               const signed char ixcollattr[], const signed char ixnulls[],
-              int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr);
+              int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int *bdberr);
 
 /* same, but using a transaction */
 bdb_state_type *
@@ -458,7 +464,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
-                   int numdtafiles, bdb_state_type *parent_bdb_handle,
+                   int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing lite table */
@@ -497,7 +503,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
            const signed char ixrecnum[], const signed char ixdta[],
            const signed char ixcollattr[], const signed char ixnulls[],
-           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+           int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
 
 bdb_state_type *
@@ -505,7 +511,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
                 const signed char ixrecnum[], const signed char ixdta[],
                 const signed char ixcollattr[], const signed char ixnulls[],
-                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *);
 
 /* open a databasent.  no actual db files are created. */
@@ -2146,4 +2152,14 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
  * Otherwise unpack the payload into heap memory. */
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
+
+int bdb_get_dtastripe(bdb_state_type *bdb_state);
+void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe);
+
+int bdb_get_is_systable(bdb_state_type *bdb_state);
+void bdb_set_is_systable(bdb_state_type *bdb_state, int sys);
+
+int bdb_tran_is_parent(void *tran);
+int bdb_llog_systables_modified_log(bdb_state_type *bdb_state, void *trans, int ntables, void *tables, int tables_len);
+
 #endif

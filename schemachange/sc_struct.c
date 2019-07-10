@@ -42,6 +42,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->instant_sc = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
+    sc->new_table_dtastripe = gbl_dtastripe;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
@@ -146,7 +147,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
         sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable) + sizeof(s->usedbtablevers);
+        sizeof(s->newtable) + sizeof(s->usedbtablevers) + sizeof(s->new_table_dtastripe);
 
     return s->packed_len;
 }
@@ -294,6 +295,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
     p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
+                    p_buf_end);
+
+    p_buf = buf_put(&s->new_table_dtastripe, sizeof(s->new_table_dtastripe), p_buf,
                     p_buf_end);
 
     return p_buf;
@@ -518,6 +522,12 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                                       p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
                                p_buf, p_buf_end);
+
+    if (s->new_table_dtastripe == 0)
+        s->new_table_dtastripe = gbl_dtastripe;
+
+    p_buf = (uint8_t*)buf_get(&s->new_table_dtastripe, sizeof(s->new_table_dtastripe),
+                              p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -800,6 +810,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int foundix = -1;
     int bthashsz;
     void *old_bdb_handle, *new_bdb_handle;
+    int nstripes;
+    int is_systable;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -811,6 +823,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         logmsg(LOGMSG_ERROR, "reload_schema: invalid table %s\n", table);
         return -1;
     }
+    nstripes = db_get_dtastripe(db, tran);
+    is_systable = db_get_is_systable_by_name(table, tran);
 
     if (csc2) {
         /* genuine schema change. */
@@ -829,7 +843,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         }
 
         /* TODO remove NULL arg; pre-llmeta holdover */
-        newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0);
+        newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0, nstripes);
         if (newdb == NULL) {
             /* shouldn't happen */
             backout_schemas(table);
@@ -842,7 +856,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
         newdb->meta = db->meta;
-        newdb->dtastripe = gbl_dtastripe;
+        newdb->dtastripe = nstripes;
+        newdb->is_systable = is_systable;
 
         changed = ondisk_schema_changed(table, newdb, NULL, NULL);
         /* let this fly, which will be ok for fastinit;
@@ -874,7 +889,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             table, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
+            newdb->numblobs + 1, newdb->nstripes, thedb->bdb_env, tran, 0, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
@@ -931,7 +946,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran, 0,
+            db->ix_nullsallowed, db->numblobs + 1, db->nstripes, thedb->bdb_env, tran, 0,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %p bdberr %d\n",

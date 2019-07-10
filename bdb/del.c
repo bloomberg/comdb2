@@ -127,7 +127,7 @@ static int bdb_prim_deallocdta_stripe_int(bdb_state_type *bdb_state,
     *bdberr = BDBERR_NOERROR;
 
     dtafile = get_dtafile_from_genid(genid);
-    if (dtafile < 0 || dtafile >= bdb_state->attr->dtastripe) {
+    if (dtafile < 0 || dtafile >= bdb_state->nstripes) {
         *bdberr = BDBERR_DELNOTFOUND;
         return -1;
     }

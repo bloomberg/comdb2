@@ -831,7 +831,7 @@ int bdb_next_dtafile(bdb_state_type *bdb_state)
 
     Pthread_mutex_lock(&bdb_state->last_dta_lk);
     stripe = bdb_state->last_dta =
-        (bdb_state->last_dta + 1) % bdb_state->attr->dtastripe;
+        (bdb_state->last_dta + 1) % bdb_state->nstripes;
     Pthread_mutex_unlock(&bdb_state->last_dta_lk);
     return stripe;
 }
@@ -980,7 +980,10 @@ int bdb_get_active_stripe_int(bdb_state_type *bdb_state)
 
     id = (size_t)pthread_getspecific(parent->tid_key);
 
-    return id % bdb_state->attr->dtastripe;
+    if (bdb_state->parent)
+        return id % bdb_state->nstripes;
+    else
+        return id % bdb_state->attr->dtastripe;
 }
 
 int bdb_get_active_stripe(bdb_state_type *bdb_state)

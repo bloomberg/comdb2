@@ -83,6 +83,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_global.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "sql.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -3097,7 +3098,9 @@ clipper_usage:
         init_fake_ireq(thedb, &iq);
         for (i = 0; i < thedb->num_dbs; i++) {
             iq.usedb = thedb->dbs[i];
-            for (stripe = 0; stripe < gbl_dtastripe; stripe++) {
+            int nstripes = db_get_dtastripe(iq.usedb, NULL);
+
+            for (stripe = 0; stripe < nstripes; stripe++) {
                 uint8_t ver;
                 rc = bdb_find_oldest_genid(iq.usedb->handle, NULL, stripe, buf,
                                            &reclen, 64 * 1024, &genid, &ver,
@@ -5058,3 +5061,4 @@ int query_limit_cmd(char *line, int llen, int toff)
     }
     return 0;
 }
+

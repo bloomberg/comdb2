@@ -100,14 +100,14 @@ static tmpcursor_t *bdb_tran_open_shadow_int(bdb_state_type *bdb_state,
         if (nocursor) {
             open_shadow_nocursor(bdb_state,
                                  &shadow_tran->tables[dbnum].dt_shadows, 0, 1,
-                                 idx, bdb_state->attr->dtastripe, /* one data */
+                                 idx, bdb_state->nstripes, /* one data */
                                  bdberr);
 
             return NULL;
         } else {
             return open_shadow(bdb_state,
                                &shadow_tran->tables[dbnum].dt_shadows, 0, 1,
-                               idx, bdb_state->attr->dtastripe, /* one data */
+                               idx, bdb_state->nstripes, /* one data */
                                create, bdberr);
         }
     } else if (type == BDBC_IX) {

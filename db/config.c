@@ -965,7 +965,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
             /* create one */
             db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs,
-                                   0);
+                                   0, gbl_dtastripe);
             if (db == NULL) {
                 return -1;
             }

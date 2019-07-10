@@ -345,6 +345,7 @@ static Keyword aKeywordTable[] = {
   { "DISABLE",          "TK_DISABLE",        ALWAYS               },
   { "DISTRIBUTION",     "TK_DISTRIBUTION",   ALWAYS               },
   { "DRYRUN",           "TK_DRYRUN",         ALWAYS               },
+  { "DTASTRIPE",        "TK_DTASTRIPE",      ALWAYS               },
   { "ENABLE",           "TK_ENABLE",         ALWAYS               },
   { "FUNCTION",         "TK_FUNCTION",       ALWAYS               },
   { "GENID48",          "TK_GENID48",        ALWAYS               },

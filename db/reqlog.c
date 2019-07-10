@@ -1893,6 +1893,11 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     } else {
         long_request_thresh = long_request_ms;
     }
+    if (logger->opcode == OP_SQL && logger->have_fingerprint) {
+        int thresh = get_fingerprint_threshold(logger->fingerprint);
+        if (thresh >= 0)
+            long_request_thresh = thresh;
+    }
 
     if (logger->durationus >= M2U(long_request_thresh)) {
 

@@ -490,14 +490,14 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                       struct schema_change_type *s, int dbnum,
-                                      int foundix, int schema_version)
+                                      int foundix, int schema_version, int nstripes)
 {
     struct dbtable *newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0, nstripes);
 
     if (newdb == NULL) return NULL;
 
-    newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
+    newdb->dtastripe = nstripes; // we have only one setting currently
     newdb->odh = s->headers;
     /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;
@@ -1083,7 +1083,8 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->schema_version, compr,
-                         blob_compr, datacopy_odh);
+                         blob_compr, datacopy_odh, db_get_dtastripe(db, tran),
+                         db_get_is_systable_by_name(db->tablename, tran));
 
     /*
     if (db->schema_version < 0)

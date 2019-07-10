@@ -6642,7 +6642,8 @@ static void update_fld_hints(struct dbtable *db)
 }
 
 void set_bdb_option_flags(struct dbtable *db, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh)
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe,
+                          int is_systable)
 {
     update_fld_hints(db);
     bdb_state_type *handle = db->handle;
@@ -6652,6 +6653,8 @@ void set_bdb_option_flags(struct dbtable *db, int odh, int ipu, int isc, int ver
     bdb_set_csc2_version(handle, ver);
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
+    bdb_set_dtastripe(handle, dtastripe);
+    bdb_set_is_systable(handle, is_systable);
 }
 
 /* Compute map of dbstores used in vtag_to_ondisk */
@@ -6926,7 +6929,7 @@ struct schema *create_version_schema(char *csc2, int version,
         goto err;
     }
 
-    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0);
+    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0, 1);
     if (ver_db == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7022,6 +7025,9 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
+    int nstripes = db_get_dtastripe(db, tran);
+    int is_systable = db_get_is_systable_by_name(db->tablename, tran);
+
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
@@ -7039,7 +7045,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     }
 
     struct dbtable *newdb = newdb_from_schema(db->dbenv, db->tablename, NULL,
-                                              db->dbnum, foundix, 0);
+                                              db->dbnum, foundix, 0, nstripes);
     if (newdb == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7061,14 +7067,15 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     }
 
     newdb->meta = db->meta;
-    newdb->dtastripe = gbl_dtastripe;
+    newdb->dtastripe = nstripes;
+    newdb->is_systable = is_systable;
 
     /* reopen db no tran - i.e. auto commit */
     newdb->handle = bdb_open_more(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, &bdberr);
+        newdb->numblobs + 1, db->nstripes, thedb->bdb_env, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

@@ -102,6 +102,7 @@
 #include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
+#include "llog_ext.h"
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -323,7 +324,7 @@ static int is_datafile_striped(bdb_state_type *bdb_state, int dtanum)
 {
     if (bdb_state->bdbtype != BDBTYPE_TABLE) {
         return 0;
-    } else if (bdb_state->attr->dtastripe > 0) {
+    } else if (bdb_state->nstripes > 0) {
         if (0 == dtanum)
             return 1;
         else if (bdb_state->attr->blobstripe > 0)
@@ -338,7 +339,7 @@ static int is_datafile_striped(bdb_state_type *bdb_state, int dtanum)
 int bdb_get_datafile_num_files(bdb_state_type *bdb_state, int dtanum)
 {
     if (is_datafile_striped(bdb_state, dtanum))
-        return bdb_state->attr->dtastripe;
+        return bdb_state->nstripes;
     else
         return 1;
 }
@@ -553,7 +554,7 @@ int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
         if (filenum == 0) {
             /* data */
             if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                bdb_state->attr->dtastripe > 0)
+                bdb_state->nstripes > 0)
                 isstriped = 1;
         } else {
             /* blob */
@@ -619,7 +620,7 @@ static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid,
         if (bdb_state->attr->blobstripe > 0)
             isstriped = 1;
     } else if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-               bdb_state->attr->dtastripe > 0)
+               bdb_state->nstripes > 0)
         isstriped = 1;
 
     return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, isstriped,
@@ -712,7 +713,7 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
             src_version_num = src_data_genid;
             dst_version_num = dst_data_genid;
             if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                bdb_state->attr->dtastripe > 0)
+                bdb_state->nstripes > 0)
                 isstriped = 1;
         }
 
@@ -895,7 +896,7 @@ retry:
             if (bdb_state->attr->blobstripe > 0)
                 isstriped = 1;
         } else if (bdb_state->bdbtype == BDBTYPE_TABLE &&
-                   bdb_state->attr->dtastripe > 0)
+                   bdb_state->nstripes > 0)
             isstriped = 1;
 
         /*save all of the stripe's names*/
@@ -4105,6 +4106,14 @@ deadlock_again:
 
                 return -1;
             }
+
+            char parmstr[100];
+            snprintf(parmstr, sizeof(parmstr), "%d", bdb_state->nstripes);
+            bdb_set_table_parameter(&tran, bdb_state->name, "dtastripe", parmstr);
+            if (flags & BDB_TABLE_OPEN_SYSTEM_TABLE) {
+                bdb_set_table_parameter(&tran, bdb_state->name, "is_systable", "1");
+                bdb_state->is_systable = 1;
+            }
         }
 
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
@@ -4477,7 +4486,7 @@ deadlock_again:
         int stripe;
         unsigned long long master_cmpcontext;
 
-        for (stripe = 0; stripe < bdb_state->attr->dtastripe; stripe++) {
+        for (stripe = 0; stripe < bdb_state->nstripes; stripe++) {
             DBC *dbcp;
             DB *dbp;
             DBT dbt_key, dbt_data;
@@ -5268,8 +5277,8 @@ bdb_state_type *bdb_clone_handle_with_other_data_files(
     *new_bdb_state = *clone_bdb_state;
 
     /* overwrite the data file pointers */
-    maxstrnum = (data_files_bdb_state->attr->dtastripe)
-                    ? data_files_bdb_state->attr->dtastripe
+    maxstrnum = (data_files_bdb_state->nstripes)
+                    ? data_files_bdb_state->nstripes
                     : 1;
     for (strnum = 0; strnum < maxstrnum; ++strnum)
         new_bdb_state->dbp_data[0][strnum] =
@@ -5323,7 +5332,7 @@ static bdb_state_type *bdb_open_int(
     const short ixlen[], const signed char ixdups[],
     const signed char ixrecnum[], const signed char ixdta[],
     const signed char ixcollattr[], const signed char ixnulls[],
-    int numdtafiles, bdb_attr_type *bdb_attr, bdb_callback_type *bdb_callback,
+    int numdtafiles, int nstripes, bdb_attr_type *bdb_attr, bdb_callback_type *bdb_callback,
     void *usr_ptr, netinfo_type *netinfo, int upgrade, int create, int *bdberr,
     bdb_state_type *parent_bdb_state, int pagesize_override, bdbtype_t bdbtype,
     DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags)
@@ -5527,6 +5536,7 @@ static bdb_state_type *bdb_open_int(
     bdb_state->tmpdir = mymalloc(nlen);
 
     bdb_state->numdtafiles = numdtafiles;
+    bdb_state->nstripes = nstripes;
     bdb_state->numix = numix;
 
     if (bdb_state->numix) {
@@ -5961,6 +5971,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         NULL,         /* numix, ixlen, ixdups, ixrecnum, ixdta, ixcollattr */
         NULL,         /* ixnulls */
         0,            /* numdtafiles */
+        0,
         bdb_attr,     /* bdb_attr */
         bdb_callback, /* bdb_callback */
         usr_ptr,      /* usr_ptr */
@@ -5976,7 +5987,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
                 const signed char ixrecnum[], const signed char ixdta[],
                 const signed char ixcollattr[], const signed char ixnulls[],
-                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
@@ -5992,7 +6003,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
         ret =
             bdb_open_int(0, /* envonly */
                          name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                         ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                         ixcollattr, ixnulls, numdtafiles, nstripes, NULL, /* bdb_attr */
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
@@ -6007,7 +6018,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
         ret =
             bdb_open_int(0, /* envonly */
                          name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                         ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                         ixcollattr, ixnulls, numdtafiles, nstripes, NULL, /* bdb_attr */
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
@@ -6028,7 +6039,7 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                   const short ixlen[], const signed char ixdups[],
                   const signed char ixrecnum[], const signed char ixdta[],
                   const signed char ixcollattr[], const signed char ixnulls[],
-                  int numdtafiles, bdb_state_type *parent_bdb_handle,
+                  int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle,
                   int *bdberr)
 {
     bdb_state_type *ret;
@@ -6037,7 +6048,7 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, numdtafiles, nstripes, NULL, /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6054,11 +6065,11 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
            const signed char ixrecnum[], const signed char ixdta[],
            const signed char ixcollattr[], const signed char ixnulls[],
-           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+           int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr)
 {
     return bdb_create_tran(name, dir, lrl, numix, ixlen, ixdups, ixrecnum,
-                           ixdta, ixcollattr, ixnulls, numdtafiles,
+                           ixdta, ixcollattr, ixnulls, numdtafiles, nstripes,
                            parent_bdb_handle, temp, bdberr, NULL);
 }
 
@@ -6069,7 +6080,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
               const signed char ixrecnum[], const signed char ixdta[],
               const signed char ixcollattr[], const signed char ixnulls[],
-              int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr)
+              int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret;
 
@@ -6080,7 +6091,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, numdtafiles, nstripes, NULL, /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6101,7 +6112,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
-                   int numdtafiles, bdb_state_type *parent_bdb_handle,
+                   int numdtafiles, int nstripes, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret;
@@ -6113,7 +6124,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       ixcollattr, ixnulls, numdtafiles, nstripes, NULL, /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6166,7 +6177,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 
     ret = bdb_open_int(0, /* envonly */
                        name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta,
-                       NULL, ixnulls, numdtafiles, NULL,   /* bdb_attr */
+                       NULL, ixnulls, numdtafiles, 0, NULL,   /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6203,6 +6214,7 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                      NULL,                 /* ixcollattr */
                      NULL,                 /* ixnulls */
                      1,                    /* numdtafiles (berkdb queue file) */
+                     0,                    /* nstripes */
                      NULL,                 /* bdb_attr */
                      NULL,                 /* bdb_callback */
                      NULL,                 /* usr_ptr */
@@ -6243,6 +6255,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
         NULL,                 /* ixcollattr */
         NULL,                 /* ixnulls */
         1,                    /* numdtafiles (berkdb queue file) */
+        0,                    /* nstripes */
         NULL,                 /* bdb_attr */
         NULL,                 /* bdb_callback */
         NULL,                 /* usr_ptr */
@@ -6296,7 +6309,7 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
         ret =
             bdb_open_int(0, /* envonly */
                          name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta,
-                         NULL, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                         NULL, ixnulls, numdtafiles, 0, NULL, /* bdb_attr */
                          NULL,                             /* bdb_callback */
                          NULL,                             /* usr_ptr */
                          NULL,                             /* netinfo */
@@ -7034,7 +7047,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         return 0;
 
     if (dtanum == 0 || bdb_state->attr->blobstripe)
-        numstripes = bdb_state->attr->dtastripe;
+        numstripes = bdb_state->nstripes;
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
         char bdbname[PATH_MAX], physname[PATH_MAX];
@@ -7209,10 +7222,10 @@ void bdb_verify_dbreg(bdb_state_type *bdb_state)
                 for (blob = 0; blob < s->numdtafiles; blob++) {
                     int nstripes;
                     if (blob == 0)
-                        nstripes = bdb_state->attr->dtastripe;
+                        nstripes = bdb_state->nstripes;
                     else
                         nstripes = bdb_state->attr->blobstripe
-                                       ? bdb_state->attr->dtastripe
+                                       ? bdb_state->nstripes
                                        : 1;
 
                     for (stripe = 0; stripe < nstripes; stripe++) {
@@ -8185,7 +8198,7 @@ void bdb_set_key_compression(bdb_state_type *bdb_state)
         flags = DB_PFX_COMP;
         if (bdb_state->inplace_updates)
             flags |= DB_SFX_COMP;
-        for (i = 0; i < bdb_state->attr->dtastripe; ++i) {
+        for (i = 0; i < bdb_state->nstripes; ++i) {
             db = bdb_state->dbp_data[0][i];
             db->set_compression_flags(db, flags);
         }
@@ -8435,3 +8448,61 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     free(buf);
     return 0;
 }
+
+int bdb_get_dtastripe(bdb_state_type *bdb_state) {
+    return bdb_state->nstripes;
+}
+
+void bdb_set_dtastripe(bdb_state_type *bdb_state, int dtastripe) {
+    assert(dtastripe > 0 && dtastripe < 17);
+    bdb_state->nstripes = dtastripe; 
+}
+
+int bdb_get_is_systable(bdb_state_type *bdb_state) {
+    return bdb_state->is_systable;
+}
+
+void bdb_set_is_systable(bdb_state_type *bdb_state, int is_systable) {
+    bdb_state->is_systable = is_systable;
+}
+
+int bdb_handle_systables_modified(DB_ENV *dbenv, 
+        llog_systables_modified_args *args, DB_LSN *lsn, db_recops op) {
+
+    if (op == DB_TXN_PRINT) {
+        printf("[%u][%u] CUSTOM: systables_modified: txnid %x"
+               " prevlsn[" PR_LSN "] ntables %d\n",
+               lsn->file, lsn->offset, args->txnid->txnid,
+               PARM_LSN(args->prev_lsn), args->ntables);
+    }
+    else if (op == DB_TXN_APPLY) {
+        bdb_state_type *bdb_state = gbl_bdb_state;
+        if (bdb_state && bdb_state->callback->systables_modified_rtn) {
+            char **tables;
+            tables = malloc(args->ntables * sizeof(char*));
+            char *s = args->tables.data;
+            for (int i = 0; i < args->ntables; i++) {
+                tables[i] = strdup(s);
+                s += (strlen(s)+1);
+            }
+            bdb_state->callback->systables_modified_rtn(bdb_state, NULL, args->ntables, tables);
+        }
+    }
+    *lsn = args->prev_lsn;
+
+    return 0;
+}
+
+int bdb_llog_systables_modified_log(bdb_state_type *bdb_state, void *trans, 
+        int ntables, void *tables, int tables_len) {
+    tran_type *t = (tran_type*) trans;
+
+    DBT dbt = {0};
+    DB_LSN lsnout;
+    dbt.data = tables;
+    dbt.size = tables_len;
+    int rc = llog_systables_modified_log(bdb_state->dbenv, t->tid, &lsnout,
+            0, ntables, &dbt);
+    return rc;
+}
+

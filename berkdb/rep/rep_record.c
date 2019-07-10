@@ -2611,7 +2611,8 @@ __rep_classify_type(u_int32_t type, int *had_serializable_records)
 		type == DB___qam_add ||
 		type == DB___qam_delext ||
 		(!gbl_allow_parallel_rep_on_prefix && (type == DB___bam_prefix)
-		) || type == 10002))	/* scdone should be serialized */
+		) || type == 10002 || type == 10022))	/* scdone/systables_modified 
+                                                   should be serialized */
 		*had_serializable_records = 1;
 }
 

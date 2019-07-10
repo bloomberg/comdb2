@@ -683,6 +683,7 @@ struct dbtable {
     shard_limits_t *sharding;
 
     int numblobs;
+    int nstripes;
 
     /* we do not necessarily have as many sql indexes as there are comdb2
      * indexes - only indexes free of <DESCEND> can be advertised to sqlite.
@@ -838,6 +839,8 @@ struct dbtable {
 
     bool disableskipscan : 1;
     bool do_local_replication : 1;
+
+    bool is_systable : 1;
 };
 
 struct log_delete_state {
@@ -1428,6 +1431,9 @@ struct ireq {
     bool sc_should_abort : 1;
 
     int written_row_count;
+
+    int tables_modified[MAXTABLES/8];
+    int modified_systables;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -2341,7 +2347,7 @@ int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
 
 void cleanup_newdb(struct dbtable *);
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                             int dbnum, int dbix, int is_foreign);
+                             int dbnum, int dbix, int is_foreign, int nstripes);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
 int init_check_constraints(struct dbtable *tbl);
@@ -3462,7 +3468,8 @@ extern int gbl_check_wrong_db;
 extern int gbl_debug_sql_opcodes;
 
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh);
+                          int compr, int blob_compr, int datacopy_odh, int dtastripe,
+                          int is_systable);
 
 extern int gbl_debug_temptables;
 
@@ -3628,4 +3635,11 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+extern int db_get_dtastripe(struct dbtable *db, tran_type *tran);
+extern int db_get_dtastripe_by_name(const char *tablename, tran_type *tran);
+extern int db_get_is_systable_by_name(const char *tablename, tran_type *tran);
+
+int64_t systable_get_gen(const char *table);
+
 #endif /* !INCLUDED_COMDB2_H */
