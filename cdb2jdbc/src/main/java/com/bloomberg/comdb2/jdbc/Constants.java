@@ -99,7 +99,6 @@ public class Constants {
 
         public static final int CDB2ERR_DUPLICATE = 299;
         public static final int CDB2ERR_TZNAME_FAIL = 401;
-        public static final int CDB2ERR_CHANGENODE = 402;
         public static final int CDB2ERR_CHECK_CONSTRAINT = 403;
 
         public static final int CDB2ERR_UNKNOWN = 300;
