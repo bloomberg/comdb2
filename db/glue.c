@@ -556,10 +556,7 @@ static int log_modified_systables(bdb_state_type *bdb_state, void *trans,
     }
     *tblout = tables_out;
     
-    fsnapf(stdout, tables, space_needed);
-
     int rc = bdb_llog_systables_modified_log(bdb_state, trans, *ntables, tables, space_needed);
-    printf("log rc %d\n", rc);
     return rc;
 }
 
@@ -3244,7 +3241,6 @@ static int systables_modified_callback(void *bdb_handle, void *trans, int ntable
             hash_add(systable_gens, gen);
         }
         gen->version++;
-        printf("modified: %s -> %"PRId64"\n", tables[i], gen->version);
         free(tables[i]);
     }
     Pthread_mutex_unlock(&systables_gen_lk);
