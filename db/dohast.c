@@ -49,12 +49,12 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s%s%s%s", sExpr,
+            cols = sqlite3_mprintf("%s%s%w%s", sExpr,
                                    (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
         else {
-            accum = sqlite3_mprintf("%s, %s%s%s%s", cols, sExpr,
+            accum = sqlite3_mprintf("%s, %s%s%w%s", cols, sExpr,
                                     (c->a[i].zName) ? " aS \"" : "",
                                     (c->a[i].zName) ? c->a[i].zName : "",
                                     (c->a[i].zName) ? "\" " : "");
@@ -70,7 +70,8 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
 }
 
 static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
-                              int **order_dir, struct params_info **pParamsOut)
+                              int **order_dir, struct params_info **pParamsOut,
+                              int is_union)
 {
     char *ret;
     char *tmp;
@@ -110,12 +111,20 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         ret = tmp;
     }
 
+    if (is_union) {
+        /* restriction allows us direct indexing in result set */
+        for (i = 0; i < lst->nExpr; i++) {
+            (*order_dir)[i] =
+                lst->a[i].u.x.iOrderByCol * (((*order_dir)[i]) ? -1 : 1);
+        }
+    }
+
     return ret;
 }
 
 char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                               int *order_size, int **order_dir,
-                              struct params_info **pParamsOut)
+                              struct params_info **pParamsOut, int is_union)
 {
     char *cols = NULL;
     const char *tbl = NULL;
@@ -147,8 +156,8 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
 
     if (p->pOrderBy) {
-        orderby =
-            describeExprList(v, p->pOrderBy, order_size, order_dir, pParamsOut);
+        orderby = describeExprList(v, p->pOrderBy, order_size, order_dir,
+                                   pParamsOut, is_union);
         if (!orderby) {
             sqlite3_free(where);
             return NULL;
@@ -172,7 +181,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                             (where) ? where : "", (orderby) ? " oRDeR By " : "",
                             (orderby) ? orderby : "");
     } else if (!p->pLimit) {
-        select = sqlite3_mprintf("SeLeCT %s FRoM \"%s\"%s%s%s%s", cols, tbl,
+        select = sqlite3_mprintf("SeLeCT %s FRoM \"%w\"%s%s%s%s", cols, tbl,
                                  (where) ? " WHeRe " : "", (where) ? where : "",
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
@@ -195,7 +204,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s "
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s "
                 "LiMit (CaSe wHeN (%s)<0 THeN (%s) eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
                 ") eND) oFFSeT (%s)",
@@ -204,7 +213,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 limit, limit, offset, offset, offset);
         } else if (!extraRows) {
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit %s", cols, tbl,
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s LiMit %s", cols, tbl,
                 (where) ? " WHeRe " : "", (where) ? where : "",
                 (orderby) ? " oRDeR By " : "", (orderby) ? orderby : "", limit);
         } else {
@@ -217,7 +226,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN "
+                "SeLeCT %s FRoM \"%w\"%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN "
                 "(%s) "
                 "eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
@@ -310,7 +319,8 @@ void ast_destroy(ast_t **past, sqlite3 *db)
 }
 
 static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
-                                    int *order_size, int **order_dir)
+                                    int *order_size, int **order_dir,
+                                    int is_union)
 {
     dohsql_node_t *node;
     Select *prior = p->pPrior;
@@ -330,7 +340,7 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
     node->sql = sqlite_struct_to_string(v, p, extraRows, order_size, order_dir,
-                                        &node->params);
+                                        &node->params, is_union);
     p->pPrior = prior;
     p->pNext = next;
 
@@ -437,8 +447,8 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     while (crt) {
         assert(crt == p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
-        *psub =
-            gen_oneselect(v, crt, pOffset, &node->order_size, &node->order_dir);
+        *psub = gen_oneselect(v, crt, pOffset, &node->order_size,
+                              &node->order_dir, 1);
         crt->pLimit = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
@@ -541,7 +551,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         return NULL;
 
     if (p->op == TK_SELECT)
-        ret = gen_oneselect(v, p, NULL, NULL, NULL);
+        ret = gen_oneselect(v, p, NULL, NULL, NULL, 0);
     else
         ret = gen_union(v, p, span);
 
@@ -739,7 +749,13 @@ static int _exprCallback(Walker *pWalker, Expr *pExpr)
     case TK_PLUS:
     case TK_MINUS:
     case TK_INTEGER:
+    case TK_STRING:
         return WRC_Continue;
+    case TK_FUNCTION:
+        if (strcasecmp(pExpr->u.zToken, "comdb2_sysinfo") == 0) {
+            return WRC_Continue;
+        }
+        /* fallthrough */
     default:
         return WRC_Abort;
     }

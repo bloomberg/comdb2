@@ -1791,17 +1791,23 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     (clnt->sql) ? clnt->sql : "(???.)", clnt->osql.replay);
             }
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
-                if (gbl_selectv_rangechk) {
-                    rc = selectv_range_commit(clnt);
-                }
-
                 if (gbl_early_verify && !clnt->early_retry &&
                     gbl_osql_send_startgen && clnt->start_gen) {
                     if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                         clnt->early_retry = EARLY_ERR_GENCHANGE;
                 }
-                if (rc || clnt->early_retry) {
-                    int irc = 0;
+                if (gbl_selectv_rangechk)
+                    rc = selectv_range_commit(clnt);
+                if (rc) {
+                    irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+                    if (irc) {
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "%s: failed to abort sorese transaction irc=%d\n",
+                            __func__, irc);
+                    }
+                    rc = SQLITE_ABORT;
+                } else if (clnt->early_retry) {
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(
@@ -1822,10 +1828,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "verify error on master swing");
                     }
-                    if (clnt->early_retry) {
-                        clnt->early_retry = 0;
-                        rc = SQLITE_ABORT;
-                    }
+                    clnt->early_retry = 0;
+                    rc = SQLITE_ABORT;
                 } else {
                     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
                 }
@@ -3217,6 +3221,9 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
             eventlog_bind_null(arr, p.name);
+            if (rc) { /* position out-of-bounds, etc? */
+                goto out;
+            }
             continue;
         }
         switch (p.type) {
@@ -3300,7 +3307,7 @@ struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
         if (p->pos > 0 && p->pos == index)
             return p;
 
-        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
+        if (name[0] && !strncmp(name, p->name, strlen(name) + 1))
             return p;
     }
 done:

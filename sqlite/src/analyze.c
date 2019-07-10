@@ -1002,14 +1002,18 @@ static void statGet(
   /* STAT3 and STAT4 have a parameter on this routine. */
   int eCall = sqlite3_value_int(argv[1]);
   assert( argc==2 );
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   assert( eCall==STAT_GET_STAT1 || eCall==STAT_GET_NEQ 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-       || eCall==STAT_GET_ROW   || eCall==STAT_GET_NLT
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
        || eCall==STAT_GET_ROWID || eCall==STAT_GET_NLT
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
        || eCall==STAT_GET_NDLT 
   );
+#else
+  assert( eCall==STAT_GET_STAT1 || eCall==STAT_GET_NEQ
+       || eCall==STAT_GET_ROW   || eCall==STAT_GET_NLT
+       || eCall==STAT_GET_NDLT
+  );
+#endif
+
   if( eCall==STAT_GET_STAT1 )
 #else
   assert( argc==1 );

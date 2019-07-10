@@ -38,7 +38,6 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
-extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;
@@ -222,6 +221,7 @@ extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
 extern int gbl_debug_children_lock;
+extern int gbl_serialize_reads_like_writes;
 
 extern long long sampling_threshold;
 
@@ -300,6 +300,9 @@ extern int gbl_selectv_writelock;
 int gbl_debug_tmptbl_corrupt_mem;
 
 extern int gbl_clean_exit_on_sigterm;
+extern int gbl_debug_omit_dta_write;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
 
 /*
   =========================================================

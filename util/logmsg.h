@@ -48,4 +48,7 @@ void *logmsg_level_value(void *unused);
 void *logmsg_syslog_value(void *unused);
 void *logmsg_timestamp_value(void *unused);
 
+int io_override_set_std(FILE *);
+FILE *io_override_get_std(void);
+
 #endif

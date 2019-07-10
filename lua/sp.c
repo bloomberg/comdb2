@@ -80,7 +80,6 @@ extern int gbl_notimeouts;
 extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
-extern int gbl_allow_lua_exec_with_ddl;
 
 char *gbl_break_spname;
 void *debug_clnt;
@@ -207,7 +206,6 @@ static int db_settimezone(lua_State *lua);
 static int db_gettimezone(Lua L);
 static int db_bind(Lua L);
 static int db_exec(Lua);
-static int db_exec_with_ddl(Lua);
 static int dbstmt_emit(Lua);
 static int db_prepare(Lua lua);
 static int db_create_thread(Lua L);
@@ -1933,7 +1931,8 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
     SP sp = getsp(lua);
     if (sp) {
         lua_pop(lua, 1);
-        if (sp->num_instructions > sp->max_num_instructions) {
+        if ((sp->max_num_instructions > 0) &&
+            (sp->num_instructions > sp->max_num_instructions)) {
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",
@@ -2086,12 +2085,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static int lua_get_prepare_flags()
 {
-    int prepFlags = PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
-
-    if (gbl_allow_lua_exec_with_ddl)
-        prepFlags &= ~PREPARE_DENY_DDL;
-
-    return prepFlags;
+    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
 }
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
@@ -2844,13 +2838,6 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static void remove_exec_with_ddl(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "exec_with_ddl");
-}
-
 static void remove_create_thread(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -3384,14 +3371,13 @@ done:
     return rc;
 }
 
-static int db_exec_int(Lua lua, int withDdl)
+static int db_exec(Lua lua)
 {
     luaL_checkudata(lua, 1, dbtypes.db);
     lua_remove(lua, 1);
 
     SP sp = getsp(lua);
 
-    int rc;
     const char *sql = lua_tostring(lua, -1);
     if (sql == NULL) {
         luabb_error(lua, sp, "expected sql string");
@@ -3402,11 +3388,7 @@ static int db_exec_int(Lua lua, int withDdl)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    if (withDdl) {
-        rc = lua_prepare_sql_with_ddl(lua, sp, sql, &stmt);
-    } else {
-        rc = lua_prepare_sql(lua, sp, sql, &stmt);
-    }
+    int rc = lua_prepare_sql(lua, sp, sql, &stmt);
     if (rc != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
@@ -3440,16 +3422,6 @@ static int db_exec_int(Lua lua, int withDdl)
         lua_pushinteger(lua, 0); /* Success return code */
     }
     return 2;
-}
-
-static int db_exec(Lua lua)
-{
-    return db_exec_int(lua, 0);
-}
-
-static int db_exec_with_ddl(Lua lua)
-{
-    return db_exec_int(lua, 1);
 }
 
 static int db_prepare(Lua L)
@@ -4395,7 +4367,6 @@ static int db_bootstrap(Lua L)
 
 static const luaL_Reg db_funcs[] = {
     {"exec", db_exec},
-    {"exec_with_ddl", db_exec_with_ddl},
     {"prepare", db_prepare},
     {"table", db_table},
     {"cast", db_cast},
@@ -4589,13 +4560,9 @@ static int create_sp_int(SP sp, char **err)
         }
     }
 
-    if(!gbl_allow_lua_exec_with_ddl)
-        remove_exec_with_ddl(lua);
-
     if(!gbl_allow_lua_dynamic_libs)
         disable_global_variables(lua);
 
-    sp->had_allow_lua_exec_with_ddl = gbl_allow_lua_exec_with_ddl;
     sp->had_allow_lua_dynamic_libs = gbl_allow_lua_dynamic_libs;
 
     /* To be given as lrl value. */
@@ -5506,7 +5473,6 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
     if (sp) {
         if (clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug ||
-            sp->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
             sp->had_allow_lua_dynamic_libs != gbl_allow_lua_dynamic_libs) {
             close_sp(clnt);
             sp = NULL;

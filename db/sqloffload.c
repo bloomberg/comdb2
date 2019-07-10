@@ -272,6 +272,9 @@ extern int gbl_osql_send_startgen;
  *
  */
 
+/* Set to 1, check read-only transactions on the master. */
+int gbl_serialize_reads_like_writes = 0;
+
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                        char *tzname, int osqlreq_type, int is_distrib_tran)
 {
@@ -280,6 +283,9 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
+    int serial_error = 0;
+    int checked_arr = 0;
+    int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
@@ -287,33 +293,15 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
 
-    if (clnt->early_retry == EARLY_ERR_VERIFY) {
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
-    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
-        clnt->osql.xerr.errval = ERR_CONSTR;
-        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
-    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
-    }
-    if (clnt->early_retry) {
-        clnt->early_retry = 0;
-        rc = SQLITE_ABORT;
-        goto goback;
-    }
-
-    /* optimization (will catch all transactions with no internal updates */
-    if (osql_shadtbl_empty(clnt)) {
-        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
-        return 0;
-    }
-
-    usedb_only = osql_shadtbl_usedb_only(clnt);
-
-    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
-        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
-        return 0;
+    /* If we have both always check serializable first to close
+     * a race: the selectv rcode should prevail */
+    if (clnt->selectv_arr && clnt->arr) {
+        currangearr_build_hash(clnt->arr);
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0)) {
+            serial_error = 1;
+        }
+        checked_arr = 1;
     }
 
     if (clnt->selectv_arr)
@@ -322,10 +310,61 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
                               &(clnt->selectv_arr->file),
                               &(clnt->selectv_arr->offset), 0)) {
-        rc = SQLITE_ABORT;
-        sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_VERIFY) {
+        if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+            clnt->osql.xerr.errval = ERR_NOTSERIAL;
+            errstat_cat_str(&(clnt->osql.xerr),
+                            "transaction is not serializable");
+        } else {
+            clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+            errstat_cat_str(&(clnt->osql.xerr),
+                            "unable to update record rc = 4");
+        }
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+        clnt->osql.xerr.errval = ERR_CONSTR;
+        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
+        rc = SQLITE_ABORT;
+    }
+    if (rc) {
+        clnt->early_retry = 0;
+        rc = SQLITE_ABORT;
+        goto goback;
+    }
+
+    /* optimization (will catch all transactions with no internal updates */
+    if (!force_master && osql_shadtbl_empty(clnt)) {
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
+        return 0;
+    }
+
+    usedb_only = osql_shadtbl_usedb_only(clnt);
+
+    if (!force_master && usedb_only &&
+        (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
+        return 0;
+    }
+
+    /* Do replicant serializable check if we haven't yet */
+    if (clnt->arr && !checked_arr && !osql_shadtbl_has_selectv(clnt, &bdberr)) {
+        currangearr_build_hash(clnt->arr);
+        if (bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
+                                  &(clnt->arr->offset), 0))
+            serial_error = 1;
+    }
+
+    if (serial_error) {
+        clnt->osql.xerr.errval = ERR_NOTSERIAL;
+        errstat_cat_str(&(clnt->osql.xerr), "transaction is not serializable");
+        rc = SQLITE_ABORT;
         goto goback;
     }
 
@@ -341,17 +380,31 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
+    if (!clnt->osql.is_reorder_on) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+    }
+
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
-    if (sentops && clnt->arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-    }
+    /* Preserve the sentops optimization */
+    if (clnt->osql.is_reorder_on && (force_master || sentops)) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
 
-    if (clnt->selectv_arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
     }
 
     if (rc && rc != -2) {

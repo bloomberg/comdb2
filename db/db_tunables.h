@@ -32,11 +32,6 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("allow_lua_exec_with_ddl",
-                 "Enable to allow use of SQL DDL commands from inside of Lua "
-                 "stored procedures (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl, NOARG, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
@@ -1192,6 +1187,18 @@ REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
                  "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
                  &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.omit_dta_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_dta_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_idx_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_idx_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_blob_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1692,7 +1699,7 @@ REGISTER_TUNABLE("machine_class",
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("selectv_writelock_on_update",
-                 "Acquire a writelock for updated selectv records."
+                 "Acquire a writelock for updated selectv records.  "
                  "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1712,5 +1719,11 @@ REGISTER_TUNABLE("debug_children_lock",
                  "  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_children_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("serialize_reads_like_writes",
+                 "Send read-only multi-statement schedules to the master.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

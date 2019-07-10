@@ -32,17 +32,15 @@ static const char revid[] =
 #include <logmsg.h>
 #include <locks_wrap.h>
 
-int db_init __P((DB_ENV *, char *, int, u_int32_t, int *));
-int dump __P((DB *, int, int));
-int dump_sub __P((DB_ENV *, DB *, char *, int, int));
-int is_sub __P((DB *, int *));
-int main __P((int, char *[]));
-int show_subs __P((DB *));
+static int db_init(DB_ENV *, char *, int, u_int32_t, int *);
+static int dump __P((DB *, int, int));
+static int dump_sub __P((DB_ENV *, DB *, char *, int, int));
+static int is_sub __P((DB *, int *));
+static int show_subs __P((DB *));
 static int cdb2_dump_usage __P((void));
-int version_check __P((const char *));
-extern int comdb2ma_init(size_t init_sz, size_t max_cap);
-extern int io_override_set_std(FILE *f);
-pthread_key_t comdb2_open_key;
+static int version_check(const char *);
+
+extern pthread_key_t comdb2_open_key;
 
 int
 tool_cdb2_dump_main(argc, argv)
@@ -297,7 +295,7 @@ done:	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
  * db_init --
  *	Initialize the environment.
  */
-int
+static int
 db_init(dbenv, home, is_salvage, cache, is_privatep)
 	DB_ENV *dbenv;
 	char *home;
@@ -355,7 +353,7 @@ db_init(dbenv, home, is_salvage, cache, is_privatep)
  * is_sub --
  *	Return if the database contains subdatabases.
  */
-int
+static int
 is_sub(dbp, yesno)
 	DB *dbp;
 	int *yesno;
@@ -396,7 +394,7 @@ is_sub(dbp, yesno)
  * dump_sub --
  *	Dump out the records for a DB containing subdatabases.
  */
-int
+static int
 dump_sub(dbenv, parent_dbp, parent_name, pflag, keyflag)
 	DB_ENV *dbenv;
 	DB *parent_dbp;
@@ -466,7 +464,7 @@ dump_sub(dbenv, parent_dbp, parent_name, pflag, keyflag)
  * show_subs --
  *	Display the subdatabases for a database.
  */
-int
+static int
 show_subs(dbp)
 	DB *dbp;
 {
@@ -508,7 +506,7 @@ show_subs(dbp)
  * dump --
  *	Dump out the records for a DB.
  */
-int
+static int
 dump(dbp, pflag, keyflag)
 	DB *dbp;
 	int pflag, keyflag;
@@ -604,7 +602,7 @@ err:	if (data.data != NULL)
 }
 
 /*
- * usage --
+ * cdb2_dump_usage --
  *	Display the usage message.
  */
 static int
@@ -616,7 +614,7 @@ cdb2_dump_usage()
 	return (EXIT_FAILURE);
 }
 
-int
+static int
 version_check(progname)
 	const char *progname;
 {

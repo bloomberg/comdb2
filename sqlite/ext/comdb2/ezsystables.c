@@ -198,7 +198,7 @@ static int systbl_column(
         case CDB2_DATETIMEUS: {
             dttz_t dtz;
             int le = 1;
-            char tz[CDB2_MAX_TZNAME];
+            const char *tz = "UTC";
 #ifndef _LINUX_SOURCE
             le = 0;
 #endif

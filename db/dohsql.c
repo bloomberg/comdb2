@@ -847,7 +847,7 @@ static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c)
 {
     int i;
     for (i = 0; i < conn->nparams; i++) {
-        if (!strcasecmp(b, conn->params[i].name)) {
+        if (!strcmp(b, conn->params[i].name)) {
             *c = conn->params[i].pos;
             return 0;
         }
@@ -1446,9 +1446,20 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
         b = conns->conns[order[idx_b]].que->lst.top->obj;
 
         for (i = 0; i < conns->order_size /*conns->ncols*/; i++) {
-            ret = sqlite3MemCompare(&a[i], &b[i], NULL);
+            int orderby_idx = (conns->order_dir[i] > 0)
+                                  ? conns->order_dir[i]
+                                  : (-conns->order_dir[i]);
+            assert(orderby_idx > 0);
+            orderby_idx--;
+            if (gbl_dohsql_verbose) {
+                extern char *print_mem(Mem * m);
+                logmsg(LOGMSG_USER, "%lu COMPARE %s <> %s\n", pthread_self(),
+                       print_mem(&a[orderby_idx]), print_mem(&b[orderby_idx]));
+            }
+
+            ret = sqlite3MemCompare(&a[orderby_idx], &b[orderby_idx], NULL);
             if (ret) {
-                if (conns->order_dir[i])
+                if (conns->order_dir[i] < 0)
                     ret = -ret;
                 break;
             }
@@ -1859,7 +1870,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     } else {
         /* if already allocated, check to see if name is already in */
         for (i = 0; i < params->nparams; i++) {
-            if (!strcasecmp(name, params->params[i].name)) {
+            if (!strcmp(name, params->params[i].name)) {
                 /* done here */
                 return params;
             }
@@ -1885,6 +1896,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (params->params)
             free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     params->params = temparr;

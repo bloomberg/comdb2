@@ -4730,7 +4730,10 @@ int sqlite3BtreeCommit(Btree *pBt)
         if (clnt->dbtran.shadow_tran) {
             rc = serial_commit(clnt, thd, clnt->tzname);
             if (!rc) {
-                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+                if (clnt->dbtran.shadow_tran) {
+                    irc =
+                        trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+                }
             } else {
                 irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
                                          &bdberr);
@@ -4745,14 +4748,22 @@ int sqlite3BtreeCommit(Btree *pBt)
         break;
 
     case TRANLEVEL_SOSQL:
-        if (gbl_selectv_rangechk)
-            rc = selectv_range_commit(clnt);
         if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen) {
             if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                 clnt->early_retry = EARLY_ERR_GENCHANGE;
         }
-        if (rc || clnt->early_retry) {
-            int irc = 0;
+        if (gbl_selectv_rangechk)
+            rc = selectv_range_commit(clnt);
+        if (rc) {
+            irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            if (irc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to abort sorese transaction irc=%d\n",
+                       __func__, irc);
+            }
+            clnt->early_retry = 0;
+            rc = SQLITE_ABORT;
+        } else if (clnt->early_retry) {
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
             if (irc) {
                 logmsg(LOGMSG_ERROR,

@@ -150,7 +150,6 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
-int gbl_allow_lua_exec_with_ddl = 0;
 int gbl_allow_lua_dynamic_libs = 0;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
@@ -191,6 +190,7 @@ const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERS
 const char gbl_db_version[] = QUOTE(COMDB2_BUILD_VERSION);
 const char gbl_db_semver[] = QUOTE(COMDB2_SEMVER);
 const char gbl_db_codename[] = QUOTE(COMDB2_CODENAME);
+const char gbl_db_buildtype[] = QUOTE(COMDB2_BUILD_TYPE);
 
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
@@ -335,6 +335,9 @@ int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
+int gbl_debug_omit_dta_write;
+int gbl_debug_omit_idx_write;
+int gbl_debug_omit_blob_write;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -3076,6 +3079,9 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     int rc;
     struct dbtable *tbl;
 
+    if (get_dbtable_by_name(table))
+        return 0;
+
     dbenv->dbs =
         realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
 
@@ -5168,6 +5174,7 @@ static void handle_resume_sc()
 
 #define TOOLS           \
    TOOL(cdb2_dump)      \
+   TOOL(cdb2_load)      \
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_stat)      \
    TOOL(cdb2_verify)

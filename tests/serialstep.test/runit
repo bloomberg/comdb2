@@ -55,6 +55,42 @@ function fastinit
     return 0
 }
 
+function send_tunable
+{
+    # echo debug trace
+    [[ "$debug" == "1" ]] && set -x
+
+    if [[ -z $CLUSTER ]]; then
+        echo "cdb2sql ${CDB2_OPTIONS} $db default \"put tunable $1\""
+        cdb2sql ${CDB2_OPTIONS} $db default "put tunable $1"
+    else
+        for mach in $CLUSTER ; do
+            echo "cdb2sql ${CDB2_OPTIONS} $db --host $mach \"put tunable $1\""
+            cdb2sql ${CDB2_OPTIONS} $db --host $mach "put tunable $1"
+        done
+    fi
+}
+
+function tunables
+{
+    # echo debug trace
+    [[ "$debug" == "1" ]] && set -x
+
+    # args
+    typeset db=$1
+    typeset iter=$2
+
+    if [[ ! -f ${iter}.tunables ]]; then
+        return 0
+    fi
+
+    # tunables
+    cat ${iter}.tunables | while read tunable ; do
+        echo "read tunable $tunable"
+        send_tunable "$tunable"
+    done
+}
+
 # archcode function
 function myarch
 {
@@ -114,6 +150,7 @@ for testcase in $files ; do
     if [[ $new_batch != $last_batch ]] ; then
 
         fastinit $a_dbn $new_batch
+        tunables  $a_dbn $new_batch
         last_batch=$new_batch
 
     fi

@@ -1515,9 +1515,11 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
+extern const char *const gbl_db_git_version_sha;
 extern const char gbl_db_version[];
 extern const char gbl_db_semver[];
 extern const char gbl_db_codename[];
+extern const char gbl_db_buildtype[];
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_verbose_toblock_backouts;
@@ -2284,9 +2286,6 @@ int dat_highrrn(struct ireq *iq, int *out_highrrn);
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
              size_t length, int rrn, unsigned long long genid, int odhready);
-int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid,
-                   int odhready);
 
 int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
              int blobno);
@@ -3350,9 +3349,6 @@ extern int gbl_fk_allow_superset_keys;
 extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
-
-int io_override_set_std(FILE *f);
-FILE *io_override_get_std(void);
 
 void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
 const char *reqlog_get_origin(struct reqlogger *logger);

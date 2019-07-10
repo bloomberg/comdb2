@@ -94,6 +94,7 @@ set(src
   machclass.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
+  ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/comdb2_dbprintlog.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
@@ -146,6 +147,7 @@ set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
   COMDB2_BUILD_VERSION=${COMDB2_BUILD_VERSION}
   COMDB2_CODENAME=${COMDB2_CODENAME}
   COMDB2_SEMVER=${COMDB2_SEMVER}
+  COMDB2_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 )
 
 add_executable(comdb2 ${src})
@@ -234,6 +236,7 @@ configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(
   TARGET comdb2 POST_BUILD
   COMMAND ln -f comdb2 cdb2_dump
+  COMMAND ln -f comdb2 cdb2_load
   COMMAND ln -f comdb2 cdb2_printlog
   COMMAND ln -f comdb2 cdb2_stat
   COMMAND ln -f comdb2 cdb2_verify
@@ -241,6 +244,7 @@ add_custom_command(
 install(TARGETS comdb2 RUNTIME DESTINATION bin)
 install(PROGRAMS
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_dump
+  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_load
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_printlog
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_stat
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_verify

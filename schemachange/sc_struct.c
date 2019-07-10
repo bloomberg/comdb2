@@ -45,6 +45,8 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
+    Pthread_mutex_init(&sc->mtxStart, NULL);
+    Pthread_cond_init(&sc->condStart, NULL);
     return sc;
 }
 
@@ -89,6 +91,9 @@ void free_schema_change_type(struct schema_change_type *s)
     free_dests(s);
     Pthread_mutex_destroy(&s->mtx);
     Pthread_mutex_destroy(&s->livesc_mtx);
+
+    Pthread_cond_destroy(&s->condStart);
+    Pthread_mutex_destroy(&s->mtxStart);
 
     if (s->sb && s->must_close_sb) {
         close_appsock(s->sb);

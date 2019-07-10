@@ -1,2 +1,3 @@
 (queuename='__qa', spname='a', head_age=0, depth=0)
 (queuename='__qb', spname='b', head_age=0, depth=0)
+(queuename='__qno_ddl_proc1', spname='no_ddl_proc1', head_age=0, depth=0)
