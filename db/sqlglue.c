@@ -576,13 +576,13 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
 }
 
 static int isPrepare(BtCursor *pCur) {
-   sqlite3 *db = NULL;
-   if (pCur->vdbe) {
-       db = pCur->vdbe->db;
-   }
-   if (db && db->init.busy) {
-       return 1;
-   }
+    sqlite3 *db = NULL;
+    if (pCur->vdbe) {
+        db = pCur->vdbe->db;
+    }
+    if (db && db->init.busy) {
+        return 1;
+    }
     return 0;
 }
 
@@ -5374,7 +5374,6 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
 
     if (!isPrepare(pCur)) {
         rc = sql_tick(thd, pCur->bt->is_temporary == 0);
-
         if (rc)
             return rc;
     }
