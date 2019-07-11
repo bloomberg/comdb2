@@ -322,12 +322,20 @@ static int verify_table_int(const char *table, SBUF2 *sb,
 
     assert(tran && "tran is null but should not be");
     assert(db && "db is null but should not be");
-    verify_common_t par = {
-        sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
-        (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
-        verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
-        verify_indexes_callback, lua_callback, lua_params,
-        0, progress_report_seconds, attempt_fix
+    verify_common_t par = { 
+        .sb = sb,
+        .bdb_state = db->handle,
+        .db_table = db,
+        .formkey_callback = verify_formkey_callback,
+        .get_blob_sizes_callback = verify_blobsizes_callback,
+        .vtag_callback = (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        .add_blob_buffer_callback = verify_add_blob_buffer_callback,
+        .free_blob_buffer_callback = verify_free_blob_buffer_callback,
+        .verify_indexes_callback = verify_indexes_callback,
+        .lua_callback = lua_callback,
+        .lua_params = lua_params,
+        .progress_report_seconds = progress_report_seconds,
+        .attempt_fix = attempt_fix
     };
     rc = bdb_verify(&par);
 

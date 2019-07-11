@@ -213,6 +213,32 @@ static void printhex(SBUF2 *sb, int (*lua_callback)(void *, const char *),
                 hexbytes[(hex[i] & 0xf0) >> 4], hexbytes[hex[i] & 0xf]);
 }
 
+static inline void print_verify_progress(verify_common_t *par, int now)
+{
+    if (!par->progress_report_seconds)
+        return;
+
+    int last = par->last_reported; //get a copy of the last timestamp
+
+    // do the comparison with now
+    if ( ((now - last) < (par->progress_report_seconds * 1000)))
+        return;
+
+    // enough time has passed, attempt to update
+    int res = CAS(par->last_reported, last, now);
+    if (!res) return; // someonelse updated, get out
+
+    int rc = locprint(par->sb, par->lua_callback, par->lua_params, "!verify: processed %lld records, %d per second\n",
+            par->records_processed,
+            par->nrecs_progress / par->progress_report_seconds);
+    if(rc) {
+        par->client_dropped_connection = 1;
+        return;
+    }
+    par->nrecs_progress = 0;
+    sbuf2flush(par->sb);
+}
+
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
 static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned int lid)
 {
@@ -226,12 +252,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     int blobsizes[16];
     int bloboffs[16];
     int nblobs = 0;
-    int now, last;
-    int64_t nrecs = 0;
-    int nrecs_progress = 0;
+    int last = comdb2_time_epochms();
     blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
-    now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
 
     DBT dbt_data = {0};
@@ -260,12 +283,12 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
 
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
-        nrecs++;
-        nrecs_progress++;
+        par->nrecs_progress++;
 
-        now = comdb2_time_epochms();
+        int now = comdb2_time_epochms();
+        print_verify_progress(par, now);
 
-        /* check if comdb2sc is killed */
+        /* check if comdb2sc is killed every 1000ms */
         if (!par->parallel_verify && (now - last) > 1000) {
             if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
@@ -273,21 +296,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
                 par->client_dropped_connection = 1;
                 return 0;
             }
-        }
-
-        if (par->progress_report_seconds &&
-            ((now - last) >= (par->progress_report_seconds * 1000))) {
-            rc = locprint(par->sb, par->lua_callback, par->lua_params, "!verifying dtastripe %d, did %lld records, %d "
-                            "per second\n",
-                        dtastripe, nrecs,
-                        nrecs_progress / par->progress_report_seconds);
-            if(rc) {
-                par->client_dropped_connection = 1;
-                return par->verify_status;
-            }
             last = now;
-            nrecs_progress = 0;
-            sbuf2flush(par->sb);
         }
 
         unsigned long long genid;
@@ -572,10 +581,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     int blobsizes[16];
     int bloboffs[16];
     int nblobs = 0;
-    int now, last;
+    int last = comdb2_time_epochms();
     blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
-    now = last = comdb2_time_epochms();
     bdb_state_type *bdb_state = par->bdb_state;
 
     DBT dbt_key = {0};
@@ -600,9 +608,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     dbt_dta_check_data.ulen = sizeof(verify_keybuf);
     dbt_dta_check_data.flags = DB_DBT_USERMEM;
 
-    int64_t nrecs = 0;
-    int nrecs_progress = 0;
-
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
         bdb_state->dbp_ix[ix], lid, &ckey, 0);
     if (rc) {
@@ -617,12 +622,12 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     }
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
-        nrecs++;
-        nrecs_progress++;
+        par->nrecs_progress++;
 
-        now = comdb2_time_epochms();
+        int now = comdb2_time_epochms();
+        print_verify_progress(par, now);
 
-        /* check if comdb2sc is killed */
+        /* check if comdb2sc is killed every 1000ms */
         if (!par->parallel_verify && (now - last) > 1000) {
             if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
@@ -630,16 +635,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                 par->client_dropped_connection = 1;
                 return 0;
             }
-        }
-
-        if (par->progress_report_seconds &&
-            ((now - last) >= (par->progress_report_seconds * 1000))) {
-            locprint(par->sb, par->lua_callback, par->lua_params,
-                "!verifying index %d, did %lld records, %d per second\n",
-                ix, nrecs, (int)(nrecs_progress / par->progress_report_seconds));
             last = now;
-            nrecs_progress = 0;
-            sbuf2flush(par->sb);
         }
 
         if (dbt_data.size < sizeof(unsigned long long)) {
@@ -1000,8 +996,11 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
-        int stripe;
+        par->nrecs_progress++;
         unsigned long long genid_flipped;
+
+        int now = comdb2_time_epochms();
+        print_verify_progress(par, now);
 
 #ifdef _LINUX_SOURCE
         buf_put(&genid, sizeof(unsigned long long),
@@ -1011,7 +1010,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
         genid_flipped = genid;
 #endif
 
-        stripe = get_dtafile_from_genid(genid);
+        int stripe = get_dtafile_from_genid(genid);
 
         if (!bdb_state->blobstripe_convert_genid ||
             bdb_check_genid_is_newer(
@@ -1136,7 +1135,7 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work, void *t
 /* Enqueue work object onto verify_thdpool if parameter is non NULL.
  * If verify_thdpool is NULL then processing occurs sequentially.
  */
-inline static void enqueue_work(td_processing_info_t *work, thdpool *verify_thdpool)
+static inline void enqueue_work(td_processing_info_t *work, thdpool *verify_thdpool)
 {
     // this function is called sequentially, no need for atomics
     work->common_params->threads_spawned++;
@@ -1165,6 +1164,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
     par->parallel_verify = 1;
+    par->last_reported = comdb2_time_epochms(); //initialize
 
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
@@ -1219,6 +1219,8 @@ int bdb_verify(verify_common_t *par)
         logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
         return rc;
     }
+
+    par->last_reported = comdb2_time_epochms(); //initialize
 
     rc = bdb_verify_sequential(par, lid); 
 

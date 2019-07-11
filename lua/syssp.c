@@ -222,9 +222,9 @@ static int db_comdb_verify(Lua L) {
     }
 
     if (mode == VERIFY_PARALLEL)
-        logmsg(LOGMSG_ERROR, "Verify in parallel mode for table %s\n", tblname);
+        logmsg(LOGMSG_ERROR, "Verify in parallel mode table %s\n", tblname);
     else
-        logmsg(LOGMSG_ERROR, "Verify in for table %s\n", tblname);
+        logmsg(LOGMSG_ERROR, "Verify table %s\n", tblname);
 
     char *cols[] = {"out"};
     struct sqlclntstate *clnt = sp->clnt;
@@ -241,7 +241,7 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L, mode); //freq 1, fix 0
+        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {

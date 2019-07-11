@@ -42,6 +42,8 @@ typedef struct {
     int (*lua_callback)(void *, const char *);
     void *lua_params;
     unsigned long long records_processed; // atomic inc: for progres report
+    int nrecs_progress; //progress done in this time window
+    int last_reported;  //last reported time
     int progress_report_seconds;
     int attempt_fix;
     unsigned short threads_spawned;

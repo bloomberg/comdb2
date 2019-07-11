@@ -146,16 +146,16 @@ let NEWNUMREC=100
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 1"
 
 insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
 assertcnt t1 $((NEWNUMREC*2))
+VERIFY_CMD="cdb2sql ${CDB2_OPTIONS} $dbnm default \"exec procedure sys.cmd.verify('t1')\""
 if [[ $DBNAME == *"parallelgenerated"* ]] ; then
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1','parallel')" > verify_nodta.tmp
-else
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" > verify_nodta.tmp
+    VERIFY_CMD="cdb2sql ${CDB2_OPTIONS} $dbnm default \"exec procedure sys.cmd.verify('t1','parallel')\""
 fi
 
+eval $VERIFY_CMD > verify_nodta.tmp
 grep 0000000 verify_nodta.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_nodta.out
 
 echo "checking for nodta verify out"
@@ -163,27 +163,27 @@ if ! diff verify_nodta.out verify_nodta.expected ; then
     failexit "diff ${PWD}/{verify_nodta.out,verify_nodta.expected}"
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_dta_write' 0"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 1"
 
 insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
 echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' | sort &> verify_noidx.out
-
+eval $VERIFY_CMD > verify_noidx.tmp
+grep 0000000 verify_noidx.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noidx.out
 
 echo "checking for idx verify out"
 if ! diff verify_noidx.out verify_noidx.expected ; then
     failexit "diff ${PWD}/{verify_noidx.out,verify_noidx.expected}"
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_idx_write' 0"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 
@@ -191,19 +191,20 @@ insert_records 1 $NEWNUMREC
 echo did not write to idx so count will appear as $NEWNUMREC instead of 2*$NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 1" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 1"
 
 insert_records $((NEWNUMREC+1)) $((NEWNUMREC*2)) 
 assertcnt t1 $((NEWNUMREC*2))
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" | grep 0000000 | sed 's/0000000[^ ]*//g' | sort &> verify_noblob.out
+eval $VERIFY_CMD > verify_noblob.tmp
+grep 0000000 verify_noblob.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noblob.out
 
 echo "checking for blob verify out"
 if ! diff verify_noblob.out verify_noblob.expected ; then
     failexit "diff ${PWD}/{verify_noblob.out,verify_noblob.expected}"
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 0" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blob_write' 0"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
