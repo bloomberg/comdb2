@@ -577,11 +577,11 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
 
 static int isPrepare(BtCursor *pCur) {
    sqlite3 *db = NULL;
-    if (pCur->bt && pCur->bt->vdbe) {
-      db = pCur->bt->vdbe->db;
+   if (pCur->vdbe) {
+       db = pCur->vdbe->db;
    }
-    if (db && db->init.busy) {
-      return 1;
+   if (db && db->init.busy) {
+       return 1;
    }
     return 0;
 }
