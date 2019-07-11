@@ -8736,12 +8736,6 @@ int sqlite3BtreeGetGenId(
   assert( pCur );
   assert( sizeof(pCur->rrn)<=sizeof(int) );
   assert( sizeof(pCur->genid)<=sizeof(unsigned long long) );
-  if( !pCur->bt->is_temporary && pCur->cursor_class==CURSORCLASS_TABLE ){
-    int rc = enque_pfault_olddata_oldkeys(pCur->db, rowId, 0, -1, 0, 1, 1, 1);
-    if( rc!=SQLITE_OK ){
-      logmsg(LOGMSG_USER, "%s: enque_pfault_olddata_oldkeys %d\n",__func__,rc);
-    }
-  }
   prgenid = flibc_htonll(rowId);
   if( pGenId ) *pGenId = prgenid;
   if( pzGenId && pnGenId ){

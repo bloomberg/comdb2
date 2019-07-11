@@ -17,8 +17,8 @@
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsComdb2Rowid(const char *);
-int sqlite3IsComdb2RowTimestamp(const char *);
+int sqlite3IsComdb2Rowid(Table *pTab, const char *);
+int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *);
 int is_comdb2_index_blob(const char *dbname, int icol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -415,11 +415,11 @@ static int lookupName(
     ** the vm sniffs this out when it runs OP_Rowid and executes the comdb2
     ** backend call to get the rrn+genid.
     */
-    else if( cnt==0 && cntTab==1 && sqlite3IsComdb2Rowid(zCol) ){
+    else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -2;
        pExpr->affinity = SQLITE_AFF_TEXT;
-    }else if( cnt==0 && cntTab==1 && sqlite3IsComdb2RowTimestamp(zCol) ){
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
        pExpr->affinity = SQLITE_AFF_TEXT;
