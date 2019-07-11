@@ -2556,11 +2556,6 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
-    Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    Pthread_cond_init(&clnt.wait_cond, NULL);
-    Pthread_mutex_init(&clnt.write_lock, NULL);
-    Pthread_cond_init(&clnt.write_cond, NULL);
-    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
     int rc = dispatch_sql_query(&clnt); // --> exec_thread()
     /* Done running -- wake up anyone blocked on join */
@@ -2574,11 +2569,6 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_signal(&thd->lua_thread_cond);
     Pthread_mutex_unlock(&thd->lua_thread_mutex);
     cleanup_clnt(&clnt);
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
     return NULL;
 }
 
@@ -6520,7 +6510,7 @@ void *exec_trigger(trigger_reg_t *reg)
     }
     put_curtran(thedb->bdb_env, &clnt);
     close_sp(&clnt);
-    cleanup_clnt(&clnt);
+    end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
     thread_memdestroy();

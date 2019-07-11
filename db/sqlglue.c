@@ -2104,6 +2104,8 @@ done:
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
         sqlite3_close(hndl);
+
+    cleanup_clnt(&client);
     done_sql_thread();
     sql_mem_shutdown(NULL);
     return rc;
@@ -11941,10 +11943,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     if (clnt.query_stats)
         free(clnt.query_stats);
 
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
+    end_internal_sql_clnt(&clnt);
 
     return rc;
 }
