@@ -1,0 +1,2 @@
+select *, comdb2_rowid from comdb2_tables;
+select *, comdb2_rowtimestamp from comdb2_tables;
