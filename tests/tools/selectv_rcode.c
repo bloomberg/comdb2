@@ -215,8 +215,13 @@ int selectv_update(cdb2_hndl_tp *db)
         }
         if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
                         "instid = @instid")) != CDB2_OK) {
-            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
+            if (is_common_acceptable_error(db, rc)) {
+                cdb2_run_statement(db, "rollback");
+                return 0;
+            } else {
+                fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
+                exit(1);
+            }
         }
     }
     if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {

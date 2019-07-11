@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-export debug=1
+#export debug=1
 [[ $debug == "1" ]] && set -x
 
 export myhost=$(hostname)
