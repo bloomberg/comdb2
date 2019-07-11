@@ -415,11 +415,11 @@ static int lookupName(
     ** the vm sniffs this out when it runs OP_Rowid and executes the comdb2
     ** backend call to get the rrn+genid.
     */
-    else if( cnt==0 && cntTab==1 && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
+    else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -2;
        pExpr->affinity = SQLITE_AFF_TEXT;
-    }else if( cnt==0 && cntTab==1 && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
        pExpr->affinity = SQLITE_AFF_TEXT;
