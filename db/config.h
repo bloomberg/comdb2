@@ -18,6 +18,7 @@
 #define CONFIG_H
 
 void print_usage_and_exit();
+void print_version_and_exit();
 int handle_cmdline_options(int argc, char **argv, char **lrlname);
 int read_lrl_files(struct dbenv *dbenv, const char *lrlname);
 void getmyaddr();

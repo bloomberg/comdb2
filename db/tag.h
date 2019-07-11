@@ -107,9 +107,10 @@ enum {
 /* flags for schema conversion */
 enum {
     /* conversion for update: skip fields missing in source buffer */
-    CONVERT_UPDATE = 1,
+    CONVERT_UPDATE               = 1,
     CONVERT_LITTLE_ENDIAN_CLIENT = 2,
-    CONVERT_NULL_NO_ERROR = 4 // support instant sc for dbstore
+    CONVERT_NULL_NO_ERROR        = 4, // support instant sc for dbstore
+    CONVERT_IGNORE_BLOBS         = 8
 };
 
 typedef enum convert_errcode {
