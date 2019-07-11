@@ -618,6 +618,7 @@ stack
       loop
       {or
           {stack
+              {opt /constraint-name =}
               {line /keyname -> 
                    {or 
                         {line /ref-table-name : /ref-keyname }
@@ -630,7 +631,7 @@ stack
                 }
               }
           }
-          {line CHECK /constraint-name = /expr }
+          {line check /constraint-name = lbrc where /expr rbrc}
       }
   }
 
