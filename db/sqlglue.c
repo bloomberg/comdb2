@@ -575,6 +575,17 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     return rc < 0 ? SQLITE_BUSY : rc;
 }
 
+static int isPrepare(BtCursor *pCur) {
+   sqlite3 *db = NULL;
+    if (pCur->bt && pCur->bt->vdbe) {
+      db = pCur->bt->vdbe->db;
+   }
+    if (db && db->init.busy) {
+      return 1;
+   }
+    return 0;
+}
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -2190,10 +2201,12 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
         break;
     }
 
-    rc = sql_tick(thd, uses_bdb_locking);
-    if (rc) {
-        *done = 1;
-        return rc;
+    if (!isPrepare(pCur)) {
+        rc = sql_tick(thd, uses_bdb_locking);
+        if (rc) {
+            *done = 1;
+            return rc;
+        }
     }
 
     if (thd->clnt->is_analyze &&
@@ -5359,10 +5372,12 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
      * compressed) */
     assert(0 == pCur->is_sampled_idx);
 
-    rc = sql_tick(thd, pCur->bt->is_temporary == 0);
+    if (!isPrepare(pCur)) {
+        rc = sql_tick(thd, pCur->bt->is_temporary == 0);
 
-    if (rc)
-        return rc;
+        if (rc)
+            return rc;
+    }
 
     pCur->nfind++;
 

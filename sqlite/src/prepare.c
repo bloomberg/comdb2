@@ -385,7 +385,7 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
     sqlite3DbFree(db, zSql);
 #ifndef SQLITE_OMIT_ANALYZE
     if( rc==SQLITE_OK ){
-      sqlite3AnalysisLoad(db, iDb);
+      rc = sqlite3AnalysisLoad(db, iDb);
     }
 #endif
   }
