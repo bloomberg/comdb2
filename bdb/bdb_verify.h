@@ -17,10 +17,11 @@
 #ifndef __bdb_verify_h
 #define __bdb_verify_h
 
+#include "verify.h"
+
 struct SBUF2;
 struct bdb_state_type;
 typedef struct thdpool thdpool;
-typedef struct dbtable dbtable;
 
 typedef enum {PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB} processing_type;
 
@@ -48,7 +49,7 @@ typedef struct {
     int attempt_fix;
     unsigned short threads_spawned;
     unsigned short threads_completed; //atomic inc
-    uint8_t parallel_verify;
+    verify_mode_t verify_mode;
     uint8_t client_dropped_connection;
     uint8_t verify_status; //0 success, 1 failure
 } verify_common_t;

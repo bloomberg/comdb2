@@ -38,7 +38,7 @@ struct thdpool *gbl_verify_thdpool;
 static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
                     int (*lua_callback)(void *, const char *),
-                    void *lua_params);
+                    void *lua_params, verify_mode_t mode);
 
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
@@ -337,7 +337,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
         .progress_report_seconds = progress_report_seconds,
         .attempt_fix = attempt_fix
     };
-    rc = bdb_verify(&par);
+    rc = bdb_verify(&par); //non-parallel version
 
 done:
     if (tran)
@@ -379,8 +379,8 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
                  int attempt_fix, int (*lua_callback)(void *, const char *),
                  void *lua_params, verify_mode_t mode)
 {
-    if (mode == VERIFY_PARALLEL)
-        return parallel_verify_table(table, sb, progress_report_seconds, attempt_fix, lua_callback, lua_params);
+    if (mode != VERIFY_DEFAULT)
+        return parallel_verify_table(table, sb, progress_report_seconds, attempt_fix, lua_callback, lua_params, mode);
 
     int rc;
     struct verify_args v;
@@ -426,7 +426,7 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
 static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
                     int (*lua_callback)(void *, const char *),
-                    void *lua_params)
+                    void *lua_params, verify_mode_t mode)
 {
     int rc;
     int bdberr;
@@ -474,7 +474,8 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         .lua_callback = lua_callback,
         .lua_params = lua_params,
         .progress_report_seconds = progress_report_seconds,
-        .attempt_fix = attempt_fix
+        .attempt_fix = attempt_fix,
+        .verify_mode = mode,
     };
 
     td_processing_info_t info = { .common_params =  &par };

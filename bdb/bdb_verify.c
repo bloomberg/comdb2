@@ -289,7 +289,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         print_verify_progress(par, now);
 
         /* check if comdb2sc is killed every 1000ms */
-        if (!par->parallel_verify && (now - last) > 1000) {
+        if (par->verify_mode == VERIFY_DEFAULT && (now - last) > 1000) {
             if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
                 logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
@@ -628,7 +628,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         print_verify_progress(par, now);
 
         /* check if comdb2sc is killed every 1000ms */
-        if (!par->parallel_verify && (now - last) > 1000) {
+        if (par->verify_mode == VERIFY_DEFAULT && (now - last) > 1000) {
             if (bdb_dropped_connection(par->sb)) {
                 cdata->c_close(cdata);
                 logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
@@ -1096,7 +1096,6 @@ void bdb_verify_handler(td_processing_info_t *info)
     bdb_state_type *bdb_state = par->bdb_state;
     int rc;
     unsigned int lid;
-    assert (par->parallel_verify);
     BDB_READLOCK("bdb_verify");
     
     if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
@@ -1163,49 +1162,59 @@ static inline void enqueue_work(td_processing_info_t *work, thdpool *verify_thdp
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
-    par->parallel_verify = 1;
     par->last_reported = comdb2_time_epochms(); //initialize
 
-    /* scan 1 - run through data, verify all the keys and blobs */
-    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
-        td_processing_info_t *work = malloc(sizeof(*work));
-        memcpy(work, info, sizeof(*work));
-        work->type = PROCESS_DATA;
-        work->dtastripe = dtastripe;
-        enqueue_work(work, verify_thdpool);
-    }
-
-
-    /* scan 2: scan each key, verify data exists */
-    for (int ix = 0; ix < par->bdb_state->numix; ix++) {
-        td_processing_info_t *work = malloc(sizeof(*work));
-        memcpy(work, info, sizeof(*work));
-        work->type = PROCESS_KEY;
-        work->index = ix;
-        enqueue_work(work, verify_thdpool);
-    }
-
-    /* scan 3: scan each blob, verify data exists */
-    int nblobs = get_numblobs(par->db_table);
-    for (int blobno = 0; blobno < nblobs; blobno++) {
-        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
-             dtastripe++) {
+    if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_DATA) {
+        /* scan 1 - run through data, verify all the keys and blobs */
+        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
             td_processing_info_t *work = malloc(sizeof(*work));
             memcpy(work, info, sizeof(*work));
-            work->type = PROCESS_BLOB;
-            work->blobno = blobno;
+            work->type = PROCESS_DATA;
             work->dtastripe = dtastripe;
             enqueue_work(work, verify_thdpool);
+        }
+    }
+
+
+    if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_INDICES) {
+        /* scan 2: scan each key, verify data exists */
+        for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+            td_processing_info_t *work = malloc(sizeof(*work));
+            memcpy(work, info, sizeof(*work));
+            work->type = PROCESS_KEY;
+            work->index = ix;
+            enqueue_work(work, verify_thdpool);
+        }
+    }
+
+    if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_BLOBS) {
+        /* scan 3: scan each blob, verify data exists */
+        int nblobs = get_numblobs(par->db_table);
+        for (int blobno = 0; blobno < nblobs; blobno++) {
+            for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
+                    dtastripe++) {
+                td_processing_info_t *work = malloc(sizeof(*work));
+                memcpy(work, info, sizeof(*work));
+                work->type = PROCESS_BLOB;
+                work->blobno = blobno;
+                work->dtastripe = dtastripe;
+                enqueue_work(work, verify_thdpool);
+            }
         }
     }
 
     return par->verify_status;
 }
 
+/* this is the sequential verify version
+ */
 int bdb_verify(verify_common_t *par)
 {
-    td_processing_info_t info = { .common_params = par };
-    return bdb_verify_enqueue(&info, NULL);
+    /* { // for having default mode behave like parallel mode for testing
+        td_processing_info_t info = { .common_params = par };
+        par->verify_mode = VERIFY_PARALLEL; 
+        return bdb_verify_enqueue(&info, NULL); //passing null will force sequential
+    } */
 
     int rc;
     unsigned int lid;

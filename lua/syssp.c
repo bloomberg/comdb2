@@ -218,13 +218,19 @@ static int db_comdb_verify(Lua L) {
         char *m = (char *) lua_tostring(L, -1);
         if (strcmp(m, "parallel") == 0) {
             mode = VERIFY_PARALLEL;
-        }
+            logmsg(LOGMSG_ERROR, "Verify in parallel mode table %s\n", tblname);
+        } else if (strcmp(m, "data") == 0) {
+            mode = VERIFY_DATA;
+            logmsg(LOGMSG_ERROR, "Verify ONLY data for table %s\n", tblname);
+        } else if (strcmp(m, "indices") == 0) {
+            mode = VERIFY_INDICES;
+            logmsg(LOGMSG_ERROR, "Verify ONLY indices for table %s\n", tblname);
+        } else if (strcmp(m, "blobs") == 0) {
+            mode = VERIFY_BLOBS;
+            logmsg(LOGMSG_ERROR, "Verify ONLY blobs for table %s\n", tblname);
+        } else
+            logmsg(LOGMSG_ERROR, "Verify table %s\n", tblname);
     }
-
-    if (mode == VERIFY_PARALLEL)
-        logmsg(LOGMSG_ERROR, "Verify in parallel mode table %s\n", tblname);
-    else
-        logmsg(LOGMSG_ERROR, "Verify table %s\n", tblname);
 
     char *cols[] = {"out"};
     struct sqlclntstate *clnt = sp->clnt;
