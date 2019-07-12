@@ -24,12 +24,13 @@
 
 struct fingerprint_track_systbl {
     systable_blobtype fp_blob;
-    int64_t count;   /* Cumulative number of times executed */
-    int64_t cost;    /* Cumulative cost */
-    int64_t time;    /* Cumulative execution time */
-    int64_t rows;    /* Cumulative number of rows selected */
-    char *zNormSql;  /* The normalized SQL query */
-    size_t nNormSql; /* Length of normalized SQL query */
+    int64_t count;    /* Cumulative number of times executed */
+    int64_t cost;     /* Cumulative cost */
+    int64_t time;     /* Cumulative preparation and execution time */
+    int64_t prepTime; /* Cumulative preparation time only */
+    int64_t rows;     /* Cumulative number of rows selected */
+    char *zNormSql;   /* The normalized SQL query */
+    size_t nNormSql;  /* Length of normalized SQL query */
 };
 
 extern hash_t *gbl_fingerprint_hash;
@@ -79,6 +80,7 @@ static int fingerprints_callback(void **data, int *npoints)
                     pFp[copied].count = pEntry->count;
                     pFp[copied].cost = pEntry->cost;
                     pFp[copied].time = pEntry->time;
+                    pFp[copied].prepTime = pEntry->prepTime;
                     pFp[copied].rows = pEntry->rows;
                     if (pEntry->zNormSql != NULL) {
                         pFp[copied].zNormSql = strdup(pEntry->zNormSql);
@@ -122,6 +124,8 @@ int systblFingerprintsInit(sqlite3 *db)
         offsetof(struct fingerprint_track, cost),
         CDB2_INTEGER, "total_time", -1,
         offsetof(struct fingerprint_track, time),
+        CDB2_INTEGER, "total_prep_time", -1,
+        offsetof(struct fingerprint_track, prepTime),
         CDB2_INTEGER, "total_rows", -1,
         offsetof(struct fingerprint_track, rows),
         CDB2_CSTRING, "normalized_sql", -1,

@@ -1088,10 +1088,6 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
-    Pthread_mutex_destroy(&clnt->wait_mutex);
-    Pthread_cond_destroy(&clnt->wait_cond);
-    Pthread_mutex_destroy(&clnt->write_lock);
-    Pthread_mutex_destroy(&clnt->dtran_mtx);
     free(clnt);
 }
 

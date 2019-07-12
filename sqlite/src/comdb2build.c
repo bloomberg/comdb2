@@ -34,6 +34,8 @@ extern int gbl_convert_sleep;
 extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
+extern int gbl_legacy_schema;
+
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
@@ -2565,6 +2567,14 @@ struct comdb2_key {
     LINKC_T(struct comdb2_key) lnk;
 };
 
+/* Supported constraint types */
+enum {
+    CONS_FKEY = 1 << 1,
+    CONS_CHECK = 1 << 2,
+};
+
+#define CONS_ALL (CONS_FKEY | CONS_CHECK)
+
 /* Constraint flags */
 enum {
     CONS_UPD_CASCADE = 1 << 0,
@@ -2575,6 +2585,8 @@ enum {
 struct comdb2_constraint {
     /* Name of the constraint. */
     char *name;
+    /* Constraint type */
+    uint8_t type;
 
     /*
        The following are helper fields to hold the column names and respective
@@ -2595,7 +2607,8 @@ struct comdb2_constraint {
     char *parent_key;
     /* Constraint flags */
     uint8_t flags;
-
+    /* CHECK expr */
+    char *check_expr;
     /* Link */
     LINKC_T(struct comdb2_constraint) lnk;
 };
@@ -3022,6 +3035,34 @@ err:
     return 1;
 }
 
+static void csc2_append_fkey_cons(struct strbuf *csc2,
+                                  struct comdb2_constraint *constraint)
+{
+    if (constraint->name)
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+
+    strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
+    strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
+                   constraint->parent_key);
+
+    if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
+        strbuf_append(csc2, "on update cascade ");
+    }
+    if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
+        strbuf_append(csc2, "on delete cascade ");
+    }
+}
+
+static void csc2_append_check_cons(struct strbuf *csc2,
+                                   struct comdb2_constraint *constraint)
+{
+    strbuf_append(csc2, "check ");
+    if (constraint->name) {
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+    }
+    strbuf_appendf(csc2, "{where %s}", constraint->check_expr);
+}
+
 /*
   Format the table information into a CSC2 string.
 */
@@ -3122,7 +3163,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
             strbuf_appendf(csc2, "%s%s ",
                            (idx_part->flags & INDEX_ORDER_DESC) ? "<DESCEND> "
-                                                                  : "",
+                                                                : "",
                            idx_part->name);
 
             added++;
@@ -3151,18 +3192,10 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
         strbuf_append(csc2, "\n\t\t");
 
-        if (constraint->name)
-            strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
-
-        strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
-        strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
-                       constraint->parent_key);
-
-        if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
-            strbuf_append(csc2, "on update cascade ");
-        }
-        if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
-            strbuf_append(csc2, "on delete cascade ");
+        if (constraint->type == CONS_FKEY) {
+            csc2_append_fkey_cons(csc2, constraint);
+        } else if (constraint->type == CONS_CHECK) {
+            csc2_append_check_cons(csc2, constraint);
         }
     }
 
@@ -3264,10 +3297,24 @@ static int gen_constraint_name_int(char *in, size_t in_size, char *out,
     return 0;
 }
 
-int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
-                        size_t out_size)
+static int serialize_check_attributes(const char *check_expr, char *buf,
+                                      size_t buf_sz)
 {
-    char buf[3 * 1024];
+    int pos = 0;
+    /* CHECK expression */
+    SNPRINTF(buf, buf_sz, pos, "%s", check_expr);
+
+done:
+    return pos;
+}
+
+/* Serialize the details of the constraint into the specified buffer.
+ * NOTE: There's a sister function below 'serialize_fk_attributes2' that does
+ * the same this, but out of a different structure (struct comdb2_constraint).
+ */
+static int serialize_fk_attributes(constraint_t *pConstraint, int parent_idx,
+                                   char *buf, size_t buf_sz)
+{
     struct dbtable *table;
     struct schema *key;
     int pos = 0;
@@ -3286,11 +3333,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -3300,7 +3347,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
     /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
+    SNPRINTF(buf, buf_sz, pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -3322,11 +3369,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -3336,15 +3383,12 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
 done:
-    gen_constraint_name_int(buf, pos, out, out_size);
-
-    return 0;
+    return pos;
 }
 
-static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
-                                size_t out_size)
+static int serialize_fk_attributes2(struct comdb2_constraint *constraint,
+                                    char *buf, size_t buf_sz)
 {
-    char buf[3 * 1024];
     int pos = 0;
     struct comdb2_index_part *idx_part;
 
@@ -3352,29 +3396,71 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
     LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
     {
         /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
         /* Sort order */
         if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
     }
 
     /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", constraint->parent_table)
+    SNPRINTF(buf, buf_sz, pos, "%s", constraint->parent_table)
 
     /* Parent key columns and sort orders */
     LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
     {
         /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
         /* Sort order */
         if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
     }
 
 done:
-    gen_constraint_name_int(buf, pos, out, out_size);
+    return pos;
+}
+
+int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
+                           size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_fk_attributes(pConstraint, parent_idx, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
+                              size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_check_attributes(pConstraint->expr, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+static int gen_constraint_name(struct comdb2_constraint *constraint, char *out,
+                               size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    if (constraint->type == CONS_CHECK) {
+        end = serialize_check_attributes(constraint->check_expr, ptr,
+                                         sizeof(buf));
+    } else {
+        end = serialize_fk_attributes2(constraint, ptr, sizeof(buf));
+    }
+    gen_constraint_name_int(buf, end, out, out_size);
 
     return 0;
 }
@@ -3532,6 +3618,10 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     {
         /* Check whether the constraint has been dropped. */
         if (constraint->flags & CONS_DELETED)
+            continue;
+
+        /* Skip for CHECK constraints. */
+        if (constraint->type == CONS_CHECK)
             continue;
 
         /* Check if there's already a child key */
@@ -3724,13 +3814,204 @@ oom:
     return 1;
 }
 
+static void escape_expr(struct strbuf *out, const char *expr)
+{
+    while (*expr) {
+        if (*expr == '"') {
+            strbuf_append(out, "\\\"");
+        } else {
+            strbuf_appendf(out, "%c", *expr);
+        }
+        ++expr;
+    }
+}
+
+static int retrieve_check_constraint(Parse *pParse,
+                                     struct comdb2_ddl_context *ctx,
+                                     check_constraint_t *cons)
+{
+    struct comdb2_constraint *constraint;
+
+    constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+    if (constraint == 0)
+        goto oom;
+
+    /* Type */
+    constraint->type = CONS_CHECK;
+
+    /* CHECK expression */
+    constraint->check_expr = comdb2_strdup(ctx->mem, cons->expr);
+    if (constraint->check_expr == 0)
+        goto oom;
+
+    /* TODO: (NC) escape quotes? */
+
+    /* Name */
+    assert(cons->consname);
+    constraint->name = comdb2_strdup(ctx->mem, cons->consname);
+    if (constraint->name == 0)
+        goto oom;
+
+    listc_abl(&ctx->schema->constraint_list, constraint);
+    return 0;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+    return 2;
+}
+
+static int retrieve_fk_constraint(Parse *pParse, struct comdb2_ddl_context *ctx,
+                                  constraint_t *cons)
+{
+    struct comdb2_constraint *constraint;
+    struct comdb2_index_part *idx_part;
+    struct comdb2_key *child_key;
+    struct dbtable *parent_table;
+    struct schema *parent_schema;
+    struct comdb2_key *current;
+    int key_found = 0;
+
+    /* Locate the child key. */
+    LISTC_FOR_EACH(&ctx->schema->key_list, current, lnk)
+    {
+        if (strcasecmp(cons->lclkeyname, current->name) == 0) {
+            child_key = current;
+            key_found = 1;
+            break;
+        }
+    }
+
+    if (key_found == 0) {
+        setError(pParse, SQLITE_ERROR,
+                 "FK: Local key used in the foreign key constraint could not "
+                 "be found.");
+        goto err;
+    }
+
+    /* Locate the parent key. */
+    for (int i = 0; i < cons->nrules; i++) {
+        parent_schema = 0;
+        parent_table = get_dbtable_by_name(cons->table[i]);
+        if (parent_table == 0) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
+                            cons->table[i]);
+            goto err;
+        }
+
+        for (int j = 0; j < parent_table->schema->nix; j++) {
+            if (strcasecmp(parent_table->schema->ix[j]->csctag,
+                           cons->keynm[i]) == 0) {
+                parent_schema = parent_table->schema->ix[j];
+            }
+        }
+        if (parent_schema == 0) {
+            setError(pParse, SQLITE_ERROR,
+                     "FK: Referenced key used in the foreign key constraint "
+                     "could not be found.");
+            goto err;
+        }
+
+        constraint =
+            comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+        if (constraint == 0)
+            goto oom;
+
+        /* Type */
+        constraint->type = CONS_FKEY;
+
+        /* Initialize the lists. */
+        listc_init(&constraint->child_idx_col_list,
+                   offsetof(struct comdb2_index_part, lnk));
+        listc_init(&constraint->parent_idx_col_list,
+                   offsetof(struct comdb2_index_part, lnk));
+
+        /* Add child index columns. */
+        struct comdb2_index_part *current;
+        LISTC_FOR_EACH(&child_key->idx_col_list, current, lnk)
+        {
+            idx_part =
+                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_part));
+            if (idx_part == 0)
+                goto oom;
+
+            idx_part->name = current->name;
+            idx_part->flags = current->flags;
+            idx_part->column = current->column;
+
+            listc_abl(&constraint->child_idx_col_list, idx_part);
+        }
+
+        /* Add parent index columns. */
+        for (int j = 0; j < parent_schema->nmembers; j++) {
+            idx_part =
+                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_part));
+            if (idx_part == 0)
+                goto oom;
+
+            idx_part->name =
+                comdb2_strdup(ctx->mem, parent_schema->member[j].name);
+            if (idx_part->name == 0)
+                goto oom;
+
+            if (parent_schema->member[j].flags & INDEX_DESCEND) {
+                idx_part->flags |= INDEX_ORDER_DESC;
+            }
+            /* There's no comdb2_column for foreign columns. */
+            // idx_part->column = 0;
+
+            listc_abl(&constraint->parent_idx_col_list, idx_part);
+        }
+
+        /* Reference to the child key. */
+        constraint->child = child_key;
+
+        /* Parent table name. */
+        constraint->parent_table =
+            comdb2_strdup(ctx->mem, parent_table->tablename);
+        if (constraint->parent_table == 0)
+            goto oom;
+
+        /* Parent key name */
+        constraint->parent_key = comdb2_strdup(ctx->mem, parent_schema->csctag);
+        if (constraint->parent_key == 0)
+            goto oom;
+
+        /* Flags */
+        if (cons->flags & CT_UPD_CASCADE) {
+            constraint->flags |= CONS_UPD_CASCADE;
+        }
+        if (cons->flags & CT_DEL_CASCADE) {
+            constraint->flags |= CONS_DEL_CASCADE;
+        }
+
+        if (cons->consname) {
+            /*
+              CSC2 does not allow named constraints to have multiple
+              parent key references.
+            */
+            assert(i == 0);
+            constraint->name = comdb2_strdup(ctx->mem, cons->consname);
+            if (constraint->name == 0)
+                goto oom;
+        }
+        listc_abl(&ctx->schema->constraint_list, constraint);
+    }
+    return 0;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+err:
+    return 1;
+}
+
 /*
   Fetch the schema definition of the table being altered.
 */
 static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     struct dbtable *table;
-    struct dbtable *parent_table;
     struct schema *schema;
     struct dbtag *tag;
 
@@ -3798,8 +4079,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             key->flags |= KEY_UNIQNULLS;
         }
 
-        listc_init(&key->idx_col_list,
-                   offsetof(struct comdb2_index_part, lnk));
+        listc_init(&key->idx_col_list, offsetof(struct comdb2_index_part, lnk));
 
         struct comdb2_column *column;
         struct comdb2_index_part *idx_part;
@@ -3813,7 +4093,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (schema->ix[i]->member[j].isExpr) {
                 struct strbuf *csc2_expr;
                 struct comdb2_column expr_col;
-                char *c;
 
                 /* field.idx is the index of column in the table. It's -1
                  * for index on expression. */
@@ -3832,18 +4111,12 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                 if (expr_col.len > 0) {
                     strbuf_appendf(csc2_expr, "[%d]", expr_col.len);
                 }
+
                 strbuf_append(csc2_expr, ")\"");
 
                 /* Expression */
-                c = schema->ix[i]->member[j].name;
-                while(*c) {
-                    if (*c == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *c);
-                    }
-                    ++c;
-                }
+                escape_expr(csc2_expr, schema->ix[i]->member[j].name);
+
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -3885,142 +4158,14 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     /* Populate constraints list */
-    struct comdb2_constraint *constraint;
-    struct comdb2_index_part *idx_part;
-    struct comdb2_key *child_key;
-    struct schema *parent_schema;
     for (int i = 0; i < table->n_constraints; i++) {
-        struct comdb2_key *current;
-        int key_found = 0;
-        /* Locate the child key. */
-        LISTC_FOR_EACH(&ctx->schema->key_list, current, lnk)
-        {
-            if (strcasecmp(table->constraints[i].lclkeyname, current->name) ==
-                0) {
-                child_key = current;
-                key_found = 1;
-                break;
-            }
-        }
-
-        if (key_found == 0) {
-            setError(pParse, SQLITE_ERROR,
-                     "FK: Local key used in the foreign "
-                     "key constraint could not be "
-                     "found.");
-            goto cleanup;
-        }
-
-        /* Locate the parent key. */
-        for (int j = 0; j < table->constraints->nrules; j++) {
-            parent_schema = 0;
-            parent_table = get_dbtable_by_name(table->constraints[i].table[j]);
-            if (parent_table == 0) {
-                pParse->rc = SQLITE_ERROR;
-                sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
-                                table->constraints[i].table[j]);
-                goto cleanup;
-            }
-
-            for (int k = 0; k < parent_table->schema->nix; k++) {
-                if (strcasecmp(parent_table->schema->ix[k]->csctag,
-                               table->constraints[i].keynm[j]) == 0) {
-                    parent_schema = parent_table->schema->ix[k];
-                }
-            }
-            if (parent_schema == 0) {
-                setError(pParse, SQLITE_ERROR,
-                         "FK: Referenced key used in the "
-                         "foreign key constraint could "
-                         "not be found.");
-                goto cleanup;
-            }
-
-            constraint =
-                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
-            if (constraint == 0)
-                goto oom;
-
-            /* Initialize the lists. */
-            listc_init(&constraint->child_idx_col_list,
-                       offsetof(struct comdb2_index_part, lnk));
-            listc_init(&constraint->parent_idx_col_list,
-                       offsetof(struct comdb2_index_part, lnk));
-
-            /* Add child index columns. */
-            struct comdb2_index_part *current;
-            LISTC_FOR_EACH(&child_key->idx_col_list, current, lnk)
-            {
-                idx_part = comdb2_calloc(ctx->mem, 1,
-                                           sizeof(struct comdb2_index_part));
-                if (idx_part == 0)
-                    goto oom;
-
-                idx_part->name = current->name;
-                idx_part->flags = current->flags;
-                idx_part->column = current->column;
-
-                listc_abl(&constraint->child_idx_col_list, idx_part);
-            }
-
-            /* Add parent index columns. */
-            for (int i = 0; i < parent_schema->nmembers; i++) {
-                idx_part = comdb2_calloc(ctx->mem, 1,
-                                           sizeof(struct comdb2_index_part));
-                if (idx_part == 0)
-                    goto oom;
-
-                idx_part->name =
-                    comdb2_strdup(ctx->mem, parent_schema->member[i].name);
-                if (idx_part->name == 0)
-                    goto oom;
-
-                if (parent_schema->member[i].flags & INDEX_DESCEND) {
-                    idx_part->flags |= INDEX_ORDER_DESC;
-                }
-                /* There's no comdb2_column for foreign columns. */
-                // idx_part->column = 0;
-
-                listc_abl(&constraint->parent_idx_col_list, idx_part);
-            }
-
-            /* Reference to the child key. */
-            constraint->child = child_key;
-
-            /* Parent table name. */
-            constraint->parent_table =
-                comdb2_strdup(ctx->mem, parent_table->tablename);
-            if (constraint->parent_table == 0)
-                goto oom;
-
-            /* Parent key name */
-            constraint->parent_key =
-                comdb2_strdup(ctx->mem, parent_schema->csctag);
-            if (constraint->parent_key == 0)
-                goto oom;
-
-            /* Flags */
-            if (table->constraints[i].flags & CT_UPD_CASCADE) {
-                constraint->flags |= CONS_UPD_CASCADE;
-            }
-            if (table->constraints[i].flags & CT_DEL_CASCADE) {
-                constraint->flags |= CONS_DEL_CASCADE;
-            }
-
-            if (table->constraints[i].consname) {
-                /*
-                  Csc2 does not allow named constraints to have multiple
-                  parent key references.
-                */
-                assert(j == 0);
-                constraint->name =
-                    comdb2_strdup(ctx->mem, table->constraints[i].consname);
-                if (constraint->name == 0)
-                    goto oom;
-            }
-
-            listc_abl(&ctx->schema->constraint_list, constraint);
-        }
+        if ((retrieve_fk_constraint(pParse, ctx, &table->constraints[i])))
+            goto err;
+    }
+    for (int i = 0; i < table->n_check_constraints; i++) {
+        if ((retrieve_check_constraint(pParse, ctx,
+                                       &table->check_constraints[i])))
+            goto err;
     }
 
     /* Fetch all user-defined tags. */
@@ -4066,7 +4211,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
-cleanup:
+err:
     return 1;
 }
 
@@ -4654,7 +4799,7 @@ void comdb2AddDbpad(Parse *pParse, int dbpad)
 }
 
 static struct comdb2_constraint *
-find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
+find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons, int type)
 {
     struct comdb2_constraint *constraint;
     char *constraint_name;
@@ -4666,9 +4811,12 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
         if (constraint->flags & CONS_DELETED)
             continue;
 
+        if ((constraint->type & type) == 0)
+            continue;
+
         if (constraint->name == 0) {
-            gen_constraint_name2(constraint, constraint_name_buf,
-                                 sizeof(constraint_name_buf));
+            gen_constraint_name(constraint, constraint_name_buf,
+                                sizeof(constraint_name_buf));
             constraint_name = constraint_name_buf;
         } else {
             constraint_name = constraint->name;
@@ -4859,15 +5007,7 @@ static void comdb2AddIndexInt(
 
                 /* Expression */
                 strbuf_append(csc2_expr, "\"");
-                ptr = expr;
-                while(*ptr) {
-                    if (*ptr == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *ptr);
-                    }
-                    ++ptr;
-                }
+                escape_expr(csc2_expr, expr);
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -5276,6 +5416,53 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     return 1;
 }
 
+/* Set the constraint name. Also check whether another
+ * constraint exists with the same name.
+ */
+static int set_constraint_name(Parse *pParse,
+                               struct comdb2_constraint *constraint)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char constraint_name_buf[MAXCONSLEN + 1];
+    char *constraint_name;
+
+    if (pParse->constraintName.n == 0) {
+        /* Generate the constraint name. */
+        gen_constraint_name(constraint, constraint_name_buf,
+                            sizeof(constraint_name_buf));
+        constraint_name = constraint_name_buf;
+    } else {
+        if (pParse->constraintName.n > MAXCONSLEN) {
+            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
+            return 1;
+        }
+        memcpy(constraint_name_buf, pParse->constraintName.z,
+               pParse->constraintName.n);
+        constraint_name_buf[pParse->constraintName.n] = 0;
+        constraint_name = constraint_name_buf;
+        sqlite3Dequote(constraint_name);
+    }
+
+    /* Check whether a similar constraint already exists. */
+    if ((find_cons_by_name(ctx, constraint_name, CONS_ALL))) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
+                        constraint_name);
+        return 1;
+    }
+
+    /* Don't use auto-generated constraint name for foreign keys. */
+    if (pParse->constraintName.n > 0 || constraint->type != CONS_FKEY) {
+        constraint->name = comdb2_strdup(ctx->mem, constraint_name);
+        if (constraint->name == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -5291,8 +5478,6 @@ void comdb2CreateForeignKey(
     struct comdb2_index_part *idx_part;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct dbtable *parent_table;
-    char *constraint_name;
-    char constraint_name_buf[MAXCONSLEN + 1];
     int key_found = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -5471,37 +5656,14 @@ void comdb2CreateForeignKey(
     }
 
 parent_key_found:
-    /* Verify the conststraint action. */
+    /* Verify the constraint action. */
     if ((check_constraint_action(pParse, &flags))) {
         goto cleanup;
     }
     constraint->flags = flags;
+    constraint->type = CONS_FKEY;
 
-    if (pParse->constraintName.n == 0) {
-        /*
-          Check whether a similar constraint already exists.
-
-          Generate the constraint name.
-        */
-        gen_constraint_name2(constraint, constraint_name_buf,
-                             sizeof(constraint_name_buf));
-        constraint_name = constraint_name_buf;
-    } else {
-        if (pParse->constraintName.n > MAXCONSLEN) {
-            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
-            goto cleanup;
-        }
-        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                          pParse->constraintName.n);
-        if (constraint->name == 0)
-            goto oom;
-        sqlite3Dequote(constraint->name);
-        constraint_name = constraint->name;
-    }
-    if ((find_cons_by_name(ctx, constraint_name))) {
-        pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
-                        constraint_name);
+    if ((set_constraint_name(pParse, constraint)) != 0) {
         goto cleanup;
     }
 
@@ -5531,9 +5693,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     return;
 }
 
-void comdb2DropForeignKey(Parse *pParse, /* Parser context */
-                          Token *pName   /* Foreign key name */
-)
+static void drop_constraint(Parse *pParse, Token *pName, int type)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -5555,18 +5715,18 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
         goto oom;
     sqlite3Dequote(name);
 
-    /* Check whether the FK exists. */
-    cons = find_cons_by_name(ctx, name);
+    /* Check whether the constraint exists. */
+    cons = find_cons_by_name(ctx, name, type);
     if (cons) {
-        /* Mark FK as dropped. */
+        /* Mark it as dropped. */
         cons->flags |= CONS_DELETED;
     } else {
         pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Foreign key '%s' not found.", name);
+        sqlite3ErrorMsg(pParse, "Constraint '%s' not found.", name);
         goto cleanup;
     }
 
-    /* Foreign key marked for removal. */
+    /* Constraint marked for removal. */
 
     return;
 
@@ -5575,6 +5735,22 @@ oom:
 
 cleanup:
     free_ddl_context(pParse);
+}
+
+void comdb2DropForeignKey(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_FKEY);
+    return;
+}
+
+void comdb2DropConstraint(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_ALL);
+    return;
 }
 
 /*
@@ -6255,4 +6431,71 @@ out:
     if (t_action)
         free(t_action);
     free_schema_change_type(sc);
+}
+
+void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
+                              Expr *pCheckExpr,   /* The check expression */
+                              const char *zStart, /* Start of CHECK expr text */
+                              const char *zEnd    /* End of CHECK expr text */
+)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (gbl_legacy_schema) {
+        setError(pParse, SQLITE_ERROR, "CHECK CONSTRAINT not enabled");
+        return;
+    }
+
+    struct comdb2_constraint *constraint;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    size_t check_expr_sz;
+
+    if (use_sqlite_impl(pParse)) {
+        assert(ctx == 0);
+        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        return;
+    }
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+    if (constraint == 0)
+        goto oom;
+
+    constraint->type = CONS_CHECK;
+    /* Get CHECK expression */
+    assert(pCheckExpr && zStart && zEnd);
+    check_expr_sz = zEnd - zStart;
+    assert(check_expr_sz > 0);
+    constraint->check_expr = comdb2_strndup(ctx->mem, zStart, check_expr_sz);
+    if (constraint->check_expr == 0)
+        goto oom;
+
+    /* TODO: (NC) escape quotes? */
+
+    if ((set_constraint_name(pParse, constraint)) != 0) {
+        goto cleanup;
+    }
+
+    /* Add this new constraint to the list. */
+    listc_abl(&ctx->schema->constraint_list, constraint);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    sqlite3ExprDelete(pParse->db, pCheckExpr);
+    free_ddl_context(pParse);
+    return;
 }

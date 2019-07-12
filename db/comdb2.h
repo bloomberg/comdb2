@@ -403,6 +403,7 @@ enum RCODES {
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
+    ERR_CHECK_CONSTRAINT = 320,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
     ERR_INCOHERENT =
@@ -600,6 +601,11 @@ typedef struct {
     char *keynm[MAXCONSTRAINTS];
 } constraint_t;
 
+typedef struct {
+    char *consname;
+    char *expr;
+} check_constraint_t;
+
 struct managed_component {
     int dbnum;
     LINKC_T(struct managed_component) lnk;
@@ -715,13 +721,17 @@ struct dbtable {
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
 
-    /* This tables constraints */
+    /* Foreign key constraints */
     constraint_t constraints[MAXCONSTRAINTS];
     int n_constraints;
-
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t *rev_constraints[MAXCONSTRAINTS];
     int n_rev_constraints;
+
+    /* CHECK constraints */
+    check_constraint_t check_constraints[MAXCONSTRAINTS];
+    int n_check_constraints;
+    char *check_constraint_query[MAXCONSTRAINTS];
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
@@ -2334,6 +2344,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                              int dbnum, int dbix, int is_foreign);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
+int init_check_constraints(struct dbtable *tbl);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
@@ -2512,7 +2523,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
 void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
-int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
+int sql_syntax_check(struct ireq *iq, struct dbtable *db);
 void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
@@ -3553,7 +3564,9 @@ int release_locks_int(const char *trace, const char *func, int line);
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter);
-
+int verify_check_constraints(struct dbtable *table, uint8_t *rec,
+                             blob_buffer_t *blobs, size_t maxblobs,
+                             int is_alter);
 /* Authentication types for users */
 enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 
