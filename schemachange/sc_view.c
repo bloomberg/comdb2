@@ -73,7 +73,7 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed to log view info\n");
         goto err;
     }
-    gbl_user_views_gen++;
+    gbl_dbopen_gen++;
 
     sc_printf(s, "Schema change ok\n");
     return 0;
@@ -108,7 +108,7 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
-    gbl_user_views_gen++;
+    gbl_dbopen_gen++;
 
 /* TODO (NC): study */
 #if 0

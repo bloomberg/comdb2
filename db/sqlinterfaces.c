@@ -2608,10 +2608,6 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         return SQLITE_SCHEMA_REMOTE;
     }
 
-    if (thd->user_views_gen != gbl_user_views_gen) {
-        return SQLITE_SCHEMA;
-    }
-
     return SQLITE_OK;
 }
 
@@ -4291,7 +4287,6 @@ check_version:
             }
             thd->dbopen_gen = gbl_dbopen_gen;
         }
-        thd->user_views_gen = gbl_user_views_gen;
 
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {

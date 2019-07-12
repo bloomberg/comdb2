@@ -22,7 +22,6 @@ extern volatile int gbl_dbopen_gen;
 extern volatile int gbl_lua_version;
 extern volatile int gbl_analyze_gen;
 extern volatile int gbl_views_gen;
-extern volatile int gbl_user_views_gen;
 
 typedef enum scdone {
     invalid = -1,
