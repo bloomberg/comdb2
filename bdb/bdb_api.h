@@ -1356,13 +1356,10 @@ int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
                           size_t maxnumtbls, int *fndnumtbls, int *bdberr);
 bdb_state_type *bdb_llmeta_bdb_state(void);
 
-int bdb_llmeta_get_view_names(tran_type *in_trans, char **view_names,
-                              int *view_count, size_t max_view_count,
-                              int *bdberr);
-int bdb_llmeta_put_view_names(tran_type *in_trans, char **view_names,
-                              int view_count, int *bdberr);
-int bdb_llmeta_get_view_def(tran_type *in_trans, const char *view_name,
-                            int view_version, char **view_def, int *bdberr);
+int bdb_get_view_names(char **names, int *num);
+int bdb_get_view(char *view_name, char **view_def);
+int bdb_put_view(tran_type *t, char *view_name, char *view_def);
+int bdb_del_view(tran_type *t, char *view_name);
 
 int bdb_append_file_version(char *str_buf, size_t buflen,
                             unsigned long long version_num, int *bdberr);

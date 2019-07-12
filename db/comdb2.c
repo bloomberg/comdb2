@@ -2133,9 +2133,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
                        offsetof(struct dbview, view_name), 0);
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_view_names(tran, (char **)&view_names, &view_count,
-                                  sizeof(view_names), &bdberr) ||
-        bdberr != BDBERR_NOERROR) {
+    if (bdb_get_view_names((char **)view_names, &view_count)) {
         logmsg(
             LOGMSG_ERROR,
             "couldn't load view names from low level meta table (bdberr: %d)\n",
@@ -2152,9 +2150,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
             goto err;
         }
 
-        rc =
-            bdb_llmeta_get_view_def(tran, view_names[i], 0, &view_def, &bdberr);
-        if (rc) {
+        if (bdb_get_view(view_names[i], &view_def)) {
             logmsg(LOGMSG_ERROR,
                    "couldn't load view definition from low level meta table "
                    "(bdberr: %d)\n",
@@ -2166,13 +2162,20 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
         view->view_name = view_names[i];
         view->view_def = view_def;
         hash_add(view_hash, view);
-
     }
+
+    for (int i = 0; i < view_count; i++) {
+        free(view_names[i]);
+    }
+
     free_view_hash(thedb->view_hash);
     thedb->view_hash = view_hash;
     return 0;
 
 err:
+    for (int i = 0; i < view_count; i++) {
+        free(view_names[i]);
+    }
     free_view_hash(view_hash);
     return rc;
 }
@@ -2346,30 +2349,6 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
                               &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't set tables in low level meta table\n");
-        return 1;
-    }
-
-    return 0; /* success */
-}
-
-int llmeta_set_views(tran_type *tran, struct dbenv *dbenv)
-{
-    int i = 0;
-    int bdberr = 0;
-    char *view_names[MAX_NUM_TABLES];
-    void *ent;
-    unsigned int bkt;
-    struct dbview *view;
-
-    for (view = (struct dbview *)hash_first(dbenv->view_hash, &ent, &bkt); view;
-         view = (struct dbview *)hash_next(dbenv->view_hash, &ent, &bkt)) {
-        view_names[i++] = view->view_name;
-    }
-
-    /* Put the values in the low level meta table */
-    if (bdb_llmeta_put_view_names(tran, view_names, i, &bdberr) ||
-        bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "couldn't set views in low level meta table\n");
         return 1;
     }
 
@@ -4056,13 +4035,6 @@ static int init(int argc, char **argv)
         {
             logmsg(LOGMSG_FATAL, "could not add tables to the low level meta "
                                  "table\n");
-            return -1;
-        }
-
-        if (llmeta_set_views(NULL /*tran*/, thedb)) /* add tables to meta */
-        {
-            logmsg(LOGMSG_FATAL,
-                   "could not add views to the low level meta table\n");
             return -1;
         }
 

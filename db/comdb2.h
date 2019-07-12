@@ -1957,7 +1957,6 @@ int get_elect_time_microsecs(void); /* get election time in seconds */
 
 /* open files and db. returns db backend handle */
 int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv);
-int llmeta_set_views(tran_type *tran, struct dbenv *dbenv);
 int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv);
 int llmeta_dump_mapping(struct dbenv *dbenv);
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,

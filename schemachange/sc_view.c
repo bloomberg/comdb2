@@ -20,10 +20,6 @@
 
 int add_view(struct dbview *view);
 void delete_view(char *view_name);
-int bdb_llmeta_put_view_def(tran_type *in_trans, const char *view_name,
-                            char *view_def, int view_version, int *bdberr);
-int bdb_llmeta_del_view_def(tran_type *in_tran, const char *view_name,
-                            int view_version, int *bdberr);
 
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran)
@@ -51,7 +47,7 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
         goto err;
     }
 
-    rc = bdb_llmeta_put_view_def(tran, s->tablename, s->newcsc2, 0, &bdberr);
+    rc = bdb_put_view(tran, s->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Failed to set view definition in low level meta\n");
         goto err;
@@ -61,14 +57,6 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         sc_errf(s, "Failed to add view to the thedb->view_hash\n");
         goto err;
-    }
-
-    /* Note: add_view() must go before llmeta_set_views, as add_view() updates
-     * the view hash which lmeta_set_views() reads to update the llmeta.
-     */
-    if (llmeta_set_views(tran, thedb)) {
-        sc_errf(s, "Failed to set view names in low level meta\n");
-        return -1;
     }
 
     s->addonly = SC_DONE_ADD;
@@ -104,16 +92,11 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
     int rc = 0;
     int bdberr = 0;
 
-    if ((rc = bdb_llmeta_del_view_def(tran, s->tablename, 0, &bdberr)) != 0) {
+    if ((rc = bdb_del_view(tran, s->tablename)) != 0) {
         return rc;
     }
 
     delete_view(s->tablename);
-
-    if ((rc = llmeta_set_views(tran, thedb)) != 0) {
-        sc_errf(s, "Failed to set view names in low level meta\n");
-        return rc;
-    }
 
     if (create_sqlmaster_records(tran)) {
         sc_errf(s, "create_sqlmaster_records failed\n");
