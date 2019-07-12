@@ -4555,6 +4555,7 @@ void *statthd(void *p)
 
                 pstats = bdb_get_process_stats();
                 cur_bdb_stats = *pstats;
+                bdb_fprintf_stats(pstats, "  ", stderr);
                 if (cur_bdb_stats.n_lock_waits > last_bdb_stats.n_lock_waits) {
                     unsigned nwaits = cur_bdb_stats.n_lock_waits -
                                       last_bdb_stats.n_lock_waits;

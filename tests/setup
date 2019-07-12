@@ -202,12 +202,12 @@ setup_db() {
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
     cd $DBDIR >/dev/null
 
-    PARAMS="$DBNAME --no-global-lrl"
+    PARAMS="--lrl ${LRL} $DBNAME --no-global-lrl"
     export LOGDIR=$TESTDIR/logs
 
     # The script occasionally fails here. Let's find out what the rc is.
     set +e
-    $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
+    $COMDB2_EXE --create $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid &> $LOGDIR/${DBNAME}.init
     rc=$?
     rm -f ${DBNAME}.trap
     if [[ $rc -ne 0 ]]; then

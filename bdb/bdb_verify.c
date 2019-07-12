@@ -280,12 +280,15 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         cdata->c_close(cdata);
         return 0;
     }
+    int atstart,now;
+    atstart = now = comdb2_time_epochms();
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
 
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
         par->nrecs_progress++;
 
-        int now = comdb2_time_epochms();
+        now = comdb2_time_epochms();
         print_verify_progress(par, now);
 
         /* check if comdb2sc is killed every 1000ms */
@@ -325,7 +328,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
 #endif
         par->vtag_callback(par->db_table, dbt_data.data, (int *)&dbt_data.size,
                       ver);
-
         rc = par->get_blob_sizes_callback(par->db_table, dbt_data.data,
                                      blobsizes, bloboffs, &nblobs);
         if (rc) {
@@ -532,7 +534,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
             ckey->c_close(ckey);
         }
         par->free_blob_buffer_callback(blob_buf);
-
         sbuf2flush(par->sb);
     next_record:
 
@@ -554,6 +555,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         return rc;
     }
     cdata->c_close(cdata);
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
     return 0;
 }
 
@@ -608,6 +610,10 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     dbt_dta_check_data.ulen = sizeof(verify_keybuf);
     dbt_dta_check_data.flags = DB_DBT_USERMEM;
 
+    int atstart,now;
+    atstart = now = comdb2_time_epochms();
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
+
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
         bdb_state->dbp_ix[ix], lid, &ckey, 0);
     if (rc) {
@@ -624,7 +630,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         ATOMIC_ADD(par->records_processed, 1);
         par->nrecs_progress++;
 
-        int now = comdb2_time_epochms();
+        now = comdb2_time_epochms();
         print_verify_progress(par, now);
 
         /* check if comdb2sc is killed every 1000ms */
@@ -927,6 +933,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     rc);
     }
 
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting delta=%ds\n", pthread_self(), __func__, __LINE__, now - atstart);
     return 0;
 }
 
@@ -993,13 +1000,16 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
     dbt_dta_check_data.dlen = 0;
     dbt_dta_check_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
 
+    int atstart,now;
+    atstart = now = comdb2_time_epochms();
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
         par->nrecs_progress++;
         unsigned long long genid_flipped;
 
-        int now = comdb2_time_epochms();
+        now = comdb2_time_epochms();
         print_verify_progress(par, now);
 
 #ifdef _LINUX_SOURCE
@@ -1052,6 +1062,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
         logmsg(LOGMSG_ERROR, "fetch blob rc %d\n", rc);
 
     cblob->c_close(cblob);
+logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
 }
 
 
