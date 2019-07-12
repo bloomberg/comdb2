@@ -3332,10 +3332,11 @@ done:
 static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                                    struct sqlclntstate *clnt,
                                    struct sql_state *rec,
-                                   struct errstat *err)
+                                   struct errstat *err,
+                                   int flags)
 {
     int rc;
-    if ((rc = get_prepared_stmt(thd, clnt, rec, err, PREPARE_NONE)) != 0) {
+    if ((rc = get_prepared_stmt(thd, clnt, rec, err, flags)) != 0) {
         return rc;
     }
 
@@ -3857,7 +3858,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         clear_cost(thd->sqlthd);
 
         /* get an sqlite engine */
-        rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
         if (rc == SQLITE_SCHEMA_DOHSQL) {
@@ -4075,7 +4076,7 @@ out:
     // loop if possible in case when cached remote schema becomes stale
     do {
         // get an sqlite engine
-        rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
         if (rc) {
             int irc = errstat_get_rc(&err);
             // certain errors are saved, in that case we don't send anything
@@ -4452,7 +4453,10 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         clear_cost(clnt->thd->sqlthd);
 
         /* get an sqlite engine */
-        rc = get_prepared_bound_stmt(clnt->thd, clnt, &clnt->work.rec, &err);
+        rc = get_prepared_bound_stmt(
+            clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_RECREATE
+        );
+
         if (rc == 0) break;
 
         if (rc == SQLITE_SCHEMA_REMOTE)
@@ -5843,7 +5847,8 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
     struct sql_state rec = {0};
     rec.sql = clnt->work.zSql;
-    if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr)) {
+    if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr,
+                                PREPARE_NONE)) {
         goto done;
     }
     thrman_wheref(poolthd->thr_self, "%s", rec.sql);
