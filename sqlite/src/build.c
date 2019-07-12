@@ -2611,7 +2611,7 @@ void sqlite3EndTable(
         comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
                            zStmt, 0);
       }
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 
     /* A slot for the record has already been allocated in the 
