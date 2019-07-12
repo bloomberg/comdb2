@@ -574,7 +574,7 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     return rc < 0 ? SQLITE_BUSY : rc;
 }
 
-static int isPrepare(BtCursor *pCur)
+static int is_sqlite_db_init(BtCursor *pCur)
 {
     sqlite3 *db = NULL;
     if (pCur->vdbe) {
@@ -2230,7 +2230,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
         break;
     }
 
-    if (!isPrepare(pCur)) {
+    if (!is_sqlite_db_init(pCur)) {
         rc = sql_tick(thd, uses_bdb_locking);
         if (rc) {
             *done = 1;
@@ -5401,7 +5401,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
      * compressed) */
     assert(0 == pCur->is_sampled_idx);
 
-    if (!isPrepare(pCur)) {
+    if (!is_sqlite_db_init(pCur)) {
         rc = sql_tick(thd, pCur->bt->is_temporary == 0);
         if (rc)
             return rc;
