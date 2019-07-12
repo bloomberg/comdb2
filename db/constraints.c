@@ -1971,6 +1971,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
 
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
+
         if (from_db == new_db) {
             snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
         } else {

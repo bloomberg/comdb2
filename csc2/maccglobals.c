@@ -4,6 +4,7 @@
 #include <string.h>
 
 struct constraint constraints[MAXCNSTRTS];
+struct check_constraint check_constraints[MAXCNSTRTS];
 struct symbol symb[MAX];
 struct table tables[MAXTBLS];
 struct constant constants[MAX];
@@ -90,6 +91,7 @@ int opt_sync = 0;
 int opt_setsql = 0;
 int opt_schematype = 2;
 int nconstraints = -1;
+int n_check_constraints = -1;
 
 void init_globals()
 {
@@ -182,5 +184,7 @@ void init_globals()
     memset(opt_maindbname, 0, sizeof(opt_maindbname));
     memset(opt_tblname, 0, sizeof(opt_tblname));
     memset(constraints, 0, sizeof(struct constraint) * MAXCNSTRTS);
+    memset(check_constraints, 0, sizeof(struct check_constraint) * MAXCNSTRTS);
     nconstraints = -1;
+    n_check_constraints = -1;
 }

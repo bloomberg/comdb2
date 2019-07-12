@@ -11,7 +11,11 @@ for testreq in `ls t*.sql` ; do
     testname=`echo $testreq | cut -d "." -f 1`
     cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default "
     echo $cmd "> $testname.output"
-    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/; s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;" > $testname.output
+    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
+                          s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
+                          s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;
+                          s/rrn ([0-9]+) genid 0x([a-zA-Z0-9]+)/rrn xx genid xx/;"\
+                          > $testname.output
 
     cmd="diff $testname.expected $testname.output"
     $cmd > /dev/null

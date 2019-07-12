@@ -984,6 +984,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                        tok);
                 return -1;
             }
+
+            /* Initialize table's check constraint members. */
+            if (init_check_constraints(db)) {
+                logmsg(LOGMSG_ERROR,
+                       "Failed to load check constraints for %s\n",
+                       db->tablename);
+                return -1;
+            }
         } else {
             logmsg(LOGMSG_ERROR, "Invalid table option\n");
             return -1;
