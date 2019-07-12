@@ -150,7 +150,7 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* error, we are done */
         clnt->query_rc = -1;
-        clnt->done = 1;
+        signal_clnt_as_done(clnt);
         break;
     }
 }

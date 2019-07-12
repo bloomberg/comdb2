@@ -301,6 +301,7 @@ enum connection_state
     CONNECTION_IDLE,
     CONNECTION_RESET,
     CONNECTION_QUEUED,
+    CONNECTION_PREPARING,
     CONNECTION_RUNNING
 };
 
@@ -515,8 +516,10 @@ struct clnt_ddl_context {
 /* This structure is designed to hold several pieces of data related to
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
-    char *zSql;     /* Original SQL query for this work. */
-    char *zNormSql; /* Normalized version of original SQL query. */
+    char *zSql;           /* Original SQL query for this work. */
+    char *zNormSql;       /* Normalized version of original SQL query. */
+    struct sql_state rec; /* Prepared statement for original SQL query. */
+    unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
 };
 
 /* Client specific sql state */
@@ -1077,6 +1080,8 @@ unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
+int wait_for_sql_query(struct sqlclntstate *clnt);
+void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse);

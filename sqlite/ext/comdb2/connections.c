@@ -47,6 +47,9 @@ int get_connections(void **data, int *num_points) {
             case CONNECTION_QUEUED:
                 info[i].state = "queued";
                 break;
+            case CONNECTION_PREPARING:
+                info[i].state = "preparing";
+                break;
             case CONNECTION_RUNNING:
                 info[i].state = "running";
                 break;
