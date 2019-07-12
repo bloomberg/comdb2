@@ -752,7 +752,7 @@ static int _exprCallback(Walker *pWalker, Expr *pExpr)
     case TK_STRING:
         return WRC_Continue;
     case TK_FUNCTION:
-        if (strcasecmp(pExpr->u.zToken, "comdb2_sysinfo") == 0) {
+        if (strcasecmp(pExpr->u.zToken, "comdb2_ctxinfo") == 0) {
             return WRC_Continue;
         }
         /* fallthrough */
