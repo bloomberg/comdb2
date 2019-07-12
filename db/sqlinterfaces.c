@@ -4444,12 +4444,34 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
     struct errstat err = {0}; /* NOT USED */
+    char *allocd_str = NULL;
+
     clnt->work.rec.sql = clnt->work.zSql;
-    int rc = get_prepared_bound_stmt(clnt->thd, clnt, &clnt->work.rec, &err);
+    do {
+        /* clean old stats */
+        clear_cost(clnt->thd->sqlthd);
+
+        /* get an sqlite engine */
+        rc = get_prepared_bound_stmt(clnt->thd, clnt, &clnt->work.rec, &err);
+        if (rc == 0) break;
+
+        if (rc == SQLITE_SCHEMA_REMOTE)
+            continue;
+
+        if (rc == SQLITE_SCHEMA_DOHSQL) {
+            if (allocd_str) free(allocd_str);
+            allocd_str = strdup(dohsql_get_sql(clnt, 0));
+            clnt->work.rec.sql = (const char *)allocd_str;
+            continue;
+        }
+
+        return errstat_get_rc(&err);
+    } while (rc == SQLITE_SCHEMA_REMOTE || rc == SQLITE_SCHEMA_DOHSQL);
     if (rc == 0) {
       size_t nNormSql = 0;
       calc_fingerprint(clnt->work.zNormSql, &nNormSql, clnt->work.aFingerprint);
     }
+    if (allocd_str) free(allocd_str);
     return rc;
 }
 
