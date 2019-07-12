@@ -574,7 +574,8 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     return rc < 0 ? SQLITE_BUSY : rc;
 }
 
-static int isPrepare(BtCursor *pCur) {
+static int isPrepare(BtCursor *pCur)
+{
     sqlite3 *db = NULL;
     if (pCur->vdbe) {
         db = pCur->vdbe->db;
