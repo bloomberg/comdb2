@@ -4444,6 +4444,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
     struct errstat err = {0}; /* NOT USED */
+    clnt->work.rec.sql = clnt->work.zSql;
     int rc = get_prepared_bound_stmt(clnt->thd, clnt, &clnt->work.rec, &err);
     if (rc == 0) {
       size_t nNormSql = 0;
