@@ -418,7 +418,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->iq = iq;
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
@@ -426,23 +426,17 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    extern int gbl_partial_indexes;
-    extern int gbl_expressions_indexes;
-    if ((gbl_partial_indexes && newdb->ix_partial) ||
-        (gbl_expressions_indexes && newdb->ix_expr)) {
-        int ret = 0;
-        ret = new_indexes_syntax_check(iq, newdb);
-        if (ret) {
-            Pthread_mutex_unlock(&csc2_subsystem_mtx);
-            sc_errf(s, "New indexes syntax error\n");
-            backout(newdb);
-            cleanup_newdb(newdb);
-            return SC_CSC2_ERROR;
-        } else {
-            sc_printf(s, "New indexes ok\n");
-        }
-        newdb->ix_blob = newdb->schema->ix_blob;
+    if ((rc = sql_syntax_check(iq, newdb))) {
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Sqlite syntax check failed\n");
+        backout(newdb);
+        cleanup_newdb(newdb);
+        return SC_CSC2_ERROR;
+    } else {
+        sc_printf(s, "Sqlite syntax check succeeded\n");
     }
+    newdb->ix_blob = newdb->schema->ix_blob;
+
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&

@@ -1,6 +1,0 @@
-[insert into fk values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 'pk' index 'i'
-(rows inserted=1)
-(rows inserted=1)
-[update fk set i = 2] failed with rc 3 verify key constraint cannot resolve constraint table 'pk' index 'i'
-(rows inserted=1)
-(rows updated=1)

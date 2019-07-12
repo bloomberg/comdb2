@@ -617,6 +617,8 @@ void sqlite_init_end(void) { in_init = 0; }
 #endif // DEBUG_SQLITE_MEMORY
 
 static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
+extern pthread_mutex_t appsock_conn_lk;
+
 static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
 
@@ -993,16 +995,16 @@ void sql_dump_hist_statements(void)
         localtime_r((time_t *)&t, &tm);
         if (h->conn.pename[0]) {
             logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d %spindex %d task %.8s pid %d "
-                   "mach %d time %dms cost %f sql: %s\n",
+                   "mach %d time %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
                    (char *)h->conn.pename, h->conn.pid, h->conn.node, h->time,
-                   h->cost, h->sql);
+                   h->prepTime, h->cost, h->sql);
         } else {
             logmsg(LOGMSG_USER, 
-                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms cost %f sql: %s\n",
+                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->time, h->cost, h->sql);
+                   tm.tm_min, tm.tm_sec, rqid, h->time, h->prepTime, h->cost, h->sql);
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1069,6 +1071,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
     h->time = comdb2_time_epochms() - thd->startms;
+    h->prepTime = thd->prepms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -1083,7 +1086,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (gbl_fingerprint_queries) {
         if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
             add_fingerprint(h->sql, clnt->work.zNormSql, h->cost, h->time,
-                            clnt->nrows, logger);
+                            h->prepTime, clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3118,6 +3121,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
+    int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
@@ -3141,6 +3145,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         update_schema_remotes(clnt, rec);
     }
     if (rec->stmt) {
+        thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         normalize_stmt_and_store(clnt, rec);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
@@ -4114,6 +4119,62 @@ errors:
 
 */
 
+int check_active_appsock_connections(struct sqlclntstate *clnt)
+{
+    int max_appsock_conns =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+    if (active_appsock_conns > max_appsock_conns) {
+        int num_retry = 0;
+        int rc = -1;
+    retry:
+        Pthread_mutex_lock(&clnt_lk);
+        Pthread_mutex_lock(&appsock_conn_lk);
+        num_retry++;
+        if (active_appsock_conns <= max_appsock_conns) {
+            Pthread_mutex_unlock(&appsock_conn_lk);
+            Pthread_mutex_unlock(&clnt_lk);
+            return 0;
+        }
+        struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
+        listc_abl(&clntlist, lru_clnt);
+        while (lru_clnt != clnt) {
+            if (lru_clnt->done && !lru_clnt->in_client_trans) {
+                lru_clnt->statement_timedout = 1; /* disallow any new query */
+                break;
+            }
+            lru_clnt = listc_rtl(&clntlist);
+            listc_abl(&clntlist, lru_clnt);
+        }
+
+        if (lru_clnt == clnt || !lru_clnt->done) {
+            /* All clients have transactions, wait for 1 second */
+            if (num_retry <= 5) {
+                Pthread_mutex_unlock(&appsock_conn_lk);
+                Pthread_mutex_unlock(&clnt_lk);
+                sleep(1);
+                goto retry;
+            }
+            rc = -1;
+        } else {
+            int fd = sbuf2fileno(lru_clnt->sb);
+            if (lru_clnt->done) {
+                // lru_clnt->statement_timedout = 1; already done
+                shutdown(fd, SHUT_RD);
+                logmsg(
+                    LOGMSG_WARN,
+                    "%s: Closing least recently used connection fd %d , total "
+                    "%d \n",
+                    __func__, fd, active_appsock_conns - 1);
+                rc = 0;
+            }
+        }
+        Pthread_mutex_unlock(&appsock_conn_lk);
+        Pthread_mutex_unlock(&clnt_lk);
+        return rc;
+    }
+    return 0;
+}
+
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests
  */
@@ -4325,9 +4386,9 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
 
+    debug_close_sb(clnt);
     clean_queries_not_cached_in_srs(clnt);
 
-    debug_close_sb(clnt);
 
     thrman_setid(thrman_self(), "[done]");
 }
@@ -4415,13 +4476,13 @@ void sqlengine_work_appsock(void *thddata, void *work)
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
+        clnt->osql.timings.query_finished = osql_log_time();
+        osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
         Pthread_cond_signal(&clnt->wait_cond);
         Pthread_mutex_unlock(&clnt->wait_mutex);
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
         return;
     }
 
@@ -4478,8 +4539,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     clnt_change_state(clnt, CONNECTION_IDLE);
-    clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
+    clean_queries_not_cached_in_srs(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4561,6 +4622,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     char msg[1024];
     char *sqlcpy;
     int rc;
+    int fail_dispatch = 0;
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
 
@@ -4581,8 +4643,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
+
+    Pthread_mutex_lock(&clnt_lk);
     clnt->done = 0;
-    clnt->statement_timedout = 0;
+    if (clnt->statement_timedout)
+        fail_dispatch = 1;
+    Pthread_mutex_unlock(&clnt_lk);
+
     clnt->total_sql++;
     clnt->sql_since_reset++;
 
@@ -4591,7 +4658,10 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
-    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.zSql);
+    if (fail_dispatch)
+        return -1;
+
+    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.sql);
     clnt->enque_timeus = comdb2_time_epochus();
 
     q_depth_tag_and_sql = thd_queue_depth();
@@ -4651,6 +4721,13 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
      * again.  We block until then. */
     if (self)
         thrman_where(self, "waiting for query");
+
+    if (clnt->connid) { // Only for connections which we track
+        Pthread_mutex_lock(&clnt_lk);
+        listc_rfl(&clntlist, clnt);
+        listc_abl(&clntlist, clnt);
+        Pthread_mutex_unlock(&clnt_lk);
+    }
 
     if (clnt->heartbeat) {
         if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
@@ -4881,6 +4958,13 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     clnt->dml_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
     clnt->ddl_contexts = NULL;
+
+    Pthread_mutex_destroy(&clnt->wait_mutex);
+    Pthread_cond_destroy(&clnt->wait_cond);
+    Pthread_mutex_destroy(&clnt->write_lock);
+    Pthread_cond_destroy(&clnt->write_cond);
+    Pthread_mutex_destroy(&clnt->dtran_mtx);
+    Pthread_mutex_destroy(&clnt->state_lk);
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
@@ -4888,6 +4972,12 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
+        Pthread_mutex_init(&clnt->wait_mutex, NULL);
+        Pthread_cond_init(&clnt->wait_cond, NULL);
+        Pthread_mutex_init(&clnt->write_lock, NULL);
+        Pthread_cond_init(&clnt->write_cond, NULL);
+        Pthread_mutex_init(&clnt->dtran_mtx, NULL);
+        Pthread_mutex_init(&clnt->state_lk, NULL);
     }
     else {
        clnt->sql_since_reset = 0;
@@ -4907,6 +4997,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
+    clnt->done = 1;
     strcpy(clnt->tzname, "America/New_York");
     clnt->dtprec = gbl_datetime_precision;
     bzero(&clnt->conninfo, sizeof(clnt->conninfo));
@@ -5777,10 +5868,9 @@ static const char* connstate_str(enum connection_state s) {
 
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     clnt->state_start_time = comdb2_time_epochms();
-    // printf("%p -> %s\n", clnt, connstate_str(state));
-    pthread_mutex_lock(&clnt->state_lk);
+    Pthread_mutex_lock(&clnt->state_lk);
     clnt->state = state;
-    pthread_mutex_unlock(&clnt->state_lk);
+    Pthread_mutex_unlock(&clnt->state_lk);
 }
 
 /* we have to clear
@@ -6012,6 +6102,9 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case ERR_NOT_DURABLE:
         return CDB2ERR_CHANGENODE;
 
+    case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
+        return CDB2ERR_CHECK_CONSTRAINT;
+
     default:
         return DB_ERR_INTR_GENERIC;
     }
@@ -6242,35 +6335,29 @@ void run_internal_sql(char *sql)
         clnt.dbglog = NULL;
     }
 
-    cleanup_clnt(&clnt);
-
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
+    end_internal_sql_clnt(&clnt);
 }
 
 void clnt_register(struct sqlclntstate *clnt) {
     clnt->state = CONNECTION_NEW;
     clnt->connect_time = comdb2_time_epoch();
-    pthread_mutex_lock(&clnt_lk);
+    Pthread_mutex_lock(&clnt_lk);
     clnt->connid = connid++;
     listc_abl(&clntlist, clnt);
-    pthread_mutex_unlock(&clnt_lk);
+    Pthread_mutex_unlock(&clnt_lk);
 }
 
 void clnt_unregister(struct sqlclntstate *clnt) {
-    pthread_mutex_lock(&clnt_lk);
+    Pthread_mutex_lock(&clnt_lk);
     listc_rfl(&clntlist, clnt);
-    pthread_mutex_unlock(&clnt_lk);
+    Pthread_mutex_unlock(&clnt_lk);
 }
 
 int gather_connection_info(struct connection_info **info, int *num_connections) {
    struct connection_info *c;
    int connid = 0;
 
-   pthread_mutex_lock(&clnt_lk);
+   Pthread_mutex_lock(&clnt_lk);
    *num_connections = listc_size(&clntlist);
    c = malloc(*num_connections * sizeof(struct connection_info));
    struct sqlclntstate *clnt;
@@ -6286,17 +6373,17 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].host = clnt->origin;
       c[connid].state_int = clnt->state;
       c[connid].time_in_state_int = clnt->state_start_time;
-      pthread_mutex_lock(&clnt->state_lk);
+      Pthread_mutex_lock(&clnt->state_lk);
       if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          c[connid].sql = strdup(clnt->work.zSql);
       }
       else
          c[connid].sql = NULL;
 
-      pthread_mutex_unlock(&clnt->state_lk);
+      Pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }
-   pthread_mutex_unlock(&clnt_lk);
+   Pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
 }
@@ -6425,11 +6512,6 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
     plugin_set_callbacks(clnt, internal);
-    Pthread_mutex_init(&clnt->wait_mutex, NULL);
-    Pthread_cond_init(&clnt->wait_cond, NULL);
-    Pthread_mutex_init(&clnt->write_lock, NULL);
-    Pthread_cond_init(&clnt->write_cond, NULL);
-    Pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
 }
@@ -6465,10 +6547,4 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
-
-    Pthread_mutex_destroy(&clnt->wait_mutex);
-    Pthread_cond_destroy(&clnt->wait_cond);
-    Pthread_mutex_destroy(&clnt->write_lock);
-    Pthread_cond_destroy(&clnt->write_cond);
-    Pthread_mutex_destroy(&clnt->dtran_mtx);
 }

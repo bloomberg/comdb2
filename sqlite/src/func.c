@@ -754,6 +754,8 @@ static void comdb2SysinfoFunc(
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "pid")==0 ){
     sqlite3_result_int64(context, (sqlite3_int64)getpid());
+  }else if( sqlite3_stricmp(zName, "tid")==0 ){
+    sqlite3_result_int64(context, (sqlite3_int64)getarchtid());
   }else if( sqlite3_stricmp(zName, "master")==0 ){
     sqlite3_result_text(context, thedb->bdb_env->repinfo->master_host, -1,
                         SQLITE_TRANSIENT);

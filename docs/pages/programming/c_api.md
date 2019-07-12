@@ -619,6 +619,7 @@ These return codes can be found in ```cdb2api.h```
 | 116  |```CDB2ERR_NOTSUPPORTED``` | <a id="CDB2ERR_NOTSUPPORTED"/>Operation not supported. 
 | 299  |```CDB2ERR_DUPLICATE``` | <a id="CDB2ERR_DUPLICATE"/>Transaction would have inserted a duplicate in a key that does not allow it. 
 | 401  |```CDB2ERR_TZNAME_FAIL``` | <a id="CDB2ERR_TZNAME_FAIL"/>Invalid timezone name. 
+| 403  |```CDB2ERR_CHECK_CONSTRAINT``` | <a id="CDB2ERR_CHECK_CONSTRAINT"/>CHECK constraint violation.
 | 300  |```CDB2ERR_UNKNOWN``` | <a id="CDB2ERR_UNKNOWN"/>Unknown error. 
 | Other| Any |  Any other return code should be treated as an internal error.
 

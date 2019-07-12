@@ -6864,6 +6864,17 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
         }
         free(db->ixsql);
     }
+
+    for (i = 0; i < db->n_constraints; i++) {
+        free(db->constraints[i].consname);
+        free(db->constraints[i].lclkeyname);
+    }
+
+    for (i = 0; i < db->n_check_constraints; i++) {
+        free(db->check_constraints[i].consname);
+        free(db->check_constraints[i].expr);
+    }
+
     free(db->ixuse);
     free(db->sqlixuse);
     free(db->csc2_schema);
@@ -7040,6 +7051,15 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+
+    /* Initialize table's check constraint members. */
+    rc = init_check_constraints(newdb);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+               newdb->tablename);
+        goto err;
+    }
+
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
