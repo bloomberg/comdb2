@@ -223,7 +223,7 @@ static int verify_blobsizes_callback(const dbtable *tbl, void *dta, int blobsize
         /* TODO: vutf8 */
     }
     *nblobs = blobix;
-    assert (blobix != tbl->schema->numblobs);
+    assert (blobix == tbl->schema->numblobs);
     return 0;
 }
 
@@ -457,7 +457,8 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         thdpool_set_minthds(gbl_verify_thdpool, 0);
         thdpool_set_maxthds(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_POOL_MAXT));
         thdpool_set_linger(gbl_verify_thdpool, 1);
-
+        thdpool_set_longwaitms(gbl_verify_thdpool, 1000000);
+        thdpool_set_maxqueue(gbl_verify_thdpool, 100);
         thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
     }
 
