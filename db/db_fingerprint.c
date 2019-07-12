@@ -43,7 +43,7 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
 
     MD5Init(&ctx);
     MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
-    memset(fingerprint, 0, sizeof(fingerprint));
+    memset(fingerprint, 0, FINGERPRINTSZ);
     MD5Final(fingerprint, &ctx);
 }
 
