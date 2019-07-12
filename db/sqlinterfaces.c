@@ -951,7 +951,12 @@ int sqlite3_close_serial(sqlite3 **ppDb)
     if( serial ) Pthread_mutex_lock(&open_serial_lock);
     if( ppDb && *ppDb ){
         rc = sqlite3_close(*ppDb);
-        if( rc==SQLITE_OK ) *ppDb = NULL;
+        if( rc==SQLITE_OK ){
+            *ppDb = NULL;
+        }else{
+            logmsg(LOGMSG_ERROR,
+                   "%s: sqlite3_close FAILED rc=%d\n", __func__, rc);
+        }
     }
     if( serial ) Pthread_mutex_unlock(&open_serial_lock);
     return rc;
@@ -4444,6 +4449,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
+    int rc;
     struct errstat err = {0}; /* NOT USED */
     char *allocd_str = NULL;
 
