@@ -12406,11 +12406,11 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         start_internal_sql_clnt(&clnt);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
-        clnt.sql = table->check_constraint_query[i];
+        clnt.work.zSql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
 
-        rc = dispatch_sql_query(&clnt);
+        rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
         if (rc) {
             rc = -1;
             goto done;

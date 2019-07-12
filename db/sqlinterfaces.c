@@ -4661,7 +4661,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     if (fail_dispatch)
         return -1;
 
-    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.sql);
+    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.zSql);
     clnt->enque_timeus = comdb2_time_epochus();
 
     q_depth_tag_and_sql = thd_queue_depth();
