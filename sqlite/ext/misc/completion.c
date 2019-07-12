@@ -311,11 +311,13 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       case COMPLETION_FUNCTIONS: {
         /* NOTE: Please keep this list of functions sorted. */
         static char *cfuncs[] = {
+          "comdb2_ctxinfo()",
           "comdb2_dbname()",
           "comdb2_host()",
           "comdb2_port()",
           "comdb2_prevquerycost()",
           "comdb2_starttime()",
+          "comdb2_sysinfo()",
           "comdb2_uptime()",
           "comdb2_version()",
           "partition_info()",
