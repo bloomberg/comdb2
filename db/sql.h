@@ -1217,6 +1217,10 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]);
+
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);
 
