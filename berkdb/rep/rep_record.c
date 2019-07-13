@@ -1392,8 +1392,8 @@ skip:				/*
 			goto errlock;
 		}
 
-        /* REP_LOG_LOGPUT is almost the same as REP_LOG (the type gets reverted
-           to REP_LOG in rep_send()), except that it can be throttled. */
+		/* REP_LOG_LOGPUT is almost the same as REP_LOG (the type gets reverted
+		   to REP_LOG in rep_send()), except that it can be throttled. */
 		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG_LOGPUT;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 			IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;

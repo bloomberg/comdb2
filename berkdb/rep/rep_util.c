@@ -331,7 +331,7 @@ __rep_time_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr, timerp)
     void *usr_ptr;
     int *timerp;
 {
-    int64_t start;
+    int64_t start = 0;
     int ret;
 
     if (gbl_verbose_fills && timerp != NULL)
