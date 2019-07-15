@@ -10,10 +10,6 @@ export CORE_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
 tests=${TESTLOOPTESTS:-jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable socksql_master_swings}
 
-# TESTING THIS NOW:
-# selectv_rcode selectv_rcode_disable_svonly_nop_generated selectv_rcode_fcommit_dselectv_generated selectv_rcode_force_commit_generated selectv_rcode_serialretry_generated jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable socksql_master_swing   
-# selectvrcodedisablesvonlynopgenerated
-
 # mailperiod=86400
 mailperiod=3600
 export lasttime=0

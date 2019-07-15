@@ -1359,7 +1359,6 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
        for socksql, recom, snapisol and serial */
     if (!strncasecmp(clnt->sql, "begin", 5)) {
         clnt->snapshot = 0;
-        set_asof_snapshot(clnt, 0, __func__, __LINE__);
 
         /*fprintf(stderr, "got begin\n");*/
         if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
