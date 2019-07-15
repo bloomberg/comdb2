@@ -229,11 +229,39 @@ void *sampler_key(sampler_t *sampler)
     return sampler->data;
 }
 
+sampler_t *sampler_init(bdb_state_type *bdb_state, int *bdberr)
+{
+    sampler_t *sampler;
+    sampler = calloc(1, sizeof(sampler_t));
+    if (sampler == NULL)
+        goto err;
+
+    sampler->tmptbl = bdb_temp_table_create(bdb_state->parent, bdberr);
+    if (sampler->tmptbl == NULL)
+        goto err;
+
+    sampler->tmpcur = bdb_temp_table_cursor(bdb_state->parent,
+            sampler->tmptbl, NULL, bdberr);
+    if (sampler->tmpcur == NULL)
+        goto err;
+
+    sampler->bdb_state = bdb_state;
+    return sampler;
+err:
+    if (sampler != NULL) {
+        if (sampler->tmptbl)
+            bdb_temp_table_close(bdb_state->parent, sampler->tmptbl, bdberr);
+        free(sampler);
+    }
+    return NULL;
+}
+
 int sampler_close(sampler_t *sampler)
 {
     int unused;
     (void)bdb_temp_table_close(sampler->bdb_state, sampler->tmptbl, &unused);
     free(sampler->data);
+    free(sampler);
     return 0;
 }
 
@@ -276,24 +304,11 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         goto done;
     }
 
+    sampler = sampler_init(bdb_state, bdberr);
+
     if (sampler == NULL) {
-        sampler = calloc(1, sizeof(sampler_t));
-        if (sampler == NULL) {
-            rc = -1;
-            goto done;
-        }
-        sampler->tmptbl = bdb_temp_table_create(bdb_state->parent, bdberr);
-        if (sampler->tmptbl == NULL) {
-            rc = -1;
-            goto done;
-        }
-        sampler->tmpcur = bdb_temp_table_cursor(bdb_state->parent,
-                                                sampler->tmptbl, NULL, bdberr);
-        if (sampler->tmpcur == NULL) {
-            rc = -1;
-            goto done;
-        }
-        sampler->bdb_state = bdb_state;
+        rc = -1;
+        goto done;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -409,7 +424,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         if (n == 0)
             continue;
 
-        /* We only care about the index so we take half entries
+        /* We only care about the key so we take half entries
            on the page. We don't check the flags of every entry
            to get the count, so it's likely deleted entries are
            counted here. However this is okay as we only need these
@@ -422,6 +437,29 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             continue;
         NUM_ENT(page) = n;
         nrecs += (n >> 1);
+
+        /* Check disk space, schema changes, analyze abort request etc. */
+        now = comdb2_time_epoch();
+        if (now - last >= 10) {
+            last = now;
+            rc = check_free_space(bdb_state->dir);
+            if (rc != BDBERR_NOERROR) {
+                *bdberr = rc;
+                rc = -1;
+                goto done;
+            }
+        }
+
+        if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
+            if (gbl_schema_change_in_progress) 
+                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
+                        "schema_change_in_progress\n", __func__);
+            if (get_analyze_abort_requested())
+                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
+                        "of send analyze abort\n", __func__);
+            rc = -1;
+            goto done;
+        }
 
         db_indx_t *inp = P_INP(dbp, page);
         /* Remember the value before byteswap.
@@ -467,29 +505,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                                 len, page, pgsz, NULL, bdberr);
         if (rc)
             goto done;
-
-        /* Check disk space, schema changes, analyze abort request etc. */
-        now = comdb2_time_epoch();
-        if (now - last >= 10) {
-            last = now;
-            rc = check_free_space(bdb_state->dir);
-            if (rc != BDBERR_NOERROR) {
-                *bdberr = rc;
-                rc = -1;
-                goto done;
-            }
-        }
-
-        if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
-            if (gbl_schema_change_in_progress) 
-                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
-                        "schema_change_in_progress\n", __func__);
-            if (get_analyze_abort_requested())
-                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
-                        "of send analyze abort\n", __func__);
-            rc = -1;
-            goto done;
-        }
     }
 
     if (rc != 0) {
@@ -507,14 +522,8 @@ done:
     if (page)
         free(page);
     if (rc || *bdberr != BDBERR_NOERROR) {
-        if (sampler && *samplerp == NULL) {
-            if (sampler->tmptbl != NULL) {
-                int unused;
-                (void)bdb_temp_table_close(bdb_state->parent, sampler->tmptbl,
-                                           &unused);
-            }
-            free(sampler);
-        }
+        if (sampler && *samplerp == NULL)
+            sampler_close(sampler);
         return rc;
     }
 

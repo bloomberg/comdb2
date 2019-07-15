@@ -1577,6 +1577,7 @@ int sampler_last(sampler_t *);
 int sampler_prev(sampler_t *);
 int sampler_next(sampler_t *);
 void *sampler_key(sampler_t *);
+sampler_t *sampler_init();
 int sampler_close(sampler_t *);
 
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
