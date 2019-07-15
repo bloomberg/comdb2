@@ -579,10 +579,10 @@ static int memnice_update(void *context, void *value)
     return 0;
 }
 
-static int dtastripe_verify(void *context, void *value)
+int dtastripe_verify(void *context, void *stripes)
 {
-    int iValue = *(int *)value;
-    if ((iValue < 1) || (iValue > 16)) {
+    int iStripes = *(int *)stripes;
+    if ((iStripes < 1) || (iStripes > 16)) {
         return 1;
     }
     return 0;
