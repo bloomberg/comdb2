@@ -4830,12 +4830,14 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
                     TIMESPEC_SUB(st, first, diff);
                     if (diff.tv_sec >= clnt->query_timeout) {
                         clnt->statement_timedout = 1;
-                        logmsg(LOGMSG_WARN, "%s:%d Query exceeds max allowed time %d.\n",
+                        logmsg(LOGMSG_WARN,
+                                "%s:%d Query exceeds max allowed time %d.\n",
                                 __FILE__, __LINE__, clnt->query_timeout);
                     }
                 }
             } else if (rc) {
-                logmsg(LOGMSG_FATAL, "%s:%d pthread_cond_timedwait rc %d", __FILE__,
+                logmsg(LOGMSG_FATAL,
+                        "%s:%d pthread_cond_timedwait rc %d", __FILE__,
                         __LINE__, rc);
                 exit(1);
             }
@@ -4875,7 +4877,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: usleep(%llu), rc=%d errno=%d",
                        __func__, (unsigned long long)ms, rc, errno);
-                /* ok, cannot usleep... still want to keep retrying */
+                /* ok, cannot usleep... still want to keep retrying (?) */
                 sleep(1); /* however, we don't want to spin */
             }
             rc = enqueue_sql_query(clnt, priority);
