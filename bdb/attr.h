@@ -535,8 +535,8 @@ DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 600,
          "Maximum time in seconds to let 'old' transactions live.")
 DEF_ATTR(PRIVATE_BLKSEQ_MAXTRAVERSE, private_blkseq_maxtraverse, QUANTITY, 4,
          NULL)
-DEF_ATTR(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
-         "Number of stripes for the blkseq table.")
+DEF_ATTR_2(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
+           "Number of stripes for the blkseq table.", 0, dtastripe_verify, 0)
 DEF_ATTR(PRIVATE_BLKSEQ_ENABLED, private_blkseq_enabled, BOOLEAN, 1,
          "Sets whether dupe detection is enabled.")
 DEF_ATTR(PRIVATE_BLKSEQ_CLOSE_WARN_TIME, private_blkseq_close_warn_time,
