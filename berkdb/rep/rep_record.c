@@ -1407,12 +1407,10 @@ skip:				/*
 			 * to send a NEWFILE message with lsn [n-1][MAX].
 			 */
 			if (lsn.file != oldfilelsn.file) {
-				if ((rc = __rep_time_send_message(dbenv,
-								*eidp, REP_NEWFILE, &oldfilelsn, NULL,
-								sendflags, NULL, &sendtime)) != 0) {
-					/* Net queue could be full. Send LOG_MORE to throttle. */
-					goto more;
-				}
+				/* REP_NEWFILE is not throttled. */
+				(void)__rep_time_send_message(dbenv,
+						*eidp, REP_NEWFILE, &oldfilelsn, NULL,
+						sendflags, NULL, &sendtime);
 			}
 
 			R_LOCK(dbenv, &dblp->reginfo);
@@ -1755,6 +1753,7 @@ more:
 			bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
 			if ((resp_rc = __rep_time_send_message(dbenv, *eidp, type, &lsn,
 							&data_dbt, sendflags, NULL, &sendtime)) != 0) {
+				/* If the net queue is full, we break out of the loop. */
 				break;
 			}
 		}
