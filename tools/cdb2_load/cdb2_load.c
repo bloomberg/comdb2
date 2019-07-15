@@ -29,7 +29,7 @@ static const char revid[] =
 #include "dbinc/db_am.h"
 
 #include <crc32c.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <logmsg.h>
 #include <mem.h>
 
