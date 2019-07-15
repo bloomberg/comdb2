@@ -28,8 +28,15 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 
-extern int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
-                               char *buf, size_t size);
+int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *buf,
+                           size_t size);
+int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
+                              size_t out_size);
+
+enum {
+    CONS_FKEY,
+    CONS_CHECK,
+};
 
 /* systbl_constraint_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate constraint. We keep track
@@ -38,9 +45,11 @@ extern int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
 typedef struct systbl_constraints_cursor systbl_constraints_cursor;
 struct systbl_constraints_cursor {
   sqlite3_vtab_cursor base;    /* Base class - must be first */
-  sqlite3_int64 iRowid;        /* The rowid */
-  sqlite3_int64 iConstraintid; /* The rule we're on */
-  sqlite3_int64 iRuleid;       /* The rule we're on */
+  sqlite3_int64 iRowid;        /* The rowid (table) */
+  sqlite3_int64 iConstraintid; /* Constraint */
+  sqlite3_int64 iRuleid;       /* Rule */
+  sqlite3_int64 iIndex;        /* How many constraints have we already visitied? */
+  uint8_t       iConstraintType; /* Which constraint list are we currently on? */
 };
 
 static int systblConstraintsConnect(
@@ -56,16 +65,18 @@ static int systblConstraintsConnect(
 
 /* Column numbers */
 #define STCON_NAME 0
-#define STCON_TABLE 1
-#define STCON_KEY 2
-#define STCON_FTNAME 3
-#define STCON_FKNAME 4
-#define STCON_CDELETE 5
-#define STCON_CUPDATE 6
+#define STCON_TYPE 1
+#define STCON_TABLE 2
+#define STCON_KEY 3
+#define STCON_FTNAME 4
+#define STCON_FKNAME 5
+#define STCON_CDELETE 6
+#define STCON_CUPDATE 7
+#define STCON_EXPR 8
 
   rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE comdb2_constraints(name,tablename,keyname,"
-    "foreigntablename,foreignkeyname,iscascadingdelete,iscascadingupdate)");
+    "CREATE TABLE comdb2_constraints(name,type,tablename,keyname,"
+    "foreigntablename,foreignkeyname,iscascadingdelete,iscascadingupdate,expr)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -112,44 +123,72 @@ static int systblConstraintsClose(sqlite3_vtab_cursor *cur){
 /*
 ** Advance to the next key.
 */
-static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
-  systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
+static int systblConstraintsNext(sqlite3_vtab_cursor *cur)
+{
+    systbl_constraints_cursor *pCur = (systbl_constraints_cursor *)cur;
 
-  pCur->iRuleid++;
-
-  /* Test just in case cursor is in a bad state */
-  if( pCur->iRowid < thedb->num_dbs ){
-    if( pCur->iConstraintid >= thedb->dbs[pCur->iRowid]->n_constraints
-     || pCur->iRuleid >=
-               thedb->dbs[pCur->iRowid]->constraints[pCur->iConstraintid].nrules
-    ){
-      pCur->iRuleid = 0;
-      pCur->iConstraintid++;
-
-      while( pCur->iRowid < thedb->num_dbs
-       && pCur->iConstraintid >= thedb->dbs[pCur->iRowid]->n_constraints ){
-        pCur->iConstraintid = 0;
-        pCur->iRowid++;
-      }
+    /* Let's move to the next constraint/rule. */
+    if (pCur->iConstraintType == CONS_FKEY) {
+        pCur->iRuleid++;
+    } else {
+        pCur->iConstraintid++;
     }
-  }
+    pCur->iIndex++;
 
-  comdb2_next_allowed_table(&pCur->iRowid);
+again:
 
-  return SQLITE_OK;
+    switch (pCur->iConstraintType) {
+    case CONS_FKEY:
+        if ((pCur->iConstraintid < thedb->dbs[pCur->iRowid]->n_constraints) &&
+            (pCur->iRuleid < thedb->dbs[pCur->iRowid]
+                                 ->constraints[pCur->iConstraintid]
+                                 .nrules)) {
+            return SQLITE_OK;
+        }
+
+        pCur->iRuleid = 0;
+        pCur->iConstraintid++;
+
+        if (pCur->iConstraintid < thedb->dbs[pCur->iRowid]->n_constraints) {
+            return SQLITE_OK;
+        }
+
+        pCur->iConstraintType = CONS_CHECK;
+        pCur->iConstraintid = 0;
+
+        /* fallthrough */
+
+    case CONS_CHECK:
+        if (pCur->iConstraintid <
+            thedb->dbs[pCur->iRowid]->n_check_constraints) {
+            return SQLITE_OK;
+        }
+        break;
+    }
+
+    /* Move on to the next (authorized) table. */
+    pCur->iRowid++;
+    if (pCur->iRowid < thedb->num_dbs) {
+        comdb2_next_allowed_table(&pCur->iRowid);
+        /* Make sure we haven't moved past the last table. */
+        if (pCur->iRowid < thedb->num_dbs) {
+            /* Start over with FOREIGN KEYs */
+            pCur->iConstraintType = CONS_FKEY;
+            pCur->iRuleid = 0;
+            pCur->iConstraintid = 0;
+            goto again;
+        }
+    }
+
+    return SQLITE_OK;
 }
 
-/*
-** Return the table name for the current row.
-*/
-static int systblConstraintsColumn(
-  sqlite3_vtab_cursor *cur,
-  sqlite3_context *ctx,
-  int i
-){
-  systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
+static int systblFKeyConstraintsColumn(sqlite3_vtab_cursor *cur,
+                                       sqlite3_context *ctx, int i)
+{
+    systbl_constraints_cursor *pCur = (systbl_constraints_cursor *)cur;
+    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+    constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
 
   switch( i ){
     case STCON_NAME: {
@@ -163,42 +202,133 @@ static int systblConstraintsColumn(
             if (constraint_name == 0)
                 return SQLITE_NOMEM;
 
-            rc = gen_constraint_name(pConstraint, pCur->iRuleid,
-                                     constraint_name, MAXGENCONSLEN);
+            rc = gen_fk_constraint_name(pConstraint, pCur->iRuleid,
+                                        constraint_name, MAXGENCONSLEN);
             if (rc)
                 return SQLITE_INTERNAL;
             sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
         }
         break;
     }
+    case STCON_TYPE: {
+        sqlite3_result_text(ctx, "FOREIGN KEY", -1, NULL);
+        break;
+    }
     case STCON_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
-      break;
+        sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+        break;
     }
     case STCON_KEY: {
-      sqlite3_result_text(ctx, pConstraint->lclkeyname, -1, NULL);
-      break;
+        sqlite3_result_text(ctx, pConstraint->lclkeyname, -1, NULL);
+        break;
     }
     case STCON_FTNAME: {
-      sqlite3_result_text(ctx, pConstraint->table[pCur->iRuleid], -1, NULL);
-      break;
+        sqlite3_result_text(ctx, pConstraint->table[pCur->iRuleid], -1, NULL);
+        break;
     }
     case STCON_FKNAME: {
-      sqlite3_result_text(ctx, pConstraint->keynm[pCur->iRuleid], -1, NULL);
-      break;
+        sqlite3_result_text(ctx, pConstraint->keynm[pCur->iRuleid], -1, NULL);
+        break;
     }
     case STCON_CDELETE: {
-      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_DEL_CASCADE), 
-        -1, SQLITE_STATIC);
-      break;
+        sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_DEL_CASCADE), -1,
+                            SQLITE_STATIC);
+        break;
     }
     case STCON_CUPDATE: {
-      sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_UPD_CASCADE), 
-        -1, SQLITE_STATIC);
-      break;
+        sqlite3_result_text(ctx, YESNO(pConstraint->flags & CT_UPD_CASCADE), -1,
+                            SQLITE_STATIC);
+        break;
     }
-  }
-  return SQLITE_OK; 
+    case STCON_EXPR: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    }
+    return SQLITE_OK;
+}
+
+static int systblCheckConstraintsColumn(sqlite3_vtab_cursor *cur,
+                                        sqlite3_context *ctx, int i)
+{
+    systbl_constraints_cursor *pCur = (systbl_constraints_cursor *)cur;
+    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+    check_constraint_t *pConstraint =
+        &pDb->check_constraints[pCur->iConstraintid];
+
+  switch( i ){
+    case STCON_NAME: {
+        int rc;
+        char *constraint_name;
+        if (pConstraint->consname) {
+            constraint_name = pConstraint->consname;
+            sqlite3_result_text(ctx, constraint_name, -1, NULL);
+        } else {
+            constraint_name = sqlite3_malloc(MAXGENCONSLEN);
+            if (constraint_name == 0)
+                return SQLITE_NOMEM;
+
+            rc = gen_check_constraint_name(pConstraint, constraint_name,
+                                           MAXGENCONSLEN);
+            if (rc)
+                return SQLITE_INTERNAL;
+            sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
+        }
+        break;
+    }
+    case STCON_TYPE: {
+        sqlite3_result_text(ctx, "CHECK", -1, NULL);
+        break;
+    }
+    case STCON_TABLE: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_KEY: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_FTNAME: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_FKNAME: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_CDELETE: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_CUPDATE: {
+        sqlite3_result_text(ctx, 0, -1, NULL);
+        break;
+    }
+    case STCON_EXPR: {
+        sqlite3_result_text(ctx, pConstraint->expr, -1, NULL);
+        break;
+    }
+    }
+    return SQLITE_OK;
+}
+
+/*
+** Return the table name for the current row.
+*/
+static int systblConstraintsColumn(sqlite3_vtab_cursor *cur,
+                                   sqlite3_context *ctx, int i)
+{
+    systbl_constraints_cursor *pCur = (systbl_constraints_cursor *)cur;
+
+    switch (pCur->iConstraintType) {
+    case CONS_FKEY:
+        return systblFKeyConstraintsColumn(cur, ctx, i);
+    case CONS_CHECK:
+        return systblCheckConstraintsColumn(cur, ctx, i);
+    default:
+        abort();
+    }
+    return SQLITE_OK;
 }
 
 /*
@@ -207,24 +337,12 @@ static int systblConstraintsColumn(
 ** previous to this, and then adding the current Ruleid for the
 ** Constraint that we're presently on.
 */
-static int systblConstraintsRowid(
-  sqlite3_vtab_cursor *cur,
-  sqlite_int64 *pRowid
-){
-  systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
-  int i;
-
-  *pRowid = 0;
-  for( i = 0; i < pCur->iRowid - 1; i++ ){
-    for( int j = 0; j < thedb->dbs[i]->n_constraints - 1; j++ ){
-      *pRowid += thedb->dbs[i]->constraints[j].nrules;
-    }
-  }
-  for( int j = 0; j < thedb->dbs[i]->n_constraints - 1; j++ ){
-    *pRowid += thedb->dbs[i]->constraints[j].nrules;
-  }
-  *pRowid += pCur->iConstraintid;
-  return SQLITE_OK;
+static int systblConstraintsRowid(sqlite3_vtab_cursor *cur,
+                                  sqlite_int64 *pRowid)
+{
+    systbl_constraints_cursor *pCur = (systbl_constraints_cursor *)cur;
+    *pRowid = pCur->iIndex;
+    return SQLITE_OK;
 }
 
 /*
@@ -252,6 +370,7 @@ static int systblConstraintsFilter(
   pCur->iRowid = 0;
   pCur->iConstraintid = 0;
   pCur->iRuleid = 0;
+  pCur->iIndex = 0;
 
   /* Advance to the first constraint, as it's possible that the cursor will
   ** start on a table without a constraint.

@@ -44,6 +44,7 @@ void bdb_set_rep_handle_dead(struct bdb_state_tag *);
 #endif
 
 int gbl_verbose_master_req = 0;
+int gbl_trace_repmore_reqs = 0;
 
 /*
  * rep_util.c:
@@ -265,6 +266,80 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		__db_err(dbenv, "rep_send_function returned: %d", ret);
 #endif
 	return (ret);
+}
+
+/*
+ * __rep_send_log_more --
+ *	This is a wrapper for sending a REP_LOG message.
+ *
+ * PUBLIC: int __rep_send_log_more __P((DB_ENV *, char*,
+ * PUBLIC:	 u_int32_t *, DB_LSN *, const DBT *, u_int32_t,
+ * PUBLIC:	 const char *, int));
+ */
+    int
+__rep_send_log_more(dbenv, eid, typep, lsnp, dbtp, flags, func, line)
+    DB_ENV *dbenv;
+    char *eid;
+    u_int32_t *typep;
+    DB_LSN *lsnp;
+    const DBT *dbtp;
+    u_int32_t flags;
+    const char *func;
+    int line;
+{
+    /* Net queue could be full: send REP_LOG_MORE with the
+     * NODROP flag lit */
+    int ret;
+    *typep = REP_LOG_MORE;
+    flags |= (DB_REP_NODROP|DB_REP_NOBUFFER);
+    if (gbl_trace_repmore_reqs)
+        flags |= DB_REP_TRACE;
+
+    if (gbl_verbose_fills){
+        logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE to "
+                "%s for LSN %d:%d\n", func, line, eid,
+                lsnp->file, lsnp->offset);
+    }
+
+    /* Replicant re-requests after timeout if this fails */
+    if ((ret = __rep_send_message(dbenv, eid, *typep, lsnp,
+                    dbtp, flags, NULL)) != 0 &&
+            gbl_verbose_fills) {
+        logmsg(LOGMSG_USER, "%s line %d failed LOG_MORE for %s,"
+                " %d\n", func, line, eid, ret);
+    }
+    return (ret);
+}
+
+/*
+ * __rep_time_send_message --
+ *	This is a wrapper for __rep_send_message. It adds the execution time of
+ * __rep_send_message in microseconds to `timerp', if gbl_verbose_fills is true.
+ *
+ * PUBLIC: int __rep_time_send_message __P((DB_ENV *, char*,
+ * PUBLIC:	 u_int32_t, DB_LSN *, const DBT *, u_int32_t,
+ * PUBLIC:	 void *usr_ptr, int *));
+ */
+    int
+__rep_time_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr, timerp)
+    DB_ENV *dbenv;
+    char *eid;
+    u_int32_t rtype;
+    DB_LSN *lsnp;
+    const DBT *dbtp;
+    u_int32_t flags;
+    void *usr_ptr;
+    int *timerp;
+{
+    int64_t start = 0;
+    int ret;
+
+    if (gbl_verbose_fills && timerp != NULL)
+        start = comdb2_time_epochus();
+    ret = __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr);
+    if (gbl_verbose_fills && timerp != NULL)
+        *timerp += (comdb2_time_epochus() - start);
+    return ret;
 }
 
 #ifdef REP_DIAGNOSTIC

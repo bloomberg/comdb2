@@ -1,4 +1,4 @@
 @bind CDB2_INTEGER A 2
 @bind CDB2_INTEGER b 3
 @bind CDB2_INTEGER a 1
-select 'one', comdb2_sysinfo('parallel'), a from t where a=@a union all select 'two', comdb2_sysinfo('parallel'), a from t where a=@A union all select 'three', comdb2_sysinfo('parallel'), a from t where a=@b
+select 'one', comdb2_ctxinfo('parallel'), a from t where a=@a union all select 'two', comdb2_ctxinfo('parallel'), a from t where a=@A union all select 'three', comdb2_ctxinfo('parallel'), a from t where a=@b

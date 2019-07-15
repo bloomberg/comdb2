@@ -2224,11 +2224,19 @@ int sqlite3IsRowid(const char *z){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsComdb2Rowid(const char *z){
+int sqlite3IsComdb2Rowid(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
   return (sqlite3StrICmp(z, "COMDB2_ROWID") == 0);
 }
 
-int sqlite3IsComdb2RowTimestamp(const char *z){
+int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
   if (comdb2genidcontainstime()){
       return 
           (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
@@ -5527,7 +5535,7 @@ void sqlite3ClearTempRegCache(Parse *pParse){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "vdbeInt.h"
 
-static char *print_mem(Mem *m){
+char *print_mem(Mem *m){
   int flg = m->flags & MEM_TypeMask;
   char *hex = "0123456789ABCDEF";
 

@@ -755,6 +755,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_CONSTRAINTS:
             case Constants.Errors.CDB2ERR_FKEY_VIOLATION:
             case Constants.Errors.CDB2ERR_NULL_CONSTRAINT:
+            case Constants.Errors.CDB2ERR_CHECK_CONSTRAINT:
             case Constants.Errors.CDB2ERR_DUPLICATE:
                 _ex = new SQLIntegrityConstraintViolationException(msg, "23000", rc, ex);
                 break;

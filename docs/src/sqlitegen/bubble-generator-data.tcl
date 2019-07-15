@@ -144,10 +144,15 @@ set all_graphs {
              {optx ( {loop /column-name ,} )}}
        {line
            {or
-             {line VALUES {loop {line ( {loop expr ,} )} ,}}
-             select-stmt
+               {line
+                   {or
+                       {line VALUES {loop {line ( {loop expr ,} )} ,}}
+                       select-stmt
+                   }
+                   {opt upsert-clause}
+               }
+               {line DEFAULT VALUES}
            }
-           {opt upsert-clause}
        }
   }
 
@@ -611,18 +616,22 @@ stack
 
   constraint-section {
       loop
-      {stack
-          {line /keyname -> 
-               {or 
-                    {line /ref-table-name : /ref-keyname }
-                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
-               }
+      {or
+          {stack
+              {opt /constraint-name =}
+              {line /keyname -> 
+                   {or 
+                        {line /ref-table-name : /ref-keyname }
+                        {line {loop {line < /ref-table-name : /ref-keyname > } } }
+                   }
+              }
+              {opt 
+                {loop 
+                   {line on {or update delete} {or cascade restrict }}
+                }
+              }
           }
-          {opt 
-            {loop 
-               {line on {or update delete} {or cascade restrict }}
-            }
-          }
+          {line check /constraint-name = lbrc where /expr rbrc}
       }
   }
 
@@ -678,7 +687,13 @@ stack
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
       {line INDEX }
-      {line {opt CONSTRAINT constraint-name } foreign-key-def }
+      {line
+          {opt CONSTRAINT constraint-name }
+          {or
+              {line foreign-key-def }
+              {line CHECK ( expr ) }
+          }
+      }
       {line OPTION DBPAD = signed-number }
   }
 
@@ -694,7 +709,10 @@ stack
       {line PRIMARY KEY ( index-column-list ) }
       {stack
           {line {opt CONSTRAINT constraint-name } }
-          {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+          {or
+              {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+              {line CHECK ( expr ) }
+          }
       }
   }
 

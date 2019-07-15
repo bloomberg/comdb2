@@ -44,6 +44,7 @@ void ssl_set_clnt_user(struct sqlclntstate *clnt);
 
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);
+int check_active_appsock_connections(struct sqlclntstate *clnt);
 int osql_clean_sqlclntstate(struct sqlclntstate *clnt);
 int watcher_warning_function(void *arg, int timeout, int gap);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
@@ -1504,7 +1505,11 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
-                sbuf2settimeout(clnt->sb, 0, notimeout ? 0 : timeout);
+                sbuf2settimeout(
+                    clnt->sb,
+                    bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) *
+                        1000,
+                    notimeout ? 0 : timeout);
                 if (timeout == 0)
                     net_add_watch(clnt->sb, 0, 0);
                 else
@@ -2098,7 +2103,6 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
-extern pthread_mutex_t clnt_lk;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
@@ -2173,15 +2177,22 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    Pthread_cond_init(&clnt.wait_cond, NULL);
-    Pthread_mutex_init(&clnt.write_lock, NULL);
-    Pthread_cond_init(&clnt.write_cond, NULL);
-    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    extern int gbl_allow_incoherent_sql;
+    if (!clnt.admin && !gbl_allow_incoherent_sql &&
+        !bdb_am_i_coherent(thedb->bdb_env)) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
+        goto done;
+    }
 
-    if (!clnt.admin &&
-        active_appsock_conns >
-            bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
+    query = read_newsql_query(dbenv, &clnt, sb);
+    if (query == NULL) {
+        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
+        goto done;
+    }
+
+    if (!clnt.admin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
 
@@ -2200,20 +2211,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
 
-    extern int gbl_allow_incoherent_sql;
-    if (!clnt.admin && !gbl_allow_incoherent_sql &&
-        !bdb_am_i_coherent(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d td %u new query on incoherent node, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
-        goto done;
-    }
-
-    query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL) {
-        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
-        goto done;
-    }
 #if 0
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
@@ -2457,12 +2454,6 @@ done:
     close_appsock(sb);
     arg->sb = NULL;
     cleanup_clnt(&clnt);
-
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;
 }

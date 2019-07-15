@@ -41,13 +41,8 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         newdb->csc2_schema_len = strlen(newdb->csc2_schema);
     }
 
-    extern int gbl_partial_indexes;
-    extern int gbl_expressions_indexes;
-    if (((gbl_partial_indexes && newdb->ix_partial) ||
-         (gbl_expressions_indexes && newdb->ix_expr)) &&
-        newdb->dbenv->master == gbl_mynode) {
-        rc = new_indexes_syntax_check(iq, newdb);
-        if (rc)
+    if (newdb->dbenv->master == gbl_mynode) {
+        if ((rc = sql_syntax_check(iq, newdb)))
             return SC_CSC2_ERROR;
     }
 
@@ -144,6 +139,13 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
+    if (init_check_constraints(newdb)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to initialize check constraint(s)\n",
+               __func__);
+        rc = SC_CSC2_ERROR;
+        goto err;
+    }
+
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
         logmsg(LOGMSG_ERROR, "%s: Verify constraints failed \n", __func__);
@@ -175,7 +177,7 @@ int add_table_to_environment(char *table, const char *csc2,
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         if (rc == SC_CSC2_ERROR)
-            sc_errf(s, "New indexes syntax error\n");
+            sc_errf(s, "Failed to check syntax\n");
         goto err;
     }
     newdb->ix_blob = newdb->schema->ix_blob;

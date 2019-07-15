@@ -1931,7 +1931,8 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
     SP sp = getsp(lua);
     if (sp) {
         lua_pop(lua, 1);
-        if (sp->num_instructions > sp->max_num_instructions) {
+        if ((sp->max_num_instructions > 0) &&
+            (sp->num_instructions > sp->max_num_instructions)) {
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",
@@ -2555,11 +2556,6 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
-    Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    Pthread_cond_init(&clnt.wait_cond, NULL);
-    Pthread_mutex_init(&clnt.write_lock, NULL);
-    Pthread_cond_init(&clnt.write_cond, NULL);
-    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
     int rc = dispatch_sql_query(&clnt); // --> exec_thread()
     /* Done running -- wake up anyone blocked on join */
@@ -2573,11 +2569,6 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_signal(&thd->lua_thread_cond);
     Pthread_mutex_unlock(&thd->lua_thread_mutex);
     cleanup_clnt(&clnt);
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
     return NULL;
 }
 
@@ -4448,6 +4439,9 @@ static void init_db_funcs(Lua L)
 
     lua_pushinteger(L, CDB2ERR_CONV_FAIL);
     lua_setfield(L, -2, "err_conv");
+
+    lua_pushinteger(L, CDB2ERR_CHECK_CONSTRAINT);
+    lua_setfield(L, -2, "err_check_constraint");
 
     lua_pushstring(L, "__index");
     lua_pushvalue(L, -2);
@@ -6516,7 +6510,7 @@ void *exec_trigger(trigger_reg_t *reg)
     }
     put_curtran(thedb->bdb_env, &clnt);
     close_sp(&clnt);
-    cleanup_clnt(&clnt);
+    end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
     thread_memdestroy();
