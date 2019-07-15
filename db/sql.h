@@ -29,8 +29,6 @@
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
-#include "priority_queue.h"
-#include "comdb2_ruleset.h"
 
 #include "fdb_fend.h"
 #include <sp.h>
@@ -301,7 +299,6 @@ enum connection_state
     CONNECTION_IDLE,
     CONNECTION_RESET,
     CONNECTION_QUEUED,
-    CONNECTION_PREPARING,
     CONNECTION_RUNNING
 };
 
@@ -548,25 +545,6 @@ struct sqlworkstate {
 
 /* Client specific sql state */
 struct sqlclntstate {
-    long long seqNo;           /* Monotonically increasing sequence number
-                                * assigned during dispatch.  This value is
-                                * not allowed to be zero.  Further, it must
-                                * be based on a value that is never reset
-                                * while the server is running.  This value
-                                * will be used as a proxy for the original
-                                * time of the client request, which impacts
-                                * the relative priority of queued SQL work
-                                * items.  This value should only be changed
-                                * by the dispatch_sql_query() function. */
-
-    priority_t priority;       /* This is the (relative) priority assigned
-                                * to the SQL work item currently in progress.
-                                * Lower values indicate higher priority.  In
-                                * theory, higher priority SQL work items will
-                                * be processed before lower priority SQL work
-                                * items.  This value should only be changed
-                                * by the dispatch_sql_query() function. */
-
     struct sqlworkstate work;  /* This is the primary data related to the SQL
                                 * client request in progress.  This includes
                                 * the original SQL query and its normalized
@@ -1103,7 +1081,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
+int dispatch_sql_query(struct sqlclntstate *clnt);
 int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 

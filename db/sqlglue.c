@@ -11933,7 +11933,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;
 
-    int rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
+    int rc = dispatch_sql_query(&clnt);
 
     if (clnt.has_sqliterow)
         *exist = 1;
@@ -12425,7 +12425,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
 
-        rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
+        rc = dispatch_sql_query(&clnt);
         if (rc) {
             rc = -1;
             goto done;

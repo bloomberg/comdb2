@@ -1490,12 +1490,6 @@ REGISTER_TUNABLE("osql_send_startgen",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("retry_dispatch_ms",
-                 "Number of milliseconds between retries of low-priority "
-                 "SQL queries.  (Default: 100)",
-                 TUNABLE_INTEGER, &gbl_retry_dispatch_ms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("client_heartbeat_ms",
                  "Number of milliseconds between client api heartbeats.  "
                  "(Default: 100)",

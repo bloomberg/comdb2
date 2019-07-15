@@ -165,7 +165,6 @@ int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
-long long gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 void rcache_init(size_t, size_t);
@@ -281,7 +280,6 @@ const char *WriteRespString[] = { RESPONSE_TYPES };
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 
 int gbl_client_heartbeat_ms = 100;
-int gbl_retry_dispatch_ms = 100;
 int gbl_fail_client_write_lock = 0;
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
@@ -3129,11 +3127,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
-    struct sql_state *pWorkRec = &clnt->work.rec;
-    if (pWorkRec->stmt != NULL) {
-      memcpy(rec, pWorkRec, sizeof(struct sql_state));
-      memset(pWorkRec, 0, sizeof(struct sql_state));
-    }
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
@@ -4448,40 +4441,11 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     return rc;
 }
 
-static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
-{
-    int rc;
-    struct errstat err = {0}; /* NOT USED */
-    clnt->work.rec.sql = clnt->work.zSql;
-    rc = get_prepared_bound_stmt(
-        clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_RECREATE
-    );
-    if (rc == 0) {
-        size_t nNormSql = 0;
-        calc_fingerprint(clnt->work.zNormSql, &nNormSql,
-                         clnt->work.aFingerprint);
-    }
-    return rc;
-}
-
-static int can_execute_sql_query_now(struct sqlclntstate *clnt, int *piRejected)
-{
-  *piRejected = 0;
-  return 1;
-}
-
 void sqlengine_work_appsock(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
-
-    assert(clnt->seqNo > 0);
-    assert(clnt->priority >= PRIORITY_T_HIGHEST);
-    assert(clnt->priority != PRIORITY_T_INVALID);
-    assert(clnt->priority != PRIORITY_T_HEAD);
-    assert(clnt->priority != PRIORITY_T_TAIL);
-    assert(clnt->priority != PRIORITY_T_DEFAULT);
 
     assert(sqlthd);
     sqlthd->clnt = clnt;
@@ -4490,33 +4454,9 @@ void sqlengine_work_appsock(void *thddata, void *work)
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
-    clnt_change_state(clnt, CONNECTION_PREPARING);
+    clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
-
-    int prepRc = prepare_and_calc_fingerprint(clnt);
-
-    if (prepRc != 0) {
-        clnt->query_rc = prepRc;
-        put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
-        signal_clnt_as_done(clnt);
-        return;
-    }
-
-    int iRejected = 0;
-
-    if (!can_execute_sql_query_now(clnt, &iRejected)) {
-        clnt->query_rc = iRejected ? ERR_QUERY_REJECTED : ERR_QUERY_DELAYED;
-        put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
-        signal_clnt_as_done(clnt);
-        return;
-    }
 
     clnt_change_state(clnt, CONNECTION_RUNNING);
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
@@ -4659,32 +4599,13 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
-static priority_t combinePriorities(
-  priority_t priority1, /* base, second arg to dispatch_sql_query(). */
-  priority_t priority2  /* offset, calculated based on sequence number. */
-){
-  switch( priority1 ){
-    case PRIORITY_T_HEAD:
-    case PRIORITY_T_TAIL:
-      return priority1;
-    case PRIORITY_T_DEFAULT:
-      return priority2;
-    default:
-      return priority1 + priority2;
-  }
-}
-
-static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int enqueue_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
     char *sqlcpy;
     int rc;
     int fail_dispatch = 0;
     int q_depth_tag_and_sql;
-
-    clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
-    priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
-    clnt->priority = combinePriorities(priority, localPriority);
 
     struct thr_handle *self = thrman_self();
     if (self) {
@@ -4732,14 +4653,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags, clnt->priority)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
-                                 flags | THDPOOL_FORCE_QUEUE,
-                                 clnt->priority);
+                                 flags | THDPOOL_FORCE_QUEUE);
         }
 
         if (rc) {
@@ -4862,34 +4782,14 @@ done:
     return clnt->query_rc;
 }
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     mark_clnt_as_recently_used(clnt);
 
-    int rc = enqueue_sql_query(clnt, priority);
+    int rc = enqueue_sql_query(clnt);
     if (rc != 0) return rc;
 
-    do {
-        rc = wait_for_sql_query(clnt);
-        if (rc == ERR_QUERY_DELAYED) {
-            useconds_t ms = 1000 * gbl_retry_dispatch_ms;
-            int rc = usleep(ms);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: usleep(%llu), rc=%d errno=%d",
-                       __func__, (unsigned long long)ms, rc, errno);
-                /* ok, cannot usleep... still want to keep retrying (?) */
-                sleep(1); /* however, we don't want to spin */
-            }
-            rc = enqueue_sql_query(clnt, priority);
-            if (rc != 0) return rc;
-            continue;
-        } else if (rc == ERR_QUERY_REJECTED) {
-            logmsg(LOGMSG_ERROR, "%s: REJECTED rc=%d {%s}",
-                   __func__, rc, clnt->work.zSql);
-        }
-        break;
-    } while (1); /* internal break */
-    return rc;
+    return wait_for_sql_query(clnt);
 }
 
 void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
@@ -5951,9 +5851,6 @@ static const char* connstate_str(enum connection_state s) {
         case CONNECTION_QUEUED:
             return "CONNECTION_QUEUED";
 
-        case CONNECTION_PREPARING:
-            return "CONNECTION_PREPARING";
-
         case CONNECTION_RUNNING:
             return "CONNECTION_RUNNING";
 
@@ -6201,9 +6098,6 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
         return CDB2ERR_CHECK_CONSTRAINT;
 
-    case ERR_QUERY_REJECTED:
-        return CDB2ERR_QUERY_REJECTED;
-
     default:
         return DB_ERR_INTR_GENERIC;
     }
@@ -6419,7 +6313,7 @@ void run_internal_sql(char *sql)
     start_internal_sql_clnt(&clnt);
     clnt.work.zSql = skipws(sql);
 
-    dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
+    dispatch_sql_query(&clnt);
     if (clnt.query_rc || clnt.saved_errstr) {
         logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
                clnt.query_rc);
@@ -6473,9 +6367,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].state_int = clnt->state;
       c[connid].time_in_state_int = clnt->state_start_time;
       Pthread_mutex_lock(&clnt->state_lk);
-      if (clnt->state == CONNECTION_PREPARING ||
-          clnt->state == CONNECTION_RUNNING ||
-          clnt->state == CONNECTION_QUEUED) {
+      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          c[connid].sql = strdup(clnt->work.zSql);
       } else {
          c[connid].sql = NULL;
@@ -6622,7 +6514,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
     clnt->work.zSql = skipws(sql);
-    dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
+    dispatch_sql_query(clnt);
     int rc = 0;
 
     if (clnt->query_rc || clnt->saved_errstr) {

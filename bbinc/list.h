@@ -97,12 +97,6 @@ extern void *listc_add_after(void *list, void *obj, void *afterobj);
 /* number of elements in list */
 extern int listc_size(void *list);
 
-/* return the top of list, which may be NULL */
-extern void *listc_ptl(void *list);
-
-/* return the bottom of list, which may be NULL */
-extern void *listc_pbl(void *list);
-
 #define LISTC_FOR_EACH(listp, currentp, linkv)                                 \
     for ((currentp) = ((listp)->top); (currentp) != 0;                         \
          (currentp) = ((currentp)->linkv.next))
