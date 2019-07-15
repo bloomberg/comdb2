@@ -579,6 +579,15 @@ static int memnice_update(void *context, void *value)
     return 0;
 }
 
+static int dtastripe_verify(void *context, void *value)
+{
+    int iValue = *(int *)value;
+    if ((iValue < 1) || (iValue > 16)) {
+        return 1;
+    }
+    return 0;
+}
+
 static int maxretries_verify(void *context, void *value)
 {
     if (*(int *)value < 2) {
