@@ -240,8 +240,8 @@ sampler_t *sampler_init(bdb_state_type *bdb_state, int *bdberr)
     if (sampler->tmptbl == NULL)
         goto err;
 
-    sampler->tmpcur = bdb_temp_table_cursor(bdb_state->parent,
-            sampler->tmptbl, NULL, bdberr);
+    sampler->tmpcur =
+        bdb_temp_table_cursor(bdb_state->parent, sampler->tmptbl, NULL, bdberr);
     if (sampler->tmpcur == NULL)
         goto err;
 
