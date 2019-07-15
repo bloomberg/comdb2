@@ -4181,11 +4181,6 @@ static void *writer_thread(void *args)
 #endif
         add_millisecs_to_timespec(&waittime, gbl_net_writer_thread_poll_ms);
 
-#ifdef PER_THREAD_MALLOC
-        /* No queued messages. This is our chance to trim the allocator. */
-        comdb2_malloc_trim(host_node_ptr->msp, netinfo_ptr->pool_size);
-#endif
-
         pthread_cond_timedwait(&(host_node_ptr->write_wakeup),
                                &(host_node_ptr->enquelk), &waittime);
 
