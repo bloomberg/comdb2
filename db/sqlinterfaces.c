@@ -4450,6 +4450,9 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
+    if (is_stored_proc(clnt)) {
+        return 0; /* ignored */
+    }
     int rc;
     struct errstat err = {0}; /* NOT USED */
     clnt->work.rec.sql = clnt->work.zSql;
