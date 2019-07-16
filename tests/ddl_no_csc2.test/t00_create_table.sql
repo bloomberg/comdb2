@@ -392,7 +392,6 @@ CREATE TABLE t5(i INT, j INT, FOREIGN KEY (i DESC, j) REFERENCES t1(i DESC, j)) 
 CREATE TABLE t6(i INT, j INT, FOREIGN KEY (i, j DESC) REFERENCES t1(i, j DESC)) $$
 CREATE TABLE t7(i INT, j INT, FOREIGN KEY (i DESC, j DESC) REFERENCES t1(i DESC, j DESC)) $$
 CREATE TABLE t8(i INT, FOREIGN KEY (i DESC) REFERENCES t1(i DESC)) $$
-CREATE INDEX idx1 ON t8(i DESC)
 
 SELECT '---------------------------------- PART #52 ----------------------------------' AS part;
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -402,12 +401,7 @@ SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 
 SELECT '---------------------------------- PART #53 ----------------------------------' AS part;
 DROP TABLE t2;
-DROP TABLE t3;
 DROP TABLE t4;
-DROP TABLE t5;
-DROP TABLE t6;
-DROP TABLE t7;
-DROP TABLE t8;
 DROP TABLE t1;
 
 SELECT '---------------------------------- PART #54 ----------------------------------' AS part;

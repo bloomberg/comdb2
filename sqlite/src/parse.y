@@ -591,19 +591,10 @@ ifexists(A) ::= .            {A = 0;}
 ///////////////////// The CREATE VIEW statement /////////////////////////////
 //
 %ifndef SQLITE_OMIT_VIEW
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-viewkw ::= VIEW.  {pParse->isView = 1;}
-cmd ::= createkw(X) temp(T) viewkw ifnotexists(E) nm(Y) dbnm(Z) eidlist_opt(C)
-          AS select(S). {
-  sqlite3CreateView(pParse, &X, &Y, &Z, C, S, T, E);
-}
-%endif SQLITE_BUILDING_FOR_COMDB2
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= createkw(X) temp(T) VIEW ifnotexists(E) nm(Y) dbnm(Z) eidlist_opt(C)
           AS select(S). {
   sqlite3CreateView(pParse, &X, &Y, &Z, C, S, T, E);
 }
-%endif
 cmd ::= DROP VIEW ifexists(E) fullname(X). {
   sqlite3DropTable(pParse, X, 1, E);
 }
@@ -1576,24 +1567,12 @@ uniqueflag(A) ::= .        {A = OE_None;}
     int sortOrder
   ){
     ExprList *p = sqlite3ExprListAppend(pParse, pPrior, 0);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* Allow sort order in FK index columns. Views do not allow sort order.
-    ** TODO: (NC) Also disallow use of sort order in CTE.
-    */
-    if( (hasCollate || (sortOrder!=SQLITE_SO_UNDEFINED && pParse->isView))
-        && pParse->db->init.busy==0)
-    {
-      sqlite3ErrorMsg(pParse, "syntax error after column name \"%.*s\"",
-                         pIdToken->n, pIdToken->z);
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( (hasCollate || sortOrder!=SQLITE_SO_UNDEFINED)
         && pParse->db->init.busy==0
     ){
       sqlite3ErrorMsg(pParse, "syntax error after column name \"%.*s\"",
                          pIdToken->n, pIdToken->z);
     }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ExprListSetName(pParse, p, pIdToken, 1);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     sqlite3ExprListSetSortOrder(p, sortOrder);

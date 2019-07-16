@@ -3509,14 +3509,14 @@ static struct comdb2_column *find_column_by_name(struct comdb2_ddl_context *ctx,
     return 0;
 }
 
-static struct comdb2_key *
-find_suitable_key(comdb2_index_part_lst *idx_col_list,
-                  comdb2_key_lst *key_list)
+static struct comdb2_key *find_suitable_key(comdb2_index_part_lst *idx_col_list,
+                                            comdb2_key_lst *key_list)
 {
     struct comdb2_key *current_key;
+    struct comdb2_key *matched_key = NULL;
     struct comdb2_index_part *current_idx_part;
     struct comdb2_index_part *idx_part;
-    int key_found = 0;
+    int matched;
 
     LISTC_FOR_EACH(key_list, current_key, lnk)
     {
@@ -3525,27 +3525,29 @@ find_suitable_key(comdb2_index_part_lst *idx_col_list,
             continue;
 
         /* Let's start by assuming that we have found the matching key. */
-        key_found = 1;
+        matched = 1;
 
         current_idx_part = LISTC_TOP(&current_key->idx_col_list);
 
         LISTC_FOR_EACH(idx_col_list, idx_part, lnk)
         {
-            if ((strcasecmp(idx_part->name, current_idx_part->name) != 0) ||
-                (idx_part->flags != current_idx_part->flags)) {
-                key_found = 0;
-                break;
+            if (strcasecmp(idx_part->name, current_idx_part->name) != 0) {
+                matched = 0;
             }
             /* Move to the next index column in the key. */
             current_idx_part = LISTC_NEXT(current_idx_part, lnk);
         }
-
-        if (key_found == 1) {
-            break;
+        if (matched) {
+            /* Prefer the smaller of the matched keys. */
+            if (matched_key &&
+                (listc_size(matched_key) > listc_size(current_key))) {
+                matched_key = current_key;
+            } else {
+                matched_key = current_key;
+            }
         }
     }
-
-    return (key_found == 1) ? current_key : 0;
+    return matched_key;
 }
 
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
