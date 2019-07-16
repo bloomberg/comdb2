@@ -204,6 +204,8 @@
 (name='END', reserved='N')
 (name='EXCLUDE', reserved='N')
 (name='EXCLUSIVE', reserved='N')
+(name='EXEC', reserved='N')
+(name='EXECUTE', reserved='N')
 (name='EXPLAIN', reserved='N')
 (name='FAIL', reserved='N')
 (name='FOLLOWING', reserved='N')

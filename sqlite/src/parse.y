@@ -282,7 +282,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
-  ENABLE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW LUA LZ4 NONE
+  ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
+  LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -2002,6 +2003,16 @@ wqlist(A) ::= wqlist(A) COMMA nm(X) eidlist_opt(Y) AS LP select(Z) RP. {
 ////////////////////////// COMDB2 SYNTAX EXTENSIONS ///////////////////////////
 // These rules are used to support the syntax extensions provided by COMDB2.
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+//////////////////////////////// EXEC / EXECUTE ///////////////////////////////
+cmd ::= EXEC sproccmd.
+cmd ::= EXECUTE sproccmd.
+
+exec_proc_arg ::= NULL|FLOAT|BLOB|STRING|INTEGER.
+exec_proc_arg_list ::= exec_proc_arg.
+exec_proc_arg_list ::= exec_proc_arg_list COMMA exec_proc_arg.
+
+sproccmd ::= PROCEDURE nm dbnm dbnm LP exec_proc_arg_list RP.
+
 ////////////////////////////////// GET / PUT //////////////////////////////////
 cmd ::= GET getcmd.
 

@@ -68,6 +68,8 @@
 (candidate='EXCEPT')
 (candidate='EXCLUDE')
 (candidate='EXCLUSIVE')
+(candidate='EXEC')
+(candidate='EXECUTE')
 (candidate='EXISTS')
 (candidate='EXPLAIN')
 (candidate='FAIL')
