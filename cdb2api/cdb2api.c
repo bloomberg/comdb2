@@ -1127,7 +1127,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     cdb2cfg_override = 1;
     len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
-    strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
+    strcpy(CDB2DBCONFIG_BUF, cfg_info);
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
