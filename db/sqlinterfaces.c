@@ -2686,18 +2686,16 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int check_sql(struct sqlclntstate *clnt, int *sp)
+static int is_stored_proc(struct sqlclntstate *clnt)
 {
     const char *sql = clnt->work.zSql;
     size_t len = sizeof("EXEC") - 1;
     if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
-        *sp = 1;
-        return 0;
+        return 1;
     }
     len = sizeof("EXECUTE") - 1;
     if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
-        *sp = 1;
-        return 0;
+        return 1;
     }
     return 0;
 }
@@ -3139,7 +3137,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (!gbl_allow_pragma)
         flags |= PREPARE_DENY_PRAGMA;
 
-    flags |= PREPARE_DENY_CREATE_TRIGGER; /* UNSUPPORTED: was in check_sql() */
+    flags |= PREPARE_DENY_CREATE_TRIGGER; /* UNSUPPORTED: was in is_stored_proc() */
 
     const char *tail = NULL;
 
@@ -3465,16 +3463,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         break;
     }
 
-    /* additional non-sqlite requests */
-    int stored_proc = 0;
-
-    if ((rc = check_sql(clnt, &stored_proc)) != 0)
-    {
-        // TODO: set this: outrc = rc;
-        return rc;
-    }
-
-    if (stored_proc) {
+    if (is_stored_proc(clnt)) {
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
