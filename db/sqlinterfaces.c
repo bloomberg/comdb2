@@ -3084,14 +3084,25 @@ static void normalize_stmt_and_store(
     free(clnt->work.zNormSql);
     clnt->work.zNormSql = 0;
   }
-  assert(rec && rec->stmt);
-  assert(rec && rec->sql);
   if (gbl_fingerprint_queries) {
-    const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
-    if (zNormSql) {
-      clnt->work.zNormSql = strdup(zNormSql);
-    } else if (gbl_verbose_normalized_queries) {
-      logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+    const char *zNormSql;
+    if (rec != NULL) {
+      assert(rec->stmt);
+      assert(rec->sql);
+      zNormSql = sqlite3_normalized_sql(rec->stmt);
+      if (zNormSql) {
+        clnt->work.zNormSql = strdup(zNormSql);
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+      }
+    } else {
+      zNormSql = sqlite3Normalize(0, clnt->work.zSql);
+      if (zNormSql) {
+        clnt->work.zNormSql = strdup(zNormSql);
+        sqlite3_free(zNormSql);
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
+      }
     }
   }
 }
@@ -4450,8 +4461,17 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
+    size_t nNormSql = 0;
     if (is_stored_proc(clnt)) {
-        return 0; /* ignored */
+        /*
+        ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
+        **       because its execution bypasses the SQL engine;
+        **       however, the parser now recognizes it.
+        */
+        normalize_stmt_and_store(clnt, NULL);
+        calc_fingerprint(clnt->work.zNormSql, &nNormSql,
+                         clnt->work.aFingerprint);
+        return 0; /* success */
     }
     int rc;
     struct errstat err = {0}; /* NOT USED */
@@ -4460,7 +4480,6 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_RECREATE
     );
     if (rc == 0) {
-        size_t nNormSql = 0;
         calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                          clnt->work.aFingerprint);
     }
