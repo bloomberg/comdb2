@@ -3225,14 +3225,15 @@ static int dbstmt_exec(Lua lua)
 
 static int dbstmt_fetch(Lua lua)
 {
+    SP sp = getsp(lua);
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    setup_first_sqlite_step(getsp(lua), dbstmt);
+    setup_first_sqlite_step(sp, dbstmt);
     lua_begin_step(sp, dbstmt->stmt);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
-    donate_stmt(getsp(lua), dbstmt);
+    donate_stmt(sp, dbstmt);
     return 0;
 }
 
