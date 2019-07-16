@@ -1238,7 +1238,6 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
-    lua_begin_step(sp, stmt);
     int rc = sqlite3_step(stmt);
     lua_another_step(sp, stmt, rc);
 
@@ -2107,7 +2106,7 @@ static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
-    if (pVdbe != NULL) {
+    if ((pVdbe != NULL) && (rc == SQLITE_ROW)) {
         pVdbe->luaRows++;
     }
 }
@@ -3230,6 +3229,7 @@ static int dbstmt_fetch(Lua lua)
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
     setup_first_sqlite_step(getsp(lua), dbstmt);
+    lua_begin_step(sp, dbstmt->stmt);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(getsp(lua), dbstmt);
