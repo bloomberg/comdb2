@@ -1048,6 +1048,9 @@ static int enable_global_variables(lua_State *lua)
     return 0;
 }
 
+static void lua_begin_step(SP, sqlite3_stmt *);
+static void lua_another_step(SP, sqlite3_stmt *, int);
+static void lua_end_step(SP, sqlite3_stmt *);
 static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
@@ -1118,8 +1121,11 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp, stmt);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
+    }
+    lua_end_step(sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
     unlock_schema_lk();
     sqlite3_finalize(stmt);
@@ -1232,9 +1238,12 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
+    lua_begin_step(sp, stmt);
     int rc = sqlite3_step(stmt);
+    lua_another_step(sp, stmt, rc);
 
     if (rc == SQLITE_DONE) {
+        lua_end_step(sp, stmt);
         return rc;
     } else if (rc != SQLITE_ROW) {
         return luaL_error(lua, sqlite3_errmsg(getdb(sp)));
@@ -2083,9 +2092,24 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     return sp->rc;
 }
 
+static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
+{
+
+}
+
+static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
+{
+
+}
+
+static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
+{
+
+}
+
 static int lua_get_prepare_flags()
 {
-    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
+    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR | PREPARE_NO_NORMALIZE;
 }
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
@@ -2207,8 +2231,11 @@ static int dbtable_insert(Lua lua)
     }
     lua_pop(lua, 1); /* Keep just dbtable on stack. */
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp, stmt);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
+    }
+    lua_end_step(sp, stmt);
 
     if (rc == SQLITE_DONE) rc = 0;
 
@@ -2262,8 +2289,11 @@ static int dbtable_copyfrom(Lua lua)
         return rc;
     }
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp, stmt);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
+    }
+    lua_end_step(sp, stmt);
 
     sqlite3_finalize(stmt);
 
@@ -3148,8 +3178,11 @@ static int dbstmt_exec(Lua lua)
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp, stmt);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
+    }
+    lua_end_step(sp, stmt);
     dbstmt->rows_changed = sqlite3_changes(sqldb);
     if (rc == SQLITE_DONE) {
         sqlite3_reset(stmt);
@@ -3185,12 +3218,15 @@ static int dbstmt_emit(Lua L)
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
     int rc;
+    lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
         if (l_send_back_row(L, stmt, cols) != 0) {
             rc = -1;
             break;
         }
     }
+    lua_end_step(sp, stmt);
     reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
     return push_and_return(L, rc);
@@ -3340,7 +3376,11 @@ int db_csvcopy(Lua lua)
           }
       	  if (csv.cTerm == 0) break;
         }
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
+        lua_begin_step(sp, stmt);
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            lua_another_step(sp, stmt, rc);
+        }
+        lua_end_step(sp, stmt);
 
         for (int i = 0; i < pos-1; i++) {
             free(b_val[i]);
@@ -3404,8 +3444,11 @@ static int db_exec(Lua lua)
     // a write stmt - run it now
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3 *sqldb = getdb(sp);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp, stmt);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        lua_another_step(sp, stmt, rc);
+    }
+    lua_end_step(sp, stmt);
     if (rc == SQLITE_DONE) {
         dbstmt->rows_changed = sqlite3_changes(sqldb);
         sp->rc = 0;

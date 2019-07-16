@@ -3144,7 +3144,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        normalize_stmt_and_store(clnt, rec);
+        int noNormalize = (flags & PREPARE_NO_NORMALIZE);
+        if (!noNormalize) normalize_stmt_and_store(clnt, rec);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
