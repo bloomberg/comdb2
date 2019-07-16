@@ -1570,8 +1570,18 @@ int bdb_get_index_filename(bdb_state_type *bdb_state, int ixnum, char *nameout,
 int bdb_get_data_filename(bdb_state_type *bdb_state, int stripe, int blob,
                           char *nameout, int namelen, int *bdberr);
 
+/* Sampler interface */
+typedef struct sampler sampler_t;
+int sampler_first(sampler_t *);
+int sampler_last(sampler_t *);
+int sampler_prev(sampler_t *);
+int sampler_next(sampler_t *);
+void *sampler_key(sampler_t *);
+sampler_t *sampler_init();
+int sampler_close(sampler_t *);
+
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
-                        struct temp_table **outtbl, unsigned long long *outrecs,
+                        sampler_t **samplerp, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr);
 
 void bdb_bdblock_debug(void);
