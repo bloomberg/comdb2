@@ -4494,6 +4494,24 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 
+    assert(clnt->dbtran.pStmt == NULL);
+
+    /* everything going in is cursor based */
+    int rc = get_curtran(thedb->bdb_env, clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s td %lu: unable to get a CURSOR transaction, rc=%d!\n",
+               __func__, pthread_self(), rc);
+        send_run_error(clnt, "Client api should change nodes",
+                       CDB2ERR_CHANGENODE);
+        clnt->query_rc = -1;
+        clnt->osql.timings.query_finished = osql_log_time();
+        osql_log_time_done(clnt);
+        clnt_change_state(clnt, CONNECTION_IDLE);
+        signal_clnt_as_done(clnt);
+        return;
+    }
+
     int prepRc = prepare_and_calc_fingerprint(clnt);
 
     if (prepRc != 0) {
@@ -4524,24 +4542,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
         clnt->client_understands_query_stats && clnt->osql.rqid)
         osql_query_dbglog(sqlthd, clnt->queryid);
-
-    assert(clnt->dbtran.pStmt == NULL);
-
-    /* everything going in is cursor based */
-    int rc = get_curtran(thedb->bdb_env, clnt);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s td %lu: unable to get a CURSOR transaction, rc=%d!\n",
-               __func__, pthread_self(), rc);
-        send_run_error(clnt, "Client api should change nodes",
-                       CDB2ERR_CHANGENODE);
-        clnt->query_rc = -1;
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
-        signal_clnt_as_done(clnt);
-        return;
-    }
 
     /* it is a new query, it is time to clean the error */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
