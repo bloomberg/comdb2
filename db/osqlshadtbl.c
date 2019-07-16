@@ -599,10 +599,7 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
         return -1;
     }
 
-    blob_key_t key = {
-        .seq = pCur->genid,
-        .id = *blobnum - 1
-    };
+    blob_key_t key = {.seq = pCur->genid, .id = *blobnum - 1};
 
     /* We don't know the ODH-ness of the blob, so we search using
      * bdb_temp_table_find(). */
@@ -1837,10 +1834,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             }
         }
 
-        blob_key_t key = {
-            .seq = seq,
-            .id = i
-        };
+        blob_key_t key = {.seq = seq, .id = i};
 
         /* We don't know the ODH-ness of the blob, so we search using
          * bdb_temp_table_find(). */
