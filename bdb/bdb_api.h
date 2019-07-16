@@ -1356,8 +1356,8 @@ int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
                           size_t maxnumtbls, int *fndnumtbls, int *bdberr);
 bdb_state_type *bdb_llmeta_bdb_state(void);
 
-int bdb_get_view_names(char **names, int *num);
-int bdb_get_view(char *view_name, char **view_def);
+int bdb_get_view_names(tran_type *t, char **names, int *num);
+int bdb_get_view(tran_type *t, char *view_name, char **view_def);
 int bdb_put_view(tran_type *t, char *view_name, char *view_def);
 int bdb_del_view(tran_type *t, char *view_name);
 

@@ -2132,7 +2132,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
                        offsetof(struct dbview, view_name), 0);
 
     /* load the tables from the low level metatable */
-    if (bdb_get_view_names((char **)view_names, &view_count)) {
+    if (bdb_get_view_names(tran, (char **)view_names, &view_count)) {
         logmsg(
             LOGMSG_ERROR,
             "couldn't load view names from low level meta table (bdberr: %d)\n",
@@ -2149,7 +2149,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
             goto err;
         }
 
-        if (bdb_get_view(view_names[i], &view_def)) {
+        if (bdb_get_view(tran, view_names[i], &view_def)) {
             logmsg(LOGMSG_ERROR,
                    "couldn't load view definition from low level meta table "
                    "(bdberr: %d)\n",
@@ -2161,10 +2161,6 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
         view->view_name = view_names[i];
         view->view_def = view_def;
         hash_add(view_hash, view);
-    }
-
-    for (int i = 0; i < view_count; i++) {
-        free(view_names[i]);
     }
 
     free_view_hash(thedb->view_hash);

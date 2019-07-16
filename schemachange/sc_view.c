@@ -25,7 +25,6 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
                       tran_type *tran)
 {
     int rc;
-    int bdberr;
     struct dbview *view;
 
     view = calloc(1, sizeof(struct dbview));
@@ -68,13 +67,6 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     }
     create_sqlite_master();
 
-    rc = bdb_llog_view(thedb->bdb_env, user_view, 1, &bdberr);
-    if (rc != 0) {
-        sc_errf(s, "Failed to log view info\n");
-        goto err;
-    }
-    gbl_dbopen_gen++;
-
     sc_printf(s, "Schema change ok\n");
     return 0;
 
@@ -90,7 +82,6 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
                        tran_type *tran)
 {
     int rc = 0;
-    int bdberr = 0;
 
     if ((rc = bdb_del_view(tran, s->tablename)) != 0) {
         return rc;
@@ -104,18 +95,26 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
     }
     create_sqlite_master();
 
-    rc = bdb_llog_view(thedb->bdb_env, user_view, 1, &bdberr);
-    if (rc != 0) {
-        return rc;
+    return 0;
+}
+
+int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
+{
+    if ((get_dbtable_by_name(s->tablename)) ||
+        (get_view_by_name(s->tablename))) {
+        sc_errf(s, "Table/view already exists\n");
+        reqerrstr(iq, ERR_SC, "Table/view already exists");
+        return ERR_SC;
     }
-    gbl_dbopen_gen++;
+    return 0;
+}
 
-/* TODO (NC): study */
-#if 0
-    live_sc_off(db);
-    if (gbl_replicate_local)
-        local_replicant_write_clear(iq, tran, db);
-#endif
-
+int do_drop_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
+{
+    if (!(get_view_by_name(s->tablename))) {
+        sc_errf(s, "View doesn't exists\n");
+        reqerrstr(iq, ERR_SC, "View doesn't exists");
+        return ERR_SC;
+    }
     return 0;
 }

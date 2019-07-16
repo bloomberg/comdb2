@@ -190,7 +190,6 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        struct dbview *get_view_by_name(char *view_name);
         struct dbview *view = get_view_by_name(dst);
         if ((db != NULL || view != NULL) &&
             (error_flag == ERROR_ON_TBL_FOUND)) {

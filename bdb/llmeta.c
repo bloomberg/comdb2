@@ -3882,7 +3882,9 @@ backout:
     return -1;
 }
 
-static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr);
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
+                  int *bdberr);
+
 int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
                                  void ***sc_data_out, int *num, int *bdberr)
 {
@@ -3896,7 +3898,7 @@ int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
     *status_out = NULL;
     *sc_data_out = NULL;
 
-    rc = kv_get(&k, sizeof(k), &data, &nkey, bdberr);
+    rc = kv_get(NULL, &k, sizeof(k), &data, &nkey, bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
         return -1;
@@ -8696,7 +8698,8 @@ done:
 */
 
 // get values for all matching keys
-static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
+                  int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8704,16 +8707,16 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **vals = NULL;
-    int rc =
-        bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, out, &fnd, bdberr);
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out,
+                                         &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
         }
         void *dta;
         int dsz;
-        rc =
-            bdb_lite_exact_var_fetch(llmeta_bdb_state, out, &dta, &dsz, bdberr);
+        rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, t, out, &dta, &dsz,
+                                           bdberr);
         if (rc || *bdberr != BDBERR_NOERROR) {
             break;
         }
@@ -8723,8 +8726,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
         }
         vals[n++] = dta;
         uint8_t nxt[LLMETA_IXLEN];
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     *num = n;
@@ -8733,7 +8736,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 }
 
 // get full keys for all matching partial keys
-static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+static int kv_get_keys(tran_type *t, void *k, size_t klen, void ***ret,
+                       int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8742,7 +8746,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     uint8_t out[LLMETA_IXLEN];
     void **names = NULL;
     int rc =
-        bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, out, &fnd, bdberr);
+        bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out, &fnd,
+                                    bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
@@ -8755,8 +8760,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
         memcpy(names[n], out, LLMETA_IXLEN);
         ++n;
         uint8_t nxt[LLMETA_IXLEN];
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     *num = n;
@@ -8845,7 +8850,7 @@ BB_COMPILE_TIME_ASSERT(key_seq, sizeof(llmeta_kv_key) == 4 + 4 + 8);
 static int bdb_kv_get(llmetakey_t llkey, char ***ret, int *num, int *bdberr)
 {
     llmetakey_t k = htonl(llkey);
-    return kv_get(&k, sizeof(k), (void ***)ret, num, bdberr);
+    return kv_get(NULL, &k, sizeof(k), (void ***)ret, num, bdberr);
 }
 
 static int bdb_kv_put(tran_type *tran, llmetakey_t llkey, void *dta, int dsz,
@@ -8933,7 +8938,7 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
     strncpy0(u.sp.version, version, sizeof(u.sp.version));
     char **srcs;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&srcs, &num, &bdberr);
+    rc = kv_get(NULL, &u, sizeof(u), (void ***)&srcs, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *src = srcs[0];
@@ -9029,7 +9034,7 @@ int bdb_get_default_versioned_sp(char *name, char **version)
     strncpy0(u.sp.name, name, sizeof(u.sp.name));
     char **versions;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&versions, &num, &bdberr);
+    rc = kv_get(NULL, &u, sizeof(u), (void ***)&versions, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *version = versions[0];
@@ -9065,7 +9070,7 @@ static int bdb_get_sps_int(llmetakey_t k, char ***names, int *num)
         uint8_t buf[LLMETA_IXLEN];
     } * *v;
     int n, bdberr;
-    int rc = kv_get_keys(&k, sizeof(k), (void ***)&v, &n, &bdberr);
+    int rc = kv_get_keys(NULL, &k, sizeof(k), (void ***)&v, &n, &bdberr);
     char **ret = malloc(n * sizeof(char *));
     for (int i = 0; i < n; ++i) {
         ret[i] = strdup(v[i]->sp.name);
@@ -9094,7 +9099,7 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     strcpy(k.sp.name, name);
     size_t klen = sizeof(llmetakey_t) + strlen(name) + 1;
     int n, bdberr;
-    int rc = kv_get_keys(&k, klen, (void ***)&v, &n, &bdberr);
+    int rc = kv_get_keys(NULL, &k, klen, (void ***)&v, &n, &bdberr);
     char **ret = malloc(n * sizeof(char *));
     for (int i = 0; i < n; ++i) {
         ret[i] = strdup(v[i]->sp.version);
@@ -9279,7 +9284,7 @@ static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
     memset(&key, 0, sizeof(key));
     key.passwd.file_type = htonl(type);
     strcpy(key.passwd.user, user);
-    int rc = kv_get(&key, sizeof(key), out, &num, &bdberr);
+    int rc = kv_get(NULL, &key, sizeof(key), out, &num, &bdberr);
     if (rc == 0 && num == 1) return 0;
     if (*out) {
         void **data = *out;
@@ -9402,9 +9407,9 @@ int bdb_user_get_all(char ***users, int *num)
     void **u1, **u2;
     int key, n1, n2, bdberr;
     key = htonl(LLMETA_USER_PASSWORD);
-    kv_get_keys(&key, sizeof(key), &u1, &n1, &bdberr);
+    kv_get_keys(NULL, &key, sizeof(key), &u1, &n1, &bdberr);
     key = htonl(LLMETA_USER_PASSWORD_HASH);
-    kv_get_keys(&key, sizeof(key), &u2, &n2, &bdberr);
+    kv_get_keys(NULL, &key, sizeof(key), &u2, &n2, &bdberr);
     int n = n1 + n2;
     u1 = realloc(u1, sizeof(void *) * n);
     memcpy(u1 + n1, u2, sizeof(void *) * n2);
@@ -9804,7 +9809,7 @@ struct llmeta_view_key {
 };
 
 /* Fetch all view names */
-int bdb_get_view_names(char **names, int *num)
+int bdb_get_view_names(tran_type *t, char **names, int *num)
 {
     union {
         struct llmeta_view_key key;
@@ -9814,7 +9819,7 @@ int bdb_get_view_names(char **names, int *num)
     llmetakey_t k;
 
     k = htonl(LLMETA_VIEW);
-    rc = kv_get_keys(&k, sizeof(k), (void ***)&v, &n, &bdberr);
+    rc = kv_get_keys(t, &k, sizeof(k), (void ***)&v, &n, &bdberr);
     if (rc || (n == 0)) {
         *num = 0;
         return rc;
@@ -9830,7 +9835,7 @@ int bdb_get_view_names(char **names, int *num)
 }
 
 /* Fetch a specific view */
-int bdb_get_view(char *view_name, char **view_def)
+int bdb_get_view(tran_type *t, char *view_name, char **view_def)
 {
     union {
         struct llmeta_view_key key;
@@ -9844,7 +9849,7 @@ int bdb_get_view(char *view_name, char **view_def)
     /* View name */
     strncpy0(u.key.view_name, view_name, sizeof(u.key.view_name));
 
-    rc = kv_get(&u, sizeof(u), (void ***)&view_defs, &num, &bdberr);
+    rc = kv_get(t, &u, sizeof(u), (void ***)&view_defs, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *view_def = view_defs[0];

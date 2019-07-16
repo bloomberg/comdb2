@@ -1943,6 +1943,10 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);
 /*look up managed db's by name*/
 struct dbtable *get_dbtable_by_name(const char *name);
+/* Lookup view by name */
+struct dbview *get_view_by_name(char *view_name);
+/* Load all views from llmeta */
+int llmeta_load_views(struct dbenv *, void *);
 /* lookup a table by name; if it exists, lock table readonly
    if there is no table, lock table in write mode
    NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
