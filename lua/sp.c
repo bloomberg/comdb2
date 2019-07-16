@@ -2117,23 +2117,19 @@ static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
     if ((sp != NULL) && (pVdbe != NULL)) {
-        struct sqlclntstate *clnt = sp->clnt;
+        const char *zNormSql = sqlite3_normalized_sql(pStmt);
 
-        if (clnt != NULL) {
-            const char *zNormSql = sqlite3_normalized_sql(pStmt);
+        if (zNormSql != NULL) {
+            double cost = 0.0;
+            int64_t prepMs = 0;
 
-            if (zNormSql != NULL) {
-                double cost = 0.0;
-                int64_t prepMs = 0;
+            clnt_query_cost(sp->thd, &cost, &prepMs);
 
-                clnt_query_cost(clnt, &cost, &prepMs);
-
-                add_fingerprint(
-                    sqlite3_sql(pStmt), zNormSql, cost,
-                    comdb2_time_epochms() - pVdbe->luaStartTime + prepMs,
-                    prepMs, pVdbe->luaRows, NULL
-                );
-            }
+            add_fingerprint(
+                sqlite3_sql(pStmt), zNormSql, cost,
+                comdb2_time_epochms() - pVdbe->luaStartTime + prepMs,
+                prepMs, pVdbe->luaRows, NULL
+            );
         }
         restore_thd_cost_and_reset(sp->thd, pVdbe);
     }
