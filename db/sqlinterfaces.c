@@ -3089,12 +3089,14 @@ int sqlengine_prepare_engine(struct sqlthdstate *thd,
 
 static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
-  struct sql_state *rec
+  struct sql_state *rec,
+  int freeOnly
 ){
   if (clnt->zNormSql) {
     free(clnt->zNormSql);
     clnt->zNormSql = 0;
   }
+  if (freeOnly) return;
   assert(rec && rec->stmt);
   assert(rec && rec->sql);
   if (gbl_fingerprint_queries) {
@@ -3170,8 +3172,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        int noNormalize = (flags & PREPARE_NO_NORMALIZE);
-        if (!noNormalize) normalize_stmt_and_store(clnt, rec);
+        normalize_stmt_and_store(clnt, rec, flags & PREPARE_NO_NORMALIZE);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
