@@ -3099,7 +3099,7 @@ static void normalize_stmt_and_store(
       zNormSql = sqlite3Normalize(0, clnt->work.zSql);
       if (zNormSql) {
         clnt->work.zNormSql = strdup(zNormSql);
-        sqlite3_free(zNormSql);
+        sqlite3_free((char*)zNormSql);
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
       }
