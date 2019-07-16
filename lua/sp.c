@@ -1051,6 +1051,7 @@ static int enable_global_variables(lua_State *lua)
 static void lua_begin_step(SP, sqlite3_stmt *);
 static void lua_another_step(SP, sqlite3_stmt *, int);
 static void lua_end_step(SP, sqlite3_stmt *);
+static void lua_end_all_step(SP);
 static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
@@ -1941,6 +1942,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         lua_pop(lua, 1);
         if ((sp->max_num_instructions > 0) &&
             (sp->num_instructions > sp->max_num_instructions)) {
+            lua_end_all_step(sp);
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",
@@ -2093,11 +2095,12 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
 {
+    int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
     if ((sp != NULL) && (pVdbe != NULL)) {
         save_thd_cost_and_reset(sp->thd, pVdbe);
-        pVdbe->luaStartTime = comdb2_time_epochms();
+        pVdbe->luaStartTime = time;
         pVdbe->luaRows = 0;
     }
 }
@@ -2113,6 +2116,7 @@ static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
 
 static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
 {
+    int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
     if ((sp != NULL) && (pVdbe != NULL)) {
@@ -2126,11 +2130,23 @@ static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
 
             add_fingerprint(
                 sqlite3_sql(pStmt), zNormSql, cost,
-                comdb2_time_epochms() - pVdbe->luaStartTime + prepMs,
+                time - pVdbe->luaStartTime + prepMs,
                 prepMs, pVdbe->luaRows, NULL
             );
         }
+
         restore_thd_cost_and_reset(sp->thd, pVdbe);
+    }
+}
+
+static void lua_end_all_step(SP sp)
+{
+    if (sp != NULL) {
+        dbstmt_t *dbstmt, *tmp;
+        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
+        {
+            lua_end_step(sp, dbstmt->stmt);
+        }
     }
 }
 
