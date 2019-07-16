@@ -2011,7 +2011,7 @@ exec_proc_arg ::= NULL|FLOAT|BLOB|STRING|INTEGER.
 exec_proc_arg_list ::= exec_proc_arg.
 exec_proc_arg_list ::= exec_proc_arg_list COMMA exec_proc_arg.
 
-sproccmd ::= PROCEDURE nm dbnm dbnm LP exec_proc_arg_list RP.
+sproccmd ::= PROCEDURE ids LP exec_proc_arg_list RP.
 
 ////////////////////////////////// GET / PUT //////////////////////////////////
 cmd ::= GET getcmd.
