@@ -245,6 +245,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     DBC *cdata = NULL;
     DBC *ckey = NULL;
     DB *db;
+    DBC *cblob = NULL;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
@@ -276,10 +277,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     uint8_t ver;
     rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                          DB_FIRST);
-    if (rc == DB_NOTFOUND) {
-        cdata->c_close(cdata);
-        return 0;
-    }
     int atstart,now;
     atstart = now = comdb2_time_epochms();
 logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
@@ -294,10 +291,9 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
         /* check if comdb2sc is killed every 1000ms */
         if (par->verify_mode == VERIFY_DEFAULT && (now - last) > 1000) {
             if (bdb_dropped_connection(par->sb)) {
-                cdata->c_close(cdata);
                 logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
                 par->client_dropped_connection = 1;
-                return 0;
+                goto err;
             }
             last = now;
         }
@@ -341,7 +337,6 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
             had_errors = 0;
             had_irrecoverable_errors = 0;
             for (int blobno = 0; blobno < nblobs; blobno++) {
-                DBC *cblob;
                 DB *blobdb;
                 unsigned long long blob_genid = genid;
                 int dtafile;
@@ -355,7 +350,8 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                     par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx unknown dtafile\n",
                                 genid_flipped);
-                    return 0;
+                    rc = 0;
+                    goto next_record;
                 }
                 blobdb =
                     get_dbp_from_genid(bdb_state, blobno + 1, genid, NULL);
@@ -365,7 +361,8 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                     par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params, "!%016llx cursor on blob %d rc %d\n",
                                 genid_flipped, blobno, rc);
-                    return 0;
+                    rc = 0;
+                    goto next_record;
                 }
 
                 /* Note: we have to fetch the whole blob here because with
@@ -432,13 +429,14 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                             blob_buf, dbt_blob_data.data,
                             dbt_blob_data.size, blobno);
                         if (rc)
-                            return rc;
+                            goto err;
                     }
 
                     if (dbt_blob_data.data && had_errors == 0)
                         free(dbt_blob_data.data);
                 }
                 cblob->c_close(cblob);
+                cblob = NULL;
             }
             if (par->attempt_fix && had_errors && !had_irrecoverable_errors) {
                 rc = fix_blobs(bdb_state, db, &cdata, genid, nblobs,
@@ -447,7 +445,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                     logmsg(LOGMSG_ERROR, "fix_blobs rc %d\n", rc);
                     /* close? */
                     par->free_blob_buffer_callback(blob_buf);
-                    return rc;
+                    goto err;
                 }
             }
         }
@@ -459,11 +457,11 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
                 bdb_state->dbp_ix[ix], lid, &ckey, 0);
             if (rc) {
-                ckey = NULL;
+                par->verify_status = 1;
                 par->free_blob_buffer_callback(blob_buf);
                 logmsg(LOGMSG_ERROR, "unexpected rc opening cursor for ix %d: %d\n", ix,
                        rc);
-                return rc;
+                goto err;
             }
 
             int keylen;
@@ -475,7 +473,9 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                          "!%016llx ix %d formkey rc %d\n", genid_flipped,
                          ix, rc);
                 ckey->c_close(ckey);
-                return 0;
+                ckey = NULL;
+                rc = 0;
+                goto next_record; /* ? */
             }
 
             /* set up key */
@@ -532,6 +532,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
             }
 
             ckey->c_close(ckey);
+            ckey = NULL;
         }
         par->free_blob_buffer_callback(blob_buf);
         sbuf2flush(par->sb);
@@ -548,15 +549,21 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                              DB_NEXT);
     }
     if (rc != DB_NOTFOUND) {
-        cdata->c_close(cdata);
         par->verify_status = 1;
         locprint(par->sb, par->lua_callback, par->lua_params, "!dtastripe %d c_get unexpected rc %d\n", dtastripe,
                     rc);
-        return rc;
     }
-    cdata->c_close(cdata);
+    else 
+        rc = 0;
+err:
+    if (cblob)
+        cblob->c_close(cblob);
+    if (ckey)
+        ckey->c_close(ckey);
+    if (cdata)
+        cdata->c_close(cdata);
 logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
-    return 0;
+    return rc;
 }
 
 static int bdb_verify_data(verify_common_t *par, unsigned int lid)
@@ -687,6 +694,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
             goto next_key;
         }
         cdata->c_close(cdata);
+        cdata = NULL;
 
         int keylen;
         par->vtag_callback(par->db_table, dbt_dta_check_data.data, &keylen, ver);
@@ -717,7 +725,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                     if (dtafile < 0) {
                         sbuf2printf(par->sb, "!%016llx unknown dtafile\n",
                                     genid_flipped);
-                        return 0;
+                        goto next_key;
                     }
                     blobdb = get_dbp_from_genid(bdb_state, blobno + 1,
                                                 genid, NULL);
@@ -728,7 +736,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                         sbuf2printf(par->sb,
                                     "!%016llx cursor on blob %d rc %d\n",
                                     genid_flipped, blobno, rc);
-                        return 0;
+                        goto next_key;
                     }
 
                     /* Note: we have to fetch the whole blob here because
@@ -800,6 +808,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                             free(dbt_blob_data.data);
                     }
                     cblob->c_close(cblob);
+                    cblob = NULL;
                 }
             }
         }
