@@ -2096,7 +2096,8 @@ static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
-    if (pVdbe != NULL) {
+    if ((sp != NULL) && (pVdbe != NULL)) {
+        save_thd_cost_and_reset(sp->thd, pVdbe);
         pVdbe->luaStartTime = comdb2_time_epochms();
         pVdbe->luaRows = 0;
     }
@@ -2134,6 +2135,7 @@ static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
                 );
             }
         }
+        restore_thd_cost_and_reset(sp->thd, pVdbe);
     }
 }
 

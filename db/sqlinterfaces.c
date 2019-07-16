@@ -973,16 +973,28 @@ double query_cost(struct sql_thread *thd)
     return thd->cost;
 }
 
+void save_thd_cost_and_reset(
+  struct sqlthdstate *thd,
+  Vdbe *pVdbe
+){
+  pVdbe->luaSavedCost = thd->sqlthd->cost;
+  thd->sqlthd->cost = 0.0;
+}
+
+void restore_thd_cost_and_reset(
+  struct sqlthdstate *thd,
+  Vdbe *pVdbe
+){
+  thd->sqlthd->cost = pVdbe->luaSavedCost;
+  pVdbe->luaSavedCost = 0.0;
+}
+
 void clnt_query_cost(
-  struct sqlclntstate *clnt,
+  struct sqlthdstate *thd,
   double *pCost,
   int64_t *pPrepMs
 ){
-  if (clnt == NULL) return;
-  struct sqlthdstate *thd = clnt->thd;
-  if (thd == NULL) return;
   struct sql_thread *sqlthd = thd->sqlthd;
-  if (sqlthd == NULL) return;
   if (pCost != NULL) *pCost = sqlthd->cost;
   if (pPrepMs != NULL) *pPrepMs = sqlthd->prepms;
 }
