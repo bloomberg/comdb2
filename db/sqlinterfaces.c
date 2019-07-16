@@ -2589,13 +2589,13 @@ void delete_prepared_stmts(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         delete_stmt_caching_table(thd->stmt_caching_table);
         init_stmt_caching_table(thd);
     }
-    if ((clnt != NULL) && (clnt->work.rec->stmt != NULL)) {
+    if ((clnt != NULL) && (clnt->work.rec.stmt != NULL)) {
         logmsg(LOGMSG_WARN,
                "%s: FOUND WORK ITEM STATEMENT %p {%s}\n",
-               __func__, clnt->work.rec->stmt,
-               sqlite3_sql(clnt->work.rec->stmt));
-        sqlite3_finalize(clnt->work.rec->stmt);
-        clnt->work.rec->stmt = NULL;
+               __func__, clnt->work.rec.stmt,
+               sqlite3_sql(clnt->work.rec.stmt));
+        sqlite3_finalize(clnt->work.rec.stmt);
+        clnt->work.rec.stmt = NULL;
     }
 }
 
