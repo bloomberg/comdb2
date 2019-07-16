@@ -979,12 +979,12 @@ void clnt_query_cost(
   int64_t *pPrepMs
 ){
   if (clnt == NULL) return;
-  if (pPrepMs != NULL) *pPrepMs = clnt->prepms;
   struct sqlthdstate *thd = clnt->thd;
   if (thd == NULL) return;
   struct sql_thread *sqlthd = thd->sqlthd;
   if (sqlthd == NULL) return;
   if (pCost != NULL) *pCost = sqlthd->cost;
+  if (pPrepMs != NULL) *pPrepMs = sqlthd->prepms;
 }
 
 void sql_dump_hist_statements(void)
