@@ -590,7 +590,7 @@ static int is_sqlite_db_init(BtCursor *pCur)
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
  */
-static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
+static int sql_tick(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt;
     int rc;
@@ -613,7 +613,7 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (uses_bdb_locking && bdb_lock_desired(thedb->bdb_env)) {
+    if (bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
 
         logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
@@ -665,7 +665,7 @@ static int gbl_query_id = 1;
 int comdb2_sql_tick()
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    return sql_tick(thd, 0);
+    return sql_tick(thd);
 }
 
 void sql_get_query_id(struct sql_thread *thd)
@@ -2196,8 +2196,7 @@ static inline int i64cmp(const i64 *key1, const i64 *key2)
  * This is a helper to the other cursor_move functions, which
  * are part of a cursor's method function block.
  */
-static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
-                               int uses_bdb_locking)
+static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 {
     struct sql_thread *thd = pCur->thd;
     int rc = SQLITE_OK;
@@ -2231,7 +2230,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
     }
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd, uses_bdb_locking);
+        rc = sql_tick(thd);
         if (rc) {
             *done = 1;
             return rc;
@@ -2350,7 +2349,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return SQLITE_ACCESS;
     }
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -2489,7 +2488,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
         return SQLITE_ACCESS;
     }
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -2633,7 +2632,7 @@ static int tmptbl_cursor_move(BtCursor *pCur, int *pRes, int how)
     int done = 0;
     int rc = SQLITE_OK;
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done)
         return rc;
 
@@ -2679,7 +2678,7 @@ static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
     int done = 0;
     int rc = SQLITE_OK;
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done)
         return rc;
 
@@ -2817,7 +2816,7 @@ static int cursor_move_remote(BtCursor *pCur, int *pRes, int how)
 
     assert(pCur->fdbc != NULL);
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -5402,7 +5401,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     assert(0 == pCur->is_sampled_idx);
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd, pCur->bt->is_temporary == 0);
+        rc = sql_tick(thd);
         if (rc)
             return rc;
     }
