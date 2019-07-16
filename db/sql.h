@@ -541,7 +541,8 @@ struct sql_state {
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
     char *zSql;           /* Original SQL query for this work. */
-    char *zNormSql;       /* Normalized version of original SQL query. */
+    char *zNormSql;       /* Normalized version of latest SQL query. */
+    char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
 };

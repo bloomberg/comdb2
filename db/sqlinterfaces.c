@@ -1091,9 +1091,15 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost, h->time,
-                            h->prepTime, clnt->nrows, logger);
+        if (h->sql) {
+            if (clnt->work.zOrigNormSql) then {
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            }
+            if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) then {
+                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3085,21 +3091,20 @@ static void normalize_stmt_and_store(
     clnt->work.zNormSql = 0;
   }
   if (gbl_fingerprint_queries) {
-    const char *zNormSql;
     if (rec != NULL) {
       assert(rec->stmt);
       assert(rec->sql);
-      zNormSql = sqlite3_normalized_sql(rec->stmt);
+      const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
       if (zNormSql) {
         clnt->work.zNormSql = strdup(zNormSql);
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
       }
     } else {
-      zNormSql = sqlite3Normalize(0, clnt->work.zSql);
-      if (zNormSql) {
-        clnt->work.zNormSql = strdup(zNormSql);
-        sqlite3_free((char*)zNormSql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
+      if (zOrigNormSql) {
+        clnt->work.zOrigNormSql = strdup(zOrigNormSql);
+        sqlite3_free(zOrigNormSql);
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
       }
@@ -4461,7 +4466,6 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 
 static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
-    size_t nNormSql = 0;
     if (is_stored_proc(clnt)) {
         /*
         ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
@@ -4469,7 +4473,8 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         **       however, the parser now recognizes it.
         */
         normalize_stmt_and_store(clnt, NULL);
-        calc_fingerprint(clnt->work.zNormSql, &nNormSql,
+        size_t nOrigNormSql = 0;
+        calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
                          clnt->work.aFingerprint);
         return 0; /* success */
     }
@@ -4480,6 +4485,7 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_RECREATE
     );
     if (rc == 0) {
+        size_t nNormSql = 0;
         calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                          clnt->work.aFingerprint);
     }
