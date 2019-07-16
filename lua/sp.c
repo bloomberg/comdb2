@@ -3174,13 +3174,14 @@ static int dbstmt_bind(Lua L)
     return dbstmt_bind_int(L, lua_touserdata(L, 1));
 }
 
-static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
+static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt, int profile)
 {
     if (dbstmt->fetched) {
         // tbls already locked by previous step()
         return;
     }
     run_stmt_setup(sp->clnt, dbstmt->stmt);
+    if (profile) lua_begin_step(sp, dbstmt->stmt);
     dbstmt->fetched = 1;
     if (dbstmt->rec == NULL) {
         // Not a prepared-stmt.
@@ -3218,7 +3219,7 @@ static int dbstmt_exec(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
     lua_begin_step(sp, stmt);
@@ -3245,8 +3246,7 @@ static int dbstmt_fetch(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    setup_first_sqlite_step(sp, dbstmt);
-    lua_begin_step(sp, dbstmt->stmt);
+    setup_first_sqlite_step(sp, dbstmt, 1);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(sp, dbstmt);
@@ -3259,7 +3259,7 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
     int rc;
@@ -3487,7 +3487,7 @@ static int db_exec(Lua lua)
     }
 
     // a write stmt - run it now
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3 *sqldb = getdb(sp);
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
