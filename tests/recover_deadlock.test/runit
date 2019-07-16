@@ -128,5 +128,13 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
+# Test master downgrade while running 'select sleep(120)' on master
+set -e
+master_host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+cdb2sql --host $master_host $dbnm 'SELECT SLEEP(120)' &
+sleep 5
+# This will never complete under the origin sql_tick logic.
+cdb2sql --host $master_host $dbnm 'exec procedure sys.cmd.send("downgrade")'
+
 echo "Passed."
 exit 0 
