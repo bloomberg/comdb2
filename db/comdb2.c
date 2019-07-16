@@ -5694,7 +5694,7 @@ int close_all_dbs_tran(tran_type *tran);
 
 int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
-void delete_prepared_stmts(struct sqlthdstate *thd);
+void delete_prepared_stmts(struct sqlthdstate *thd, struct sqlclntstate *clnt);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
@@ -5875,7 +5875,7 @@ retry_tran:
     if (sqlthd) {
         thd = sqlthd->clnt->thd;
 
-        delete_prepared_stmts(thd);
+        delete_prepared_stmts(thd, sqlthd->clnt);
         sqlite3_close(thd->sqldb);
         thd->sqldb = NULL;
     }

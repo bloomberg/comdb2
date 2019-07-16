@@ -2583,11 +2583,19 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
-void delete_prepared_stmts(struct sqlthdstate *thd)
+void delete_prepared_stmts(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     if (thd->stmt_caching_table) {
         delete_stmt_caching_table(thd->stmt_caching_table);
         init_stmt_caching_table(thd);
+    }
+    if ((clnt != NULL) && (clnt->work.rec->stmt != NULL)) {
+        logmsg(LOGMSG_WARN,
+               "%s: FOUND WORK ITEM STATEMENT %p {%s}\n",
+               __func__, clnt->work.rec->stmt,
+               sqlite3_sql(clnt->work.rec->stmt));
+        sqlite3_finalize(clnt->work.rec->stmt);
+        clnt->work.rec->stmt = NULL;
     }
 }
 
@@ -2608,7 +2616,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
-        delete_prepared_stmts(thd);
+        delete_prepared_stmts(thd, clnt);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }
@@ -3111,7 +3119,15 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec);
+    struct sql_state *pWorkRec = &clnt->work.rec;
+    if (pWorkRec->stmt != NULL) {
+        /* use prepared statement from current work item... */
+        memcpy(rec, pWorkRec, sizeof(struct sql_state));
+        memset(pWorkRec, 0, sizeof(struct sql_state));
+    } else {
+        /* no prepared statement in current work item, try cache... */
+        get_cached_stmt(thd, clnt, rec);
+    }
     int sqlPrepFlags = 0;
 
     if (gbl_fingerprint_queries)
@@ -3129,11 +3145,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
-    struct sql_state *pWorkRec = &clnt->work.rec;
-    if (pWorkRec->stmt != NULL) {
-      memcpy(rec, pWorkRec, sizeof(struct sql_state));
-      memset(pWorkRec, 0, sizeof(struct sql_state));
-    }
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
@@ -3948,7 +3959,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
-            delete_prepared_stmts(thd);
+            delete_prepared_stmts(thd, clnt);
         strcpy(thd->lastuser, clnt->user);
         clnt->authgen = bpfunc_auth_gen;
     } else {
@@ -4245,7 +4256,7 @@ check_version:
             if (!recreate) {
                 goto done;
             }
-            delete_prepared_stmts(thd);
+            delete_prepared_stmts(thd, clnt);
             sqlite3_close_serial(&thd->sqldb);
         }
     }
@@ -4267,7 +4278,7 @@ check_version:
                            "rc = %d!\n",
                            __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
-                        delete_prepared_stmts(thd);
+                        delete_prepared_stmts(thd, clnt);
                         sqlite3_close_serial(&thd->sqldb);
                     }
                     rdlock_schema_lk();
