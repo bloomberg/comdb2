@@ -973,6 +973,20 @@ double query_cost(struct sql_thread *thd)
     return thd->cost;
 }
 
+void clnt_query_cost(
+  struct sqlclntstate *clnt,
+  double *pCost,
+  int64_t *pPrepMs
+){
+  if (clnt == NULL) return;
+  if (pPrepMs != NULL) *pPrepMs = clnt->prepms;
+  struct sqlthdstate *thd = clnt->thd;
+  if (thd == NULL) return;
+  struct sql_thread *sqlthd = thd->sqlthd;
+  if (sqlthd == NULL) return;
+  if (pCost != NULL) *pCost = sqlthd->cost;
+}
+
 void sql_dump_hist_statements(void)
 {
     struct sql_hist *h;

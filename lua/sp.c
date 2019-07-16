@@ -2094,17 +2094,47 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
 {
+    Vdbe *pVdbe = (Vdbe*)pStmt;
 
+    if (pVdbe != NULL) {
+        pVdbe->startTime = comdb2_time_epochms();
+        pVdbe->nRows = 0;
+    }
 }
 
 static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
 {
+    Vdbe *pVdbe = (Vdbe*)pStmt;
 
+    if (pVdbe != NULL) {
+        pVdbe->nRows++;
+    }
 }
 
 static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
 {
+    Vdbe *pVdbe = (Vdbe*)pStmt;
 
+    if ((sp != NULL) && (pVdbe != NULL)) {
+        struct sqlclntstate *clnt = sp->clnt;
+
+        if (clnt != NULL) {
+            const char *zNormSql = sqlite3_normalized_sql(pStmt);
+
+            if (zNormSql != NULL) {
+                double cost = 0.0;
+                int64_t prepMs = 0;
+
+                clnt_query_cost(clnt, &cost, &prepMs);
+
+                add_fingerprint(
+                    sqlite3_sql(pStmt), zNormSql, cost,
+                    comdb2_time_epochms() - pVdbe->startTime + prepMs,
+                    prepMs, pVdbe->nRows, NULL
+                );
+            }
+        }
+    }
 }
 
 static int lua_get_prepare_flags()

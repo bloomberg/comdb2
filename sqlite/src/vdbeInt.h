@@ -586,6 +586,8 @@ struct Vdbe {
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oeFlag;              /* ON CONFLICT action */
   u8 upsertIdx;           /* ON CONFLICT target */
+  int startTime;          /* start time for Lua running a query */
+  int nRows;              /* number of rows processed by Lua */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

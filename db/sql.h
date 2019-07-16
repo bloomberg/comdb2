@@ -1186,6 +1186,7 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+void clnt_query_cost(struct sqlclntstate *clnt, double *pCost, int64_t *pPrepMs);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);
 
