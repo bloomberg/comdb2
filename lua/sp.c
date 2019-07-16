@@ -2097,8 +2097,8 @@ static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
     if (pVdbe != NULL) {
-        pVdbe->startTime = comdb2_time_epochms();
-        pVdbe->nRows = 0;
+        pVdbe->luaStartTime = comdb2_time_epochms();
+        pVdbe->luaRows = 0;
     }
 }
 
@@ -2107,7 +2107,7 @@ static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
     if (pVdbe != NULL) {
-        pVdbe->nRows++;
+        pVdbe->luaRows++;
     }
 }
 
@@ -2129,8 +2129,8 @@ static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
 
                 add_fingerprint(
                     sqlite3_sql(pStmt), zNormSql, cost,
-                    comdb2_time_epochms() - pVdbe->startTime + prepMs,
-                    prepMs, pVdbe->nRows, NULL
+                    comdb2_time_epochms() - pVdbe->luaStartTime + prepMs,
+                    prepMs, pVdbe->luaRows, NULL
                 );
             }
         }
