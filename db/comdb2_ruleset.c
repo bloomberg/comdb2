@@ -97,8 +97,8 @@ size_t comdb2_evaluate_ruleset(
   size_t count = 0;
   for (int i = 0; i < rules->nRule; i++) {
     ruleset_match_t match = comdb2_evaluate_ruleset_item(
-      stringComparer, memoryComparer, rules->aRule[i], clnt,
-      pFingerprint, result
+      stringComparer, memoryComparer, &rules->aRule[i],
+      clnt, pFingerprint, result
     );
     if (match == RULESET_M_STOP) { count++; break; }
     if (match == RULESET_M_TRUE) { count++; }
