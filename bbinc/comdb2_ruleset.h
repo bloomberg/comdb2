@@ -47,11 +47,14 @@ enum ruleset_flags {
 };
 
 enum ruleset_match {
-  RULESET_M_FALSE = 0,    /* The ruleset or item was not matched. */
+  RULESET_M_NONE = 0,     /* The ruleset or item was not matched, possibly
+                           * because no matching was performed. */
 
-  RULESET_M_TRUE = 1,     /* The ruleset or item was matched. */
+  RULESET_M_FALSE = 1,    /* The ruleset or item was not matched. */
 
-  RULESET_M_STOP = 2      /* The ruleset or item was matched -AND- processing
+  RULESET_M_TRUE = 2,     /* The ruleset or item was matched. */
+
+  RULESET_M_STOP = 4      /* The ruleset or item was matched -AND- processing
                            * of the ruleset or item should stop. */
 };
 
@@ -89,6 +92,13 @@ struct ruleset_item {
                                    * using memcmp(). */
 };
 
+struct ruleset {
+  size_t nRule;                   /* How many rules are in this ruleset? */
+
+  struct ruleset_item *aRule;     /* An array of rules with a minimum size of
+                                   * nRule. */
+};
+
 struct ruleset_result {
   enum ruleset_action action;     /* What will the final action be for this
                                    * ruleset? */
@@ -106,6 +116,15 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
   struct ruleset_item *rule,
+  struct sqlclntstate *clnt,
+  unsigned char *pFingerprint,
+  struct ruleset_result *result
+);
+
+size_t comdb2_evaluate_ruleset(
+  xStrCmp stringComparer,
+  xMemCmp memoryComparer,
+  struct ruleset *rules,
   struct sqlclntstate *clnt,
   unsigned char *pFingerprint,
   struct ruleset_result *result

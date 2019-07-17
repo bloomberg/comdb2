@@ -85,3 +85,23 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   }
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
+
+size_t comdb2_evaluate_ruleset(
+  xStrCmp stringComparer,
+  xMemCmp memoryComparer,
+  struct ruleset *rules,
+  struct sqlclntstate *clnt,
+  unsigned char *pFingerprint,
+  struct ruleset_result *result
+){
+  size_t count = 0;
+  for (int i = 0; i < rules->nRule; i++) {
+    ruleset_match_t match = comdb2_evaluate_ruleset_item(
+      stringComparer, memoryComparer, rules->aRule[i], clnt,
+      pFingerprint, result
+    );
+    if (match == RULESET_M_STOP) { count++; break; }
+    if (match == RULESET_M_TRUE) { count++; }
+  }
+  return count;
+}
