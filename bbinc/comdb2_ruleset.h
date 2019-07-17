@@ -98,7 +98,6 @@ struct ruleset_result {
                                    * value may be ignored. */
 };
 
-typedef unsigned char u8;
 typedef int (*xStrCmp)(const char *, const char *);
 typedef int (*xMemCmp)(const void *, const void *, size_t);
 typedef enum ruleset_match ruleset_match_t;
