@@ -1049,7 +1049,7 @@ static int enable_global_variables(lua_State *lua)
 }
 
 static void lua_begin_step(SP, sqlite3_stmt *);
-static void lua_another_step(SP, sqlite3_stmt *, int);
+static void lua_another_step(sqlite3_stmt *, int);
 static void lua_end_step(SP, sqlite3_stmt *);
 static void lua_end_all_step(SP);
 static int lua_get_prepare_flags();
@@ -1124,7 +1124,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     comdb2_set_tmptbl_lk(*lk);
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
     }
     lua_end_step(sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
@@ -1240,7 +1240,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_step(stmt);
-    lua_another_step(sp, stmt, rc);
+    lua_another_step(stmt, rc);
 
     if (rc == SQLITE_DONE) {
         lua_end_step(sp, stmt);
@@ -2105,7 +2105,7 @@ static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
     }
 }
 
-static void lua_another_step(SP sp, sqlite3_stmt *pStmt, int rc)
+static void lua_another_step(sqlite3_stmt *pStmt, int rc)
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
@@ -2276,7 +2276,7 @@ static int dbtable_insert(Lua lua)
 
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
     }
     lua_end_step(sp, stmt);
 
@@ -2334,7 +2334,7 @@ static int dbtable_copyfrom(Lua lua)
 
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
     }
     lua_end_step(sp, stmt);
 
@@ -3224,7 +3224,7 @@ static int dbstmt_exec(Lua lua)
     int rc;
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
     }
     lua_end_step(sp, stmt);
     dbstmt->rows_changed = sqlite3_changes(sqldb);
@@ -3265,7 +3265,7 @@ static int dbstmt_emit(Lua L)
     int rc;
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
         if (l_send_back_row(L, stmt, cols) != 0) {
             rc = -1;
             break;
@@ -3423,7 +3423,7 @@ int db_csvcopy(Lua lua)
         }
         lua_begin_step(sp, stmt);
         while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-            lua_another_step(sp, stmt, rc);
+            lua_another_step(stmt, rc);
         }
         lua_end_step(sp, stmt);
 
@@ -3491,7 +3491,7 @@ static int db_exec(Lua lua)
     sqlite3 *sqldb = getdb(sp);
     lua_begin_step(sp, stmt);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        lua_another_step(sp, stmt, rc);
+        lua_another_step(stmt, rc);
     }
     lua_end_step(sp, stmt);
     if (rc == SQLITE_DONE) {
