@@ -116,7 +116,6 @@
 
 extern char *gbl_exec_sql_on_new_connect;
 extern unsigned long long gbl_sql_deadlock_failures;
-extern unsigned int gbl_new_row_data;
 extern int gbl_allow_pragma;
 extern int gbl_use_appsock_as_sqlthread;
 extern int g_osql_max_trans;
@@ -994,16 +993,16 @@ void sql_dump_hist_statements(void)
         localtime_r((time_t *)&t, &tm);
         if (h->conn.pename[0]) {
             logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d %spindex %d task %.8s pid %d "
-                   "mach %d time %dms cost %f sql: %s\n",
+                   "mach %d time %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
                    (char *)h->conn.pename, h->conn.pid, h->conn.node, h->time,
-                   h->cost, h->sql);
+                   h->prepTime, h->cost, h->sql);
         } else {
             logmsg(LOGMSG_USER, 
-                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms cost %f sql: %s\n",
+                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->time, h->cost, h->sql);
+                   tm.tm_min, tm.tm_sec, rqid, h->time, h->prepTime, h->cost, h->sql);
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1070,6 +1069,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup("unknown");
     h->cost = query_cost(thd);
     h->time = comdb2_time_epochms() - thd->startms;
+    h->prepTime = thd->prepms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -1084,7 +1084,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (gbl_fingerprint_queries) {
         if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
             add_fingerprint(h->sql, clnt->zNormSql, h->cost, h->time,
-                            clnt->nrows, logger);
+                            h->prepTime, clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3119,6 +3119,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
+    int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         thd->authState.clnt = clnt;
@@ -3142,6 +3143,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         update_schema_remotes(clnt, rec);
     }
     if (rec->stmt) {
+        thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         normalize_stmt_and_store(clnt, rec);
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);

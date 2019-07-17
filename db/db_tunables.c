@@ -579,6 +579,15 @@ static int memnice_update(void *context, void *value)
     return 0;
 }
 
+int dtastripe_verify(void *context, void *stripes)
+{
+    int iStripes = *(int *)stripes;
+    if ((iStripes < 1) || (iStripes > 16)) {
+        return 1;
+    }
+    return 0;
+}
+
 static int maxretries_verify(void *context, void *value)
 {
     if (*(int *)value < 2) {
