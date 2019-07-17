@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-#export debug=1
+export debug=1
+#export apidebug=1
 [[ $debug == "1" ]] && set -x
 
 export myhost=$(hostname)
@@ -69,7 +70,7 @@ function disallow_update_fail
 
 function debug_flags
 {
-    if [[ "$debug" == "1" ]]; then
+    if [[ "$apidebug" == "1" ]]; then
         echo "-D"
     fi
 }
@@ -80,27 +81,61 @@ function run_tests
     typeset strict_mode=$(disallow_update_fail)
     typeset reads_like_writes=$(serialize_reads_like_writes)
     typeset dbug_flags=$(debug_flags)
+    typeset isolation=""
 
     start=$(date +%s)
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i socksql
+    isolation=socksql
+    echo "$isolation test"
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
-    [[ $r != 0 ]] && failexit "socksql selectv rcodes"
+    [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i reccom
+    isolation=reccom
+    echo "$isolation test"
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
-    [[ $r != 0 ]] && failexit "read committed selectv rcodes"
+    [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i snapshot
+    isolation=snapshot
+    echo "$isolation test"
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
-    [[ $r != 0 ]] && failexit "snapshot selectv rcodes"
+    [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 
-    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i serial
+    isolation=serial
+    echo "$isolation test"
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags -i $isolation
     export r=$?
-    [[ $r != 0 ]] && failexit "serial selectv rcodes"
+    [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
+}
+
+function run_isolated_test
+{
+    typeset func="run_isolated_test"
+    typeset strict_mode=$(disallow_update_fail)
+    typeset reads_like_writes=$(serialize_reads_like_writes)
+    typeset dbug_flags=$(debug_flags)
+    typeset isolation=""
+
+    # Thread types
+    typeset selectv_updaters="-v 15"
+    typeset updaters="-u 0"
+    typeset single_statement_noselect_updaters="-S 0"
+    typeset intrans_effects_updaters="-e 0"
+    typeset point_in_time_updaters="-p 0"
+    typeset noselect_updaters="-U 0"
+    typeset selectvs="-V 0"
+
+    isolation=snapshot
+    echo "$isolation test"
+    $selectv_rcode -d $DBNAME -c $CDB2_CONFIG $strict_mode $reads_like_writes $dbug_flags $selectv_updaters $updaters $single_statement_noselect_updaters $intrans_effects_updaters $point_in_time_updaters $noselect_updaters $selectvs -i $isolation
+    export r=$?
+    [[ $r != 0 ]] && failexit "$isolation selectv rcodes"
 }
 
 truncate
 populate
 run_tests
+#run_isolated_test
 echo "Success"
 exit 0
