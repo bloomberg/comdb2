@@ -1091,15 +1091,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql) {
-            if (clnt->work.zOrigNormSql) {
-                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
-                                h->time, h->prepTime, clnt->nrows, logger);
-            }
-            if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
-                                h->time, h->prepTime, clnt->nrows, logger);
-            }
+        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
+                            h->time, h->prepTime, clnt->nrows, logger);
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
