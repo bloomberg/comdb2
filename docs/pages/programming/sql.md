@@ -80,7 +80,7 @@ undone.
 ![upsert-clause](images/upsert-clause.gif)
 
 
-The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
+The ```INSERT``` statement comes in three basic forms. The first form (with the "VALUES" keyword) creates a single new
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
 of columns in the table. If a column-list is specified, then the number of values must match the number of 
 specified columns. Columns of the table that do not appear in the column list are filled with the default value, 
@@ -90,6 +90,11 @@ The second form of the ```INSERT``` statement takes its data from a ```SELECT```
 result of the SELECT must exactly match the number of columns in the table if no column list is specified, or it 
 must match the number of columns named in the column list. A new entry is made in the table for every row of the 
 ```SELECT``` result. The ```SELECT``` may be simple or compound.
+
+The third form of the ```INSERT``` statement is with ```DEFAULT VALUES```. This
+inserts a single new row in the named table populated with default values for
+columns, or with a NULL if no default value is specified as part of column
+definition.
 
 Note that if wrapped in a ```BEGIN```/```COMMIT``` pair, the ```INSERT``` is considered a [deferred](transaction_model.html#immediate-and-deferred-statements)
 statement, and will not return an error (except in the rare case of a connection failure) until ```COMMIT``` time.

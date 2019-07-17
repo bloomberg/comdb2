@@ -588,9 +588,6 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
     int rc = 0;
     /*int   i = 0;*/
     shad_tbl_t *tbl = NULL;
-    /* key gets set into cur->key, and is freed when a new key is
-       submitted or when the cursor is closed */
-    blob_key_t *key = (blob_key_t *)malloc(sizeof(blob_key_t));
     void *tmptblblb;
     blob_key_t *tmptblkey;
     int tmptblblblen;
@@ -599,24 +596,19 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
                pCur->db->tablename);
-        if (key)
-            free(key);
         return -1;
     }
 
-    key->seq = pCur->genid;
-    key->id = *blobnum - 1;
+    blob_key_t key = {.seq = pCur->genid, .id = *blobnum - 1};
 
     /* We don't know the ODH-ness of the blob, so we search using
      * bdb_temp_table_find(). */
-    rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, key, sizeof(*key),
+    rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, &key, sizeof(key),
                              NULL, bdberr);
-    if (rc != IX_FND)
-        free(key);
 
     tmptblkey = bdb_temp_table_key(tbl->blb_cur);
-    if (rc == IX_EMPTY || rc == IX_NOTFND || key->seq != tmptblkey->seq ||
-        key->id != tmptblkey->id) {
+    if (rc == IX_EMPTY || rc == IX_NOTFND || key.seq != tmptblkey->seq ||
+        key.id != tmptblkey->id) {
         blobs->bloblens[0] = 0;
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = NULL;
@@ -1825,7 +1817,6 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
     int idx;
     int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
-    blob_key_t *key;
     blob_key_t *tmptblkey;
 
     /* identify the number of blobs */
@@ -1843,26 +1834,17 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             }
         }
 
-        /* key gets set into cur->key, and is freed when a new key is
-           submitted or when the cursor is closed */
-        key = (blob_key_t *)malloc(sizeof(blob_key_t));
-
-        key->seq = seq;
-        key->id = i;
+        blob_key_t key = {.seq = seq, .id = i};
 
         /* We don't know the ODH-ness of the blob, so we search using
          * bdb_temp_table_find(). */
-        rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, key,
-                                 sizeof(*key), NULL, bdberr);
-        if (rc != IX_FND) {
-            free(key);
-            key = NULL;
-        }
+        rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, &key,
+                                 sizeof(key), NULL, bdberr);
 
         tmptblkey = bdb_temp_table_key(tbl->blb_cur);
         idx = i;
         if (rc == IX_EMPTY || rc == IX_NOTFND ||
-            (key && (key->seq != tmptblkey->seq || key->id != tmptblkey->id))) {
+            (key.seq != tmptblkey->seq || key.id != tmptblkey->id)) {
             /* null blob */
             data = NULL;
             ldata = -1;

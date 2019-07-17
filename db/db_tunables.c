@@ -38,7 +38,6 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
-extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;
@@ -301,6 +300,9 @@ extern int gbl_selectv_writelock;
 int gbl_debug_tmptbl_corrupt_mem;
 
 extern int gbl_clean_exit_on_sigterm;
+extern int gbl_debug_omit_dta_write;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
 
 /*
   =========================================================
@@ -572,6 +574,15 @@ static int memnice_update(void *context, void *value)
     if (nicerc != 0) {
         logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d\n",
                nicerc);
+        return 1;
+    }
+    return 0;
+}
+
+int dtastripe_verify(void *context, void *stripes)
+{
+    int iStripes = *(int *)stripes;
+    if ((iStripes < 1) || (iStripes > 16)) {
         return 1;
     }
     return 0;

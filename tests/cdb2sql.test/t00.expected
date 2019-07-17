@@ -71,7 +71,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema
@@ -90,7 +90,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema
@@ -113,7 +113,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema

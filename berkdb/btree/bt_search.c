@@ -356,7 +356,7 @@ __bam_search(dbc, root_pgno, key, flags, stop, recnop, exactp)
 	__genid_pgno *hashtbl = NULL;
 	int got_pg_from_hash = 0;
 	int add_to_hash = 0;
-	db_pgno_t hash_pg;
+	db_pgno_t hash_pg = 0;
 	db_pgno_t pg_copy = 0;
 
 	struct timeval before, after, diff;

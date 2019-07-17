@@ -1,0 +1,4 @@
+[select *, comdb2_rowid from comdb2_tables] failed with rc -3 no such column: comdb2_rowid
+[select *, comdb2_rowtimestamp from comdb2_tables] failed with rc -3 no such column: comdb2_rowtimestamp
+[select 1, comdb2_rowtimestamp] failed with rc -3 no such column: comdb2_rowtimestamp
+[select 1, comdb2_rowid] failed with rc -3 no such column: comdb2_rowid

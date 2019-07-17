@@ -309,6 +309,10 @@ elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
+elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
+    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: failed" >> ${TEST_LOG}
+    echo "!$TESTCASE: also failed verify ($verify_ret)" | tee -a ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
     echo "!$TESTCASE: failed verify ($verify_ret)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then

@@ -149,7 +149,6 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
-int gbl_allow_lua_exec_with_ddl = 0;
 int gbl_allow_lua_dynamic_libs = 0;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
@@ -191,6 +190,7 @@ const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERS
 const char gbl_db_version[] = QUOTE(COMDB2_BUILD_VERSION);
 const char gbl_db_semver[] = QUOTE(COMDB2_SEMVER);
 const char gbl_db_codename[] = QUOTE(COMDB2_CODENAME);
+const char gbl_db_buildtype[] = QUOTE(COMDB2_BUILD_TYPE);
 
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
@@ -234,7 +234,6 @@ int gbl_osql_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
 int gbl_max_sqlcache = 10;
-int gbl_new_row_data = 0;
 int gbl_extended_tm_from_sql =
     0; /* Keep a count of our extended-tm requests from sql. */
 
@@ -336,6 +335,9 @@ int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
+int gbl_debug_omit_dta_write;
+int gbl_debug_omit_idx_write;
+int gbl_debug_omit_blob_write;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -1658,6 +1660,14 @@ void cleanup_newdb(struct dbtable *tbl)
         free(tbl->sqlixuse);
         tbl->sqlixuse = NULL;
     }
+
+    for (int i = 0; i < tbl->n_check_constraints; i++) {
+        if (tbl->check_constraint_query[i] == NULL)
+            break;
+        free(tbl->check_constraint_query[i]);
+        tbl->check_constraint_query[i] = NULL;
+    }
+
     free(tbl);
     tbl = NULL;
 }
@@ -1795,7 +1805,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->constraints[ii].flags = flags;
             tbl->constraints[ii].lcltable = tbl;
             tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
-            tbl->constraints[ii].lclkeyname = strdup(keyname);
+            tbl->constraints[ii].lclkeyname = (keyname) ? strdup(keyname) : 0;
             tbl->constraints[ii].nrules = rulecnt;
             if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
                 logmsg(LOGMSG_ERROR, "too many constraint rules for table %s:%s (%d>=%d)\n",
@@ -1823,6 +1833,53 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
     tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
     return tbl;
+}
+
+int init_check_constraints(struct dbtable *tbl)
+{
+    char *consname = NULL;
+    char *check_expr = NULL;
+    strbuf *sql;
+    int rc;
+
+    tbl->n_check_constraints = dyns_get_check_constraint_count();
+    if (tbl->n_check_constraints == 0) {
+        return 0;
+    }
+
+    sql = strbuf_new();
+
+    for (int i = 0; i < tbl->n_check_constraints; i++) {
+        rc = dyns_get_check_constraint_at(i, &consname, &check_expr);
+        if (rc == -1)
+            abort();
+        tbl->check_constraints[i].consname = consname ? strdup(consname) : 0;
+        tbl->check_constraints[i].expr = check_expr ? strdup(check_expr) : 0;
+
+        strbuf_clear(sql);
+
+        strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", tbl->tablename,
+                       tbl->schema->member[0].name);
+        for (int j = 1; j < tbl->schema->nmembers; ++j) {
+            strbuf_appendf(sql, ", %s", tbl->schema->member[j].name);
+        }
+        strbuf_appendf(sql, ") AS (SELECT @%s", tbl->schema->member[0].name);
+        for (int j = 1; j < tbl->schema->nmembers; ++j) {
+            strbuf_appendf(sql, ", @%s", tbl->schema->member[j].name);
+        }
+        strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
+                       tbl->check_constraints[i].expr, tbl->tablename);
+        tbl->check_constraint_query[i] = strdup(strbuf_buf(sql));
+        if (tbl->check_constraint_query[i] == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__,
+                   __LINE__);
+            cleanup_newdb(tbl);
+            strbuf_free(sql);
+            return 1;
+        }
+    }
+    strbuf_free(sql);
+    return 0;
 }
 
 /* lock mgr partition defaults */
@@ -2203,6 +2260,16 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             break;
         }
 
+        /* Initialize table's check constraint members. */
+        rc = init_check_constraints(tbl);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+                   tbl->tablename);
+            ++i;
+            rc = 1;
+            break;
+        }
+
         /* Free the table name. */
         free(tblnames[i]);
     }
@@ -2211,7 +2278,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
      * get_meta_int works */
     dbenv->num_dbs = fndnumtbls;
 
-    /* if we quit early bc of an error free the rest */
+    /* if we quit early because of an error free the rest */
     while (i < fndnumtbls)
         free(tblnames[i++]);
 
@@ -2220,7 +2287,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
 int llmeta_load_timepart(struct dbenv *dbenv)
 {
-    /* We need to do this before resuming schema chabge , if any */
+    /* We need to do this before resuming schema change , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
     dbenv->timepart_views = timepart_views_init(dbenv);
 
@@ -5241,6 +5308,7 @@ static void goodbye()
 
 #define TOOLS           \
    TOOL(cdb2_dump)      \
+   TOOL(cdb2_load)      \
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_stat)      \
    TOOL(cdb2_verify)

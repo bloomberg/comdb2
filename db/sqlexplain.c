@@ -219,7 +219,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
     return is_index;
 }
 
-static void print_mem(strbuf *out, Mem *m)
+static void print_explain_mem(strbuf *out, Mem *m)
 {
     int i;
     switch (m->flags) {
@@ -584,7 +584,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out,
                        "Transfer the values of variable %d into register R%d ",
                        op->p1 - 1, op->p2);
-        print_mem(out, &v->aVar[op->p1 - 1]);
+        print_explain_mem(out, &v->aVar[op->p1 - 1]);
         break;
     case OP_Move:
         if (op->p3 > 1)

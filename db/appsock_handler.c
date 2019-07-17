@@ -57,6 +57,8 @@ char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
 int active_appsock_conns = 0;
 
+pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
+
 /* HASH of all registered appsock handlers (one handler per appsock type) */
 hash_t *gbl_appsock_hash;
 
@@ -72,7 +74,9 @@ void close_appsock(SBUF2 *sb)
 {
     if (sb != NULL) {
         net_end_appsock(sb);
-        ATOMIC_ADD(active_appsock_conns, -1);
+        Pthread_mutex_lock(&appsock_conn_lk);
+        active_appsock_conns--;
+        Pthread_mutex_unlock(&appsock_conn_lk);
     }
 }
 
@@ -382,7 +386,9 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     total_appsock_conns++;
-    ATOMIC_ADD(active_appsock_conns, 1);
+    Pthread_mutex_lock(&appsock_conn_lk);
+    active_appsock_conns++;
+    Pthread_mutex_unlock(&appsock_conn_lk);
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
         logmsg(LOGMSG_WARN,

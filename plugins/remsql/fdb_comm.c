@@ -3639,14 +3639,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
         svc_cb_arg.clnt->idxInsert = svc_cb_arg.clnt->idxDelete = NULL;
     }
 
-    reset_clnt(svc_cb_arg.clnt, NULL, 0);
-
-    Pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
-    Pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
-    Pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
-    Pthread_cond_destroy(&svc_cb_arg.clnt->write_cond);
-    Pthread_mutex_destroy(&svc_cb_arg.clnt->dtran_mtx);
-
+    cleanup_clnt(svc_cb_arg.clnt);
     free(svc_cb_arg.clnt);
     svc_cb_arg.clnt = NULL;
 
