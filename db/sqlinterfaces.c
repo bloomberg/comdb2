@@ -1539,7 +1539,7 @@ static char *sqlenginestate_tostr(int state)
 
 int gbl_snapshot_serial_verify_retry = 1;
 
-inline int replicant_can_retry(struct sqlclntstate *clnt)
+inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
 {
     if (clnt->verifyretry_off)
         return 0;
@@ -2025,12 +2025,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
         }
     } else {
-        /* error */
-
-        /* if this is a verify error and we are not running in
-           snapshot/serializable mode, repeat this request ad nauseam
-           (Alex and Sam made me do it) */
-        if (replicant_can_retry_rc(clnt, rc) && !clnt->has_recording &&
+        /* If this is a verify or serializable error and the client hasn't
+         * read any data then it is safe to retry */
+        int can_retry = replicant_can_retry_rc(clnt, rc);
+        if (can_retry && !clnt->has_recording &&
             clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
@@ -2046,7 +2044,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
 
         /* last retry */
-        if (replicant_can_retry_rc(clnt, rc) &&
+        if (can_retry &&
             (clnt->osql.replay == OSQL_RETRY_LAST || clnt->verifyretry_off)) {
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done (hit last) sendresp=%d\n",
@@ -2054,12 +2052,18 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
-        else if (!replicant_can_retry_rc(clnt, rc)) {
+        else if (!can_retry) {
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
                                                  "(non verify error rc=%d) "
                                                  "sendresp=%d\n",
                         (clnt->sql) ? clnt->sql : "(???.)", rc, sendresponse);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+        } else {
+            assert(can_retry && clnt->has_recording &&
+                    clnt->osql.replay == OSQL_RETRY_NONE);
+            if (!can_retry || !clnt->has_recording ||
+                    clnt->osql.replay != OSQL_RETRY_NONE)
+                abort();
         }
 
         if (rc == SQLITE_TOOBIG) {
@@ -3596,6 +3600,8 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
+    /* TODO: we can be more precise and retry things at a later LSN so long as
+     * nothing has overwritten the original readsets */
     if (clnt->isselect || is_with_statement(clnt->sql)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
