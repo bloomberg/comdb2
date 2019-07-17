@@ -513,8 +513,7 @@ char *get_ddl_csc2(struct schema_change_type *s)
 {
     return s->newcsc2 ? s->newcsc2 : "";
 }
-int do_add_view(struct ireq *iq, struct schema_change_type *s,
-                tran_type *tran);
+int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran);
 int do_drop_view(struct ireq *iq, struct schema_change_type *s,
                  tran_type *tran);
 
@@ -984,9 +983,9 @@ int resume_schema_change(void)
             } else if (is_shard) {
                 struct timepart_sc_resuming *tpt_sc = NULL;
 
-                hash_t *tpt_sc_hash =
-                    hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                                   offsetof(struct timepart_sc_resuming, viewname), 0);
+                hash_t *tpt_sc_hash = hash_init_user(
+                    (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                    offsetof(struct timepart_sc_resuming, viewname), 0);
                 if (!tpt_sc_hash) {
                     logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
                     abort();

@@ -8745,9 +8745,8 @@ static int kv_get_keys(tran_type *t, void *k, size_t klen, void ***ret,
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **names = NULL;
-    int rc =
-        bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out, &fnd,
-                                    bdberr);
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out,
+                                         &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
@@ -9814,7 +9813,7 @@ int bdb_get_view_names(tran_type *t, char **names, int *num)
     union {
         struct llmeta_view_key key;
         uint8_t buf[LLMETA_IXLEN];
-    } **v;
+    } * *v;
     int rc, n, bdberr;
     llmetakey_t k;
 

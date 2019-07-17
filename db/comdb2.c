@@ -1444,13 +1444,13 @@ static void free_sqlite_table(struct dbenv *dbenv)
     free(dbenv->dbs);
 }
 
-static void free_view_hash(hash_t *view_hash) {
+static void free_view_hash(hash_t *view_hash)
+{
     void *ent;
     unsigned int bkt;
     struct dbview *view;
 
-    for (view = (struct dbview *)hash_first(view_hash, &ent, &bkt);
-         view;
+    for (view = (struct dbview *)hash_first(view_hash, &ent, &bkt); view;
          view = (struct dbview *)hash_next(view_hash, &ent, &bkt)) {
         free(view->view_name);
         free(view->view_def);
