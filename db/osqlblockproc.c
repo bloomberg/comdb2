@@ -737,6 +737,8 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     case OSQL_DELETE:
     case OSQL_UPDREC:
     case OSQL_DELREC:
+    case OSQL_SERIAL:
+    case OSQL_SELECTV:
         sess->last_is_ins = 0;
         break;
     case OSQL_INSERT:

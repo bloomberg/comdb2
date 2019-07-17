@@ -351,6 +351,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
+    int sent_readsets = 0;
     if (!clnt->osql.is_reorder_on) {
         if (clnt->arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
@@ -360,13 +361,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
+        sent_readsets = 1;
     }
 
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     /* Preserve the sentops optimization */
-    if (clnt->osql.is_reorder_on && (force_master || sentops)) {
+    if (!sent_readsets && (force_master || sentops)) {
         if (clnt->arr) {
             rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
