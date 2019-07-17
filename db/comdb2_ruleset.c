@@ -15,8 +15,8 @@
  */
 
 #include "priority_queue.h"
-#include "comdb2_ruleset.h"
 #include "sql.h"
+#include "comdb2_ruleset.h"
 #include "logmsg.h"
 
 static void comdb2_adjust_priority(
