@@ -9834,7 +9834,7 @@ int bdb_get_view_names(tran_type *t, char **names, int *num)
 }
 
 /* Fetch a specific view */
-int bdb_get_view(tran_type *t, char *view_name, char **view_def)
+int bdb_get_view(tran_type *t, const char *view_name, char **view_def)
 {
     union {
         struct llmeta_view_key key;
@@ -9865,7 +9865,7 @@ int bdb_get_view(tran_type *t, char *view_name, char **view_def)
 }
 
 /* Add the given view */
-int bdb_put_view(tran_type *t, char *view_name, char *view_def)
+int bdb_put_view(tran_type *t, const char *view_name, char *view_def)
 {
     union {
         struct llmeta_view_key key;
@@ -9886,7 +9886,7 @@ int bdb_put_view(tran_type *t, char *view_name, char *view_def)
 }
 
 /* Delete the given view */
-int bdb_del_view(tran_type *t, char *view_name)
+int bdb_del_view(tran_type *t, const char *view_name)
 {
     union {
         struct llmeta_view_key key;
