@@ -57,7 +57,7 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
     return RULESET_M_FALSE;
   }
   if ((rule->zSql != NULL) &&
-      (stringComparer(rule->zSql, clnt->work.zSql) == 0)) {
+      (stringComparer(rule->zSql, clnt->work.zSql) != 0)) {
     return RULESET_M_FALSE;
   }
   if ((rule->pFingerprint != NULL) &&
