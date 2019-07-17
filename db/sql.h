@@ -236,7 +236,7 @@ typedef dbtran_type trans_t;
 typedef struct {
     char name[MAXTABLELEN];
     int ixnum;
-    struct temp_table *sampled_table;
+    sampler_t *sampler;
     int sampling_pct;
     unsigned long long n_recs;
     unsigned long long n_sampled_recs;
@@ -876,8 +876,7 @@ struct BtCursor {
     /* special case for a temp table: pointer to a temp table handle */
     struct temptable *tmptable;
 
-    /* sampled (previously misnamed compressed) idx temptable */
-    struct temptable *sampled_idx;
+    sampler_t *sampler;
 
     blob_status_t blobs;
 

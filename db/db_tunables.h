@@ -300,7 +300,7 @@ REGISTER_TUNABLE("dont_sort_nulls_with_header",
                  &gbl_sort_nulls_correctly, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dtastripe", NULL, TUNABLE_INTEGER, &gbl_dtastripe,
-                 READONLY | NOZERO, NULL, NULL, NULL, NULL);
+                 READONLY | NOZERO, NULL, dtastripe_verify, NULL, NULL);
 REGISTER_TUNABLE("early",
                  "When set, replicants will ack a transaction as soon as they "
                  "acquire locks - not that replication must succeed at that "

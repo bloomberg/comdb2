@@ -42,6 +42,7 @@
 #include "locks_wrap.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -107,6 +108,7 @@ struct thdpool {
     unsigned num_enqueued;
     unsigned num_dequeued;
     unsigned num_timeout;
+    unsigned num_completed;
     unsigned num_creates;
     unsigned num_exits;
     unsigned num_failed_dispatches;
@@ -372,6 +374,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Num work items enqueued   : %u\n", pool->num_enqueued);
         logmsgf(LOGMSG_USER, fh, "  Num work items dequeued   : %u\n", pool->num_dequeued);
         logmsgf(LOGMSG_USER, fh, "  Num work items timeout    : %u\n", pool->num_timeout);
+        logmsgf(LOGMSG_USER, fh, "  Num work items completed  : %u\n", pool->num_completed);
         logmsgf(LOGMSG_USER, fh, "  Num failed dispatches     : %u\n",
                 pool->num_failed_dispatches);
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
@@ -562,13 +565,12 @@ void thdpool_resume(struct thdpool *pool)
  * is no work. */
 static int get_work_ll(struct thd *thd, struct workitem *work)
 {
-    struct workitem *next;
-
     if (thd->work.available) {
         memcpy(work, &thd->work, sizeof(*work));
         thd->work.available = 0;
         return 1;
     } else {
+        struct workitem *next;
         while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
             if (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - next->queue_time_ms >
@@ -723,6 +725,7 @@ static void *thdpool_thd(void *voidarg)
         }
 
         work.work_fn(pool, work.work, thddata, THD_RUN);
+        ATOMIC_ADD(pool->num_completed, 1);
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
@@ -823,6 +826,10 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * work item to the new thread. */
     again:
         thd = listc_rtl(&pool->freelist);
+        if (thd) {
+            assert(thd->on_freelist);
+            thd->on_freelist = 0;
+        }
         if (!thd && (force_dispatch || pool->maxnthd == 0 ||
                      listc_size(&pool->thdlist) < pool->maxnthd)) {
             int rc;
@@ -882,7 +889,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 
         if (thd) {
             item = &thd->work;
-            thd->on_freelist = 0;
             pool->num_passed++;
         } else {
             /* queue work */
