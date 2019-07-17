@@ -2830,7 +2830,7 @@ int dyns_get_dtadir(char *dir, int len)
         return -1;
     }
     bzero(dir, len);
-    strncpy(dir, opt_dtadir, strlen(opt_dtadir));
+    strcpy(dir, opt_dtadir);
     return 0;
 }
 
@@ -2841,7 +2841,7 @@ int dyns_get_db_name(char *name, int len)
         return -1;
     }
     bzero(name, len);
-    strncpy(name, DBNAME, strlen(DBNAME));
+    strcpy(name, DBNAME);
     return 0;
 }
 
