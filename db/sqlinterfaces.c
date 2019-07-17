@@ -1091,9 +1091,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
-                            h->time, h->prepTime, clnt->nrows, logger);
+        if (h->sql) {
+            if (clnt->work.zOrigNormSql) {
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3084,6 +3089,10 @@ static void normalize_stmt_and_store(
     free(clnt->work.zNormSql);
     clnt->work.zNormSql = 0;
   }
+  if (clnt->work.zOrigNormSql) {
+    free(clnt->work.zOrigNormSql);
+    clnt->work.zOrigNormSql = 0;
+  }
   if (gbl_fingerprint_queries) {
     if (rec != NULL) {
       assert(rec->stmt);
@@ -5066,6 +5075,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->work.zNormSql = NULL;
     }
 
+    if (clnt->work.zOrigNormSql) {
+        free(clnt->work.zOrigNormSql);
+        clnt->work.zOrigNormSql = NULL;
+    }
+
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
@@ -5213,6 +5227,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (clnt->work.zNormSql) {
         free(clnt->work.zNormSql);
         clnt->work.zNormSql = 0;
+    }
+
+    if (clnt->work.zOrigNormSql) {
+        free(clnt->work.zOrigNormSql);
+        clnt->work.zOrigNormSql = 0;
     }
 
     clnt->arr = NULL;
