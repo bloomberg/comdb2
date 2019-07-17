@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include "priority_queue.h"
 #include "comdb2_ruleset.h"
 
 static void comdb2_adjust_priority(
@@ -39,7 +40,7 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
   unsigned char *pFingerprint,
-  struct ruleset_result *result,
+  struct ruleset_result *result
 ){
   if ((rule->zOriginHost != NULL) &&
       (stringComparer(rule->zOriginHost, clnt->origin_host) != 0)) {

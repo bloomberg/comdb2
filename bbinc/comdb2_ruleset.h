@@ -17,6 +17,8 @@
 #ifndef _COMDB2_RULESET_H_
 #define _COMDB2_RULESET_H_
 
+#include <stddef.h>
+
 #ifndef FPSZ
 #define FPSZ 16 /* stolen from "sql.h" FINGERPRINTSZ */
 #endif
@@ -44,14 +46,14 @@ enum ruleset_flags {
                            * the request will NOT be retried. TODO: ? */
 };
 
-typedef enum ruleset_match {
+enum ruleset_match {
   RULESET_M_FALSE = 0,    /* The ruleset or item was not matched. */
 
   RULESET_M_TRUE = 1,     /* The ruleset or item was matched. */
 
   RULESET_M_STOP = 2      /* The ruleset or item was matched -AND- processing
                            * of the ruleset or item should stop. */
-} ruleset_match_t;
+};
 
 struct ruleset_item {
   enum ruleset_action action;     /* If this rule is matched, what should be
@@ -107,7 +109,7 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
   unsigned char *pFingerprint,
-  struct ruleset_result *result,
+  struct ruleset_result *result
 );
 
 #endif /* _COMDB2_RULESET_H_ */
