@@ -793,6 +793,7 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
         return;
     }
+    Pthread_setspecific(lock_key, NULL);
 
     if (lk->lockref != 0) {
         logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
@@ -809,7 +810,6 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     if (lk->stack)
         free(lk->stack);
     free(lk);
-    Pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)

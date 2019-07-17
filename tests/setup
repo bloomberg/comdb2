@@ -53,7 +53,7 @@ if [[ -n ${DEBUGGER} ]]; then
         fi
         ;;
     memcheck)
-        DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
+        DEBUG_PREFIX="valgrind --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
             INTERACTIVE_DEBUG=0
         fi

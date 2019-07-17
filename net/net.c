@@ -1708,9 +1708,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     }
 
     msghd.usertype = usertype;
-    Pthread_mutex_lock(&(netinfo_ptr->seqlock));
-    msghd.seqnum = ++netinfo_ptr->seqnum;
-    Pthread_mutex_unlock(&(netinfo_ptr->seqlock));
+    msghd.seqnum = ATOMIC_ADD(netinfo_ptr->seqnum, 1);
     msghd.waitforack = waitforack;
     msghd.datalen = datalen;
 
@@ -2053,9 +2051,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     /*ctrace("net_send_message: to node %s, ut=%d\n", host_node_ptr->host, usertype);*/
 
     msghd.usertype = usertype;
-    Pthread_mutex_lock(&(netinfo_ptr->seqlock));
-    msghd.seqnum = ++netinfo_ptr->seqnum;
-    Pthread_mutex_unlock(&(netinfo_ptr->seqlock));
+    msghd.seqnum = ATOMIC_ADD(netinfo_ptr->seqnum, 1);
     msghd.waitforack = 0;
     msghd.datalen = datalen + tailen;
 
@@ -3091,7 +3087,7 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     }
 
     Pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
-    Pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->stop_thread_callback_lock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
     Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
 
@@ -4180,8 +4176,10 @@ done:
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -4428,8 +4426,10 @@ done:
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -5023,8 +5023,10 @@ static void *connect_thread(void *arg)
         rem_from_netinfo(netinfo_ptr, host_node_ptr);
     }
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -5764,8 +5766,10 @@ static void *accept_thread(void *arg)
     close(listenfd);
 
 #ifdef NOTREACHED
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     if (portmux_fds)
         portmux_close(portmux_fds);
@@ -5811,8 +5815,10 @@ static void *heartbeat_send_thread(void *arg)
         for (int i = 0; i < ss && !netinfo_ptr->exiting; i++)
             sleep(1);
     }
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -6073,8 +6079,10 @@ static void *heartbeat_check_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "heartbeat check thread exiting!\n");
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }

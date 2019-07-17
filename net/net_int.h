@@ -257,7 +257,7 @@ struct netinfo_struct {
 
     userfunc_t userfuncs[MAX_USER_TYPE + 1];
     decom_type *decomhead;
-    pthread_mutex_t seqlock;
+    pthread_mutex_t stop_thread_callback_lock;
     pthread_rwlock_t lock;
     pthread_mutex_t watchlk;
     pthread_mutex_t sanclk;
