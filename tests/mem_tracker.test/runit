@@ -1,6 +1,6 @@
 #!/bin/sh
-
 bash -n "$0" | exit 1
+
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
 
@@ -11,5 +11,12 @@ SELECT 1
 EXEC PROCEDURE sys.cmd.send("memstat debug stop")
 EOF
 
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite")' &> memstat.out
 stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite")'`
+
+if [ "x$stacks" == "x" ] ; then
+    echo "Failed: no output from 'memstat debug dump sqlite'"
+    exit 1
+fi
+
 addr2line -fsp -e $COMDB2_EXE $stacks | grep sql_statement_done
