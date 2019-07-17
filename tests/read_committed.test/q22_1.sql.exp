@@ -1,0 +1,12 @@
+[drop table if exists t] rc 0
+[create table t(i int, j int)] rc 0
+[create index t_ij on t(i, j)] rc 0
+(rows inserted=2)
+[insert into t(i, j) values(1,1),(2,2)] rc 0
+[set transaction read committed] rc 0
+(rows deleted=1)
+[delete from t where i = 1] rc 0
+(max(j)=NULL)
+[select max(j) from t where i = 1] rc 0
+(max(j)=NULL)
+[select max(j) from t where i = 1] rc 0
