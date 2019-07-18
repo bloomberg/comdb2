@@ -83,8 +83,8 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
         if (gbl_verbose_normalized_queries) {
-            char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
-            util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
+            unsigned char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+            util_tohex((char *)fp, (char *)t->fingerprint, FINGERPRINTSZ);
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
         }
@@ -99,7 +99,7 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
-    reqlog_set_fingerprint(logger, (const char*)fingerprint, FINGERPRINTSZ);
+    reqlog_set_fingerprint(logger, fingerprint, FINGERPRINTSZ);
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
     ; /* NOTE: Do nothing, silence compiler warning. */

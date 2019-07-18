@@ -19,7 +19,7 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 
-static void comdb2_ruleset_action_to_str(
+static const char *comdb2_ruleset_action_to_str(
   enum ruleset_action action,
   char *zBuf,
   size_t nBuf
