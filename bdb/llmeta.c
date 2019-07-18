@@ -9803,8 +9803,7 @@ done:
 /* View key */
 struct llmeta_view_key {
     int file_type;
-    char view_name[LLMETA_TBLLEN];
-    int view_name_len;
+    char view_name[LLMETA_TBLLEN]; /* View name must be NULL terminated */
 };
 
 /* Fetch all view names */
@@ -9825,8 +9824,7 @@ int bdb_get_view_names(tran_type *t, char **names, int *num)
     }
 
     for (int i = 0; i < n; ++i) {
-        names[i] = strdup(v[i]->key.view_name);
-        free(v[i]);
+        names[i] = v[i]->key.view_name;
     }
     free(v);
     *num = n;
