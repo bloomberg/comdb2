@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-#if (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) &&          \
+#if (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) && \
     !defined(SQLITE_OMIT_VIRTUALTABLE)
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
@@ -215,6 +215,6 @@ const sqlite3_module systblReplStatsModule = {
     .access_flag = CDB2_ALLOW_USER,
 };
 
-#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \
+#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
           && !defined(SQLITE_OMIT_VIRTUALTABLE) */
 

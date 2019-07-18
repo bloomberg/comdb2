@@ -98,4 +98,5 @@ static int systblTimepartitionsEventsInit(sqlite3 *db)
         SYSTABLE_END_OF_FIELDS);
 }
 
-#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
+          && !defined(SQLITE_OMIT_VIRTUALTABLE) */

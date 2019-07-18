@@ -282,6 +282,3 @@ const sqlite3_module systblColumnsModule = {
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
           && !defined(SQLITE_OMIT_VIRTUALTABLE) */
-
-
-
