@@ -326,7 +326,7 @@ static const void *buf_get_dests(struct schema_change_type *s,
             char *pdest;
             if (no_pfx) {
                 d->dest = malloc(w_len + 1);
-                strncpy(d->dest, pfx, strlen(pfx));
+                strcpy(d->dest, pfx);
                 pdest = d->dest + strlen(pfx);
                 d->dest[w_len] = '\0';
             } else {
