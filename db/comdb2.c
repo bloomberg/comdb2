@@ -4590,14 +4590,22 @@ void *statthd(void *p)
                                     npwrites);
                 }
                 if (cur_bdb_stats.n_memp_fgets > last_bdb_stats.n_memp_fgets) {
-                    unsigned n_memp_fgets = cur_bdb_stats.n_memp_fgets - last_bdb_stats.n_memp_fgets;
-                    unsigned us = cur_bdb_stats.memp_fget_time_us - last_bdb_stats.memp_fget_time_us;
-                    reqlog_logf(statlogger, REQL_INFO, "n_memp_fgets=%u, memp_fgets avg time=%ums\n", n_memp_fgets, U2M(us) / n_memp_fgets);
+                    unsigned n_memp_fgets = cur_bdb_stats.n_memp_fgets -
+                                            last_bdb_stats.n_memp_fgets;
+                    unsigned us = cur_bdb_stats.memp_fget_time_us -
+                                  last_bdb_stats.memp_fget_time_us;
+                    reqlog_logf(statlogger, REQL_INFO,
+                                "n_memp_fgets=%u, memp_fgets avg time=%ums\n",
+                                n_memp_fgets, U2M(us) / n_memp_fgets);
                 }
                 if (cur_bdb_stats.n_memp_pgs > last_bdb_stats.n_memp_pgs) {
-                    unsigned n_memp_pgs = cur_bdb_stats.n_memp_pgs - last_bdb_stats.n_memp_pgs;
-                    unsigned us = cur_bdb_stats.memp_pg_time_us - last_bdb_stats.memp_pg_time_us;
-                    reqlog_logf(statlogger, REQL_INFO, "n_memp_pgs=%u, memp_pgs avg time=%ums\n", n_memp_pgs, U2M(us) / n_memp_pgs);
+                    unsigned n_memp_pgs =
+                        cur_bdb_stats.n_memp_pgs - last_bdb_stats.n_memp_pgs;
+                    unsigned us = cur_bdb_stats.memp_pg_time_us -
+                                  last_bdb_stats.memp_pg_time_us;
+                    reqlog_logf(statlogger, REQL_INFO,
+                                "n_memp_pgs=%u, memp_pgs avg time=%ums\n",
+                                n_memp_pgs, U2M(us) / n_memp_pgs);
                 }
                 last_bdb_stats = cur_bdb_stats;
 
