@@ -281,6 +281,7 @@ void thdpool_destroy(struct thdpool **pool_p)
     Pthread_mutex_destroy(&pool->mutex);
     Pthread_attr_destroy(&pool->attrs);
 
+    free(pool->busy_hist);
     pool_free(pool->pool);
     free(pool->name);
     //TODO: deregister_thdpool_tunables((char *)name, pool);

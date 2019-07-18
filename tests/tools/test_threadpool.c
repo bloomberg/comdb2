@@ -35,6 +35,7 @@ static void handler_work_pp(struct thdpool *pool, void *work, void *thddata, int
     ATOMIC_ADD(info->c->sum, info->id);
     usleep(rand() % 1000);
     ATOMIC_ADD(info->c->completed_count, 1);
+    free(work);
 }
 
 int main()
@@ -68,11 +69,12 @@ int main()
         }
     }
 
-    //while (thdpool_get_nthds() c.completed_count < c.spawned_count) {
+    //while (thdpool_get_nthds() c.completed_count < c.spawned_count) 
     while (thdpool_get_nthds(my_thdpool) + thdpool_get_nfreethds(my_thdpool) > 0) {
         printf("Waiting for thdpool %d/%d done\n", c.completed_count, c.spawned_count);
         sleep(1);
     }
+
     printf("Work completed thdpool %d/%d done\n", c.completed_count, c.spawned_count);
     if (c.sum != (MAX+1)*MAX/2)
         abort();
@@ -81,4 +83,7 @@ int main()
     thdpool_stop(my_thdpool);
     sleep(1);
     thdpool_destroy(&my_thdpool);
+    // this will remove the mspace and we won't be able to see any leaks, so comment out:
+    //comdb2ma_exit();
+    pthread_exit(NULL); // call any key destructors
 }
