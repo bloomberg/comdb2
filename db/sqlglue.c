@@ -6407,7 +6407,6 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
 
     pCur->nblobs++;
     if (thd) {
-        thd->nblobs++;
         thd->cost += pCur->blob_cost;
     }
 

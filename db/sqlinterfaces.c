@@ -962,14 +962,22 @@ int sqlite3_close_serial(sqlite3 **ppDb)
    since a next is effectively a find, but we'll overlook that here
    since we're moving towards cursors these days. Temp table
    reads/writes should also be considered more expensive if the
-   temp table spills to disk, etc. */
+   temp table spills to disk, etc.
+
+   Previously, the following formula was (presumably) used in this
+   function:
+
+                      (   thd->nwrite  * 100.0)
+                    + (    thd->nfind  *  10.0)
+                    + (    thd->nmove  *   1.0)
+                    + (thd->ntmpwrite  *   0.2)
+                    + ( thd->ntmpread  *   0.1)
+
+   Interestingly, the "nblobs" field was incremented (in sqlglue.c)
+   but not used by this formula (nor was it used anywhere else).
+*/
 double query_cost(struct sql_thread *thd)
 {
-#if 0
-    return (double) thd->nwrite * 100 + (double) thd->nfind * 10 + 
-        (double) thd->nmove * 1 + (double) thd->ntmpwrite * 0.2 + 
-        (double) thd->ntmpread * 0.1;
-#endif
     return thd->cost;
 }
 
@@ -1016,6 +1024,16 @@ static void clear_cost(struct sql_thread *thd)
         thd->had_tablescans = 0;
         thd->had_temptables = 0;
     }
+}
+
+static void reset_sql_steps(struct sql_thread *thd)
+{
+    thd->nmove = thd->nfind = thd->nwrite = 0;
+}
+
+static int get_sql_steps(struct sql_thread *thd)
+{
+    return thd->nmove + thd->nfind + thd->nwrite;
 }
 
 static void add_steps(struct sqlclntstate *clnt, double steps)
@@ -1103,11 +1121,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
-        rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+        rawnodestats->sql_steps += get_sql_steps(thd);
         time_metric_add(rawnodestats->svc_time, h->time);
     }
 
-    thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
+    reset_sql_steps(thd);
 
     if (clnt->conninfo.pename[0]) {
         h->conn = clnt->conninfo;
@@ -2763,7 +2781,9 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* sql thread stats */
     thd->sqlthd->startms = comdb2_time_epochms();
     thd->sqlthd->stime = comdb2_time_epoch();
-    thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite = 0;
+
+    /* stats added to rawnodestats->sql_steps */
+    reset_sql_steps(thd->sqlthd);
 
     /* reqlog */
     setup_reqlog(thd, clnt);
@@ -3752,8 +3772,7 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
     }
 
     if (thd->sqlthd)
-        thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
-            thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
+        reset_sql_steps(thd->sqlthd);
 
     clnt->had_errors = 1;
 
