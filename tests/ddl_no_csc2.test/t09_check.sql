@@ -25,7 +25,7 @@ INSERT INTO t1 VALUES('white');
 ALTER TABLE t1 DROP CONSTRAINT valid_colors$$
 SELECT csc2 FROM sqlite_master WHERE name = 't1';
 INSERT INTO t1 VALUES('white');
-SELECT * FROM t1;
+SELECT * FROM t1 ORDER BY color;
 DROP TABLE t1;
 
 SELECT '3. Invalid use cases' as test;
