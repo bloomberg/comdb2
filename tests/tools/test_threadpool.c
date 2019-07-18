@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "thread_util.h"
 #include "thdpool.h"
 #include "comdb2_atomic.h"
 #include "mem.h"
@@ -39,6 +40,7 @@ static void handler_work_pp(struct thdpool *pool, void *work, void *thddata, int
 int main()
 {
     comdb2ma_init(0, 0);
+    thread_util_init();
     struct thdpool *my_thdpool = thdpool_create("my_pool", 0);
 
     assert(my_thdpool);
