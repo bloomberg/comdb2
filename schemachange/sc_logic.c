@@ -844,7 +844,6 @@ int resume_schema_change(void)
     char *abort_filename = NULL;
     int is_shard = 0;
     char *viewname = NULL;
-    hash_t *tpt_sc_hash = NULL;
 
     /* if we're not the master node/phys replicant then we can't do schema
      * change! */
@@ -861,6 +860,14 @@ int resume_schema_change(void)
     /* if a schema change is currently running don't try to resume one */
     sc_set_running(NULL, 0, 0, NULL, 0);
     clear_ongoing_alter();
+
+    hash_t *tpt_sc_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct timepart_sc_resuming, viewname), 0);
+    if (!tpt_sc_hash) {
+        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+        abort();
+    }
 
     /* Give operators a chance to prevent a schema change from resuming. */
     abort_filename = comdb2_location("marker", "%s.scabort", thedb->envname);
@@ -982,15 +989,6 @@ int resume_schema_change(void)
                 continue;
             } else if (is_shard) {
                 struct timepart_sc_resuming *tpt_sc = NULL;
-
-                hash_t *tpt_sc_hash = hash_init_user(
-                    (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                    offsetof(struct timepart_sc_resuming, viewname), 0);
-                if (!tpt_sc_hash) {
-                    logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
-                    abort();
-                }
-
                 tpt_sc = hash_find(tpt_sc_hash, &viewname);
                 if (tpt_sc == NULL) {
                     /* not found */
@@ -1027,11 +1025,9 @@ int resume_schema_change(void)
     }
     Pthread_mutex_unlock(&sc_resuming_mtx);
 
-    if (is_shard) {
-        hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
-        hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
-        hash_free(tpt_sc_hash);
-    }
+    hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
+    hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
+    hash_free(tpt_sc_hash);
 
     if (scabort) {
         logmsg(LOGMSG_WARN, "Cancelling schema change\n");

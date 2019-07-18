@@ -9824,7 +9824,8 @@ int bdb_get_view_names(tran_type *t, char **names, int *num)
     }
 
     for (int i = 0; i < n; ++i) {
-        names[i] = v[i]->key.view_name;
+        names[i] = strdup(v[i]->key.view_name);
+        free(v[i]);
     }
     free(v);
     *num = n;
