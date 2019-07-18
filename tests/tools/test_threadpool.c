@@ -71,6 +71,7 @@ int main()
         printf("Waiting for thdpool %d/%d done\n", c.completed_count, c.spawned_count);
         sleep(1);
     }
+    printf("Work completed thdpool %d/%d done\n", c.completed_count, c.spawned_count);
     if (c.sum != (MAX+1)*MAX/2)
         abort();
 

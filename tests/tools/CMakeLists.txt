@@ -78,7 +78,7 @@ target_link_libraries(comdb2_sqltest cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_L
 target_link_libraries(ptrantest cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${SQLITE3_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} -lm)
 target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${SQLITE3_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} -lm)
 
-target_link_libraries(test_threadpool util mem dlmalloc -Ibbinc )
+target_link_libraries(test_threadpool mem dlmalloc util -Ibbinc ${CMAKE_DL_LIBS})
 
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc util ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
