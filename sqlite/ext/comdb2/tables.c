@@ -191,12 +191,8 @@ const sqlite3_module systblTablesModule = {
   0,                         /* xShadowName */
 };
 
-#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
-          && !defined(SQLITE_OMIT_VIRTUALTABLE) */
-
 /* This initializes this table but also a bunch of other schema tables
 ** that fall under the similar use. */
-#ifdef SQLITE_BUILDING_FOR_COMDB2
 extern int sqlite3CompletionVtabInit(sqlite3 *);
 
 int comdb2SystblInit(
@@ -289,4 +285,5 @@ int comdb2SystblInit(
 #endif
   return rc;
 }
-#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
+          && !defined(SQLITE_OMIT_VIRTUALTABLE) */
