@@ -1,0 +1,18 @@
+(test='create table using name of an existing view and vice versa')
+[CREATE VIEW t1 AS SELECT 1] failed with rc -3 table t1 already exists
+[CREATE TABLE v1(i INT)] failed with rc -3 Table already exists
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')
+(name='v1', definition='CREATE VIEW v1 AS SELECT 1')
+(test='create views using same prefixed names')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(name='aa', definition='CREATE VIEW aa AS SELECT 1')
+(name='aaa', definition='CREATE VIEW aaa AS SELECT 1')
+[DROP VIEW a] failed with rc -3 no such view: a
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(name='aaa', definition='CREATE VIEW aaa AS SELECT 1')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')

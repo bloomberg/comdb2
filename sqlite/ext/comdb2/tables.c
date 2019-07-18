@@ -275,15 +275,17 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblClusterInit(db);
   if (rc == SQLITE_OK)
-      rc = systblActiveOsqlsInit(db);
+    rc = systblActiveOsqlsInit(db);
   if (rc == SQLITE_OK)
-      rc = systblBlkseqInit(db);
+    rc = systblBlkseqInit(db);
   if (rc == SQLITE_OK)
-      rc = systblFingerprintsInit(db);
+    rc = systblFingerprintsInit(db);
   if (rc == SQLITE_OK)
-      rc = systblScStatusInit(db);
+    rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
     rc = systblConnectionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblViewsInit(db);
 #endif
   return rc;
 }
