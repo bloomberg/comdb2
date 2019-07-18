@@ -83,7 +83,8 @@ int main()
     thdpool_stop(my_thdpool);
     sleep(1);
     thdpool_destroy(&my_thdpool);
-    // this will remove the mspace and we won't be able to see any leaks, so comment out:
+    // this will remove the mspace and we won't be able to see any leaks,
+    // so keep this commented out:
     //comdb2ma_exit();
     pthread_exit(NULL); // call any key destructors
 }
