@@ -2061,7 +2061,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         sql_mem_shutdown(NULL);
         return -1;
     }
-    ents = create_master_entry_array(&db, 1, &nents);
+    ents = create_master_entry_array(&db, 1, thedb->view_hash, &nents);
     if (!ents) {
         logmsg(LOGMSG_ERROR, "%s: failed to create master entries\n", __func__);
         sql_mem_shutdown(NULL);
@@ -3387,11 +3387,11 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         bt->is_remote = 1;
         /* NOTE: this is a lockless pointer; at the time of setting this, we got
-        a lock in sqlite3AddAndLockTable, so it should be good. The sqlite engine will
-        keep this structure around after fdb tables are changed. While fdb will NOT
-        go away, its tables can dissapear or change schema.  Cached schema in Table
-        object needs to be matched against fdb->tbl and make sure they are consistent before
-        doing anything on the attached fdb
+        a lock in sqlite3AddAndLockTable, so it should be good. The sqlite
+        engine will keep this structure around after fdb tables are changed.
+        While fdb will NOT go away, its tables can dissapear or change schema.
+        Cached schema in Table object needs to be matched against fdb->tbl and
+        make sure they are consistent before doing anything on the attached fdb
         */
         bt->fdb = get_fdb(zFilename);
         if (!bt->fdb) {
@@ -3877,7 +3877,8 @@ int sqlite3BtreeSetAutoVacuum(Btree *pBt, int autoVacuum)
 int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 {
     *piMoved = 0;
-    if (!pBt->is_temporary) return UNIMPLEMENTED;
+    if (!pBt->is_temporary)
+        return UNIMPLEMENTED;
     struct temptable *tmp = hash_find(pBt->temp_tables, &iTable);
     if (tmp->owner == pBt) {
         int bdberr;
@@ -5070,8 +5071,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;
         free(pNewTbl);
-        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n",
-               __func__, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n", __func__,
+               bdberr);
         rc = SQLITE_INTERNAL;
         goto done;
     }
@@ -8068,9 +8069,9 @@ int sqlite3BtreeCursor(
             }
         }
         if (rc == SQLITE_OK) {
-            rc = sqlite3BtreeCursor_temptable(
-                pBt, pgno, wrFlag & BTREE_CUR_WR, temp_table_cmp, pKeyInfo,
-                cur, thd);
+            rc = sqlite3BtreeCursor_temptable(pBt, pgno, wrFlag & BTREE_CUR_WR,
+                                              temp_table_cmp, pKeyInfo, cur,
+                                              thd);
         }
         cur->find_cost = cur->move_cost = 0.1;
         cur->write_cost = 0.2;

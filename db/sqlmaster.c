@@ -28,6 +28,7 @@ static int sqlmaster_nentries;
 static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
                                char *csc2_schema, int tblnum, int ixnum,
                                int *sz);
+static void *create_master_row_for_view(struct dbview *view, int *sz);
 
 inline int destroy_sqlite_master(master_entry_t *arr, int arr_len)
 {
@@ -53,7 +54,7 @@ void cleanup_sqlite_master()
 }
 
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
-                                          int *nents)
+                                          hash_t *view_hash, int *nents)
 {
     int tblnum;
     int tbl_idx;
@@ -64,6 +65,12 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
     /* for each table, account for table and all its indices */
     for (tblnum = 0; tblnum < num_dbs; tblnum++)
         local_nentries += 1 + dbs[tblnum]->nsqlix;
+
+    if (view_hash) {
+        int view_count;
+        hash_info(view_hash, NULL, NULL, NULL, NULL, &view_count, NULL, NULL);
+        local_nentries += view_count;
+    }
 
     master_entry_t *new_arr = calloc(local_nentries, sizeof(master_entry_t));
     if (!new_arr) {
@@ -100,6 +107,22 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
         }
     }
 
+    if (view_hash) {
+        void *ent;
+        unsigned int bkt;
+        struct dbview *view;
+        for (view = (struct dbview *)hash_first(view_hash, &ent, &bkt); view;
+             view = (struct dbview *)hash_next(view_hash, &ent, &bkt)) {
+            master_entry_t *ent = &new_arr[i];
+            ent->tblname = strdup(view->view_name);
+            ent->isstrdup = 1;
+            ent->ixnum = -1;
+            ent->rootpage = -1;
+            ent->entry = create_master_row_for_view(view, &ent->entry_size);
+            i++;
+        }
+    }
+
     assert(i == local_nentries);
 
     *nents = local_nentries;
@@ -116,8 +139,8 @@ void create_sqlite_master()
     master_entry_t *new_arr = NULL;
     int local_nentries = 0;
 
-    new_arr =
-        create_master_entry_array(thedb->dbs, thedb->num_dbs, &local_nentries);
+    new_arr = create_master_entry_array(thedb->dbs, thedb->num_dbs,
+                                        thedb->view_hash, &local_nentries);
     if (!new_arr) {
         logmsg(LOGMSG_ERROR, "%s: MALLOC OOM\n", __func__);
         abort();
@@ -232,6 +255,31 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
     fill_mem_int(&mems[3], rootpage);
     fill_mem_str(&mems[4], sql);
     fill_mem_str(&mems[5], csc2_schema);
+
+    rc = serialize_mems(mems, 6, &rec, sz);
+    if (rc)
+        return NULL;
+
+    return rec;
+}
+
+static void *create_master_row_for_view(struct dbview *view, int *sz)
+{
+    Mem mems[6] = {{{0}}};
+    char *etype;
+    char name[128];
+    char *rec;
+    int rc;
+
+    etype = "view";
+    strcpy(name, view->view_name);
+
+    fill_mem_str(&mems[0], etype);
+    fill_mem_str(&mems[1], name);
+    fill_mem_str(&mems[2], 0);
+    fill_mem_int(&mems[3], -1);
+    fill_mem_str(&mems[4], view->view_def);
+    fill_mem_str(&mems[5], 0);
 
     rc = serialize_mems(mems, 6, &rec, sz);
     if (rc)

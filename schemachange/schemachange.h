@@ -69,9 +69,9 @@ struct schema_change_type {
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
     size_t tablename_len;
-    char tablename[MAXTABLELEN]; /* name of table/queue */
-    int rename;              /* new table name */
-    char newtable[MAXTABLELEN]; /* rename table */
+    char tablename[MAXTABLELEN]; /* name of table/queue/view */
+    int rename;                  /* new table name */
+    char newtable[MAXTABLELEN];  /* rename table */
     size_t fname_len;
     char fname[256];         /* name of schema file for table schema change
                                 or client provided SP version */
@@ -136,6 +136,10 @@ struct schema_change_type {
     int defaultsp;
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
+
+    /* View operations */
+    int add_view;
+    int drop_view;
 
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
