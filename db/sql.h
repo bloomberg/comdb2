@@ -64,7 +64,7 @@ enum transaction_level {
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
-    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    unsigned char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
     int64_t count;    /* Cumulative number of times executed */
     int64_t cost;     /* Cumulative cost */
     int64_t time;     /* Cumulative preparation and execution time */
@@ -105,6 +105,8 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+
+    struct ruleset rules;
 };
 
 typedef struct osqltimings {

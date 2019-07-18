@@ -93,6 +93,9 @@ struct ruleset_item {
 };
 
 struct ruleset {
+  int generation;                 /* When was this set of rules read into
+                                   * memory?*/
+
   size_t nRule;                   /* How many rules are in this ruleset? */
 
   struct ruleset_item *aRule;     /* An array of rules with a minimum size of
@@ -112,6 +115,16 @@ typedef int (*xStrCmp)(const char *, const char *);
 typedef int (*xMemCmp)(const void *, const void *, size_t);
 typedef enum ruleset_match ruleset_match_t;
 
+priority_t comdb2_clamp_priority(
+  priority_t priority
+);
+
+priority_t comdb2_adjust_priority(
+  enum ruleset_action action,
+  priority_t priority,
+  priority_t adjustment
+);
+
 ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
@@ -128,6 +141,12 @@ size_t comdb2_evaluate_ruleset(
   struct sqlclntstate *clnt,
   unsigned char *pFingerprint,
   struct ruleset_result *result
+);
+
+size_t comdb2_ruleset_result_to_str(
+  struct ruleset_result *result,
+  char *zBuf,
+  size_t nBuf
 );
 
 #endif /* _COMDB2_RULESET_H_ */

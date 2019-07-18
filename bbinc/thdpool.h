@@ -111,6 +111,7 @@ void thdpool_set_wait(struct thdpool *pool, int wait);
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);
 char *thdpool_get_name(struct thdpool *pool);
+priority_t thdpool_get_highest_priority(struct thdpool *pool);
 int thdpool_get_status(struct thdpool *pool);
 int thdpool_get_nthds(struct thdpool *pool);
 int thdpool_get_nfreethds(struct thdpool *pool);

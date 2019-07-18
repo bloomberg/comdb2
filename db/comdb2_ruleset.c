@@ -19,7 +19,61 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 
-static priority_t comdb2_clamp_priority(
+static void comdb2_ruleset_action_to_str(
+  enum ruleset_action action,
+  char *zBuf,
+  size_t nBuf
+){
+  switch (action) {
+    case RULESET_A_NONE:
+      return "NONE";
+    case RULESET_A_REJECT:
+      return "REJECT";
+    case RULESET_A_UNREJECT:
+      return "UNREJECT";
+    case RULESET_A_LOW_PRIO:
+      return "LOW_PRIO";
+    case RULESET_A_HIGH_PRIO:
+      return "HIGH_PRIO";
+    default: {
+      snprintf(zBuf, nBuf, "0x%x", action);
+      return zBuf;
+    }
+  }
+}
+
+static const char *comdb2_priority_to_str(
+  priority_t priority,
+  char *zBuf,
+  size_t nBuf
+){
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  assert(priority >= PRIORITY_T_HIGHEST);
+  assert(priority <= PRIORITY_T_LOWEST);
+  switch (priority) {
+    case PRIORITY_T_INVALID:
+      return "INVALID";
+    case PRIORITY_T_HIGHEST:
+      return "HIGHEST";
+    case PRIORITY_T_LOWEST:
+      return "LOWEST";
+    case PRIORITY_T_HEAD:
+      return "HEAD";
+    case PRIORITY_T_TAIL:
+      return "TAIL";
+    case PRIORITY_T_DEFAULT:
+      return "DEFAULT";
+    default: {
+      snprintf(zBuf, nBuf, "0x%llx", priority);
+      return zBuf;
+    }
+  }
+}
+
+priority_t comdb2_clamp_priority(
   priority_t priority
 ){
   /*
@@ -31,15 +85,26 @@ static priority_t comdb2_clamp_priority(
   return priority;
 }
 
-static void comdb2_adjust_priority(
+priority_t comdb2_adjust_priority(
+  enum ruleset_action action,
+  priority_t priority,
+  priority_t adjustment
+){
+  if (action == RULESET_A_HIGH_PRIO) {
+    adjustment = -adjustment;
+  }
+  priority += adjustment;
+  return comdb2_clamp_priority(priority);
+}
+
+static void comdb2_adjust_result_priority(
   enum ruleset_action action,
   priority_t adjustment,
   struct ruleset_result *result
 ){
-  priority_t priority = result->priority;
-  if (action == RULESET_A_HIGH_PRIO) { adjustment = -adjustment; }
-  priority += adjustment;
-  result->priority = comdb2_clamp_priority(priority);
+  result->priority = comdb2_clamp_priority(
+    comdb2_adjust_priority(action, result->priority, adjustment)
+  );
 }
 
 ruleset_match_t comdb2_evaluate_ruleset_item(
@@ -82,7 +147,7 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
-      comdb2_adjust_priority(rule->action, rule->adjustment, result);
+      comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
     }
     default: {
       logmsg(LOGMSG_ERROR,
@@ -110,4 +175,19 @@ size_t comdb2_evaluate_ruleset(
     if (match == RULESET_M_TRUE) { count++; }
   }
   return count;
+}
+
+size_t comdb2_ruleset_result_to_str(
+  struct ruleset_result *result,
+  char *zBuf,
+  size_t nBuf
+){
+  char zActBuf[32] = {0};
+  char zPriBuf[32] = {0};
+
+  comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf));
+  comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf));
+
+  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s", zActBuf,
+                          zPriBuf);
 }

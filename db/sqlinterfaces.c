@@ -4495,10 +4495,37 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
     return rc;
 }
 
-static int can_execute_sql_query_now(struct sqlclntstate *clnt, int *piRejected)
-{
+static int can_execute_sql_query_now(
+  struct sqlthdstate *thd,
+  struct sqlclntstate *clnt,
+  int *piRejected
+){
+  struct ruleset_result result = {0};
+  result.priority = clnt->priority;
+  size_t count = comdb2_evaluate_ruleset(
+    strcasecmp, memcmp, &thd->rules, clnt,
+    clnt->work.aFingerprint, &result
+  );
+  char zResult[100] = {0};
+  comdb2_ruleset_result_to_str(&result, zResult, sizeof(zResult));
+  logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zResult);
   *piRejected = 0;
-  return 1;
+  switch (result.action) {
+    case RULESET_A_REJECT: {
+      *piRejected = 1;
+      return 0;
+    }
+    case RULESET_A_LOW_PRIO:
+    case RULESET_A_HIGH_PRIO: {
+      clnt->priority = result.priority;
+      break;
+    }
+  }
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  return clnt->priority <= thdpool_get_highest_priority(gbl_sqlengine_thdpool);
 }
 
 void sqlengine_work_appsock(void *thddata, void *work)
@@ -4561,7 +4588,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     int iRejected = 0;
 
-    if (!can_execute_sql_query_now(clnt, &iRejected)) {
+    if (!can_execute_sql_query_now(thd, clnt, &iRejected)) {
         clnt->query_rc = iRejected ? ERR_QUERY_REJECTED : ERR_QUERY_DELAYED;
         put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
         clnt->osql.timings.query_finished = osql_log_time();

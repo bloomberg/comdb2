@@ -1017,6 +1017,11 @@ char *thdpool_get_name(struct thdpool *pool)
     return pool->name;
 }
 
+priority_t thdpool_get_highest_priority(struct thdpool *pool)
+{
+    return priority_queue_highest(&pool->queue);
+}
+
 int thdpool_get_status(struct thdpool *pool)
 {
     return pool->stopped;
