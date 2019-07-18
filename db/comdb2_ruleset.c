@@ -185,9 +185,8 @@ size_t comdb2_ruleset_result_to_str(
   char zActBuf[32] = {0};
   char zPriBuf[32] = {0};
 
-  comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf));
-  comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf));
-
-  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s", zActBuf,
-                          zPriBuf);
+  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s", 
+      comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf)),
+      comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf))
+  );
 }
