@@ -4507,6 +4507,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
 
+    /*
+    ** WARNING: This code assumes that higher priority values have
+    **          lower numerical values.
+    */
     assert(clnt->seqNo > 0);
     assert(clnt->priority >= PRIORITY_T_HIGHEST);
     assert(clnt->priority != PRIORITY_T_INVALID);
@@ -4713,6 +4717,10 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     int fail_dispatch = 0;
     int q_depth_tag_and_sql;
 
+    /*
+    ** WARNING: This code assumes that higher priority values have
+    **          lower numerical values.
+    */
     clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);

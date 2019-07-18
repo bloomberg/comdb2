@@ -19,6 +19,18 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 
+static priority_t comdb2_clamp_priority(
+  priority_t priority
+){
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  if (priority < PRIORITY_T_HIGHEST) { return PRIORITY_T_HIGHEST; }
+  if (priority > PRIORITY_T_LOWEST) { return PRIORITY_T_LOWEST; }
+  return priority;
+}
+
 static void comdb2_adjust_priority(
   enum ruleset_action action,
   priority_t adjustment,
@@ -27,13 +39,7 @@ static void comdb2_adjust_priority(
   priority_t priority = result->priority;
   if (action == RULESET_A_HIGH_PRIO) { adjustment = -adjustment; }
   priority += adjustment;
-  /*
-  ** WARNING: This assumes that higher priority values have lower
-  **          numerical values.
-  */
-  if (priority < PRIORITY_T_HIGHEST) { priority = PRIORITY_T_HIGHEST; }
-  if (priority > PRIORITY_T_LOWEST) { priority = PRIORITY_T_LOWEST; }
-  result->priority = priority;
+  result->priority = comdb2_clamp_priority(priority);
 }
 
 ruleset_match_t comdb2_evaluate_ruleset_item(
