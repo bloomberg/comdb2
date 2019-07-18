@@ -1726,4 +1726,15 @@ REGISTER_TUNABLE("serialize_reads_like_writes",
                  TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("long_log_truncation_warn_thresh_sec",
+                 "Warn if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_warn_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
+                 "SIGABRT if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
