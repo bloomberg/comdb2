@@ -1,0 +1,74 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <assert.h>
+
+#include "thdpool.h"
+#include "comdb2_atomic.h"
+
+int gbl_disable_exit_on_thread_error;
+int gbl_throttle_sql_overload_dump_sec;
+
+void register_tunable(void *tunable) 
+{
+}
+void thdpool_alarm_on_queing(int len)
+{
+}
+
+typedef struct { 
+    int spawned_count;
+    int completed_count;
+    int sum;
+} common_t;
+
+typedef struct { 
+    int id;
+    common_t *c;
+} info_t;
+
+static void handler_work_pp(struct thdpool *pool, void *work, void *thddata, int op)
+{
+    info_t *info = work; 
+    ATOMIC_ADD(info->c->sum, info->id);
+    usleep(rand());
+}
+
+int main()
+{
+    struct thdpool *my_thdpool = thdpool_create("my_pool", 0);
+
+    assert(my_thdpool);
+
+    //thdpool_set_init_fn(my_thdpool, my_thd_start);
+    thdpool_set_minthds(my_thdpool, 0);
+    thdpool_set_maxthds(my_thdpool, 8);
+    thdpool_set_linger(my_thdpool, 1);
+    thdpool_set_longwaitms(my_thdpool, 1000000);
+    thdpool_set_maxqueue(my_thdpool, 100);
+    thdpool_set_mem_size(my_thdpool, 4 * 1024);
+    common_t c;
+    const int MAX = 100;
+
+    for (int i = 1; i <= MAX; i++) {
+        info_t *work = malloc(sizeof(info_t));
+        work->id = i;
+        work->c = &c;
+        c.spawned_count++;
+        int rc = thdpool_enqueue(my_thdpool, 
+            handler_work_pp, &work, 0, NULL, THDPOOL_FORCE_QUEUE);
+        if (rc)
+            abort();
+    }
+
+    while (c.completed_count < c.spawned_count) {
+        printf("Waiting for thdpool %d/%d done\n", c.completed_count, c.spawned_count);
+        sleep(1);
+    }
+    if (c.sum != MAX*MAX/2)
+        abort();
+
+    printf("Done waiting for thdpool, now cleanup\n");
+    thdpool_stop(my_thdpool);
+    thdpool_destroy(&my_thdpool);
+}

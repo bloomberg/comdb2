@@ -29,6 +29,7 @@ extern "C" {
 
 #include <stdio.h>
 #include <inttypes.h>
+#include "list.h"
 
 struct thdpool;
 
