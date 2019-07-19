@@ -6510,6 +6510,15 @@ void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_VIEW, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     if (temp) {
@@ -6553,6 +6562,15 @@ void comdb2_drop_view(Parse *pParse, SrcList *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_VIEW, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
