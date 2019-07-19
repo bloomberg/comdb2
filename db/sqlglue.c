@@ -3369,6 +3369,7 @@ int sqlite3BtreeOpen(
         int masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
+        if (rc != SQLITE_OK) goto done;
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
@@ -8064,10 +8065,10 @@ int sqlite3BtreeCursor(
             if (hash_find(pBt->temp_tables, &pgno) == NULL) {
                 assert(tmptbl_clone == NULL);
                 rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);
-                assert(pgno == iTable);
             }
         }
         if (rc == SQLITE_OK) {
+            assert(pgno == iTable);
             rc = sqlite3BtreeCursor_temptable(pBt, pgno, wrFlag & BTREE_CUR_WR,
                                               temp_table_cmp, pKeyInfo, cur,
                                               thd);
