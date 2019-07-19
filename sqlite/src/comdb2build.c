@@ -190,7 +190,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        if (db != NULL && (error_flag == ERROR_ON_TBL_FOUND)) {
+        struct dbview *view = get_view_by_name(dst);
+        if ((db != NULL || view != NULL) &&
+            (error_flag == ERROR_ON_TBL_FOUND)) {
             rc = setError(pParse, SQLITE_ERROR, "Table already exists");
             goto cleanup;
         }
@@ -3507,14 +3509,14 @@ static struct comdb2_column *find_column_by_name(struct comdb2_ddl_context *ctx,
     return 0;
 }
 
-static struct comdb2_key *
-find_suitable_key(comdb2_index_part_lst *idx_col_list,
-                  comdb2_key_lst *key_list)
+static struct comdb2_key *find_suitable_key(comdb2_index_part_lst *idx_col_list,
+                                            comdb2_key_lst *key_list)
 {
     struct comdb2_key *current_key;
+    struct comdb2_key *matched_key = NULL;
     struct comdb2_index_part *current_idx_part;
     struct comdb2_index_part *idx_part;
-    int key_found = 0;
+    int matched;
 
     LISTC_FOR_EACH(key_list, current_key, lnk)
     {
@@ -3523,27 +3525,29 @@ find_suitable_key(comdb2_index_part_lst *idx_col_list,
             continue;
 
         /* Let's start by assuming that we have found the matching key. */
-        key_found = 1;
+        matched = 1;
 
         current_idx_part = LISTC_TOP(&current_key->idx_col_list);
 
         LISTC_FOR_EACH(idx_col_list, idx_part, lnk)
         {
-            if ((strcasecmp(idx_part->name, current_idx_part->name) != 0) ||
-                (idx_part->flags != current_idx_part->flags)) {
-                key_found = 0;
-                break;
+            if (strcasecmp(idx_part->name, current_idx_part->name) != 0) {
+                matched = 0;
             }
             /* Move to the next index column in the key. */
             current_idx_part = LISTC_NEXT(current_idx_part, lnk);
         }
-
-        if (key_found == 1) {
-            break;
+        if (matched) {
+            /* Prefer the smaller of the matched keys. */
+            if (matched_key &&
+                (listc_size(matched_key) > listc_size(current_key))) {
+                matched_key = current_key;
+            } else {
+                matched_key = current_key;
+            }
         }
     }
-
-    return (key_found == 1) ? current_key : 0;
+    return matched_key;
 }
 
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
@@ -6498,4 +6502,81 @@ cleanup:
     sqlite3ExprDelete(pParse->db, pCheckExpr);
     free_ddl_context(pParse);
     return;
+}
+
+void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
+                        const char *zStmt, int temp)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    if (temp) {
+        setError(pParse, SQLITE_MISUSE, "Can't create temporary views");
+        return;
+    }
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (view_name_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    } else {
+        memcpy(sc->tablename, view_name, view_name_len);
+    }
+
+    sc->newcsc2 = strdup(zStmt); /* Freed by free_schema_change_type() */
+    if (sc->newcsc2 == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto out;
+    }
+
+    sc->add_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+    return;
+}
+
+void comdb2_drop_view(Parse *pParse, SrcList *pName)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    sc->tablename_len = strlen(pName->a[0].zName);
+    if (sc->tablename_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    }
+    memcpy(sc->tablename, pName->a[0].zName, sc->tablename_len);
+
+    sc->drop_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
 }

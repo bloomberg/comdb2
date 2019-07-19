@@ -222,6 +222,8 @@ extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
 extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
+extern int gbl_long_log_truncation_warn_thresh_sec;
+extern int gbl_long_log_truncation_abort_thresh_sec;
 
 extern long long sampling_threshold;
 

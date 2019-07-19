@@ -107,6 +107,7 @@ typedef long long tranid_t;
 
 #define MAX_NUM_TABLES 1024
 #define MAX_NUM_QUEUES 1024
+#define MAX_NUM_VIEWS 1024
 
 #define DEC_ROUND_NONE (-1)
 
@@ -840,6 +841,11 @@ struct dbtable {
     bool do_local_replication : 1;
 };
 
+struct dbview {
+    char *view_name;
+    char *view_def;
+};
+
 struct log_delete_state {
     int filenum;
     LINKC_T(struct log_delete_state) linkv;
@@ -924,14 +930,19 @@ struct dbenv {
     /* bdb_environment */
     bdb_state_type *bdb_env;
 
-    /* tables and queues */
+    /* Tables */
     int num_dbs;
     struct dbtable **dbs;
     struct dbtable static_table;
     hash_t *db_hash;
+
+    /* Queues */
     int num_qdbs;
     struct dbtable **qdbs;
     hash_t *qdb_hash;
+
+    /* Views */
+    hash_t *view_hash;
 
     /* Special SPs */
     int num_lua_sfuncs;
@@ -1932,6 +1943,10 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);
 /*look up managed db's by name*/
 struct dbtable *get_dbtable_by_name(const char *name);
+/* Lookup view by name */
+struct dbview *get_view_by_name(const char *view_name);
+/* Load all views from llmeta */
+int llmeta_load_views(struct dbenv *, void *);
 /* lookup a table by name; if it exists, lock table readonly
    if there is no table, lock table in write mode
    NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
@@ -2519,7 +2534,7 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
 void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
                            int nents);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
-                                          int *nents);
+                                          hash_t *view_hash, int *nents);
 void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);

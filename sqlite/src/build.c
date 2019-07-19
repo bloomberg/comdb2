@@ -31,12 +31,17 @@
 #include "pragma.h"
 #include "logmsg.h"
 
+
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
 int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
-extern int comdb2_check_parallel(Parse*);
+int comdb2_check_parallel(Parse*);
+void comdb2_create_view(Parse *pParse, const char *view_name,
+                        int view_name_len, const char *zStmt, int temp);
+void comdb2_drop_view(Parse *pParse, SrcList *pName);
+
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -2601,6 +2606,12 @@ void sqlite3EndTable(
       zStmt = sqlite3MPrintf(db, 
           "CREATE %s %.*s", zType2, n, pParse->sNameToken.z
       );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if (p->pSelect && db->isTimepartView == 0 && iDb != 1) {
+        comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
+                           zStmt, 0);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 
     /* A slot for the record has already been allocated in the 
@@ -3265,7 +3276,9 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   v = sqlite3GetVdbe(pParse);
   if( v ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( isView || (iDb==1 && !bDropTable) ){
+    if (isView && db->isTimepartView == 0) {
+        comdb2_drop_view(pParse, pName);
+    }else if( isView || (iDb==1 && !bDropTable) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
     if( !isView ){
