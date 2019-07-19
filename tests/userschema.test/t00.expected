@@ -41,6 +41,7 @@
 (tablename='comdb2_tunables', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_type_samples', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_users', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_views', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='dummy', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='generate_series', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='json_each', username='mohit', READ='Y', WRITE='Y', DDL='Y')
