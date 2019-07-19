@@ -284,7 +284,6 @@ void thdpool_destroy(struct thdpool **pool_p)
     free(pool->busy_hist);
     pool_free(pool->pool);
     free(pool->name);
-    //TODO: deregister_thdpool_tunables((char *)name, pool);
     free(pool);
 }
 
