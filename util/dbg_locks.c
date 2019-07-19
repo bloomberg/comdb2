@@ -133,8 +133,8 @@ static int dbg_pthread_dump_inner_pair(
   inner_pair_t *ipair = (inner_pair_t *)obj;
   if( ipair!=NULL ){
     FILE *out = (FILE *)arg;
-    char zBuf1[64];
-    char zBuf2[64];
+    char zBuf1[64] = {0};
+    char zBuf2[64] = {0};
 
     dbg_pthread_type_name(zBuf1, sizeof(zBuf1), ipair->key.type);
     dbg_pthread_flag_names(zBuf2, sizeof(zBuf2), ipair->flags);
@@ -230,6 +230,7 @@ static void dbg_pthread_check_init(void){
 void dbg_pthread_term(void){
   dbg_pthread_dump(stdout, "before cleanup", 1);
   pthread_mutex_lock(&dbg_locks_lk);
+  assert( dbg_locks_bytes<=dbg_locks_peak_bytes );
   if( dbg_locks==NULL ) goto done;
   hash_for(dbg_locks, dbg_pthread_free_outer_pair, NULL);
   hash_clear(dbg_locks);
