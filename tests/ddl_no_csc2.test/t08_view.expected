@@ -16,3 +16,7 @@
 (name='aaa', definition='CREATE VIEW aaa AS SELECT 1')
 (tablename='sqlite_stat1')
 (tablename='sqlite_stat4')
+(test='SC did not work properly with sc_done_same_tran disabled')
+(value='ON')
+(1=1)
+[SELECT * FROM v1] failed with rc -3 no such table: v1
