@@ -1160,6 +1160,7 @@ static inline void enqueue_work(td_processing_info_t *work, thdpool *verify_thdp
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
+    logmsg(LOGMSG_ERROR, "%s: Verify in parallel mode\n", __func__);
     par->last_reported = comdb2_time_epochms(); //initialize
 
     if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_DATA) {

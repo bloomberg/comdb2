@@ -484,7 +484,6 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
     // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
 
-    sleep(1);
     // wait for all our enqueued work items to complete for this verify
     while(par.threads_spawned > par.threads_completed) {
         if (!par.client_dropped_connection && bdb_dropped_connection(par.sb)) {
