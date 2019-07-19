@@ -58,7 +58,6 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
         goto err;
     }
 
-    s->addonly = SC_DONE_ADD;
     gbl_sc_commit_count++;
 
     if (create_sqlmaster_records(tran)) {
