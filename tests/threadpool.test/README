@@ -1,0 +1,2 @@
+This test exercises the basic threadpool functionality, as well as serves
+to test the cleanup and teardown code.

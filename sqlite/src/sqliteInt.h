@@ -1571,6 +1571,7 @@ struct sqlite3 {
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
+  u8 isTimepartView;                    /* Time partition view */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

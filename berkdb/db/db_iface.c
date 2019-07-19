@@ -368,7 +368,9 @@ __db_cursor_pp_paired(dbp, dbc_old, dbcp, flags)
 	return rc;
 }
 
+#ifndef BERKDB_46
 pthread_key_t DBG_FREE_CURSOR;
+#endif
 
 int
 transfer_cursor_ownership(DBC *cold, DBC *cnew)
@@ -698,9 +700,8 @@ __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 #endif
 
 		if (countmein) {
-#ifndef TESTSUITE
-			struct __dbg_free_cursor *p =
-			    pthread_getspecific(DBG_FREE_CURSOR);
+#ifndef BERKDB_46
+			struct __dbg_free_cursor *p = pthread_getspecific(DBG_FREE_CURSOR);
 			if (p) {
 				p->counter++;
 			} else {

@@ -273,7 +273,9 @@ static int _views_run_sql(sqlite3 *db, const char *stmt_str,
     int rc;
 
     /* create the view */
+    db->isTimepartView = 1;
     rc = sqlite3_exec(db, stmt_str, NULL, NULL, &errstr);
+    db->isTimepartView = 0;
     if (rc != SQLITE_OK) {
         err->errval = VIEW_ERR_BUG;
         snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"",

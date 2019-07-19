@@ -183,7 +183,8 @@ proc maybe_quote_value { db index format } {
             set wrap ""
             switch -exact $format {
                 csv -
-                tabs {
+                tabs -
+                tabs2 {
                     #
                     # NOTE: Apparently, these types require the
                     #       value be wrapped in quotes.
@@ -212,6 +213,7 @@ proc maybe_quote_value { db index format } {
                     set wrap '
                 }
                 tabs -
+                tabs2 -
                 list {
                     # do nothing, handled below.
                 }
@@ -275,6 +277,9 @@ proc grab_cdb2_results { db varName {format csv} } {
     set list [expr {$format eq "list"}]
     set csv [expr {$format eq "csv"}]
     set tabs [expr {$format eq "tabs"}]
+    # This one emulates upstream's execsql2 output which includes column
+    # names.
+    set tabs2 [expr {$format eq "tabs2"}]
     if {[string length $varName] > 0} {upvar 1 $varName result}
     set once false
     while {[cdb2 next $db]} {
@@ -295,6 +300,10 @@ proc grab_cdb2_results { db varName {format csv} } {
                     # WARNING: String append here, not list element append.
                     #
                     append result [cdb2 colname $db $index]=$value
+                } elseif ($tabs2) {
+                    append result [cdb2 colname $db $index]
+                    append result "\t"
+                    append result $value
                 } else {
                     #
                     # WARNING: String append here, not list element append.
@@ -1438,12 +1447,6 @@ proc execsql {sql {options ""}} {
       continue
     }
 
-    if {[regexp -nocase {^DELETE FROM ([[:alnum:]]+)$} $query _ table]} {
-      do_cdb2_defquery "TRUNCATE $table"
-      delay_for_schema_change
-      continue
-    }
-
     if {[regexp -nocase {^DROP INDEX(?: IF EXISTS)?? ([[:alnum:]]+)$} $query]} {
       drop_index $query
       delay_for_schema_change
@@ -1458,7 +1461,13 @@ proc execsql {sql {options ""}} {
       }
     }
 
-    set format tabs
+    if {[lsearch -exact $options tabs_with_col_name] != -1} {
+      # execsql2
+      set format tabs2
+    } else {
+      set format tabs
+    }
+
     if {[lsearch -exact $options list_results] != -1} {set format list}
 
     #
@@ -1654,13 +1663,8 @@ proc explain_no_trace {sql} {
 # names in the returned list.
 #
 proc execsql2 {sql} {
-  set result {}
-  db eval $sql data {
-    foreach f $data(*) {
-      lappend result $f $data($f)
-    }
-  }
-  return $result
+  set r [execsql $sql tabs_with_col_name]
+  return "$r"
 }
 
 # Use the non-callback API to execute multiple SQL statements

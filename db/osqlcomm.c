@@ -6851,6 +6851,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         /* just in case */
         free_blob_buffers(blobs, MAXBLOBS);
 
+        // TODO (NC): Check why iq->sc_pending is not getting set for views
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
@@ -7494,7 +7495,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         iq->queryid = dbglog.queryid;
     } break;
     case OSQL_RECGENID: {
-        osql_recgenid_t dt;
+        osql_recgenid_t dt = {0};
         int bdberr = 0;
         unsigned long long lclgenid;
 
@@ -8329,7 +8330,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     errstat_get_rc(&dt), errstat_get_str(&dt));
     } break;
     case OSQL_RECGENID: {
-        osql_recgenid_t dt;
+        osql_recgenid_t dt = {0};
         unsigned long long lclgenid;
 
         uint8_t *p_buf_end = p_buf + sizeof(osql_recgenid_t);
