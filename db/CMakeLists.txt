@@ -74,6 +74,7 @@ set(src
   tag.c
   testcompr.c
   thrman.c
+  timers.c
   toblob.c
   toblock.c
   toproxy.c

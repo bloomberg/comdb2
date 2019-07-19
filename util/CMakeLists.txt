@@ -48,7 +48,7 @@ set(src
   thread_malloc.c
   thread_util.c
   time_accounting.c
-  timers.c
+  time_epoch.c
   tohex.c
   utilmisc.c
   walkback.c
