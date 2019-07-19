@@ -1207,11 +1207,11 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
  */
 int bdb_verify(verify_common_t *par)
 {
-    /* { // for having default mode behave like parallel mode for testing
+    { // for having default mode behave like parallel mode for testing
         td_processing_info_t info = { .common_params = par };
         par->verify_mode = VERIFY_PARALLEL; 
         return bdb_verify_enqueue(&info, NULL); //passing null will force sequential
-    } */
+    }
 
     int rc;
     unsigned int lid;
