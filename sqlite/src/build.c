@@ -2295,6 +2295,7 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
   Index *pIdx;
   Index *pPk;
   int nPk;
+  int nExtra;
   int i, j;
   sqlite3 *db = pParse->db;
   Vdbe *v = pParse->pVdbe;
@@ -2339,6 +2340,7 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
                        SQLITE_IDXTYPE_PRIMARYKEY);
     if( db->mallocFailed || pParse->nErr ) return;
     pPk = sqlite3PrimaryKeyIndex(pTab);
+    assert( pPk->nKeyCol==1 );
   }else{
     pPk = sqlite3PrimaryKeyIndex(pTab);
     assert( pPk!=0 );
@@ -2353,6 +2355,8 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
         pPk->nColumn--;
       }else{
         testcase( hasColumn(pPk->aiColumn, j, pPk->aiColumn[i]) );
+        pPk->azColl[j] = pPk->azColl[i];
+        pPk->aSortOrder[j] = pPk->aSortOrder[i];
         pPk->aiColumn[j++] = pPk->aiColumn[i];
       }
     }
@@ -2361,7 +2365,7 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
   assert( pPk!=0 );
   pPk->isCovering = 1;
   if( !db->init.imposterTable ) pPk->uniqNotNull = 1;
-  nPk = pPk->nKeyCol;
+  nPk = pPk->nColumn = pPk->nKeyCol;
 
   /* Bypass the creation of the PRIMARY KEY btree and the sqlite_master
   ** table entry. This is only required if currently generating VDBE
@@ -2411,21 +2415,21 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
 
   /* Add all table columns to the PRIMARY KEY index
   */
-  if( nPk<pTab->nCol ){
-    if( resizeIndexObject(db, pPk, pTab->nCol) ) return;
-    for(i=0, j=nPk; i<pTab->nCol; i++){
-      if( !hasColumn(pPk->aiColumn, j, i) ){
-        assert( j<pPk->nColumn );
-        pPk->aiColumn[j] = i;
-        pPk->azColl[j] = sqlite3StrBINARY;
-        j++;
-      }
-    }
-    assert( pPk->nColumn==j );
-    assert( pTab->nCol==j );
-  }else{
-    pPk->nColumn = pTab->nCol;
+  nExtra = 0;
+  for(i=0; i<pTab->nCol; i++){
+    if( !hasColumn(pPk->aiColumn, nPk, i) ) nExtra++;
   }
+  if( resizeIndexObject(db, pPk, nPk+nExtra) ) return;
+  for(i=0, j=nPk; i<pTab->nCol; i++){
+    if( !hasColumn(pPk->aiColumn, j, i) ){
+      assert( j<pPk->nColumn );
+      pPk->aiColumn[j] = i;
+      pPk->azColl[j] = sqlite3StrBINARY;
+      j++;
+    }
+  }
+  assert( pPk->nColumn==j );
+  assert( pTab->nCol<=j );
   recomputeColumnsNotIndexed(pPk);
 }
 
