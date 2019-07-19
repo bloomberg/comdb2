@@ -566,16 +566,6 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __L
     return rc;
 }
 
-static int bdb_verify_data(verify_common_t *par, unsigned int lid)
-{
-    int rc = 0;
-    /* scan 1 - run through data, verify all the keys and blobs */
-    for (int dtastripe = 0; !rc && dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
-        rc = bdb_verify_data_stripe(par, dtastripe, lid);
-    }
-    return rc;
-}
-
 
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
@@ -946,17 +936,6 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting delta=%ds\n", pthread_self(), __func__, 
     return 0;
 }
 
-static int bdb_verify_keys(verify_common_t *par, unsigned int lid)
-{
-    int rc = 0;
-    /* scan 2: scan each key, verify data exists */
-    for (int ix = 0; !rc && ix < par->bdb_state->numix; ix++) {
-        rc = bdb_verify_key(par, ix, lid);
-    }
-    return rc;
-}
-
-
 static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, unsigned int lid)
 {
     DBC *cdata = NULL;
@@ -1074,36 +1053,35 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
 logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
 }
 
-
-/* scan 3: scan each blob, verify data exists */
-static void bdb_verify_blobs(verify_common_t *par, unsigned int lid)
-{
-    int nblobs = get_numblobs(par->db_table);
-    for (int blobno = 0; blobno < nblobs; blobno++) {
-        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
-             dtastripe++) {
-
-            //info should be freed in the individual function that checks it
-            bdb_verify_blob(par, blobno, dtastripe, lid);
-        }
-    }
-}
-
 /* sequential processing of the stripes, keys, blobs
  */
 static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 {
+    int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
-    int rc = bdb_verify_data(par, lid);
+    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
+        rc = bdb_verify_data_stripe(par, dtastripe, lid);
+        if (rc)
+            goto done;
+    }
 
     /* scan 2: scan each key, verify data exists */
-    if (!rc)
-        rc = bdb_verify_keys(par, lid);
+    for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+        rc = bdb_verify_key(par, ix, lid);
+        if (rc)
+            goto done;
+    }
 
     /* scan 3: scan each blob, verify data exists */
-    if (!rc)
-        bdb_verify_blobs(par, lid);
+    int nblobs = get_numblobs(par->db_table);
+    for (int blobno = 0; blobno < nblobs; blobno++) {
+        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
+             dtastripe++) {
+            bdb_verify_blob(par, blobno, dtastripe, lid);
+        }
+    }
 
+done:
     return par->verify_status;
 }
 
@@ -1151,7 +1129,7 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work, void *t
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
 }
 
-/* Enqueue work object onto verify_thdpool if parameter is non NULL.
+/* Enqueue work object onto verify_thdpool
  * If verify_thdpool is NULL then processing occurs sequentially.
  */
 static inline void enqueue_work(td_processing_info_t *work, thdpool *verify_thdpool)
@@ -1194,7 +1172,6 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             enqueue_work(work, verify_thdpool);
         }
     }
-
 
     if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_INDICES) {
         /* scan 2: scan each key, verify data exists */
