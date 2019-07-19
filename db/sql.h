@@ -975,9 +975,6 @@ struct sql_thread {
     int nmove;
     int nfind;
     int nwrite;
-    int ntmpwrite;
-    int ntmpread;
-    int nblobs;
     int bufsz;
     int id;
     char *buf;

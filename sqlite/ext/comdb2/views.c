@@ -91,6 +91,5 @@ int systblViewsInit(sqlite3 *db)
         CDB2_CSTRING, "definition", -1, offsetof(view_entry_t, def),
         SYSTABLE_END_OF_FIELDS);
 }
-
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
           && !defined(SQLITE_OMIT_VIRTUALTABLE) */
