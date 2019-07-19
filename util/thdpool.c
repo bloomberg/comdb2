@@ -266,6 +266,27 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
+void thdpool_destroy(struct thdpool **pool_p)
+{
+    if (!*pool_p)
+        return;
+    struct thdpool *pool = *pool_p;
+    *pool_p = NULL;
+
+    Pthread_mutex_lock(&pool_list_lk);
+    listc_rfl(&threadpools, pool);
+    Pthread_mutex_unlock(&pool_list_lk);
+
+    Pthread_cond_destroy(&pool->wait_for_thread);
+    Pthread_mutex_destroy(&pool->mutex);
+    Pthread_attr_destroy(&pool->attrs);
+
+    free(pool->busy_hist);
+    pool_free(pool->pool);
+    free(pool->name);
+    free(pool);
+}
+
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
                      void *user)
 {
