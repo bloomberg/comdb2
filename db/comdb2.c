@@ -18,7 +18,7 @@ int __berkdb_write_alarm_ms;
 int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
-extern int dbg_pthread_mprotect_lock(void);
+extern void dbg_pthread_mprotect_lock(void);
 extern int gbl_berkdb_track_locks;
 
 void __berkdb_set_num_read_ios(long long *n);

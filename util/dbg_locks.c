@@ -560,7 +560,7 @@ int dbg_pthread_rwlock_unlock(
   return rc;
 }
 
-int dbg_pthread_mprotect_lock(void)
+void dbg_pthread_mprotect_lock(void)
 {
    int rc = mprotect(&dbg_locks_lk, sizeof(pthread_mutex_t), PROT_NONE);
    if (rc != 0) {
