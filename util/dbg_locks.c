@@ -14,14 +14,11 @@
    limitations under the License.
  */
 
-
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
-#include <errno.h>
 #include <pthread.h>
-#include <sys/mman.h>
 #include "bb_stdint.h"
 #include "plhash.h"
 #include "pthread_wrap_core.h"
@@ -560,13 +557,3 @@ int dbg_pthread_rwlock_unlock(
   }
   return rc;
 }
-
-void dbg_pthread_mprotect_lock(void)
-{
-   int rc = mprotect(&dbg_locks_lk, sizeof(pthread_mutex_t), PROT_READ);
-   if (rc != 0) {
-fprintf(stderr, "%s: mprotect failed, rc=%d, errno=%d\n", __func__, rc, errno);
-abort();
-   }
-}
-
