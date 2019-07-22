@@ -80,7 +80,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 	 * right type.  With off page dups we may have different kinds
 	 * of cursors on the queue for a single database.
 	 */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	for (dbc = TAILQ_FIRST(&dbp->free_queue);
 	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
 		if (dbtype == dbc->dbtype) {
@@ -88,7 +88,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 			F_CLR(dbc, ~DBC_OWN_LID);
 			break;
 		}
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	if (dbc == NULL) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(DBC), &dbc)) != 0)
