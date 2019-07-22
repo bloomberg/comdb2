@@ -562,13 +562,10 @@ int dbg_pthread_rwlock_unlock(
 
 void dbg_pthread_mprotect_lock(void)
 {
-   int rc = mprotect(&dbg_locks_lk, sizeof(pthread_mutex_t), PROT_NONE);
+   int rc = mprotect(&dbg_locks_lk, sizeof(pthread_mutex_t), PROT_READ);
    if (rc != 0) {
-fprintf(stderr, "%s: mprotect failed, rc=%d\n", __func__, rc);
+fprintf(stderr, "%s: mprotect failed, rc=%d, errno=%d\n", __func__, rc, errno);
 abort();
-
    }
-
-
 }
 
