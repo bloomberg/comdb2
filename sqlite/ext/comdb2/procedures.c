@@ -85,8 +85,8 @@ static void get_sp_versions(systbl_sps_cursor *c) {
 }
 
 static void get_server_versioned_sps(char ***a, int *x) {
-  char old_sp[MAX_SPNAME];
-  char new_sp[MAX_SPNAME];
+  char old_sp[MAX_SPNAME] = {0};
+  char new_sp[MAX_SPNAME] = {0};
   old_sp[0] = 127;
   char **names = NULL;
   int n = 0;
