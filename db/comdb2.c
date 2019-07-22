@@ -18,6 +18,7 @@ int __berkdb_write_alarm_ms;
 int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
+extern int dbg_pthread_mprotect_lock(void);
 extern int gbl_berkdb_track_locks;
 
 void __berkdb_set_num_read_ios(long long *n);
@@ -5371,6 +5372,8 @@ struct tool tool_callbacks[] = {
 
 int main(int argc, char **argv)
 {
+    dbg_pthread_mprotect_lock();
+
     int rc;
 
     char *exe = NULL;
