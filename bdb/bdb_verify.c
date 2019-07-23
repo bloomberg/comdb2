@@ -279,7 +279,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
                          DB_FIRST);
     int atstart,now;
     atstart = now = comdb2_time_epochms();
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
+    logmsg(LOGMSG_DEBUG, "%p:%s Entering stripe=%d\n", (void *)pthread_self(), __func__, dtastripe);
 
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
@@ -562,7 +562,7 @@ err:
         ckey->c_close(ckey);
     if (cdata)
         cdata->c_close(cdata);
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting stripe=%d, delta=%dms\n", (void *)pthread_self(), __func__, dtastripe, now - atstart);
     return rc;
 }
 
@@ -609,7 +609,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     int atstart,now;
     atstart = now = comdb2_time_epochms();
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
+    logmsg(LOGMSG_DEBUG, "%p:%s Entering ix=%d\n", (void *)pthread_self(), __func__, ix);
 
     rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
         bdb_state->dbp_ix[ix], lid, &ckey, 0);
@@ -932,7 +932,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
                     rc);
     }
 
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting delta=%ds\n", pthread_self(), __func__, __LINE__, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n", (void *)pthread_self(), __func__, ix, now - atstart);
     return 0;
 }
 
@@ -990,7 +990,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
 
     int atstart,now;
     atstart = now = comdb2_time_epochms();
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LINE__);
+    logmsg(LOGMSG_DEBUG, "%p:%s Entering blobno=%d, stripe=%d\n", (void *)pthread_self(), __func__, blobno, dtastripe);
+
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
     while (rc == 0 && !par->client_dropped_connection) {
         ATOMIC_ADD(par->records_processed, 1);
@@ -1050,7 +1051,7 @@ logmsg(LOGMSG_ERROR, "%lu:%s:%d Entering now\n", pthread_self(), __func__, __LIN
         logmsg(LOGMSG_ERROR, "fetch blob rc %d\n", rc);
 
     cblob->c_close(cblob);
-logmsg(LOGMSG_ERROR, "%lu:%s:%d Exiting now %d\n", pthread_self(), __func__, __LINE__, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting blobno=%d, stripe=%d, delta=%dms\n", (void *)pthread_self(), __func__, blobno, dtastripe, now - atstart);
 }
 
 /* sequential processing of the stripes, keys, blobs
@@ -1085,8 +1086,9 @@ done:
     return par->verify_status;
 }
 
-/* this function serves as a wrapper around calling
- * individual functions to verify data, key, and blob
+/* This function serves as a wrapper around calling individual functions
+ * to verify data, key, and blob. 
+ * It gets a separate locker id under which it processes the appropriate verify.
  */
 void bdb_verify_handler(td_processing_info_t *info) 
 {
@@ -1160,7 +1162,17 @@ static inline void enqueue_work(td_processing_info_t *work, thdpool *verify_thdp
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
-    logmsg(LOGMSG_ERROR, "%s: Verify in parallel mode\n", __func__);
+#ifndef NDEBUG
+    const char *tp = "";
+    switch (par->verify_mode) {
+    case VERIFY_PARALLEL: break;
+    case VERIFY_DATA: tp = "DATA"; break;
+    case VERIFY_INDICES: tp = "INDICES"; break;
+    case VERIFY_BLOBS: tp = "BLOBS"; break;
+    default: abort();
+    };
+    logmsg(LOGMSG_DEBUG, "%s: Verify %s in parallel mode\n", __func__, tp);
+#endif
     par->last_reported = comdb2_time_epochms(); //initialize
 
     if (par->verify_mode == VERIFY_PARALLEL || par->verify_mode == VERIFY_DATA) {
@@ -1208,12 +1220,6 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
  */
 int bdb_verify(verify_common_t *par)
 {
-    { // for having default mode behave like parallel mode for testing
-        td_processing_info_t info = { .common_params = par };
-        par->verify_mode = VERIFY_PARALLEL; 
-        return bdb_verify_enqueue(&info, NULL); //passing null will force sequential
-    }
-
     int rc;
     unsigned int lid;
     bdb_state_type *bdb_state = par->bdb_state;
