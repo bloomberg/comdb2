@@ -9470,7 +9470,8 @@ static void uprec_sender_array_init(void)
     logmsg(LOGMSG_INFO, "upgraderecord sender array initialized\n");
 }
 
-int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid)
+int offload_comm_send_upgrade_records(const dbtable *db,
+                                      unsigned long long genid)
 {
     int rc = 0;
     struct errstat xerr;
