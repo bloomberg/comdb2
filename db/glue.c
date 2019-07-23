@@ -896,8 +896,8 @@ int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
     int ifld;
     if (!tbl || !key || ixnum < 0 || ixnum >= tbl->nix) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: bad args, tbl = %p, key = %p, ixnum = %d\n",
-            tbl, key, ixnum);
+               "ix_isnullk: bad args, tbl = %p, key = %p, ixnum = %d\n", tbl,
+               key, ixnum);
         return 0;
     }
     if (tbl->ix_dupes[ixnum]) {
@@ -909,8 +909,8 @@ int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
     dbixschema = tbl->ixschema[ixnum];
     if (!dbixschema) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: missing schema, tbl = %p, key = %p, ixnum = %d\n",
-            tbl, key, ixnum);
+               "ix_isnullk: missing schema, tbl = %p, key = %p, ixnum = %d\n",
+               tbl, key, ixnum);
         return 0;
     }
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
@@ -920,8 +920,8 @@ int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
             int offset = dbixfield->offset;
             if (offset >= 0 && stype_is_null((bkey + offset))) {
                 /* fprintf(stderr,
-                    "ix_isnullk: found NULL, tbl = %p, key = %p, ixnum = %d, ifld = %d\n",
-                    tbl, key, ixnum, ifld); */
+                    "ix_isnullk: found NULL, tbl = %p, key = %p, ixnum = %d,
+                   ifld = %d\n", tbl, key, ixnum, ifld); */
                 return 1;
             }
         }
@@ -935,7 +935,6 @@ int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
@@ -945,7 +944,7 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
         return 0;
     }
 
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -990,7 +989,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long oldgenid, unsigned long long genid, void *dta,
                int dtalen, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
@@ -1000,7 +998,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
         return 0;
     }
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -1030,7 +1028,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   int rrn, unsigned long long genid, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
     if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
@@ -1038,7 +1035,7 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
             reqprintf(iq, "ix_delk_auxdb: ix %d write disabled", ixnum);
         return 0;
     }
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_delkey";
@@ -1090,10 +1087,9 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
                   int rrn, unsigned long long *genid, int verifydta, int modnum,
                   int use_new_genid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     if (vptr != 0)
@@ -1126,10 +1122,9 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    int blobno, int rrn, unsigned long long newgenid,
                    int odhready)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     if (vptr != 0)
@@ -1167,10 +1162,9 @@ int blob_upv(struct ireq *iq, void *trans, int vptr,
 int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
                    unsigned long long oldgenid, unsigned long long newgenid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_upd_genid";
@@ -1195,11 +1189,10 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
  */
 int dat_get_active_stripe(struct ireq *iq)
 {
-    struct dbtable *db = iq->usedb;
     void *bdb_handle;
     int stripe;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
 
     iq->gluewhere = "bdb_get_active_dtafile";
     stripe = bdb_get_active_stripe(bdb_handle);
@@ -1211,11 +1204,10 @@ int dat_get_active_stripe(struct ireq *iq)
 int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
                   int datalen, unsigned long long *genid, int *out_rrn)
 {
-    struct dbtable *db = iq->usedb;
     int bdberr, rrn;
     void *bdb_handle;
     int modnum = 0;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_allocdta_genid";
@@ -1255,10 +1247,9 @@ int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
             unsigned long long genid)
 {
-    struct dbtable *db = iq->usedb;
     int bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
@@ -1285,10 +1276,9 @@ int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
         return 0;
     }
 
-    struct dbtable *db = iq->usedb;
     int bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
@@ -1311,10 +1301,9 @@ int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
 int dat_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                   unsigned long long genid, int delblobs)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_deallocdta";
@@ -1361,10 +1350,9 @@ int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
 int blob_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                    unsigned long long genid, int blobno)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_deallocdta_n_genid";
@@ -1391,11 +1379,10 @@ int blob_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
 int dat_upgrade(struct ireq *iq, void *trans, void *newdta, int newlen,
                 unsigned long long genid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -1782,10 +1769,9 @@ int get_next_genids(struct ireq *iq, int ixnum, void *key, int keylen,
 {
     int rc;
     void *bdb_handle;
-    struct dbtable *db = iq->usedb;
     int bdb_err;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -2649,7 +2635,6 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
                        int *retries, unsigned long long context,
                        bdb_cursor_ser_t *cur_ser)
 {
-    struct dbtable *db = iq->usedb;
     char *req;
     int ixrc, bdberr, lcl_retries;
     void *bdb_handle;
@@ -2661,7 +2646,7 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
             reqprintf(iq, "ix_prev_blobs_auxdb: ix %d read disabled", ixnum);
         return ERR_INDEX_DISABLED;
     }
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     iq->gluewhere = "ix_prev_blobs_auxdb";
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2712,7 +2697,7 @@ retry:
                 fnddta, maxlen, fndlen, fndkey, fndrrn, genid, &args, &bdberr);
             iq->gluewhere = "bdb_fetch_prev_genid_nl done";
         }
-        VTAG(ixrc, db);
+        VTAG(ixrc, iq->usedb);
     } else if (cur_ser) {
         iq->gluewhere = req = "bdb_fetch_prev_nodta_genid_nl_ser";
         ixrc = bdb_fetch_prev_nodta_genid_nl_ser(
@@ -2845,7 +2830,7 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
                  int *fndrrn, unsigned long long *genid, void *fnddta,
                  int *fndlen, int *recnum, int maxlen)
 {
-    struct dbtable *db = iq->usedb;
+    const dbtable *db = iq->usedb;
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
@@ -4411,7 +4396,7 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
 {
     int ii;
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
-        struct dbtable *db = dbenv->qdbs[ii];
+        const dbtable *db = dbenv->qdbs[ii];
         int consumern;
 
         /* register all consumers */
