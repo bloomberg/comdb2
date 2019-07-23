@@ -2377,9 +2377,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
             clnt.had_errors = 0;
             clnt.in_client_trans = 0;
-            if (newsql_send_intrans_response(&clnt) == -1) {
+            if (newsql_send_intrans_response(&clnt) != 0) {
                 newsql_row_last_dummy(&clnt);
             }
+
             rc = -1;
         } else {
             /* tell blobmem that I want my priority back
