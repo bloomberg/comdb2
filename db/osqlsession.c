@@ -779,7 +779,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
                sizeof(*sess));
         return NULL;
-    /
+    }
 #if DEBUG_REORDER
     uuidstr_t us;
     comdb2uuidstr(uuid, us);
