@@ -3348,7 +3348,8 @@ int ix_check_update_genid(struct ireq *iq, void *trans,
 
 int vtag_to_ondisk(const dbtable *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);
-int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len, uint8_t ver);
+int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
+                          uint8_t ver);
 
 int get_origin_mach(char *origin);
 void comdb2_die(int abort);

@@ -1592,7 +1592,7 @@ static int lrllinecmp(char *lrlline, char *cmpto)
 }
 
 dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
-                  int isqueuedb)
+                int isqueuedb)
 {
     dbtable *tbl;
 
@@ -1646,7 +1646,7 @@ void cleanup_newdb(dbtable *tbl)
 }
 
 dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                             int dbnum, int dbix, int is_foreign)
+                           int dbnum, int dbix, int is_foreign)
 {
     dbtable *tbl;
     int ii;
@@ -3230,8 +3230,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     if (get_dbtable_by_name(table))
         return 0;
 
-    dbenv->dbs =
-        realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(dbtable *));
+    dbenv->dbs = realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(dbtable *));
 
     /* This used to just pull from installed files.  Let's just do it from memory
        so comdb2 can run standalone with no support files. */
@@ -5565,8 +5564,7 @@ int add_db(dbtable *db)
         return -1;
     }
 
-    thedb->dbs =
-        realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(dbtable *));
+    thedb->dbs = realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(dbtable *));
     db->dbs_idx = thedb->num_dbs;
     thedb->dbs[thedb->num_dbs++] = db;
 

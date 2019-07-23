@@ -3044,7 +3044,8 @@ const uint8_t *flddtasizes_get(struct flddtasizes *p_flddtasizes,
  * Return ondisk rec len if record was changed;
  * Also return the len of new record if len != NULL.
  * 0 otherwise */
-int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len, uint8_t ver)
+int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
+                          uint8_t ver)
 {
     struct schema *from_schema;
     struct schema *to_schema;
@@ -4722,8 +4723,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     return rc;
 }
 
-int has_index_changed(dbtable *tbl, char *keynm, int ct_check,
-                      int newkey, FILE *out, int accept_type_change)
+int has_index_changed(dbtable *tbl, char *keynm, int ct_check, int newkey,
+                      FILE *out, int accept_type_change)
 {
     struct schema *old, *new;
     struct field *fnew, *fold;
@@ -6909,7 +6910,10 @@ void free_db_and_replace(dbtable *db, dbtable *newdb)
     freedb_int(db, newdb);
 }
 
-void freedb(dbtable *db) { freedb_int(db, NULL); }
+void freedb(dbtable *db)
+{
+    freedb_int(db, NULL);
+}
 
 struct schema *create_version_schema(char *csc2, int version,
                                      struct dbenv *dbenv)
@@ -7039,7 +7043,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
 
     dbtable *newdb = newdb_from_schema(db->dbenv, db->tablename, NULL,
-                                              db->dbnum, foundix, 0);
+                                       db->dbnum, foundix, 0);
     if (newdb == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7397,8 +7401,8 @@ short field_decimal_quantum(const dbtable *db, struct schema *s, int fnum,
  * In the case of indexes, this is stored as a column attribute in the data part
  *
  */
-int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf, char *poutbuf,
-                            int outbuf_max, int *outlen)
+int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf,
+                            char *poutbuf, int outbuf_max, int *outlen)
 {
     struct schema *s;
     int i;
@@ -7466,11 +7470,14 @@ int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf, char *poutbu
     return 0;
 }
 
-int create_key_from_ondisk_sch_blobs(
-    const dbtable *db, struct schema *fromsch, int ixnum, char **tail, int *taillen,
-    char *mangled_key, const char *fromtag, const char *inbuf, int inbuflen,
-    const char *totag, char *outbuf, struct convert_failure *reason,
-    blob_buffer_t *inblobs, int maxblobs, const char *tzname)
+int create_key_from_ondisk_sch_blobs(const dbtable *db, struct schema *fromsch,
+                                     int ixnum, char **tail, int *taillen,
+                                     char *mangled_key, const char *fromtag,
+                                     const char *inbuf, int inbuflen,
+                                     const char *totag, char *outbuf,
+                                     struct convert_failure *reason,
+                                     blob_buffer_t *inblobs, int maxblobs,
+                                     const char *tzname)
 {
     int rc = 0;
 
