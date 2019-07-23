@@ -239,7 +239,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\", ['parallel'|'data'|'blobs'|'indices'])");
+        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"parallel\"|\"data\"|\"blobs\"|\"indices\"])");
         return luaL_error(L, "Verify failed.");
     }
 
