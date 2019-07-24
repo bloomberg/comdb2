@@ -3,7 +3,7 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
-set -x
+set -e
 
 # Make sure that all queries go to the same node.
 mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
@@ -13,8 +13,7 @@ for i in `seq 1 8`; do
   cdb2sql -s --host $mach ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
 done
 
-cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' > memstat1.out
-appsockcnt=`grep -c sqlite memstat1.out`
+appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c sqlite`
 echo "# sqlite allocators: $appsockcnt"
 if [[ $appsockcnt -gt 5 ]]; then
   echo "Expecting <= 5 (4 for per-thread and 1 for main thread) sqlite allocators."
@@ -22,7 +21,7 @@ if [[ $appsockcnt -gt 5 ]]; then
   exit 1
 fi
 
-appsockcnt=`grep -c lua memstat1.out`
+appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c lua`
 echo "# lua allocators: $appsockcnt"
 if [[ $appsockcnt -gt 5 ]]; then
   echo "Expecting <= 5 (4 for per-thread and 1 for main thread) lua allocators."
@@ -33,8 +32,7 @@ fi
 # Give the database a bit time to dispatch all queries.
 sleep 2
 
-cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' > memstat2.out
-sqlengcnt=`grep -c SQLITE memstat2.out`
+sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c SQLITE`
 echo "# SQLITE allocators: $sqlengcnt"
 if [[ $sqlengcnt -lt 9 ]]; then
   echo "Expecting >= 9 (8 open connections and myself) SQLITE allocators."
@@ -42,7 +40,7 @@ if [[ $sqlengcnt -lt 9 ]]; then
   exit 1
 fi
 
-sqlengcnt=`grep -c LUA memstat2.out`
+sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c LUA`
 echo "# LUA allocators: $sqlengcnt"
 if [[ $sqlengcnt -lt 9 ]]; then
   echo "Expecting >= 9 (8 open connections and myself) LUA allocators."
