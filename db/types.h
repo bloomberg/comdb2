@@ -2068,10 +2068,10 @@ short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
 struct dbtable;
 struct schema;
-int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *outbuf,
-                            int outbuf_max, int *outlen);
-short field_decimal_quantum(struct dbtable *db, struct schema *s, int fnum, 
-                            char *tail, int taillen, int *sign);
+int extract_decimal_quantum(const struct dbtable *db, int ix, char *inbuf,
+                            char *outbuf, int outbuf_max, int *outlen);
+short field_decimal_quantum(const struct dbtable *db, struct schema *s,
+                            int fnum, char *tail, int taillen, int *sign);
 
 /* don't want duplicate code between sql and lua */
 int dttz_cmp(const dttz_t *, const dttz_t *);
@@ -2106,6 +2106,8 @@ int get_type(struct param_data *out, void *in, int inlen, int intype,
 
 int intv_to_str(const intv_t *, char *, int, int *);
 
-int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind);
-int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind);
+int odhfy_blob_buffer(const struct dbtable *db, blob_buffer_t *blob,
+                      int blobind);
+int unodhfy_blob_buffer(const struct dbtable *db, blob_buffer_t *blob,
+                        int blobind);
 #endif

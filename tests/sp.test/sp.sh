@@ -789,10 +789,12 @@ exec procedure sys.cmd.verify("t1")
 select 2
 exec procedure sys.cmd.verify()
 select 3
-exec procedure sys.cmd.verify(\"nonexistent\")
+exec procedure sys.cmd.verify('')
 select 4
-exec procedure sys.cmd.verify("nonexistent")
+exec procedure sys.cmd.verify(\"nonexistent\")
 select 5
+exec procedure sys.cmd.verify("nonexistent")
+select 6
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'

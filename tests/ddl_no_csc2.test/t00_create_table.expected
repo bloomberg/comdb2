@@ -937,39 +937,25 @@ keys
 (type='index', name='$$KEY_A513E531_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_424C1931" on "t1" ("unique");', csc2=NULL)
 (part='---------------------------------- PART #50 ----------------------------------')
 (part='---------------------------------- PART #51 ----------------------------------')
+[CREATE TABLE t3(i INT REFERENCES t1(i DESC))] failed with rc -3 syntax error after column name "i"
+[CREATE TABLE t5(i INT, j INT, FOREIGN KEY (i DESC, j) REFERENCES t1(i DESC, j))] failed with rc -3 syntax error after column name "i"
+[CREATE TABLE t6(i INT, j INT, FOREIGN KEY (i, j DESC) REFERENCES t1(i, j DESC))] failed with rc -3 syntax error after column name "j"
+[CREATE TABLE t7(i INT, j INT, FOREIGN KEY (i DESC, j DESC) REFERENCES t1(i DESC, j DESC))] failed with rc -3 syntax error after column name "i"
+[CREATE TABLE t8(i INT, FOREIGN KEY (i DESC) REFERENCES t1(i DESC))] failed with rc -3 syntax error after column name "i"
 (part='---------------------------------- PART #52 ----------------------------------')
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t6', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', keyname='T1_IJ1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='T1_IJ2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='T1_IJ3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='T1_IJ4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t2', keyname='$KEY_A44A20B', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t3', keyname='$KEY_37248BBB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t4', keyname='$KEY_3EE419FC', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t5', keyname='$KEY_20409382', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t6', keyname='$KEY_1DE18B7E', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t7', keyname='$KEY_AF5C9299', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t8', keyname='$KEY_D133A66E', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t8', keyname='IDX1', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_8AAC02E5', type='FOREIGN KEY', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='T1_IJ1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
-(name='$CONSTRAINT_64C1EA0', type='FOREIGN KEY', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='T1_IJ2', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (name='$CONSTRAINT_95177019', type='FOREIGN KEY', tablename='t4', keyname='$KEY_3EE419FC', foreigntablename='t1', foreignkeyname='T1_IJ1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
-(name='$CONSTRAINT_6BDD033E', type='FOREIGN KEY', tablename='t5', keyname='$KEY_20409382', foreigntablename='t1', foreignkeyname='T1_IJ2', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
-(name='$CONSTRAINT_20C91073', type='FOREIGN KEY', tablename='t6', keyname='$KEY_1DE18B7E', foreigntablename='t1', foreignkeyname='T1_IJ3', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
-(name='$CONSTRAINT_5D778686', type='FOREIGN KEY', tablename='t7', keyname='$KEY_AF5C9299', foreigntablename='t1', foreignkeyname='T1_IJ4', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
-(name='$CONSTRAINT_B7D1906E', type='FOREIGN KEY', tablename='t8', keyname='$KEY_D133A66E', foreigntablename='t1', foreignkeyname='T1_IJ2', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -1001,21 +987,7 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_A44A20B_A44A20B', tbl_name='t2', rootpage=10, sql='create index "$$KEY_A44A20B_A44A20B" on "t2" ("i");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=11, sql='create table "t3"("i" int);', csc2='schema
-	{
-		int i null = yes 
-	}
-keys
-	{
-		dup "$KEY_37248BBB" = i 
-	}
-constraints
-	{
-		"$KEY_37248BBB" -> <"t1":"T1_IJ2"> 
-	}
-')
-(type='index', name='$$KEY_37248BBB_37248BBB', tbl_name='t3', rootpage=12, sql='create index "$$KEY_37248BBB_37248BBB" on "t3" ("i");', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
+(type='table', name='t4', tbl_name='t4', rootpage=11, sql='create table "t4"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
 		int j null = yes 
@@ -1029,68 +1001,7 @@ constraints
 		"$KEY_3EE419FC" -> <"t1":"T1_IJ1"> 
 	}
 ')
-(type='index', name='$$KEY_3EE419FC_3EE419FC', tbl_name='t4', rootpage=14, sql='create index "$$KEY_3EE419FC_3EE419FC" on "t4" ("i", "j");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=15, sql='create table "t5"("i" int, "j" int);', csc2='schema
-	{
-		int i null = yes 
-		int j null = yes 
-	}
-keys
-	{
-		dup "$KEY_20409382" = <DESCEND> i + j 
-	}
-constraints
-	{
-		"$KEY_20409382" -> <"t1":"T1_IJ2"> 
-	}
-')
-(type='index', name='$$KEY_20409382_20409382', tbl_name='t5', rootpage=16, sql='create index "$$KEY_20409382_20409382" on "t5" ("i" DESC, "j");', csc2=NULL)
-(type='table', name='t6', tbl_name='t6', rootpage=17, sql='create table "t6"("i" int, "j" int);', csc2='schema
-	{
-		int i null = yes 
-		int j null = yes 
-	}
-keys
-	{
-		dup "$KEY_1DE18B7E" = i + <DESCEND> j 
-	}
-constraints
-	{
-		"$KEY_1DE18B7E" -> <"t1":"T1_IJ3"> 
-	}
-')
-(type='index', name='$$KEY_1DE18B7E_1DE18B7E', tbl_name='t6', rootpage=18, sql='create index "$$KEY_1DE18B7E_1DE18B7E" on "t6" ("i", "j" DESC);', csc2=NULL)
-(type='table', name='t7', tbl_name='t7', rootpage=19, sql='create table "t7"("i" int, "j" int);', csc2='schema
-	{
-		int i null = yes 
-		int j null = yes 
-	}
-keys
-	{
-		dup "$KEY_AF5C9299" = <DESCEND> i + <DESCEND> j 
-	}
-constraints
-	{
-		"$KEY_AF5C9299" -> <"t1":"T1_IJ4"> 
-	}
-')
-(type='index', name='$$KEY_AF5C9299_AF5C9299', tbl_name='t7', rootpage=20, sql='create index "$$KEY_AF5C9299_AF5C9299" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
-(type='table', name='t8', tbl_name='t8', rootpage=21, sql='create table "t8"("i" int);', csc2='schema
-	{
-		int i null = yes 
-	}
-keys
-	{
-		dup "$KEY_D133A66E" = <DESCEND> i 
-		dup "idx1" = <DESCEND> i 
-	}
-constraints
-	{
-		"$KEY_D133A66E" -> <"t1":"T1_IJ2"> 
-	}
-')
-(type='index', name='$$KEY_D133A66E_D133A66E', tbl_name='t8', rootpage=22, sql='create index "$$KEY_D133A66E_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
-(type='index', name='$IDX1_D133A66E', tbl_name='t8', rootpage=23, sql='create index "$IDX1_D133A66E" on "t8" ("i" DESC);', csc2=NULL)
+(type='index', name='$$KEY_3EE419FC_3EE419FC', tbl_name='t4', rootpage=12, sql='create index "$$KEY_3EE419FC_3EE419FC" on "t4" ("i", "j");', csc2=NULL)
 (part='---------------------------------- PART #53 ----------------------------------')
 (part='---------------------------------- PART #54 ----------------------------------')
 (part='---------------------------------- PART #55 ----------------------------------')

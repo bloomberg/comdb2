@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -e
+set -x
+
+echo run executable that tests a series of standalone functions
+${TESTSBUILDDIR}/test_threadpool
+

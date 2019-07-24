@@ -34,7 +34,7 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-struct dbtable;
+typedef struct dbtable dbtable;
 struct consumer;
 struct thr_handle;
 struct reqlogger;
@@ -107,6 +107,7 @@ typedef long long tranid_t;
 
 #define MAX_NUM_TABLES 1024
 #define MAX_NUM_QUEUES 1024
+#define MAX_NUM_VIEWS 1024
 
 #define DEC_ROUND_NONE (-1)
 
@@ -661,7 +662,7 @@ typedef struct timepart_views timepart_views_t;
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
  */
-struct dbtable {
+typedef struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
     char *tablename;
@@ -838,6 +839,11 @@ struct dbtable {
 
     bool disableskipscan : 1;
     bool do_local_replication : 1;
+} dbtable;
+
+struct dbview {
+    char *view_name;
+    char *view_def;
 };
 
 struct log_delete_state {
@@ -924,14 +930,19 @@ struct dbenv {
     /* bdb_environment */
     bdb_state_type *bdb_env;
 
-    /* tables and queues */
+    /* Tables */
     int num_dbs;
-    struct dbtable **dbs;
-    struct dbtable static_table;
+    dbtable **dbs;
+    dbtable static_table;
     hash_t *db_hash;
+
+    /* Queues */
     int num_qdbs;
     struct dbtable **qdbs;
     hash_t *qdb_hash;
+
+    /* Views */
+    hash_t *view_hash;
 
     /* Special SPs */
     int num_lua_sfuncs;
@@ -1932,6 +1943,10 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);
 /*look up managed db's by name*/
 struct dbtable *get_dbtable_by_name(const char *name);
+/* Lookup view by name */
+struct dbview *get_view_by_name(const char *view_name);
+/* Load all views from llmeta */
+int llmeta_load_views(struct dbenv *, void *);
 /* lookup a table by name; if it exists, lock table readonly
    if there is no table, lock table in write mode
    NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
@@ -2030,7 +2045,7 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
                 unsigned long long context);
 
 /*index routines*/
-int ix_isnullk(void *db_table, void *key, int ixnum);
+int ix_isnullk(const dbtable *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull);
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
@@ -2519,7 +2534,7 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
 void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
                            int nents);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
-                                          int *nents);
+                                          hash_t *view_hash, int *nents);
 void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
@@ -3331,9 +3346,10 @@ int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
 int ix_check_update_genid(struct ireq *iq, void *trans,
                           unsigned long long genid, int *bdberr);
 
-int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
+int vtag_to_ondisk(const dbtable *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);
-int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver);
+int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
+                          uint8_t ver);
 
 int get_origin_mach(char *origin);
 void comdb2_die(int abort);
@@ -3394,7 +3410,7 @@ int pause_pagelock_cursors(void *arg);
 int count_pagelock_cursors(void *arg);
 int compare_indexes(const char *table, FILE *out);
 void freeschema(struct schema *schema);
-void freedb(struct dbtable *db);
+void freedb(dbtable *db);
 
 extern int gbl_parallel_recovery_threads;
 extern int gbl_core_on_sparse_file;
@@ -3417,13 +3433,13 @@ extern int gbl_report_sqlite_numeric_conversion_errors;
 
 extern int dfp_conv_check_status(void *pctx, char *from, char *to);
 
-void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
+void fix_constraint_pointers(dbtable *db, dbtable *newdb);
 struct schema *create_version_schema(char *csc2, int version, struct dbenv *);
-void set_odh_options(struct dbtable *);
-void set_odh_options_tran(struct dbtable *db, tran_type *tran);
-void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb);
-int reload_after_bulkimport(struct dbtable *, tran_type *);
-int reload_db_tran(struct dbtable *, tran_type *);
+void set_odh_options(dbtable *);
+void set_odh_options_tran(dbtable *db, tran_type *tran);
+void transfer_db_settings(dbtable *olddb, dbtable *newdb);
+int reload_after_bulkimport(dbtable *, tran_type *);
+int reload_db_tran(dbtable *, tran_type *);
 int debug_this_request(int until);
 
 int gbl_disable_stable_for_ipu;
@@ -3441,8 +3457,8 @@ void sql_dump_hints(void);
 
 extern int gbl_disable_exit_on_thread_error;
 
-void sc_del_unused_files(struct dbtable *db);
-void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran);
+void sc_del_unused_files(dbtable *db);
+void sc_del_unused_files_tran(dbtable *db, tran_type *tran);
 
 extern int gbl_support_sock_lu;
 

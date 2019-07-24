@@ -770,7 +770,9 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             if (write_scdone) {
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
+                bdb_state_type *bdb_state = 0;
                 scdone_t type = invalid;
+
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
                     type = invalid;
@@ -784,11 +786,20 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = rename_table;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type == invalid || s->db == NULL) {
+                else if (s->add_view || s->drop_view)
+                    type = user_view;
+
+                if (type == user_view) {
+                    bdb_state = thedb->bdb_env;
+                } else if (s->db != NULL) {
+                    bdb_state = s->db->handle;
+                }
+
+                if (type == invalid || bdb_state == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
-                    rc = bdb_llog_scdone_origname(s->db->handle, type, 1,
+                    rc = bdb_llog_scdone_origname(bdb_state, type, 1,
                                                   s->tablename, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible

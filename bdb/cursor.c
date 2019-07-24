@@ -4111,12 +4111,18 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
         if (rc < 0)
             return rc;
         /* we are still positioned on the last record */
-        if (rc == IX_NOTFND || rc == IX_PASTEOF) {
+        if (rc == IX_NOTFND) {
             /* restore the previous position */
             if (cur->type == BDBC_IX && cur->state->ixdta[cur->idx]) {
                 *(struct datacopy_info *)cur->datacopy = datacopy_bck;
             }
-
+            return IX_PASTEOF;
+        } else if (rc == IX_PASTEOF) {
+            /* We were going left and hit EOF; let's reposition on to the first
+             * valid record. */
+            if ((rc = bdb_cursor_move(cur, DB_FIRST, bdberr)) < 0) {
+                return rc;
+            }
             return IX_PASTEOF;
         }
     } else {
