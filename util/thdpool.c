@@ -826,7 +826,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     again:
         thd = listc_rtl(&pool->freelist);
         if (!thd && (force_dispatch || pool->maxnthd == 0 ||
-                     listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd)) {
+                     listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
 
             thd = calloc(1, sizeof(struct thd));
