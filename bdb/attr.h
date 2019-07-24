@@ -671,6 +671,10 @@ DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
 
+DEF_ATTR(BANISH_TIME, banish_time, MSECS, 30000, "Ignore all communications from a node for this many milliseconds")
+
+DEF_ATTR(BANISH_THRESHOLD, banish_attempts, QUANTITY, 10, "Banish current master after this many attempts to force downgrade")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

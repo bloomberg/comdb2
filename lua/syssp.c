@@ -17,6 +17,7 @@
 #include <truncate_log.h>
 #include <bdb_api.h>
 #include <phys_rep.h>
+#include <intern_strings.h>
 
 
 /* Wishes for anyone who wants to clean this up one day:
@@ -521,6 +522,19 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+static int db_banish_host(Lua L)
+{
+    if (!lua_isstring(L, 1))
+        return luaL_error(L, "Expected host as first argument");
+    char *host = (char*) lua_tostring(L, 1);
+    int64_t ms = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_BANISH_TIME);
+    if (lua_isnumber(L, 2))
+        ms = lua_tonumber(L, 2);
+    net_banish_node(thedb->handle_sibling, intern(host), comdb2_time_epochms() + ms);
+    return 0;
+}
+
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -534,6 +548,7 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "banish_host", db_banish_host },
     { NULL, NULL }
 }; 
 
@@ -705,6 +720,14 @@ static struct sp_source syssps[] = {
         "    end\n"
         "end\n",
         "register_replicant"
+    }
+    ,
+    {
+        "sys.cmd.banish_host",
+        "local function main(host, timems)\n"
+        "   sys.banish_host(host, timems)\n"
+        "end",
+        NULL
     }
 };
 

@@ -5196,7 +5196,7 @@ void *watcher_thread(void *arg)
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
     extern int gbl_truncating_log;
-    char *master_host = db_eid_invalid;
+    char *master_host = db_eid_invalid, *last_master = db_eid_invalid;
     int stopped_count = 0;
     int i;
     int j;
@@ -5208,6 +5208,7 @@ void *watcher_thread(void *arg)
     int done = 0;
     char *rep_master = 0;
     int list_start;
+    int downgrade_and_lose_messages = 0;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5542,6 +5543,9 @@ void *watcher_thread(void *arg)
                        "yield\n",
                        master_host);
                 send_downgrade_and_lose(bdb_state);
+                downgrade_and_lose_messages++;
+                if (downgrade_and_lose_messages > bdb_state->attr->banish_attempts)
+                    net_banish_node(bdb_state->repinfo->netinfo, master_host, comdb2_time_epochms() + bdb_state->attr->banish_time);
                 /* Don't call for election- the other node will transfer
                  * master. */
             } else {
@@ -5607,7 +5611,6 @@ void *watcher_thread(void *arg)
 
         /* call for an election if we don't have a master */
         if (master_host == db_eid_invalid) {
-
             /* we want to alert if NO MASTER for a "significant" number of
              * seconds */
             if (!gbl_lost_master_time) {
@@ -5678,6 +5681,11 @@ void *watcher_thread(void *arg)
         poll(NULL, 0, (rand() % 1000) + 1000);
 
         send_context_to_all(bdb_state);
+
+        if (master_host != last_master) {
+            last_master = master_host;
+            downgrade_and_lose_messages = 0;
+        }
     }
 
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
