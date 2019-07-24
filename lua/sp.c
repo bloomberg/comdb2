@@ -419,6 +419,10 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
     return 0;
 }
 
+extern struct thdpool *gbl_sqlengine_thdpool;
+
+pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
                                   int register_timeoutms)
 {
@@ -429,20 +433,33 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     if (retry <= 0) {
         retry = 1;
     }
+
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
         if (register_timeoutms) {
             if (retry == 0) {
                 luabb_error(L, sp, " trigger:%s registration timeout %dms",
                             reg->spname, register_timeoutms);
-                return -2;
+                rc = -2;
+                goto out;
             }
             --retry;
         }
         if (check_retry_conditions(L, 1) != 0) {
-            return luabb_error(L, sp, sp->error);
+            rc = luabb_error(L, sp, sp->error);
+            goto out;
         }
         sleep(1);
     }
+
+out:
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     return rc;
 }
 

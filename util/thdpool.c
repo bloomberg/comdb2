@@ -94,6 +94,7 @@ struct thdpool {
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
+    unsigned nwaitthd;  /* current number of wait/consumer threads */
     unsigned peaknthd;  /* maximum num threads ever */
     unsigned maxqueue;  /* maximum work items to queue */
     unsigned peakqueue; /* peak queue size */
@@ -376,6 +377,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
                 pool->num_failed_dispatches);
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
         logmsgf(LOGMSG_USER, fh, "  Maximum num threads       : %u\n", pool->maxnthd);
+        logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n", pool->nwaitthd);
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue current size   : %u\n",
@@ -646,7 +648,7 @@ static void *thdpool_thd(void *voidarg)
             struct timespec *ts = NULL;
             int thr_exit = 0;
 
-            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > pool->maxnthd)
+            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > (pool->maxnthd + pool->nwaitthd))
                 check_exit = 1;
             else
                 check_exit = 0;
@@ -730,7 +732,7 @@ static void *thdpool_thd(void *voidarg)
             LOCK(&pool->mutex)
             {
                 if (pool->maxnthd > 0 &&
-                    listc_size(&pool->thdlist) > pool->maxnthd) {
+                    listc_size(&pool->thdlist) > (pool->maxnthd + pool->nwaitthd) ) {
                     listc_rfl(&pool->thdlist, thd);
                     if (thd->on_freelist)
                         abort();
@@ -824,7 +826,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     again:
         thd = listc_rtl(&pool->freelist);
         if (!thd && (force_dispatch || pool->maxnthd == 0 ||
-                     listc_size(&pool->thdlist) < pool->maxnthd)) {
+                     listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd)) {
             int rc;
 
             thd = calloc(1, sizeof(struct thd));
@@ -1015,6 +1017,14 @@ int thdpool_get_nthds(struct thdpool *pool)
 int thdpool_get_nfreethds(struct thdpool *pool)
 {
     return pool->freelist.count;
+}
+
+void thdpool_add_waitthd(struct thdpool *pool) {
+    pool->nwaitthd++;
+}
+
+void thdpool_remove_waitthd(struct thdpool *pool) {
+    pool->nwaitthd--;
 }
 
 int thdpool_get_maxthds(struct thdpool *pool)
