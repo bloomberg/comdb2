@@ -4748,6 +4748,10 @@ static void *connect_thread(void *arg)
     int check = 1;
     Pthread_mutex_lock(&(host_node_ptr->lock));
     while (!host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
+        /* Don't connect to banished nodes */
+        if (host_node_ptr->banished_until > comdb2_time_epochms())
+            goto again;
+
         if (host_node_ptr->fd != -1) { /* already have connection */
             check = 1;
             goto again;
@@ -5055,6 +5059,7 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
         return 1;
 
     Pthread_mutex_lock(&(host_node_ptr->lock));
+
     if (host_node_ptr->have_connect_thread == 0) {
         if (gbl_verbose_net) {
             if (sponsor_host) {
