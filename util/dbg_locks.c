@@ -13,6 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+#if defined(DBG_PTHREAD_LOCKS)
 
 #include <stdio.h>
 #include <assert.h>
@@ -557,3 +558,5 @@ int dbg_pthread_rwlock_unlock(
   }
   return rc;
 }
+
+#endif /* defined(DBG_PTHREAD_LOCKS) */
