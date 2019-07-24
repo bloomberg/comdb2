@@ -35,6 +35,7 @@
 
 #include <fcntl.h>
 #ifdef _AIX
+#include <sys/socket.h>
 #include <sys/socketvar.h>
 #endif
 #include <netinet/tcp.h>
