@@ -596,7 +596,8 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
         struct workitem *next;
         while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
             int force_timeout = 0;
-            if (gbl_random_thdpool_work_timeout &&
+            if ((thd->pool->maxqueueagems > 0) &&
+                gbl_random_thdpool_work_timeout &&
                 !(rand() % gbl_random_thdpool_work_timeout)) {
                 force_timeout = 1;
                 logmsg(LOGMSG_WARN,
