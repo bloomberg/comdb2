@@ -4849,6 +4849,16 @@ static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
 {
     time_metric_add(thedb->sql_queue_time,
                     comdb2_time_epochms() - item->queue_time_ms);
+
+    if (timeout) {
+        struct sqlclntstate *clnt = item->work;
+
+        if (clnt) {
+            clnt->query_rc = -1;
+            handle_failed_dispatch(clnt, "queue work item timeout");
+            clean_queries_not_cached_in_srs(clnt);
+        }
+    }
 }
 
 int tdef_to_tranlevel(int tdef)
