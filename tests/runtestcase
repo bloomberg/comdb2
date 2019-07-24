@@ -299,10 +299,17 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     fi
 fi
 
-
+FAILCOL=""
+NORCOL=""
+#if we are outputing to a terminal, show failure in red text
+if [ -t 1 ] ; then
+    FAILCOL="\033[1;31m"
+    NORCOL="\033[0m"
+fi
 
 if [[ -n "$cr" ]] ; then
-    echo "!$TESTCASE: failed with core dumped ($cr)" | tee -a ${TEST_LOG}
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} with core dumped ($cr)"
+    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
 elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
@@ -310,17 +317,19 @@ elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
 elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
-    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
-    echo "!$TESTCASE: also failed verify ($verify_ret)" | tee -a ${TEST_LOG}
+    echo -e "!$TESTCASE: also ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
-    echo "!$TESTCASE: failed verify ($verify_ret)" | tee -a ${TEST_LOG}
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then
     echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
 else
-    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 

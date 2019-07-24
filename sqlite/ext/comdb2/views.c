@@ -13,8 +13,12 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+#if (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
+    && !defined(SQLITE_OMIT_VIRTUALTABLE)
 
-#define SQLITE_CORE 1
+#if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
+# define SQLITE_CORE 1
+#endif
 
 #include <pthread.h>
 #include <comdb2systblInt.h>
@@ -87,3 +91,5 @@ int systblViewsInit(sqlite3 *db)
         CDB2_CSTRING, "definition", -1, offsetof(view_entry_t, def),
         SYSTABLE_END_OF_FIELDS);
 }
+#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
+          && !defined(SQLITE_OMIT_VIRTUALTABLE) */

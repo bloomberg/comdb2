@@ -31,7 +31,6 @@
 #include "pragma.h"
 #include "logmsg.h"
 
-
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
@@ -3276,8 +3275,8 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   v = sqlite3GetVdbe(pParse);
   if( v ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (isView && db->isTimepartView == 0) {
-        comdb2_drop_view(pParse, pName);
+    if( isView && db->isTimepartView==0 ){
+      comdb2_drop_view(pParse, pName);
     }else if( isView || (iDb==1 && !bDropTable) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
