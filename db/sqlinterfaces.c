@@ -4569,7 +4569,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* we just mark the client done here, with error */
         clnt->query_rc = CDB2ERR_IO_ERROR;
-        clnt->done = 1; /* that's gonna revive appsock thread */
+        clean_queries_not_cached_in_srs(clnt); /* that's gonna revive appsock thread */
         break;
     }
     bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
@@ -4849,16 +4849,6 @@ static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
 {
     time_metric_add(thedb->sql_queue_time,
                     comdb2_time_epochms() - item->queue_time_ms);
-
-    if (timeout) {
-        struct sqlclntstate *clnt = item->work;
-
-        if (clnt) {
-            clnt->query_rc = -1;
-            handle_failed_dispatch(clnt, "queue work item timeout");
-            clean_queries_not_cached_in_srs(clnt);
-        }
-    }
 }
 
 int tdef_to_tranlevel(int tdef)
