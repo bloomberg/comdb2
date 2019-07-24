@@ -2358,35 +2358,20 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.heartbeat = 1;
         ATOMIC_ADD(gbl_nnewsql, 1);
 
-        if (clnt.had_errors && strncasecmp(clnt.sql, "commit", 6) &&
-            strncasecmp(clnt.sql, "rollback", 8)) {
-            if (clnt.in_client_trans == 0) {
-                clnt.had_errors = 0;
-                /* tell blobmem that I want my priority back
-                   when the sql thread is done */
-                comdb2bma_pass_priority_back(blobmem);
-                rc = dispatch_sql_query(&clnt);
-            } else {
-                /* Do Nothing */
-                newsql_heartbeat(&clnt);
-            }
-        } else if (clnt.had_errors) {
-            /* Do Nothing */
-            if (clnt.ctrl_sqlengine == SQLENG_STRT_STATE)
-                clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
+        bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
+                                 strncasecmp(clnt.sql, "rollback", 8) == 0)
+                                    ? true
+                                    : false;
 
-            clnt.had_errors = 0;
-            clnt.in_client_trans = 0;
-            if (newsql_send_intrans_response(&clnt) != 0) {
-                newsql_row_last_dummy(&clnt);
-            }
-
-            rc = -1;
-        } else {
+        if (!clnt.had_errors || isCommitRollback) {
             /* tell blobmem that I want my priority back
                when the sql thread is done */
             comdb2bma_pass_priority_back(blobmem);
             rc = dispatch_sql_query(&clnt);
+
+            if (clnt.had_errors && isCommitRollback) {
+                rc = -1;
+            }
         }
         clnt_change_state(&clnt, CONNECTION_IDLE);
 
