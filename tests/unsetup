@@ -6,7 +6,6 @@
 set -x
 
 [[ $COMDB2_UNITTEST == 1 ]] && exit 0
-CLEANUPDBDIR=1
 
 echo "!$TESTCASE: stopping"
 [ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}

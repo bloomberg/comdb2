@@ -492,12 +492,6 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         }
         sleep(1);
     }
-
-    //cleanup via the following two:
-    //thrman_wait_type_exit(THRTYPE_VERIFY);
-    //thdpool_stop(gbl_verify_thdpool);
-    //thdpool_destroy(&gbl_verify_thdpool);
-
 done:
     if (tran)
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
@@ -510,6 +504,5 @@ done:
         sbuf2printf(sb, "SUCCESS\n");
 
     sbuf2flush(sb);
-
     return par.verify_status;
 }
