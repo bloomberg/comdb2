@@ -1514,6 +1514,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("random_thdpool_work_timeout",
+                 "Force a random thread pool work item timeout 1/this many "
+                 "times.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_thdpool_work_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dohsql_disable",
                  "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
                  &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
