@@ -271,9 +271,10 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         uint32_t flags)
 {
     int cnt=0;
-    struct physwrite_results_s results = {0};
+    struct physwrite_results_s results;
     Pthread_mutex_init(&results.lk, NULL);
     Pthread_cond_init(&results.cd, NULL);
+    memset(&results, 0, sizeof(results));
     physwrite_results = &results;
 
     if (flags) 
