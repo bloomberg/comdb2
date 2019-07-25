@@ -1347,7 +1347,7 @@ static const uint8_t *snap_uid_put(const snap_uid_t *snap_info, uint8_t *p_buf,
     p_buf = buf_put(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
                     p_buf_end);
     p_buf = buf_put(&(snap_info->replicant_is_able_to_retry),
-                    sizeof(snap_info->replicant_is_able_to_retry), p_buf, 
+                    sizeof(snap_info->replicant_is_able_to_retry), p_buf,
                     p_buf_end);
     p_buf = buf_put(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);

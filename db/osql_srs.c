@@ -269,7 +269,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
 
         if (clnt->verify_retries == gbl_osql_verify_retries_max + 1) {
             logmsg(LOGMSG_DEBUG, "%s line %d verify error after %d retries\n",
-                    __func__, __LINE__, clnt->verify_retries);
+                   __func__, __LINE__, clnt->verify_retries);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
         }
 

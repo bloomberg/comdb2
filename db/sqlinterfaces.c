@@ -2060,9 +2060,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         } else {
             assert(can_retry && clnt->has_recording &&
-                    clnt->osql.replay == OSQL_RETRY_NONE);
+                   clnt->osql.replay == OSQL_RETRY_NONE);
             if (!can_retry || !clnt->has_recording ||
-                    clnt->osql.replay != OSQL_RETRY_NONE)
+                clnt->osql.replay != OSQL_RETRY_NONE)
                 abort();
         }
 

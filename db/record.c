@@ -972,8 +972,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         reqerrstr(iq, COMDB2_UPD_RC_UNKN_REC, "find old record failed");
         *opfailcode = OP_FAILED_VERIFY;
         if (rc == RC_INTERNAL_RETRY) {
-            logmsg(LOGMSG_DEBUG, "%s line %d find old record failed with "
-                    "internal_retry\n", __func__, __LINE__);
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d find old record failed with "
+                   "internal_retry\n",
+                   __func__, __LINE__);
             retrc = rc;
         } else
             retrc = ERR_VERIFY;
