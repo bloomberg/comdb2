@@ -4702,8 +4702,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
-    if (fail_dispatch)
+    if (fail_dispatch) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failing {%s} due to previous statement timeout.\n",
+               __func__, clnt->work.zSql);
+
         return -1;
+    }
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.zSql);
     clnt->enque_timeus = comdb2_time_epochus();
@@ -4729,6 +4734,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
         }
 
         if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to enqueue: %s\n",
+                   __func__, sqlcpy);
+
             free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->fail_dispatch) {
@@ -4809,8 +4817,11 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
                     last = st;
                     send_heartbeat(clnt);
                     rc = fdb_heartbeats(clnt);
-                    if (rc)
+                    if (rc) {
+                        logmsg(LOGMSG_ERROR, "%s: fdb_heartbeats, rc=%d\n",
+                               __func__, rc);
                         return -1;
+                    }
                 }
                 if (clnt->query_timeout > 0 && !clnt->statement_timedout) {
                     TIMESPEC_SUB(st, first, diff);
