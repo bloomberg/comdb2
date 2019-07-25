@@ -48,7 +48,7 @@ int chrono_stop(struct timeval *tv)
 // add time accounting to appropriate slot
 void accumulate_time(const char *name, int us)
 {
-    printf("adding %s\n", name);
+    printf("%s adding %s\n", __func__, name);
     const char *iptr = intern(name);
     pthread_mutex_lock(&hlock);
     if (!htimes) {
@@ -120,7 +120,7 @@ void print_time_accounting(const char *name)
 static int print_name_time_pair(void *obj, void *unused)
 {
     name_time_pair_t *ptr = obj;
-    logmsg(LOGMSG_USER, "name=%s time=%lluus count=%llu worst=%llu, avg=%llu \n", ptr->name, ptr->utime, ptr->count, ptr->worstutime, ptr->utime/ptr->count);
+    logmsg(LOGMSG_USER, "name=%s time=%lluus count=%llu worst=%lluus, avg=%lfus\n", ptr->name, ptr->utime, ptr->count, ptr->worstutime, (double)ptr->utime/ptr->count);
     totaltime += ptr->utime;
     totalcount += ptr->count;
     return 0;
@@ -130,6 +130,7 @@ static int print_name_time_pair(void *obj, void *unused)
 void print_all_time_accounting()
 {
     if (!htimes) {
+        logmsg(LOGMSG_USER, "No timing information is available\n");
         return;
     }
     totaltime = 0;
