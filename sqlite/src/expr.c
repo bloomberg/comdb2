@@ -1064,7 +1064,6 @@ static SQLITE_NOINLINE void sqlite3ExprDeleteNN(sqlite3 *db, Expr *p){
       sqlite3ExprListDelete(db, p->x.pList);
     }
     if( ExprHasProperty(p, EP_WinFunc) ){
-      assert( p->op==TK_FUNCTION );
       sqlite3WindowDelete(db, p->y.pWin);
     }
   }
