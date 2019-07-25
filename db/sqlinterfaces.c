@@ -4702,13 +4702,8 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
-    if (fail_dispatch) {
-        logmsg(LOGMSG_ERROR,
-               "%s: failing {%s} due to previous statement timeout.\n",
-               __func__, clnt->work.zSql);
-
+    if (fail_dispatch)
         return -1;
-    }
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.zSql);
     clnt->enque_timeus = comdb2_time_epochus();
