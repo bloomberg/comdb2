@@ -193,6 +193,9 @@ const char *tunable_type(comdb2_tunable_type type);
 /* Verify whether the given value is in [0-100] range. */
 int percent_verify(void *context, void *percent);
 
+/* Verify whether the given value is in [1-16] range. */
+int dtastripe_verify(void *context, void *stripes);
+
 /* Return error string. */
 const char *tunable_error(comdb2_tunable_err code);
 

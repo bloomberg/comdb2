@@ -383,6 +383,7 @@
 (name='comdb2_tunables')
 (name='comdb2_type_samples')
 (name='comdb2_users')
+(name='comdb2_views')
 (name='generate_series')
 (name='json_each')
 (name='json_tree')

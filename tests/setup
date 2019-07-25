@@ -202,12 +202,12 @@ setup_db() {
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
     cd $DBDIR >/dev/null
 
-    PARAMS="$DBNAME --no-global-lrl"
+    PARAMS="--no-global-lrl --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.pid"
     export LOGDIR=$TESTDIR/logs
 
     # The script occasionally fails here. Let's find out what the rc is.
     set +e
-    $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
+    $COMDB2_EXE --create ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.init
     rc=$?
     rm -f ${DBNAME}.trap
     if [[ $rc -ne 0 ]]; then
@@ -228,15 +228,24 @@ setup_db() {
     if [[ -z "$CLUSTER" ]]; then
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-            echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+            echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} ${NOCOLOR}"
             exit 0
         fi
 
+        if [ -f ${TMPDIR}/${DBNAME}.pid ] ; then 
+            rm ${TMPDIR}/${DBNAME}.pid
+        fi
+
         echo "!$TESTCASE: starting single node"
-        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $LOGDIR/${DBNAME}.db &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
         dbpid=$!
 
         set +e
+
+        if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
+            echo "pid ${TMPDIR}/${DBNAME}.pid does not exist"
+            check_db_port_running_local # this error is immediate so we should be able to catch it early
+        fi
 
         kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
         if [ $? -eq 1 ] ; then
@@ -288,14 +297,15 @@ setup_db() {
         done
 
         echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-        CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
+        CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
         echo "!$TESTCASE: starting"
         for node in $CLUSTER; do
             if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally
+                CL_PARAMS="--no-global-lrl --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
                 if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                    echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                    echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${CL_PARAMS} ${NOCOLOR}"
                 else
-                    ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $LOGDIR/${DBNAME}.${node}.db &
+                    ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${CL_PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
                 fi
                 continue
             fi

@@ -222,6 +222,9 @@ extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
 extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
+extern int gbl_long_log_truncation_warn_thresh_sec;
+extern int gbl_long_log_truncation_abort_thresh_sec;
+extern int gbl_snapshot_serial_verify_retry;
 
 extern long long sampling_threshold;
 
@@ -574,6 +577,15 @@ static int memnice_update(void *context, void *value)
     if (nicerc != 0) {
         logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d\n",
                nicerc);
+        return 1;
+    }
+    return 0;
+}
+
+int dtastripe_verify(void *context, void *stripes)
+{
+    int iStripes = *(int *)stripes;
+    if ((iStripes < 1) || (iStripes > 16)) {
         return 1;
     }
     return 0;

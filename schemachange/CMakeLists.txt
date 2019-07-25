@@ -15,6 +15,7 @@ add_library(schemachange
   sc_stripes.c
   sc_struct.c
   sc_util.c
+  sc_view.c
   schemachange.c
 )
 

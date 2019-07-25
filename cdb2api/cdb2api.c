@@ -1127,7 +1127,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     cdb2cfg_override = 1;
     len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
-    strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
+    strcpy(CDB2DBCONFIG_BUF, cfg_info);
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 
@@ -3196,6 +3196,7 @@ retry_next_record:
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
+            debugprint("Timeout while reading response from server\n");
             return hndl->lastresponse->error_code;
         }
 
@@ -4443,6 +4444,7 @@ read_record:
                 }
                 sprintf(hndl->errstr,
                         "%s: Timeout while reading response from server", __func__);
+                debugprint("Timeout while reading response from server\n");
                 PRINT_AND_RETURN(err_val);
             }
         }

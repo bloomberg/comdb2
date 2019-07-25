@@ -56,7 +56,8 @@ int osql_comm_blkout_node(const char *host);
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
 /* Offload upgrade record request. */
-int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid);
+int offload_comm_send_upgrade_records(const dbtable *db,
+                                      unsigned long long genid);
 
 /* Offload record upgrade statistics */
 void upgrade_records_stats(void);

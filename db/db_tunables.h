@@ -300,7 +300,7 @@ REGISTER_TUNABLE("dont_sort_nulls_with_header",
                  &gbl_sort_nulls_correctly, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dtastripe", NULL, TUNABLE_INTEGER, &gbl_dtastripe,
-                 READONLY | NOZERO, NULL, NULL, NULL, NULL);
+                 READONLY | NOZERO, NULL, dtastripe_verify, NULL, NULL);
 REGISTER_TUNABLE("early",
                  "When set, replicants will ack a transaction as soon as they "
                  "acquire locks - not that replication must succeed at that "
@@ -1724,6 +1724,24 @@ REGISTER_TUNABLE("serialize_reads_like_writes",
                  "Send read-only multi-statement schedules to the master.  "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_warn_thresh_sec",
+                 "Warn if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_warn_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
+                 "SIGABRT if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("snapshot_serial_verify_retry",
+                 "Automatic retries on verify errors for clients that haven't "
+                 "read results.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

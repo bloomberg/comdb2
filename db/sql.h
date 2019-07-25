@@ -236,7 +236,7 @@ typedef dbtran_type trans_t;
 typedef struct {
     char name[MAXTABLELEN];
     int ixnum;
-    struct temp_table *sampled_table;
+    sampler_t *sampler;
     int sampling_pct;
     unsigned long long n_recs;
     unsigned long long n_sampled_recs;
@@ -796,6 +796,8 @@ struct sqlclntstate {
      * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
     char* origin_host;
+    int8_t sent_data_to_client;
+    int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
 };
 
@@ -912,8 +914,7 @@ struct BtCursor {
     /* special case for a temp table: pointer to a temp table handle */
     struct temptable *tmptable;
 
-    /* sampled (previously misnamed compressed) idx temptable */
-    struct temptable *sampled_idx;
+    sampler_t *sampler;
 
     blob_status_t blobs;
 
@@ -1012,9 +1013,6 @@ struct sql_thread {
     int nmove;
     int nfind;
     int nwrite;
-    int ntmpwrite;
-    int ntmpread;
-    int nblobs;
     int bufsz;
     int id;
     char *buf;
@@ -1090,7 +1088,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse);
 
-int replicant_can_retry(struct sqlclntstate *clnt);
+int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);
@@ -1137,7 +1135,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
-void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *,
+                      struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);

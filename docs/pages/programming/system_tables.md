@@ -580,3 +580,13 @@ Information about recent schema changes.
 * `last_updated` - Time of the last status change.
 * `converted` - Number of records converted.
 * `error` - Error message of the schema change.
+
+## comdb2_views
+
+List of views in the database.
+
+    comdb2_views(name, definition)
+
+* `name` - Name of the view
+* `definition` - View definition
+

@@ -253,6 +253,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
 
+        /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
             /* we need to free all the shadows but selectv table (recgenid) */
             rc = osql_shadtbl_reset_for_selectv(clnt);
@@ -266,8 +267,11 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             osql_shadtbl_close(clnt); 
         }
 
-        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1)
+        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1) {
+            logmsg(LOGMSG_DEBUG, "%s line %d verify error after %d retries\n",
+                   __func__, __LINE__, clnt->verify_retries);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+        }
 
         if (0 /*!bdb_am_i_coherent(thedb->bdb_env)*/) {
             fprintf(stderr, "Cannot replay, I am incoherent id=%d retries=%d\n",
@@ -304,13 +308,9 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                         }
                     }
                 }
-                /* we should only repeat socksql and read committed */
-                assert(clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-                       clnt->dbtran.mode == TRANLEVEL_RECOM);
 
-                osql_sock_abort(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                          ? OSQL_SOCK_REQ
-                                          : OSQL_RECOM_REQ);
+                int type = tran2netreq(clnt->dbtran.mode);
+                osql_sock_abort(clnt, type);
             }
             break;
         }

@@ -257,13 +257,13 @@ static int sample_index_int(index_descriptor_t *ix_des)
     int bdberr;
     unsigned long long n_recs;
     unsigned long long n_sampled_recs;
-    struct temp_table *tmptbl = NULL;
+    sampler_t *sampler = NULL;
 
     /* cache the tablename for sqlglue */
     strncpy0(s_ix->name, tbl->tablename, sizeof(s_ix->name));
 
     /* ask bdb to put a summary of this into a temp-table */
-    rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &tmptbl,
+    rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &sampler,
                              &n_sampled_recs, &n_recs, &bdberr);
 
     /* failed */
@@ -275,7 +275,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
 
     /* fill in structure */
     s_ix->ixnum = ix;
-    s_ix->sampled_table = tmptbl;
+    s_ix->sampler = sampler;
     s_ix->sampling_pct = sampling_pct;
     s_ix->n_recs = n_recs;
     s_ix->n_sampled_recs = n_sampled_recs;
@@ -418,23 +418,12 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
 static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable *tbl)
 {
     int i;
-    int rc;
-    int bdberr;
 
     /* delete sampled temptables */
     for (i = 0; i < client->n_cmp_idx; i++) {
         sampled_idx_t *s_ix = &client->sampled_idx_tbl[i];
         if (!s_ix)
             continue;
-        if (!s_ix->sampled_table)
-            continue;
-
-        rc = bdb_temp_table_close(tbl->handle, s_ix->sampled_table, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: error closing tmptable: rc=%d "
-                            "bdberr=%d\n",
-                    __func__, rc, bdberr);
-        }
     }
 
     /* free & zero struct */
@@ -443,16 +432,16 @@ static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable 
     return 0;
 }
 
-/* Return the requested sampled temptable */
-struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
-                                                 char *table, int idx)
+/* Return the requested sampler */
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+                               int idx)
 {
     sampled_idx_t *s_ix;
 
     s_ix = find_sampled_index(client, table, idx);
     if (!s_ix)
         return NULL;
-    return s_ix->sampled_table;
+    return s_ix->sampler;
 }
 
 /* Called from sqlite.  Return the number of records for a sampled table */

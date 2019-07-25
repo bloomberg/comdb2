@@ -35,8 +35,8 @@ constraints
 	}
 ')
 (rows inserted=1)
-(color='white')
 (color='blue')
+(color='white')
 (test='3. Invalid use cases')
 [CREATE TABLE t1(i INT, CHECK ())] failed with rc -3 near ")": syntax error
 [CREATE TABLE t1(i INT, CHECK (SELECT 1))] failed with rc -3 near "SELECT": syntax error

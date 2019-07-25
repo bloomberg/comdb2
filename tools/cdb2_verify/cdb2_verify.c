@@ -25,6 +25,7 @@ static const char revid[] =
 
 #include "build/db_int.h"
 #include <crc32c.h>
+#include "locks_wrap.h"
 
 int main __P((int, char *[]));
 static int cdb2_verify_usage __P((void));
@@ -36,7 +37,6 @@ tool_cdb2_verify_main(argc, argv)
 	int argc;
 	char *argv[];
 {
-	crc32c_init(0);
 	extern char *optarg;
 	extern int optind;
 	const char *progname = "cdb2_verify";
@@ -48,9 +48,14 @@ tool_cdb2_verify_main(argc, argv)
 	char *home, passwd[1024];
 	FILE *crypto;
 
+	crc32c_init(0);
     comdb2ma_init(0, 0);
 	if ((ret = cdb2_verify_version_check(progname)) != 0)
 		return (ret);
+
+#ifndef BERKDB_46
+	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
+#endif
 
 	dbenv = NULL;
 	dbp = NULL;
