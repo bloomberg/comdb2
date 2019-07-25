@@ -259,6 +259,10 @@ err:
 int sampler_close(sampler_t *sampler)
 {
     int unused;
+
+    if (sampler == NULL)
+        return 0;
+
     (void)bdb_temp_table_close(sampler->bdb_state, sampler->tmptbl, &unused);
     free(sampler->data);
     free(sampler);
