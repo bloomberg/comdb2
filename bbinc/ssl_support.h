@@ -184,8 +184,7 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
  *               else use *ca as the trusted CA
  * sesssz      - SSL session cache size
  * ciphers     - cipher suites. ignored in client mode.
- * mintlsver   - minimum acceptable TLS protocol version. ignored in client
- * mode.
+ * mintlsver   - minimum acceptable TLS protocol version.
  *
  * RETURN VALUES
  * 0 upon success
