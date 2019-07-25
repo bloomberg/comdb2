@@ -83,3 +83,5 @@ contrib/docker/volumes
 
 #cscope files
 cscope.*
+
+plugins/.gitignore

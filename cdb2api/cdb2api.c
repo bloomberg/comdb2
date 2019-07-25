@@ -3196,6 +3196,7 @@ retry_next_record:
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
+            debugprint("Timeout while reading response from server\n");
             return hndl->lastresponse->error_code;
         }
 
@@ -4443,6 +4444,7 @@ read_record:
                 }
                 sprintf(hndl->errstr,
                         "%s: Timeout while reading response from server", __func__);
+                debugprint("Timeout while reading response from server\n");
                 PRINT_AND_RETURN(err_val);
             }
         }
