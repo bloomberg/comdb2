@@ -457,6 +457,8 @@ static uint8_t *osqlcomm_rpl_type_put(const osql_rpl_t *p_osql_rpl,
                     p_buf_end);
     p_buf = buf_no_net_put(&(p_osql_rpl->padding), sizeof(p_osql_rpl->padding),
                            p_buf, p_buf_end);
+    if (p_osql_rpl->sid == 0)
+        abort();
     p_buf =
         buf_put(&(p_osql_rpl->sid), sizeof(p_osql_rpl->sid), p_buf, p_buf_end);
 
@@ -493,12 +495,17 @@ enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
 BB_COMPILE_TIME_ASSERT(osqlcomm_rpl_uuid_type_len,
                        sizeof(osql_uuid_rpl_t) == OSQLCOMM_UUID_RPL_TYPE_LEN);
 
+uuid_t zero_uuid = {0};
+
 static uint8_t *osqlcomm_uuid_rpl_type_put(const osql_uuid_rpl_t *p_osql_rpl,
                                            uint8_t *p_buf,
                                            const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_UUID_RPL_TYPE_LEN > (p_buf_end - p_buf))
         return NULL;
+
+    if (!memcmp(&p_osql_rpl->uuid, &zero_uuid, sizeof(uuid_t)))
+        abort();
 
     p_buf = buf_put(&(p_osql_rpl->type), sizeof(p_osql_rpl->type), p_buf,
                     p_buf_end);
@@ -1339,8 +1346,9 @@ static const uint8_t *snap_uid_put(const snap_uid_t *snap_info, uint8_t *p_buf,
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
     p_buf = buf_put(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&(snap_info->replicant_can_retry),
-                    sizeof(snap_info->replicant_can_retry), p_buf, p_buf_end);
+    p_buf = buf_put(&(snap_info->replicant_is_able_to_retry),
+                    sizeof(snap_info->replicant_is_able_to_retry), p_buf,
+                    p_buf_end);
     p_buf = buf_put(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_put(&(snap_info->key), sizeof(snap_info->key), p_buf,
@@ -1371,8 +1379,9 @@ static const uint8_t *snap_uid_get(snap_uid_t *snap_info, const uint8_t *p_buf,
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
     p_buf = buf_get(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(snap_info->replicant_can_retry),
-                    sizeof(snap_info->replicant_can_retry), p_buf, p_buf_end);
+    p_buf = buf_get(&(snap_info->replicant_is_able_to_retry),
+                    sizeof(snap_info->replicant_is_able_to_retry), p_buf,
+                    p_buf_end);
     p_buf = buf_get(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_get(&(snap_info->key), sizeof(snap_info->key), p_buf,
@@ -9624,7 +9633,7 @@ int osql_send_test(SBUF2 *sb)
     struct errstat xerr = {0};
     int nettype = NET_OSQL_SOCK_RPL_UUID;
     snap_uid_t snap_info = {{0}};
-    snap_info.replicant_can_retry = 0;
+    snap_info.replicant_is_able_to_retry = 0;
     snap_info.uuid[0] = 1; // just assign dummy cnonce here
     int rc;
 

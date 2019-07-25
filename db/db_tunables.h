@@ -1737,4 +1737,11 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  "  (Default: 2147483647)",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("snapshot_serial_verify_retry",
+                 "Automatic retries on verify errors for clients that haven't "
+                 "read results.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
+                 NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

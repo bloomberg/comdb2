@@ -2048,6 +2048,7 @@ retry_read:
                 effects.num_updated = clnt->effects.num_updated;
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
+                set_sent_data_to_client(clnt, 1, __func__, __LINE__);
                 sql_response.effects = &effects;
                 sql_response.error_code = 0;
             } else {
