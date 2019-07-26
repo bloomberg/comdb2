@@ -419,6 +419,10 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
     return 0;
 }
 
+extern struct thdpool *gbl_sqlengine_thdpool;
+
+pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
                                   int register_timeoutms)
 {
@@ -429,20 +433,33 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     if (retry <= 0) {
         retry = 1;
     }
+
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
         if (register_timeoutms) {
             if (retry == 0) {
                 luabb_error(L, sp, " trigger:%s registration timeout %dms",
                             reg->spname, register_timeoutms);
-                return -2;
+                rc = -2;
+                goto out;
             }
             --retry;
         }
         if (check_retry_conditions(L, 1) != 0) {
-            return luabb_error(L, sp, sp->error);
+            rc = luabb_error(L, sp, sp->error);
+            goto out;
         }
         sleep(1);
     }
+
+out:
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     return rc;
 }
 
@@ -1115,10 +1132,10 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
     }
     // now, actually create the temp table
-    *lk = malloc(sizeof(pthread_mutex_t));
+    *lk = calloc(1, sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW)
         ;
     comdb2_set_tmptbl_lk(NULL);
     unlock_schema_lk();
@@ -1127,6 +1144,12 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     if (rc == SQLITE_DONE) {
         return 0;
     } else {
+        logmsg(LOGMSG_ERROR, "%s: FAILED ddl={%s}, rc=%d\n",
+                __func__, ddl, rc);
+
+        Pthread_mutex_destroy(*lk);
+        free(*lk);
+        *lk = NULL;
         luabb_error(lua, sp, sqlite3ErrStr(rc));
     }
 out:
@@ -1232,7 +1255,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
-    int rc = sqlite3_step(stmt);
+    int rc = sqlite3_maybe_step(clnt, stmt);
 
     if (rc == SQLITE_DONE) {
         return rc;
@@ -2207,7 +2230,7 @@ static int dbtable_insert(Lua lua)
     }
     lua_pop(lua, 1); /* Keep just dbtable on stack. */
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW)
         ;
 
     if (rc == SQLITE_DONE) rc = 0;
@@ -2262,7 +2285,7 @@ static int dbtable_copyfrom(Lua lua)
         return rc;
     }
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW)
         ;
 
     sqlite3_finalize(stmt);
@@ -3148,7 +3171,7 @@ static int dbstmt_exec(Lua lua)
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW)
         ;
     dbstmt->rows_changed = sqlite3_changes(sqldb);
     if (rc == SQLITE_DONE) {
@@ -3185,7 +3208,7 @@ static int dbstmt_emit(Lua L)
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
     int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
         if (l_send_back_row(L, stmt, cols) != 0) {
             rc = -1;
             break;
@@ -3340,7 +3363,7 @@ int db_csvcopy(Lua lua)
           }
       	  if (csv.cTerm == 0) break;
         }
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
+        while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) ;
 
         for (int i = 0; i < pos-1; i++) {
             free(b_val[i]);
@@ -3404,7 +3427,7 @@ static int db_exec(Lua lua)
     // a write stmt - run it now
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3 *sqldb = getdb(sp);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW)
         ;
     if (rc == SQLITE_DONE) {
         dbstmt->rows_changed = sqlite3_changes(sqldb);
