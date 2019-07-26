@@ -527,6 +527,7 @@ struct sqlclntstate {
      * the i/o thread's buf */
     char *sql;
     char *zNormSql;
+    uint64_t cpu_cycles;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -1184,6 +1185,10 @@ struct query_stats {
     int64_t npreads;
     int64_t npwrites;
 };
+
+uint64_t get_cpu_cycle_count();
+double get_cpu_cycle_freq();
+
 int get_query_stats(struct query_stats *stats);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);

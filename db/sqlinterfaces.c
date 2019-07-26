@@ -110,6 +110,10 @@
 
 #include "dohsql.h"
 
+#if defined(__GNUC__) && (defined(i386) || defined(__i386__) || defined(__x86_64__))
+#include <x86intrin.h>
+#endif
+
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
@@ -234,6 +238,31 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
 
     free(s);
     return 0;
+}
+
+uint64_t get_cpu_cycle_count()
+{
+#if defined(__GNUC__) && (defined(i386) || defined(__i386__) || defined(__x86_64__))
+    return __rdtsc();
+#else
+    static uint64_t count = 0;
+    return ATOMIC_ADD(count, 1);
+#endif
+}
+
+double get_cpu_cycle_freq()
+{
+    static double freq = 0.0;
+    if (freq == 0.0) {
+        struct timespec req;
+        memset(&req, 0, sizeof(struct timespec));
+        req.tv_nsec = 100000; /* 10ms */
+        uint64_t y1 = get_cpu_cycle_count();
+        nanosleep(&req, NULL);
+        uint64_t y2 = get_cpu_cycle_count();
+        freq = (double)(y2 - y1) / (double)req.tv_nsec;
+    }
+    return freq;
 }
 
 int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
@@ -868,7 +897,9 @@ int sqlite3_maybe_step(
       return SQLITE_DONE;
     }
   }
+  uint64_t cycles = get_cpu_cycle_count();
   clnt->step_rc = sqlite3_step(stmt);
+  clnt->cpu_cycles += (get_cpu_cycle_count() - cycles);
   return clnt->step_rc;
 }
 
@@ -4692,6 +4723,8 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     bzero(&clnt->osql.fdbtimes, sizeof(fdbtimings_t));
     clnt->osql.timings.query_received = osql_log_time();
 
+    clnt->cpu_cycles = 0;
+
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
 
@@ -4834,6 +4867,11 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     }
 
 done:
+    logmsg(LOGMSG_DEBUG,
+           "%s: CPU usage was %llu cycles / %.02f nanoseconds for: {%s}\n",
+           __func__, (unsigned long long int)clnt->cpu_cycles,
+           ((double)clnt->cpu_cycles / get_cpu_cycle_freq()), clnt->sql);
+
     if (self)
         thrman_where(self, "query done");
     return clnt->query_rc;
@@ -5145,6 +5183,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->file = 0;
     clnt->offset = 0;
     clnt->enque_timeus = clnt->deque_timeus = 0;
+    clnt->cpu_cycles = 0;
     reset_clnt_flags(clnt);
 
     clnt->ins_keys = 0ULL;
