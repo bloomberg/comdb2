@@ -48,6 +48,8 @@
 #include "comdb2_pthread_create.h"
 #endif
 
+int gbl_random_thdpool_work_timeout = 0;
+
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
@@ -596,9 +598,18 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     } else {
         struct workitem *next;
         while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
-            if (thd->pool->maxqueueagems > 0 &&
+            int force_timeout = 0;
+            if ((thd->pool->maxqueueagems > 0) &&
+                gbl_random_thdpool_work_timeout &&
+                !(rand() % gbl_random_thdpool_work_timeout)) {
+                force_timeout = 1;
+                logmsg(LOGMSG_WARN,
+                       "%s: forcing a random work item timeout\n",
+                       __func__);
+            }
+            if (force_timeout || (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - next->queue_time_ms >
-                    thd->pool->maxqueueagems) {
+                    thd->pool->maxqueueagems)) {
                 if (thd->pool->dque_fn)
                     thd->pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {

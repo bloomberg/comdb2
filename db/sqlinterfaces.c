@@ -4629,7 +4629,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* we just mark the client done here, with error */
         clnt->query_rc = CDB2ERR_IO_ERROR;
-        clnt->done = 1; /* that's gonna revive appsock thread */
+        clean_queries_not_cached_in_srs(clnt); /* that's gonna revive appsock thread */
         break;
     }
     bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
