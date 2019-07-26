@@ -1750,7 +1750,6 @@ struct cursor_track {
     unsigned nframes;
     u_int32_t lockerid;
 };
-extern pthread_key_t DBG_FREE_CURSOR;
 
 
 struct __dbc {

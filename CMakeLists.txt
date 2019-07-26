@@ -106,8 +106,13 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wignored-qualifiers")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-stringop-truncation")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-bounds")
+endif()
+
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 8.0 )
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-stringop-truncation")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-bounds")
+  endif()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)

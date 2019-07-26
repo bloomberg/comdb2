@@ -30,6 +30,7 @@ set all_graphs {
          create-proc
          create-lua-func
          create-time-part
+         create-view
          drop
          truncate
          analyze
@@ -387,6 +388,9 @@ set all_graphs {
     {line AS /partition-name PERIOD {or 'DAILY' 'WEEKLY' 'MONTHLY' 'YEARLY'}}
     {line RETENTION /numeric-literal START /datetime-literal}
   }
+  create-view {line
+    {line CREATE VIEW {opt IF NOT EXISTS} /view-name AS /select-stmt}
+  }
   drop {
     line DROP {or
       {line TABLE {opt IF EXISTS} /table-name}
@@ -395,6 +399,7 @@ set all_graphs {
         {line {or TRIGGER CONSUMER} /procedure-name}
         {line {or SCALAR AGGREGATE} FUNCTION /procedure-name}}}
       {line TIME PARTITION /partition-name}
+      {line VIEW {opt IF EXISTS} /view-name}
     }
   }
   truncate {

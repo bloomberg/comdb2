@@ -1514,6 +1514,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("random_thdpool_work_timeout",
+                 "Force a random thread pool work item timeout 1/this many "
+                 "times.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_thdpool_work_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dohsql_disable",
                  "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
                  &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
@@ -1724,6 +1730,24 @@ REGISTER_TUNABLE("serialize_reads_like_writes",
                  "Send read-only multi-statement schedules to the master.  "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_warn_thresh_sec",
+                 "Warn if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_warn_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
+                 "SIGABRT if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("snapshot_serial_verify_retry",
+                 "Automatic retries on verify errors for clients that haven't "
+                 "read results.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

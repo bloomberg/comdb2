@@ -152,7 +152,20 @@ static const char *usage_text =
     " * Query db by connecting to a specific server:\n"
     "     cdb2sql mydb --host node1 'select 1'\n"
     " * Query db by connecting to a known set of servers/ports:\n"
-    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n";
+    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
+    "\n"
+    "Interactive session commands:\n"
+    "@cdb2_close          Close connection (calls cdb2_close())\n"
+    "@desc      tblname   Describe a table\n"
+    "@hexblobs            Display blobs in hexadecimal format\n"
+    "@ls        tables    List tables\n"
+    "@ls        systables List system tables\n"
+    "@ls        views     List views\n"
+    "@redirect  [file]    Redirect output to a file\n"
+    "@row_sleep number    Sleep for this many secs between printing rows\n"
+    "@send      command   Send a command via 'sys.cmd.send()'\n"
+    "@strblobs            Display blobs as strings\n"
+    "@time                Toggle between time modes\n";
 
 void cdb2sql_usage(int exit_val)
 {
@@ -179,7 +192,8 @@ const char *level_one_words[] = {
 };
 
 const char *char_atglyph_words[] = {
-    "desc", "ls", "send", NULL, // must be terminated by NULL
+    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
+    "send",       "strblobs", "time",     NULL, // must be terminated by NULL
 };
 
 static char *char_atglyph_generator(const char *text, int state)
@@ -614,6 +628,27 @@ extern void REPORT_COSTS(void);
 static void (*enable_costs)(void) = ENABLE_COSTS;
 static void (*report_costs)(void) = REPORT_COSTS;
 
+int list_tables()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT tablename FROM comdb2_tables order by tablename";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
+
+int list_systables()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT name FROM comdb2_systables order by name";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
+
+int list_views()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT name FROM comdb2_views order by name";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
+
 static int process_escape(const char *cmdstr)
 {
     char copy[256];
@@ -686,14 +721,11 @@ static int process_escape(const char *cmdstr)
     } else if ((strcasecmp(tok, "ls") == 0) || (strcasecmp(tok, "list") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok || strcasecmp(tok, "tables") == 0) {
-            int start_time_ms, run_time_ms;
-            const char *sql =
-                "SELECT tablename FROM comdb2_tables order by tablename";
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            list_tables();
         } else if (strcasecmp(tok, "systables") == 0) {
-            int start_time_ms, run_time_ms;
-            const char *sql = "SELECT name FROM comdb2_systables order by name";
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            list_systables();
+        } else if (strcasecmp(tok, "views") == 0) {
+            list_views();
         } else {
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);
             return -1;
@@ -703,13 +735,15 @@ static int process_escape(const char *cmdstr)
         if (tok) {
             int start_time_ms, run_time_ms;
             char sql[1024];
-            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')", tok);
+            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')",
+                     tok);
             run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
         } else {
             fprintf(stderr, "need command to @send\n");
             return -1;
         }
-    } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
+    } else if ((strcasecmp(tok, "desc") == 0) ||
+               (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "table name required\n");

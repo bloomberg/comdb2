@@ -789,10 +789,12 @@ exec procedure sys.cmd.verify("t1")
 select 2
 exec procedure sys.cmd.verify()
 select 3
-exec procedure sys.cmd.verify(\"nonexistent\")
+exec procedure sys.cmd.verify('')
 select 4
-exec procedure sys.cmd.verify("nonexistent")
+exec procedure sys.cmd.verify(\"nonexistent\")
 select 5
+exec procedure sys.cmd.verify("nonexistent")
+select 6
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
@@ -1293,8 +1295,6 @@ create lua scalar function no_ddl_proc1
 create lua aggregate function no_ddl_proc2
 create lua consumer no_ddl_proc1 on (table no_ddl_t1 for insert)
 create table comdb2_logical_cron (name cstring(128) primary key, value int)$$
-create table test_drop_tp_0(i int)$$
-create time partition on test_drop_tp_0 as test_drop_tp period 'manual' retention 2 start '1'
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
@@ -1344,7 +1344,6 @@ local function main()
         "DROP LUA TRIGGER no_ddl_proc1",
         "CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)",
         "DROP LUA CONSUMER no_ddl_proc1",
-        "DROP TIME PARTITION test_drop_tp",
     }
 
     db:column_type("int", 1)

@@ -962,14 +962,22 @@ int sqlite3_close_serial(sqlite3 **ppDb)
    since a next is effectively a find, but we'll overlook that here
    since we're moving towards cursors these days. Temp table
    reads/writes should also be considered more expensive if the
-   temp table spills to disk, etc. */
+   temp table spills to disk, etc.
+
+   Previously, the following formula was (presumably) used in this
+   function:
+
+                      (   thd->nwrite  * 100.0)
+                    + (    thd->nfind  *  10.0)
+                    + (    thd->nmove  *   1.0)
+                    + (thd->ntmpwrite  *   0.2)
+                    + ( thd->ntmpread  *   0.1)
+
+   Interestingly, the "nblobs" field was incremented (in sqlglue.c)
+   but not used by this formula (nor was it used anywhere else).
+*/
 double query_cost(struct sql_thread *thd)
 {
-#if 0
-    return (double) thd->nwrite * 100 + (double) thd->nfind * 10 + 
-        (double) thd->nmove * 1 + (double) thd->ntmpwrite * 0.2 + 
-        (double) thd->ntmpread * 0.1;
-#endif
     return thd->cost;
 }
 
@@ -1042,6 +1050,16 @@ static void clear_cost(struct sql_thread *thd)
         thd->had_tablescans = 0;
         thd->had_temptables = 0;
     }
+}
+
+static void reset_sql_steps(struct sql_thread *thd)
+{
+    thd->nmove = thd->nfind = thd->nwrite = 0;
+}
+
+static int get_sql_steps(struct sql_thread *thd)
+{
+    return thd->nmove + thd->nfind + thd->nwrite;
 }
 
 static void add_steps(struct sqlclntstate *clnt, double steps)
@@ -1129,11 +1147,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
-        rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+        rawnodestats->sql_steps += get_sql_steps(thd);
         time_metric_add(rawnodestats->svc_time, h->time);
     }
 
-    thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
+    reset_sql_steps(thd);
 
     if (clnt->conninfo.pename[0]) {
         h->conn = clnt->conninfo;
@@ -1309,9 +1327,21 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     return 0;
 }
 
+static inline void set_asof_snapshot(struct sqlclntstate *clnt, int val,
+                                     const char *func, int line)
+{
+    clnt->is_asof_snapshot = val;
+}
+
+static inline int get_asof_snapshot(struct sqlclntstate *clnt)
+{
+    return clnt->is_asof_snapshot;
+}
+
 static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
+
     if (strlen(clnt->sql) > 6)
         epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
 
@@ -1322,8 +1352,15 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
         return -1;
     } else {
         clnt->snapshot = epoch;
+        set_asof_snapshot(clnt, (epoch != 0), __func__, __LINE__);
     }
     return 0;
+}
+
+void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
+                             const char *func, int line)
+{
+    clnt->sent_data_to_client = val;
 }
 
 /**
@@ -1334,6 +1371,12 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
 static void sql_update_usertran_state(struct sqlclntstate *clnt)
 {
     const char *sql = clnt->sql;
+
+    if (!clnt->in_client_trans) {
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
+        set_sent_data_to_client(clnt, 0, __func__, __LINE__);
+        set_asof_snapshot(clnt, 0, __func__, __LINE__);
+    }
 
     if (!sql)
         return;
@@ -1520,11 +1563,40 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
-inline int replicant_can_retry(struct sqlclntstate *clnt)
+int gbl_snapshot_serial_verify_retry = 1;
+
+inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
 {
+    if (clnt->verifyretry_off)
+        return 0;
+
+    if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+        !get_asof_snapshot(clnt) && gbl_snapshot_serial_verify_retry)
+        return !clnt->sent_data_to_client;
+
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           clnt->verifyretry_off == 0;
+           clnt->dbtran.mode != TRANLEVEL_SERIAL;
+}
+
+static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
+{
+    if (clnt->verifyretry_off)
+        return 0;
+
+    if (clnt->dbtran.mode == TRANLEVEL_SERIAL)
+        assert(rc != CDB2ERR_VERIFY_ERROR);
+
+    /* Any isolation level can retry if nothing has been read */
+    if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
+        !clnt->sent_data_to_client && !get_asof_snapshot(clnt) &&
+        gbl_snapshot_serial_verify_retry)
+        return 1;
+
+    /* Verify error can be retried in reccom or lower */
+    return (rc == CDB2ERR_VERIFY_ERROR) &&
+           (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
+           (clnt->dbtran.mode != TRANLEVEL_SERIAL);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -1979,13 +2051,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
         }
     } else {
-        /* error */
-
-        /* if this is a verify error and we are not running in
-           snapshot/serializable mode, repeat this request ad nauseam
-           (Alex and Sam made me do it) */
-        if (rc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
-            !clnt->has_recording && clnt->osql.replay != OSQL_RETRY_LAST) {
+        /* If this is a verify or serializable error and the client hasn't
+         * read any data then it is safe to retry */
+        int can_retry = replicant_can_retry_rc(clnt, rc);
+        if (can_retry && !clnt->has_recording &&
+            clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
                         "Fail to add commit to transaction replay session\n");
@@ -2000,7 +2070,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
 
         /* last retry */
-        if (rc == CDB2ERR_VERIFY_ERROR &&
+        if (can_retry &&
             (clnt->osql.replay == OSQL_RETRY_LAST || clnt->verifyretry_off)) {
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done (hit last) sendresp=%d\n",
@@ -2008,12 +2078,18 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
-        else if (rc != CDB2ERR_VERIFY_ERROR) {
+        else if (!can_retry) {
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
                                                  "(non verify error rc=%d) "
                                                  "sendresp=%d\n",
                         (clnt->sql) ? clnt->sql : "(???.)", rc, sendresponse);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+        } else {
+            assert(can_retry && clnt->has_recording &&
+                   clnt->osql.replay == OSQL_RETRY_NONE);
+            if (!can_retry || !clnt->has_recording ||
+                clnt->osql.replay != OSQL_RETRY_NONE)
+                abort();
         }
 
         if (rc == SQLITE_TOOBIG) {
@@ -2789,7 +2865,9 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* sql thread stats */
     thd->sqlthd->startms = comdb2_time_epochms();
     thd->sqlthd->stime = comdb2_time_epoch();
-    thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite = 0;
+
+    /* stats added to rawnodestats->sql_steps */
+    reset_sql_steps(thd->sqlthd);
 
     /* reqlog */
     setup_reqlog(thd, clnt);
@@ -3440,9 +3518,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 {
     int rc;
 
-    if (!clnt->in_client_trans)
-        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
-
     sql_update_usertran_state(clnt);
 
     switch (clnt->ctrl_sqlengine) {
@@ -3553,6 +3628,11 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
+    /* TODO: we can be more precise and retry things at a later LSN so long as
+     * nothing has overwritten the original readsets */
+    if (clnt->isselect || is_with_statement(clnt->sql)) {
+        set_sent_data_to_client(clnt, 1, __func__, __LINE__);
+    }
     clnt->has_recording |= v->recording;
     clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
@@ -3593,8 +3673,8 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             irc = (clnt->osql.error_is_remote)
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
-            if (irc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
-                !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
+            if (replicant_can_retry_rc(clnt, irc) && !clnt->has_recording &&
+                clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
         }
@@ -3602,13 +3682,13 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
         if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
             /* if this is still a verify error but we tried to many times,
                send error back anyway by resetting the replay field */
-            if (irc == CDB2ERR_VERIFY_ERROR &&
+            if (replicant_can_retry_rc(clnt, irc) &&
                 clnt->osql.replay == OSQL_RETRY_LAST) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is still an error, but not verify, pass it back to
                client */
-            else if (irc && irc != CDB2ERR_VERIFY_ERROR) {
+            else if (irc && !replicant_can_retry_rc(clnt, irc)) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             }
             /* if this is a successful retrial of a previous verified-failed
@@ -3780,8 +3860,7 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
     }
 
     if (thd->sqlthd)
-        thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
-            thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
+        reset_sql_steps(thd->sqlthd);
 
     clnt->had_errors = 1;
 
@@ -4578,7 +4657,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* we just mark the client done here, with error */
         clnt->query_rc = CDB2ERR_IO_ERROR;
-        clnt->done = 1; /* that's gonna revive appsock thread */
+        clean_queries_not_cached_in_srs(clnt); /* that's gonna revive appsock thread */
         break;
     }
     bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
@@ -5110,6 +5189,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
+    set_sent_data_to_client(clnt, 0, __func__, __LINE__);
+    set_asof_snapshot(clnt, 0, __func__, __LINE__);
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)

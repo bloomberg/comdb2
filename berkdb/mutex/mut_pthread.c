@@ -20,6 +20,7 @@ static const char revid[] = "$Id: mut_pthread.c,v 11.57 2003/05/05 19:55:03 bost
 #endif
 
 #include "db_int.h"
+#include "locks_wrap.h"
 
 #include <btree/bt_prefix.h>
 
@@ -116,9 +117,7 @@ __db_pthread_mutex_init(dbenv, mutexp, flags)
 			mutexattrp = &mutexattr;
 		}
 
-		if (ret == 0) {
-			ret = pthread_mutex_init(&mutexp->mutex, mutexattrp);
-		}
+		Pthread_mutex_init(&mutexp->mutex, mutexattrp);
 		if (mutexattrp != NULL)
 			pthread_mutexattr_destroy(mutexattrp);
 		if (ret == 0 && LF_ISSET(MUTEX_SELF_BLOCK)) {
@@ -214,7 +213,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 	DB_ENV *dbenv;
 	DB_MUTEX *mutexp;
 {
-	int i, ret, waited;
+	int waited;
 
 	if (F_ISSET(dbenv, DB_ENV_NOLOCKING) || F_ISSET(mutexp, MUTEX_IGNORE))
 		return (0);
@@ -227,8 +226,9 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 		if (pthread_mutex_trylock(&mutexp->mutex) == 0)
 			break;
 
-	if (nspins == 0 && (ret = pthread_mutex_lock(&mutexp->mutex)) != 0)
-		goto err;
+	if (nspins == 0) { 
+        Pthread_mutex_lock(&mutexp->mutex); 
+    }
 #else
 	/*
 	 * We want to know which mutexes are contentious, but don't want to
@@ -241,32 +241,12 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 		++mutexp->mutex_set_wait;
 	else
 		++mutexp->mutex_set_nowait;
-	if ((ret = pthread_mutex_lock(&mutexp->mutex)) != 0) {
-		goto err;
-	}
+	Pthread_mutex_lock(&mutexp->mutex);
 #endif
 
 	if (F_ISSET(mutexp, MUTEX_SELF_BLOCK)) {
 		for (waited = 0; mutexp->locked != 0; waited = 1) {
-			ret = pthread_cond_wait(&mutexp->cond, &mutexp->mutex);
-			/*
-			 * !!!
-			 * Solaris bug workaround:
-			 * pthread_cond_wait() sometimes returns ETIME -- out
-			 * of sheer paranoia, check both ETIME and ETIMEDOUT.
-			 * We believe this happens when the application uses
-			 * SIGALRM for some purpose, e.g., the C library sleep
-			 * call, and Solaris delivers the signal to the wrong
-			 * LWP.
-			 */
-			if (ret != 0 && ret != EINTR &&
-#ifdef ETIME
-			    ret != ETIME &&
-#endif
-			    ret != ETIMEDOUT) {
-				(void)pthread_mutex_unlock(&mutexp->mutex);
-				return (ret);
-			}
+			Pthread_cond_wait(&mutexp->cond, &mutexp->mutex);
 		}
 
 		if (waited)
@@ -279,21 +259,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 #else
 		mutexp->locked = 1;
 #endif
-		/*
-		 * According to HP-UX engineers contacted by Netscape,
-		 * pthread_mutex_unlock() will occasionally return EFAULT
-		 * for no good reason on mutexes in shared memory regions,
-		 * and the correct caller behavior is to try again.  Do
-		 * so, up to PTHREAD_UNLOCK_ATTEMPTS consecutive times.
-		 * Note that we don't bother to restrict this to HP-UX;
-		 * it should be harmless elsewhere. [#2471]
-		 */
-		i = PTHREAD_UNLOCK_ATTEMPTS;
-		do {
-			ret = pthread_mutex_unlock(&mutexp->mutex);
-		} while (ret == EFAULT && --i > 0);
-		if (ret != 0)
-			goto err;
+        Pthread_mutex_unlock(&mutexp->mutex);
 	} else {
 #ifdef COMDB2_MTX_SPIN
 		if (nspins == dbenv->tas_spins)
@@ -317,10 +283,6 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 #endif
 	}
 	return (0);
-
-err:	__db_err(dbenv, "unable to lock mutex at %p : %s", &mutexp->mutex,
-	    strerror(ret));
-	return (ret);
 }
 
 /*
@@ -334,8 +296,6 @@ __db_pthread_mutex_unlock(dbenv, mutexp)
 	DB_ENV *dbenv;
 	DB_MUTEX *mutexp;
 {
-	int i, ret;
-
 	if (F_ISSET(dbenv, DB_ENV_NOLOCKING) || F_ISSET(mutexp, MUTEX_IGNORE))
 		return (0);
 
@@ -345,27 +305,16 @@ __db_pthread_mutex_unlock(dbenv, mutexp)
 #endif
 
 	if (F_ISSET(mutexp, MUTEX_SELF_BLOCK)) {
-		if ((ret = pthread_mutex_lock(&mutexp->mutex)) != 0)
-			goto err;
+		Pthread_mutex_lock(&mutexp->mutex);
 
 		mutexp->locked = 0;
 
-		if ((ret = pthread_cond_signal(&mutexp->cond)) != 0)
-			return (ret);
-
+		Pthread_cond_signal(&mutexp->cond);
 	} else
 		mutexp->locked = 0;
 
-	/* See comment above;  workaround for [#2471]. */
-	i = PTHREAD_UNLOCK_ATTEMPTS;
-	do {
-		ret = pthread_mutex_unlock(&mutexp->mutex);
-	} while (ret == EFAULT && --i > 0);
-	return (ret);
-
-err:	__db_err(dbenv, "unable to unlock mutex at %p: %s", &mutexp->mutex,
-	    strerror(ret));
-	return (ret);
+	Pthread_mutex_unlock(&mutexp->mutex);
+	return (0);
 }
 
 /*
@@ -378,12 +327,9 @@ int
 __db_pthread_mutex_destroy(mutexp)
 	DB_MUTEX *mutexp;
 {
-	int ret;
-
 	if (F_ISSET(mutexp, MUTEX_IGNORE))
 		return (0);
 
-	if ((ret = pthread_mutex_destroy(&mutexp->mutex)) != 0)
-		__db_err(NULL, "unable to destroy mutex: %s", strerror(ret));
-	return (ret);
+	Pthread_mutex_destroy(&mutexp->mutex);
+	return (0);
 }
