@@ -24,12 +24,6 @@
 #include "plhash.h"
 #include "pthread_wrap_core.h"
 #include "comdb2_atomic.h"
-#include "mem.h"
-
-#ifndef BUILDING_TOOLS
-#include <mem_util.h>
-#include <mem_override.h>
-#endif
 
 enum dbg_lock_pthread_type_t {
   DBG_LOCK_PTHREAD_TYPE_NONE = 0x0,

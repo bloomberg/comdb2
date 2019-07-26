@@ -1,0 +1,2 @@
+sqlenginepool maxagems 600000
+debug.pthread_locks 1
