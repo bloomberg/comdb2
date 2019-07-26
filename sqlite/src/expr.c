@@ -5636,7 +5636,8 @@ char *print_mem(Mem *m){
     case MEM_Str: 
       return sqlite3_mprintf("'%.*q'", m->n, m->z);
     case MEM_Int:
-      return  sqlite3_mprintf("%lld", m->u.i);
+    case MEM_IntReal:
+      return sqlite3_mprintf("%lld", m->u.i);
     case MEM_Real:
       return sqlite3_mprintf("%f", m->u.r);
     case MEM_Blob: {

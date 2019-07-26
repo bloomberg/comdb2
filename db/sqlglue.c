@@ -11881,7 +11881,7 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
                 pTo->zMalloc[pFrom->n] = 0;
                 pTo->z = pTo->zMalloc;
             }
-        } else if (pFrom->flags & MEM_Int) {
+        } else if (pFrom->flags & (MEM_Int | MEM_IntReal)) {
             pTo->u.i = pFrom->u.i;
         }
     }
@@ -12403,7 +12403,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         /* CHECK constraint has passed if we get 1 or NULL. */
         assert(clnt.has_sqliterow);
-        if (sm.min->flags & MEM_Int) {
+        if (sm.min->flags & (MEM_Int | MEM_IntReal)) {
             if (sm.mout->u.i == 0) {
                 /* CHECK constraint failed */
                 rc = i + 1;
