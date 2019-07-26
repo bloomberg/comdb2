@@ -205,8 +205,8 @@ void dbg_pthread_dump(
   int bSummaryOnly
 ){
   pthread_mutex_lock(&dbg_locks_lk);
-  logmsgf(LOGMSG_USER, out, "%s (%s): used %" BBPRIu64
-          ", peak %" BBPRIu64 "\n", __func__, zDesc,
+  logmsgf(LOGMSG_USER, out, "%s (%s): bytes used %" BBPRIu64
+          ", bytes peak %" BBPRIu64 "\n", __func__, zDesc,
           dbg_locks_bytes, dbg_locks_peak_bytes);
   if( bSummaryOnly || dbg_locks==NULL ) goto done;
   hash_for(dbg_locks, dbg_pthread_dump_outer_pair, out);
