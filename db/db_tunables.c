@@ -305,6 +305,7 @@ extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_pthread_locks;
 
 /*
   =========================================================

@@ -1199,6 +1199,9 @@ REGISTER_TUNABLE("debug.omit_blob_write",
                  "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.pthread_locks",
+                 "Enable tracking pthread mutexes and rwlocks. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_pthread_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,

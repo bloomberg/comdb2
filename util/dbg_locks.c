@@ -23,6 +23,7 @@
 #include "bb_stdint.h"
 #include "plhash.h"
 #include "pthread_wrap_core.h"
+#include "comdb2_atomic.h"
 
 #ifndef BUILDING_TOOLS
 #include <mem_util.h>
@@ -66,6 +67,7 @@ typedef struct dbg_lock_pthread_outer_pair_t outer_pair_t;
 typedef struct dbg_lock_pthread_inner_key_t inner_key_t;
 typedef struct dbg_lock_pthread_inner_pair_t inner_pair_t;
 
+int gbl_debug_pthread_locks = 0;
 static uint64_t dbg_locks_bytes = 0;
 static uint64_t dbg_locks_peak_bytes = 0;
 static pthread_mutex_t dbg_locks_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -350,7 +352,7 @@ int dbg_pthread_mutex_lock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_mutex_lock, mutex);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -370,7 +372,7 @@ int dbg_pthread_mutex_trylock(
 ){
   int rc;
   rc = wrap_pthread_mutex_trylock(mutex, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -391,7 +393,7 @@ int dbg_pthread_mutex_timedlock(
 ){
   int rc;
   rc = wrap_pthread_mutex_timedlock(mutex, abs_timeout, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -411,7 +413,7 @@ int dbg_pthread_mutex_unlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_mutex_unlock, mutex);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_remove_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, file, func, line
     );
@@ -429,7 +431,7 @@ int dbg_pthread_rwlock_rdlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_rdlock, rwlock);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -449,7 +451,7 @@ int dbg_pthread_rwlock_wrlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_wrlock, rwlock);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -469,7 +471,7 @@ int dbg_pthread_rwlock_tryrdlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_tryrdlock(rwlock, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -489,7 +491,7 @@ int dbg_pthread_rwlock_trywrlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_trywrlock(rwlock, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -510,7 +512,7 @@ int dbg_pthread_rwlock_timedrdlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_timedrdlock(rwlock, abs_timeout, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -531,7 +533,7 @@ int dbg_pthread_rwlock_timedwrlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_timedwrlock(rwlock, abs_timeout, file, func, line);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -551,7 +553,7 @@ int dbg_pthread_rwlock_unlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_unlock, rwlock);
-  if( rc==0 ){
+  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_remove_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, file, func, line
     );
