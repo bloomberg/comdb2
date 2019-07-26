@@ -165,7 +165,7 @@ static int dbg_pthread_free_inner_pair(
   void *arg
 ){
   if( obj!=NULL ){
-    os_free(obj);
+    free(obj);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
   }
   return 0;
@@ -186,7 +186,7 @@ static int dbg_pthread_free_outer_pair(
       hash_free(locks);
       DBG_LESS_MEMORY(sizeof(hash_t*));
     }
-    os_free(obj);
+    free(obj);
     DBG_LESS_MEMORY(sizeof(outer_pair_t));
   }
   return 0;
@@ -255,7 +255,7 @@ static void dbg_pthread_add_self(
   if( dbg_locks==NULL ) goto done;
   outer_pair_t *opair = hash_find(dbg_locks, &obj);
   if( opair==NULL ){
-    opair = os_calloc(1, sizeof(outer_pair_t));
+    opair = calloc(1, sizeof(outer_pair_t));
     if( opair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(outer_pair_t));
     opair->locks = hash_init(sizeof(inner_key_t));
@@ -269,7 +269,7 @@ static void dbg_pthread_add_self(
   DBG_SET_IKEY(ikey, obj, self, type);
   inner_pair_t *ipair = hash_find(opair->locks, &ikey);
   if( ipair==NULL ){
-    ipair = os_calloc(1, sizeof(inner_pair_t));
+    ipair = calloc(1, sizeof(inner_pair_t));
     if( ipair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(inner_pair_t));
     ipair->key.obj = obj;
@@ -316,7 +316,7 @@ static void dbg_pthread_remove_self(
   if( ipair==NULL ) goto done;
   if( --ipair->nRef==0 ){
     if( hash_del(opair->locks, ipair)!=0 ) abort();
-    os_free(ipair);
+    free(ipair);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
     if( hash_get_num_entries(opair->locks)==0 ){
       if( hash_del(dbg_locks, &obj)!=0 ) abort();
@@ -324,7 +324,7 @@ static void dbg_pthread_remove_self(
       hash_clear(opair->locks);
       hash_free(opair->locks);
       DBG_LESS_MEMORY(sizeof(hash_t*));
-      os_free(opair);
+      free(opair);
       DBG_LESS_MEMORY(sizeof(outer_pair_t));
     }
   }else{
