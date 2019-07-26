@@ -3598,7 +3598,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     /* TODO: we can be more precise and retry things at a later LSN so long as
      * nothing has overwritten the original readsets */
-    if (clnt->isselect || is_with_statement(clnt->sql)) {
+    if (clnt->isselect || is_with_statement(clnt->work.zSql)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
     clnt->has_recording |= v->recording;
