@@ -250,10 +250,10 @@ uint64_t get_cpu_cycle_count()
 #endif
 }
 
-double get_cpu_cycle_freq()
+double get_cpu_cycle_freq(int refresh)
 {
     static double freq = 0.0;
-    if (freq == 0.0) {
+    if (refresh || (freq == 0.0)) {
         struct timespec req;
         memset(&req, 0, sizeof(struct timespec));
         req.tv_nsec = 10000000; /* 10ms */
@@ -4870,7 +4870,7 @@ done:
     logmsg(LOGMSG_USER,
            "%s: CPU usage was %llu cycles / %.02f nanoseconds for: {%s}\n",
            __func__, (unsigned long long int)clnt->cpu_cycles,
-           ((double)clnt->cpu_cycles / get_cpu_cycle_freq()), clnt->sql);
+           ((double)clnt->cpu_cycles / get_cpu_cycle_freq(0)), clnt->sql);
 
     if (self)
         thrman_where(self, "query done");
