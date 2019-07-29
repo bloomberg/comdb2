@@ -17,6 +17,8 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include "locks_wrap.h"
+#ifdef TIMING_ACCOUNTING
+
 #include "plhash.h"
 #include "intern_strings.h"
 
@@ -24,6 +26,11 @@ pthread_mutex_t hlock = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *htimes = NULL;
 unsigned long long totaltime;
 unsigned long long totalcount;
+
+const char *CHR_IXADDK = "CHR_IXADDK";
+const char *CHR_DATADD = "CHR_DATADD";
+const char *CHR_TMPSVOP = "CHR_TMPSVOP";
+
 
 typedef struct {
     const char *name;
@@ -101,7 +108,6 @@ void reset_all_time_accounting()
     hash_for(htimes, reset_time, NULL);
 }
 
-#ifndef NDEBUG
 
 void print_time_accounting(const char *name)
 {
@@ -160,4 +166,44 @@ void cleanup_time_accounting()
     htimes = NULL;
     pthread_mutex_unlock(&hlock);
 }
+
+#else
+
+#ifndef NDEBUG
+
+
+#include "comdb2_atomic.h"
+#include "time_accounting.h"
+
+const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
+
+unsigned long long gbl_chron_times[CHR_MAX];
+
+// add time accounting to appropriate slot
+void accumulate_time(int el, int us)
+{
+    ATOMIC_ADD(gbl_chron_times[el], us);
+}
+
+void reset_time_accounting(int el)
+{
+    XCHANGE(gbl_chron_times[el], 0);
+}
+
+void print_time_accounting(int el)
+{
+    logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", CHR_NAMES[el],
+           gbl_chron_times[el]);
+}
+
+void print_all_time_accounting()
+{
+    logmsg(LOGMSG_USER, "Timing information:\n");
+    for (int i = 0; i < CHR_MAX; i++) {
+        logmsg(LOGMSG_USER, "%s: %lluus\n", CHR_NAMES[i], gbl_chron_times[i]);
+    }
+}
+
+#endif
+
 #endif

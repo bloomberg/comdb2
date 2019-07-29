@@ -7970,8 +7970,8 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
     uint8_t buf[OSQLCOMM_ECHO_TYPE_LEN];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = (p_buf + OSQLCOMM_ECHO_TYPE_LEN);
-    unsigned long long snt;
-    uint64_t nonce;
+    unsigned long long snt = 0;
+    uint64_t nonce = 0;
     int rc;
     int i;
     int j;

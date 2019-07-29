@@ -979,7 +979,7 @@ int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
         return 0;
     }
     int rc;
-    ACCUMULATE_TIMING("ix_addk",
+    ACCUMULATE_TIMING(CHR_IXADDK,
                       rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
                                          genid, rrn, dta, dtalen, isnull););
     return rc;
@@ -1237,7 +1237,7 @@ int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
 {
     int rc;
 
-    ACCUMULATE_TIMING("dat_add",
+    ACCUMULATE_TIMING(CHR_DATADD,
                       rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen,
                                          genid, out_rrn););
 
