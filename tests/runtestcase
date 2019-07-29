@@ -5,8 +5,13 @@
 trap "call_unsetup \"0\"" INT EXIT
 
 is_debug_build() {
-    outver=$($COMDB2_EXE --version | grep -i "\[Debug\]")
-    return $?
+    outver=$($COMDB2_EXE --version 2>&1)
+    echo $outver | grep -i "\[Debug\]" >/dev/null
+    rc=$?
+    if [[ $rc == 0 ]] ; then
+        return 1
+    fi
+    return 0
 }
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}

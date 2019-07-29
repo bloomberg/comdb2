@@ -61,8 +61,11 @@ struct dbg_lock_pthread_inner_pair_t {
 typedef struct dbg_lock_pthread_outer_pair_t outer_pair_t;
 typedef struct dbg_lock_pthread_inner_key_t inner_key_t;
 typedef struct dbg_lock_pthread_inner_pair_t inner_pair_t;
+#endif /* defined(DBG_PTHREAD_LOCKS) */
 
 int gbl_debug_pthread_locks = 0;
+
+#if defined(DBG_PTHREAD_LOCKS)
 static uint64_t dbg_locks_bytes = 0;
 static uint64_t dbg_locks_peak_bytes = 0;
 static pthread_mutex_t dbg_locks_lk = PTHREAD_MUTEX_INITIALIZER;
