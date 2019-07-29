@@ -31,21 +31,21 @@
  * call print_time_accounting(CHR_FUNCTOMEASURE);
  */
 extern int gbl_ready;
+extern __thread int already_timing;
 
 #define ACCUMULATE_TIMING(NAME, CODE)                                          \
     do {                                                                       \
         struct timeval __tv1;                                                  \
         gettimeofday(&__tv1, NULL);                                            \
         CODE;                                                                  \
-        extern __thread int already_timing; \
         if(gbl_ready && !already_timing) { \
-        already_timing = 1; \
-        struct timeval __tv2;                                                  \
-        gettimeofday(&__tv2, NULL);                                            \
-        int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;              \
-        int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                     \
-        accumulate_time(#NAME, __sec_part + __usec_part);                       \
-        already_timing = 0; \
+            already_timing = 1; \
+            struct timeval __tv2;                                                  \
+            gettimeofday(&__tv2, NULL);                                            \
+            int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;              \
+            int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                     \
+            accumulate_time(#NAME, __sec_part + __usec_part);                       \
+            already_timing = 0; \
         } \
     } while (0);
 

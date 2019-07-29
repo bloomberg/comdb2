@@ -48,7 +48,7 @@ int chrono_stop(struct timeval *tv)
 // add time accounting to appropriate slot
 void accumulate_time(const char *name, int us)
 {
-    printf("%s adding %s\n", __func__, name);
+    //printf("%s adding %s\n", __func__, name);
     const char *iptr = intern(name);
     pthread_mutex_lock(&hlock);
     if (!htimes) {
