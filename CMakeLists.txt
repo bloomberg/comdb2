@@ -62,6 +62,7 @@ if(WITH_RDKAFKA)
   add_definitions(-DWITH_RDKAFKA)
 endif()
 
+option(TIMING_ACCOUNTING "Turn ON to compile with timing accounting" ON)
 if(TIMING_ACCOUNTING)
   add_definitions(-DTIMING_ACCOUNTING)
 endif()
