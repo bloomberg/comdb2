@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-int gbl_debug_pthread_locks = 0; /* TUNABLE */
+int gbl_debug_pthread_locks = 1; /* TUNABLE */
 
 #if defined(DBG_PTHREAD_LOCKS)
 
