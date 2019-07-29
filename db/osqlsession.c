@@ -507,10 +507,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     int rc = 0;
     int is_msg_done = 0;
     struct errstat *perr;
-    uuidstr_t us;
-
-    logmsg(LOGMSG_INFO, "%s session [%llu:%s]\n", __func__, rqid,
-           comdb2uuidstr(uuid, us));
 
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
