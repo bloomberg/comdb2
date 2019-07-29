@@ -214,7 +214,7 @@ done:
 static void dbg_pthread_check_init(void){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ){
-    dbg_locks = hash_init(sizeof(void *));
+    dbg_locks = hash_setalloc_init(malloc, free, 0, sizeof(void *));
     if( dbg_locks==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(hash_t*));
   }
@@ -258,7 +258,7 @@ static void dbg_pthread_add_self(
     opair = calloc(1, sizeof(outer_pair_t));
     if( opair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(outer_pair_t));
-    opair->locks = hash_init(sizeof(inner_key_t));
+    opair->locks = hash_setalloc_init(malloc, free, 0, sizeof(inner_key_t));
     if( opair->locks==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(hash_t*));
     opair->obj = obj;
