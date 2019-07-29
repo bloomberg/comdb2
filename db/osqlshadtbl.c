@@ -3295,7 +3295,7 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
-    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+    return listc_empty(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
            !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl;
 }
 
