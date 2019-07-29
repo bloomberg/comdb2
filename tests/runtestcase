@@ -4,6 +4,11 @@
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
+is_debug_build() {
+    outver=$($COMDB2_EXE --version | grep -i "\[Debug\]")
+    return $?
+}
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -11,7 +16,7 @@ if [[ "$(arch)" == "armv7l" ]] ; then
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
-elif [[ $COMDB2_EXE --version | grep -i "\[Debug\]" >/dev/null ]]; then
+elif [[ is_debug_build ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
 fi
