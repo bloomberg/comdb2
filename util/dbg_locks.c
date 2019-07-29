@@ -13,6 +13,9 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+
+int gbl_debug_pthread_locks = 0; /* TUNABLE */
+
 #if defined(DBG_PTHREAD_LOCKS)
 
 #include <stdio.h>
@@ -61,11 +64,7 @@ struct dbg_lock_pthread_inner_pair_t {
 typedef struct dbg_lock_pthread_outer_pair_t outer_pair_t;
 typedef struct dbg_lock_pthread_inner_key_t inner_key_t;
 typedef struct dbg_lock_pthread_inner_pair_t inner_pair_t;
-#endif /* defined(DBG_PTHREAD_LOCKS) */
 
-int gbl_debug_pthread_locks = 0;
-
-#if defined(DBG_PTHREAD_LOCKS)
 static uint64_t dbg_locks_bytes = 0;
 static uint64_t dbg_locks_peak_bytes = 0;
 static pthread_mutex_t dbg_locks_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -236,6 +235,7 @@ void dbg_pthread_term(void){
   hash_free(dbg_locks);
   DBG_LESS_MEMORY(sizeof(hash_t*));
   dbg_locks = NULL;
+  XCHANGE(gbl_debug_pthread_locks, 0);
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
   dbg_pthread_dump(stdout, "after cleanup", 1);

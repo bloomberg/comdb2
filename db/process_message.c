@@ -83,7 +83,6 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_global.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
-#include "sp.h"
 #include "dbg_locks_core.h"
 
 extern int gbl_exit_alarm_sec;

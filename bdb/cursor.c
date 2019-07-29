@@ -2169,8 +2169,6 @@ static void *pglogs_asof_thread(void *arg)
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
         DB_LSN max_commit_lsn_in_queue = {0};
 
-        if (bdb_state->exiting) break; /* shutting down, stop now... */
-
         // Get commit list
         Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         new_asof_lsn = bdb_asof_current_lsn;

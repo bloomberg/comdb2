@@ -5258,6 +5258,11 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_FATAL,
                        "%s: truncating log for %d seconds, aborting\n",
                        __func__, stopped_count);
+
+#if defined(DBG_PTHREAD_LOCKS)
+                dbg_pthread_dump(stdout, "watcher_thread long_log_truncation_abort_thresh_sec", 0);
+#endif
+
                 abort();
             }
             if (stopped_count > gbl_long_log_truncation_warn_thresh_sec) {
@@ -5300,6 +5305,11 @@ void *watcher_thread(void *arg)
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
             lock_info_lockers(stdout, bdb_state);
+
+#if defined(DBG_PTHREAD_LOCKS)
+            dbg_pthread_dump(stdout, "watcher_thread rep_lock_wait_time_ms", 0);
+#endif
+
             abort();
         }
 
@@ -5423,7 +5433,7 @@ void *watcher_thread(void *arg)
                 lock_info_lockers(stdout, bdb_state);
 
 #if defined(DBG_PTHREAD_LOCKS)
-                dbg_pthread_dump(stdout, "rep_process_message", 0);
+                dbg_pthread_dump(stdout, "watcher_thread rep_process_message_start_time", 0);
 #endif
             }
         }
