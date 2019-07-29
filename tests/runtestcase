@@ -11,6 +11,9 @@ if [[ "$(arch)" == "armv7l" ]] ; then
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
+elif [[ $COMDB2_EXE --version | grep -i "\[Debug\]" >/dev/null ]]; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 3 + 2))m
 fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
