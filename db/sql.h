@@ -1187,7 +1187,7 @@ struct query_stats {
 };
 
 uint64_t get_cpu_cycle_count();
-double get_cpu_cycle_freq();
+double get_cpu_cycle_freq(int refresh);
 
 int get_query_stats(struct query_stats *stats);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
