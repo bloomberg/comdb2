@@ -256,7 +256,7 @@ double get_cpu_cycle_freq()
     if (freq == 0.0) {
         struct timespec req;
         memset(&req, 0, sizeof(struct timespec));
-        req.tv_nsec = 100000; /* 10ms */
+        req.tv_nsec = 10000000; /* 10ms */
         uint64_t y1 = get_cpu_cycle_count();
         nanosleep(&req, NULL);
         uint64_t y2 = get_cpu_cycle_count();
@@ -4867,7 +4867,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     }
 
 done:
-    logmsg(LOGMSG_DEBUG,
+    logmsg(LOGMSG_USER,
            "%s: CPU usage was %llu cycles / %.02f nanoseconds for: {%s}\n",
            __func__, (unsigned long long int)clnt->cpu_cycles,
            ((double)clnt->cpu_cycles / get_cpu_cycle_freq()), clnt->sql);
