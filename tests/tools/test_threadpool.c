@@ -10,6 +10,7 @@
 
 int gbl_disable_exit_on_thread_error;
 int gbl_throttle_sql_overload_dump_sec;
+int gbl_ready;
 
 void register_tunable(void *tunable) 
 {
