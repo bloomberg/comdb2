@@ -250,17 +250,30 @@ uint64_t get_cpu_cycle_count()
 #endif
 }
 
+/*
+** NOTE: The value returned by this function is in Hertz, e.g. for a 3.2GHz
+**       processor, the value returned should be approximately 3200000000.
+*/
 double get_cpu_cycle_freq(int refresh)
 {
+#define NS_PER_MS  (1000000)
+#define MS_PER_SEC (1000)
+#define NS_PER_SEC ((double)(NS_PER_MS * MS_PER_SEC))
+
     static double freq = 0.0;
     if (refresh || (freq == 0.0)) {
         struct timespec req;
         memset(&req, 0, sizeof(struct timespec));
-        req.tv_nsec = 10000000; /* 10ms */
+        req.tv_nsec = 50 * NS_PER_MS; /* 50ms */
         uint64_t y1 = get_cpu_cycle_count();
         nanosleep(&req, NULL);
         uint64_t y2 = get_cpu_cycle_count();
-        freq = (double)(y2 - y1) / (double)req.tv_nsec;
+        freq = (double)(y2 - y1) / (double)req.tv_nsec * NS_PER_SEC;
+        fprintf(stdout,
+               "%s: spent %llu CPU cycles in %ld nanoseconds, "
+               "calculated CPU frequency is approximately %.02fHz\n",
+               __func__, (unsigned long long int)(y2 - y1), req.tv_nsec,
+               freq);
     }
     return freq;
 }
@@ -4870,7 +4883,8 @@ done:
     logmsg(LOGMSG_USER,
            "%s: CPU usage was %llu cycles / %.02f nanoseconds for: {%s}\n",
            __func__, (unsigned long long int)clnt->cpu_cycles,
-           ((double)clnt->cpu_cycles / get_cpu_cycle_freq(0)), clnt->sql);
+           (double)clnt->cpu_cycles / get_cpu_cycle_freq(0) * NS_PER_SEC,
+           clnt->sql);
 
     if (self)
         thrman_where(self, "query done");

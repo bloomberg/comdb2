@@ -5371,6 +5371,9 @@ int main(int argc, char **argv)
     /* clean left over transactions every 5 minutes */
     int clean_mins = 5 * 60 * 1000;
 
+    /* figure out the approximate CPU frequence (if available) */
+    get_cpu_cycle_freq(1);
+
     /* allocate initializer first */
     comdb2ma_init(0, 0);
 
