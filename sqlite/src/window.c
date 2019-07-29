@@ -736,6 +736,7 @@ struct WindowRewrite {
   Window *pWin;
   SrcList *pSrc;
   ExprList *pSub;
+  Table *pTab;
   Select *pSubSelect;             /* Current sub-select, if any */
 };
 
@@ -747,6 +748,8 @@ struct WindowRewrite {
 static int selectWindowRewriteExprCb(Walker *pWalker, Expr *pExpr){
   struct WindowRewrite *p = pWalker->u.pRewrite;
   Parse *pParse = pWalker->pParse;
+  assert( p!=0 );
+  assert( p->pWin!=0 );
 
   /* If this function is being called from within a scalar sub-select
   ** that used by the SELECT statement being processed, only process
@@ -796,6 +799,7 @@ static int selectWindowRewriteExprCb(Walker *pWalker, Expr *pExpr){
         pExpr->op = TK_COLUMN;
         pExpr->iColumn = p->pSub->nExpr-1;
         pExpr->iTable = p->pWin->iEphCsr;
+        pExpr->y.pTab = p->pTab;
       }
 
       break;
@@ -839,17 +843,20 @@ static void selectWindowRewriteEList(
   Window *pWin,
   SrcList *pSrc,
   ExprList *pEList,               /* Rewrite expressions in this list */
+  Table *pTab,
   ExprList **ppSub                /* IN/OUT: Sub-select expression-list */
 ){
   Walker sWalker;
   WindowRewrite sRewrite;
 
+  assert( pWin!=0 );
   memset(&sWalker, 0, sizeof(Walker));
   memset(&sRewrite, 0, sizeof(WindowRewrite));
 
   sRewrite.pSub = *ppSub;
   sRewrite.pWin = pWin;
   sRewrite.pSrc = pSrc;
+  sRewrite.pTab = pTab;
 
   sWalker.pParse = pParse;
   sWalker.xExprCallback = selectWindowRewriteExprCb;
@@ -868,13 +875,18 @@ static void selectWindowRewriteEList(
 static ExprList *exprListAppendList(
   Parse *pParse,          /* Parsing context */
   ExprList *pList,        /* List to which to append. Might be NULL */
-  ExprList *pAppend       /* List of values to append. Might be NULL */
+  ExprList *pAppend,      /* List of values to append. Might be NULL */
+  int bIntToNull
 ){
   if( pAppend ){
     int i;
     int nInit = pList ? pList->nExpr : 0;
     for(i=0; i<pAppend->nExpr; i++){
       Expr *pDup = sqlite3ExprDup(pParse->db, pAppend->a[i].pExpr, 0);
+      if( bIntToNull && pDup && pDup->op==TK_INTEGER ){
+        pDup->op = TK_NULL;
+        pDup->flags &= ~(EP_IntValue|EP_IsTrue|EP_IsFalse);
+      }
       pList = sqlite3ExprListAppend(pParse, pList, pDup);
       if( pList ) pList->a[nInit+i].sortOrder = pAppend->a[i].sortOrder;
     }
@@ -904,17 +916,24 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     ExprList *pSublist = 0;       /* Expression list for sub-query */
     Window *pMWin = p->pWin;      /* Master window object */
     Window *pWin;                 /* Window object iterator */
+    Table *pTab;
+
+    pTab = sqlite3DbMallocZero(db, sizeof(Table));
+    if( pTab==0 ){
+      return SQLITE_NOMEM;
+    }
 
     p->pSrc = 0;
     p->pWhere = 0;
     p->pGroupBy = 0;
     p->pHaving = 0;
+    p->selFlags &= ~SF_Aggregate;
 
     /* Create the ORDER BY clause for the sub-select. This is the concatenation
     ** of the window PARTITION and ORDER BY clauses. Then, if this makes it
     ** redundant, remove the ORDER BY from the parent SELECT.  */
     pSort = sqlite3ExprListDup(db, pMWin->pPartition, 0);
-    pSort = exprListAppendList(pParse, pSort, pMWin->pOrderBy);
+    pSort = exprListAppendList(pParse, pSort, pMWin->pOrderBy, 1);
     if( pSort && p->pOrderBy ){
       if( sqlite3ExprListCompare(pSort, p->pOrderBy, -1)==0 ){
         sqlite3ExprListDelete(db, p->pOrderBy);
@@ -928,15 +947,15 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     pMWin->iEphCsr = pParse->nTab++;
     pParse->nTab += 3;
 
-    selectWindowRewriteEList(pParse, pMWin, pSrc, p->pEList, &pSublist);
-    selectWindowRewriteEList(pParse, pMWin, pSrc, p->pOrderBy, &pSublist);
+    selectWindowRewriteEList(pParse, pMWin, pSrc, p->pEList, pTab, &pSublist);
+    selectWindowRewriteEList(pParse, pMWin, pSrc, p->pOrderBy, pTab, &pSublist);
     pMWin->nBufferCol = (pSublist ? pSublist->nExpr : 0);
 
     /* Append the PARTITION BY and ORDER BY expressions to the to the 
     ** sub-select expression list. They are required to figure out where 
     ** boundaries for partitions and sets of peer rows lie.  */
-    pSublist = exprListAppendList(pParse, pSublist, pMWin->pPartition);
-    pSublist = exprListAppendList(pParse, pSublist, pMWin->pOrderBy);
+    pSublist = exprListAppendList(pParse, pSublist, pMWin->pPartition, 0);
+    pSublist = exprListAppendList(pParse, pSublist, pMWin->pOrderBy, 0);
 
     /* Append the arguments passed to each window function to the
     ** sub-select expression list. Also allocate two registers for each
@@ -944,7 +963,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     ** results.  */
     for(pWin=pMWin; pWin; pWin=pWin->pNextWin){
       pWin->iArgCol = (pSublist ? pSublist->nExpr : 0);
-      pSublist = exprListAppendList(pParse, pSublist, pWin->pOwner->x.pList);
+      pSublist = exprListAppendList(pParse, pSublist, pWin->pOwner->x.pList, 0);
       if( pWin->pFilter ){
         Expr *pFilter = sqlite3ExprDup(db, pWin->pFilter, 0);
         pSublist = sqlite3ExprListAppend(pParse, pSublist, pFilter);
@@ -971,20 +990,23 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     );
     p->pSrc = sqlite3SrcListAppend(pParse, 0, 0, 0);
     if( p->pSrc ){
+      Table *pTab2;
       p->pSrc->a[0].pSelect = pSub;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3SrcListAssignCursors(pParse, p->pSrc, p->recording);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3SrcListAssignCursors(pParse, p->pSrc);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      if( sqlite3ExpandSubquery(pParse, &p->pSrc->a[0]) ){
+      pSub->selFlags |= SF_Expanded;
+      pTab2 = sqlite3ResultSetOfSelect(pParse, pSub);
+      if( pTab2==0 ){
         rc = SQLITE_NOMEM;
       }else{
-        pSub->selFlags |= SF_Expanded;
-        p->selFlags &= ~SF_Aggregate;
-        sqlite3SelectPrep(pParse, pSub, 0);
+        memcpy(pTab, pTab2, sizeof(Table));
+        pTab->tabFlags |= TF_Ephemeral;
+        p->pSrc->a[0].pTab = pTab;
+        pTab = pTab2;
       }
-
       sqlite3VdbeAddOp2(v, OP_OpenEphemeral, pMWin->iEphCsr, pSublist->nExpr);
       sqlite3VdbeAddOp2(v, OP_OpenDup, pMWin->iEphCsr+1, pMWin->iEphCsr);
       sqlite3VdbeAddOp2(v, OP_OpenDup, pMWin->iEphCsr+2, pMWin->iEphCsr);
@@ -993,9 +1015,22 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
       sqlite3SelectDelete(db, pSub);
     }
     if( db->mallocFailed ) rc = SQLITE_NOMEM;
+    sqlite3DbFree(db, pTab);
   }
 
   return rc;
+}
+
+/*
+** Unlink the Window object from the Select to which it is attached,
+** if it is attached.
+*/
+void sqlite3WindowUnlinkFromSelect(Window *p){
+  if( p->ppThis ){
+    *p->ppThis = p->pNextWin;
+    if( p->pNextWin ) p->pNextWin->ppThis = p->ppThis;
+    p->ppThis = 0;
+  }
 }
 
 /*
@@ -1003,6 +1038,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
 */
 void sqlite3WindowDelete(sqlite3 *db, Window *p){
   if( p ){
+    sqlite3WindowUnlinkFromSelect(p);
     sqlite3ExprDelete(db, p->pFilter);
     sqlite3ExprListDelete(db, p->pPartition);
     sqlite3ExprListDelete(db, p->pOrderBy);
@@ -1182,17 +1218,14 @@ void sqlite3WindowChain(Parse *pParse, Window *pWin, Window *pList){
 void sqlite3WindowAttach(Parse *pParse, Expr *p, Window *pWin){
   if( p ){
     assert( p->op==TK_FUNCTION );
-    /* This routine is only called for the parser.  If pWin was not
-    ** allocated due to an OOM, then the parser would fail before ever
-    ** invoking this routine */
-    if( ALWAYS(pWin) ){
-      p->y.pWin = pWin;
-      ExprSetProperty(p, EP_WinFunc);
-      pWin->pOwner = p;
-      if( p->flags & EP_Distinct ){
-        sqlite3ErrorMsg(pParse,
-           "DISTINCT is not supported for window functions");
-      }
+    assert( pWin );
+    p->y.pWin = pWin;
+    ExprSetProperty(p, EP_WinFunc);
+    pWin->pOwner = p;
+    if( (p->flags & EP_Distinct) && pWin->eFrmType!=TK_FILTER ){
+      sqlite3ErrorMsg(pParse,
+          "DISTINCT is not supported for window functions"
+      );
     }
   }else{
     sqlite3WindowDelete(pParse->db, pWin);
@@ -1203,7 +1236,7 @@ void sqlite3WindowAttach(Parse *pParse, Expr *p, Window *pWin){
 ** Return 0 if the two window objects are identical, or non-zero otherwise.
 ** Identical window objects can be processed in a single scan.
 */
-int sqlite3WindowCompare(Parse *pParse, Window *p1, Window *p2){
+int sqlite3WindowCompare(Parse *pParse, Window *p1, Window *p2, int bFilter){
   if( p1->eFrmType!=p2->eFrmType ) return 1;
   if( p1->eStart!=p2->eStart ) return 1;
   if( p1->eEnd!=p2->eEnd ) return 1;
@@ -1212,6 +1245,9 @@ int sqlite3WindowCompare(Parse *pParse, Window *p1, Window *p2){
   if( sqlite3ExprCompare(pParse, p1->pEnd, p2->pEnd, -1) ) return 1;
   if( sqlite3ExprListCompare(p1->pPartition, p2->pPartition, -1) ) return 1;
   if( sqlite3ExprListCompare(p1->pOrderBy, p2->pOrderBy, -1) ) return 1;
+  if( bFilter ){
+    if( sqlite3ExprCompare(pParse, p1->pFilter, p2->pFilter, -1) ) return 1;
+  }
   return 0;
 }
 
@@ -1553,8 +1589,10 @@ static void windowFullScan(WindowCodeArg *p){
   int lblNext;
   int lblBrk;
   int addrNext;
-  int csr = pMWin->csrApp;
+  int csr;
 
+  assert( pMWin!=0 );
+  csr = pMWin->csrApp;
   nPeer = (pMWin->pOrderBy ? pMWin->pOrderBy->nExpr : 0);
 
   lblNext = sqlite3VdbeMakeLabel(pParse);
@@ -2003,6 +2041,7 @@ Window *sqlite3WindowDup(sqlite3 *db, Expr *pOwner, Window *p){
       pNew->eEnd = p->eEnd;
       pNew->eStart = p->eStart;
       pNew->eExclude = p->eExclude;
+      pNew->regResult = p->regResult;
       pNew->pStart = sqlite3ExprDup(db, p->pStart, 0);
       pNew->pEnd = sqlite3ExprDup(db, p->pEnd, 0);
       pNew->pOwner = pOwner;

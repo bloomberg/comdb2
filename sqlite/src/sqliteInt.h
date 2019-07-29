@@ -228,15 +228,15 @@
 ** So we have to define the macros in different ways depending on the
 ** compiler.
 */
-#if defined(__PTRDIFF_TYPE__)  /* This case should work for GCC */
+#if defined(HAVE_STDINT_H)   /* Use this case if we have ANSI headers */
+# define SQLITE_INT_TO_PTR(X)  ((void*)(intptr_t)(X))
+# define SQLITE_PTR_TO_INT(X)  ((int)(intptr_t)(X))
+#elif defined(__PTRDIFF_TYPE__)  /* This case should work for GCC */
 # define SQLITE_INT_TO_PTR(X)  ((void*)(__PTRDIFF_TYPE__)(X))
 # define SQLITE_PTR_TO_INT(X)  ((int)(__PTRDIFF_TYPE__)(X))
 #elif !defined(__GNUC__)       /* Works for compilers other than LLVM */
 # define SQLITE_INT_TO_PTR(X)  ((void*)&((char*)0)[X])
 # define SQLITE_PTR_TO_INT(X)  ((int)(((char*)X)-(char*)0))
-#elif defined(HAVE_STDINT_H)   /* Use this case if we have ANSI headers */
-# define SQLITE_INT_TO_PTR(X)  ((void*)(intptr_t)(X))
-# define SQLITE_PTR_TO_INT(X)  ((int)(intptr_t)(X))
 #else                          /* Generates a warning - but it always works */
 # define SQLITE_INT_TO_PTR(X)  ((void*)(X))
 # define SQLITE_PTR_TO_INT(X)  ((int)(X))
@@ -862,12 +862,13 @@ typedef INT16_TYPE LogEst;
 ** at run-time.
 */
 #ifndef SQLITE_BYTEORDER
-# if defined(i386)     || defined(__i386__)   || defined(_M_IX86) ||    \
-     defined(__x86_64) || defined(__x86_64__) || defined(_M_X64)  ||    \
-     defined(_M_AMD64) || defined(_M_ARM)     || defined(__x86)   ||    \
-     defined(__arm__)  || defined(_M_ARM64)
+# if defined(i386)      || defined(__i386__)      || defined(_M_IX86) ||    \
+     defined(__x86_64)  || defined(__x86_64__)    || defined(_M_X64)  ||    \
+     defined(_M_AMD64)  || defined(_M_ARM)        || defined(__x86)   ||    \
+     defined(__ARMEL__) || defined(__AARCH64EL__) || defined(_M_ARM64)
 #   define SQLITE_BYTEORDER    1234
-# elif defined(sparc)    || defined(__ppc__)
+# elif defined(sparc)     || defined(__ppc__) || \
+       defined(__ARMEB__) || defined(__AARCH64EB__)
 #   define SQLITE_BYTEORDER    4321
 # else
 #   define SQLITE_BYTEORDER 0
@@ -1621,6 +1622,8 @@ struct sqlite3 {
 #define SQLITE_LegacyAlter    0x04000000  /* Legacy ALTER TABLE behaviour */
 #define SQLITE_NoSchemaError  0x08000000  /* Do not report schema parse errors*/
 #define SQLITE_Defensive      0x10000000  /* Input SQL is likely hostile */
+#define SQLITE_DqsDDL         0x20000000  /* dbl-quoted strings allowed in DDL*/
+#define SQLITE_DqsDML         0x40000000  /* dbl-quoted strings allowed in DML*/
 
 /* Flags used only if debugging */
 #define HI(X)  ((u64)(X)<<32)
@@ -2385,6 +2388,7 @@ struct Index {
   unsigned noSkipScan:1;   /* Do not try to use skip-scan if true */
   unsigned hasStat1:1;     /* aiRowLogEst values come from sqlite_stat1 */
   unsigned bNoQuery:1;     /* Do not use this index to optimize queries */
+  unsigned bAscKeyBug:1;   /* True if the bba7b69f9849b5bf bug applies */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
   int nSample;             /* Number of elements in aSample[] */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -2618,14 +2622,14 @@ struct Expr {
                          ** TK_SELECT_COLUMN: column of the result vector */
   i16 iAgg;              /* Which entry in pAggInfo->aCol[] or ->aFunc[] */
   i16 iRightJoinTable;   /* If EP_FromJoin, the right table of the join */
-  u8 op2;                /* TK_REGISTER: original value of Expr.op
+  u8 op2;                /* TK_REGISTER/TK_TRUTH: original value of Expr.op
                          ** TK_COLUMN: the value of p5 for OP_Column
                          ** TK_AGG_FUNCTION: nesting depth */
   AggInfo *pAggInfo;     /* Used by TK_AGG_COLUMN and TK_AGG_FUNCTION */
   union {
     Table *pTab;           /* TK_COLUMN: Table containing column. Can be NULL
                            ** for a column of an index on an expression */
-    Window *pWin;          /* TK_FUNCTION: Window definition for the func */
+    Window *pWin;          /* EP_WinFunc: Window/Filter defn for a function */
     struct {               /* TK_IN, TK_SELECT, and TK_EXISTS */
       int iAddr;             /* Subroutine entry address */
       int regReturn;         /* Register used to hold return address */
@@ -2652,7 +2656,7 @@ struct Expr {
 #define EP_Generic   0x000200 /* Ignore COLLATE or affinity on this tree */
 #define EP_IntValue  0x000400 /* Integer value contained in u.iValue */
 #define EP_xIsSelect 0x000800 /* x.pSelect is valid (otherwise x.pList is) */
-#define EP_Skip      0x001000 /* COLLATE, AS, or UNLIKELY */
+#define EP_Skip      0x001000 /* Operator does not contribute to affinity */
 #define EP_Reduced   0x002000 /* Expr struct EXPR_REDUCEDSIZE bytes only */
 #define EP_TokenOnly 0x004000 /* Expr struct EXPR_TOKENONLYSIZE bytes only */
 #define EP_Win       0x008000 /* Contains window functions */
@@ -2668,6 +2672,8 @@ struct Expr {
 #define EP_Subrtn   0x2000000 /* Uses Expr.y.sub. TK_IN, _SELECT, or _EXISTS */
 #define EP_Quoted   0x4000000 /* TK_ID was originally quoted */
 #define EP_Static   0x8000000 /* Held in memory not obtained from malloc() */
+#define EP_IsTrue  0x10000000 /* Always has boolean value of TRUE */
+#define EP_IsFalse 0x20000000 /* Always has boolean value of FALSE */
 
 /*
 ** The EP_Propagate mask is a set of properties that automatically propagate
@@ -2683,6 +2689,8 @@ struct Expr {
 #define ExprHasAllProperty(E,P)  (((E)->flags&(P))==(P))
 #define ExprSetProperty(E,P)     (E)->flags|=(P)
 #define ExprClearProperty(E,P)   (E)->flags&=~(P)
+#define ExprAlwaysTrue(E)   (((E)->flags&(EP_FromJoin|EP_IsTrue))==EP_IsTrue)
+#define ExprAlwaysFalse(E)  (((E)->flags&(EP_FromJoin|EP_IsFalse))==EP_IsFalse)
 
 /* The ExprSetVVAProperty() macro is used for Verification, Validation,
 ** and Accreditation only.  It works like ExprSetProperty() during VVA
@@ -2708,6 +2716,14 @@ struct Expr {
 ** above sqlite3ExprDup() for details.
 */
 #define EXPRDUP_REDUCE         0x0001  /* Used reduced-size Expr nodes */
+
+/*
+** True if the expression passed as an argument was a function with
+** an OVER() clause (a window function).
+*/
+#define IsWindowFunc(p) ( \
+    ExprHasProperty((p), EP_WinFunc) && p->y.pWin->eFrmType!=TK_FILTER \
+)
 
 /*
 ** A list of expressions.  Each expression may optionally have a
@@ -2902,7 +2918,7 @@ struct NameContext {
   NameContext *pNext;  /* Next outer name context.  NULL for outermost */
   int nRef;            /* Number of names resolved by this context */
   int nErr;            /* Number of errors encountered while resolving names */
-  u16 ncFlags;         /* Zero or more NC_* flags defined below */
+  int ncFlags;         /* Zero or more NC_* flags defined below */
   Select *pWinSelect;  /* SELECT statement for any window functions */
 };
 
@@ -2929,6 +2945,7 @@ struct NameContext {
 #define NC_Complex   0x2000  /* True if a function or subquery seen */
 #define NC_AllowWin  0x4000  /* Window functions are allowed here */
 #define NC_HasWin    0x8000  /* One or more window functions seen */
+#define NC_IsDDL    0x10000  /* Resolving names in a CREATE statement */
 
 /*
 ** An instance of the following object describes a single ON CONFLICT
@@ -3743,10 +3760,11 @@ struct TreeView {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 
 /*
-** This object is used in various ways, all related to window functions
+** This object is used in various ways, most (but not all) related to window
+** functions.
 **
 **   (1) A single instance of this structure is attached to the
-**       the Expr.pWin field for each window function in an expression tree.
+**       the Expr.y.pWin field for each window function in an expression tree.
 **       This object holds the information contained in the OVER clause,
 **       plus additional fields used during code generation.
 **
@@ -3756,6 +3774,10 @@ struct TreeView {
 **
 **   (3) The terms of the WINDOW clause of a SELECT are instances of this
 **       object on a linked list attached to Select.pWinDefn.
+**
+**   (4) For an aggregate function with a FILTER clause, an instance
+**       of this object is stored in Expr.y.pWin with eFrmType set to
+**       TK_FILTER. In this case the only field used is Window.pFilter.
 **
 ** The uses (1) and (2) are really the same Window object that just happens
 ** to be accessible in two different ways.  Use case (3) are separate objects.
@@ -3772,6 +3794,7 @@ struct Window {
   u8 eExclude;            /* TK_NO, TK_CURRENT, TK_TIES, TK_GROUP, or 0 */
   Expr *pStart;           /* Expression for "<expr> PRECEDING" */
   Expr *pEnd;             /* Expression for "<expr> FOLLOWING" */
+  Window **ppThis;        /* Pointer to this object in Select.pWin list */
   Window *pNextWin;       /* Next window function belonging to this SELECT */
   Expr *pFilter;          /* The FILTER expression */
   FuncDef *pFunc;         /* The function */
@@ -3791,10 +3814,11 @@ struct Window {
 
 #ifndef SQLITE_OMIT_WINDOWFUNC
 void sqlite3WindowDelete(sqlite3*, Window*);
+void sqlite3WindowUnlinkFromSelect(Window*);
 void sqlite3WindowListDelete(sqlite3 *db, Window *p);
 Window *sqlite3WindowAlloc(Parse*, int, int, Expr*, int , Expr*, u8);
 void sqlite3WindowAttach(Parse*, Expr*, Window*);
-int sqlite3WindowCompare(Parse*, Window*, Window*);
+int sqlite3WindowCompare(Parse*, Window*, Window*, int);
 void sqlite3WindowCodeInit(Parse*, Window*);
 void sqlite3WindowCodeStep(Parse*, Select*, WhereInfo*, int, int);
 int sqlite3WindowRewrite(Parse*, Select*);
@@ -4000,8 +4024,12 @@ void sqlite3MutexWarnOnContention(sqlite3_mutex*);
 #endif
 
 #ifndef SQLITE_OMIT_FLOATING_POINT
+# define EXP754 (((u64)0x7ff)<<52)
+# define MAN754 ((((u64)1)<<52)-1)
+# define IsNaN(X) (((X)&EXP754)==EXP754 && ((X)&MAN754)!=0)
   int sqlite3IsNaN(double);
 #else
+# define IsNaN(X)         0
 # define sqlite3IsNaN(X)  0
 #endif
 
@@ -4066,10 +4094,12 @@ Expr *sqlite3Expr(sqlite3*,int,const char*);
 void sqlite3ExprAttachSubtrees(sqlite3*,Expr*,Expr*,Expr*);
 Expr *sqlite3PExpr(Parse*, int, Expr*, Expr*);
 void sqlite3PExprAddSelect(Parse*, Expr*, Select*);
-Expr *sqlite3ExprAnd(sqlite3*,Expr*, Expr*);
+Expr *sqlite3ExprAnd(Parse*,Expr*, Expr*);
+Expr *sqlite3ExprSimplifiedAndOr(Expr*);
 Expr *sqlite3ExprFunction(Parse*,ExprList*, Token*, int);
 void sqlite3ExprAssignVarNumber(Parse*, Expr*, u32);
 void sqlite3ExprDelete(sqlite3*, Expr*);
+void sqlite3ExprUnmapAndDelete(Parse*, Expr*);
 ExprList *sqlite3ExprListAppend(Parse*,ExprList*,Expr*);
 ExprList *sqlite3ExprListAppendVector(Parse*,ExprList*,IdList*,Expr*);
 void sqlite3ExprListSetSortOrder(ExprList*,int);
@@ -4302,8 +4332,13 @@ void sqlite3GenerateRowIndexDelete(Parse*, Table*, int, int, int*, int);
 int sqlite3GenerateIndexKey(Parse*, Index*, int, int, int, int*,Index*,int);
 void sqlite3ResolvePartIdxLabel(Parse*,int);
 int sqlite3ExprReferencesUpdatedColumn(Expr*,int*,int);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
+                                     u8,u8,int,int*,int*,Upsert*,int*);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
                                      u8,u8,int,int*,int*,Upsert*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_NULL_TRIM
   void sqlite3SetMakeRecordP5(Vdbe*,Table*);
 #else
@@ -4311,7 +4346,7 @@ void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int,
-                              int, Upsert*);
+                              int,Upsert*,int);
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
                                int, Upsert*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -4406,6 +4441,7 @@ int sqlite3FixSelect(DbFixer*, Select*);
 int sqlite3FixExpr(DbFixer*, Expr*);
 int sqlite3FixExprList(DbFixer*, ExprList*);
 int sqlite3FixTriggerStep(DbFixer*, TriggerStep*);
+int sqlite3RealSameAsInt(double,sqlite3_int64);
 int sqlite3AtoF(const char *z, double*, int, u8);
 int sqlite3GetInt32(const char *, int*);
 int sqlite3Atoi(const char*);
@@ -4511,6 +4547,9 @@ void sqlite3ValueSetStr(sqlite3_value*, int, const void *,u8,
                         void(*)(void*));
 void sqlite3ValueSetNull(sqlite3_value*);
 void sqlite3ValueFree(sqlite3_value*);
+#ifndef SQLITE_UNTESTABLE
+void sqlite3ResultIntReal(sqlite3_context*);
+#endif
 sqlite3_value *sqlite3ValueNew(sqlite3 *);
 #ifndef SQLITE_OMIT_UTF16
 char *sqlite3Utf16to8(sqlite3 *, const void*, int, u8);

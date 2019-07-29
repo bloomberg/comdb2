@@ -374,6 +374,10 @@ scanpt(A) ::= . {
   assert( yyLookahead!=YYNOCODE );
   A = yyLookaheadToken.z;
 }
+scantok(A) ::= . {
+  assert( yyLookahead!=YYNOCODE );
+  A = yyLookaheadToken;
+}
 
 // "carglist" is a list of additional constraints that come after the
 // column name and column type in a CREATE TABLE statement.
@@ -381,12 +385,12 @@ scanpt(A) ::= . {
 carglist ::= carglist ccons.
 carglist ::= .
 ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
-ccons ::= DEFAULT scanpt(A) term(X) scanpt(Z).
+ccons ::= DEFAULT scantok(A) term(X).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-                            {comdb2AddDefaultValue(pParse,X,A,Z);}
+                            {comdb2AddDefaultValue(pParse,X,A.z,&A.z[A.n]);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-                            {sqlite3AddDefaultValue(pParse,X,A,Z);}
+                            {sqlite3AddDefaultValue(pParse,X,A.z,&A.z[A.n]);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT LP(A) expr(X) RP(Z).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
@@ -395,22 +399,22 @@ ccons ::= DEFAULT LP(A) expr(X) RP(Z).
 %ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z+1,Z.z);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
-ccons ::= DEFAULT PLUS(A) term(X) scanpt(Z).
+ccons ::= DEFAULT PLUS(A) scantok(Z) term(X).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-                            {comdb2AddDefaultValue(pParse,X,A.z,Z);}
+                            {comdb2AddDefaultValue(pParse,X,A.z,&Z.z[Z.n]);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-                            {sqlite3AddDefaultValue(pParse,X,A.z,Z);}
+                            {sqlite3AddDefaultValue(pParse,X,A.z,&Z.z[Z.n]);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
-ccons ::= DEFAULT MINUS(A) term(X) scanpt(Z).      {
+ccons ::= DEFAULT MINUS(A) scantok(Z) term(X). {
   Expr *p = sqlite3PExpr(pParse, TK_UMINUS, X, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  comdb2AddDefaultValue(pParse,p,A.z,Z);
+  comdb2AddDefaultValue(pParse,p,A.z,&Z.z[Z.n]);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  sqlite3AddDefaultValue(pParse,p,A.z,Z);
+  sqlite3AddDefaultValue(pParse,p,A.z,&Z.z[Z.n]);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
-ccons ::= DEFAULT scanpt id(X).       {
+ccons ::= DEFAULT scantok id(X).       {
   Expr *p = tokenExpr(pParse, TK_STRING, X);
   if( p ){
     sqlite3ExprIdToTrueFalse(p);
@@ -622,6 +626,7 @@ cmd ::= select(X).  {
   ** SQLITE_LIMIT_COMPOUND_SELECT.
   */
   static void parserDoubleLinkSelect(Parse *pParse, Select *p){
+    assert( p!=0 );
     if( p->pPrior ){
       Select *pNext = 0, *pLoop;
       int mxSelect, cnt = 0;
@@ -1256,11 +1261,11 @@ expr(A) ::= id(X) LP STAR RP. {
 }
 
 %ifndef SQLITE_OMIT_WINDOWFUNC
-expr(A) ::= id(X) LP distinct(D) exprlist(Y) RP over_clause(Z). {
+expr(A) ::= id(X) LP distinct(D) exprlist(Y) RP filter_over(Z). {
   A = sqlite3ExprFunction(pParse, Y, &X, D);
   sqlite3WindowAttach(pParse, A, Z);
 }
-expr(A) ::= id(X) LP STAR RP over_clause(Z). {
+expr(A) ::= id(X) LP STAR RP filter_over(Z). {
   A = sqlite3ExprFunction(pParse, 0, &X, 0);
   sqlite3WindowAttach(pParse, A, Z);
 }
@@ -1280,7 +1285,7 @@ expr(A) ::= LP nexprlist(X) COMMA expr(Y) RP. {
   }
 }
 
-expr(A) ::= expr(A) AND(OP) expr(Y).    {A=sqlite3PExpr(pParse,@OP,A,Y);}
+expr(A) ::= expr(A) AND expr(Y).        {A=sqlite3ExprAnd(pParse,A,Y);}
 expr(A) ::= expr(A) OR(OP) expr(Y).     {A=sqlite3PExpr(pParse,@OP,A,Y);}
 expr(A) ::= expr(A) LT|GT|GE|LE(OP) expr(Y).
                                         {A=sqlite3PExpr(pParse,@OP,A,Y);}
@@ -1385,10 +1390,8 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
       ** simplify to constants 0 (false) and 1 (true), respectively,
       ** regardless of the value of expr1.
       */
-      if( IN_RENAME_OBJECT==0 ){
-        sqlite3ExprDelete(pParse->db, A);
-        A = sqlite3ExprAlloc(pParse->db, TK_INTEGER,&sqlite3IntTokens[N],1);
-      }
+      sqlite3ExprUnmapAndDelete(pParse, A);
+      A = sqlite3ExprAlloc(pParse->db, TK_INTEGER,&sqlite3IntTokens[N],1);
     }else if( Y->nExpr==1 ){
       /* Expressions of the form:
       **
@@ -2479,8 +2482,14 @@ windowdefn(A) ::= nm(X) AS LP window(Y) RP. {
 %type part_opt {ExprList*}
 %destructor part_opt {sqlite3ExprListDelete(pParse->db, $$);}
 
-%type filter_opt {Expr*}
-%destructor filter_opt {sqlite3ExprDelete(pParse->db, $$);}
+%type filter_clause {Expr*}
+%destructor filter_clause {sqlite3ExprDelete(pParse->db, $$);}
+
+%type over_clause {Window*}
+%destructor over_clause {sqlite3WindowDelete(pParse->db, $$);}
+
+%type filter_over {Window*}
+%destructor filter_over {sqlite3WindowDelete(pParse->db, $$);}
 
 %type range_or_rows {int}
 
@@ -2546,25 +2555,35 @@ frame_exclude(A) ::= GROUP|TIES(X).  {A = @X; /*A-overwrites-X*/}
 %destructor window_clause {sqlite3WindowListDelete(pParse->db, $$);}
 window_clause(A) ::= WINDOW windowdefn_list(B). { A = B; }
 
-%type over_clause {Window*}
-%destructor over_clause {sqlite3WindowDelete(pParse->db, $$);}
-over_clause(A) ::= filter_opt(W) OVER LP window(Z) RP. {
-  A = Z;
-  assert( A!=0 );
-  A->pFilter = W;
+filter_over(A) ::= filter_clause(F) over_clause(O). {
+  O->pFilter = F;
+  A = O;
 }
-over_clause(A) ::= filter_opt(W) OVER nm(Z). {
+filter_over(A) ::= over_clause(O). {
+  A = O;
+}
+filter_over(A) ::= filter_clause(F). {
   A = (Window*)sqlite3DbMallocZero(pParse->db, sizeof(Window));
   if( A ){
-    A->zName = sqlite3DbStrNDup(pParse->db, Z.z, Z.n);
-    A->pFilter = W;
+    A->eFrmType = TK_FILTER;
+    A->pFilter = F;
   }else{
-    sqlite3ExprDelete(pParse->db, W);
+    sqlite3ExprDelete(pParse->db, F);
   }
 }
 
-filter_opt(A) ::= .                            { A = 0; }
-filter_opt(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
+over_clause(A) ::= OVER LP window(Z) RP. {
+  A = Z;
+  assert( A!=0 );
+}
+over_clause(A) ::= OVER nm(Z). {
+  A = (Window*)sqlite3DbMallocZero(pParse->db, sizeof(Window));
+  if( A ){
+    A->zName = sqlite3DbStrNDup(pParse->db, Z.z, Z.n);
+  }
+}
+
+filter_clause(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 %endif /* SQLITE_OMIT_WINDOWFUNC */
 
 /*

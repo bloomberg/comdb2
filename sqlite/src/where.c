@@ -591,17 +591,17 @@ static LogEst estLog(LogEst N){
 ** opcodes into OP_Copy when the table is being accessed via co-routine 
 ** instead of via table lookup.
 **
-** If the bIncrRowid parameter is 0, then any OP_Rowid instructions on
-** cursor iTabCur are transformed into OP_Null. Or, if bIncrRowid is non-zero,
-** then each OP_Rowid is transformed into an instruction to increment the
-** value stored in its output register.
+** If the iAutoidxCur is not zero, then any OP_Rowid instructions on
+** cursor iTabCur are transformed into OP_Sequence opcode for the
+** iAutoidxCur cursor, in order to generate unique rowids for the
+** automatic index being generated.
 */
 static void translateColumnToCopy(
   Parse *pParse,      /* Parsing context */
   int iStart,         /* Translate from this opcode to the end */
   int iTabCur,        /* OP_Column/OP_Rowid references to this table */
   int iRegister,      /* The first column is in this register */
-  int bIncrRowid      /* If non-zero, transform OP_rowid to OP_AddImm(1) */
+  int iAutoidxCur     /* If non-zero, cursor of autoindex being generated */
 ){
   Vdbe *v = pParse->pVdbe;
   VdbeOp *pOp = sqlite3VdbeGetOp(v, iStart);
@@ -615,11 +615,9 @@ static void translateColumnToCopy(
       pOp->p2 = pOp->p3;
       pOp->p3 = 0;
     }else if( pOp->opcode==OP_Rowid ){
-      if( bIncrRowid ){
-        /* Increment the value stored in the P2 operand of the OP_Rowid. */
-        pOp->opcode = OP_AddImm;
-        pOp->p1 = pOp->p2;
-        pOp->p2 = 1;
+      if( iAutoidxCur ){
+        pOp->opcode = OP_Sequence;
+        pOp->p1 = iAutoidxCur;
       }else{
         pOp->opcode = OP_Null;
         pOp->p1 = 0;
@@ -766,7 +764,7 @@ static void constructAutomaticIndex(
      && (pTerm->wtFlags & TERM_VIRTUAL)==0
      && !ExprHasProperty(pExpr, EP_FromJoin)
      && sqlite3ExprIsTableConstant(pExpr, pSrc->iCursor) ){
-      pPartial = sqlite3ExprAnd(pParse->db, pPartial,
+      pPartial = sqlite3ExprAnd(pParse, pPartial,
                                 sqlite3ExprDup(pParse->db, pExpr, 0));
     }
     if( termCanDriveIndex(pTerm, pSrc, notReady) ){
@@ -893,8 +891,9 @@ static void constructAutomaticIndex(
   if( pTabItem->fg.viaCoroutine ){
     sqlite3VdbeChangeP2(v, addrCounter, regBase+n);
     testcase( pParse->db->mallocFailed );
+    assert( pLevel->iIdxCur>0 );
     translateColumnToCopy(pParse, addrTop, pLevel->iTabCur,
-                          pTabItem->regResult, 1);
+                          pTabItem->regResult, pLevel->iIdxCur);
     sqlite3VdbeGoto(v, addrTop);
     pTabItem->fg.viaCoroutine = 0;
   }else{
@@ -2303,6 +2302,7 @@ static void whereLoopOutputAdjust(
 
   assert( (pLoop->wsFlags & WHERE_AUTO_INDEX)==0 );
   for(i=pWC->nTerm, pTerm=pWC->a; i>0; i--, pTerm++){
+    assert( pTerm!=0 );
     if( (pTerm->wtFlags & TERM_VIRTUAL)!=0 ) break;
     if( (pTerm->prereqAll & pLoop->maskSelf)==0 ) continue;
     if( (pTerm->prereqAll & notAllowed)!=0 ) continue;
@@ -3739,8 +3739,8 @@ static i8 wherePathSatisfiesOrderBy(
     if( pLoop->wsFlags & WHERE_VIRTUALTABLE ){
       if( pLoop->u.vtab.isOrdered ) obSat = obDone;
       break;
-    }else{
-      pLoop->u.btree.nIdxCol = 0;
+    }else if( wctrlFlags & WHERE_DISTINCTBY ){
+      pLoop->u.btree.nDistinctCol = 0;
     }
     iCur = pWInfo->pTabList->a[pLoop->iTab].iCursor;
 
@@ -3882,7 +3882,9 @@ static i8 wherePathSatisfiesOrderBy(
             pColl = sqlite3ExprNNCollSeq(pWInfo->pParse, pOrderBy->a[i].pExpr);
             if( sqlite3StrICmp(pColl->zName, pIndex->azColl[j])!=0 ) continue;
           }
-          pLoop->u.btree.nIdxCol = j+1;
+          if( wctrlFlags & WHERE_DISTINCTBY ){
+            pLoop->u.btree.nDistinctCol = j+1;
+          }
           isMatch = 1;
           break;
         }
@@ -5251,7 +5253,7 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
        && i==pWInfo->nLevel-1  /* Ticket [ef9318757b152e3] 2017-10-21 */
        && (pLoop->wsFlags & WHERE_INDEXED)!=0
        && (pIdx = pLoop->u.btree.pIndex)->hasStat1
-       && (n = pLoop->u.btree.nIdxCol)>0
+       && (n = pLoop->u.btree.nDistinctCol)>0
        && pIdx->aiRowLogEst[n]>=36
       ){
         int r1 = pParse->nMem+1;
