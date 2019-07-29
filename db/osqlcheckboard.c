@@ -499,7 +499,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
         }
 
         if (!gbl_is_physical_replicant && (poke_freq > 0) &&
-                (entry->last_checked + poke_freq <= now)) {
+            (entry->last_checked + poke_freq <= now)) {
             entry->last_checked = now;
 
             /* try poke again */

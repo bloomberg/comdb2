@@ -295,12 +295,13 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                 extern int gbl_is_physical_replicant;
                 if (gbl_is_physical_replicant && gbl_physrep_request_startlsn) {
                     if ((rc = physrep_retrieve_startlsn(&file, &offset,
-                                    &durable_gen)) != 0) {
+                                                        &durable_gen)) != 0) {
                         *bdberr = BDBERR_NOT_DURABLE;
                         return NULL;
                     }
-                } else if ((rc = request_durable_lsn_from_master(bdb_state,
-                                &file, &offset, &durable_gen)) != 0) {
+                } else if ((rc = request_durable_lsn_from_master(
+                                bdb_state, &file, &offset, &durable_gen)) !=
+                           0) {
                     *bdberr = BDBERR_NOT_DURABLE;
                     return NULL;
                 }

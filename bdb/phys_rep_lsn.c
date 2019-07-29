@@ -44,7 +44,7 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
     }
 
     if (gbl_verbose_physrep && (((now = time(NULL)) - last_print) > 5) &&
-            log_compare(&last_log_lsn, &last_printed_lsn) != 0) {
+        log_compare(&last_log_lsn, &last_printed_lsn) != 0) {
         logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, last_log_lsn.file,
                last_log_lsn.offset);
         last_printed_lsn = last_log_lsn;

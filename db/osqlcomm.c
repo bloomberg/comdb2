@@ -3280,8 +3280,7 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
 }
 
 static void net_block_reply(void *hndl, void *uptr, char *fromhost,
-                            int usertype, void *dtap, int dtalen,
-                            uint8_t flags)
+                            int usertype, void *dtap, int dtalen, uint8_t flags)
 {
 
     net_block_msg_t *net_msg = dtap;
@@ -4983,7 +4982,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
     void *ret;
     uuidstr_t us;
     logmsg(LOGMSG_USER, "%s create [%lld:%s]\n", __func__, rqid,
-            comdb2uuidstr(uuid, us));
+           comdb2uuidstr(uuid, us));
 
     if (rqid == OSQL_RQID_USE_UUID) {
         rqlen = sizeof(osql_uuid_req_t) + sqlen;
@@ -5975,10 +5974,11 @@ static int offload_net_send(const char *host, int usertype, void *data,
         /* local save, this is calling sorese_rvprpl_master */
         if (gbl_is_physical_replicant) {
             time_t now;
-            if (gbl_physwrite) 
+            if (gbl_physwrite)
                 return physwrite_route_packet(usertype, data, datalen, 0);
             if ((now = time(NULL)) > last_physrep_write) {
-                logmsg(LOGMSG_ERROR, "Preventing write on read-only physical "
+                logmsg(LOGMSG_ERROR,
+                       "Preventing write on read-only physical "
                        "replicant (set 'physrep_write on' to allow writes)\n");
                 last_physrep_write = now;
             }
@@ -6099,13 +6099,14 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
             if (gbl_is_physical_replicant) {
                 time_t now;
 
-                if (gbl_physwrite) 
-                    return physwrite_route_packet_tails(usertype, data, datalen,
-                            ntails, tails[0], tailens[0]);
+                if (gbl_physwrite)
+                    return physwrite_route_packet_tails(
+                        usertype, data, datalen, ntails, tails[0], tailens[0]);
                 if ((now = time(NULL)) > last_physrep_write) {
-                    logmsg(LOGMSG_ERROR, "Preventing write on read-only "
-                            "physical replicant (set 'physrep_write on' to "
-                            "allow writes)\n");
+                    logmsg(LOGMSG_ERROR,
+                           "Preventing write on read-only "
+                           "physical replicant (set 'physrep_write on' to "
+                           "allow writes)\n");
                     last_physrep_write = now;
                 }
             }
@@ -6207,20 +6208,21 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
     return 0;
 }
 
-static inline int isreq(int usertype) {
-    switch(usertype) {
-        case NET_OSQL_SOCK_REQ:
-        case NET_OSQL_SOCK_REQ_UUID:
-        case NET_OSQL_RECOM_REQ:
-        case NET_OSQL_RECOM_REQ_UUID:
-        case NET_OSQL_SNAPISOL_REQ:
-        case NET_OSQL_SNAPISOL_REQ_UUID:
-        case NET_OSQL_SERIAL_REQ:
-        case NET_OSQL_SERIAL_REQ_UUID:
-            return 1;
+static inline int isreq(int usertype)
+{
+    switch (usertype) {
+    case NET_OSQL_SOCK_REQ:
+    case NET_OSQL_SOCK_REQ_UUID:
+    case NET_OSQL_RECOM_REQ:
+    case NET_OSQL_RECOM_REQ_UUID:
+    case NET_OSQL_SNAPISOL_REQ:
+    case NET_OSQL_SNAPISOL_REQ_UUID:
+    case NET_OSQL_SERIAL_REQ:
+    case NET_OSQL_SERIAL_REQ_UUID:
+        return 1;
 
-        default:
-            return 0;
+    default:
+        return 0;
     }
 }
 
@@ -6231,7 +6233,7 @@ static inline int isreq(int usertype) {
  */
 
 int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
-        unsigned long long *rqid)
+                      unsigned long long *rqid)
 {
     uint8_t *p_buf = (uint8_t *)dtap;
     uint8_t *p_buf_end = (p_buf + dtalen);
@@ -6241,9 +6243,9 @@ int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
         if (isreq(usertype)) {
             osql_uuid_req_t p_osql_uuid_req;
             if (!(p_buf = (uint8_t *)osqlcomm_req_uuid_type_get(
-                            &p_osql_uuid_req, p_buf, p_buf_end))) {
+                      &p_osql_uuid_req, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
-                        __func__, "osqlcomm_uuid_req_type_get", usertype);
+                       __func__, "osqlcomm_uuid_req_type_get", usertype);
                 abort();
             } else {
                 *rqid = OSQL_RQID_USE_UUID;
@@ -6253,9 +6255,9 @@ int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
         } else {
             osql_uuid_rpl_t p_osql_uuid_rpl;
             if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
-                            &p_osql_uuid_rpl, p_buf, p_buf_end))) {
+                      &p_osql_uuid_rpl, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
-                        __func__, "osqlcomm_uuid_rpl_type_get", usertype);
+                       __func__, "osqlcomm_uuid_rpl_type_get", usertype);
                 abort();
             } else {
                 *rqid = OSQL_RQID_USE_UUID;
@@ -6266,10 +6268,10 @@ int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
     } else {
         if (isreq(usertype)) {
             osql_req_t p_osql_req;
-            if (!(p_buf = (uint8_t *)osqlcomm_req_type_get(
-                            &p_osql_req, p_buf, p_buf_end))) {
+            if (!(p_buf = (uint8_t *)osqlcomm_req_type_get(&p_osql_req, p_buf,
+                                                           p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
-                        __func__, "osqlcomm_req_type_get", usertype);
+                       __func__, "osqlcomm_req_type_get", usertype);
                 abort();
             } else {
                 *rqid = p_osql_req.rqid;
@@ -6284,9 +6286,9 @@ int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
             p_buf_end = (p_buf + dtalen);
 
             if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
-                            p_buf_end))) {
+                                                           p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
-                        __func__, "osqlcomm_rpl_type_get", usertype);
+                       __func__, "osqlcomm_rpl_type_get", usertype);
                 abort();
             } else {
                 *rqid = p_osql_rpl.sid;
@@ -6377,22 +6379,21 @@ static int check_master(const char *tohost)
 /* since net_send already serializes the tail,
    this is needed only when routing local packets
    we need to "serialize" the tail as well, therefore the need for duplicate */
-int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
-                             int usertype, void *dtap, int dtalen, void *tail,
-                             int tailen, uint32_t flags)
+int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost, int usertype,
+                      void *dtap, int dtalen, void *tail, int tailen,
+                      uint32_t flags)
 {
     void *dup;
 
-    assert( usertype == NET_OSQL_BLOCK_RPL ||
-            usertype == NET_OSQL_SOCK_RPL ||
-            usertype == NET_OSQL_RECOM_RPL ||
-            usertype == NET_OSQL_SNAPISOL_RPL ||
-            usertype == NET_OSQL_SERIAL_RPL ||
-            usertype == NET_OSQL_BLOCK_RPL_UUID ||
-            usertype == NET_OSQL_SOCK_RPL_UUID ||
-            usertype == NET_OSQL_RECOM_RPL_UUID ||
-            usertype == NET_OSQL_SNAPISOL_RPL_UUID ||
-            usertype == NET_OSQL_SERIAL_RPL_UUID);
+    assert(usertype == NET_OSQL_BLOCK_RPL || usertype == NET_OSQL_SOCK_RPL ||
+           usertype == NET_OSQL_RECOM_RPL ||
+           usertype == NET_OSQL_SNAPISOL_RPL ||
+           usertype == NET_OSQL_SERIAL_RPL ||
+           usertype == NET_OSQL_BLOCK_RPL_UUID ||
+           usertype == NET_OSQL_SOCK_RPL_UUID ||
+           usertype == NET_OSQL_RECOM_RPL_UUID ||
+           usertype == NET_OSQL_SNAPISOL_RPL_UUID ||
+           usertype == NET_OSQL_SERIAL_RPL_UUID);
 
     if (dtalen + tailen > gbl_blob_sz_thresh_bytes)
         dup = comdb2_bmalloc(blobmem, dtalen + tailen);
@@ -6451,7 +6452,8 @@ int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     }
 
     if (!rc)
-        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found, flags);
+        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found,
+                             flags);
 
     free(dup);
 
@@ -6544,7 +6546,7 @@ static void net_snapisol_req(void *hndl, void *uptr, char *fromhost,
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
     rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SNAPISOL_REQ, usertype,
-            flags);
+                       flags);
 
     if (rc)
         stats[OSQL_SNAPISOL_REQ].rcv_failed++;
@@ -6567,8 +6569,8 @@ static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
        once we are done, the queue is ready for this fromnode:rqid session so
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
-    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SERIAL_REQ, usertype,
-            flags);
+    rc =
+        sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SERIAL_REQ, usertype, flags);
 
     if (rc)
         stats[OSQL_SERIAL_REQ].rcv_failed++;
@@ -7943,7 +7945,7 @@ done:
 
         } else {
             rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                    RC_INTERNAL_RETRY);
+                                             RC_INTERNAL_RETRY);
         }
         if (rc2) {
             uuidstr_t us;

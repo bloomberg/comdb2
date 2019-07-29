@@ -30,12 +30,8 @@ typedef struct osql_uuid_req osql_uuid_req_t;
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 
-
 /* Session flags */
-enum {
-    TCP = 1,
-    PHYSWRITE = 2
-};
+enum { TCP = 1, PHYSWRITE = 2 };
 
 struct osql_sess {
 

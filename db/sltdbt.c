@@ -354,7 +354,8 @@ int handle_ireq(struct ireq *iq)
                 Pthread_mutex_unlock(&iq->physwrite_results->lk);
                 iq->physwrite_results = NULL;
             } else {
-                osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
+                osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat,
+                                           sorese_rc);
             }
 
             iq->timings.req_sentrc = osql_log_time();
