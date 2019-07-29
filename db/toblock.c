@@ -5489,9 +5489,11 @@ add_blkseq:
         memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
-            // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
-                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
+            // if VERIFY-ERROR && replicant_is_able_to_retry don't add to blkseq
+            if ((outrc == ERR_NOTSERIAL ||
+                 (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                (iq->have_snap_info &&
+                 iq->snap_info.replicant_is_able_to_retry)) {
                 /* do nothing */
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,

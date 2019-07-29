@@ -3295,7 +3295,7 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
-    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+    return listc_empty(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
            !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl;
 }
 
@@ -3325,5 +3325,28 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
             return 0;
     }
 
-    return (!osql->verify_tbl && !osql->sc_tbl && !osql->bpfunc_tbl);
+    if (!osql->verify_tbl && !osql->sc_tbl && !osql->bpfunc_tbl)
+        return 1;
+
+    if (osql->verify_tbl) {
+        assert(osql->verify_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->verify_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+
+    if (osql->sc_tbl) {
+        assert(osql->sc_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->sc_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+
+    if (osql->bpfunc_tbl) {
+        assert(osql->bpfunc_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->bpfunc_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+    return 1;
 }
