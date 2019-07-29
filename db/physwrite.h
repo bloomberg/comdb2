@@ -36,19 +36,19 @@ typedef struct physwrite_results_s {
 } physwrite_results_t;
 
 int physwrite_route_packet(int usertype, void *data, int datalen,
-        uint32_t flags);
+                           uint32_t flags);
 
 int physwrite_route_packet_tails(int usertype, void *data, int datalen,
-        int ntails, void *tail, int tailen);
+                                 int ntails, void *tail, int tailen);
 
 void physwrite_init(char *name, char *type, char *host);
 
 int physrep_retrieve_startlsn(uint32_t *file, uint32_t *offset,
-        uint32_t *generation);
+                              uint32_t *generation);
 
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
-        int *rcode, int *errval, char **errstr, int *inserts, int *updates,
-        int *deletes, int *cupdates, int *cdeletes, int *commit_file,
-        int *commit_offset, uint32_t flags);
+                   int *rcode, int *errval, char **errstr, int *inserts,
+                   int *updates, int *deletes, int *cupdates, int *cdeletes,
+                   int *commit_file, int *commit_offset, uint32_t flags);
 
 #endif

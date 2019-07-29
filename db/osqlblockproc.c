@@ -912,13 +912,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 assert(!iq->physwrite_results);
                 physwrite_results->dispatched = 1;
                 physwrite_results->done = 1;
-                physwrite_results->errstr = strdup("Master received "
-                        "inconsistent number of opcodes");
+                physwrite_results->errstr =
+                    strdup("Master received "
+                           "inconsistent number of opcodes");
                 physwrite_results->errval = RC_INTERNAL_RETRY;
             } else {
                 send_error_to_replicant(
-                        rqid, sess->offhost, RC_INTERNAL_RETRY,
-                        "Master received inconsistent number of opcodes");
+                    rqid, sess->offhost, RC_INTERNAL_RETRY,
+                    "Master received inconsistent number of opcodes");
             }
 
             logmsg(LOGMSG_ERROR,
@@ -961,11 +962,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             rc = handle_buf_sorese(thedb, iq, debug);
             if (iq->physwrite_results && rc) {
                 logmsg(LOGMSG_ERROR, "%s setting done on handle_buf rc %d\n",
-                        __func__, rc);
+                       __func__, rc);
                 iq->physwrite_results->done = 1;
                 iq->physwrite_results->errval = RC_INTERNAL_RETRY;
-                iq->physwrite_results->errstr = 
-                    strdup("Failed to dispatch");
+                iq->physwrite_results->errstr = strdup("Failed to dispatch");
                 iq->physwrite_results = NULL;
             }
         }

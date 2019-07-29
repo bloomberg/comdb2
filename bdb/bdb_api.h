@@ -969,7 +969,7 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                                int n);
 
 int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
-        int timeout);
+                     int timeout);
 
 /* returns 1 if you are the master, 0 if you are not */
 int bdb_amimaster(bdb_state_type *bdb_handle);
@@ -2157,7 +2157,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset);
 int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);
 int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock);
 int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
-        uint32_t *offset, uint32_t *generation);
+                     uint32_t *offset, uint32_t *generation);
 
 /* Pack the payload into heap memory */
 int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,

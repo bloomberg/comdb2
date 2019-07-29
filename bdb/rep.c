@@ -4268,7 +4268,7 @@ static const uint8_t *start_lsn_response_type_get(start_lsn_response_t
 }
 
 int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
-        uint32_t *offset, uint32_t *generation)
+                     uint32_t *offset, uint32_t *generation)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     DB_LSN start_lsn;
@@ -4293,14 +4293,14 @@ int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
         return 2;
     }
 
-    bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &start_lsn, 
-            &start_gen);
+    bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &start_lsn, &start_gen);
 
     bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
 
     if (start_gen != current_gen) {
-        logmsg(LOGMSG_ERROR, "%s line %d generation-mismatch: current_gen=%u, "
-                             "durable_gen=%u\n",
+        logmsg(LOGMSG_ERROR,
+               "%s line %d generation-mismatch: current_gen=%u, "
+               "durable_gen=%u\n",
                __func__, __LINE__, current_gen, start_gen);
         BDB_RELLOCK();
         return 2;
@@ -4319,8 +4319,8 @@ int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
 }
 
 void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
-                             int usertype, void *dta, int dtalen,
-                             uint8_t is_tcp)
+                               int usertype, void *dta, int dtalen,
+                               uint8_t is_tcp)
 {
     start_lsn_response_t start_lsn = {0};
     uint8_t buf[START_LSN_RESPONSE_TYPE_LEN];
@@ -4332,25 +4332,24 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
         bdb_state = bdb_state->parent;
 
     rc = last_durable_lsn(bdb_state, &start_lsn.lsn.file, &start_lsn.lsn.offset,
-            &start_lsn.gen);
+                          &start_lsn.gen);
 
-    switch(rc) {
-        case 0:
-            p_buf = buf;
-            p_buf_end = p_buf + START_LSN_RESPONSE_TYPE_LEN;
-            start_lsn_response_type_put(&start_lsn, p_buf, p_buf_end);
-            if (bdb_state->attr->receive_start_lsn_request_trace) {
-                logmsg(LOGMSG_USER, "%s returning gen %d lsn[%d][%d]\n",
-                        __func__, start_lsn.gen, start_lsn.lsn.file,
-                        start_lsn.lsn.offset);
-            }
-            net_ack_message_payload(ack_handle, 0, buf,
-                    START_LSN_RESPONSE_TYPE_LEN);
-            break;
+    switch (rc) {
+    case 0:
+        p_buf = buf;
+        p_buf_end = p_buf + START_LSN_RESPONSE_TYPE_LEN;
+        start_lsn_response_type_put(&start_lsn, p_buf, p_buf_end);
+        if (bdb_state->attr->receive_start_lsn_request_trace) {
+            logmsg(LOGMSG_USER, "%s returning gen %d lsn[%d][%d]\n", __func__,
+                   start_lsn.gen, start_lsn.lsn.file, start_lsn.lsn.offset);
+        }
+        net_ack_message_payload(ack_handle, 0, buf,
+                                START_LSN_RESPONSE_TYPE_LEN);
+        break;
 
-        default:
-            net_ack_message(ack_handle, rc);
-            break;
+    default:
+        net_ack_message(ack_handle, rc);
+        break;
     }
     return;
 }
@@ -5743,18 +5742,18 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
 }
 
 int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
-        int timeout)
+                     int timeout)
 {
     extern pthread_mutex_t gbl_logput_lk;
     extern pthread_cond_t gbl_logput_cond;
-    DB_LSN target_lsn = { .file = file, .offset = offset }, lsn;
+    DB_LSN target_lsn = {.file = file, .offset = offset}, lsn;
     DB_LOGC *logc = NULL;
     DBT data = {0};
     int rc, elapsed = 0, start, cmp = -1;
 
     if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
         logmsg(LOGMSG_FATAL, "%s error getting log cursor, rc=%d\n", __func__,
-                rc);
+               rc);
         abort();
     }
 
@@ -5764,8 +5763,8 @@ int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
     start = comdb2_time_epoch();
     Pthread_mutex_lock(&gbl_logput_lk);
     logc->get(logc, &lsn, &data, DB_LAST);
-    while((log_compare(&lsn, &target_lsn) < 0) && (!timeout ||
-                elapsed <= timeout)) {
+    while ((log_compare(&lsn, &target_lsn) < 0) &&
+           (!timeout || elapsed <= timeout)) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
@@ -5776,7 +5775,7 @@ int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
     Pthread_mutex_unlock(&gbl_logput_lk);
 
     cmp = (log_compare(&lsn, &target_lsn) >= 0);
-    assert (timeout || cmp >= 0);
+    assert(timeout || cmp >= 0);
     if (logc)
         logc->close(logc, 0);
 

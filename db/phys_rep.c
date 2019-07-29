@@ -112,8 +112,8 @@ void close_repl_connection(const char *func, int line)
     cdb2_close(repl_db);
     repl_db_connected = 0;
     if (gbl_verbose_physrep) {
-        logmsg(LOGMSG_USER, "%s closed handle from %s line %d\n",
-                __func__, func, line);
+        logmsg(LOGMSG_USER, "%s closed handle from %s line %d\n", __func__,
+               func, line);
     }
 }
 
@@ -149,10 +149,11 @@ repl_loop:
             close_repl_connection(__func__, __LINE__);
             repl_db = NULL;
             if (gbl_verbose_physrep) {
-                logmsg(LOGMSG_USER, "%s: forcing re-registration: "
-                        "last_register is %d, interval is %d time is %d\n",
-                        __func__, last_register, gbl_physrep_register_interval,
-                        now);
+                logmsg(LOGMSG_USER,
+                       "%s: forcing re-registration: "
+                       "last_register is %d, interval is %d time is %d\n",
+                       __func__, last_register, gbl_physrep_register_interval,
+                       now);
             }
         }
         if (repl_db_connected == 0) {
@@ -230,8 +231,7 @@ repl_loop:
             }
 
             /* our log matches, so apply each record log received */
-            while (do_repl && !do_truncate &&
-                   prev_info.file > 0 &&
+            while (do_repl && !do_truncate && prev_info.file > 0 &&
                    (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
                 /* check the generation id to make sure the master hasn't
                  * switched */
@@ -360,7 +360,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
 
         if (rc == 0)
             rc = apply_log(thedb->bdb_env->dbenv, file, offset, REP_LOG, blob,
-                    blob_len);
+                           blob_len);
     } else {
         logmsg(LOGMSG_WARN, "Been asked to stop, drop LSN {%u:%u}\n", file,
                offset);
@@ -523,8 +523,8 @@ static int find_new_repl_db(void)
                             logmsg(LOGMSG_USER,
                                    "%s setting mach %s "
                                    "db %s tier %d idx %d last_fail rc=%d\n",
-                                   __func__, cnct->hostname, cnct->dbname, i,
-                                   j, rc);
+                                   __func__, cnct->hostname, cnct->dbname, i, j,
+                                   rc);
                         }
                         cnct->last_failed = time(NULL);
                     }

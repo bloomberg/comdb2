@@ -510,7 +510,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     uuidstr_t us;
 
     logmsg(LOGMSG_INFO, "%s session [%llu:%s]\n", __func__, rqid,
-            comdb2uuidstr(uuid,us));
+           comdb2uuidstr(uuid, us));
 
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
@@ -760,7 +760,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 #endif
 
     logmsg(LOGMSG_INFO, "%s session [%llu:%s]\n", __func__, rqid,
-            comdb2uuidstr(uuid,us));
+           comdb2uuidstr(uuid, us));
 
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
@@ -817,8 +817,9 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     rc = osql_repository_add(sess, replaced);
     if (rc || *replaced) {
-        logmsg(LOGMSG_ERROR, "%s session [%llu:%s] failed to add to repository\n", __func__, rqid,
-                comdb2uuidstr(uuid,us));
+        logmsg(LOGMSG_ERROR,
+               "%s session [%llu:%s] failed to add to repository\n", __func__,
+               rqid, comdb2uuidstr(uuid, us));
         goto late_error;
     }
 
