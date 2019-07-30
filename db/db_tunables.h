@@ -1621,12 +1621,6 @@ REGISTER_TUNABLE("physrep_write",
                  "Allow physical replicant writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physwrite, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("physrep_write_shared_handle",
-                 "Maintain only a single connection against cluster.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_physwrite_shared_handle, 0, NULL, NULL,
-                 NULL, NULL);
-
 REGISTER_TUNABLE("physrep_write_wait_commit",
                  "Block until commit record reaches replicant.  "
                  "(Default: off)",

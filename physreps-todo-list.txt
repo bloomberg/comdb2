@@ -1,0 +1,34 @@
+> copycomdb2 does not work correctly: complains that there is no 'logs' dir
+
+> testcase for physical-writes .. this has to be pretty comprehensive: we need to verify that mixed
+  architecture writes work correctly in both directions.
+
+> it would be nice if there was a testing "MODE" which automatically brings up a physical replicant
+  locally, and directs all reads and writes to that physical replicant rather than the machines in the 
+  CLUSTER .. now it becomes much easier to test things like mixed-mode .. because physical writes 
+  are so much slower we'd prolly have to extend the timeout on alot of these tests ..
+
+> There's a bug in the 'blocking' version of this code .. it "locks up" .. not sure
+  if this is on the physrep side or database side ..
+
+Im not completely sure that we want to do the 'blocking' version of this code..
+there is a problem with it 
+
+new tunables:
+   physrep_write tunable allows writes through physical replicants: verify that you can't write if 
+   this is disabled
+   physrep_write_wait_commit: if set, the writer will pause until the commit-lsn propogates to this physrep
+   physrep_commit_timeout: max time that physrep will wait for a commit record- we default this to 0, which is 
+      indefinitely .. 
+      need to think about this a bit: I'm worried that the commit record will never arrive.. but this
+      is probably a bit overblown .. we could return both the generation and the lsn of the committing
+      record and block until either the generation is larger, or the lsn is larger .. i dont want to 
+      belabor this too much, as it prolly wont happen that much 
+   physrep_long_write_threshold: just prints a message if a physrep waits a long time for something to
+      replicate
+   physrep_poll_ms: query the cluster
+
+we need to test on different architectures: we can start with the truncatesc test- what is the behavior
+if the physical replicant is sitting on a sun, and the db is on linux?  what about the other way around?
+
+
