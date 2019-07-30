@@ -164,6 +164,7 @@ setup_db() {
 
     df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
     echo "make_slow_replicants_incoherent off" >> ${LRL}
+    echo "enable_temptable_clean_exit on" >> ${LRL}
     echo "exitalarmsec 6" >> ${LRL}
 
     # If CLUSTER is defined, populate config and lrl with that info
