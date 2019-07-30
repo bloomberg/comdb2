@@ -495,7 +495,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                        "the new master can sort it out\n");
         }
 
-        begin_clean_exit();
+        clean_exit();
     }
 
     /* we can resume sql threads at this point */
@@ -896,12 +896,12 @@ backout:
     return -1;
 
 failed:
-    /* TODO why do we do this stuff if we're just going to begin_clean_exit()? */
+    /* TODO why do we do this stuff if we're just going to clean_exit()? */
     live_sc_off(db);
 
     sc_errf(s, "Fatal error during schema change.  Exiting\n");
     /* from exit msgtrap */
-    begin_clean_exit();
+    clean_exit();
     return -1;
 }
 
