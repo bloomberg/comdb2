@@ -2266,7 +2266,11 @@ case OP_RealAffinity: {                  /* in1 */
 ** A NULL value is not changed by this routine.  It remains NULL.
 */
 case OP_Cast: {                  /* in1 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_SMALL );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_REAL );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   testcase( pOp->p2==SQLITE_AFF_TEXT );
   testcase( pOp->p2==SQLITE_AFF_BLOB );
   testcase( pOp->p2==SQLITE_AFF_NUMERIC );
