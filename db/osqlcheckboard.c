@@ -482,8 +482,9 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
 
         /* is it the time to check the master? have we already done so? */
         int now = comdb2_time_epochms();
+        extern int gbl_is_physical_replicant;
 
-        if ((poke_timeout > 0) &&
+        if (!gbl_is_physical_replicant && (poke_timeout > 0) &&
             (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
             /* timeout the request */
             logmsg(LOGMSG_ERROR,
@@ -497,7 +498,8 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             break;
         }
 
-        if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
+        if (!gbl_is_physical_replicant && (poke_freq > 0) &&
+            (entry->last_checked + poke_freq <= now)) {
             entry->last_checked = now;
 
             /* try poke again */

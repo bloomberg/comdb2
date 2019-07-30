@@ -48,6 +48,7 @@
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"
+#include <physwrite.h>
 #include <compat.h>
 #include <unistd.h>
 
@@ -2868,39 +2869,36 @@ static osql_comm_t *get_thecomm(void)
 }
 
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dtap, int dtalen, uint8_t is_tcp);
-static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
-                             int usertype, void *dtap, int dtalen, void *tail,
-                             int tailen);
+                         void *dtap, int dtalen, uint8_t flags);
 
 static void net_sosql_req(void *hndl, void *uptr, char *fromnode, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp);
+                          void *dtap, int dtalen, uint8_t flags);
 static void net_recom_req(void *hndl, void *uptr, char *fromnode, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp);
+                          void *dtap, int dtalen, uint8_t flags);
 static void net_snapisol_req(void *hndl, void *uptr, char *fromnode,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp);
+                             uint8_t flags);
 static void net_serial_req(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp);
+                           void *dtap, int dtalen, uint8_t flags);
 
 static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
                                int usertype, void *dtap, int dtalen,
-                               uint8_t is_tcp);
+                               uint8_t flags);
 static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *node);
 static void net_osql_poked(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp);
+                           void *dtap, int dtalen, uint8_t flags);
 static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromnode,
                                 int usertype, void *dtap, int dtalen,
-                                uint8_t is_tcp);
+                                uint8_t flags);
 static void net_osql_master_check(void *hndl, void *uptr, char *fromnode,
                                   int usertype, void *dtap, int dtalen,
-                                  uint8_t is_tcp);
+                                  uint8_t flags);
 static void net_osql_master_checked(void *hndl, void *uptr, char *fromnode,
                                     int usertype, void *dtap, int dtalen,
-                                    uint8_t is_tcp);
+                                    uint8_t flags);
 static void net_sorese_signal(void *hndl, void *uptr, char *fromnode,
                               int usertype, void *dtap, int dtalen,
-                              uint8_t is_tcp);
+                              uint8_t flags);
 
 static void net_startthread_rtn(void *arg);
 static void net_stopthread_rtn(void *arg);
@@ -2921,28 +2919,28 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
 static int get_blkout(time_t now, char *nodes[REPMAX], int *nds);
 
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
-                         int nettype);
+                         int nettype, uint8_t flags);
 static int netrpl2req(int netrpltype);
 
 static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromnode,
                                    int usertype, void *dtap, int dtalen,
-                                   uint8_t is_tcp);
+                                   uint8_t flags);
 
 static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromnode,
                                    int usertype, void *dtap, int dtalen,
-                                   uint8_t is_tcp);
+                                   uint8_t flags);
 static void net_block_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp);
+                          void *dtap, int dtalen, uint8_t flags);
 static void net_block_reply(void *hndl, void *uptr, char *fromhost,
                             int usertype, void *dtap, int dtalen,
-                            uint8_t is_tcp);
+                            uint8_t flags);
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp);
+                             uint8_t flags);
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp);
+                             uint8_t flags);
 
 #include <net/net.h>
 /**
@@ -3259,7 +3257,7 @@ int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen)
 }
 
 static void net_block_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp)
+                          void *dtap, int dtalen, uint8_t flags)
 {
 
     net_block_msg_t *net_msg = dtap;
@@ -3284,8 +3282,7 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
 }
 
 static void net_block_reply(void *hndl, void *uptr, char *fromhost,
-                            int usertype, void *dtap, int dtalen,
-                            uint8_t is_tcp)
+                            int usertype, void *dtap, int dtalen, uint8_t flags)
 {
 
     net_block_msg_t *net_msg = dtap;
@@ -3314,7 +3311,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp)
+                             uint8_t flags)
 {
     int rc = 0;
 
@@ -3358,7 +3355,7 @@ void log_snap_info_key(snap_uid_t *snap_info)
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp)
+                             uint8_t flags)
 {
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
@@ -4985,6 +4982,9 @@ void *osql_create_request(const char *sql, int sqlen, int type,
     osql_req_t req = {0};
     osql_uuid_req_t req_uuid = {0};
     void *ret;
+    uuidstr_t us;
+    logmsg(LOGMSG_USER, "%s create [%lld:%s]\n", __func__, rqid,
+           comdb2uuidstr(uuid, us));
 
     if (rqid == OSQL_RQID_USE_UUID) {
         rqlen = sizeof(osql_uuid_req_t) + sqlen;
@@ -5443,7 +5443,7 @@ static void net_stopthread_rtn(void *arg)
  */
 static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
                                int usertype, void *dtap, int dtalen,
-                               uint8_t is_tcp)
+                               uint8_t flags)
 {
 
     osql_blknds_t *blk = NULL;
@@ -5485,7 +5485,7 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
 
 /* remote poke */
 static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp)
+                           void *dtap, int dtalen, uint8_t flags)
 {
     osql_poke_t poke;
     bool found = false;
@@ -5540,7 +5540,7 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
 static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
                                 int usertype, void *dtap, int dtalen,
-                                uint8_t is_tcp)
+                                uint8_t flags)
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -5592,7 +5592,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
 
 static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
                                   int usertype, void *dtap, int dtalen,
-                                  uint8_t is_tcp)
+                                  uint8_t flags)
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -5690,7 +5690,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
 static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
                                     int usertype, void *dtap, int dtalen,
-                                    uint8_t is_tcp)
+                                    uint8_t flags)
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -5810,59 +5810,65 @@ static void *osql_heartbeat_thread(void *arg)
 }
 
 /* this function routes the packet in the case of local communication */
-static int net_local_route_packet(int usertype, void *data, int datalen)
+int net_route_packet_flags(int usertype, void *data, int datalen, uint8_t flags)
 {
     switch (usertype) {
     case NET_OSQL_BLOCK_RPL:
     case NET_OSQL_BLOCK_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SOCK_REQ:
     case NET_OSQL_SOCK_REQ_COST:
     case NET_OSQL_SOCK_REQ_UUID:
     case NET_OSQL_SOCK_REQ_COST_UUID:
-        net_sosql_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_sosql_req(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SOCK_RPL:
     case NET_OSQL_SOCK_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_RECOM_REQ:
     case NET_OSQL_RECOM_REQ_UUID:
-        net_recom_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_recom_req(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_RECOM_RPL:
     case NET_OSQL_RECOM_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SNAPISOL_REQ:
     case NET_OSQL_SNAPISOL_REQ_UUID:
-        net_snapisol_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_snapisol_req(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SNAPISOL_RPL:
     case NET_OSQL_SNAPISOL_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SERIAL_REQ:
     case NET_OSQL_SERIAL_REQ_UUID:
-        net_serial_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_serial_req(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_OSQL_SERIAL_RPL:
     case NET_OSQL_SERIAL_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_BLOCK_REQ:
-        net_block_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_block_req(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     case NET_BLOCK_REPLY:
-        net_block_reply(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_block_reply(NULL, NULL, 0, usertype, data, datalen, flags);
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
                 __func__, usertype);
+        abort();
         return -1;
     }
     return 0;
+}
+
+static int net_local_route_packet(int usertype, void *data, int datalen)
+{
+    return net_route_packet_flags(usertype, data, datalen, 0);
 }
 
 /* this function routes the packet in the case of local communication
@@ -5884,11 +5890,11 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
     case NET_OSQL_SNAPISOL_RPL_UUID:
     case NET_OSQL_SERIAL_RPL_UUID:
         return net_osql_rpl_tail(NULL, NULL, 0, usertype, data, datalen,
-                                 tails[0], taillens[0]);
+                                 tails[0], taillens[0], 0);
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
                 __func__, usertype);
-        return -1;
+        abort();
     }
     return 0;
 }
@@ -5944,9 +5950,14 @@ out:
     return rc;
 }
 
+extern int gbl_is_physical_replicant;
+extern int gbl_physwrite;
+
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets
    due to queue being full */
+
+static time_t last_physrep_write = 0;
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay)
 {
@@ -5963,6 +5974,18 @@ static int offload_net_send(const char *host, int usertype, void *data,
 
     if (!host) {
         /* local save, this is calling sorese_rvprpl_master */
+        if (gbl_is_physical_replicant) {
+            time_t now;
+            if (gbl_physwrite)
+                return physwrite_route_packet(usertype, data, datalen, 0);
+            if ((now = time(NULL)) > last_physrep_write) {
+                logmsg(LOGMSG_ERROR,
+                       "Preventing write on read-only physical "
+                       "replicant (set 'physrep_write on' to allow writes)\n");
+                last_physrep_write = now;
+            }
+            return -1;
+        }
         net_local_route_packet(usertype, data, datalen);
         return 0;
     }
@@ -6075,7 +6098,20 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
             rc = net_send_tails(netinfo_ptr, host, usertype, data, datalen,
                                 nodelay, ntails, tails, tailens);
         } else {
-            /* local save */
+            if (gbl_is_physical_replicant) {
+                time_t now;
+
+                if (gbl_physwrite)
+                    return physwrite_route_packet_tails(
+                        usertype, data, datalen, ntails, tails[0], tailens[0]);
+                if ((now = time(NULL)) > last_physrep_write) {
+                    logmsg(LOGMSG_ERROR,
+                           "Preventing write on read-only "
+                           "physical replicant (set 'physrep_write on' to "
+                           "allow writes)\n");
+                    last_physrep_write = now;
+                }
+            }
             rc = net_local_route_packet_tails(usertype, data, datalen, ntails,
                                               tails, tailens);
         }
@@ -6174,14 +6210,100 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
     return 0;
 }
 
+static inline int isreq(int usertype)
+{
+    switch (usertype) {
+    case NET_OSQL_SOCK_REQ:
+    case NET_OSQL_SOCK_REQ_UUID:
+    case NET_OSQL_RECOM_REQ:
+    case NET_OSQL_RECOM_REQ_UUID:
+    case NET_OSQL_SNAPISOL_REQ:
+    case NET_OSQL_SNAPISOL_REQ_UUID:
+    case NET_OSQL_SERIAL_REQ:
+    case NET_OSQL_SERIAL_REQ_UUID:
+        return 1;
+
+    default:
+        return 0;
+    }
+}
+
 /* Replicant callback.  Note: this is a bit kludgy.
    If we get called remotely for a parametrized request
    the ntails/tails/taillens parameters are invalid and
    must be parsed from the buffer.
  */
 
+int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
+                      unsigned long long *rqid)
+{
+    uint8_t *p_buf = (uint8_t *)dtap;
+    uint8_t *p_buf_end = (p_buf + dtalen);
+    int type = -1;
+
+    if (osql_nettype_is_uuid(usertype)) {
+        if (isreq(usertype)) {
+            osql_uuid_req_t p_osql_uuid_req;
+            if (!(p_buf = (uint8_t *)osqlcomm_req_uuid_type_get(
+                      &p_osql_uuid_req, p_buf, p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                       __func__, "osqlcomm_uuid_req_type_get", usertype);
+                abort();
+            } else {
+                *rqid = OSQL_RQID_USE_UUID;
+                comdb2uuidcpy(*uuid, p_osql_uuid_req.uuid);
+                type = p_osql_uuid_req.type;
+            }
+        } else {
+            osql_uuid_rpl_t p_osql_uuid_rpl;
+            if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
+                      &p_osql_uuid_rpl, p_buf, p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                       __func__, "osqlcomm_uuid_rpl_type_get", usertype);
+                abort();
+            } else {
+                *rqid = OSQL_RQID_USE_UUID;
+                comdb2uuidcpy(*uuid, p_osql_uuid_rpl.uuid);
+                type = p_osql_uuid_rpl.type;
+            }
+        }
+    } else {
+        if (isreq(usertype)) {
+            osql_req_t p_osql_req;
+            if (!(p_buf = (uint8_t *)osqlcomm_req_type_get(&p_osql_req, p_buf,
+                                                           p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                       __func__, "osqlcomm_req_type_get", usertype);
+                abort();
+            } else {
+                *rqid = p_osql_req.rqid;
+                comdb2uuid_clear(*uuid);
+                type = p_osql_req.type;
+            }
+        } else {
+            osql_rpl_t p_osql_rpl;
+            uint8_t *p_buf, *p_buf_end;
+
+            p_buf = (uint8_t *)dtap;
+            p_buf_end = (p_buf + dtalen);
+
+            if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
+                                                           p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                       __func__, "osqlcomm_rpl_type_get", usertype);
+                abort();
+            } else {
+                *rqid = p_osql_rpl.sid;
+                comdb2uuid_clear(*uuid);
+                type = p_osql_rpl.type;
+            }
+        }
+    }
+    return type;
+}
+
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dtap, int dtalen, uint8_t is_tcp)
+                         void *dtap, int dtalen, uint8_t flags)
 {
     int found = 0;
     int rc = 0;
@@ -6234,7 +6356,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 #endif
 
     if (!rc)
-        rc = osql_sess_rcvop(rqid, uuid, type, dtap, dtalen, &found);
+        rc = osql_sess_rcvop(rqid, uuid, type, dtap, dtalen, &found, flags);
     if (rc)
         stats[netrpl2req(usertype)].rcv_failed++;
     if (!found)
@@ -6259,11 +6381,21 @@ static int check_master(const char *tohost)
 /* since net_send already serializes the tail,
    this is needed only when routing local packets
    we need to "serialize" the tail as well, therefore the need for duplicate */
-static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
-                             int usertype, void *dtap, int dtalen, void *tail,
-                             int tailen)
+int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost, int usertype,
+                      void *dtap, int dtalen, void *tail, int tailen,
+                      uint32_t flags)
 {
     void *dup;
+
+    assert(usertype == NET_OSQL_BLOCK_RPL || usertype == NET_OSQL_SOCK_RPL ||
+           usertype == NET_OSQL_RECOM_RPL ||
+           usertype == NET_OSQL_SNAPISOL_RPL ||
+           usertype == NET_OSQL_SERIAL_RPL ||
+           usertype == NET_OSQL_BLOCK_RPL_UUID ||
+           usertype == NET_OSQL_SOCK_RPL_UUID ||
+           usertype == NET_OSQL_RECOM_RPL_UUID ||
+           usertype == NET_OSQL_SNAPISOL_RPL_UUID ||
+           usertype == NET_OSQL_SERIAL_RPL_UUID);
 
     if (dtalen + tailen > gbl_blob_sz_thresh_bytes)
         dup = comdb2_bmalloc(blobmem, dtalen + tailen);
@@ -6322,7 +6454,8 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     }
 
     if (!rc)
-        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found);
+        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found,
+                             flags);
 
     free(dup);
 
@@ -6336,7 +6469,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
 }
 
 static void net_sosql_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp)
+                          void *dtap, int dtalen, uint8_t flags)
 {
 
     int rc = 0;
@@ -6362,7 +6495,7 @@ static void net_sosql_req(void *hndl, void *uptr, char *fromhost, int usertype,
        once we are done, the queue is ready for this fromnode:rqid session so
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
-    if ((rc = sorese_rcvreq(fromhost, dtap, dtalen, type, usertype))) {
+    if ((rc = sorese_rcvreq(fromhost, dtap, dtalen, type, usertype, flags))) {
         static int once = 0;
         if (!once) {
             logmsg(LOGMSG_ERROR, "%s:unable to receive request rc=%d\n", __func__,
@@ -6374,7 +6507,7 @@ static void net_sosql_req(void *hndl, void *uptr, char *fromhost, int usertype,
 }
 
 static void net_recom_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp)
+                          void *dtap, int dtalen, uint8_t flags)
 {
 
     int rc = 0;
@@ -6390,7 +6523,7 @@ static void net_recom_req(void *hndl, void *uptr, char *fromhost, int usertype,
        once we are done, the queue is ready for this fromhost:rqid session so
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
-    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_RECOM_REQ, usertype);
+    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_RECOM_REQ, usertype, flags);
 
     if (rc)
         stats[OSQL_RECOM_REQ].rcv_failed++;
@@ -6398,7 +6531,7 @@ static void net_recom_req(void *hndl, void *uptr, char *fromhost, int usertype,
 
 static void net_snapisol_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp)
+                             uint8_t flags)
 {
 
     int rc = 0;
@@ -6414,14 +6547,15 @@ static void net_snapisol_req(void *hndl, void *uptr, char *fromhost,
        once we are done, the queue is ready for this fromnode:rqid session so
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
-    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SNAPISOL_REQ, usertype);
+    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SNAPISOL_REQ, usertype,
+                       flags);
 
     if (rc)
         stats[OSQL_SNAPISOL_REQ].rcv_failed++;
 }
 
 static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp)
+                           void *dtap, int dtalen, uint8_t flags)
 {
 
     int rc = 0;
@@ -6437,7 +6571,8 @@ static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
        once we are done, the queue is ready for this fromnode:rqid session so
        reader thread is free to receive rows from replicant even if blockproc is
        not yet up for us */
-    rc = sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SERIAL_REQ, usertype);
+    rc =
+        sorese_rcvreq(fromhost, dtap, dtalen, OSQL_SERIAL_REQ, usertype, flags);
 
     if (rc)
         stats[OSQL_SERIAL_REQ].rcv_failed++;
@@ -7608,8 +7743,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
 #define OSQL_BP_MAXLEN (32 * 1024)
 
+extern __thread physwrite_results_t *physwrite_results;
+
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
-                         int nettype)
+                         int nettype, uint8_t flags)
 {
 
     osql_sess_t *sess = NULL;
@@ -7712,6 +7849,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
                                  uuid, fromhost, iq, &replaced, is_reorder_on);
+    if (sess) {
+        logmsg(LOGMSG_DEBUG, "%s put a breakpoint here\n", __func__);
+    }
     if (replaced) {
         assert(sess == NULL);
         destroy_ireq(thedb, iq);
@@ -7774,8 +7914,27 @@ done:
                      sizeof(generr.errstr));
         }
 
-        rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                                         RC_INTERNAL_RETRY);
+        if (physwrite_results) {
+            rc2 = 0;
+            assert(!iq->physwrite_results);
+            Pthread_mutex_lock(&physwrite_results->lk);
+            assert(physwrite_results->done == 0);
+            if (generr.errstr) {
+                physwrite_results->errstr = strdup(generr.errstr);
+            } else {
+                physwrite_results->errstr = NULL;
+            }
+            physwrite_results->errval = generr.errval;
+            physwrite_results->rcode = RC_INTERNAL_RETRY;
+            physwrite_results->done = 1;
+
+            Pthread_cond_signal(&physwrite_results->cd);
+            Pthread_mutex_unlock(&physwrite_results->lk);
+
+        } else {
+            rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+                                             RC_INTERNAL_RETRY);
+        }
         if (rc2) {
             uuidstr_t us;
             comdb2uuidstr(uuid, us);
@@ -7812,7 +7971,7 @@ done:
 /* transaction result */
 static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
                               int usertype, void *dtap, int dtalen,
-                              uint8_t is_tcp)
+                              uint8_t flags)
 {
     osql_done_t done = {0};
     struct errstat *xerr;
@@ -7900,7 +8059,7 @@ static int netrpl2req(int netrpltype)
 
 static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
                                    int usertype, void *dtap, int dtalen,
-                                   uint8_t is_tcp)
+                                   uint8_t flags)
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -7938,7 +8097,7 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
 
 static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromhost,
                                    int usertype, void *dtap, int dtalen,
-                                   uint8_t is_tcp)
+                                   uint8_t flags)
 {
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;

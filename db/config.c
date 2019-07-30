@@ -36,6 +36,7 @@
 #include "rtcpu.h"
 #include "config.h"
 #include "phys_rep.h"
+#include "physwrite.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -1307,6 +1308,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             exit(1);
         }
         char *type = tokdup(tok, ltok);
+
+        physwrite_init(dbname, type, gbl_mynode);
 
         if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
             logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n", dbname,

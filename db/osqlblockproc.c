@@ -796,6 +796,9 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
  * Returns 0 if success
  *
  */
+
+extern __thread physwrite_results_t *physwrite_results;
+
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid, int type)
 {
@@ -904,9 +907,20 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
-            send_error_to_replicant(
-                rqid, sess->offhost, RC_INTERNAL_RETRY,
-                "Master received inconsistent number of opcodes");
+            /* This is inline, so don't bother locking */
+            if (physwrite_results) {
+                assert(!iq->physwrite_results);
+                physwrite_results->dispatched = 1;
+                physwrite_results->done = 1;
+                physwrite_results->errstr =
+                    strdup("Master received "
+                           "inconsistent number of opcodes");
+                physwrite_results->errval = RC_INTERNAL_RETRY;
+            } else {
+                send_error_to_replicant(
+                    rqid, sess->offhost, RC_INTERNAL_RETRY,
+                    "Master received inconsistent number of opcodes");
+            }
 
             logmsg(LOGMSG_ERROR,
                    "%s: Replicant sent %d opcodes, master received %lld\n",
@@ -940,7 +954,20 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
+            assert(!iq->physwrite_results);
+            if (physwrite_results) {
+                iq->physwrite_results = physwrite_results;
+                iq->physwrite_results->dispatched = 1;
+            }
             rc = handle_buf_sorese(thedb, iq, debug);
+            if (iq->physwrite_results && rc) {
+                logmsg(LOGMSG_ERROR, "%s setting done on handle_buf rc %d\n",
+                       __func__, rc);
+                iq->physwrite_results->done = 1;
+                iq->physwrite_results->errval = RC_INTERNAL_RETRY;
+                iq->physwrite_results->errstr = strdup("Failed to dispatch");
+                iq->physwrite_results = NULL;
+            }
         }
         osql_sess_unlock_complete(sess);
         osql_sess_unlock(sess);
@@ -1000,7 +1027,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* pack prccom header */
     if (!(p_buf = req_hdr_put(&req_hdr, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /*
      * req
@@ -1009,7 +1036,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* save room in the buffer for req, we need to write it last after we know
      * the proper overall offset */
     if (BLOCK_REQ_LEN > (*pp_buf_end - p_buf))
-        return -1;
+        abort();
     p_buf_req_start = p_buf;
     p_buf += BLOCK_REQ_LEN;
     p_buf_req_end = p_buf;
@@ -1022,7 +1049,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* save room for usekl op header */
     if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
+        abort();
     p_buf_op_hdr_start = p_buf;
     p_buf += PACKEDREQ_HDR_LEN;
     p_buf_op_hdr_end = p_buf;
@@ -1034,10 +1061,10 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* pack usekl */
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
     if (!(p_buf =
               buf_no_net_put(db->tablename, usekl.taglen, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* build usekl op hdr */
     ++req.num_reqs;
@@ -1048,12 +1075,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     if (!(p_buf = buf_zero_put(
               ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* pack usekl op hdr in the space we saved */
     if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
         p_buf_op_hdr_end)
-        return -1;
+        abort();
 
     /*
      * tzset
@@ -1061,7 +1088,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* save room for tzset op header */
     if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
+        abort();
     p_buf_op_hdr_start = p_buf;
     p_buf += PACKEDREQ_HDR_LEN;
     p_buf_op_hdr_end = p_buf;
@@ -1071,9 +1098,9 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* pack tzset */
     if (!(p_buf = packedreq_tzset_put(&tzset, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
     if (!(p_buf = buf_no_net_put(tzname, tzset.tznamelen, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* build tzset op hdr */
     ++req.num_reqs;
@@ -1084,7 +1111,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     if (!(p_buf = buf_zero_put(
               ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* pack usekl op hdr in the space we saved */
     if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
@@ -1097,7 +1124,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* save room for sql op header */
     if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
+        abort();
     p_buf_op_hdr_start = p_buf;
     p_buf += PACKEDREQ_HDR_LEN;
     p_buf_op_hdr_end = p_buf;
@@ -1111,12 +1138,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* pack sql */
     if (!(p_buf = packedreq_sql_put(&sql, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
     *sqlqret =
         (char *)p_buf; /* save location of the sql string in the buffer */
     *sqlqlenret = sql.sqlqlen;
     if (!(p_buf = buf_no_net_put(sqlq, sql.sqlqlen, p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* build sql op hdr */
     ++req.num_reqs;
@@ -1128,12 +1155,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     if (!(p_buf = buf_zero_put(
               ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* pack sql op hdr in the space we saved */
     if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
         p_buf_op_hdr_end)
-        return -1;
+        abort();
 
     /*
      * blkseq
@@ -1142,10 +1169,10 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     p_buf += PACKEDREQ_HDR_LEN;
     if (rqid == OSQL_RQID_USE_UUID) {
         if (PACKEDREQ_SEQ2_LEN > (*pp_buf_end - p_buf))
-            return -1;
+            abort();
     } else {
         if (PACKEDREQ_SEQ_LEN > (*pp_buf_end - p_buf))
-            return -1;
+            abort();
     }
     p_buf_op_hdr_end = p_buf;
 
@@ -1154,7 +1181,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
         comdb2uuidcpy(seq2.seq, uuid);
 
         if (!(p_buf = packedreq_seq2_put(&seq2, p_buf, *pp_buf_end)))
-            return -1;
+            abort();
 
         op_hdr.opcode = BLOCK2_SEQV2;
     } else {
@@ -1164,7 +1191,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
         seq.seq3 = rand_r((unsigned int *)&seed);
 
         if (!(p_buf = packedreq_seq_put(&seq, p_buf, *pp_buf_end)))
-            return -1;
+            abort();
 
         op_hdr.opcode = BLOCK_SEQ;
     }
@@ -1176,12 +1203,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     if (!(p_buf = buf_zero_put(
               ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
-        return -1;
+        abort();
 
     /* pack seq op hdr in the space we saved */
     if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
         p_buf_op_hdr_end)
-        return -1;
+        abort();
 
     /*
      * req
@@ -1193,7 +1220,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 
     /* pack req in the space we saved at the start */
     if (block_req_put(&req, p_buf_req_start, p_buf_req_end) != p_buf_req_end)
-        return -1;
+        abort();
 
     *pp_buf_end = p_buf;
     return 0;

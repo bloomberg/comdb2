@@ -521,6 +521,109 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
+        uint32_t *offset, uint32_t *generation);
+
+static int db_comdb_durable_lsn(Lua L)
+{
+    uint32_t file, offset, generation;
+    int rcode;
+    
+    rcode = last_durable_lsn(thedb->bdb_env, &file, &offset, &generation);
+    lua_createtable(L, 4, 0);
+
+    lua_pushstring(L, "rcode");
+    lua_pushinteger(L, rcode);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "file");
+    lua_pushinteger(L, file);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "offset");
+    lua_pushinteger(L, offset);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "generation");
+    lua_pushinteger(L, generation);
+    lua_settable(L, -3);
+
+    lua_rawseti(L, -2, 1);
+    return 1;
+
+}
+
+#include <lua/ltypes.h>
+
+static int db_comdb_exec_socksql(Lua L)
+{
+    char *host, *errstr;
+    int usertype, errval, file, offset, rcode, dispatched, flags;
+    blob_t data;
+    if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3) ||
+            !lua_isnumber(L, 4)) {
+        logmsg(LOGMSG_ERROR, "%s invalid arguments\n", __func__);
+        return luaL_error(L, "Exec-socksql failed.");
+    }
+    host = (char *)lua_tostring(L, 1);
+    usertype = lua_tonumber(L, 2);
+    luabb_toblob(L, 3, &data);
+    flags = lua_tonumber(L, 4);
+    lua_createtable(L, 0, 0);
+    dispatched = physwrite_exec(host, usertype, data.data, data.length, &rcode,
+            &errval, &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset,
+            flags);
+
+    if (dispatched) {
+        lua_createtable(L, 10, 0);
+
+        lua_pushstring(L, "rcode");
+        lua_pushinteger(L, rcode);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "errval");
+        lua_pushinteger(L, errval);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "errstr");
+        lua_pushstring(L, errstr);
+        lua_settable(L, -3);
+        if (errstr)
+            free(errstr);
+
+        lua_pushstring(L, "file");
+        lua_pushinteger(L, file);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "offset");
+        lua_pushinteger(L, offset);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "inserts");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "updates");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "deletes");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "cupdates");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "cdeletes");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_rawseti(L, -2, 1);
+    }
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -534,6 +637,8 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "exec_socksql", db_comdb_exec_socksql },
+    { "durable_lsn", db_comdb_durable_lsn },
     { NULL, NULL }
 }; 
 
@@ -704,7 +809,58 @@ static struct sp_source syssps[] = {
         "        db:emit(v)\n"
         "    end\n"
         "end\n",
-        "register_replicant"
+        NULL
+    }
+
+    ,{
+        "sys.cmd.exec_socksql",
+        "local function main(host, usertype, data, flags)\n"
+        "    local schema = {\n"
+        "        { 'int',    'rcode' },\n"
+        "        { 'int',    'errval' },\n"
+        "        { 'string', 'errstr' },\n"
+        "        { 'int',    'file' },\n"
+        "        { 'int',    'offset' },\n"
+        "        { 'int',    'inserts' },\n"
+        "        { 'int',    'updates' },\n"
+        "        { 'int',    'deletes' },\n"
+        "        { 'int',    'cupdates' },\n"
+        "        { 'int',    'cdeletes' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local result\n"
+        "    result = sys.exec_socksql(host, usertype, data, flags)\n"
+        "    for i, v in ipairs(result) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.durable_lsn",
+        "local function main()\n"
+        "    local schema = {\n"
+        "        { 'int',    'rcode' },\n"
+        "        { 'int',    'file' },\n"
+        "        { 'int',    'offset' },\n"
+        "        { 'int',    'generation' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local result\n"
+        "    result = sys.durable_lsn()\n"
+        "    for i, v in ipairs(result) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
+        "end\n",
+        NULL
     }
 };
 

@@ -98,6 +98,7 @@ typedef long long tranid_t;
 #include <cdb2_constants.h>
 #include <schema_lk.h>
 #include "perf.h"
+#include <physwrite.h>
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -1348,6 +1349,8 @@ struct ireq {
 
     /* The stats for the origin node of this request (can be NULL) */
     struct rawnodestats *rawnodestats;
+
+    physwrite_results_t *physwrite_results;
 
     /* copy of blkseq */
     uint8_t seq[MAX_SEQ_LEN];

@@ -1502,6 +1502,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
+#include <physwrite.h>
+
 static int bdb_tran_commit_with_seqnum_int_int(
     bdb_state_type *bdb_state, tran_type *tran, seqnum_type *seqnum,
     int *bdberr, int getseqnum, uint64_t *out_txnsize, void *blkseq, int blklen,

@@ -1617,6 +1617,40 @@ REGISTER_TUNABLE("blocking_physrep",
                  TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("physrep_write",
+                 "Allow physical replicant writes.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physwrite, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_write_wait_commit",
+                 "Block until commit record reaches replicant.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physwrite_wait_commit, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("physrep_commit_timeout",
+                 "Max time phyrep will wait for commit record.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_physwrite_commit_timeout, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("physrep_long_write_threshold",
+                 "Print warning trace after this many seconds.  "
+                 "(Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physwrite_long_write_threshold, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_poll_ms",
+                 "Poll this long before re-querying the cluster"
+                 "(Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_physrep_poll_ms, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("physrep_request_startlsn",
+                 "Request start LSN in physical replicant.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_request_startlsn, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",

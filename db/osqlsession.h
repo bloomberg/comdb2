@@ -30,6 +30,9 @@ typedef struct osql_uuid_req osql_uuid_req_t;
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 
+/* Session flags */
+enum { TCP = 1, PHYSWRITE = 2 };
+
 struct osql_sess {
 
     /* request part */
@@ -242,7 +245,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess);
  *
  */
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
-                    int datalen, int *found);
+                    int datalen, int *found, uint8_t flags);
 
 /**
  * If the node "arg" machine the provided session

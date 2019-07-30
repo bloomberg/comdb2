@@ -2531,9 +2531,11 @@ retry_connect:
                hndl->node_seq, hndl->flags, hndl->num_hosts,
                hndl->num_hosts_sameroom);
 
-    if ((hndl->node_seq == 0) &&
-        ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
-                                         (hndl->num_hosts_sameroom == 0)))) {
+    if (hndl->flags & CDB2_CONNECT_MASTER) {
+        hndl->node_seq = hndl->master;
+    } else if ((hndl->node_seq == 0) && ((hndl->flags & CDB2_RANDOM) ||
+                                         ((hndl->flags & CDB2_RANDOMROOM) &&
+                                          (hndl->num_hosts_sameroom == 0)))) {
         hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
@@ -2910,9 +2912,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (hndl) { 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        if ((hndl->flags & CDB2_DIRECT_CPU) ||
-            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
-             hndl->connected_host)) {
+        if ((hndl->flags & (CDB2_DIRECT_CPU | CDB2_CONNECT_MASTER)) ||
+            (retries_done >= (hndl->num_hosts * 2 - 1) &&
+             hndl->master == hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
         if (retries_done >= hndl->num_hosts) {
@@ -4878,6 +4880,14 @@ void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max,
         if (ports)
             (ports[i]) = hndl->ports[i];
     }
+}
+
+const char *cdb2_master(cdb2_hndl_tp *hndl)
+{
+    if (hndl == NULL)
+        return "unallocated cdb2 handle";
+
+    return hndl->hosts[hndl->master];
 }
 
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
