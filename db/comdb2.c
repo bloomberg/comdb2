@@ -5391,11 +5391,10 @@ static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
 #ifndef NDEBUG //TODO:wrap the follwing lines before checking in
-#endif
     char cmd[400];
     sprintf(cmd,
             "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
-            "/proc/%d/exe %d 2>&1 > %s/%s.onexit'",
+            "/proc/%d/exe %d 2>&1 > %s/logs/%s.onexit'",
             gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
 
     logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
@@ -5403,6 +5402,7 @@ static void goodbye()
     if (rc) {
         logmsg(LOGMSG_ERROR, "goodbye: system  returned rc %d\n", rc);
     }
+#endif
 }
 
 #define TOOL(x) #x,
