@@ -162,7 +162,7 @@ static int db_comdb_analyze(Lua L) {
     if (!f) {
         logmsg(LOGMSG_ERROR, "%s:%d SYSTEM RAN OUT OF FILE DESCRIPTORS!!! EXITING\n",
                 __FILE__, __LINE__);
-        clean_exit();
+        begin_clean_exit();
     }
     SBUF2 *sb = sbuf2open( fileno(f), SBUF2_NO_CLOSE_FD); /* sbuf pointed at f */
 
@@ -430,7 +430,7 @@ static int db_send(Lua L) {
     {
         logmsg(LOGMSG_FATAL, "%s:%d SYSTEM RAN OUT OF FILE DESCRIPTORS!!! EXITING\n",
                 __FILE__, __LINE__);
-        clean_exit();
+        begin_clean_exit();
     }
     /* kludge spackle, engage */
     io_override_set_std(f);

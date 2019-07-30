@@ -610,7 +610,7 @@ void *clean_exit_thd(void *unused)
     thrman_register(THRTYPE_CLEANEXIT);
     thread_started("mempsync");
 
-    clean_exit();
+    begin_clean_exit();
     return NULL;
 }
 

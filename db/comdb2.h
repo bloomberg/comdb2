@@ -2649,7 +2649,7 @@ void epoch2a(int epoch, char *buf, size_t buflen);
 int check_current_schemas(void);
 void showdbenv(struct dbenv *dbenv);
 
-void clean_exit(void);
+void begin_clean_exit(void);
 
 void set_target_lsn(uint32_t logfile, uint32_t logbyte);
 void push_next_log(void);

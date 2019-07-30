@@ -1483,7 +1483,7 @@ static void free_view_hash(hash_t *view_hash)
     hash_free(view_hash);
 }
 
-void do_clean()
+static void do_clean()
 {
     int rc = backend_close(thedb);
     if (rc != 0) {
@@ -1536,11 +1536,11 @@ void call_abort(int s)
     abort();
 }
 
-/* clean_exit will be called to cleanup db structures upon exit
+/* begin_clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
  */
-void clean_exit(void)
+void begin_clean_exit(void)
 {
     int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
@@ -3973,7 +3973,7 @@ static int init(int argc, char **argv)
 
             /* quit successfully */
             logmsg(LOGMSG_INFO, "-exiting.\n");
-            clean_exit();
+            begin_clean_exit();
             exit(0);
         }
     }
@@ -4137,7 +4137,7 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
-        clean_exit();
+        begin_clean_exit();
         exit(0);
     }
 
@@ -5618,7 +5618,7 @@ int main(int argc, char **argv)
         wait_counter++;
     }
 
-    /* clean_exit() will wait for all the generic threads to exit */
+    /* begin_clean_exit() will wait for all the generic threads to exit */
     thrman_wait_type_exit(THRTYPE_CLEANEXIT);
     do_clean();
 
