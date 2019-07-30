@@ -670,6 +670,8 @@ DEF_ATTR(
 DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
+DEF_ATTR(
+    TEST_IO_TIME, test_io_time, SECS, 10, "Check I/O in watchdog this often")
 
 /*
   BDB_ATTR_REPTIMEOUT
