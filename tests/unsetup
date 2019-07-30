@@ -126,6 +126,8 @@ cleanup_cluster() {
             rm -f $TESTDIR/logs/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null # cleanup directories if now empty
+            #NB: if CLEANUPDBDIR is 2 then we cleanup the logs/${DBNAME}.testcase
+            echo '$CLEANUPDBDIR == 2 and test was successful so we cleaned up all files related to this test' >> $TESTDIR/logs/${DBNAME}.testcase
         fi
     fi
 }

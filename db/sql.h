@@ -760,6 +760,8 @@ struct sqlclntstate {
      * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
     char* origin_host;
+    int8_t sent_data_to_client;
+    int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
 };
 
@@ -1048,7 +1050,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse);
 
-int replicant_can_retry(struct sqlclntstate *clnt);
+int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);

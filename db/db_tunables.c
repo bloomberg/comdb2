@@ -205,6 +205,7 @@ extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
+extern int gbl_random_thdpool_work_timeout;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
@@ -224,6 +225,7 @@ extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
+extern int gbl_snapshot_serial_verify_retry;
 
 extern long long sampling_threshold;
 

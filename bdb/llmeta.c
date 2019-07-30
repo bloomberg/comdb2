@@ -9484,7 +9484,7 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     strncpy0(new_vers_key.dbname, newtblname, sizeof(new_vers_key.dbname));
     new_vers_key.dbname_len = strlen(new_vers_key.dbname) + 1;
 
-    while (ver) {
+    while (ver >= 0) {
         vers_key.csc2_vers = ver;
         new_vers_key.csc2_vers = ver;
         llmeta_file_type_dbname_csc2_vers_key_put(
@@ -9511,6 +9511,8 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                    "%d\n",
                    __func__, newtblname, tblname, ver);
         } else {
+            if (ver == 0)
+                return 0;
             logmsg(LOGMSG_DEBUG,
                    "%s didn't find old table '%s' version %d (so "
                    "not adding new-table '%s'?)\n",

@@ -1210,7 +1210,8 @@ typedef struct snap_uid {
     int rqtype;  /* add/check */
     struct query_effects effects;
     uint16_t unused;
-    uint8_t replicant_can_retry; /* verifyretry on && !snapshot_iso or higer */
+    uint8_t replicant_is_able_to_retry; /* verifyretry on && !snapshot_iso or
+                                           higer */
     uint8_t keylen;
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
