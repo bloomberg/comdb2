@@ -2247,8 +2247,6 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because of send analyze abort\n",
                     __func__);
-        sampler_close(pCur->sampler);
-        pCur->sampler = NULL;
         *done = 1;
         rc = -1;
         return SQLITE_BUSY;
