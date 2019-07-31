@@ -11167,8 +11167,8 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
         ;
     tmptbl_clone = NULL;
     if (rc != SQLITE_DONE) {
-        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc, err,
-               sql);
+        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc,
+               err ? err : "(none)", sql ? sql : "(empty)");
         abort();
     }
     sqlite3_finalize(stmt);
