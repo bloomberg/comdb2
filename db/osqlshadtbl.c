@@ -533,14 +533,15 @@ static int destroy_tablecursor(bdb_state_type *bdb_env, struct temp_cursor *cur,
     if (cur) {
         rc = bdb_temp_table_close_cursor(bdb_env, cur, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to close cursor bdberr=%d\n", __func__,
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close cursor rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
     }
 
     if (tbl) {
         rc = bdb_temp_table_close(bdb_env, tbl->table, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to bdberr=%d\n", __func__, *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close tbl rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
 
         free(tbl);
     }
