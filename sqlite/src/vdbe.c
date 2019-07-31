@@ -1927,6 +1927,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   {
     Mem res;
     rc = sqliteVdbeMemDecimalBasicArithmetics( pIn1, pIn2, pOp->opcode, &res, 1);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res;
     if (rc)
     {
@@ -1938,6 +1939,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   {
     Mem res;
     rc = sqliteVdbeMemDecimalBasicArithmetics( pIn2, pIn1, pOp->opcode, &res, 0);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res;
     if (rc)
     {
@@ -1956,6 +1958,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* two intervals of the same type or 1 intervalds and 1 intervaldsus */
     Mem res;
     rc = sqlite3VdbeMemIntervalAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Interval) && (pIn1->flags & MEM_Int) &&
             ((pOp->opcode == OP_Multiply) || (pOp->opcode == OP_Divide))){
@@ -1963,6 +1966,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* interval and int */
     Mem res;
     rc = sqlite3VdbeMemIntervalAndInt(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Int) && (pIn1->flags & MEM_Interval)
    && (pOp->opcode == OP_Multiply)
@@ -1971,6 +1975,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* int and interval */
     Mem res;
     rc = sqlite3VdbeMemIntAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }
   else if( (pIn2->flags & MEM_Datetime) && (pIn1->flags & MEM_Datetime)
@@ -1980,6 +1985,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* two datetimes*/
     Mem res;
     rc = sqlite3VdbeMemDatetimeAndDatetime(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Datetime) && (pIn1->flags & MEM_Interval)
    && ((pOp->opcode == OP_Add) || (pOp->opcode == OP_Subtract))
@@ -1988,6 +1994,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* datetime and interval*/
     Mem res;
     rc = sqlite3VdbeMemDatetimeAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Interval) && (pIn1->flags & MEM_Datetime) ){
 
@@ -1995,6 +2002,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     if( pOp->opcode == OP_Add ){ 
       Mem res;
       rc = sqlite3VdbeMemIntervalAndDatetime(pIn2, pIn1, pOp->opcode, &res);
+      if( rc!=SQLITE_OK ) goto abort_due_to_error;
       *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
     }else{
       rc = SQLITE_MISMATCH;
@@ -2258,7 +2266,11 @@ case OP_RealAffinity: {                  /* in1 */
 ** A NULL value is not changed by this routine.  It remains NULL.
 */
 case OP_Cast: {                  /* in1 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_SMALL );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_REAL );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   testcase( pOp->p2==SQLITE_AFF_TEXT );
   testcase( pOp->p2==SQLITE_AFF_BLOB );
   testcase( pOp->p2==SQLITE_AFF_NUMERIC );
