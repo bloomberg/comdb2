@@ -132,7 +132,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 #endif
 #ifndef NDEBUG
     pthread_t self = pthread_self();
-    pthread_t nullt = (pthread_t)NULL;
+    pthread_t nullt = (pthread_t)0;
     int needRdLock = CAS(schema_wr_thd, self, nullt);
     Pthread_mutex_lock(&schema_rd_thds_lk);
     if (hash_del(schema_rd_thds, &self) != 0) {
@@ -152,7 +152,10 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_wrlock(&schema_lk);
 #ifndef NDEBUG
-    XCHANGE(schema_wr_thd, pthread_self());
+    pthread_t nullt = (pthread_t)0;
+    pthread_t self = pthread_self();
+    CAS(schema_wr_thd, nullt, self);
+    assert( ATOMIC_LOAD(schema_wr_thd)==(void *)self );
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func,
