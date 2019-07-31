@@ -97,7 +97,6 @@ extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_osql_snap_info_hashcheck = 1;
 
-
 #if 0
 #define GOTOBACKOUT                                                            \
     do {                                                                       \
@@ -2739,8 +2738,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
             int found;
             found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                      iq->snap_info.key, iq->snap_info.keylen,
-                                      &replay_data, &replay_len);
+                                    iq->snap_info.key, iq->snap_info.keylen,
+                                    &replay_data, &replay_len);
             if (!found) {
                 logmsg(LOGMSG_WARN,
                        "early snapinfo blocksql replay detected\n");

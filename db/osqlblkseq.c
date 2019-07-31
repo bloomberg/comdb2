@@ -57,7 +57,6 @@ int cnonce_hashcmpfunc(const void *key1, const void *key2, int len)
     return -1;
 }
 
-
 int osql_blkseq_register_cnonce(struct ireq *iq)
 {
     void *iq_src = NULL;
@@ -72,13 +71,15 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
         rc = OSQL_BLOCKSEQ_FIRST;
     }
     Pthread_mutex_unlock(&hmtx);
-    if (!iq_src) { 
-        logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n", iq->snap_info.keylen - 3, iq->snap_info.key);
+    if (!iq_src) {
+        logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n", iq->snap_info.keylen - 3,
+               iq->snap_info.key);
     }
-   
+
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
-        logmsg(LOGMSG_DEBUG, "Already in blkseq %*s, stalling...\n", iq->snap_info.keylen - 3, iq->snap_info.key);
+        logmsg(LOGMSG_DEBUG, "Already in blkseq %*s, stalling...\n",
+               iq->snap_info.keylen - 3, iq->snap_info.key);
         poll(NULL, 0, gbl_block_blkseq_poll);
 
         Pthread_mutex_lock(&hmtx);
@@ -101,7 +102,6 @@ static inline int osql_blkseq_unregister_cnonce(struct ireq *iq)
     assert(hiqs_cnonce != NULL);
     return hash_del(hiqs_cnonce, &iq->snap_info);
 }
-
 
 /*
  * Init this module
@@ -151,7 +151,7 @@ int osql_blkseq_register(struct ireq *iq)
         rc = OSQL_BLOCKSEQ_FIRST;
     }
     Pthread_mutex_unlock(&hmtx);
-   
+
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
         poll(NULL, 0, gbl_block_blkseq_poll);
@@ -197,4 +197,3 @@ int osql_blkseq_unregister(struct ireq *iq)
                iq->snap_info.keylen - 3, iq->snap_info.key, rc);
     return 0;
 }
-

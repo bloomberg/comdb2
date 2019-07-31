@@ -1218,9 +1218,7 @@ typedef struct snap_uid {
 
 enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5) + 4 + 64 };
 
-BB_COMPILE_TIME_ASSERT(snap_uid_size,
-                       sizeof(snap_uid_t) == SNAP_UID_LENGTH);
-
+BB_COMPILE_TIME_ASSERT(snap_uid_size, sizeof(snap_uid_t) == SNAP_UID_LENGTH);
 
 /*
    lrl tunables that control this:

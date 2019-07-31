@@ -1569,7 +1569,8 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_snap_info_hashcheck",
-                 "Enable snapinfo to be stored and checked in a hash in toblock on master. (Default: on)",
+                 "Enable snapinfo to be stored and checked in a hash in "
+                 "toblock on master. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_snap_info_hashcheck,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
