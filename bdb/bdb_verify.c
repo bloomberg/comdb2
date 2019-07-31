@@ -213,30 +213,37 @@ static void printhex(SBUF2 *sb, int (*lua_callback)(void *, const char *),
                 hexbytes[(hex[i] & 0xf0) >> 4], hexbytes[hex[i] & 0xf]);
 }
 
-static inline void print_verify_progress(verify_common_t *par, int now)
+static inline int print_verify_progress(verify_common_t *par, int now)
 {
     if (!par->progress_report_seconds)
-        return;
+        goto out;
 
     int last = par->last_reported; //get a copy of the last timestamp
 
     // do the comparison with now
     if ( ((now - last) < (par->progress_report_seconds * 1000)))
-        return;
+        goto out;
 
     // enough time has passed, attempt to update
     int res = CAS(par->last_reported, last, now);
-    if (!res) return; // someonelse updated, get out
+    if (!res) goto out; // someonelse updated, get out
+    if (bdb_dropped_connection(par->sb)) {
+        logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+        par->client_dropped_connection = 1;
+        goto out;
+    }
 
     int rc = locprint(par->sb, par->lua_callback, par->lua_params, "!verify: processed %lld records, %d per second\n",
             par->records_processed,
             par->nrecs_progress / par->progress_report_seconds);
     if(rc) {
         par->client_dropped_connection = 1;
-        return;
+        goto out;
     }
     par->nrecs_progress = 0;
     sbuf2flush(par->sb);
+out:
+    return par->client_dropped_connection;
 }
 
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
@@ -253,7 +260,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     int blobsizes[16];
     int bloboffs[16];
     int nblobs = 0;
-    int last = comdb2_time_epochms();
     blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
     bdb_state_type *bdb_state = par->bdb_state;
@@ -286,17 +292,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
         par->nrecs_progress++;
 
         now = comdb2_time_epochms();
-        print_verify_progress(par, now);
-
-        /* check if comdb2sc is killed every 1000ms */
-        if (par->verify_mode == VERIFY_DEFAULT && (now - last) > 1000) {
-            if (bdb_dropped_connection(par->sb)) {
-                logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
-                par->client_dropped_connection = 1;
-                goto err;
-            }
-            last = now;
-        }
+        /* check existence of client and print progress every 1000ms */
+        if (print_verify_progress(par, now))
+            break;
 
         unsigned long long genid;
         /* is it the right size? */
@@ -432,8 +430,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
                             goto err;
                     }
 
-                    if (dbt_blob_data.data && had_errors == 0)
-                        free(dbt_blob_data.data);
+                    free(dbt_blob_data.data);
                 }
                 cblob->c_close(cblob);
                 cblob = NULL;
@@ -580,7 +577,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     int blobsizes[16];
     int bloboffs[16];
     int nblobs = 0;
-    int last = comdb2_time_epochms();
     blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
 
     bdb_state_type *bdb_state = par->bdb_state;
@@ -628,18 +624,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         par->nrecs_progress++;
 
         now = comdb2_time_epochms();
-        print_verify_progress(par, now);
-
-        /* check if comdb2sc is killed every 1000ms */
-        if (par->verify_mode == VERIFY_DEFAULT && (now - last) > 1000) {
-            if (bdb_dropped_connection(par->sb)) {
-                cdata->c_close(cdata);
-                logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
-                par->client_dropped_connection = 1;
-                return 0;
-            }
-            last = now;
-        }
+        /* check existence of client and print progress every 1000ms */
+        if (print_verify_progress(par, now))
+            break;
 
         if (dbt_data.size < sizeof(unsigned long long)) {
             par->verify_status = 1;
@@ -794,8 +781,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                 return rc;
                         }
 
-                        if (dbt_blob_data.data && had_errors == 0)
-                            free(dbt_blob_data.data);
+                        free(dbt_blob_data.data);
                     }
                     cblob->c_close(cblob);
                     cblob = NULL;
@@ -999,7 +985,9 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
         unsigned long long genid_flipped;
 
         now = comdb2_time_epochms();
-        print_verify_progress(par, now);
+        /* check existence of client and print progress every 1000ms */
+        if (print_verify_progress(par, now))
+            break;
 
 #ifdef _LINUX_SOURCE
         buf_put(&genid, sizeof(unsigned long long),

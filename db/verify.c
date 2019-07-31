@@ -40,6 +40,38 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int (*lua_callback)(void *, const char *),
                     void *lua_params, verify_mode_t mode);
 
+static pthread_once_t once = PTHREAD_ONCE_INIT;
+
+struct verify_thd_state {
+    struct thr_handle *thr_self;
+};
+
+static void verify_thd_start(struct thdpool *pool, void *thddata)
+{
+    struct verify_thd_state *state = thddata;
+    state->thr_self = thrman_register(THRTYPE_VERIFY);
+}
+
+void init_verify_thdpool(void) 
+{
+    assert (!gbl_verify_thdpool);
+
+    gbl_verify_thdpool =
+        thdpool_create("verify_pool", sizeof(struct verify_thd_state));
+    assert (gbl_verify_thdpool);
+
+    if (gbl_exit_on_pthread_create_fail)
+        thdpool_set_exit(gbl_verify_thdpool);
+
+    //thdpool_set_stack_size(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ));
+    thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
+    thdpool_set_minthds(gbl_verify_thdpool, 0);
+    thdpool_set_maxthds(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_POOL_MAXT));
+    thdpool_set_linger(gbl_verify_thdpool, 1);
+    thdpool_set_longwaitms(gbl_verify_thdpool, 1000000);
+    thdpool_set_maxqueue(gbl_verify_thdpool, 100);
+    thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
+}
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
     int rc;
@@ -412,16 +444,6 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     return v.rcode;
 }
 
-struct verify_thd_state {
-    struct thr_handle *thr_self;
-};
-
-static void verify_thd_start(struct thdpool *pool, void *thddata)
-{
-    struct verify_thd_state *state = thddata;
-    state->thr_self = thrman_register(THRTYPE_VERIFY);
-}
-
 
 static int parallel_verify_table(const char *table, SBUF2 *sb,
                     int progress_report_seconds, int attempt_fix,
@@ -445,22 +467,7 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         goto done;
     }
 
-    if (!gbl_verify_thdpool) {
-        gbl_verify_thdpool =
-            thdpool_create("verify_pool", sizeof(struct verify_thd_state));
-
-        if (gbl_exit_on_pthread_create_fail)
-            thdpool_set_exit(gbl_verify_thdpool);
-
-        //thdpool_set_stack_size(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ));
-        thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
-        thdpool_set_minthds(gbl_verify_thdpool, 0);
-        thdpool_set_maxthds(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_POOL_MAXT));
-        thdpool_set_linger(gbl_verify_thdpool, 1);
-        thdpool_set_longwaitms(gbl_verify_thdpool, 1000000);
-        thdpool_set_maxqueue(gbl_verify_thdpool, 100);
-        thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
-    }
+    pthread_once(&once, init_verify_thdpool);
 
     verify_common_t par = { 
         .sb = sb,
