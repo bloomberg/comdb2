@@ -330,7 +330,6 @@ static void dbg_pthread_add_self(
   }
   outer_pair_t *opair = hash_find(dbg_locks, &obj);
   pthread_mutex_unlock(&dbg_locks_lk);
-
   if( opair==NULL ){
     opair = calloc(1, sizeof(outer_pair_t));
     if( opair==NULL ) abort();
@@ -405,11 +404,15 @@ static void dbg_pthread_remove_self(
   if( ipair==NULL ) goto done;
   if( --ipair->nRef==0 ){
     if( hash_del(opair->locks, ipair)!=0 ) abort();
+    pthread_mutex_unlock(&dbg_locks_lk);
     free(ipair);
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
+    pthread_mutex_lock(&dbg_locks_lk);
     if( hash_get_num_entries(opair->locks)==0 ){
       if( hash_del(dbg_locks, &obj)!=0 ) abort();
+      pthread_mutex_unlock(&dbg_locks_lk);
       dbg_pthread_clean_outer_pair(opair);
+      pthread_mutex_lock(&dbg_locks_lk);
     }
   }else{
     assert( ipair->key.obj==obj );
