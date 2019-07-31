@@ -180,6 +180,19 @@ static void dbg_pthread_clean_inner_pair(
 
 /*****************************************************************************/
 
+static int dbg_pthread_free_inner_pair(
+  void *obj,
+  void *arg
+){
+  inner_pair_t *ipair = (inner_pair_t *)obj;
+  if( ipair!=NULL ){
+    dbg_pthread_clean_inner_pair(ipair);
+  }
+  return 0;
+}
+
+/*****************************************************************************/
+
 static void dbg_pthread_clean_outer_pair(
   outer_pair_t *opair
 ){
@@ -193,19 +206,6 @@ static void dbg_pthread_clean_outer_pair(
   }
   free(opair);
   DBG_LESS_MEMORY(sizeof(outer_pair_t));
-}
-
-/*****************************************************************************/
-
-static int dbg_pthread_free_inner_pair(
-  void *obj,
-  void *arg
-){
-  inner_pair_t *ipair = (inner_pair_t *)obj;
-  if( ipair!=NULL ){
-    dbg_pthread_clean_inner_pair(ipair);
-  }
-  return 0;
 }
 
 /*****************************************************************************/
