@@ -347,7 +347,7 @@ static void dbg_pthread_add_self(
       abort();
     }
     pthread_mutex_unlock(&dbg_locks_lk);
-    if( opair2!=NULL ) dbg_pthread_clean_opair(opair2);
+    if( opair2!=NULL ) dbg_pthread_clean_outer_pair(opair2);
   }
   pthread_t self = pthread_self();
   inner_key_t ikey;
