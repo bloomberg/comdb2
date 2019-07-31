@@ -87,8 +87,16 @@ static hash_t *dbg_locks = NULL;
   }                                                                     \
 } while(0)
 
-#define DBG_LESS_MEMORY(a) do {                                         \
-  ATOMIC_ADD(dbg_locks_bytes, -(a));                                    \
+#define DBG_LESS_MEMORY(a) do {      \
+  ATOMIC_ADD(dbg_locks_bytes, -(a)); \
+} while(0)
+
+#define DBG_SWAP_OUTER_PAIR(a, b) do {           \
+  outer_pair_t *tmp = (a); (a) = (b); (b) = tmp; \
+} while(0)
+
+#define DBG_SWAP_INNER_PAIR(a, b) do {           \
+  inner_pair_t *tmp = (a); (a) = (b); (b) = tmp; \
 } while(0)
 
 /*****************************************************************************/
@@ -162,13 +170,40 @@ static int dbg_pthread_dump_outer_pair(
 
 /*****************************************************************************/
 
+static void dbg_pthread_clean_inner_pair(
+  inner_pair_t *ipair
+){
+  assert( ipair!=NULL );
+  free(ipair);
+  DBG_LESS_MEMORY(sizeof(inner_pair_t));
+}
+
+/*****************************************************************************/
+
+static void dbg_pthread_clean_outer_pair(
+  outer_pair_t *opair
+){
+  assert( opair!=NULL );
+  hash_t *locks = opair->locks;
+  if( locks!=NULL ){
+    hash_for(locks, dbg_pthread_free_inner_pair, NULL);
+    hash_clear(locks);
+    hash_free(locks);
+    DBG_LESS_MEMORY(sizeof(hash_t*));
+  }
+  free(opair);
+  DBG_LESS_MEMORY(sizeof(outer_pair_t));
+}
+
+/*****************************************************************************/
+
 static int dbg_pthread_free_inner_pair(
   void *obj,
   void *arg
 ){
-  if( obj!=NULL ){
-    free(obj);
-    DBG_LESS_MEMORY(sizeof(inner_pair_t));
+  inner_pair_t *ipair = (inner_pair_t *)obj;
+  if( ipair!=NULL ){
+    dbg_pthread_clean_inner_pair(ipair);
   }
   return 0;
 }
@@ -181,15 +216,7 @@ static int dbg_pthread_free_outer_pair(
 ){
   outer_pair_t *opair = (outer_pair_t *)obj;
   if( opair!=NULL ){
-    hash_t *locks = opair->locks;
-    if( locks!=NULL ){
-      hash_for(locks, dbg_pthread_free_inner_pair, NULL);
-      hash_clear(locks);
-      hash_free(locks);
-      DBG_LESS_MEMORY(sizeof(hash_t*));
-    }
-    free(obj);
-    DBG_LESS_MEMORY(sizeof(outer_pair_t));
+    dbg_pthread_clean_outer_pair(opair);
   }
   return 0;
 }
@@ -246,6 +273,48 @@ done:
 
 /*****************************************************************************/
 
+static void dbg_pthread_new_inner_pair(
+  inner_pair_t *ipair,
+  void *obj,
+  pthread_t self,
+  int type
+){
+  assert( ipair!=NULL );
+  assert( ipair->key.obj==NULL );
+  assert( ipair->key.thread==NULL );
+  assert( ipair->key.type==DBG_LOCK_PTHREAD_TYPE_NONE );
+  assert( ipair->nRef==0 );
+  ipair->key.obj = obj;
+  ipair->key.thread = self;
+  ipair->key.type = type;
+}
+
+/*****************************************************************************/
+
+static void dbg_pthread_addref_inner_pair(
+  inner_pair_t *ipair,
+  void *obj,
+  pthread_t self,
+  int type,
+  int flags,
+  const char *file,
+  const char *func,
+  int line
+){
+  assert( ipair!=NULL );
+  assert( ipair->key.obj==obj );
+  assert( ipair->key.thread==self );
+  assert( ipair->key.type==type );
+  assert( ipair->nRef>0 );
+  ipair->nRef++;
+  ipair->flags = flags;
+  ipair->file = file;
+  ipair->func = func;
+  ipair->line = line;
+}
+
+/*****************************************************************************/
+
 static void dbg_pthread_add_self(
   void *obj,
   int type,
@@ -255,8 +324,13 @@ static void dbg_pthread_add_self(
   int line
 ){
   pthread_mutex_lock(&dbg_locks_lk);
-  if( dbg_locks==NULL ) goto done;
+  if( dbg_locks==NULL ){
+    pthread_mutex_unlock(&dbg_locks_lk);
+    return;
+  }
   outer_pair_t *opair = hash_find(dbg_locks, &obj);
+  pthread_mutex_unlock(&dbg_locks_lk);
+
   if( opair==NULL ){
     opair = calloc(1, sizeof(outer_pair_t));
     if( opair==NULL ) abort();
@@ -265,38 +339,49 @@ static void dbg_pthread_add_self(
     if( opair->locks==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(hash_t*));
     opair->obj = obj;
-    if( hash_add(dbg_locks, opair)!=0 ) abort();
+    pthread_mutex_lock(&dbg_locks_lk);
+    outer_pair_t *opair2 = hash_find(dbg_locks, &obj);
+    if( opair2!=NULL ){
+      DBG_SWAP_OUTER_PAIR(opair, opair2);
+    }else if( hash_add(dbg_locks, opair)!=0 ){
+      abort();
+    }
+    pthread_mutex_unlock(&dbg_locks_lk);
+    if( opair2!=NULL ) dbg_pthread_clean_opair(opair2);
   }
   pthread_t self = pthread_self();
   inner_key_t ikey;
   DBG_SET_IKEY(ikey, obj, self, type);
+  pthread_mutex_lock(&dbg_locks_lk);
   inner_pair_t *ipair = hash_find(opair->locks, &ikey);
+  pthread_mutex_unlock(&dbg_locks_lk);
   if( ipair==NULL ){
     ipair = calloc(1, sizeof(inner_pair_t));
     if( ipair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(inner_pair_t));
-    ipair->key.obj = obj;
-    ipair->key.thread = self;
-    ipair->key.type = type;
-    ipair->nRef = 1;
-    ipair->flags = flags;
-    ipair->file = file;
-    ipair->func = func;
-    ipair->line = line;
-    if( hash_add(opair->locks, ipair)!=0 ) abort();
+    dbg_pthread_new_inner_pair(ipair, obj, self, type);
+    dbg_pthread_addref_inner_pair(
+      ipair, obj, self, type, flags, file, func, line
+    );
+    pthread_mutex_lock(&dbg_locks_lk);
+    inner_pair_t *ipair2 = hash_find(opair->locks, &ikey);
+    if( ipair2!=NULL ){
+      DBG_SWAP_INNER_PAIR(ipair, ipair2);
+      dbg_pthread_addref_inner_pair(
+        ipair, obj, self, type, flags, file, func, line
+      );
+    }else if( hash_add(opair->locks, ipair)!=0 ){
+      abort();
+    }
+    pthread_mutex_unlock(&dbg_locks_lk);
+    if( ipair2!=NULL ) dbg_pthread_clean_inner_pair(ipair2);
   }else{
-    assert( ipair->key.obj==obj );
-    assert( ipair->key.thread==self );
-    assert( ipair->key.type==type );
-    assert( ipair->nRef>0 );
-    ipair->nRef++;
-    ipair->flags = flags;
-    ipair->file = file;
-    ipair->func = func;
-    ipair->line = line;
+    pthread_mutex_lock(&dbg_locks_lk);
+    dbg_pthread_addref_inner_pair(
+      ipair, obj, self, type, flags, file, func, line
+    );
+    pthread_mutex_unlock(&dbg_locks_lk);
   }
-done:
-  pthread_mutex_unlock(&dbg_locks_lk);
 }
 
 /*****************************************************************************/
@@ -323,12 +408,7 @@ static void dbg_pthread_remove_self(
     DBG_LESS_MEMORY(sizeof(inner_pair_t));
     if( hash_get_num_entries(opair->locks)==0 ){
       if( hash_del(dbg_locks, &obj)!=0 ) abort();
-      hash_for(opair->locks, dbg_pthread_free_inner_pair, NULL);
-      hash_clear(opair->locks);
-      hash_free(opair->locks);
-      DBG_LESS_MEMORY(sizeof(hash_t*));
-      free(opair);
-      DBG_LESS_MEMORY(sizeof(outer_pair_t));
+      dbg_pthread_clean_outer_pair(opair);
     }
   }else{
     assert( ipair->key.obj==obj );
