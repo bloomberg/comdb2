@@ -20,6 +20,7 @@
 #include <schema_lk.h>
 
 #ifndef NDEBUG
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "comdb2_atomic.h"
@@ -55,7 +56,7 @@ inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   int rc = 0;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  if (hash_find(schema_rd_thds, pthread_self()) != NULL) {
+  if (hash_find(schema_rd_thds, (void *)pthread_self()) != NULL) {
     rc = 1;
   }
   Pthread_mutex_unlock(&schema_rd_thds_lk);
@@ -71,7 +72,7 @@ inline int schema_write_held_int(const char *file, const char *func, int line)
 static int schema_dump_rd_thd(void *obj, void *arg)
 {
   logmsgf(LOGMSG_USER, (FILE *)arg, "[SCHEMA_LK] has reader %p\n", obj);
-  fflush(out);
+  fflush((FILE *)arg);
   return 0;
 }
 
@@ -90,7 +91,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (hash_add(schema_rd_thds, pthread_self()) != 0) {
+    if (hash_add(schema_rd_thds, (void *)pthread_self()) != 0) {
         abort();
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
@@ -107,7 +108,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     if (rc == 0) {
         Pthread_mutex_lock(&schema_rd_thds_lk);
-        if (hash_add(schema_rd_thds, pthread_self()) != 0) {
+        if (hash_add(schema_rd_thds, (void *)pthread_self()) != 0) {
             abort();
         }
         Pthread_mutex_unlock(&schema_rd_thds_lk);
@@ -131,7 +132,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     pthread_t nullt = (pthread_t)NULL;
     CAS(schema_wr_thd, self, nullt);
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (hash_del(schema_rd_thds, self) != 0) {
+    if (hash_del(schema_rd_thds, (void *)self) != 0) {
         abort();
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
