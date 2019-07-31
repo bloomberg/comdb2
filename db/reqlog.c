@@ -2047,6 +2047,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
     memcpy(entry->mem + task_len, stack, stack_len);
     entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
     entry->node = node;
+    Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
     Pthread_rwlock_wrlock(&clientstats_lk);
     {
@@ -2753,4 +2754,73 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
 void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     logger->clnt = clnt;
+}
+
+struct dump_client_sql_options  {
+    FILE *f;
+    int do_snap;
+    nodestats_t *st;
+    char fingerprint[FINGERPRINTSZ*2+1];
+};
+
+static int dump_client_fingerprint(void *ent, void *arg) {
+    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
+    struct query_count *cnt = (struct query_count*) ent;
+    char fingerprint[FINGERPRINTSZ*2+1];
+    fprintf(options->f, "host=%s task=%s ", options->st->host, options->st->task);
+    util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
+    if (options->do_snap && (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows)) {
+        fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", 
+                fingerprint, 
+                cnt->count - cnt->last_count,
+                cnt->cost - cnt->last_cost,
+                cnt->timems - cnt->last_timems,
+                cnt->rows - cnt->last_rows);
+        cnt->last_count = cnt->count;
+        cnt->last_cost = cnt->cost;
+        cnt->last_rows = cnt->rows;
+        cnt->last_timems = cnt->timems;
+    }
+    else {
+        fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
+    }
+    return 0;
+}
+
+static int dump_client_sql_data_single(void *ent, void *arg) {
+    nodestats_t *st = (nodestats_t*) ent;
+    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
+    options->st = st;
+    Pthread_mutex_lock(&st->rawtotals.lk);
+    hash_for(st->rawtotals.fingerprints, dump_client_fingerprint, arg);
+    Pthread_mutex_unlock(&st->rawtotals.lk);
+    return 0;
+}
+
+void dump_client_sql_data(FILE *f, int do_snapshot) {
+    struct dump_client_sql_options options = { .do_snap = do_snapshot, .f = f };
+    Pthread_rwlock_wrlock(&clientstats_lk);
+    hash_for(clientstats, dump_client_sql_data_single, &options);
+    Pthread_rwlock_unlock(&clientstats_lk);
+}
+
+void add_fingerprint_to_rawstats(struct rawnodestats *stats, char *fingerprint, int cost, int rows, int timems) {
+    Pthread_mutex_lock(&stats->lk);
+    if (stats->fingerprints == NULL) {
+        // TODO: where does this get destroyed?
+        stats->fingerprints = hash_init_o(offsetof(struct query_count, fingerprint), FINGERPRINTSZ);
+        if (stats->fingerprints == NULL)
+            abort();
+    }
+    struct query_count *ct = hash_find(stats->fingerprints, fingerprint);
+    if (ct == NULL) {
+        ct = calloc(1, sizeof(struct query_count));
+        memcpy(ct->fingerprint, fingerprint, FINGERPRINTSZ);
+        hash_add(stats->fingerprints, ct);
+    }
+    ct->count++;
+    ct->rows += rows;
+    ct->cost += rows;
+    ct->timems += timems;
+    Pthread_mutex_unlock(&stats->lk);
 }
