@@ -132,10 +132,15 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     pthread_t self = pthread_self();
     pthread_t nullt = (pthread_t)NULL;
-    CAS(schema_wr_thd, self, nullt);
+    int needRdLock = CAS(schema_wr_thd, self, nullt);
     Pthread_mutex_lock(&schema_rd_thds_lk);
     if (hash_del(schema_rd_thds, &self) != 0) {
-        abort();
+        if (needRdLock) {
+            logmsg(LOGMSG_FATAL,
+                   "%s: SCHEMA READ LOCK NOT HELD: %s:%s:%d (%p)\n",
+                   __func__, file, func, line, (void *)self);
+            abort();
+        }
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
