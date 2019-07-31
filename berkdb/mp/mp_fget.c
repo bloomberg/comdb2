@@ -1045,7 +1045,7 @@ __memp_send_sparse_page_thread(_)
 		}
 
 		if (db_is_stopped())
-			continue;
+			break;
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;

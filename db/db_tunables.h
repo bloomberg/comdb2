@@ -1715,6 +1715,12 @@ REGISTER_TUNABLE("selectv_writelock",
                  TUNABLE_BOOLEAN, &gbl_selectv_writelock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("perform_full_clean_exit",
+                 "Perform full clean exit on exit signal (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_perform_full_clean_exit,
+                 NOARG, NULL, NULL, NULL, NULL);
+
+
 REGISTER_TUNABLE("clean_exit_on_sigterm",
                  "Attempt to do orderly shutdown on SIGTERM (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,

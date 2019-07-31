@@ -158,6 +158,7 @@ int gbl_recovery_lsn_offset = 0;
 int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
+int gbl_perform_full_clean_exit = 0;
 extern int gbl_dump_fsql_response;
 
 void myctrace(const char *c) { ctrace("%s", c); }
@@ -5617,6 +5618,11 @@ int main(int argc, char **argv)
     while (!db_is_stopped()) {
         sleep(1);
         wait_counter++;
+    }
+
+    if (!gbl_perform_full_clean_exit) {
+        goodbye();
+        return 0;
     }
 
     /* clean_exit() will wait for all the generic threads to exit */
