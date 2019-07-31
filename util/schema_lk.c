@@ -36,45 +36,45 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 #ifndef NDEBUG
 inline void schema_init_held(void)
 {
-  Pthread_mutex_lock(&schema_rd_thds_lk);
-  assert(schema_rd_thds == NULL);
-  schema_rd_thds = hash_init(sizeof(pthread_t));
-  Pthread_mutex_unlock(&schema_rd_thds_lk);
+    Pthread_mutex_lock(&schema_rd_thds_lk);
+    assert(schema_rd_thds == NULL);
+    schema_rd_thds = hash_init(sizeof(pthread_t));
+    Pthread_mutex_unlock(&schema_rd_thds_lk);
 }
 
 inline void schema_term_held(void)
 {
-  Pthread_mutex_lock(&schema_rd_thds_lk);
-  assert(schema_rd_thds != NULL);
-  hash_clear(schema_rd_thds);
-  hash_free(schema_rd_thds);
-  schema_rd_thds = NULL;
-  Pthread_mutex_unlock(&schema_rd_thds_lk);
+    Pthread_mutex_lock(&schema_rd_thds_lk);
+    assert(schema_rd_thds != NULL);
+    hash_clear(schema_rd_thds);
+    hash_free(schema_rd_thds);
+    schema_rd_thds = NULL;
+    Pthread_mutex_unlock(&schema_rd_thds_lk);
 }
 
 inline int schema_read_held_int(const char *file, const char *func, int line)
 {
-  int rc = 0;
-  Pthread_mutex_lock(&schema_rd_thds_lk);
-  pthread_t self = pthread_self();
-  if (hash_find(schema_rd_thds, &self) != NULL) {
-    rc = 1;
-  }
-  Pthread_mutex_unlock(&schema_rd_thds_lk);
-  return rc;
+    int rc = 0;
+    Pthread_mutex_lock(&schema_rd_thds_lk);
+    pthread_t self = pthread_self();
+    if (hash_find(schema_rd_thds, &self) != NULL) {
+        rc = 1;
+    }
+    Pthread_mutex_unlock(&schema_rd_thds_lk);
+    return rc;
 }
 
 inline int schema_write_held_int(const char *file, const char *func, int line)
 {
-  pthread_t self = pthread_self();
-  return CAS(schema_wr_thd, self, self);
+    pthread_t self = pthread_self();
+    return CAS(schema_wr_thd, self, self);
 }
 
 static int schema_dump_rd_thd(void *obj, void *arg)
 {
-  logmsgf(LOGMSG_USER, (FILE *)arg, "[SCHEMA_LK] has reader %p\n", obj);
-  fflush((FILE *)arg);
-  return 0;
+    logmsgf(LOGMSG_USER, (FILE *)arg, "[SCHEMA_LK] has reader %p\n", obj);
+    fflush((FILE *)arg);
+    return 0;
 }
 
 void dump_schema_lk(FILE *out)
