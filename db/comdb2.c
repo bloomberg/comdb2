@@ -5619,7 +5619,6 @@ int rename_db(dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
-    db->schema_version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);

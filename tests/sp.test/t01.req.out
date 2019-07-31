@@ -1781,6 +1781,5 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (exec_rc=23, prepare_rc=23, ddl='DROP LUA TRIGGER no_ddl_proc1')
 (exec_rc=23, prepare_rc=23, ddl='CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)')
 (exec_rc=23, prepare_rc=23, ddl='DROP LUA CONSUMER no_ddl_proc1')
-(exec_rc=23, prepare_rc=23, ddl='DROP TIME PARTITION test_drop_tp')
 ($0='{"emoji":"hello world 😁"}')
 ($0='{"emoji":"hello world 😁"}')
