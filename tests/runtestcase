@@ -5,7 +5,7 @@
 trap "call_unsetup \"0\"" INT EXIT
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
-if [[ "$(arch)" == "armv7l" ]] ; then
+if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
