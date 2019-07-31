@@ -1545,6 +1545,10 @@ void clean_exit(void)
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
+#ifndef NDEBUG
+    schema_term_held();
+#endif
+
     logmsg(LOGMSG_USER, "goodbye\n");
     exit(0);
 }
@@ -5435,6 +5439,10 @@ int main(int argc, char **argv)
 
     /* line buffering in stdout */
     setvbuf(stdout, 0, _IOLBF, 0);
+
+#ifndef NDEBUG
+    schema_init_held();
+#endif
 
     crc32c_init(0);
 

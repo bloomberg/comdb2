@@ -19,6 +19,38 @@
 
 #include <locks_wrap.h>
 
+#ifndef NDEBUG
+#include <stdio.h>
+#include "logmsg.h"
+
+void schema_init_held(void);
+void schema_term_held(void);
+
+int schema_read_held_int(const char *file, const char *func, int line);
+int schema_write_held_int(const char *file, const char *func, int line);
+
+void dump_schema_lk(FILE *out);
+
+#define schema_read_held_lk() do {                                     \
+  if (!schema_read_held_int(__FILE__, __func__, __LINE__)) {           \
+    logmsg(LOGMSG_FATAL, "SCHEMA READ LOCK NOT HELD: %s:%s:%d (%p)\n", \
+           __FILE__, __func__, __LINE__, (void *)pthread_self());      \
+    abort();                                                           \
+  }                                                                    \
+} while (0)
+
+#define schema_write_held_lk() do {                                     \
+  if (!schema_write_held_int(__FILE__, __func__, __LINE__)) {           \
+    logmsg(LOGMSG_FATAL, "SCHEMA WRITE LOCK NOT HELD: %s:%s:%d (%p)\n", \
+           __FILE__, __func__, __LINE__, (void *)pthread_self());       \
+    abort();                                                            \
+  }                                                                     \
+} while (0)
+#else
+#define schema_read_held_lk()
+#define schema_write_held_lk()
+#endif
+
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 void rdlock_schema_int(const char *file, const char *func, int line);
 
