@@ -91,7 +91,8 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (hash_add(schema_rd_thds, (void *)pthread_self()) != 0) {
+    pthread_t self = pthread_self();
+    if (hash_add(schema_rd_thds, &self) != 0) {
         abort();
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
@@ -108,7 +109,8 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     if (rc == 0) {
         Pthread_mutex_lock(&schema_rd_thds_lk);
-        if (hash_add(schema_rd_thds, (void *)pthread_self()) != 0) {
+        pthread_t self = pthread_self();
+        if (hash_add(schema_rd_thds, &self) != 0) {
             abort();
         }
         Pthread_mutex_unlock(&schema_rd_thds_lk);
@@ -132,7 +134,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     pthread_t nullt = (pthread_t)NULL;
     CAS(schema_wr_thd, self, nullt);
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (hash_del(schema_rd_thds, (void *)self) != 0) {
+    if (hash_del(schema_rd_thds, &self) != 0) {
         abort();
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
