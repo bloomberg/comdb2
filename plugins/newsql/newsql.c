@@ -2380,15 +2380,21 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
             } else {
-                srs_tran_replay(&clnt, arg->thr_self);
+                rc = srs_tran_replay(&clnt, arg->thr_self);
+            }
+
+            if (clnt.osql.history == NULL) {
+                query = APPDATA->query = NULL;
             }
         } else {
             /* if this transaction is done (marked by SQLENG_NORMAL_PROCESS),
                clean transaction sql history
             */
             if (clnt.osql.history &&
-                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
+                query = APPDATA->query = NULL;
+            }
         }
 
         if (rc && !clnt.in_client_trans)
