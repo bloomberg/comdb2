@@ -281,7 +281,7 @@ static void dbg_pthread_new_inner_pair(
 ){
   assert( ipair!=NULL );
   assert( ipair->key.obj==NULL );
-  assert( ipair->key.thread==NULL );
+  assert( ipair->key.thread==(pthread_t)0 );
   assert( ipair->key.type==DBG_LOCK_PTHREAD_TYPE_NONE );
   assert( ipair->nRef==0 );
   ipair->key.obj = obj;
@@ -360,6 +360,7 @@ static void dbg_pthread_add_self(
     if( ipair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(inner_pair_t));
     dbg_pthread_new_inner_pair(ipair, obj, self, type);
+    ipair->nRef = 1;
     dbg_pthread_addref_inner_pair(
       ipair, obj, self, type, flags, file, func, line
     );
