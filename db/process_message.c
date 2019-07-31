@@ -83,6 +83,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_global.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "schema_lk.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -1364,6 +1365,14 @@ clipper_usage:
         logmsg(LOGMSG_USER, 
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
                 blkmax, gbl_maxwthreads);
+    }
+
+    else if (tokcmp(tok, ltok, "dump_schema_lk") == 0) {
+#ifndef NDEBUG
+        dump_schema_lk(stdout);
+#else
+        logmsg(LOGMSG_USER, "Schema lock debugging not available.\n");
+#endif
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
