@@ -56,7 +56,8 @@ inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   int rc = 0;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  if (hash_find(schema_rd_thds, (void *)pthread_self()) != NULL) {
+  pthread_t self = pthread_self();
+  if (hash_find(schema_rd_thds, &self) != NULL) {
     rc = 1;
   }
   Pthread_mutex_unlock(&schema_rd_thds_lk);
