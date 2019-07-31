@@ -686,9 +686,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             } else {
                 /* verify blobs */
                 int realblobsz[16];
-                int had_errors;
 
-                had_errors = 0;
                 for (int blobno = 0; blobno < nblobs; blobno++) {
                     DBC *cblob;
                     DB *blobdb;
@@ -696,7 +694,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     int dtafile;
 
                     realblobsz[blobno] = -1;
-                    had_errors = 0;
 
                     dtafile = get_dtafile_from_genid(genid);
                     if (dtafile < 0) {
@@ -737,7 +734,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                         realblobsz[blobno] = -1;
                         if (blobsizes[blobno] != -1 &&
                             blobsizes[blobno] != -2) {
-                            had_errors = 1;
                             sbuf2printf(par->sb, "!%016llx no blob %d found "
                                             "expected sz %d\n",
                                         genid_flipped, blobno,
@@ -746,7 +742,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     } else if (rc) {
                         sbuf2printf(par->sb, "!%016llx blob %d rc %d\n",
                                     genid_flipped, blobno, rc);
-                        had_errors = 1;
                     }
 
                     if (rc == 0) {
@@ -769,7 +764,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                         genid_flipped, blobno,
                                         dbt_blob_data.size,
                                         blobsizes[blobno]);
-                            had_errors = 1;
                         }
 
                         if (blobsizes[blobno] >= 0 &&
