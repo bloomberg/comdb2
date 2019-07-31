@@ -80,15 +80,15 @@ static hash_t *dbg_locks = NULL;
   (a).type = (d);                       \
 } while(0)
 
-#define DBG_MORE_MEMORY(a) do {               \
-  dbg_locks_bytes += (a);                     \
-  if( dbg_locks_bytes>dbg_locks_peak_bytes ){ \
-    dbg_locks_peak_bytes = dbg_locks_bytes;   \
-  }                                           \
+#define DBG_MORE_MEMORY(a) do {                                         \
+  ATOMIC_ADD(dbg_locks_bytes, (a));                                     \
+  if( ATOMIC_LOAD(dbg_locks_bytes)>ATOMIC_LOAD(dbg_locks_peak_bytes) ){ \
+    XCHANGE(dbg_locks_peak_bytes, dbg_locks_bytes);                     \
+  }                                                                     \
 } while(0)
 
-#define DBG_LESS_MEMORY(a) do {               \
-  dbg_locks_bytes -= (a);                     \
+#define DBG_LESS_MEMORY(a) do {                                         \
+  ATOMIC_ADD(dbg_locks_bytes, -(a));                                    \
 } while(0)
 
 /*****************************************************************************/
