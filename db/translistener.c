@@ -1267,8 +1267,8 @@ int javasp_load_procedure_int(const char *name, const char *param,
 
             tablename = strtok_r(NULL, toksep, &endp);
             if (tablename == NULL) {
-                logmsg(LOGMSG_ERROR, 
-                        "table takes one argument (config file %s)\n", argv[0]);
+                logmsg(LOGMSG_ERROR,
+                       "table takes one argument (config file %s)\n", argv[0]);
                 rc = -1;
                 goto done;
             }
