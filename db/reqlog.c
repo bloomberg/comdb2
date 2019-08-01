@@ -2023,6 +2023,11 @@ void init_clientstats_table()
 #define UNKNOWN_NAME "Unknown"
 #define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
 
+static int hash_free_element(void *elem, void *unused) {
+    free(elem);
+    return 0;
+}
+
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
@@ -2095,6 +2100,9 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
+                    Pthread_mutex_destroy(&old_entry->rawtotals.lk);
+                    hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
+                    hash_free(old_entry->rawtotals.fingerprints);
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
@@ -2767,19 +2775,23 @@ static int dump_client_fingerprint(void *ent, void *arg) {
     struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
     struct query_count *cnt = (struct query_count*) ent;
     char fingerprint[FINGERPRINTSZ*2+1];
-    fprintf(options->f, "host=%s task=%s ", options->st->host, options->st->task);
+
     util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
-    if (options->do_snap && (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows)) {
-        fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", 
-                fingerprint, 
-                cnt->count - cnt->last_count,
-                cnt->cost - cnt->last_cost,
-                cnt->timems - cnt->last_timems,
-                cnt->rows - cnt->last_rows);
-        cnt->last_count = cnt->count;
-        cnt->last_cost = cnt->cost;
-        cnt->last_rows = cnt->rows;
-        cnt->last_timems = cnt->timems;
+
+    fprintf(options->f, "host=%s task=%s ", options->st->host, options->st->task);
+    if (options->do_snap) {
+        if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
+            fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", 
+                    fingerprint, 
+                    cnt->count - cnt->last_count,
+                    cnt->cost - cnt->last_cost,
+                    cnt->timems - cnt->last_timems,
+                    cnt->rows - cnt->last_rows);
+            cnt->last_count = cnt->count;
+            cnt->last_cost = cnt->cost;
+            cnt->last_rows = cnt->rows;
+            cnt->last_timems = cnt->timems;
+        }
     }
     else {
         fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
@@ -2792,7 +2804,8 @@ static int dump_client_sql_data_single(void *ent, void *arg) {
     struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
     options->st = st;
     Pthread_mutex_lock(&st->rawtotals.lk);
-    hash_for(st->rawtotals.fingerprints, dump_client_fingerprint, arg);
+    if (st->rawtotals.fingerprints)
+        hash_for(st->rawtotals.fingerprints, dump_client_fingerprint, arg);
     Pthread_mutex_unlock(&st->rawtotals.lk);
     return 0;
 }
@@ -2800,7 +2813,8 @@ static int dump_client_sql_data_single(void *ent, void *arg) {
 void dump_client_sql_data(FILE *f, int do_snapshot) {
     struct dump_client_sql_options options = { .do_snap = do_snapshot, .f = f };
     Pthread_rwlock_wrlock(&clientstats_lk);
-    hash_for(clientstats, dump_client_sql_data_single, &options);
+    if (clientstats)
+        hash_for(clientstats, dump_client_sql_data_single, &options);
     Pthread_rwlock_unlock(&clientstats_lk);
 }
 

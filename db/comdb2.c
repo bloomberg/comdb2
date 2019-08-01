@@ -4493,7 +4493,7 @@ void *statthd(void *p)
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count == thresh)) { /* every thresh-seconds */
+            if ((thresh > 0) && (count > 0 && count % thresh == 0)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
