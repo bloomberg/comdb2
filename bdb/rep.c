@@ -2703,8 +2703,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     const char *hosts[REPMAX];
     int state;
     int print_message;
-    const char *host;
-    int host_ix;
     int made_incoherent_slow = 0;
 
     /* this used to be allocated on stack, but that can overflow if called from
@@ -2727,37 +2725,37 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     double worst_time = 0;
     /* find the slowest and second slowest nodes */
     for (int i = 0; i < numnodes; i++) {
-        host = hosts[i];
-        host_ix = nodeix(host);
+        const char *host = hosts[i];
+        int node_ix = nodeix(host);
 
-        if (bdb_state->seqnum_info->time_minute[host_ix])
-            proctime[host_ix] =
-                averager_avg(bdb_state->seqnum_info->time_minute[host_ix]);
+        if (bdb_state->seqnum_info->time_minute[node_ix])
+            proctime[node_ix] =
+                averager_avg(bdb_state->seqnum_info->time_minute[node_ix]);
         else
-            proctime[host_ix] = 0;
+            proctime[node_ix] = 0;
 
         /* We're just checking, not checking & setting */
-        state = bdb_state->coherent_state[host_ix];
+        state = bdb_state->coherent_state[node_ix];
 
         if (state != STATE_COHERENT)
             continue;
 
-        if (proctime[host_ix] > worst_time) {
-            worst_time = proctime[host_ix];
+        if (proctime[node_ix] > worst_time) {
+            worst_time = proctime[node_ix];
             worst_node = host;
         }
     }
     double second_worst_time = 0;
     for (int i = 0; i < numnodes; i++) {
-        host = hosts[i];
-        host_ix = nodeix(host);
-        state = bdb_state->coherent_state[host_ix];
+        const char *host = hosts[i];
+        int node_ix = nodeix(host);
+        state = bdb_state->coherent_state[node_ix];
         if (state != STATE_COHERENT)
             continue;
 
-        if (proctime[host_ix] > second_worst_time && host != worst_node) {
+        if (proctime[node_ix] > second_worst_time && host != worst_node) {
             second_worst_node = host;
-            second_worst_time = proctime[host_ix];
+            second_worst_time = proctime[node_ix];
         }
     }
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -2784,12 +2782,13 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     bdb_state->attr->make_slow_replicants_incoherent) {
                 print_message = 1;
                 if (bdb_state->attr->make_slow_replicants_incoherent) {
-                    if (bdb_state->coherent_state[nodeix(worst_node)] ==
+                    int worst_node_ix = nodeix(worst_node);
+                    if (bdb_state->coherent_state[worst_node_ix] ==
                             STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
                     set_coherent_state(bdb_state, worst_node, STATE_INCOHERENT_SLOW,
                             __func__, __LINE__);
-                    bdb_state->last_downgrade_time[host_ix] = gettimeofday_ms();
+                    bdb_state->last_downgrade_time[worst_node_ix] = gettimeofday_ms();
                     made_incoherent_slow = 1;
                 }
             }
@@ -2813,15 +2812,15 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
          * become coherent the same way as everyone else - by announcing that
          * they are up to the master's LSN. */
         for (int i = 0; i < numnodes; i++) {
-            host = hosts[i];
-            host_ix = nodeix(host);
-            if (proctime[host_ix] == 0)
+            const char *host = hosts[i];
+            int node_ix = nodeix(host);
+            if (proctime[node_ix] == 0)
                 continue;
-            if (bdb_state->coherent_state[host_ix] != STATE_INCOHERENT_SLOW)
+            if (bdb_state->coherent_state[node_ix] != STATE_INCOHERENT_SLOW)
                 continue;
             Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
-            if (bdb_state->coherent_state[host_ix] == STATE_INCOHERENT_SLOW &&
-                (proctime[host_ix] <
+            if (bdb_state->coherent_state[node_ix] == STATE_INCOHERENT_SLOW &&
+                (proctime[node_ix] <
                  (worst_time * bdb_state->attr->slowrep_incoherent_factor +
                   bdb_state->attr->slowrep_incoherent_mintime))) {
                 print_message = 1;
@@ -2833,7 +2832,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "replication time for %s (%.2fms) is within "
                        "bounds of second-worst node %s (%.2fms)\n",
-                       host, proctime[host_ix], worst_node, worst_time);
+                       host, proctime[node_ix], worst_node, worst_time);
         }
     }
     free(proctime);
