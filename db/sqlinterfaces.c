@@ -1468,15 +1468,21 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
-            clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
+            clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&
+            clnt->ctrl_sqlengine != SQLENG_FNSH_ABORTED_STATE) {
             /* this is for empty transactions */
 
             /* not in a transaction */
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_WRONG_STATE);
         } else {
-            sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                    SQLENG_FNSH_STATE);
+            if (clnt->had_errors) {
+                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                        SQLENG_FNSH_RBK_STATE);
+            } else {
+                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                        SQLENG_FNSH_STATE);
+            }
             clnt->in_client_trans = 0;
             clnt->trans_has_sp = 0;
         }
@@ -1484,7 +1490,8 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
-            clnt->ctrl_sqlengine != SQLENG_STRT_STATE)
+            clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&
+            clnt->ctrl_sqlengine != SQLENG_FNSH_ABORTED_STATE)
         /* this is for empty transactions */
         {
             /* not in a transaction */
@@ -1705,7 +1712,8 @@ void abort_dbtran(struct sqlclntstate *clnt)
     }
 
     clnt->intrans = 0;
-    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                            SQLENG_FNSH_ABORTED_STATE);
     reset_query_effects(clnt);
 }
 
@@ -1722,13 +1730,14 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int irc = 0;
     int outrc = 0;
+    int clnt_had_errors_orig = clnt->had_errors;
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     int64_t rows = clnt->log_effects.num_updated +
-               clnt->log_effects.num_deleted +
-               clnt->log_effects.num_inserted;
+                   clnt->log_effects.num_deleted +
+                   clnt->log_effects.num_inserted;
 
     reqlog_set_cost(thd->logger, 0);
     reqlog_set_rows(thd->logger, rows);
@@ -1743,7 +1752,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
-        if (sendresponse)
+        if (sendresponse && (send_intrans_response(clnt) || !clnt->had_errors))
+            /* [NC] If clnt->had_errors, then we must've already reported the
+             * error to the client, and thus, on COMMIT/ROLLBACK the client
+             * API is not expecting a response from us at this point (unless
+             * intransresults is enabled, in which case we have to report this
+             * error as well).
+             */
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
         goto done;
     }
@@ -1790,17 +1805,16 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     }
                     if (irc) {
                         logmsg(LOGMSG_ERROR, "%s: failed %s rc=%d bdberr=%d\n",
-                                __func__,
-                                (rc == SQLITE_OK) ? "commit" : "abort", irc,
-                                bdberr);
+                               __func__, (rc == SQLITE_OK) ? "commit" : "abort",
+                               irc, bdberr);
                     }
                 }
             } else {
                 reset_query_effects(clnt);
                 rc = recom_abort(clnt);
                 if (rc)
-                    logmsg(LOGMSG_ERROR, "%s: recom abort failed %d??\n", __func__,
-                            rc);
+                    logmsg(LOGMSG_ERROR, "%s: recom abort failed %d??\n",
+                           __func__, rc);
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" RECOM abort(2) irc=%d rc=%d\n",
                             (clnt->sql) ? clnt->sql : "(???.)", irc, rc);
@@ -1864,9 +1878,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     }
                     if (irc) {
                         logmsg(LOGMSG_ERROR, "%s: failed %s rc=%d bdberr=%d\n",
-                                __func__,
-                                (rc == SQLITE_OK) ? "commit" : "abort", irc,
-                                bdberr);
+                               __func__, (rc == SQLITE_OK) ? "commit" : "abort",
+                               irc, bdberr);
                     }
                 } else {
                     sql_debug_logf(clnt, __func__, __LINE__,
@@ -1879,8 +1892,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             "td=%lu no-shadow-tran %s line %d, returning %d\n",
                             pthread_self(), __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                        rc = has_high_availability(clnt) ? CDB2ERR_CHANGENODE
-                                                     : SQLHERR_MASTER_TIMEOUT;
+                        rc = has_high_availability(clnt)
+                                 ? CDB2ERR_CHANGENODE
+                                 : SQLHERR_MASTER_TIMEOUT;
                         logmsg(
                             LOGMSG_ERROR,
                             "td=%lu no-shadow-tran %s line %d, returning %d\n",
@@ -1895,8 +1909,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = snapisol_abort(clnt);
                 }
                 if (rc)
-                    logmsg(LOGMSG_ERROR, "%s: serial abort failed %d??\n", __func__,
-                            rc);
+                    logmsg(LOGMSG_ERROR, "%s: serial abort failed %d??\n",
+                           __func__, rc);
 
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" %s abort(2) irc=%d rc=%d\n",
@@ -2060,8 +2074,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 /* we are out of transaction, mark this here */
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n", clnt,
-                pthread_self(), clnt->dbtran.mode, clnt->intrans);
+        logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n",
+               clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
 
@@ -2080,7 +2094,14 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             (send_intrans_response(clnt) || !clnt->had_errors)) {
             /* This is a commit, so we'll have something to send here even on a
              * retry.  Don't trigger code in fsql_write_response that's there
-             * to catch bugs when we send back responses on a retry. */
+             * to catch bugs when we send back responses on a retry.
+             *
+             * [NC] If clnt->had_errors, then we must've already reported the
+             * error to the client, and thus, on COMMIT/ROLLBACK the client
+             * API is not expecting a response from us at this point (unless
+             * intransresults is enabled, in which case we have to send a
+             * dummy row to mark the end of transaction).
+             */
             write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }
 
@@ -2104,7 +2125,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER,
-                        "Fail to add commit to transaction replay session\n");
+                       "Fail to add commit to transaction replay session\n");
 
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
 
@@ -2152,7 +2173,15 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = rc;
 
-        if (sendresponse) {
+        if (sendresponse && (send_intrans_response(clnt) || clnt->had_errors)) {
+            /* [NC] If clnt->had_errors is set, then it must be an error that
+             * we have found during commit and should be reported to the
+             * client. The assert below assures that the control must not
+             * reach here if there had been an error prior to COMMIT/ROLLBACK.
+             */
+            if (clnt->had_errors) {
+                assert(!clnt_had_errors_orig);
+            }
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
         }
     }
