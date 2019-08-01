@@ -2116,9 +2116,6 @@ void bdb_get_notcoherent_list(bdb_state_type *bdb_state,
             if ((*num_notcoherent) < max_nodes)
                 nodes_list[*num_notcoherent] = hostlist[i];
             (*num_notcoherent)++;
-
-            if (bdb_state->repinfo->skipsinceepoch == 0)
-                abort();
         }
         *since_epoch = bdb_state->repinfo->skipsinceepoch;
     }
