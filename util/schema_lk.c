@@ -18,14 +18,14 @@
 #include <logmsg.h>
 #include <locks_wrap.h>
 #include <schema_lk.h>
+#include "comdb2.h"
 
 #ifndef NDEBUG
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "comdb2.h"
-#include "comdb2_atomic.h"
 #include "plhash.h"
+#include "comdb2_atomic.h"
 
 static pthread_mutex_t schema_rd_thds_lk = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *schema_rd_thds = NULL;
@@ -53,9 +53,9 @@ inline void schema_term_held(void)
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 }
 
-inline int schema_is_global_db_hash_int(hash_t *hash)
+inline int schema_is_global_db_int(struct dbenv *dbenv)
 {
-    return thedb->db_hash == hash;
+    return dbenv == thedb;
 }
 
 inline int schema_read_held_int(const char *file, const char *func, int line)
@@ -166,4 +166,28 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func,
            line);
 #endif
+}
+
+void maybe_rdlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+                                       const char *func, int line)
+{
+    if (schema_is_global_db_int(dbenv)) {
+        rdlock_schema_int(file, func, line);
+    }
+}
+
+void maybe_wrlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+                                       const char *func, int line)
+{
+    if (schema_is_global_db_int(dbenv)) {
+        wrlock_schema_int(file, func, line);
+    }
+}
+
+void maybe_unlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+                                       const char *func, int line)
+{
+    if (schema_is_global_db_int(dbenv)) {
+        unlock_schema_int(file, func, line);
+    }
 }

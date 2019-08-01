@@ -974,7 +974,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             dbenv->dbs[dbenv->num_dbs++] = db;
 
             /* Add table to the hash. */
-            if (schema_is_global_db_hash(dbenv->db_hash)) schema_write_held_lk();
+            maybe_schema_write_held_lk(dbenv);
             hash_add(dbenv->db_hash, db);
 
             /* just got a bunch of data. remember it so key forming

@@ -2283,7 +2283,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         dbenv->dbs[i] = tbl;
 
         /* Add table to the hash. */
-        if (schema_is_global_db_hash(dbenv->db_hash)) schema_write_held_lk();
+        maybe_schema_write_held_lk(dbenv);
         hash_add(dbenv->db_hash, tbl);
 
         /* just got a bunch of data. remember it so key forming
@@ -2648,12 +2648,12 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     plugin_post_dbenv_hook(dbenv);
 
-    wrlock_schema_lk();
+    maybe_wrlock_schema_lk_for_db(dbenv);
     if (read_lrl_files(dbenv, lrlname)) {
         logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
         exit(1);
     }
-    unlock_schema_lk();
+    maybe_unlock_schema_lk_for_db(dbenv);
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
@@ -3299,7 +3299,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     dbenv->dbs[dbenv->num_dbs++] = tbl;
 
     /* Add table to the hash. */
-    if (schema_is_global_db_hash(dbenv->db_hash)) schema_write_held_lk();
+    maybe_schema_write_held_lk(dbenv);
     hash_add(dbenv->db_hash, tbl);
 
     if (add_cmacc_stmt(tbl, 0)) {
@@ -3326,13 +3326,19 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
 static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
+    maybe_wrlock_schema_lk_for_db(dbenv);
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
-    if (rc)
+    if (rc) {
+        maybe_unlock_schema_lk_for_db(dbenv);
         return rc;
+    }
     /* There's no 2 or 3.  There used to be 2.  There was never 3. */
     rc = init_sqlite_table(dbenv, "sqlite_stat4");
-    if (rc)
+    if (rc) {
+        maybe_unlock_schema_lk_for_db(dbenv);
         return rc;
+    }
+    maybe_unlock_schema_lk_for_db(dbenv);
     return 0;
 }
 
