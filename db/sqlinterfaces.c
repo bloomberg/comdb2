@@ -3179,6 +3179,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode) != 0) {
         return handle_bad_transaction_mode(thd, clnt);
     }
+    schema_read_held_lk();
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
     int sqlPrepFlags = 0;
@@ -4294,6 +4295,8 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc = 0;
     int got_views_lock = 0;
     int got_curtran = 0;
+
+    schema_read_held_lk();
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
