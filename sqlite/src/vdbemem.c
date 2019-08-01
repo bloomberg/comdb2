@@ -3262,9 +3262,12 @@ int sqliteVdbeMemDecimalBasicArithmetics(
 
   bzero(&bcopy, sizeof(Mem));
   bzero(res, sizeof(Mem));
-  res->flags |= MEM_Interval;
 
   switch( b->flags & MEM_TypeMask ){
+    case MEM_Null: {
+      sqlite3VdbeMemSetNull(res);
+      break;
+    }
     case MEM_Int:
     case MEM_IntReal:
     case MEM_Str: {
@@ -3341,6 +3344,7 @@ int sqliteVdbeMemDecimalBasicArithmetics(
         }
       }
 
+      res->flags |= MEM_Interval;
       res->du.tv.type = INTV_DECIMAL_TYPE;
       res->du.tv.sign = 0;
       break;

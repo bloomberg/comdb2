@@ -95,6 +95,8 @@ extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 
+int gbl_osql_snap_info_hashcheck = 1;
+
 #if 0
 #define GOTOBACKOUT                                                            \
     do {                                                                       \
@@ -787,9 +789,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (!replay_data) {
 
-        if (!iq->have_snap_info)
+        if (!iq->have_snap_info) {
             assert( (seqlen == (sizeof(fstblkseq_t))) || 
                     (seqlen == (sizeof(uuid_t))));
+        }
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
@@ -1091,8 +1094,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         logmsg(LOGMSG_USER,
-               "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
-               "rcout=%d\n",
+               "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
@@ -2718,9 +2720,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && iq->have_snap_info) {
+            if (gbl_osql_snap_info_hashcheck) {
+                // the goal here is to stall until the original transaction
+                // has finished that way we can retrieve the outcome from blkseq
+                osql_blkseq_register_cnonce(iq);
+            }
+
             void *replay_data = NULL;
             int replay_len = 0;
-            int findout;
             bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
                              __LINE__);
             if (thedb->master != gbl_mynode) {
@@ -2729,11 +2736,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 fromline = __LINE__;
                 goto cleanup;
             }
-            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                      iq->snap_info.key, iq->snap_info.keylen,
-                                      &replay_data, &replay_len);
-            if (findout == 0) {
-                logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
+            int found;
+            found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                    iq->snap_info.key, iq->snap_info.keylen,
+                                    &replay_data, &replay_len);
+            if (!found) {
+                logmsg(LOGMSG_WARN,
+                       "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);

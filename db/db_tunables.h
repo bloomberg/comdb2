@@ -1514,6 +1514,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("random_thdpool_work_timeout",
+                 "Force a random thread pool work item timeout 1/this many "
+                 "times.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_thdpool_work_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dohsql_disable",
                  "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
                  &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
@@ -1560,6 +1566,12 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock",
 REGISTER_TUNABLE("osql_check_replicant_numops",
                  "Check replicant nops sent in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_snap_info_hashcheck",
+                 "Enable snapinfo to be stored and checked in a hash in "
+                 "toblock on master. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_snap_info_hashcheck,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",

@@ -2247,8 +2247,6 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because of send analyze abort\n",
                     __func__);
-        sampler_close(pCur->sampler);
-        pCur->sampler = NULL;
         *done = 1;
         rc = -1;
         return SQLITE_BUSY;
@@ -3369,6 +3367,7 @@ int sqlite3BtreeOpen(
         int masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
+        if (rc != SQLITE_OK) goto done;
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
@@ -8064,10 +8063,10 @@ int sqlite3BtreeCursor(
             if (hash_find(pBt->temp_tables, &pgno) == NULL) {
                 assert(tmptbl_clone == NULL);
                 rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);
-                assert(pgno == iTable);
             }
         }
         if (rc == SQLITE_OK) {
+            assert(pgno == iTable);
             rc = sqlite3BtreeCursor_temptable(pBt, pgno, wrFlag & BTREE_CUR_WR,
                                               temp_table_cmp, pKeyInfo, cur,
                                               thd);
@@ -11168,8 +11167,8 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
         ;
     tmptbl_clone = NULL;
     if (rc != SQLITE_DONE) {
-        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc, err,
-               sql);
+        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc,
+               err ? err : "(none)", sql ? sql : "(empty)");
         abort();
     }
     sqlite3_finalize(stmt);

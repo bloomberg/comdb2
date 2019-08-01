@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=915)
+(TUNABLES_COUNT=916)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -832,6 +832,7 @@
 (name='test_blkseq_replay', description='Test blkseq replay codepath (for debugging only)', type='BOOLEAN', value='OFF', read_only='N')
 (name='test_blob_race', description='', type='INTEGER', value='0', read_only='Y')
 (name='test_curtran_change', description='Test change-curtran codepath (for debugging only)', type='BOOLEAN', value='OFF', read_only='N')
+(name='test_io_time', description='Check I/O in watchdog this often', type='INTEGER', value='10', read_only='N')
 (name='test_sc_resume_race', description='Test race between schemachange resume and blockprocessor', type='BOOLEAN', value='OFF', read_only='Y')
 (name='test_scindex_deadlock', description='Test index on expressions schema change deadlock', type='BOOLEAN', value='OFF', read_only='Y')
 (name='thread_stats', description='Berkeley DB will keep stats on what its threads are doing', type='BOOLEAN', value='ON', read_only='N')

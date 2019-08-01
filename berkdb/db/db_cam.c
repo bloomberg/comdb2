@@ -159,7 +159,7 @@ __db_c_close_ll(dbc, countmein)
 		dbc->txn->cursors--;
 
 	/* Move the cursor(s) to the free queue. */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	if (opd != NULL) {
 		if (dbc->txn != NULL)
 			dbc->txn->cursors--;
@@ -167,7 +167,7 @@ __db_c_close_ll(dbc, countmein)
 		opd = NULL;
 	}
 	TAILQ_INSERT_TAIL(&dbp->free_queue, dbc, links);
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	return (ret);
 }
@@ -524,9 +524,9 @@ __db_c_destroy(dbc)
 	dbenv = dbp->dbenv;
 
 	/* Remove the cursor from the free queue. */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	TAILQ_REMOVE(&dbp->free_queue, dbc, links);
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	/* Free up allocated memory. */
 	if (dbc->my_rskey.data != NULL)
