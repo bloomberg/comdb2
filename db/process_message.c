@@ -1516,7 +1516,9 @@ clipper_usage:
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
         backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
         logmsg(LOGMSG_USER, "checking schemas...\n");
+        rdlock_schema_lk();
         rc = check_current_schemas();
+        unlock_schema_lk();
         logmsg(LOGMSG_USER, "checked schemas, this database is %s\n",
                rc == 0 ? "good" : "bad");
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
