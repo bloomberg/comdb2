@@ -2595,7 +2595,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
-    thedb = dbenv;
+    thedb = dbenv; /* FIXME: Suspect, as the caller assigns as well? */
 
     dbenv->cacheszkbmin = 65536;
     dbenv->bdb_attr = bdb_attr_create();
@@ -2648,10 +2648,12 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     plugin_post_dbenv_hook(dbenv);
 
+    wrlock_schema_lk();
     if (read_lrl_files(dbenv, lrlname)) {
         logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
         exit(1);
     }
+    unlock_schema_lk();
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
