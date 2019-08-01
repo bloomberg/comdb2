@@ -682,18 +682,16 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
     } else if (strcmp(cmd, "hello") == 0) {
         svc = strtok_r(NULL, " ", &sav);
         if (c.writable && svc != nullptr) {
-            if (svc != nullptr) {
-                c.is_hello = true;
-                {
-                    std::lock_guard<std::mutex> l(active_services_mutex);
-                    active_services.insert(std::string(svc));
-                }
-                c.service = std::string(svc);
-                conn_printf(c, "ok\n");
-#ifdef VERBOSE
-                std::cout << "hello from " << svc << std::endl;
-#endif
+            c.is_hello = true;
+            {
+                std::lock_guard<std::mutex> l(active_services_mutex);
+                active_services.insert(std::string(svc));
             }
+            c.service = std::string(svc);
+            conn_printf(c, "ok\n");
+#ifdef VERBOSE
+            std::cout << "hello from " << svc << std::endl;
+#endif
         } else if (svc == nullptr) {
             conn_printf(c, "-1 missing service name\n");
         } else {
