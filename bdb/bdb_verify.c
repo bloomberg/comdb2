@@ -227,20 +227,32 @@ static inline int print_verify_progress(verify_common_t *par, int now)
     // enough time has passed, attempt to update
     int res = CAS(par->last_reported, last, now);
     if (!res) goto out; // someonelse updated, get out
+
     if (bdb_dropped_connection(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
         par->client_dropped_connection = 1;
         goto out;
     }
 
-    int rc = locprint(par->sb, par->lua_callback, par->lua_params, "!verify: processed %lld records, %d per second\n",
-            par->records_processed,
+    int rc;
+    if (par->verify_mode == VERIFY_DEFAULT) {
+        rc = locprint(par->sb, par->lua_callback, par->lua_params, "!%s, did %lld records, %d per second\n",
+            par->header, par->nrecs_progress,
             par->nrecs_progress / par->progress_report_seconds);
+        par->nrecs_progress = 0;
+    }
+    else {
+        unsigned long long delta = par->items_processed - par->saved_progress;
+        rc = locprint(par->sb, par->lua_callback, par->lua_params, "!verify: processed %lld items, %d per second\n",
+            par->items_processed,
+            delta / par->progress_report_seconds);
+        par->saved_progress = par->items_processed;
+    }
+
     if(rc) {
         par->client_dropped_connection = 1;
         goto out;
     }
-    par->nrecs_progress = 0;
     sbuf2flush(par->sb);
 out:
     return par->client_dropped_connection;
@@ -288,7 +300,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     logmsg(LOGMSG_DEBUG, "%p:%s Entering stripe=%d\n", (void *)pthread_self(), __func__, dtastripe);
 
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->records_processed, 1);
+        ATOMIC_ADD(par->items_processed, 1);
+        par->records_processed++;
         par->nrecs_progress++;
 
         now = comdb2_time_epochms();
@@ -620,7 +633,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d first rc %d\n", ix, rc);
     }
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->records_processed, 1);
+        ATOMIC_ADD(par->items_processed, 1);
+        par->records_processed++;
         par->nrecs_progress++;
 
         now = comdb2_time_epochms();
@@ -974,7 +988,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
 
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->records_processed, 1);
+        ATOMIC_ADD(par->items_processed, 1);
+        par->records_processed++;
         par->nrecs_progress++;
         unsigned long long genid_flipped;
 
@@ -1043,6 +1058,11 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe; dtastripe++) {
+        char header[256];
+        snprintf(header, sizeof(header), "verifying dtastripe %d", dtastripe);
+        par->header = header;
+        par->records_processed = 0;
+        par->nrecs_progress = 0;
         rc = bdb_verify_data_stripe(par, dtastripe, lid);
         if (rc)
             goto done;
@@ -1050,6 +1070,11 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 
     /* scan 2: scan each key, verify data exists */
     for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+        par->records_processed = 0;
+        par->nrecs_progress = 0;
+        char header[256];
+        snprintf(header, sizeof(header), "verifying index %d", ix);
+        par->header = header;
         rc = bdb_verify_key(par, ix, lid);
         if (rc)
             goto done;
@@ -1058,8 +1083,13 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     /* scan 3: scan each blob, verify data exists */
     int nblobs = get_numblobs(par->db_table);
     for (int blobno = 0; blobno < nblobs; blobno++) {
+        par->records_processed = 0;
+        par->nrecs_progress = 0;
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
              dtastripe++) {
+            char header[256];
+            snprintf(header, sizeof(header), "verifying blob %d stripe %d", blobno, dtastripe);
+            par->header = header;
             bdb_verify_blob(par, blobno, dtastripe, lid);
         }
     }
