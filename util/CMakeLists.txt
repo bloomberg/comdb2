@@ -65,15 +65,23 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
+  ${PROJECT_SOURCE_DIR}/csc2
+  ${PROJECT_SOURCE_DIR}/datetime
+  ${PROJECT_SOURCE_DIR}/dfp/dfpal
+  ${PROJECT_SOURCE_DIR}/dfp/decNumber
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
+  ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_SOURCE_DIR}/sockpool
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
   ${PROJECT_SOURCE_DIR}/db
+  ${PROJECT_BINARY_DIR}/db
 )
 add_dependencies(util mem)
 set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)
