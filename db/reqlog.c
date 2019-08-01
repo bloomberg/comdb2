@@ -2776,12 +2776,12 @@ static int dump_client_fingerprint(void *ent, void *arg) {
     struct query_count *cnt = (struct query_count*) ent;
     char fingerprint[FINGERPRINTSZ*2+1];
 
-    reqlog_logf(options->logger, REQL_TRACE, "host=%s task=%s ", options->st->host, options->st->task);
     util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
     if (options->do_snap) {
         if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
-            reqlog_logf(options->logger, REQL_TRACE,
-                        "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n",
+            reqlog_logf(options->logger, REQL_INFO,
+                        "host=%s task=%s fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n",
+                        options->st->host, options->st->task,
                         fingerprint,
                         cnt->count - cnt->last_count,
                         cnt->cost - cnt->last_cost,
@@ -2794,7 +2794,7 @@ static int dump_client_fingerprint(void *ent, void *arg) {
         }
     }
     else {
-        reqlog_logf(options->logger, REQL_TRACE, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
+        reqlog_logf(options->logger, REQL_INFO, "host=%s task=%s fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", options->st->host, options->st->task, fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
     }
     return 0;
 }
