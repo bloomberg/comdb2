@@ -31,12 +31,13 @@ int schema_write_held_int(const char *file, const char *func, int line);
 
 void dump_schema_lk(FILE *out);
 
-#define schema_read_held_lk() do {                                     \
-  if (!schema_read_held_int(__FILE__, __func__, __LINE__)) {           \
-    logmsg(LOGMSG_FATAL, "SCHEMA READ LOCK NOT HELD: %s:%s:%d (%p)\n", \
-           __FILE__, __func__, __LINE__, (void *)pthread_self());      \
-    abort();                                                           \
-  }                                                                    \
+#define schema_read_held_lk() do {                                \
+  if (!schema_read_held_int(__FILE__, __func__, __LINE__) &&      \
+      !schema_write_held_int(__FILE__, __func__, __LINE__)) {     \
+    logmsg(LOGMSG_FATAL, "SCHEMA LOCK NOT HELD: %s:%s:%d (%p)\n", \
+           __FILE__, __func__, __LINE__, (void *)pthread_self()); \
+    abort();                                                      \
+  }                                                               \
 } while (0)
 
 #define schema_write_held_lk() do {                                     \
