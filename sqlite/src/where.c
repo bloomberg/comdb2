@@ -3788,7 +3788,8 @@ static i8 wherePathSatisfiesOrderBy(
         assert( nColumn==nKeyCol+1 || !HasRowid(pIndex->pTable) );
         assert( pIndex->aiColumn[nColumn-1]==XN_ROWID
                           || !HasRowid(pIndex->pTable));
-        isOrderDistinct = IsUniqueIndex(pIndex);
+        isOrderDistinct = IsUniqueIndex(pIndex)
+                          && (pLoop->wsFlags & WHERE_SKIPSCAN)==0;
       }
 
       /* Loop through all columns of the index and deal with the ones
