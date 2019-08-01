@@ -5615,8 +5615,7 @@ retry:
         if (hndl->num_hosts > 1) goto retry;
     }
 after_callback: /* We are going to exit the function in this label. */
-    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) !=
-            NULL) {
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
         int unused;
         (void)unused;
         callbackrc = cdb2_invoke_callback(hndl, e, 0);
