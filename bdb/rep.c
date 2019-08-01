@@ -2001,7 +2001,6 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
             defer_commits(bdb_state, host, __func__);
             set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                __LINE__);
-            bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
         /* hostdown can defer commits */
@@ -2790,7 +2789,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                         defer_commits(bdb_state, worst_node, __func__);
                     set_coherent_state(bdb_state, worst_node, STATE_INCOHERENT_SLOW,
                             __func__, __LINE__);
-                    bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
                     bdb_state->last_downgrade_time[host_ix] = gettimeofday_ms();
                     made_incoherent_slow = 1;
                 }
