@@ -2769,7 +2769,8 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     if (worst_node && second_worst_node && worst_node != second_worst_node) {
         /* weigh time, to account for inter-datacenter delays */
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
-        state = bdb_state->coherent_state[nodeix(worst_node)];
+        int worst_node_ix = nodeix(worst_node);
+        state = bdb_state->coherent_state[worst_node_ix];
 
         if (state == STATE_COHERENT &&
                     worst_time >
@@ -2782,7 +2783,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     bdb_state->attr->make_slow_replicants_incoherent) {
                 print_message = 1;
                 if (bdb_state->attr->make_slow_replicants_incoherent) {
-                    int worst_node_ix = nodeix(worst_node);
                     if (bdb_state->coherent_state[worst_node_ix] ==
                             STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
@@ -3094,9 +3094,9 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         } else {
-            bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+            rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
         if (rc)
             logmsg(LOGMSG_DEBUG,
