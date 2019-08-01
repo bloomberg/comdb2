@@ -1730,7 +1730,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int irc = 0;
     int outrc = 0;
+#ifndef NDEBUG
     int clnt_had_errors_orig = clnt->had_errors;
+#endif
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
@@ -2179,9 +2181,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
              * client. The assert below assures that the control must not
              * reach here if there had been an error prior to COMMIT/ROLLBACK.
              */
+#ifndef NDEBUG
             if (clnt->had_errors) {
                 assert(!clnt_had_errors_orig);
             }
+#endif
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
         }
     }
