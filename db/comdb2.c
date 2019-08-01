@@ -4746,7 +4746,7 @@ void *statthd(void *p)
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
 
-                dump_client_sql_data(stdout, 1);
+                dump_client_sql_data(statlogger, 1);
             }
 
             if (count % 60 == 0) {

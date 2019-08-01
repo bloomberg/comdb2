@@ -3652,5 +3652,5 @@ extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
 
-void dump_client_sql_data(FILE *f, int do_snapshot);
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 #endif /* !INCLUDED_COMDB2_H */

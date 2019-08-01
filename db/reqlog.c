@@ -2765,7 +2765,7 @@ void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 }
 
 struct dump_client_sql_options  {
-    FILE *f;
+    struct reqlogger *logger;
     int do_snap;
     nodestats_t *st;
     char fingerprint[FINGERPRINTSZ*2+1];
@@ -2776,17 +2776,17 @@ static int dump_client_fingerprint(void *ent, void *arg) {
     struct query_count *cnt = (struct query_count*) ent;
     char fingerprint[FINGERPRINTSZ*2+1];
 
+    reqlog_logf(options->logger, REQL_TRACE, "host=%s task=%s ", options->st->host, options->st->task);
     util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
-
-    fprintf(options->f, "host=%s task=%s ", options->st->host, options->st->task);
     if (options->do_snap) {
         if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
-            fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", 
-                    fingerprint, 
-                    cnt->count - cnt->last_count,
-                    cnt->cost - cnt->last_cost,
-                    cnt->timems - cnt->last_timems,
-                    cnt->rows - cnt->last_rows);
+            reqlog_logf(options->logger, REQL_TRACE,
+                        "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n",
+                        fingerprint,
+                        cnt->count - cnt->last_count,
+                        cnt->cost - cnt->last_cost,
+                        cnt->timems - cnt->last_timems,
+                        cnt->rows - cnt->last_rows);
             cnt->last_count = cnt->count;
             cnt->last_cost = cnt->cost;
             cnt->last_rows = cnt->rows;
@@ -2794,7 +2794,7 @@ static int dump_client_fingerprint(void *ent, void *arg) {
         }
     }
     else {
-        fprintf(options->f, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
+        reqlog_logf(options->logger, REQL_TRACE, "fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
     }
     return 0;
 }
@@ -2810,8 +2810,8 @@ static int dump_client_sql_data_single(void *ent, void *arg) {
     return 0;
 }
 
-void dump_client_sql_data(FILE *f, int do_snapshot) {
-    struct dump_client_sql_options options = { .do_snap = do_snapshot, .f = f };
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot) {
+    struct dump_client_sql_options options = { .do_snap = do_snapshot, .logger = logger };
     Pthread_rwlock_wrlock(&clientstats_lk);
     if (clientstats)
         hash_for(clientstats, dump_client_sql_data_single, &options);
