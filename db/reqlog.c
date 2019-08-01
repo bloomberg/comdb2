@@ -2786,7 +2786,8 @@ static int dump_client_fingerprint(void *ent, void *arg) {
                         cnt->count - cnt->last_count,
                         cnt->cost - cnt->last_cost,
                         cnt->timems - cnt->last_timems,
-                        cnt->rows - cnt->last_rows);
+                        cnt->rows - cnt->last_rows,
+                        cnt);
             cnt->last_count = cnt->count;
             cnt->last_cost = cnt->cost;
             cnt->last_rows = cnt->rows;
@@ -2834,7 +2835,7 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats, char *fingerprint, 
     }
     ct->count++;
     ct->rows += rows;
-    ct->cost += rows;
+    ct->cost += cost;
     ct->timems += timems;
     Pthread_mutex_unlock(&stats->lk);
 }
