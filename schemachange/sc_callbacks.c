@@ -691,15 +691,22 @@ static int replicant_reload_views(const char *name)
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
+    int rc = 0;
     switch (type) {
     case luareload:
         return reload_lua();
     case sc_analyze:
         return replicant_reload_analyze_stats();
     case bthash:
-        return bthash_callback(table);
+        wrlock_schema_lk();
+        rc = bthash_callback(table);
+        unlock_schema_lk();
+        return rc;
     case views:
-        return replicant_reload_views(table);
+        wrlock_schema_lk();
+        rc = replicant_reload_views(table);
+        unlock_schema_lk();
+        return rc;
     case rowlocks_on:
     case rowlocks_on_master_only:
     case rowlocks_off: return reload_rowlocks(thedb->bdb_env, type);
@@ -712,7 +719,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
-        return reload_rename_table(bdb_state, table, (char *)arg);
+        wrlock_schema_lk();
+        rc = reload_rename_table(bdb_state, table, (char *)arg);
+        unlock_schema_lk();
+        return rc;
     case change_stripe:
         return reload_stripe_info(bdb_state);
     default:
@@ -720,7 +730,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     }
 
     int add_new_db = 0;
-    int rc = 0;
     char *csc2text = NULL;
     char *table_copy = NULL;
     struct dbtable *db = NULL;
@@ -731,6 +740,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
 
+    wrlock_schema_lk();
     struct dbtable *olddb = get_dbtable_by_name(table);
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (tran == NULL) {
@@ -902,6 +912,7 @@ done:
         }
     }
 
+    unlock_schema_lk();
     sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }
