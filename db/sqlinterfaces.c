@@ -1723,6 +1723,19 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
         abort_dbtran(clnt);
 }
 
+/* In a transaction, whenever a non-COMMIT/ROLLBACK command fails, we set
+ * clnt->had_errors and report error to the client. Once set, we must not
+ * send anything to the client (per the wire protocol?) unless intransresults
+ * is set.
+ */
+static int do_send_commitrollback_response(struct sqlclntstate *clnt,
+                                           int sendresponse)
+{
+    if (sendresponse && (send_intrans_response(clnt) || !clnt->had_errors))
+        return 1;
+    return 0;
+}
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -1730,9 +1743,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int irc = 0;
     int outrc = 0;
-#ifndef NDEBUG
-    int clnt_had_errors_orig = clnt->had_errors;
-#endif
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
@@ -1754,14 +1764,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
-        if (sendresponse && (send_intrans_response(clnt) || !clnt->had_errors))
-            /* [NC] If clnt->had_errors, then we must've already reported the
-             * error to the client, and thus, on COMMIT/ROLLBACK the client
-             * API is not expecting a response from us at this point (unless
-             * intransresults is enabled, in which case we have to report this
-             * error as well).
-             */
+        if (do_send_commitrollback_response(clnt, sendresponse)) {
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
+        }
         goto done;
     }
 
@@ -2020,7 +2025,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 }
 
                 if (rc) {
-                    clnt->had_errors = 1;
                     clnt->saved_rc = rc;
                     if (clnt->saved_errstr)
                         free(clnt->saved_errstr);
@@ -2092,17 +2096,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
 
-        if (sendresponse &&
-            (send_intrans_response(clnt) || !clnt->had_errors)) {
+        if (do_send_commitrollback_response(clnt, sendresponse)) {
             /* This is a commit, so we'll have something to send here even on a
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
-             *
-             * [NC] If clnt->had_errors, then we must've already reported the
-             * error to the client, and thus, on COMMIT/ROLLBACK the client
-             * API is not expecting a response from us at this point (unless
-             * intransresults is enabled, in which case we have to send a
-             * dummy row to mark the end of transaction).
              */
             write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
         }
@@ -2175,17 +2172,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = rc;
 
-        if (sendresponse && (send_intrans_response(clnt) || clnt->had_errors)) {
-            /* [NC] If clnt->had_errors is set, then it must be an error that
-             * we have found during commit and should be reported to the
-             * client. The assert below assures that the control must not
-             * reach here if there had been an error prior to COMMIT/ROLLBACK.
-             */
-#ifndef NDEBUG
-            if (clnt->had_errors) {
-                assert(!clnt_had_errors_orig);
-            }
-#endif
+        if (do_send_commitrollback_response(clnt, sendresponse)) {
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
         }
     }
