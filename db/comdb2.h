@@ -1216,7 +1216,9 @@ typedef struct snap_uid {
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
+enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5) + 4 + 64 };
+
+BB_COMPILE_TIME_ASSERT(snap_uid_size, sizeof(snap_uid_t) == SNAP_UID_LENGTH);
 
 /*
    lrl tunables that control this:

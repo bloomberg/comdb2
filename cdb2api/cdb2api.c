@@ -5454,8 +5454,19 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                             comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
                             hndl->dbname, hndl->cluster, hndl->hosts,
                             &(hndl->num_hosts), &hndl->dbnum, 1, 0);
+
+    /* Before database destination discovery */
+    cdb2_event *e = NULL;
+    void *callbackrc;
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
+    }
+
     if (rc != 0)
-        return rc;
+        goto after_callback;
 
     if ((cdb2_default_cluster[0] != '\0') && (cdb2_comdb2dbname[0] != '\0')) {
         strcpy(comdb2db_name, cdb2_comdb2dbname);
@@ -5465,7 +5476,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (cdb2_default_cluster[0] == '\0') {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no default_type "
                                   "entry in comdb2db config.");
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
         strncpy(hndl->cluster, cdb2_default_cluster, sizeof(hndl->cluster) - 1);
         if (cdb2cfg_override) {
@@ -5487,7 +5499,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
     }
 
@@ -5497,10 +5510,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
             1000;
     if (max_time < 0)
         max_time = 0;
+
 retry:
     if (rc) {
         if (num_retry >= MAX_RETRIES || time(NULL) > max_time)
-            return rc;
+            goto after_callback;
 
         num_retry++;
         poll(NULL, 0, CDB2_POLL_TIMEOUT); // Sleep for 250ms everytime and total
@@ -5556,7 +5570,8 @@ retry:
         sprintf(hndl->errstr, "cdb2_get_dbhosts: comdb2db has no entry of "
                               "db %s of cluster type %s.",
                 hndl->dbname, hndl->cluster);
-        return -1;
+        rc = -1;
+        goto after_callback;
     }
 
     rc = -1;
@@ -5576,7 +5591,7 @@ retry:
                                    hndl->ports, &hndl->master, &hndl->num_hosts,
                                    &hndl->num_hosts_sameroom);
             if (rc == 0) {
-                goto done;
+                goto after_callback;
             }
         }
     }
@@ -5593,12 +5608,18 @@ retry:
         }
     }
 
-done:
     if (rc != 0) {
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
         if (hndl->num_hosts > 1) goto retry;
+    }
+after_callback: /* We are going to exit the function in this label. */
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
     return rc;
 }
