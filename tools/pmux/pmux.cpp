@@ -573,8 +573,10 @@ static int route_to_instance(char *svc, int fd)
 void disallowed_write(connection &c, char *cmd)
 {
     char *ip = inet_ntoa(c.addr);
+#ifdef VERBOSE
     syslog(LOG_INFO, "attempt to write (%s) from remote connection %s\n", cmd,
            ip);
+#endif
     conn_printf(c, "-1 write requests not permitted from this host\n");
 }
 
