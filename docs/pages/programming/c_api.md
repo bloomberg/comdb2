@@ -504,6 +504,8 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 
 |Category|Event|Description|
 |---|---|
+|Network| `CDB2_BEFORE_DISCOVERY` | The callback is invoked before database destination discovery. |
+|Network| `CDB2_AFTER_DISCOVERY` | The callback is invoked after database destination discovery. |
 |Network| `CDB2_BEFORE_CONNECT` | The callback is invoked before the API starts connecting to a host. |
 |Network| `CDB2_AFTER_CONNECT` | The callback is invoked after the attempt to connect. |
 |Network| `CDB2_BEFORE_PMUX` | The callback is invoked before the API starts querying for the database port from `pmux`. |
@@ -518,8 +520,6 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 |Logical Operation| `CDB2_AT_EXIT_RUN_STATEMENT` | The callback is invoked when exiting `cdb2_run_statement()` or `cdb2_run_statement_typed()`. |
 |Logical Operation| `CDB2_AT_ENTER_NEXT_RECORD` | The callback is invoked when entering `cdb2_next_record()`. |
 |Logical Operation| `CDB2_AT_EXIT_NEXT_RECORD` | The callback is invoked when exiting `cdb2_next_record()`. |
-|Lifecyle| `CDB2_BEFORE_DISCOVERY` | The callback is invoked before database destination discovery. |
-|Lifecyle| `CDB2_AFTER_DISCOVERY` | The callback is invoked after database destination discovery. |
 |Lifecyle| `CDB2_AT_OPEN` | The callback is invoked at handle creation. |
 |Lifecyle| `CDB2_AT_CLOSE` | The callback is invoked at handle destruction. |
 
