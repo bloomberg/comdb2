@@ -53,7 +53,7 @@ inline void schema_term_held(void)
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 }
 
-inline int schema_is_global_db_int(struct dbenv *dbenv)
+inline int schema_is_global_db_int(void *dbenv)
 {
     return dbenv == thedb;
 }
@@ -168,7 +168,7 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
 #endif
 }
 
-void maybe_rdlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_rdlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line)
 {
     if (schema_is_global_db_int(dbenv)) {
@@ -176,7 +176,7 @@ void maybe_rdlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
     }
 }
 
-void maybe_wrlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_wrlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line)
 {
     if (schema_is_global_db_int(dbenv)) {
@@ -184,7 +184,7 @@ void maybe_wrlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
     }
 }
 
-void maybe_unlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_unlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line)
 {
     if (schema_is_global_db_int(dbenv)) {

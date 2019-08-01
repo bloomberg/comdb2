@@ -18,7 +18,6 @@
 #define INCLUDED_SCHEMA_LK_H
 
 #include <locks_wrap.h>
-#include "comdb2.h"
 
 #ifndef NDEBUG
 #include <stdio.h>
@@ -27,7 +26,7 @@
 void schema_init_held(void);
 void schema_term_held(void);
 
-int schema_is_global_db_int(struct dbenv *dbenv);
+int schema_is_global_db_int(void *dbenv);
 int schema_read_held_int(const char *file, const char *func, int line);
 int schema_write_held_int(const char *file, const char *func, int line);
 
@@ -82,17 +81,17 @@ void wrlock_schema_int(const char *file, const char *func, int line);
 
 #define maybe_rdlock_schema_lk_for_db(a) \
 maybe_rdlock_schema_lk_for_db_int((a), __FILE__, __func__, __LINE__)
-void maybe_rdlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_rdlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line);
 
 #define maybe_wrlock_schema_lk_for_db(a) \
 maybe_wrlock_schema_lk_for_db_int((a), __FILE__, __func__, __LINE__)
-void maybe_wrlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_wrlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line);
 
 #define maybe_unlock_schema_lk_for_db(a) \
 maybe_unlock_schema_lk_for_db_int((a), __FILE__, __func__, __LINE__)
-void maybe_unlock_schema_lk_for_db_int(struct dbenv *dbenv, const char *file,
+void maybe_unlock_schema_lk_for_db_int(void *dbenv, const char *file,
                                        const char *func, int line);
 
 #endif
