@@ -22,14 +22,18 @@
 #ifndef NDEBUG
 #include <stdio.h>
 #include "logmsg.h"
+#include "plhash.h"
 
 void schema_init_held(void);
 void schema_term_held(void);
 
+int schema_is_global_db_hash_int(hash_t *hash);
 int schema_read_held_int(const char *file, const char *func, int line);
 int schema_write_held_int(const char *file, const char *func, int line);
 
 void dump_schema_lk(FILE *out);
+
+#define schema_is_global_db_hash(a) schema_is_global_db_hash_int((a))
 
 #define schema_read_held_lk() do {                                \
   if (!schema_read_held_int(__FILE__, __func__, __LINE__) &&      \
@@ -48,6 +52,7 @@ void dump_schema_lk(FILE *out);
   }                                                                     \
 } while (0)
 #else
+#define schema_is_global_db_hash(a) (0)
 #define schema_read_held_lk()
 #define schema_write_held_lk()
 #endif

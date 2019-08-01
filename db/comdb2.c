@@ -824,6 +824,7 @@ dbtable *getdbbynum(int num)
 int getdbidxbyname(const char *p_name)
 {
     dbtable *tbl;
+    schema_read_held_lk();
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
     return (tbl) ? tbl->dbs_idx : -1;
 }
@@ -846,6 +847,7 @@ dbtable *get_dbtable_by_name(const char *p_name)
     dbtable *p_db = NULL;
 
     Pthread_rwlock_rdlock(&thedb_lock);
+    schema_read_held_lk();
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
@@ -863,6 +865,7 @@ dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
         return get_dbtable_by_name(p_name);
 
     Pthread_rwlock_rdlock(&thedb_lock);
+    schema_read_held_lk();
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
@@ -1524,7 +1527,9 @@ void clean_exit(void)
 
     free_sqlite_table(thedb);
 
+    schema_read_held_lk();
     if (thedb->db_hash) {
+        schema_write_held_lk();
         hash_clear(thedb->db_hash);
         hash_free(thedb->db_hash);
         thedb->db_hash = NULL;
@@ -2278,6 +2283,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         dbenv->dbs[i] = tbl;
 
         /* Add table to the hash. */
+        if (schema_is_global_db_hash(dbenv->db_hash)) schema_write_held_lk();
         hash_add(dbenv->db_hash, tbl);
 
         /* just got a bunch of data. remember it so key forming
@@ -3291,6 +3297,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     dbenv->dbs[dbenv->num_dbs++] = tbl;
 
     /* Add table to the hash. */
+    if (schema_is_global_db_hash(dbenv->db_hash)) schema_write_held_lk();
     hash_add(dbenv->db_hash, tbl);
 
     if (add_cmacc_stmt(tbl, 0)) {
@@ -5567,6 +5574,7 @@ int add_db(dbtable *db)
 {
     Pthread_rwlock_wrlock(&thedb_lock);
 
+    schema_read_held_lk();
     if (hash_find_readonly(thedb->db_hash, db) != 0) {
         Pthread_rwlock_unlock(&thedb_lock);
         return -1;
@@ -5577,6 +5585,7 @@ int add_db(dbtable *db)
     thedb->dbs[thedb->num_dbs++] = db;
 
     /* Add table to the hash. */
+    schema_write_held_lk();
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);
@@ -5595,6 +5604,7 @@ void delete_db(char *db_name)
     }
 
     /* Remove the table from hash. */
+    schema_write_held_lk();
     hash_del(thedb->db_hash, thedb->dbs[idx]);
 
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
@@ -5625,8 +5635,10 @@ int rename_db(dbtable *db, const char *newname)
     bdb_state_rename(db->handle, bdb_name);
 
     /* db */
+    schema_write_held_lk();
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
+    schema_write_held_lk();
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);
@@ -5659,6 +5671,7 @@ void replace_db_idx(dbtable *p_db, int idx)
 
     /* Add table to the hash. */
     if (move == 1) {
+        schema_write_held_lk();
         hash_add(thedb->db_hash, p_db);
     }
 
@@ -5945,8 +5958,11 @@ retry_tran:
     free_sqlite_table(thedb);
     thedb->dbs = NULL;
 
-    if (thedb->db_hash)
+    schema_read_held_lk();
+    if (thedb->db_hash) {
+        schema_write_held_lk();
         hash_clear(thedb->db_hash);
+    }
 
     if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) == 0 &&
         stripes > 0) {

@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "comdb2.h"
 #include "comdb2_atomic.h"
 #include "plhash.h"
 
@@ -50,6 +51,11 @@ inline void schema_term_held(void)
     hash_free(schema_rd_thds);
     schema_rd_thds = NULL;
     Pthread_mutex_unlock(&schema_rd_thds_lk);
+}
+
+inline int schema_is_global_db_hash_int(hash_t *hash)
+{
+    return thedb->db_hash == hash;
 }
 
 inline int schema_read_held_int(const char *file, const char *func, int line)
