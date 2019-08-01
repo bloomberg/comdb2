@@ -847,8 +847,9 @@ dbtable *get_dbtable_by_name(const char *p_name)
     dbtable *p_db = NULL;
 
     Pthread_rwlock_rdlock(&thedb_lock);
-    schema_read_held_lk();
+    rdlock_schema_lk();
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    unlock_schema_lk();
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
@@ -865,8 +866,9 @@ dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
         return get_dbtable_by_name(p_name);
 
     Pthread_rwlock_rdlock(&thedb_lock);
-    schema_read_held_lk();
+    rdlock_schema_lk();
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    unlock_schema_lk();
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
     if (!p_db) {
