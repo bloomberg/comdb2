@@ -1750,7 +1750,7 @@ int dohsql_is_parallel_shard(void)
        by a supported plugin */
     if (!clnt->plugin.write_response)
         return 1;
-        
+
     return (clnt->conns || DOHSQL_CLIENT);
 }
 
