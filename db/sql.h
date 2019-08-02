@@ -510,8 +510,46 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+#define HINT_LEN 127
+enum cache_status {
+    CACHE_DISABLED = 0,
+    CACHE_HAS_HINT = 1,
+    CACHE_FOUND_STMT = 2,
+    CACHE_FOUND_STR = 4,
+};
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_CREATE_TRIGGER = 2,
+    PREPARE_DENY_PRAGMA = 4,
+    PREPARE_DENY_DDL = 8,
+    PREPARE_IGNORE_ERR = 16
+};
+struct sql_state {
+    enum cache_status status;          /* populated by get_prepared_stmt */
+    sqlite3_stmt *stmt;                /* cached engine, if any */
+    char cache_hint[HINT_LEN];         /* hint copy, if any */
+    const char *sql;                   /* the actual string used */
+    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
+};
+
+/* This structure is designed to hold several pieces of data related to
+ * work-in-progress on client SQL requests. */
+struct sqlworkstate {
+    char *zSql;           /* Original SQL query for this work. */
+    char *zNormSql;       /* Normalized version of original SQL query. */
+    struct sql_state rec; /* Prepared statement for original SQL query. */
+    unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
+    struct sqlworkstate work;  /* This is the primary data related to the SQL
+                                * client request in progress.  This includes
+                                * the original SQL query and its normalized
+                                * variant (if applicable). */
+
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;
@@ -525,8 +563,6 @@ struct sqlclntstate {
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
-    char *sql;
-    char *zNormSql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -1044,6 +1080,8 @@ unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
 int dispatch_sql_query(struct sqlclntstate *clnt);
+int wait_for_sql_query(struct sqlclntstate *clnt);
+void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse);
@@ -1109,29 +1147,6 @@ void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans);
 
-#define HINT_LEN 127
-enum cache_status {
-    CACHE_DISABLED = 0,
-    CACHE_HAS_HINT = 1,
-    CACHE_FOUND_STMT = 2,
-    CACHE_FOUND_STR = 4,
-};
-enum prepare_flags {
-    PREPARE_NONE = 0,
-    PREPARE_RECREATE = 1,
-    PREPARE_DENY_CREATE_TRIGGER = 2,
-    PREPARE_DENY_PRAGMA = 4,
-    PREPARE_DENY_DDL = 8,
-    PREPARE_IGNORE_ERR = 16
-};
-struct sql_state {
-    enum cache_status status;          /* populated by get_prepared_stmt */
-    sqlite3_stmt *stmt;                /* cached engine, if any */
-    char cache_hint[HINT_LEN];         /* hint copy, if any */
-    const char *sql;                   /* the actual string used */
-    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
-};
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                       struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
@@ -1185,6 +1200,10 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]);
+
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);
 
