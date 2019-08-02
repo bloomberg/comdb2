@@ -51,7 +51,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     int rc = 0;
     /* TODO:int node = -1;     add source node */
 
-    clnt->sql = sql;
+    clnt->work.zSql = sql;
     clnt->fdb_state.remote_sql_sb = sb;
     clnt->fdb_state.version = version;
     clnt->fdb_state.flags = flags;
@@ -334,7 +334,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
 
     init_sqlclntstate(clnt, tid, isuuid);
 
-    clnt->sql = "begin";
+    clnt->work.zSql = "begin";
 
     rc = fdb_svc_trans_init(clnt, tid, lvl, seq, isuuid);
     if (rc) {

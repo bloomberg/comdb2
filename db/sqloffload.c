@@ -687,8 +687,8 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
                clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+        if (clnt->work.zSql)
+            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->work.zSql);
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {

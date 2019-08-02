@@ -32,18 +32,28 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]) {
+    MD5Context ctx = {0};
+
+    assert(zNormSql);
+    assert(pnNormSql);
+
+    *pnNormSql = strlen(zNormSql);
+
+    MD5Init(&ctx);
+    MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
+    memset(fingerprint, 0, FINGERPRINTSZ);
+    MD5Final(fingerprint, &ctx);
+}
+
 void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t prepTime, int64_t nrows,
                      struct reqlogger *logger) {
     assert(zSql);
-    assert(zNormSql);
-    size_t nNormSql = strlen(zNormSql);
+    size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
-    MD5Context ctx;
-    MD5Init(&ctx);
-    MD5Update(&ctx, (unsigned char *)zNormSql, nNormSql);
-    memset(fingerprint, 0, sizeof(fingerprint));
-    MD5Final(fingerprint, &ctx);
+    calc_fingerprint(zNormSql, &nNormSql, fingerprint);
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
     struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);

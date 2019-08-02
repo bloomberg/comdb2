@@ -327,7 +327,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
 
     /* Retry case has flag lit on "begin" */
     if (sqlquery->snapshot_info && sqlquery->snapshot_info->file &&
-        strncasecmp(clnt->sql, "begin", 5) == 0) {
+        strncasecmp(clnt->work.zSql, "begin", 5) == 0) {
         clnt->snapshot_file = sqlquery->snapshot_info->file;
         clnt->snapshot_offset = sqlquery->snapshot_info->offset;
         clnt->is_hasql_retry = 1;
@@ -1129,7 +1129,7 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
     CDB2QUERY *query = appdata->query = stmt->query;
     appdata->sqlquery = query->sqlquery;
     strncpy0(clnt->tzname, stmt->tzname, sizeof(clnt->tzname));
-    clnt->sql = query->sqlquery->sql_query;
+    clnt->work.zSql = query->sqlquery->sql_query;
     return NULL;
 }
 
@@ -1378,7 +1378,7 @@ static void newsql_setup_client_info(struct sqlclntstate *clnt,
                   "%s pid: %d host_id: %d argv0: %s open-stack: %s sql: %s",
                   replay, cinfo->pid, cinfo->host_id,
                   cinfo->argv0 ? cinfo->argv0 : "(unset)",
-                  cinfo->stack ? cinfo->stack : "(no-stack)", clnt->sql);
+                  cinfo->stack ? cinfo->stack : "(no-stack)", clnt->work.zSql);
 }
 
 static int newsql_skip_row(struct sqlclntstate *clnt, uint64_t rowid)
@@ -2273,7 +2273,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
-        clnt.sql = sql_query->sql_query;
+        clnt.work.zSql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
         if (!clnt.in_client_trans) {
@@ -2358,8 +2358,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.heartbeat = 1;
         ATOMIC_ADD(gbl_nnewsql, 1);
 
-        if (clnt.had_errors && strncasecmp(clnt.sql, "commit", 6) &&
-            strncasecmp(clnt.sql, "rollback", 8)) {
+        if (clnt.had_errors && strncasecmp(clnt.work.zSql, "commit", 6) &&
+            strncasecmp(clnt.work.zSql, "rollback", 8)) {
             if (clnt.in_client_trans == 0) {
                 clnt.had_errors = 0;
                 /* tell blobmem that I want my priority back

@@ -22,10 +22,10 @@
 
 #include <stddef.h> /*THIS DEFINES offsetof() MACRO*/
 
-#ifdef LIST_EMPTY
-#undef LIST_EMPTY
+#ifdef listc_empty
+#undef listc_empty
 #endif
-#define LIST_EMPTY(listp) ((listp)->count == 0)
+#define listc_empty(listp) ((listp)->count == 0)
 
 typedef struct linkc_t {
     void *next;

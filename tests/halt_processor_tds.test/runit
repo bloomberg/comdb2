@@ -130,9 +130,9 @@ function runtest
     i=0
 
     while [[ $i -lt $insert_granularity ]]; do
-        echo "INSERT INTO t1 (id) VALUES (1)" >> $fname
+        echo "INSERT INTO t1 (id) VALUES (1)"
         let i=i+1
-    done
+    done >> $fname
 
     echo "COMMIT" >> $fname
 
