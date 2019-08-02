@@ -51,6 +51,7 @@ int systblTimepartInit(sqlite3*db);
 int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
 int systblViewsInit(sqlite3 *);
+int systblSQLClientStats(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 

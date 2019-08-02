@@ -1231,6 +1231,18 @@ void clnt_unregister(struct sqlclntstate *clnt);
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
 
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
 struct query_count {
     char fingerprint[FINGERPRINTSZ];
 
