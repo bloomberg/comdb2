@@ -1154,8 +1154,8 @@ __memp_serialize(dbenv, f)
             for (int i = 0; i < ar_cnt; i++) {
 				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
                 p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
-                for (i = 0; i < DB_FILE_ID_LEN; ++i, ++p) {
-                    fprintf(f, "%x", (u_int)*p);
+                for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
+                    fprintf(f, "%2.2x", (u_int)*p);
                 }
                 fprintf(f, " %"PRIu32"\n", bharray[i].track_pgno);
             }

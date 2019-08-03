@@ -1036,6 +1036,9 @@ int bdb_rebuild_done(bdb_state_type *bdb_handle);
 /* force a flush to disk of all in memory stuff */
 int bdb_flush(bdb_state_type *bdb_handle, int *bdberr);
 
+/* Serialize cache to this file */
+int bdb_serialize_cache(bdb_state_type *bdb_state, const char *file);
+
 /* force a flush to disk of all in memory stuff , but don't force a checkpoint
  */
 int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);

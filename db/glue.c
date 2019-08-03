@@ -4860,6 +4860,11 @@ void flush_db(void)
     bdb_flush(thedb->bdb_env, &rc);
 }
 
+void serialize_cache(const char *file)
+{
+    bdb_serialize_cache(thedb->bdb_env, file);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*          LITE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
