@@ -1057,6 +1057,79 @@ berk_memp_sync_alarm_ms(int x)
 	memp_sync_alarm_ms = x;
 }
 
+/*
+ * __memp_serialize --
+ *	Write bufferpool fileids and pages to a file
+ *
+ * PUBLIC: int __memp_serialize
+ * PUBLIC:     __P((DB_ENV *));
+ */
+int
+__memp_serialize(dbenv, f)
+	DB_ENV *dbenv;
+    FILE *f;
+{
+	BH *bhp;
+	BH_TRACK *bharray;
+	BH **bhparray;
+	DB_MPOOL *dbmp;
+	DB_MPOOL_HASH *hp;
+	DB_MPOOL_HASH **hparray;
+	MPOOL *c_mp = NULL, *mp;
+	MPOOLFILE *mfp;
+	u_int32_t n_cache;
+	int ar_cnt, ar_max, i, j, ret, t_ret;
+
+	dbmp = dbenv->mp_handle;
+
+    ar_max = mp->nreg * mp->htab_buckets;
+    if ((ret =
+        __os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
+        return (ret);
+
+	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
+		c_mp = dbmp->reginfo[n_cache].primary;
+
+		hp = R_ADDR(&dbmp->reginfo[n_cache], c_mp->htab);
+		for (i = 0; i < c_mp->htab_buckets; i++, hp++) {
+
+			if (SH_TAILQ_FIRST(&hp->hash_bucket, __bh) == NULL)
+				continue;
+
+			MUTEX_LOCK(dbenv, &hp->hash_mutex);
+			for (ar_cnt = 0, bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
+			    bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
+
+				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+
+				if (F_ISSET(mfp, MP_TEMP) || mfp->lsn_off == -1)
+					continue;
+
+				bharray[ar_cnt].track_hp = hp;
+				bharray[ar_cnt].track_pgno = bhp->pgno;
+				bharray[ar_cnt].track_off = bhp->mf_offset;
+				ar_cnt++;
+
+				if (ar_cnt >= ar_max) {
+					if ((ret = __os_realloc(dbenv,
+						    (ar_max * 2) *
+						    sizeof(BH_TRACK),
+						    &bharray)) != 0)
+						break;
+					ar_max *= 2;
+				}
+            }
+            MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+
+            /* Output fileid / pgno pairs to a file this list to a file */
+        }
+
+
+
+
+
+}
+
 
 /*
  * __memp_sync_int --
