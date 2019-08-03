@@ -105,6 +105,33 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
+/*
+ * __memp_serialize_pp --
+ *	DB_ENV->memp_serialize pre/post processing.
+ *
+ * PUBLIC: int __memp_serialize_pp __P((DB_ENV *, FILE *));
+ */
+int
+__memp_serialize_pp(dbenv, f)
+	DB_ENV *dbenv;
+	FILE *f;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+	    dbenv->mp_handle, "memp_serialize", DB_INIT_MPOOL);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+        __env_rep_enter(dbenv);
+	ret = __memp_serialize(dbenv, f);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+
+
 static pthread_mutex_t mempsync_lk;
 static pthread_cond_t mempsync_wait;
 static pthread_once_t mempsync_once = PTHREAD_ONCE_INIT;
@@ -1062,12 +1089,12 @@ berk_memp_sync_alarm_ms(int x)
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_serialize
- * PUBLIC:     __P((DB_ENV *));
+ * PUBLIC:     __P((DB_ENV *, FILE *));
  */
 int
 __memp_serialize(dbenv, f)
 	DB_ENV *dbenv;
-    FILE *f;
+	FILE *f;
 {
 	BH *bhp;
 	BH_TRACK *bharray;
@@ -1079,13 +1106,15 @@ __memp_serialize(dbenv, f)
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
 	int ar_cnt, ar_max, i, j, ret, t_ret;
+    u_int8_t *p;
 
 	dbmp = dbenv->mp_handle;
+	mp = dbmp->reginfo[0].primary;
 
-    ar_max = mp->nreg * mp->htab_buckets;
-    if ((ret =
-        __os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
-        return (ret);
+	ar_max = mp->nreg * mp->htab_buckets;
+	if ((ret =
+		__os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
+		return (ret);
 
 	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
 		c_mp = dbmp->reginfo[n_cache].primary;
@@ -1098,7 +1127,7 @@ __memp_serialize(dbenv, f)
 
 			MUTEX_LOCK(dbenv, &hp->hash_mutex);
 			for (ar_cnt = 0, bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
-			    bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
+				bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
 
 				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
 
@@ -1112,22 +1141,29 @@ __memp_serialize(dbenv, f)
 
 				if (ar_cnt >= ar_max) {
 					if ((ret = __os_realloc(dbenv,
-						    (ar_max * 2) *
-						    sizeof(BH_TRACK),
-						    &bharray)) != 0)
+							(ar_max * 2) *
+							sizeof(BH_TRACK),
+							&bharray)) != 0)
 						break;
 					ar_max *= 2;
 				}
+			}
+			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+
+            /* TODO sort this */
+            for (int i = 0; i < ar_cnt; i++) {
+				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
+                p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
+                for (i = 0; i < DB_FILE_ID_LEN; ++i, ++p) {
+                    fprintf(f, "%x", (u_int)*p);
+                }
+                fprintf(f, " %"PRIu32"\n", bharray[i].track_pgno);
             }
-            MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 
-            /* Output fileid / pgno pairs to a file this list to a file */
-        }
-
-
-
-
-
+			/* Output fileid / pgno pairs to a file this list to a file */
+		}
+	}
+    return 0;
 }
 
 
