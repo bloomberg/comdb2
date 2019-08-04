@@ -1385,6 +1385,17 @@ int bdb_serialize_cache(bdb_state_type *bdb_state, const char *file)
     return rc;
 }
 
+int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
+{
+    int rc;
+    FILE *f = fopen(file, "r");
+    if (!f) 
+        return -1;
+    rc = bdb_state->dbenv->memp_load(bdb_state->dbenv, f);
+    fclose(f);
+    return rc;
+}
+
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
     int rc;

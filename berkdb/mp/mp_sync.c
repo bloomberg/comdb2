@@ -106,6 +106,31 @@ __memp_sync_pp(dbenv, lsnp)
 }
 
 /*
+ * __memp_load_pp --
+ *	DB_ENV->memp_load pre/post processing.
+ *
+ * PUBLIC: int __memp_load_pp __P((DB_ENV *, FILE *));
+ */
+int
+__memp_load_pp(dbenv, f)
+	DB_ENV *dbenv;
+	FILE *f;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+	    dbenv->mp_handle, "memp_load", DB_INIT_MPOOL);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+        __env_rep_enter(dbenv);
+	ret = __memp_load(dbenv, f);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+/*
  * __memp_serialize_pp --
  *	DB_ENV->memp_serialize pre/post processing.
  *
@@ -1081,6 +1106,86 @@ berk_memp_sync_alarm_ms(int x)
 	logmsg(LOGMSG_DEBUG, "__berkdb_sync_alarm_ms = %d\n", x);
 	memp_sync_alarm_ms = x;
 }
+/*
+ *
+ * __memp_load --
+ *	Load bufferpool fileids and pages to a file
+ *
+ * PUBLIC: int __memp_load
+ * PUBLIC:     __P((DB_ENV *, FILE *));
+ */
+int
+__memp_load(dbenv, f)
+	DB_ENV *dbenv;
+	FILE *f;
+{
+	DB_MPOOL *dbmp;
+	DB_MPOOLFILE *dbmfp;
+    u_int32_t lineno = 0;
+    char line[DB_FILE_ID_LEN * 2];
+    u_int8_t last_fileid[DB_FILE_ID_LEN] = {0};
+    u_int8_t fileid[DB_FILE_ID_LEN] = {0};
+    char *p, *sp;
+    db_pgno_t pg;
+	void *addrp;
+
+	dbmp = dbenv->mp_handle;
+    dbmfp = NULL;
+
+    while (fgets((char *)line, sizeof(line), f) != NULL) {
+        lineno++;
+        p = &line[0];
+        if ((sp = strchr((char *)line, ' ')) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s input file format error line %u\n",
+                    __func__, lineno);
+            continue;
+        }
+
+        if ((int)(sp - p) != (DB_FILE_ID_LEN * 2)) {
+            logmsg(LOGMSG_ERROR, "%s input file incorrect fileid len "
+                    "line %u\n", __func__, lineno);
+            continue;
+        }
+
+        for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
+            sscanf(p, "%2x", fileid[j]);
+        }
+
+        if (memcmp(fileid, last_fileid, DB_FILE_ID_LEN)) {
+            if (dbmfp) {
+                /* Close */
+                dbmfp = NULL;
+            }
+            MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+
+            for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
+                    dbmfp = TAILQ_NEXT(dbmfp, q)) {
+                if (memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN) == 0)
+                    break;
+            }
+
+            MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+            if (!dbmfp) {
+                logmsg(LOGMSG_ERROR, "%s unable to find dbmfp line %u\n",
+                        __func__, lineno);
+                continue;
+            }
+            memcpy(last_fileid, fileid, DB_FILE_ID_LEN);
+        }
+
+        assert(dbmfp != NULL);
+
+        if ((sscanf(p, " %"PRIu32, pg)) <= 0) {
+            logmsg(LOGMSG_ERROR, "%s missing page on line %u\n",
+                    __func__, lineno);
+            continue;
+        }
+        __memp_fget(dbmfp, &pg, 0, addrp);
+        __memp_fput(dbmfp, addrp, 0);
+    }
+    return 0;
+}
+
 
 /*
  * __memp_serialize --
@@ -1148,7 +1253,6 @@ __memp_serialize(dbenv, f)
 			}
 			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 
-            /* TODO sort this */
             for (int i = 0; i < ar_cnt; i++) {
 				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
                 p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
@@ -1158,7 +1262,6 @@ __memp_serialize(dbenv, f)
                 fprintf(f, " %"PRIu32"\n", bharray[i].track_pgno);
             }
 
-			/* Output fileid / pgno pairs to a file this list to a file */
 		}
 	}
     return 0;
@@ -1641,7 +1744,6 @@ int __memp_sync_files(dbenv, dbmp)
 	MPOOLFILE *mfp;
 	int final_ret, ret, had_files, didnt_have_files;
 	u_int32_t flags;
-
 
 	flags = dbenv->close_flags;
 	had_files = didnt_have_files = final_ret = 0;

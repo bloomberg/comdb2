@@ -96,6 +96,7 @@ __memp_dbenv_create(dbenv)
 		dbenv->memp_stat = __memp_stat_pp;
 		dbenv->memp_sync = __memp_sync_pp;
         dbenv->memp_serialize = __memp_serialize_pp;
+        dbenv->memp_load = __memp_load_pp;
 		dbenv->memp_trickle = __memp_trickle_pp;
 	}
 	dbenv->memp_fcreate = __memp_fcreate_pp;
@@ -461,6 +462,14 @@ fsop:
 
 	return (ret);
 }
+
+/*
+ * __memp_get_mpoolfile
+ *	Return the mpoolfile
+ *
+ * PUBLIC: int __memp_get_refcnt __P((DB_ENV *, u_int8_t *, int *));
+ */
+
 
 /*
  * __memp_get_refcnt
