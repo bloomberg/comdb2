@@ -130,8 +130,6 @@ __memp_serialize_pp(dbenv, f)
 	return (ret);
 }
 
-
-
 static pthread_mutex_t mempsync_lk;
 static pthread_cond_t mempsync_wait;
 static pthread_once_t mempsync_once = PTHREAD_ONCE_INIT;

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+function write_prompt
+{
+    typeset func=$1
+    echo "[$func] $2"
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    if [[ "$core_rep_on_failexit" == 1 ]]; then
+        kill -6 $(cat $repdir/${repname}.pid)
+    else
+        kill -9 $(cat $repdir/${repname}.pid)
+    fi
+    [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
+    exit -1
+}
+
+function bulk_insert_records
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="bulk_insert_records"
+    typeset table=${1:-t1}
+    typeset cnt=${2:-100000}
+    typeset chunk=${3:-10000}
+    j=0
+    while [[ $cnt -gt 0 ]]; do
+        if [[ $cnt -lt $chunk ]]; then
+            amt=$cnt
+        else
+            amt=$chunk
+        fi
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $table select * from generate_series(1, $amt)" >/dev/null
+        let cnt=$(( cnt - amt ))
+    done
+}
+
+function drop_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_table"
+    typeset table=${1:-t1}
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "drop table $table"
+}
+
+function create_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_table"
+    typeset table=${1:-t1}
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "create table $table(a int)" 
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    drop_table
+    create_table
+    bulk_insert_records
+}
+
+function dump_cache
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="dump_cache"
+    typeset file=${1:-cache.txt}
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "@send serialize $file"
+        cat $file
+    else
+        for n in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "@send serialize $file"
+            echo "$n:"
+            ssh $SSH_OPT $n "cat $file" < /dev/null
+            echo " "
+        done
+    fi
+}
+
+setup
+dump_cache $DBDIR/cache.txt
