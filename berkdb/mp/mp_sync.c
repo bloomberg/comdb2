@@ -1127,7 +1127,8 @@ __memp_load(dbenv, f)
     u_int8_t fileid[DB_FILE_ID_LEN] = {0};
     char *p, *sp;
     db_pgno_t pg;
-	void *addrp;
+    unsigned int hx;
+	void *addrp = NULL;
 
 	dbmp = dbenv->mp_handle;
     dbmfp = NULL;
@@ -1148,7 +1149,8 @@ __memp_load(dbenv, f)
         }
 
         for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
-            sscanf(p, "%2x", fileid[j]);
+            sscanf(p, "%2x", &hx);
+            fileid[j] = hx;
         }
 
         if (memcmp(fileid, last_fileid, DB_FILE_ID_LEN)) {
@@ -1175,11 +1177,12 @@ __memp_load(dbenv, f)
 
         assert(dbmfp != NULL);
 
-        if ((sscanf(p, " %"PRIu32, pg)) <= 0) {
+        if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
             logmsg(LOGMSG_ERROR, "%s missing page on line %u\n",
                     __func__, lineno);
             continue;
         }
+        pg = hx;
         __memp_fget(dbmfp, &pg, 0, addrp);
         __memp_fput(dbmfp, addrp, 0);
     }
