@@ -1977,6 +1977,15 @@ clipper_usage:
         if (thedb->bdb_env == NULL)
             return -1;
         backend_cmd(dbenv, line, lline, st);
+    } else if (tokcmp(tok, ltok, "loadcache") == 0) {
+        if (thedb->bdb_env == NULL)
+            return -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "serialize requires filename to serialize to\n");
+            return -1;
+        }
+        load_cache(tok);
     } else if (tokcmp(tok, ltok, "serialize") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;

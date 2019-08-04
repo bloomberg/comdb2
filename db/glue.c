@@ -4865,6 +4865,11 @@ void serialize_cache(const char *file)
     bdb_serialize_cache(thedb->bdb_env, file);
 }
 
+void load_cache(const char *file)
+{
+    bdb_load_cache(thedb->bdb_env, file);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*          LITE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
