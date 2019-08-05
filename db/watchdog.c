@@ -321,7 +321,8 @@ static void *watchdog_thread(void *arg)
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TEST_IO_TIME)) {
                 if (bdb_watchdog_test_io(thedb->bdb_env)) {
                     logmsg(LOGMSG_FATAL,
-                           "%s:bdb_watchdog_test_io failed - aborting\n", __func__);
+                           "%s:bdb_watchdog_test_io failed - aborting\n",
+                           __func__);
                     abort();
                 }
                 test_io_time = gbl_epoch_time;
