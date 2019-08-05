@@ -2280,6 +2280,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
             clnt.had_errors = 0;
+            clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
         }
         if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
