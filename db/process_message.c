@@ -1977,7 +1977,7 @@ clipper_usage:
         if (thedb->bdb_env == NULL)
             return -1;
         backend_cmd(dbenv, line, lline, st);
-    } else if (tokcmp(tok, ltok, "loadcache") == 0) {
+    } else if (tokcmp(tok, ltok, "load_cache") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;
         tok = segtok(line, lline, &st, &ltok);
@@ -1986,7 +1986,7 @@ clipper_usage:
             return -1;
         }
         load_cache(tok);
-    } else if (tokcmp(tok, ltok, "serialize") == 0) {
+    } else if (tokcmp(tok, ltok, "dump_cache") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;
         tok = segtok(line, lline, &st, &ltok);
@@ -1994,7 +1994,7 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "serialize requires filename to serialize to\n");
             return -1;
         }
-        serialize_cache(tok);
+        dump_cache(tok);
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;

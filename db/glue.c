@@ -4860,9 +4860,9 @@ void flush_db(void)
     bdb_flush(thedb->bdb_env, &rc);
 }
 
-void serialize_cache(const char *file)
+void dump_cache(const char *file)
 {
-    bdb_serialize_cache(thedb->bdb_env, file);
+    bdb_dump_cache_to_file(thedb->bdb_env, file);
 }
 
 void load_cache(const char *file)

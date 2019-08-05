@@ -131,13 +131,13 @@ __memp_load_pp(dbenv, f)
 }
 
 /*
- * __memp_serialize_pp --
- *	DB_ENV->memp_serialize pre/post processing.
+ * __memp_dump_pp --
+ *	DB_ENV->memp_dump pre/post processing.
  *
- * PUBLIC: int __memp_serialize_pp __P((DB_ENV *, FILE *));
+ * PUBLIC: int __memp_dump_pp __P((DB_ENV *, FILE *));
  */
 int
-__memp_serialize_pp(dbenv, f)
+__memp_dump_pp(dbenv, f)
 	DB_ENV *dbenv;
 	FILE *f;
 {
@@ -145,11 +145,11 @@ __memp_serialize_pp(dbenv, f)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-	    dbenv->mp_handle, "memp_serialize", DB_INIT_MPOOL);
+	    dbenv->mp_handle, "memp_dump", DB_INIT_MPOOL);
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
         __env_rep_enter(dbenv);
-	ret = __memp_serialize(dbenv, f);
+	ret = __memp_dump(dbenv, f);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -1191,14 +1191,14 @@ __memp_load(dbenv, f)
 
 
 /*
- * __memp_serialize --
+ * __memp_dump --
  *	Write bufferpool fileids and pages to a file
  *
- * PUBLIC: int __memp_serialize
+ * PUBLIC: int __memp_dump
  * PUBLIC:     __P((DB_ENV *, FILE *));
  */
 int
-__memp_serialize(dbenv, f)
+__memp_dump(dbenv, f)
 	DB_ENV *dbenv;
 	FILE *f;
 {

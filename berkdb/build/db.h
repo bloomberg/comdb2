@@ -2342,7 +2342,7 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
-	int  (*memp_serialize) __P((DB_ENV *, FILE *));
+	int  (*memp_dump) __P((DB_ENV *, FILE *));
 	int  (*memp_load) __P((DB_ENV *, FILE *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 

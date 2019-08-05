@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 export debug=1
+export sleeptime=5
 [[ $debug == "1" ]] && set -x
 
 function write_prompt
@@ -22,7 +23,6 @@ function failexit
     else
         kill -9 $(cat $repdir/${repname}.pid)
     fi
-    [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
     exit -1
 }
 
@@ -71,18 +71,18 @@ function bounce_cluster
     typeset sleeptime=${1:-5}
     write_prompt $func "Running $func"
     for node in $CLUSTER ; do
-        PARAMS="$db --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+        PARAMS="$DBNAME --no-global-lrl"
+        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
         if [ $node == $(hostname) ] ; then
             (
-                kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+                kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
                 sleep $sleeptime
-                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
             ) &
         else
-            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${node}.db) &
-            echo $! > ${TMPDIR}/${db}.${node}.pid
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
 }
@@ -94,10 +94,10 @@ function bounce_local
     typeset sleeptime=${1:-5}
     write_prompt $func "Running $func"
     (
-        PARAMS="$db --no-global-lrl"
-        kill -9 $(cat ${TMPDIR}/${db}.pid)
+        PARAMS="$DBNAME --no-global-lrl"
+        kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
         sleep $sleeptime
-        ${DEBUG_PREFIX} ${COMDB2_EXE} $PARAMS -pidfile ${TMPDIR}/${db}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} ${COMDB2_EXE} $PARAMS -pidfile ${TMPDIR}/${DBNAME}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.db &
     ) &
 }
 
@@ -125,6 +125,25 @@ function setup
     bulk_insert_records
 }
 
+function load_cache
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="load_cache"
+    write_prompt $func "Running $func"
+    typeset file=${1:-cache.txt}
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "@send serialize $file"
+        cat $file
+    else
+        for n in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "@send serialize $file"
+            echo "$n:"
+            ssh $SSH_OPT $n "cat $file" < /dev/null
+            echo " "
+        done
+    fi
+}
+
 function dump_cache
 {
     [[ $debug == "1" ]] && set -x
@@ -146,4 +165,10 @@ function dump_cache
 
 setup
 dump_cache $DBDIR/cache.txt
-bouncedatabase
+sort $DBDIR/cache.txt > $DBDIR/cache_sort.txt
+bounce_database $sleeptime
+sleep $(( sleeptime + 5 ))
+load_cache $DBDIR/cache_sort.txt
+dump_cache $DBDIR/check_cache.txt
+sort $DBDIR/check_cache.txt > $DBDIR/check_cache_sort.txt
+diff $DBDIR/cache_sort.txt $DBDIR/check_cache_sort.txt
