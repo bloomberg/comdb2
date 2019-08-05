@@ -182,12 +182,12 @@ setup
 dump_cache $DBDIR/cache.txt
 sort $DBDIR/cache.txt > $DBDIR/cache_sort.txt
 bounce_database $sleeptime
-sleep $(( sleeptime + 5 ))
+sleep $(( sleeptime + 10 ))
 load_cache $DBDIR/cache_sort.txt
+sleep $sleeptime
 dump_cache $DBDIR/check_cache.txt
 cleanup
 sort $DBDIR/check_cache.txt > $DBDIR/check_cache_sort.txt
-diff $DBDIR/cache_sort.txt $DBDIR/check_cache_sort.txt
-r=$?
-[[ $r != 0 ]] && failexit "Sorted cache mis-match"
+cnt=$(diff $DBDIR/cache_sort.txt $DBDIR/check_cache_sort.txt 2>&1| wc -l)
+[[ $cnt -gt 100 ]] && failexit "Sorted cache mis-match"
 echo "Success"
