@@ -1106,6 +1106,10 @@ berk_memp_sync_alarm_ms(int x)
 	logmsg(LOGMSG_DEBUG, "__berkdb_sync_alarm_ms = %d\n", x);
 	memp_sync_alarm_ms = x;
 }
+
+void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
+
+//#define VERBOSE_MEMP_LOAD
 /*
  *
  * __memp_load --
@@ -1122,7 +1126,7 @@ __memp_load(dbenv, f)
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
     u_int32_t lineno = 0;
-    char line[DB_FILE_ID_LEN * 2];
+    char line[DB_FILE_ID_LEN * 4];
     u_int8_t last_fileid[DB_FILE_ID_LEN] = {0};
     u_int8_t fileid[DB_FILE_ID_LEN] = {0};
     char *p, *sp;
@@ -1183,8 +1187,16 @@ __memp_load(dbenv, f)
             continue;
         }
         pg = hx;
-        __memp_fget(dbmfp, &pg, 0, addrp);
-        __memp_fput(dbmfp, addrp, 0);
+
+#if defined (VERBOSE_MEMP_LOAD)
+        u_int8_t *pr = fileid;
+        logmsg(LOGMSG_USER, "FGET-> ");
+        for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
+            logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
+        }
+        logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
+#endif
+        touch_page(dbmfp, pg);
     }
     return 0;
 }
