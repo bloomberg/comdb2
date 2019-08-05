@@ -132,14 +132,10 @@ function load_cache
     write_prompt $func "Running $func"
     typeset file=${1:-cache.txt}
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "@send load_cache $file"
-        cat $file
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"load_cache $file\")"
     else
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "@send load_cache $file"
-            echo "$n:"
-            ssh $SSH_OPT $n "cat $file" < /dev/null
-            echo " "
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"load_cache $file\")"
         done
     fi
 }
@@ -151,14 +147,42 @@ function dump_cache
     write_prompt $func "Running $func"
     typeset file=${1:-cache.txt}
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "@send dump_cache $file"
-        cat $file
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"dump_cache $file\")"
     else
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "@send dump_cache $file"
-            echo "$n:"
-            ssh $SSH_OPT $n "cat $file" < /dev/null
-            echo " "
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"dump_cache $file\")"
+            scp $SSH_OPT ${n}:${file} ${file}.${n}
+        done
+    fi
+}
+
+function sort_and_diff_files
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="diff_files"
+    typeset file1=$1
+    typeset file2=$2
+    typeset cnt
+    write_prompt $func "Running $func"
+    sort $file1 > ${file1}.sort
+    sort $file2 > ${file2}.sort
+    cnt=$(diff ${file1}.sort ${file2}.sort 2>&1| wc -l)
+    [[ $cnt -gt 100 ]] && failexit "Sorted cache mis-match"
+}
+
+function check_results
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="check_results"
+    typeset file1=$1
+    typeset file2=$2
+    write_prompt $func "Running $func"
+
+    if [[ -z "$CLUSTER" ]]; then
+        sort_and_diff_files $file1 $file2
+    else 
+        for n in $CLUSTER ; do
+            sort_and_diff_files ${file1}.$n ${file2}.$n
         done
     fi
 }
@@ -178,16 +202,23 @@ function cleanup
     fi
 }
 
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    typeset orig="$DBDIR/cache.txt"
+    typeset check="$DBDIR/check_cache.txt"
+    write_prompt $func "Running $func"
+    dump_cache $orig
+    bounce_database $sleeptime
+    sleep $(( sleeptime + 10 ))
+    load_cache $orig
+    sleep $sleeptime
+    dump_cache $check
+    check_results $orig $check
+}
+
 setup
-dump_cache $DBDIR/cache.txt
-sort $DBDIR/cache.txt > $DBDIR/cache_sort.txt
-bounce_database $sleeptime
-sleep $(( sleeptime + 10 ))
-load_cache $DBDIR/cache_sort.txt
-sleep $sleeptime
-dump_cache $DBDIR/check_cache.txt
+run_test
 cleanup
-sort $DBDIR/check_cache.txt > $DBDIR/check_cache_sort.txt
-cnt=$(diff $DBDIR/cache_sort.txt $DBDIR/check_cache_sort.txt 2>&1| wc -l)
-[[ $cnt -gt 100 ]] && failexit "Sorted cache mis-match"
 echo "Success"
