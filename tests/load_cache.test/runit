@@ -3,7 +3,7 @@ bash -n "$0" | exit 1
 
 export debug=1
 export sleeptime=5
-export failpct=25
+export failpct=10
 export loadrecs=1000000
 
 [[ $debug == "1" ]] && set -x
@@ -227,6 +227,7 @@ function sort_and_diff_files
     sort $file2 > ${file2}.sort
     cnt=$(diff ${file1}.sort ${file2}.sort 2>&1| wc -l)
     [[ $cnt -gt $faildiff ]] && failexit "Sorted cache mis-match"
+    echo "$file1 diffcount was $cnt, threshold was $faildiff"
 }
 
 function check_results
