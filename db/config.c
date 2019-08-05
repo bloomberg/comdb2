@@ -357,7 +357,9 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "off osql_odh_blob",
                                  "legacy_schema on",
                                  "online_recovery off",
-                                 "clean_exit_on_sigterm off"};
+                                 "clean_exit_on_sigterm off",
+                                 "nullfkey off",
+};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {

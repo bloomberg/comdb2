@@ -524,7 +524,7 @@
 (name='noudp', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nowatch', description='Disable watchdog. Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='null_blob_fix', description='', type='BOOLEAN', value='ON', read_only='Y')
-(name='nullfkey', description='Do not enforce foreign key constraints for null keys. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='nullfkey', description='Do not enforce foreign key constraints for null keys. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='num_contexts', description='', type='INTEGER', value='16', read_only='Y')
 (name='num_qdbs', description='', type='INTEGER', value='0', read_only='Y')
 (name='num_record_converts', description='During schema changes, pack this many records into a transaction. (Default: 100)', type='INTEGER', value='100', read_only='Y')
