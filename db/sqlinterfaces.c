@@ -1135,12 +1135,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if (gbl_fingerprint_queries) {
         if (h->sql) {
+            int64_t nrows = clnt->nrows;
+            if (nrows == 0) {
+                nrows = clnt->log_effects.num_affected;
+            }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
                 add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
-                                h->time, h->prepTime, clnt->nrows, logger);
+                                h->time, h->prepTime, nrows, logger);
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
                 add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
-                                h->time, h->prepTime, clnt->nrows, logger);
+                                h->time, h->prepTime, nrows, logger);
             }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
