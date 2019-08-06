@@ -1132,9 +1132,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost, h->time,
-                            h->prepTime, clnt->nrows, logger);
+        if (h->sql) {
+            if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
+                                h->time, h->prepTime, clnt->nrows, logger);
+            }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -3176,6 +3181,10 @@ static void free_normalized_sql(
     free(clnt->work.zNormSql);
     clnt->work.zNormSql = 0;
   }
+  if (clnt->work.zOrigNormSql) {
+    free(clnt->work.zOrigNormSql);
+    clnt->work.zOrigNormSql = 0;
+  }
 }
 
 static void normalize_stmt_and_store(
@@ -3183,14 +3192,25 @@ static void normalize_stmt_and_store(
   struct sql_state *rec
 ){
   free_normalized_sql(clnt);
-  assert(rec && rec->stmt);
-  assert(rec && rec->sql);
   if (gbl_fingerprint_queries) {
-    const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
-    if (zNormSql) {
-      clnt->work.zNormSql = strdup(zNormSql);
-    } else if (gbl_verbose_normalized_queries) {
-      logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+    if (rec != NULL) {
+      assert(rec->stmt);
+      assert(rec->sql);
+      const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
+      if (zNormSql) {
+        clnt->work.zNormSql = strdup(zNormSql);
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+      }
+    } else {
+      assert(clnt->work.zSql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
+      if (zOrigNormSql) {
+        clnt->work.zOrigNormSql = strdup(zOrigNormSql);
+        sqlite3_free(zOrigNormSql);
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
+      }
     }
   }
 }
@@ -3918,6 +3938,17 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
+
+    /*
+    ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
+    **       because its execution bypasses the SQL engine;
+    **       however, the parser now recognizes it.
+    */
+    normalize_stmt_and_store(clnt, NULL);
+    size_t nOrigNormSql = 0;
+    calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
+                     clnt->work.aFingerprint);
+
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         if (!errstr) {
@@ -5047,10 +5078,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    if (clnt->work.zNormSql) {
-        free(clnt->work.zNormSql);
-        clnt->work.zNormSql = NULL;
-    }
+    free_normalized_sql(clnt);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5196,10 +5224,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
-    if (clnt->work.zNormSql) {
-        free(clnt->work.zNormSql);
-        clnt->work.zNormSql = 0;
-    }
+    free_normalized_sql(clnt);
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
