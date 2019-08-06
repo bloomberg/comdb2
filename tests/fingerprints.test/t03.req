@@ -1,1 +1,1 @@
-SELECT * FROM comdb2_fingerprints ORDER BY fingerprint;
+SELECT fingerprint, count, total_cost, total_rows, normalized_sql FROM comdb2_fingerprints ORDER BY fingerprint;

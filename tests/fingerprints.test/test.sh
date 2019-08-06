@@ -21,6 +21,12 @@ last_batch=
 # post-process
 pproc=cat
 
+# testcase output
+testcase_output=
+
+# expected output
+expected_output=
+
 # Iterate through input files
 for testcase in $files ; do
 
@@ -44,8 +50,8 @@ for testcase in $files ; do
 
         tool=$( cat $new_batch.tool )
         args=$( cat $new_batch.args )
-        echo "> $tool $a_dbn $args $testcase $output"
-        $tool $a_dbn $args $testcase $output
+        echo "> $tool $a_dbn $args $testcase > $output"
+        $tool $a_dbn $args $testcase > $output
 
     else
 
@@ -72,6 +78,23 @@ for testcase in $files ; do
 
         # copy post-processed output to original
         mv $output.postprocess $output
+    fi
+
+    # get testcase output
+    testcase_output=$(cat $output)
+
+    # get expected output
+    expected_output=$(cat $testcase.out)
+
+    # verify
+    if [[ "$testcase_output" != "$expected_output" ]]; then
+        echo "  ^^^^^^^^^^^^"
+        echo "The above testcase (${testcase}) has failed!!!"
+        echo "diff ${PWD}/$testcase.out $output"
+        echo " "
+        diff $testcase.out $output
+        echo " "
+        exit 1
     fi
 done
 

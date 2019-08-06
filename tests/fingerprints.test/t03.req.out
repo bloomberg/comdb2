@@ -1,1 +1,25 @@
-placeholder
+(fingerprint=x'4f16a8ec9db90f803e406659938b2602', count=3, total_cost=0, total_rows=3, normalized_sql='SELECT?;')
+(fingerprint=x'5bef07d72bc6a66e49bef817dd3bab9d', count=5, total_cost=0, total_rows=2, normalized_sql='INSERT INTO fp1(x)VALUES(?);')
+(fingerprint=x'5e7c0c2caf9a22cac49643a5a01d7760', count=2, total_cost=25, total_rows=5, normalized_sql='SELECT*FROM fp1 ORDER BY x;')
+(fingerprint=x'5f0138608f9d1746e43d67e6e354ac22', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE test_fp VERSION?{
+local function main()
+  db:exec("SELECT 1"):emit()
+  db:exec("INSERT INTO fp1(x) VALUES(0)"):emit()
+  db:exec("SELECT x FROM fp1"):emit()
+  db:exec("DELETE FROM fp1 WHERE x = 0"):emit()
+
+  local rc
+  local n, q, r
+
+  q, rc = db:exec("SELECT * FROM fp1 ORDER BY x")
+  n = q:fetch()
+  db:emit(n)
+
+  r, rc = db:prepare("SELECT * FROM fp1 ORDER BY x")
+  r:emit()
+end};')
+(fingerprint=x'84496375cf558c93e22ce29e18ea7187', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE fp1(x integer);')
+(fingerprint=x'874119951a7c1c17319db4d5d1bca1bc', count=1, total_cost=12, total_rows=2, normalized_sql='SELECT x FROM fp1;')
+(fingerprint=x'b12bfa0963ad238396f59e2e1e96b218', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT count(*)FROM fp1;')
+(fingerprint=x'd12630393a2ab9bf00df2f53a9355b10', count=1, total_cost=13, total_rows=1, normalized_sql='SELECT x,x+x,sum(x)FROM fp1 ORDER BY x;')
+(fingerprint=x'ea1c1d9dd89564e809f6501de86061dd', count=3, total_cost=37, total_rows=2, normalized_sql='DELETE FROM fp1 WHERE x=?;')

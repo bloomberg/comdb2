@@ -8,11 +8,14 @@ local function main()
   db:exec("SELECT x FROM fp1"):emit()
   db:exec("DELETE FROM fp1 WHERE x = 0"):emit()
 
-  local q, rc1 = db:exec(t)
-  local n = q:fetch()
+  local rc
+  local n, q, r
+
+  q, rc = db:exec("SELECT * FROM fp1 ORDER BY x")
+  n = q:fetch()
   db:emit(n)
 
-  local r, rc2 = db:prepare("SELECT * FROM fp1 ORDER BY x")
+  r, rc = db:prepare("SELECT * FROM fp1 ORDER BY x")
   r:emit()
 end}$$
 EOF
