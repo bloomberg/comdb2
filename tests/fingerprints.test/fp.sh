@@ -4,7 +4,7 @@ cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure test_fp version '1' {
 local function main()
   local rc
-  local n, q
+  local n, q, r
 
   q, rc = db:exec("SELECT 1")
   if (rc == 0) then
@@ -61,22 +61,17 @@ local function main()
     db:emit(db:sqlerror())
   end
 
-  if (rc == 0) then
-    n = q:fetch()
-    while n do
-      db:emit(n)
-      n = q:fetch()
-    end
-  else
-    db:emit(db:sqlerror())
-  end
-
   q, rc = db:prepare("SELECT * FROM fp1 ORDER BY x")
   if (rc == 0) then
-    n = q:fetch()
-    while n do
-      db:emit(n)
-      n = q:fetch()
+    r, rc = db:exec(q)
+    if (rc == 0) then
+      n = r:fetch()
+      while n do
+        db:emit(n)
+        n = r:fetch()
+      end
+    else
+      db:emit(db:sqlerror())
     end
   else
     db:emit(db:sqlerror())
