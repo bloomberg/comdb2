@@ -12,11 +12,19 @@ local function main()
   local n, q, r
 
   q, rc = db:exec("SELECT * FROM fp1 ORDER BY x")
-  n = q:fetch()
-  db:emit(n)
+  if (rc == 0) then
+    n = q:fetch()
+    db:emit(n)
+  else
+    db:emit(db:sqlerror())
+  end   
 
   r, rc = db:prepare("SELECT * FROM fp1 ORDER BY x")
-  r:emit()
+  if (rc == 0) then
+    r:emit()
+  else
+    db:emit(db:sqlerror())
+  end   
 end}$$
 EOF
 
