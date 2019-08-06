@@ -554,7 +554,6 @@ struct summary_nodestats {
     char *task;
     char *stack;
     int ref;
-    int pid;
 
     unsigned finds;
     unsigned rngexts;
