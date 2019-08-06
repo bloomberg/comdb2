@@ -856,7 +856,11 @@ char *sqlite3Normalize(
         iStartIN = 0;
         j = pStr->nChar;
         if( sqlite3Isquote(zSql[i]) ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          char *zId = sqlite3_mprintf("%.*s", n, zSql+i);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           char *zId = sqlite3DbStrNDup(db, zSql+i, n);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           int nId;
           int eType = 0;
           if( zId==0 ) break;
