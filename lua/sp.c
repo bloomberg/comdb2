@@ -2151,14 +2151,20 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
         if (zNormSql != NULL) {
             double cost = 0.0;
             int64_t prepMs = 0;
+            int64_t timeMs;
 
             clnt_query_cost(sp->thd, &cost, &prepMs);
+            timeMs = time - pVdbe->luaStartTime + prepMs;
 
             add_fingerprint(
                 sqlite3_sql(pStmt), zNormSql, cost,
-                time - pVdbe->luaStartTime + prepMs,
-                prepMs, pVdbe->luaRows, NULL
+                timeMs, prepMs, pVdbe->luaRows, NULL
             );
+
+            clnt->spcost.cost += cost;
+            clnt->spcost.time += timeMs;
+            clnt->spcost.prepTime += prepMs;
+            clnt->spcost.rows += pVdbe->luaRows;
         }
 
         restore_thd_cost_and_reset(sp->thd, pVdbe);
