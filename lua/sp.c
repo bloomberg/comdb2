@@ -1065,10 +1065,10 @@ static int enable_global_variables(lua_State *lua)
     return 0;
 }
 
-static void lua_begin_step(SP, sqlite3_stmt *);
-static void lua_another_step(sqlite3_stmt *, int);
-static void lua_end_step(SP, sqlite3_stmt *);
-static void lua_end_all_step(SP);
+static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
+static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_end_all_step(struct sqlclntstate *, SP);
 static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
@@ -1139,11 +1139,11 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     *lk = calloc(1, sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
     unlock_schema_lk();
     sqlite3_finalize(stmt);
@@ -1263,10 +1263,10 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_maybe_step(clnt, stmt);
-    lua_another_step(stmt, rc);
+    lua_another_step(clnt, stmt, rc);
 
     if (rc == SQLITE_DONE) {
-        lua_end_step(sp, stmt);
+        lua_end_step(clnt, sp, stmt);
         return rc;
     } else if (rc != SQLITE_ROW) {
         return luaL_error(lua, sqlite3_errmsg(getdb(sp)));
@@ -1965,7 +1965,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         lua_pop(lua, 1);
         if ((sp->max_num_instructions > 0) &&
             (sp->num_instructions > sp->max_num_instructions)) {
-            lua_end_all_step(sp);
+            lua_end_all_step(sp->clnt, sp);
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",
@@ -2116,7 +2116,8 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     return sp->rc;
 }
 
-static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
+static void lua_begin_step(struct sqlclntstate *clnt, SP sp,
+                           sqlite3_stmt *pStmt)
 {
     int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
@@ -2128,7 +2129,8 @@ static void lua_begin_step(SP sp, sqlite3_stmt *pStmt)
     }
 }
 
-static void lua_another_step(sqlite3_stmt *pStmt, int rc)
+static void lua_another_step(struct sqlclntstate *clnt,
+                             sqlite3_stmt *pStmt, int rc)
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
@@ -2137,7 +2139,8 @@ static void lua_another_step(sqlite3_stmt *pStmt, int rc)
     }
 }
 
-static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
+static void lua_end_step(struct sqlclntstate *clnt, SP sp,
+                         sqlite3_stmt *pStmt)
 {
     int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
@@ -2162,13 +2165,13 @@ static void lua_end_step(SP sp, sqlite3_stmt *pStmt)
     }
 }
 
-static void lua_end_all_step(SP sp)
+static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
 {
     if (sp != NULL) {
         dbstmt_t *dbstmt, *tmp;
         LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
         {
-            lua_end_step(sp, dbstmt->stmt);
+            lua_end_step(clnt, sp, dbstmt->stmt);
         }
     }
 }
@@ -2297,11 +2300,11 @@ static int dbtable_insert(Lua lua)
     }
     lua_pop(lua, 1); /* Keep just dbtable on stack. */
 
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
 
     if (rc == SQLITE_DONE) rc = 0;
 
@@ -2355,11 +2358,11 @@ static int dbtable_copyfrom(Lua lua)
         return rc;
     }
 
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
 
     sqlite3_finalize(stmt);
 
@@ -3204,7 +3207,7 @@ static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt, int profile)
         return;
     }
     run_stmt_setup(sp->clnt, dbstmt->stmt);
-    if (profile) lua_begin_step(sp, dbstmt->stmt);
+    if (profile) lua_begin_step(sp->clnt, sp, dbstmt->stmt);
     dbstmt->fetched = 1;
     if (dbstmt->rec == NULL) {
         // Not a prepared-stmt.
@@ -3245,11 +3248,11 @@ static int dbstmt_exec(Lua lua)
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
     dbstmt->rows_changed = sqlite3_changes(sqldb);
     if (rc == SQLITE_DONE) {
         sqlite3_reset(stmt);
@@ -3286,15 +3289,15 @@ static int dbstmt_emit(Lua L)
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
     int rc;
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
         if (l_send_back_row(L, stmt, cols) != 0) {
             rc = -1;
             break;
         }
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
     reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
     return push_and_return(L, rc);
@@ -3444,11 +3447,11 @@ int db_csvcopy(Lua lua)
           }
       	  if (csv.cTerm == 0) break;
         }
-        lua_begin_step(sp, stmt);
+        lua_begin_step(sp->clnt, sp, stmt);
         while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-            lua_another_step(stmt, rc);
+            lua_another_step(sp->clnt, stmt, rc);
         }
-        lua_end_step(sp, stmt);
+        lua_end_step(sp->clnt, sp, stmt);
 
         for (int i = 0; i < pos-1; i++) {
             free(b_val[i]);
@@ -3512,11 +3515,11 @@ static int db_exec(Lua lua)
     // a write stmt - run it now
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3 *sqldb = getdb(sp);
-    lua_begin_step(sp, stmt);
+    lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
-        lua_another_step(stmt, rc);
+        lua_another_step(sp->clnt, stmt, rc);
     }
-    lua_end_step(sp, stmt);
+    lua_end_step(sp->clnt, sp, stmt);
     if (rc == SQLITE_DONE) {
         dbstmt->rows_changed = sqlite3_changes(sqldb);
         sp->rc = 0;
