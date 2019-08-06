@@ -798,7 +798,11 @@ char *sqlite3Normalize(
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db = sqlite3VdbeDb(pVdbe);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   tokenType = -1;
   nParen = iStartIN = nParenAtIN = 0;
   pStr = sqlite3_str_new(db);
