@@ -2888,7 +2888,7 @@ int gather_client_sql_data_single(void *ent, void *arg) {
     nodestats_t *st = (nodestats_t*) ent;
     opt->st = st;
     Pthread_mutex_lock(&st->rawtotals.lk);
-    int rc;
+    int rc = 0;
     if (st->rawtotals.fingerprints)
         rc = hash_for(st->rawtotals.fingerprints, gather_client_sql_data_fingerprint, arg);
     Pthread_mutex_unlock(&st->rawtotals.lk);
@@ -2903,7 +2903,7 @@ int gather_client_sql_data(void **data_out, int *npoints) {
     *npoints = 0;
 
     Pthread_rwlock_wrlock(&clientstats_lk);
-    int rc;
+    int rc = 0;
     if (clientstats)
         rc = hash_for(clientstats, gather_client_sql_data_single, &opt);
     Pthread_rwlock_unlock(&clientstats_lk);
