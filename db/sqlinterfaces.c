@@ -1137,7 +1137,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         if (h->sql) {
             int64_t nrows = clnt->nrows;
             if (nrows == 0) {
-                nrows = clnt->log_effects.num_affected;
+                nrows = clnt->log_effects.num_selected +
+                        clnt->log_effects.num_inserted +
+                        clnt->log_effects.num_updated +
+                        clnt->log_effects.num_deleted;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
                 add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
