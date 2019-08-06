@@ -464,14 +464,6 @@ fsop:
 }
 
 /*
- * __memp_get_mpoolfile
- *	Return the mpoolfile
- *
- * PUBLIC: int __memp_get_refcnt __P((DB_ENV *, u_int8_t *, int *));
- */
-
-
-/*
  * __memp_get_refcnt
  *	Return a reference count, given a fileid.
  *
