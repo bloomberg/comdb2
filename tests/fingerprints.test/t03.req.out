@@ -1,8 +1,8 @@
+(fingerprint=x'2d4fbab7f6a9c85c75bbb7fb6b43c863', count=1, total_cost=37, total_rows=0, normalized_sql='SELECT sum(x)AS z FROM fp1;')
 (fingerprint=x'4f16a8ec9db90f803e406659938b2602', count=2, total_cost=0, total_rows=2, normalized_sql='SELECT?;')
 (fingerprint=x'5bef07d72bc6a66e49bef817dd3bab9d', count=3, total_cost=0, total_rows=0, normalized_sql='INSERT INTO fp1(x)VALUES(?);')
-(fingerprint=x'5e7c0c2caf9a22cac49643a5a01d7760', count=2, total_cost=38, total_rows=3, normalized_sql='SELECT*FROM fp1 ORDER BY x;')
-(fingerprint=x'84496375cf558c93e22ce29e18ea7187', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE fp1(x integer);')
-(fingerprint=x'ac5315f8d2164d49d4eb8be31ca90f96', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE test_fp VERSION?{
+(fingerprint=x'5e7c0c2caf9a22cac49643a5a01d7760', count=1, total_cost=13, total_rows=3, normalized_sql='SELECT*FROM fp1 ORDER BY x;')
+(fingerprint=x'7b07947fc885037d22dfea7e12a1ff74', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE test_fp VERSION?{
 local function exec_sql_and_emit(sql)
   local rc
   local n, q
@@ -18,11 +18,13 @@ local function exec_sql_and_emit(sql)
   end
 end
 local function main()
-  exec_sql_and_emit("SELECT 1")
+  exec_sql_and_emit("SELECT 1 AS xyz")
   exec_sql_and_emit("INSERT INTO fp1(x) VALUES(0)")
-  exec_sql_and_emit("SELECT x FROM fp1 ORDER BY x")
-  exec_sql_and_emit("SELECT * FROM fp1 ORDER BY x")
+  exec_sql_and_emit("SELECT x AS w FROM fp1 ORDER BY x")
+  exec_sql_and_emit("SELECT x + x AS y FROM fp1 ORDER BY x")
+  exec_sql_and_emit("SELECT SUM(x) AS z FROM fp1")
 end};')
+(fingerprint=x'84496375cf558c93e22ce29e18ea7187', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE fp1(x integer);')
 (fingerprint=x'b12bfa0963ad238396f59e2e1e96b218', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT count(*)FROM fp1;')
 (fingerprint=x'd12630393a2ab9bf00df2f53a9355b10', count=1, total_cost=13, total_rows=1, normalized_sql='SELECT x,x+x,sum(x)FROM fp1 ORDER BY x;')
 (fingerprint=x'ea1c1d9dd89564e809f6501de86061dd', count=1, total_cost=13, total_rows=0, normalized_sql='DELETE FROM fp1 WHERE x=?;')
