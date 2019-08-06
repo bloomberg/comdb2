@@ -5157,6 +5157,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
     Pthread_mutex_lock(parent->emit_mutex);
     rc = write_response(clnt, type, &arg, 0);
+    if (rc == 0) clnt->nrows++;
     Pthread_mutex_unlock(parent->emit_mutex);
     return rc;
 }
