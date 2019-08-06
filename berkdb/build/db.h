@@ -31,6 +31,7 @@
 #include <thdpool.h>
 #include <mem_berkdb.h>
 #include <sys/time.h>
+#include <sbuf2.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -2342,8 +2343,9 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
-	int  (*memp_dump) __P((DB_ENV *, FILE *));
-	int  (*memp_load) __P((DB_ENV *, FILE *));
+	int  (*memp_dump) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
+    int  (*memp_flush_list) __P((DB_ENV *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
@@ -2881,6 +2883,7 @@ struct __ltrans_descriptor {
 };
 
 int __checkpoint_open(DB_ENV *dbenv, const char *db_home);
+int __page_cache_set_path(DB_ENV *dbenv, const char *db_home);
 int __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery);

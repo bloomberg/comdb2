@@ -3,12 +3,21 @@
 . ${TESTSROOTDIR}/tools/write_prompt.sh
 . ${TESTSROOTDIR}/tools/waitmach.sh
 
+if [[ -z "$sleeptime" ]]; then 
+    sleeptime=5
+fi
+
 function bounce_cluster
 {
     [[ "$debug" == 1 ]] && set -x
     typeset func="bounce_cluster"
     typeset sleeptime=${1:-5}
     write_prompt $func "Running $func"
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"exit\")"
+    done
+    sleep $sleeptime
+
     for node in $CLUSTER ; do
         PARAMS="$DBNAME --no-global-lrl"
         CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
@@ -32,6 +41,8 @@ function bounce_local
     typeset func="bounce_local"
     typeset sleeptime=${1:-5}
     write_prompt $func "Running $func"
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"exit\")"
+    sleep $sleeptime
     (
         PARAMS="$DBNAME --no-global-lrl"
         kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
