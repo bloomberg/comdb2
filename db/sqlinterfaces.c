@@ -1033,16 +1033,18 @@ void sql_dump_hist_statements(void)
         localtime_r((time_t *)&t, &tm);
         if (h->conn.pename[0]) {
             logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d %spindex %d task %.8s pid %d "
-                   "mach %d time %dms prepTime %dms cost %f sql: %s\n",
+                   "mach %d time %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
-                   (char *)h->conn.pename, h->conn.pid, h->conn.node, h->cost.time,
-                   h->cost.prepTime, h->cost.cost, h->sql);
+                   (char *)h->conn.pename, h->conn.pid, h->conn.node,
+                   (long long int)h->cost.time, (long long int)h->cost.prepTime,
+                   h->cost.cost, h->sql);
         } else {
             logmsg(LOGMSG_USER, 
-                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms prepTime %dms cost %f sql: %s\n",
+                   "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->cost.time, h->cost.prepTime, h->cost.cost, h->sql);
+                   tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
+                   (long long int)h->cost.prepTime, h->cost.cost, h->sql);
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1125,10 +1127,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->when = thd->stime;
     h->txnid = rqid;
 
-    time_metric_add(thedb->service_time, h->time);
+    time_metric_add(thedb->service_time, h->cost.time);
 
     /* request logging framework takes care of logging long sql requests */
-    reqlog_set_cost(logger, h->cost);
+    reqlog_set_cost(logger, h->cost.cost);
     if (rqid) {
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
@@ -1168,7 +1170,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += get_sql_steps(thd);
-        time_metric_add(rawnodestats->svc_time, h->time);
+        time_metric_add(rawnodestats->svc_time, h->cost.time);
     }
 
     reset_sql_steps(thd);
@@ -1179,14 +1181,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     Pthread_mutex_lock(&gbl_sql_lock);
     {
-        quantize(q_sql_min, h->time);
-        quantize(q_sql_hour, h->time);
-        quantize(q_sql_all, h->time);
-        quantize(q_sql_steps_min, h->cost);
-        quantize(q_sql_steps_hour, h->cost);
-        quantize(q_sql_steps_all, h->cost);
+        quantize(q_sql_min, h->cost.time);
+        quantize(q_sql_hour, h->cost.time);
+        quantize(q_sql_all, h->cost.time);
+        quantize(q_sql_steps_min, h->cost.cost);
+        quantize(q_sql_steps_hour, h->cost.cost);
+        quantize(q_sql_steps_all, h->cost.cost);
 
-        add_steps(clnt, h->cost);
+        add_steps(clnt, h->cost.cost);
 
         listc_abl(&thedb->sqlhist, h);
         while (listc_size(&thedb->sqlhist) > gbl_sqlhistsz) {

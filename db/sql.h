@@ -547,8 +547,9 @@ struct sqlworkstate {
 
 struct sql_hist_cost {
     double cost;
-    int time;
-    int prepTime;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
 };
 
 /* Client specific sql state */
