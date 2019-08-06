@@ -1075,6 +1075,24 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
     clnt->plugin.add_steps(clnt, steps);
 }
 
+static int is_stored_proc_sql(const char *sql)
+{
+    size_t len = sizeof("EXEC") - 1;
+    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
+        return 1;
+    }
+    len = sizeof("EXECUTE") - 1;
+    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
+        return 1;
+    }
+    return 0;
+}
+
+static int is_stored_proc(struct sqlclntstate *clnt)
+{
+    return is_stored_proc_sql(clnt->work.zSql);
+}
+
 /* Save copy of sql statement and performance data.  If any other code
    should run after a sql statement is completed it should end up here. */
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
@@ -1137,19 +1155,27 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if (gbl_fingerprint_queries) {
         if (h->sql) {
-            int64_t nrows = clnt->nrows;
-            if (nrows == 0) {
-                nrows = clnt->log_effects.num_selected +
-                        clnt->log_effects.num_inserted +
-                        clnt->log_effects.num_updated +
-                        clnt->log_effects.num_deleted;
+            double cost;
+            int64_t time;
+            int64_t prepTime;
+            int64_t rows;
+            if (is_stored_proc_sql(h->sql)) {
+                cost = clnt->spcost.cost;
+                time = clnt->spcost.time;
+                prepTime = clnt->spcost.prepTime;
+                rows = clnt->spcost.rows;
+            } else {
+                cost = h->cost.cost;
+                time = h->cost.time;
+                prepTime = h->cost.prepTime;
+                rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost.cost,
-                                h->cost.time, h->cost.prepTime, nrows, logger);
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, cost, time,
+                                prepTime, rows, logger);
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost.cost,
-                                h->cost.time, h->cost.prepTime, nrows, logger);
+                add_fingerprint(h->sql, clnt->work.zNormSql, cost, time,
+                                prepTime, rows, logger);
             }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -2791,24 +2817,6 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return release_locks("long repwait at emit-row");
 
     return 0;
-}
-
-static int is_stored_proc_sql(const char *sql)
-{
-    size_t len = sizeof("EXEC") - 1;
-    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    len = sizeof("EXECUTE") - 1;
-    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    return 0;
-}
-
-static int is_stored_proc(struct sqlclntstate *clnt)
-{
-    return is_stored_proc_sql(clnt->work.zSql);
 }
 
 /* if userpassword does not match this function
@@ -5222,6 +5230,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->spversion.version_num = 0;
     free(clnt->spversion.version_str);
     clnt->spversion.version_str = NULL;
+    memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
 
     clnt->is_explain = 0;
     clnt->get_cost = 0;
