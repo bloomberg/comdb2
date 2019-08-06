@@ -545,6 +545,12 @@ struct sqlworkstate {
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
 };
 
+struct sql_hist_cost {
+    double cost;
+    int time;
+    int prepTime;
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     struct sqlworkstate work;  /* This is the primary data related to the SQL
@@ -697,6 +703,7 @@ struct sqlclntstate {
     sqlclntstate_fdb_t fdb_state;
 
     int nrows;
+    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
@@ -997,9 +1004,7 @@ struct BtCursor {
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
     char *sql;
-    double cost;
-    int time;
-    int prepTime;
+    struct sql_hist_cost cost;
     int when;
     int64_t txnid;
     struct conninfo conn;

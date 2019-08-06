@@ -1036,13 +1036,13 @@ void sql_dump_hist_statements(void)
                    "mach %d time %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
-                   (char *)h->conn.pename, h->conn.pid, h->conn.node, h->time,
-                   h->prepTime, h->cost, h->sql);
+                   (char *)h->conn.pename, h->conn.pid, h->conn.node, h->cost.time,
+                   h->cost.prepTime, h->cost.cost, h->sql);
         } else {
             logmsg(LOGMSG_USER, 
                    "%02d/%02d/%02d %02d:%02d:%02d %stime %dms prepTime %dms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->time, h->prepTime, h->cost, h->sql);
+                   tm.tm_min, tm.tm_sec, rqid, h->cost.time, h->cost.prepTime, h->cost.cost, h->sql);
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1119,9 +1119,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup(clnt->work.zSql);
     else
         h->sql = strdup("unknown");
-    h->cost = query_cost(thd);
-    h->time = comdb2_time_epochms() - thd->startms;
-    h->prepTime = thd->prepms;
+    h->cost.cost = query_cost(thd);
+    h->cost.time = comdb2_time_epochms() - thd->startms;
+    h->cost.prepTime = thd->prepms;
     h->when = thd->stime;
     h->txnid = rqid;
 
@@ -1143,11 +1143,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                         clnt->log_effects.num_deleted;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost,
-                                h->time, h->prepTime, nrows, logger);
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, h->cost.cost,
+                                h->cost.time, h->cost.prepTime, nrows, logger);
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost,
-                                h->time, h->prepTime, nrows, logger);
+                add_fingerprint(h->sql, clnt->work.zNormSql, h->cost.cost,
+                                h->cost.time, h->cost.prepTime, nrows, logger);
             }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -2791,9 +2791,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int is_stored_proc(struct sqlclntstate *clnt)
+static int is_stored_proc_sql(const char *sql)
 {
-    const char *sql = clnt->work.zSql;
     size_t len = sizeof("EXEC") - 1;
     if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
         return 1;
@@ -2803,6 +2802,11 @@ static int is_stored_proc(struct sqlclntstate *clnt)
         return 1;
     }
     return 0;
+}
+
+static int is_stored_proc(struct sqlclntstate *clnt)
+{
+    return is_stored_proc_sql(clnt->work.zSql);
 }
 
 /* if userpassword does not match this function
