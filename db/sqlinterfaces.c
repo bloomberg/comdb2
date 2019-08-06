@@ -3183,6 +3183,11 @@ static void free_normalized_sql(
     free(clnt->work.zNormSql);
     clnt->work.zNormSql = 0;
   }
+}
+
+static void free_original_normalized_sql(
+  struct sqlclntstate *clnt
+){
   if (clnt->work.zOrigNormSql) {
     free(clnt->work.zOrigNormSql);
     clnt->work.zOrigNormSql = 0;
@@ -3193,13 +3198,13 @@ static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
   struct sql_state *rec
 ){
-  free_normalized_sql(clnt);
   if (gbl_fingerprint_queries) {
     if (rec != NULL) {
       assert(rec->stmt);
       assert(rec->sql);
       const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
       if (zNormSql) {
+        assert(clnt->work.zNormSql==0);
         clnt->work.zNormSql = strdup(zNormSql);
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
@@ -3208,6 +3213,7 @@ static void normalize_stmt_and_store(
       assert(clnt->work.zSql);
       char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
       if (zOrigNormSql) {
+        assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);
         sqlite3_free(zOrigNormSql);
       } else if (gbl_verbose_normalized_queries) {
@@ -3280,9 +3286,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        if (flags & PREPARE_NO_NORMALIZE) {
-            free_normalized_sql(clnt);
-        } else {
+        free_normalized_sql(clnt);
+        if (!(flags & PREPARE_NO_NORMALIZE)) {
             normalize_stmt_and_store(clnt, rec);
         }
         sqlite3_resetclock(rec->stmt);
@@ -3946,7 +3951,9 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     **       because its execution bypasses the SQL engine;
     **       however, the parser now recognizes it.
     */
+    free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL);
+
     size_t nOrigNormSql = 0;
     calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
                      clnt->work.aFingerprint);
@@ -5081,6 +5088,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
 
     free_normalized_sql(clnt);
+    free_original_normalized_sql(clnt);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5227,6 +5235,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->osql_max_trans = g_osql_max_trans;
 
     free_normalized_sql(clnt);
+    free_original_normalized_sql(clnt);
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
