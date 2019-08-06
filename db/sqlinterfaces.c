@@ -1113,7 +1113,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     listc_init(&lst, offsetof(struct sql_hist, lnk));
 
     struct sql_hist *h = calloc(1, sizeof(struct sql_hist));
-    if (clnt->work.zSql)
+    if (clnt->work.zOrigNormSql)
+        h->sql = strdup(clnt->work.zOrigNormSql);
+    else if (clnt->work.zSql)
         h->sql = strdup(clnt->work.zSql);
     else
         h->sql = strdup("unknown");
