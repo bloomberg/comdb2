@@ -2840,18 +2840,6 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats, char *fingerprint, 
     Pthread_mutex_unlock(&stats->lk);
 }
 
-#if 0
-struct client_sql_systable_data {
-    char *host;
-    char *task;
-    char *fingerprint;
-    int64_t count;
-    int64_t timems;
-    int64_t cost;
-    int64_t rows;
-};
-#endif
-
 struct client_sql_systable_options {
     struct client_sql_systable_data *stats;
     int nstats;
