@@ -19,6 +19,7 @@ end
 local function main()
   exec_sql_and_emit("SELECT 1 AS xyz")
   exec_sql_and_emit("INSERT INTO fp1(x) VALUES(0)")
+  exec_sql_and_emit("SELECT x AS w FROM fp1 ORDER BY x")
   exec_sql_and_emit("SELECT x + x AS y FROM fp1 ORDER BY x")
   exec_sql_and_emit("SELECT SUM(x) AS z FROM fp1")
 end}$$
