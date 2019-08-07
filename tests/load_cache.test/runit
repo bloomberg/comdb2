@@ -10,6 +10,7 @@ export sleeptime=10
 export reppid=-1
 export failpct=15
 export loadrecs=1000000
+export comdb2ar=${COMDB2AR_EXE}
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
 [[ $debug == "1" ]] && set -x
