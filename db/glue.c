@@ -3180,176 +3180,6 @@ void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-/* yuk. */
-static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
-                                 char **table, char **csc2, char **fname,
-                                 char **aname)
-{
-    int tlen, flen;
-    char *dta = (char *)dtap;
-    char **fvar = NULL;
-    int offset;
-    int origlen;
-
-    *table = NULL;
-    *csc2 = NULL;
-    *fname = NULL;
-    *aname = NULL;
-
-    if (dtalen < 8) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    memcpy(&tlen, dta, sizeof(int));
-    memcpy(&flen, dta + sizeof(int), sizeof(int));
-
-    if (dtalen < 2 * sizeof(int) + tlen + flen) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    /* length of original data before I added the advisory file name */
-    origlen = 2 * sizeof(int) + tlen + flen;
-
-    if (flen > 0) {
-        offset = 2 * sizeof(int) + tlen;
-        if (flen >= 6 && memcmp(dta + offset, "<CSC2>", 6) == 0) {
-            flen -= 6;
-            offset += 6;
-            fvar = csc2;
-        } else {
-            fvar = fname;
-        }
-        *fvar = malloc(flen + 1);
-        if (!*fvar) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*fvar, dta + offset, flen);
-        (*fvar)[flen] = '\0';
-    }
-
-    *table = malloc(tlen + 1);
-    if (!*table) {
-        if (*fvar)
-            free(*fvar);
-        logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-    memcpy(*table, dta + 2 * sizeof(int), tlen);
-    (*table)[tlen] = '\0';
-
-    if (dtalen > origlen) {
-        /* the extra data is the advised file name. */
-        int anamelen = dtalen - origlen;
-        *aname = malloc(anamelen + 1);
-        if (!*aname) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            if (*fvar)
-                free(*fvar);
-            free(*table);
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*aname, dta + origlen, anamelen);
-        (*aname)[anamelen] = '\0';
-    }
-
-    return 0;
-}
-
-void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
-                        void *dtap, int dtalen)
-{
-    char *table;
-    char *csc2;
-    char *fname;
-    char *aname;
-    int rc;
-    int rc2;
-
-    rc = decode_schema_net_msg(hndl, dtap, dtalen, &table, &csc2, &fname,
-                               &aname);
-    if (rc != 0)
-        return;
-
-    if (fname || aname) {
-        logmsg(LOGMSG_ERROR, "%s: fname and aname no longer supported\n", __func__);
-
-        net_ack_message(hndl, 1);
-        if (table)
-            free(table);
-        if (csc2)
-            free(csc2);
-        if (fname)
-            free(fname);
-        if (aname)
-            free(aname);
-        return;
-    }
-
-    rc = reload_schema(table, csc2, NULL);
-
-    rc2 = create_sqlmaster_records(NULL);
-    if (rc2) {
-        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
-    }
-    create_sqlite_master(); /* create sql statements */
-
-    net_ack_message(hndl, rc || rc2);
-
-    if (table)
-        free(table);
-    if (csc2)
-        free(csc2);
-}
-
-void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
-                  void *dtap, int dtalen)
-{
-    int len, free_handle;
-    char table[MAXTABLELEN];
-    char *dta = (char *)dtap;
-    struct dbtable *db;
-    int bdberr;
-
-    memset(table, 0, sizeof(table));
-    if (dtalen < 2 * sizeof(int)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(&len, dta, sizeof(int));
-    if (dtalen < 2 * sizeof(int) + len) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(table, dta + sizeof(int), len);
-    memcpy(&free_handle, dta + sizeof(int) + len, sizeof(int));
-    logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
-
-    db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
-    if (db == NULL) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    bdb_close_only(db->handle, &bdberr);
-    logmsg(LOGMSG_DEBUG, "net_close_db bdb_close_only %d\n", bdberr);
-    if (free_handle) {
-        bdb_free(db->handle, &bdberr);
-        db->handle = NULL;
-        logmsg(LOGMSG_DEBUG, "net_close_db bdb_free %d\n", bdberr);
-    }
-    if (net_ack_message(hndl, 0)) {
-        logmsg(LOGMSG_DEBUG, 
-               "net_close_db: Error sending back the acknoledgement\n");
-    }
-}
-
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
@@ -3416,34 +3246,6 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
-                                            char *fromnode, int usertype,
-                                            void *dtap, int dtalen,
-                                            uint8_t is_tcp)
-{
-    int rc;
-    struct net_morestripe_msg *msg;
-    msg = dtap;
-
-    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
-        logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
-                dtalen);
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    apply_new_stripe_settings(msg->newdtastripe, msg->newblobstripe);
-
-    rc = open_all_dbs();
-    if (rc != 0) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    fix_blobstripe_genids(NULL);
-    net_ack_message(hndl, 0);
-}
-
 void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
                    void *dtap, int dtalen, uint8_t is_tcp)
 {
@@ -3505,6 +3307,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
                       void *dtap, int dtalen, uint8_t is_tcp)
 {
+    /* TODO: Does nothing?  Refactor to remove it? */
 }
 
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,

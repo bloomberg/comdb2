@@ -1225,7 +1225,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
 
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
 {
-    char *sql = clnt->sql;
+    char *sql = clnt->work.zSql;
     FILE *f = NULL;
 
     //if verbose explain get costs dumped to tmpfile by setting wheretrace
