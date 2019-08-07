@@ -222,6 +222,7 @@ function run_test
     typeset autocache=$(autocache_enabled)
     bulk_insert_records t1 $loadrecs
     flush_cluster
+    sleep $sleeptime
     dump_cache $orig
     bounce_database $sleeptime
     sleep $(( sleeptime + 10 ))
