@@ -778,7 +778,7 @@ retry:
         flags |= OSQL_FLAGS_REORDER_ON;
 
     /* send request to blockprocessor */
-    rc = osql_comm_send_socksqlreq(osql->host, clnt->sql, strlen(clnt->sql) + 1,
+    rc = osql_comm_send_socksqlreq(osql->host, clnt->work.zSql, strlen(clnt->work.zSql) + 1,
                                    osql->rqid, osql->uuid, clnt->tzname, type,
                                    flags);
 
@@ -1586,8 +1586,8 @@ static int check_osql_capacity(struct sql_thread *thd)
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
                         "(limit is %d) [\"%s\"]\n",
                 osql->tran_ops, clnt->osql_max_trans,
-                (thd->clnt && thd->clnt->sql)
-                    ? thd->clnt->sql
+                (thd->clnt && thd->clnt->work.zSql)
+                    ? thd->clnt->work.zSql
                     : "not_set");
 
         errstat_set_rc(&osql->xerr, SQLITE_TOOBIG);

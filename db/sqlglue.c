@@ -1059,7 +1059,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                         once = 0;
                     }
                     ctrace("!sqlite3IsNumber \"%.*s\" %s\n", m->n, m->z,
-                           clnt->sql);
+                           clnt->work.zSql);
                 }
             }
         }
@@ -2039,7 +2039,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
-    struct sqlclntstate client = {0};
+    struct sqlclntstate clnt;
     struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
@@ -2068,22 +2068,22 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         return -1;
     }
 
-    reset_clnt(&client, NULL, 1);
-    client.sb = NULL;
-    client.sql = (char *)temp;
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.dbtran.mode = TRANLEVEL_SOSQL;
+    reset_clnt(&clnt, NULL, 1);
+    clnt.sb = NULL;
+    clnt.work.zSql= (char *)temp;
+    sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
 
     /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
      * mark db->schema->ix_blob if the index expression has blob fields */
     sm.sc = db->schema;
-    client.verify_indexes = 1;
-    client.schema_mems = &sm;
+    clnt.verify_indexes = 1;
+    clnt.schema_mems = &sm;
 
     struct sql_thread *sqlthd = start_sql_thread();
     sql_get_query_id(sqlthd);
-    client.debug_sqlclntstate = pthread_self();
-    sqlthd->clnt = &client;
+    clnt.debug_sqlclntstate = pthread_self();
+    sqlthd->clnt = &clnt;
 
     get_copy_rootpages_custom(sqlthd, ents, nents);
 
@@ -2095,7 +2095,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         goto done;
     }
 
-    rc = get_curtran(thedb->bdb_env, &client);
+    rc = get_curtran(thedb->bdb_env, &clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s: td %lu unable to get a CURSOR transaction, rc = %d!\n",
@@ -2104,7 +2104,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
     got_curtran = 1;
 
-    rc = sqlite3_exec(hndl, client.sql, NULL, NULL, &err);
+    rc = sqlite3_exec(hndl, clnt.work.zSql, NULL, NULL, &err);
 done:
     if (err) {
         logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
@@ -2112,12 +2112,12 @@ done:
             reqerrstr(iq, ERR_SC, "%s", err);
         sqlite3_free(err);
     }
-    if (got_curtran && put_curtran(thedb->bdb_env, &client))
+    if (got_curtran && put_curtran(thedb->bdb_env, &clnt))
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
         sqlite3_close(hndl);
 
-    cleanup_clnt(&client);
+    cleanup_clnt(&clnt);
     done_sql_thread();
     sql_mem_shutdown(NULL);
     return rc;
@@ -8899,7 +8899,7 @@ void sql_dump_running_statements(void)
         localtime_r((time_t *)&t, &tm);
         Pthread_mutex_lock(&thd->lk);
 
-        if (thd->clnt && thd->clnt->sql) {
+        if (thd->clnt && thd->clnt->work.zSql) {
             if (thd->clnt->osql.rqid) {
                 uuidstr_t us;
                 snprintf(rqid, sizeof(rqid), "txn %016llx %s",
@@ -8914,7 +8914,7 @@ void sql_dump_running_statements(void)
             snap_uid_t snap;
             get_cnonce(thd->clnt, &snap);
             log_cnonce(snap.key, snap.keylen);
-            logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
+            logmsg(LOGMSG_USER, "%s\n", thd->clnt->work.zSql);
 
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -10763,7 +10763,7 @@ const char *comdb2_get_sql(void)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     if (thd)
-        return thd->clnt->sql;
+        return thd->clnt->work.zSql;
 
     return NULL;
 }
@@ -11045,7 +11045,7 @@ void stat4dump(int more, char *table, int istrace)
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
-    clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
+    clnt.work.zSql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
 
     struct sql_thread *thd = start_sql_thread();
     get_copy_rootpages(thd);
@@ -11058,7 +11058,7 @@ void stat4dump(int more, char *table, int istrace)
         goto put;
     }
     clnt.no_transaction = 1;
-    if ((rc = sqlite3_exec(db, clnt.sql, NULL, NULL, NULL)) != SQLITE_OK) {
+    if ((rc = sqlite3_exec(db, clnt.work.zSql, NULL, NULL, NULL)) != SQLITE_OK) {
         goto close;
     }
     int (*outFunc)(const char *fmt, ...) = printf_logmsg_wrap;
@@ -11898,7 +11898,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.sql = sql;
+    clnt.work.zSql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;
 
@@ -12272,24 +12272,24 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err)
 {
-    struct sqlclntstate client;
+    struct sqlclntstate clnt;
     sqlite3 *sqldb;
     int rc;
     int crc;
     char *msg;
     long long ret = LLONG_MIN;
 
-    reset_clnt(&client, NULL, 1);
-    strncpy0(client.tzname, "UTC", sizeof(client.tzname));
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.sql = (char *)query;
-    client.debug_sqlclntstate = pthread_self();
+    reset_clnt(&clnt, NULL, 1);
+    strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
+    sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.work.zSql = (char *)query;
+    clnt.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
-    thd->clnt = &client;
+    thd->clnt = &clnt;
 
-    if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
+    if ((rc = get_curtran(thedb->bdb_env, &clnt)) != 0) {
         errstat_set_rcstrf(err, -1, "%s: failed to open a new curtran, rc=%d",
                            __func__, rc);
         goto done;
@@ -12312,7 +12312,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:
-    crc = put_curtran(thedb->bdb_env, &client);
+    crc = put_curtran(thedb->bdb_env, &clnt);
     if (crc && !rc)
         errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
 done:
@@ -12390,7 +12390,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         start_internal_sql_clnt(&clnt);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
-        clnt.sql = table->check_constraint_query[i];
+        clnt.work.zSql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
 
