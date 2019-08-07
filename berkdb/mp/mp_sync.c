@@ -121,6 +121,7 @@ __memp_load_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
+    u_int32_t cnt;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -128,9 +129,12 @@ __memp_load_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_load(dbenv, s);
+	ret = __memp_load(dbenv, s, &cnt);
 	if (rep_check)
 		__env_rep_exit(dbenv);
+#if defined (VERBOSE_MEMP_LOAD)
+    logmsg(LOGMSG_USER, "%s loaded %u pages\n", __func__, cnt);
+#endif
 	return (ret);
 }
 
@@ -1146,12 +1150,13 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
  *	Load bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_load
- * PUBLIC:     __P((DB_ENV *, SBUF2 *));
+ * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *));
  */
 int
-__memp_load(dbenv, s)
+__memp_load(dbenv, s, cnt)
 	DB_ENV *dbenv;
 	SBUF2 *s;
+    u_int32_t *cnt;
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
@@ -1166,6 +1171,7 @@ __memp_load(dbenv, s)
 
 	dbmp = dbenv->mp_handle;
     dbmfp = NULL;
+    *cnt = 0;
 
     while (sbuf2gets((char *)line, sizeof(line), s) > 0) {
         lineno++;
@@ -1227,6 +1233,7 @@ __memp_load(dbenv, s)
         logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
 #endif
         touch_page(dbmfp, pg);
+        (*cnt)++;
     }
     return 0;
 }
@@ -1335,6 +1342,7 @@ __memp_flush_list(dbenv, flags)
 {
 	static int load = 1;
 	int fd, ret = 0;
+    u_int32_t cnt;
 	char pbuf[PATH_MAX], tpbuf[PATH_MAX], path[PATH_MAX], tmppath[PATH_MAX];
 	const char *rpath, *rtmppath;
 	SBUF2 *s;
@@ -1360,9 +1368,9 @@ __memp_flush_list(dbenv, flags)
             ret = -1;
 			goto done;
 		}
-		__memp_load(dbenv, s);
+		__memp_load(dbenv, s, &cnt);
 #if defined (AUTOCACHE_DEBUG)
-        logmsg(LOGMSG_USER, "%s loaded cache\n", __func__);
+        logmsg(LOGMSG_USER, "%s loaded cache %u pages\n", __func__, cnt);
 #endif
 		sbuf2close(s);
 	} else {
