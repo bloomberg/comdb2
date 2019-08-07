@@ -109,7 +109,7 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
-//#define VERBOSE_MEMP_LOAD
+#define VERBOSE_MEMP_LOAD
 
 /*
  * __memp_load_pp --
@@ -150,6 +150,7 @@ __memp_dump_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
+    u_int32_t pages;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -157,7 +158,7 @@ __memp_dump_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_dump(dbenv, s);
+	ret = __memp_dump(dbenv, s, &pages);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -1160,6 +1161,7 @@ __memp_load(dbenv, s, cnt)
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
     u_int32_t lineno = 0;
+    int ret;
     char line[DB_FILE_ID_LEN * 4];
     u_int8_t last_fileid[DB_FILE_ID_LEN] = {0};
     u_int8_t fileid[DB_FILE_ID_LEN] = {0};
@@ -1172,7 +1174,7 @@ __memp_load(dbenv, s, cnt)
     dbmfp = NULL;
     *cnt = 0;
 
-    while (sbuf2gets((char *)line, sizeof(line), s) > 0) {
+    while ((ret = sbuf2gets((char *)line, sizeof(line), s)) > 0) {
         lineno++;
         p = &line[0];
         if ((sp = strchr((char *)line, ' ')) == NULL) {
@@ -1243,12 +1245,13 @@ __memp_load(dbenv, s, cnt)
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_dump
- * PUBLIC:     __P((DB_ENV *, SBUF2 *));
+ * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *));
  */
 int
-__memp_dump(dbenv, s)
+__memp_dump(dbenv, s, pages)
 	DB_ENV *dbenv;
 	SBUF2 *s;
+    u_int32_t *pages;
 {
 	BH *bhp;
 	BH_TRACK *bharray;
@@ -1270,6 +1273,7 @@ __memp_dump(dbenv, s)
 		__os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
 		return (ret);
 
+    (*pages) = 0;
 	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
 		c_mp = dbmp->reginfo[n_cache].primary;
 
@@ -1311,6 +1315,7 @@ __memp_dump(dbenv, s)
                     sbuf2printf(s, "%2.2x", (u_int)*p);
                 }
                 sbuf2printf(s, " %"PRIu32"\n", bharray[i].track_pgno);
+                (*pages)++;
             }
 
 		}
@@ -1323,7 +1328,7 @@ extern int gbl_exit;
 
 #define PAGELIST "pagelist"
 #define PAGELISTTEMP "pagelist.tmp"
-//#define AUTOCACHE_DEBUG 1
+#define AUTOCACHE_DEBUG 1
 
 char *bdb_trans(const char infile[], char outfile[]);
 
@@ -1340,17 +1345,20 @@ __memp_flush_list(dbenv, flags)
 	u_int32_t flags;
 {
 	static int load = 1;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 	int fd, ret = 0;
     u_int32_t cnt;
 	char pbuf[PATH_MAX], tpbuf[PATH_MAX], path[PATH_MAX], tmppath[PATH_MAX];
 	const char *rpath, *rtmppath;
 	SBUF2 *s;
 
-	if (!gbl_autocache || gbl_exit)
-		return 0;
+    Pthread_mutex_lock(&lk);
 
-	if (flags)
-		load = 0;
+	if (!gbl_autocache || gbl_exit || (flags && load)) {
+        Pthread_mutex_unlock(&lk);
+		return 0;
+    }
+
 
 	snprintf(path, sizeof(path), "%s/%s", dbenv->db_home, PAGELIST);
 	rpath = bdb_trans(path, pbuf);
@@ -1387,14 +1395,16 @@ __memp_flush_list(dbenv, flags)
             ret = -1;
 			goto done;
 		}
-		__memp_dump(dbenv, s);
+		__memp_dump(dbenv, s, &cnt);
 		sbuf2close(s);
 		ret = rename(rtmppath, rpath);
 #if defined (AUTOCACHE_DEBUG)
-        logmsg(LOGMSG_USER, "%s dumped cache to %s\n", __func__, rpath);
+        logmsg(LOGMSG_USER, "%s dumped cache %s %u pages, rename returns %d\n",
+                __func__, rpath, cnt, ret);
 #endif
 	}
 done:
+    Pthread_mutex_unlock(&lk);
 	return ret;
 }
 
