@@ -7,8 +7,10 @@ bash -n "$0" | exit 1
 
 export debug=1
 export sleeptime=5
+export reppid=-1
 export failpct=10
 export loadrecs=1000000
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
 [[ $debug == "1" ]] && set -x
 
@@ -64,7 +66,7 @@ function flush_cluster
     typeset func="flush_cluster"
     write_prompt $func "Running $func"
 
-    if [[ -n "$CLUSTER" ]]; then
+    if [[ -z "$CLUSTER" ]]; then
         $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"flush\")"
     else
         for n in $CLUSTER ; do 
@@ -103,12 +105,15 @@ function dump_cache
     typeset func="dump_cache"
     write_prompt $func "Running $func"
     typeset file=${1:-cache.txt}
+    typeset dbname=${2:-$DBNAME}
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"dump_cache $file\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $file\")"
     else
+        export first=1
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"dump_cache $file\")"
-            scp $SSH_OPT ${n}:${file} ${file}.${n}
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $file\")"
+            scp $SSH_OPT ${n}:${file} ${file}
+            cp ${file} ${file}.${n}
         done
     fi
 }
@@ -117,12 +122,12 @@ function sort_and_diff_files
 {
     [[ $debug == "1" ]] && set -x
     typeset func="diff_files"
+    write_prompt $func "Running $func"
     typeset file1=$1
     typeset file2=$2
     typeset linecnt
     typeset faildiff
     typeset cnt
-    write_prompt $func "Running $func"
     linecnt=$(wc -l ${file1} | awk '{print $1}')
     [[ -z $linecnt ]] && failexit "Cant read cache file"
     fd=$(echo "${linecnt} * 0.${failpct}" | bc)
@@ -138,9 +143,9 @@ function check_results
 {
     [[ $debug == "1" ]] && set -x
     typeset func="check_results"
+    write_prompt $func "Running $func"
     typeset file1=$1
     typeset file2=$2
-    write_prompt $func "Running $func"
 
     if [[ -z "$CLUSTER" ]]; then
         sort_and_diff_files $file1 $file2
@@ -149,6 +154,53 @@ function check_results
             sort_and_diff_files ${file1}.$n ${file2}.$n
         done
     fi
+}
+
+function copy_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="copy_test"
+    write_prompt $func "Running $func"
+    typeset compfile=$1
+    typeset autocache=$2
+    export repname=rep$TESTID
+    export repdir=${DBDIR}/$repname
+    export replog=$repdir/log.txt
+    export reppage="$repdir/reppage.txt"
+    export myhost=$(hostname)
+
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+    fi
+
+    if [[ -n "$CLUSTER" ]]; then
+        if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+            rmt=""
+        else
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+
+    write_prompt $func "Creating physical rep $repname"
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir
+
+    if [[ "$autocache" != "ON" ]] ; then
+        echo "autocache on" >> $repdir/${repname}.lrl
+        cp $check $repdir/logs/pagelist
+    fi
+
+    write_prompt $func "Starting replicant database, replog is $replog"
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+    reppid=$!
+
+    waitmach localhost $repname
+    sleep $sleeptime
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache $reppage\")"
+    kill -9 $(cat $repdir/${repname}.pid)
+    sort_and_diff_files $reppage $check
 }
 
 function autocache_enabled
@@ -163,10 +215,10 @@ function run_test
 {
     [[ $debug == "1" ]] && set -x
     typeset func="run_test"
+    write_prompt $func "Running $func"
     typeset orig="$DBDIR/cache.txt"
     typeset check="$DBDIR/check_cache.txt"
     typeset autocache=$(autocache_enabled)
-    write_prompt $func "Running $func"
     bulk_insert_records t1 $loadrecs
     flush_cluster
     dump_cache $orig
@@ -178,7 +230,9 @@ function run_test
     fi
     sleep $sleeptime
     dump_cache $check
-    check_results $orig $check
+    check_results $orig $check 
+    flush_cluster
+    copy_test $orig $autocache
 }
 
 setup

@@ -1201,15 +1201,15 @@ __memp_load(dbenv, s)
             }
 
             MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-            if (!dbmfp) {
-                logmsg(LOGMSG_DEBUG, "%s unable to find dbmfp line %u\n",
-                        __func__, lineno);
-                continue;
-            }
-            memcpy(last_fileid, fileid, DB_FILE_ID_LEN);
         }
 
-        assert(dbmfp != NULL);
+        if (!dbmfp) {
+            logmsg(LOGMSG_DEBUG, "%s unable to find dbmfp line %u\n",
+                    __func__, lineno);
+            continue;
+        }
+
+        memcpy(last_fileid, fileid, DB_FILE_ID_LEN);
 
         if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
             logmsg(LOGMSG_DEBUG, "%s missing page on line %u\n",
@@ -1313,6 +1313,7 @@ __memp_dump(dbenv, s)
 }
 
 int gbl_autocache = 1;
+extern int gbl_exit;
 
 #define PAGELIST "pagelist"
 #define PAGELISTTEMP "pagelist.tmp"
@@ -1338,7 +1339,7 @@ __memp_flush_list(dbenv, flags)
 	const char *rpath, *rtmppath;
 	SBUF2 *s;
 
-	if (!gbl_autocache)
+	if (!gbl_autocache || gbl_exit)
 		return 0;
 
 	if (flags)

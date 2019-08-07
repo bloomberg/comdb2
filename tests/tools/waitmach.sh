@@ -6,6 +6,7 @@ function waitmach
     typeset func="waitmach"
     write_prompt $func "Running $func"
     typeset inmach=$1
+    typeset dbname=${2:-$DBNAME}
     typeset out=""
 
     if [[ "$inmach" == "default" ]]; then
@@ -15,7 +16,7 @@ function waitmach
     fi
 
     while [[ "$out" != "1" ]]; do
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME $mach 'select 1' 2> /dev/null)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname $mach 'select 1' 2> /dev/null)
         sleep 1
     done
 }

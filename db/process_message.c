@@ -1982,7 +1982,8 @@ clipper_usage:
             return -1;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "serialize requires filename to serialize to\n");
+            logmsg(LOGMSG_ERROR,
+                   "serialize requires filename to serialize to\n");
             return -1;
         }
         load_cache(tok);
@@ -1991,7 +1992,8 @@ clipper_usage:
             return -1;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "serialize requires filename to serialize to\n");
+            logmsg(LOGMSG_ERROR,
+                   "serialize requires filename to serialize to\n");
             return -1;
         }
         dump_cache(tok);

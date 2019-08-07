@@ -1380,7 +1380,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file)
     int rc, fd;
     SBUF2 *s;
     if ((fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
-            (s = sbuf2open(fd, 0)) == NULL) {
+        (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
             close(fd);
         return -1;
@@ -1394,8 +1394,7 @@ int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
 {
     int rc, fd;
     SBUF2 *s;
-    if ((fd = open(file, O_RDONLY, 0)) < 0 ||
-            (s = sbuf2open(fd, 0)) == NULL) {
+    if ((fd = open(file, O_RDONLY, 0)) < 0 || (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
             close(fd);
         return -1;
