@@ -299,7 +299,7 @@ DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
-DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 1,
+DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 0,
          "Scan tables in order of pages, not in order of rowids (faster for "
          "non-sparse tables).")
 DEF_ATTR_2(
