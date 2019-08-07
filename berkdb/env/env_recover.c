@@ -1504,6 +1504,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 			logmsg(LOGMSG_ERROR, "memp_sync returned %d\n", ret);
 			goto err;
 		}
+        __memp_flush_list(dbenv, 0);
 	} else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
 		goto err;
 
