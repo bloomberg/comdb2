@@ -1323,7 +1323,7 @@ extern int gbl_exit;
 
 #define PAGELIST "pagelist"
 #define PAGELISTTEMP "pagelist.tmp"
-#define AUTOCACHE_DEBUG 1
+//#define AUTOCACHE_DEBUG 1
 
 char *bdb_trans(const char infile[], char outfile[]);
 
