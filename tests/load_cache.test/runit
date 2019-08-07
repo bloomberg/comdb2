@@ -6,7 +6,7 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/ddl.sh
 
 export debug=1
-export sleeptime=5
+export sleeptime=10
 export reppid=-1
 export failpct=10
 export loadrecs=1000000
