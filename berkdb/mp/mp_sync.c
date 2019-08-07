@@ -109,6 +109,8 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
+#define VERBOSE_MEMP_LOAD
+
 /*
  * __memp_load_pp --
  *	DB_ENV->memp_load pre/post processing.
@@ -132,9 +134,7 @@ __memp_load_pp(dbenv, s)
 	ret = __memp_load(dbenv, s, &cnt);
 	if (rep_check)
 		__env_rep_exit(dbenv);
-#if defined (VERBOSE_MEMP_LOAD)
-    logmsg(LOGMSG_USER, "%s loaded %u pages\n", __func__, cnt);
-#endif
+    logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, cnt);
 	return (ret);
 }
 
@@ -1143,7 +1143,6 @@ berk_memp_sync_alarm_ms(int x)
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 
-//#define VERBOSE_MEMP_LOAD
 /*
  *
  * __memp_load --

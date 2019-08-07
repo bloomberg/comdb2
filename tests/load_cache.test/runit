@@ -8,7 +8,7 @@ bash -n "$0" | exit 1
 export debug=1
 export sleeptime=10
 export reppid=-1
-export failpct=10
+export failpct=15
 export loadrecs=1000000
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
