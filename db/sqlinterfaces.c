@@ -1564,9 +1564,6 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     if (clnt->verifyretry_off)
         return 0;
 
-    if (clnt->dbtran.mode == TRANLEVEL_SERIAL)
-        assert(rc != CDB2ERR_VERIFY_ERROR);
-
     /* Any isolation level can retry if nothing has been read */
     if ((rc == CDB2ERR_NOTSERIAL || rc == CDB2ERR_VERIFY_ERROR) &&
         !clnt->sent_data_to_client && !get_asof_snapshot(clnt) &&
