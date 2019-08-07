@@ -1040,7 +1040,7 @@ void sql_dump_hist_statements(void)
                    (long long int)h->cost.time, (long long int)h->cost.prepTime,
                    h->cost.cost, h->sql);
         } else {
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                    "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
@@ -1110,12 +1110,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->work.zSql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
-        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", 
+        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n",
                clnt->origin, clnt->work.zSql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
-               "[%s] warning: query created a temporary table: %s\n", 
+               "[%s] warning: query created a temporary table: %s\n",
                clnt->origin, clnt->work.zSql);
     }
 
@@ -2105,7 +2105,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         if (can_retry && !clnt->has_recording &&
             clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
-                logmsg(LOGMSG_USER, 
+                logmsg(LOGMSG_USER,
                         "Fail to add commit to transaction replay session\n");
 
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
@@ -3095,9 +3095,9 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
     rec->stmt = NULL;
 }
 
-static void _prepare_error(struct sqlthdstate *thd, 
+static void _prepare_error(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt,
-                                struct sql_state *rec, int rc, 
+                                struct sql_state *rec, int rc,
                                 struct errstat *err)
 {
     const char *errstr;
@@ -3889,7 +3889,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
      */
-#if 0    
+#if 0
     logmsg(LOGMSG_ERROR, "XXX: %p Out of run_stmt rc=%d\n",
            (clnt->plugin.state)?clnt->plugin.state:"(NA)", rc);
 #endif
@@ -3970,7 +3970,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     /*
     ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
     **       because its execution bypasses the SQL engine;
-    **       however, the parser now recognizes it.
+    **       however, the parser now recognizes it and so it
+    **       can be normalized.
     */
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL);
@@ -5539,7 +5540,7 @@ static int closehndl(void *obj, void *arg) {
 
     conn = (struct sqlconn*) arg;
     h = (struct statement_handle*) obj;
-    
+
     sqlite3_finalize(h->p);
     free(h);
 }
@@ -5917,7 +5918,7 @@ done:
         struct per_request_stats *st;
         st = user_request_get_stats();
         if (st)
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                     "nreads %d (%lld bytes) nwrites %d (%lld bytes) nmempgets %d\n",
                     st->nreads, st->readbytes, st->nwrites, st->writebytes,
                     st->mempgets);
@@ -5947,7 +5948,7 @@ done:
     if (!clnt->fdb_state.remote_sql_sb) {
         rc = osql_block_commit(thd);
         if (rc)
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "%s: sqloff_block_send_done failed to write reply\n",
                     __func__);
     } else {
@@ -6422,7 +6423,7 @@ int watcher_warning_function(void *arg, int timeout, int gap)
 {
     struct sqlclntstate *clnt = (struct sqlclntstate *)arg;
 
-    logmsg(LOGMSG_WARN, 
+    logmsg(LOGMSG_WARN,
             "WARNING: appsock idle for %d seconds (%d), connected from %s\n",
             gap, timeout, (clnt->origin) ? clnt->origin : "(unknown)");
 

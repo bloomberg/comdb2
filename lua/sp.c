@@ -1263,13 +1263,14 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_maybe_step(clnt, stmt);
-    lua_another_step(clnt, stmt, rc);
 
     if (rc == SQLITE_DONE) {
         lua_end_step(clnt, sp, stmt);
         return rc;
     } else if (rc != SQLITE_ROW) {
         return luaL_error(lua, sqlite3_errmsg(getdb(sp)));
+    } else {
+        lua_another_step(clnt, stmt, rc);
     }
 
     lua_newtable(lua);
