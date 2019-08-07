@@ -3979,6 +3979,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
                      clnt->work.aFingerprint);
 
+    memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         if (!errstr) {
@@ -5230,7 +5231,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->spversion.version_num = 0;
     free(clnt->spversion.version_str);
     clnt->spversion.version_str = NULL;
-    memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
 
     clnt->is_explain = 0;
     clnt->get_cost = 0;
