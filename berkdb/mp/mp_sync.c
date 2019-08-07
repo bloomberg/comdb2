@@ -109,7 +109,7 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
-#define VERBOSE_MEMP_LOAD
+//#define VERBOSE_MEMP_LOAD
 
 /*
  * __memp_load_pp --
