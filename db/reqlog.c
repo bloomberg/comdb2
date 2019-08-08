@@ -2101,8 +2101,10 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
                     Pthread_mutex_destroy(&old_entry->rawtotals.lk);
-                    hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
-                    hash_free(old_entry->rawtotals.fingerprints);
+                    if (old_entry->rawtotals.fingerprints) {
+                        hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
+                        hash_free(old_entry->rawtotals.fingerprints);
+                    }
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
