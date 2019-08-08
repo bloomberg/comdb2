@@ -573,7 +573,7 @@
 (name='page_compact_udp', description='Enables sending of page compact requests over UDP.', type='BOOLEAN', value='OFF', read_only='N')
 (name='page_extent_size', description='If set, allocate pages in blocks of this many (extents).', type='INTEGER', value='0', read_only='N')
 (name='page_latches', description='If set, in rowlocks mode, will acquire fast latches on pages instead of full locks. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
-(name='page_order_tablescan', description='Scan tables in order of pages, not in order of rowids (faster for non-sparse tables).', type='BOOLEAN', value='ON', read_only='N')
+(name='page_order_tablescan', description='Scan tables in order of pages, not in order of rowids (faster for non-sparse tables).', type='BOOLEAN', value='OFF', read_only='N')
 (name='pagedeadlock_maxpoll', description='If retrying on deadlock (see pagedeadlock_retries), poll up to this many ms on each retry.', type='INTEGER', value='5', read_only='N')
 (name='pagedeadlock_retries', description='On a page deadlock, retry the page operation up to this many times.', type='INTEGER', value='500', read_only='N')
 (name='pagesizedta', description='', type='INTEGER', value='4096', read_only='N')
