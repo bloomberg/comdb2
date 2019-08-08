@@ -1188,7 +1188,7 @@ int process_bind(const char *sql)
 
     if (debug_trace)
         fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
-                parameter, value);
+                parameter, (char *)value);
     if (isdigit(parameter[0])) {
         int index = atoi(parameter);
         if (index <= 0)
