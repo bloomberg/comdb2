@@ -250,6 +250,7 @@ int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
  *
  * This is a wrapper to the actual begin process.  Normal transaction begin
  * allocates a DB_TXN structure for the caller, while XA transaction begin
+ * does not.  Other than that, both call into common __txn_begin_int code.
  *
  * Internally, we use TXN_DETAIL structures, but the DB_TXN structure
  * provides access to the transaction ID and the offset in the transaction
@@ -2093,6 +2094,8 @@ __txn_checkpoint_pp(dbenv, kbytes, minutes, flags)
 {
 	int rep_check, ret;
 
+
+
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
 		dbenv->tx_handle, "txn_checkpoint", DB_INIT_TXN);
@@ -2122,7 +2125,6 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 
 /* Configure txn_checkpoint() to sleep this much time before memp_sync() */
 int gbl_ckp_sleep_before_sync = 0;
-
 
 /*
  * __txn_checkpoint --
@@ -2160,9 +2162,8 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 			"txn_checkpoint: failed to flush the buffer cache %s",
 				db_strerror(ret));
 			return (ret);
-		} else {
+		} else
 			return (0);
-        }
 	}
 
 	mgr = dbenv->tx_handle;

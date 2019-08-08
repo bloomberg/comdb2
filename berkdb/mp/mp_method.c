@@ -95,10 +95,10 @@ __memp_dbenv_create(dbenv)
 		dbenv->memp_register = __memp_register_pp;
 		dbenv->memp_stat = __memp_stat_pp;
 		dbenv->memp_sync = __memp_sync_pp;
-        dbenv->memp_dump = __memp_dump_pp;
-        dbenv->memp_load = __memp_load_pp;
-        dbenv->memp_flush_pagelist = __memp_flush_pagelist_pp;
-        dbenv->memp_load_pagelist = __memp_load_pagelist_pp;
+		dbenv->memp_dump = __memp_dump_pp;
+		dbenv->memp_load = __memp_load_pp;
+		dbenv->memp_flush_pagelist = __memp_flush_pagelist_pp;
+		dbenv->memp_load_pagelist = __memp_load_pagelist_pp;
 		dbenv->memp_trickle = __memp_trickle_pp;
 	}
 	dbenv->memp_fcreate = __memp_fcreate_pp;

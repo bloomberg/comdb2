@@ -121,7 +121,7 @@ __memp_load_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-    u_int32_t cnt, lines;
+	u_int32_t cnt, lines;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -132,7 +132,7 @@ __memp_load_pp(dbenv, s)
 	ret = __memp_load(dbenv, s, &cnt, &lines);
 	if (rep_check)
 		__env_rep_exit(dbenv);
-    logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, cnt);
+	logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, cnt);
 	return (ret);
 }
 
@@ -148,7 +148,7 @@ __memp_dump_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-    u_int32_t pages;
+	u_int32_t pages;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -1176,103 +1176,103 @@ int
 __memp_load(dbenv, s, cnt, lines)
 	DB_ENV *dbenv;
 	SBUF2 *s;
-    u_int32_t *cnt;
-    u_int32_t *lines;
+	u_int32_t *cnt;
+	u_int32_t *lines;
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
-    u_int32_t lineno = 0;
-    int count_dbmfp;
-    u_int8_t *pr;
-    int ret;
-    char line[DB_FILE_ID_LEN * 4];
-    u_int8_t fileid[DB_FILE_ID_LEN] = {0};
-    char *p, *sp;
-    db_pgno_t pg;
-    unsigned int hx;
+	u_int32_t lineno = 0;
+	int count_dbmfp;
+	u_int8_t *pr;
+	int ret;
+	char line[DB_FILE_ID_LEN * 4];
+	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
+	char *p, *sp;
+	db_pgno_t pg;
+	unsigned int hx;
 	void *addrp = NULL;
 
 	dbmp = dbenv->mp_handle;
-    dbmfp = NULL;
-    *cnt = 0;
+	dbmfp = NULL;
+	*cnt = 0;
 
-    MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-    dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
-    MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-    if (dbmfp == NULL) {
+	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
+	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+	if (dbmfp == NULL) {
 #if PAGELIST_DEBUG
-        logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
-                __func__);
+		logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
+				__func__);
 #endif
-        return -1;
-    }
+		return -1;
+	}
 
-    while ((ret = sbuf2gets((char *)line, sizeof(line), s)) > 0) {
-        lineno++;
-        p = &line[0];
-        if ((sp = strchr((char *)line, ' ')) == NULL) {
-            logmsg(LOGMSG_ERROR, "%s input file format error line %u\n",
-                    __func__, lineno);
-            continue;
-        }
+	while ((ret = sbuf2gets((char *)line, sizeof(line), s)) > 0) {
+		lineno++;
+		p = &line[0];
+		if ((sp = strchr((char *)line, ' ')) == NULL) {
+			logmsg(LOGMSG_ERROR, "%s input file format error line %u\n",
+					__func__, lineno);
+			continue;
+		}
 
-        if ((int)(sp - p) != (DB_FILE_ID_LEN * 2)) {
-            logmsg(LOGMSG_ERROR, "%s input file incorrect fileid len "
-                    "line %u\n", __func__, lineno);
-            continue;
-        }
+		if ((int)(sp - p) != (DB_FILE_ID_LEN * 2)) {
+			logmsg(LOGMSG_ERROR, "%s input file incorrect fileid len "
+					"line %u\n", __func__, lineno);
+			continue;
+		}
 
-        for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
-            sscanf(p, "%2x", &hx);
-            fileid[j] = hx;
-        }
+		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
+			sscanf(p, "%2x", &hx);
+			fileid[j] = hx;
+		}
 
-        if (!dbmfp || memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN)) {
-            count_dbmfp = 0;
-            MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-            for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
-                    dbmfp = TAILQ_NEXT(dbmfp, q)) {
-                count_dbmfp++;
-                if (memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN) == 0)
-                    break;
-            }
-            MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-        }
+		if (!dbmfp || memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN)) {
+			count_dbmfp = 0;
+			MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+			for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
+					dbmfp = TAILQ_NEXT(dbmfp, q)) {
+				count_dbmfp++;
+				if (memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN) == 0)
+					break;
+			}
+			MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+		}
 
-        if (!dbmfp) {
+		if (!dbmfp) {
 #if PAGELIST_DEBUG
-            logmsg(LOGMSG_USER, "%s unable to find DBMFP ",
-                    __func__);
-            pr = fileid;
-            for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
-                logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
-            }
-            logmsg(LOGMSG_USER, " line %u, there were %d dbmfp total\n",
-                    lineno, count_dbmfp);
+			logmsg(LOGMSG_USER, "%s unable to find DBMFP ",
+					__func__);
+			pr = fileid;
+			for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
+				logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
+			}
+			logmsg(LOGMSG_USER, " line %u, there were %d dbmfp total\n",
+					lineno, count_dbmfp);
 #endif
-            continue;
-        }
+			continue;
+		}
 
-        if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
-            logmsg(LOGMSG_DEBUG, "%s missing page on line %u\n",
-                    __func__, lineno);
-            continue;
-        }
-        pg = hx;
+		if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
+			logmsg(LOGMSG_DEBUG, "%s missing page on line %u\n",
+					__func__, lineno);
+			continue;
+		}
+		pg = hx;
 
 #if PAGELIST_DEBUG
-        pr = fileid;
-        logmsg(LOGMSG_USER, "FGET-> ");
-        for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
-            logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
-        }
-        logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
+		pr = fileid;
+		logmsg(LOGMSG_USER, "FGET-> ");
+		for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
+			logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
+		}
+		logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
 #endif
-        touch_page(dbmfp, pg);
-        (*cnt)++;
-    }
-    (*lines) = lineno;
-    return 0;
+		touch_page(dbmfp, pg);
+		(*cnt)++;
+	}
+	(*lines) = lineno;
+	return 0;
 }
 
 
@@ -1281,13 +1281,13 @@ __memp_load(dbenv, s, cnt, lines)
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_dump
- * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *));
+ * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int32_t *));
  */
 int
 __memp_dump(dbenv, s, pages)
 	DB_ENV *dbenv;
 	SBUF2 *s;
-    u_int32_t *pages;
+	u_int32_t *pages;
 {
 	BH *bhp;
 	BH_TRACK *bharray;
@@ -1299,7 +1299,7 @@ __memp_dump(dbenv, s, pages)
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
 	int ar_cnt, ar_max, i, j, ret, t_ret;
-    u_int8_t *p;
+	u_int8_t *p;
 
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
@@ -1309,7 +1309,7 @@ __memp_dump(dbenv, s, pages)
 		__os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
 		return (ret);
 
-    (*pages) = 0;
+	(*pages) = 0;
 	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
 		c_mp = dbmp->reginfo[n_cache].primary;
 
@@ -1344,19 +1344,19 @@ __memp_dump(dbenv, s, pages)
 			}
 			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 
-            for (int i = 0; i < ar_cnt; i++) {
+			for (int i = 0; i < ar_cnt; i++) {
 				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
-                p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
-                for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
-                    sbuf2printf(s, "%2.2x", (u_int)*p);
-                }
-                sbuf2printf(s, " %"PRIu32"\n", bharray[i].track_pgno);
-                (*pages)++;
-            }
+				p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
+				for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
+					sbuf2printf(s, "%2.2x", (u_int)*p);
+				}
+				sbuf2printf(s, " %"PRIu32"\n", bharray[i].track_pgno);
+				(*pages)++;
+			}
 
 		}
 	}
-    return 0;
+	return 0;
 }
 
 static pthread_mutex_t page_flush_lk = PTHREAD_MUTEX_INITIALIZER;
