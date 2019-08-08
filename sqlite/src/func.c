@@ -804,9 +804,7 @@ static void comdb2CtxinfoFunc(
 
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "parallel")==0 ){
-    if (clnt && clnt->conns) {
-      sqlite3_result_int(context, 1);
-    }
+    sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
   } else if( sqlite3_stricmp(zName, "user")==0 ){
     if (clnt) {
       sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
