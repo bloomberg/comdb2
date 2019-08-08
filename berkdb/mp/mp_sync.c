@@ -109,7 +109,7 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
-#define PAGELIST_DEBUG 1
+//#define PAGELIST_DEBUG 1
 
 /*
  * __memp_load_pp --
