@@ -109,7 +109,7 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
-#define VERBOSE_MEMP_LOAD
+#define AUTOCACHE_DEBUG 1
 
 /*
  * __memp_load_pp --
@@ -123,7 +123,7 @@ __memp_load_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-    u_int32_t cnt;
+    u_int32_t cnt, lines;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -131,7 +131,7 @@ __memp_load_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_load(dbenv, s, &cnt);
+	ret = __memp_load(dbenv, s, &cnt, &lines);
 	if (rep_check)
 		__env_rep_exit(dbenv);
     logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, cnt);
@@ -1150,20 +1150,22 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
  *	Load bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_load
- * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *));
+ * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
  */
 int
-__memp_load(dbenv, s, cnt)
+__memp_load(dbenv, s, cnt, lines)
 	DB_ENV *dbenv;
 	SBUF2 *s;
     u_int32_t *cnt;
+    u_int32_t *lines;
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
     u_int32_t lineno = 0;
+    int count_dbmfp;
+    u_int8_t *pr;
     int ret;
     char line[DB_FILE_ID_LEN * 4];
-    u_int8_t last_fileid[DB_FILE_ID_LEN] = {0};
     u_int8_t fileid[DB_FILE_ID_LEN] = {0};
     char *p, *sp;
     db_pgno_t pg;
@@ -1194,29 +1196,31 @@ __memp_load(dbenv, s, cnt)
             fileid[j] = hx;
         }
 
-        if (memcmp(fileid, last_fileid, DB_FILE_ID_LEN)) {
-            if (dbmfp) {
-                /* Close */
-                dbmfp = NULL;
-            }
+        if (!dbmfp || memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN)) {
+            count_dbmfp = 0;
             MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
             for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
                     dbmfp = TAILQ_NEXT(dbmfp, q)) {
+                count_dbmfp++;
                 if (memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN) == 0)
                     break;
             }
-
             MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
         }
 
         if (!dbmfp) {
-            logmsg(LOGMSG_DEBUG, "%s unable to find dbmfp line %u\n",
-                    __func__, lineno);
+#if defined (AUTOCACHE_DEBUG)
+            logmsg(LOGMSG_USER, "%s unable to find DBMFP ",
+                    __func__);
+            pr = fileid;
+            for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
+                logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
+            }
+            logmsg(LOGMSG_USER, " line %u, there were %d dbmfp total\n",
+                    lineno, count_dbmfp);
+#endif
             continue;
         }
-
-        memcpy(last_fileid, fileid, DB_FILE_ID_LEN);
 
         if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
             logmsg(LOGMSG_DEBUG, "%s missing page on line %u\n",
@@ -1225,8 +1229,8 @@ __memp_load(dbenv, s, cnt)
         }
         pg = hx;
 
-#if defined (VERBOSE_MEMP_LOAD)
-        u_int8_t *pr = fileid;
+#if defined (AUTOCACHE_DEBUG)
+        pr = fileid;
         logmsg(LOGMSG_USER, "FGET-> ");
         for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
             logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
@@ -1236,6 +1240,7 @@ __memp_load(dbenv, s, cnt)
         touch_page(dbmfp, pg);
         (*cnt)++;
     }
+    (*lines) = lineno;
     return 0;
 }
 
@@ -1328,7 +1333,6 @@ extern int gbl_exit;
 
 #define PAGELIST "pagelist"
 #define PAGELISTTEMP "pagelist.tmp"
-#define AUTOCACHE_DEBUG 1
 
 char *bdb_trans(const char infile[], char outfile[]);
 
@@ -1345,11 +1349,13 @@ __memp_flush_list(dbenv, flags)
 	u_int32_t flags;
 {
 	static int load = 1;
+    static int count = 0;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 	int fd, ret = 0;
-    u_int32_t cnt;
-	char pbuf[PATH_MAX], tpbuf[PATH_MAX], path[PATH_MAX], tmppath[PATH_MAX];
-	const char *rpath, *rtmppath;
+    u_int32_t cnt, lines;
+	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
+    char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;
+	char rnpath[PATH_MAX], rnpathbuf[PATH_MAX], *rrnpath;
 	SBUF2 *s;
 
     Pthread_mutex_lock(&lk);
@@ -1361,10 +1367,14 @@ __memp_flush_list(dbenv, flags)
 
 
 	snprintf(path, sizeof(path), "%s/%s", dbenv->db_home, PAGELIST);
-	rpath = bdb_trans(path, pbuf);
+	rpath = bdb_trans(path, pathbuf);
 	if (load) {
 		load = 0;
-		if ((fd = open(rpath, O_RDONLY)) < 0 ||
+#if defined (AUTOCACHE_DEBUG)
+        logmsg(LOGMSG_USER, "%s line %d opening %s\n", __func__, __LINE__,
+                rpath);
+#endif
+		if ((fd = open(rpath, O_RDONLY, 0666)) < 0 ||
 				(s = sbuf2open(fd, 0)) == NULL) {
 #if defined (AUTOCACHE_DEBUG)
 			logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
@@ -1375,15 +1385,16 @@ __memp_flush_list(dbenv, flags)
             ret = -1;
 			goto done;
 		}
-		__memp_load(dbenv, s, &cnt);
+		__memp_load(dbenv, s, &cnt, &lines);
 #if defined (AUTOCACHE_DEBUG)
-        logmsg(LOGMSG_USER, "%s loaded cache %u pages\n", __func__, cnt);
+        logmsg(LOGMSG_USER, "%s loaded cache %u pages processed %u lines\n",
+                __func__, cnt, lines);
 #endif
 		sbuf2close(s);
 	} else {
 		snprintf(tmppath, sizeof(tmppath), "%s/%s", dbenv->db_home,
 				PAGELISTTEMP);
-		rtmppath = bdb_trans(tmppath, tpbuf);
+		rtmppath = bdb_trans(tmppath, tmppathbuf);
 		if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
 				(s = sbuf2open(fd, 0)) == NULL) {
 #if defined (AUTOCACHE_DEBUG)
@@ -1397,11 +1408,16 @@ __memp_flush_list(dbenv, flags)
 		}
 		__memp_dump(dbenv, s, &cnt);
 		sbuf2close(s);
-		ret = rename(rtmppath, rpath);
+
 #if defined (AUTOCACHE_DEBUG)
+        snprintf(rnpath, sizeof(rnpath), "%s/%s.%d", dbenv->db_home, PAGELIST,
+                count++);
+        rrnpath = bdb_trans(rnpath, rnpathbuf);
+        rename(rpath, rrnpath);
         logmsg(LOGMSG_USER, "%s dumped cache %s %u pages, rename returns %d\n",
                 __func__, rpath, cnt, ret);
 #endif
+		ret = rename(rtmppath, rpath);
 	}
 done:
     Pthread_mutex_unlock(&lk);
