@@ -17,7 +17,9 @@ local function exec_fetch_and_emit(sql)
   end
 end
 local function exec_and_nothing(sql)
-  db:exec(sql)
+  local rc
+  local q
+  q, rc = db:exec(sql)
   if (rc ~= 0) then
     db:emit(db:sqlerror())
   end
