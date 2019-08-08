@@ -2438,6 +2438,8 @@ int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_l
 void flush_db(void);
 void dump_cache(const char *file);
 void load_cache(const char *file);
+void load_pagelist(void);
+void flush_pagelist(void);
 int compare_all_tags(const char *table, FILE *out);
 int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);

@@ -4870,6 +4870,16 @@ void load_cache(const char *file)
     bdb_load_cache(thedb->bdb_env, file);
 }
 
+void load_pagelist(void)
+{
+    bdb_load_pagelist(thedb->bdb_env);
+}
+
+void flush_pagelist(void)
+{
+    bdb_flush_pagelist(thedb->bdb_env);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*          LITE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

@@ -1750,10 +1750,11 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("autocache",
-                 "Automatically load and save current bufferpool.  "
-                 "(Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_autocache, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("pagelist_flush_interval",
+                 "Save bufferpool once every this many seconds.  "
+                 "(Default: 300)",
+                 TUNABLE_INTEGER, &gbl_pagelist_flush_interval, 0, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "

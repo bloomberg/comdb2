@@ -69,9 +69,11 @@ function flush_cluster
 
     if [[ -z "$CLUSTER" ]]; then
         $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"flush\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"flush_pagelist\")"
     else
         for n in $CLUSTER ; do 
             $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"flush\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"flush_pagelist\")"
         done
     fi
 }
@@ -189,7 +191,7 @@ function copy_test
     ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir
 
     if [[ "$autocache" != "ON" ]] ; then
-        echo "autocache on" >> $repdir/${repname}.lrl
+        echo "pagelist_flush_interval 10" >> $repdir/${repname}.lrl
         cp $check $repdir/logs/pagelist
     fi
 
@@ -208,8 +210,12 @@ function autocache_enabled
 {
     [[ $debug == "1" ]] && set -x
     typeset func="autocache_enabled"
-    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'autocache'")
-    echo "$x"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'pagelist_flush_interval'")
+    if [[ "$x" != "0" ]]; then 
+        echo "ON"
+    else
+        echo "OFF"
+    fi
 }
 
 function run_test

@@ -1368,7 +1368,6 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
     BDB_READLOCK("bdb_flush_cache");
 
     bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
-    bdb_state->dbenv->memp_flush_list(bdb_state->dbenv);
 
     BDB_RELLOCK();
 
@@ -1403,6 +1402,18 @@ int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
     sbuf2close(s);
     return rc;
 }
+
+int bdb_load_pagelist(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
+}
+
+int bdb_flush_pagelist(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv);
+}
+
+extern int gbl_pagelist_flush_interval;
 
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {

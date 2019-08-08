@@ -227,7 +227,7 @@ extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
-extern int gbl_autocache;
+extern int gbl_pagelist_flush_interval;
 
 extern long long sampling_threshold;
 

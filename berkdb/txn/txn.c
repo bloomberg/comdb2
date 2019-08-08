@@ -2161,7 +2161,6 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 				db_strerror(ret));
 			return (ret);
 		} else {
-            __memp_flush_list(dbenv, 0);
 			return (0);
         }
 	}
@@ -2396,7 +2395,6 @@ do_ckp:
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
 	Pthread_rwlock_unlock(&dbenv->recoverlk);
-	__memp_flush_list(dbenv, 0);
 	return (ret);
 }
 
