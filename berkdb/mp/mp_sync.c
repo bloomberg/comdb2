@@ -1176,6 +1176,17 @@ __memp_load(dbenv, s, cnt, lines)
     dbmfp = NULL;
     *cnt = 0;
 
+    MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+    dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
+    MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+    if (dbmfp == NULL) {
+#if defined (AUTOCACHE_DEBUG)
+        logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
+                __func__);
+#endif
+        return -1;
+    }
+
     while ((ret = sbuf2gets((char *)line, sizeof(line), s)) > 0) {
         lineno++;
         p = &line[0];
@@ -1369,7 +1380,6 @@ __memp_flush_list(dbenv, flags)
 	snprintf(path, sizeof(path), "%s/%s", dbenv->db_home, PAGELIST);
 	rpath = bdb_trans(path, pathbuf);
 	if (load) {
-		load = 0;
 #if defined (AUTOCACHE_DEBUG)
         logmsg(LOGMSG_USER, "%s line %d opening %s\n", __func__, __LINE__,
                 rpath);
@@ -1383,12 +1393,16 @@ __memp_flush_list(dbenv, flags)
             if (fd >= 0)
                 close(fd);
             ret = -1;
+            load = 0;
 			goto done;
 		}
-		__memp_load(dbenv, s, &cnt, &lines);
+        /* Reload if mpool isn't yet open */
+		if ((ret = __memp_load(dbenv, s, &cnt, &lines)) == 0) {
+            load = 0;
+        }
 #if defined (AUTOCACHE_DEBUG)
-        logmsg(LOGMSG_USER, "%s loaded cache %u pages processed %u lines\n",
-                __func__, cnt, lines);
+        logmsg(LOGMSG_USER, "%s loaded cache %u pages processed %u lines, "
+                "ret=%d\n", __func__, cnt, lines, ret);
 #endif
 		sbuf2close(s);
 	} else {
