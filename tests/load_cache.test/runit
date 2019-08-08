@@ -199,9 +199,9 @@ function copy_test
     ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
     reppid=$!
 
-    waitmach localhost $repname
+    waitmach localhost $repname -n
     sleep $sleeptime
-    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache $reppage\")"
+    $CDB2SQL_EXE --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache $reppage\")"
     kill -9 $(cat $repdir/${repname}.pid)
     sort_and_diff_files $reppage $check
 }

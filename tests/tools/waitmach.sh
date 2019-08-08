@@ -7,6 +7,7 @@ function waitmach
     write_prompt $func "Running $func"
     typeset inmach=$1
     typeset dbname=${2:-$DBNAME}
+    typeset flags=${3:-""}
     typeset out=""
 
     if [[ "$inmach" == "default" ]]; then
@@ -15,8 +16,14 @@ function waitmach
         mach="--host $inmach"
     fi
 
+    cfg=${CDB2_OPTIONS}
+
+    if [[ "$flags" == "-n" ]]; then
+        cfg=""
+    fi
+
     while [[ "$out" != "1" ]]; do
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname $mach 'select 1' 2> /dev/null)
+        out=$($CDB2SQL_EXE $cfg --tabs $dbname $mach 'select 1' 2> /dev/null)
         sleep 1
     done
 }

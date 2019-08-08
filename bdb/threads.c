@@ -452,19 +452,20 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
-        
-        if ((gbl_pagelist_flush_interval > 0) && ((now = time(NULL)) -
-                    last_pagelist_dump) > gbl_pagelist_flush_interval) {
+
+        if ((gbl_pagelist_flush_interval > 0) &&
+            ((now = time(NULL)) - last_pagelist_dump) >
+                gbl_pagelist_flush_interval) {
             if (!loaded_pagelist) {
                 if ((rc = bdb_state->dbenv->memp_load_pagelist(
-                                bdb_state->dbenv)) == 0) {
+                         bdb_state->dbenv)) == 0) {
                     loaded_pagelist = 1;
                 }
             } else {
                 bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv);
             }
             last_pagelist_dump = now;
-        } 
+        }
 
         end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
