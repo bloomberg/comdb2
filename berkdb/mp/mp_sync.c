@@ -109,8 +109,6 @@ __memp_sync_pp(dbenv, lsnp)
 	return (ret);
 }
 
-//#define PAGELIST_DEBUG 1
-
 /*
  * __memp_load_pp --
  *	DB_ENV->memp_load pre/post processing.
@@ -1202,7 +1200,7 @@ __memp_load(dbenv, s, cnt, lines)
     dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
     MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
     if (dbmfp == NULL) {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
         logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
                 __func__);
 #endif
@@ -1242,7 +1240,7 @@ __memp_load(dbenv, s, cnt, lines)
         }
 
         if (!dbmfp) {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
             logmsg(LOGMSG_USER, "%s unable to find DBMFP ",
                     __func__);
             pr = fileid;
@@ -1262,7 +1260,7 @@ __memp_load(dbenv, s, cnt, lines)
         }
         pg = hx;
 
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
         pr = fileid;
         logmsg(LOGMSG_USER, "FGET-> ");
         for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
@@ -1388,13 +1386,13 @@ __memp_load_pagelist(dbenv)
 
 	snprintf(path, sizeof(path), "%s/%s", dbenv->db_home, PAGELIST);
 	rpath = bdb_trans(path, pathbuf);
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 	logmsg(LOGMSG_USER, "%s line %d opening %s\n", __func__, __LINE__,
 			rpath);
 #endif
 	if ((fd = open(rpath, O_RDONLY, 0666)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
 				__LINE__, rpath, errno);
 #endif
@@ -1405,12 +1403,12 @@ __memp_load_pagelist(dbenv)
 	}
 
 	if ((ret = __memp_load(dbenv, s, &cnt, &lines)) != 0) {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 		logmsg(LOGMSG_USER, "%s failed load page cache: bufferpool not open\n",
 				__func__);
 #endif
 	} else {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 		logmsg(LOGMSG_USER, "%s loaded cache %u pages processed %u lines, "
 				"ret=%d\n", __func__, cnt, lines, ret);
 #endif
@@ -1438,7 +1436,7 @@ __memp_flush_pagelist(dbenv)
 	u_int32_t cnt, lines;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 	char rnpath[PATH_MAX], rnpathbuf[PATH_MAX], *rrnpath;
 #endif
 	SBUF2 *s;
@@ -1452,7 +1450,7 @@ __memp_flush_pagelist(dbenv)
 	rtmppath = bdb_trans(tmppath, tmppathbuf);
 	if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
 				__LINE__, rtmppath, errno);
 #endif
@@ -1464,7 +1462,7 @@ __memp_flush_pagelist(dbenv)
 	__memp_dump(dbenv, s, &cnt);
 	sbuf2close(s);
 
-#if defined (PAGELIST_DEBUG)
+#if PAGELIST_DEBUG
 	snprintf(rnpath, sizeof(rnpath), "%s/%s.%d", dbenv->db_home, PAGELIST,
 			count++);
 	rrnpath = bdb_trans(rnpath, rnpathbuf);
