@@ -3974,10 +3974,6 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL);
 
-    size_t nOrigNormSql = 0;
-    calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
-                     clnt->work.aFingerprint);
-
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
