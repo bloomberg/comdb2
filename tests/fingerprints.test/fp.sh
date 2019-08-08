@@ -2,7 +2,7 @@
 
 cdb2sql $SP_OPTIONS - <<'EOF'
 CREATE PROCEDURE test_fp VERSION '1' {
-local function exec_sql_and_emit(sql)
+local function exec_fetch_and_emit(sql)
   local rc
   local n, q
   q, rc = db:exec(sql)
@@ -16,12 +16,18 @@ local function exec_sql_and_emit(sql)
     db:emit(db:sqlerror())
   end
 end
+local function exec_and_nothing(sql)
+  db:exec(sql)
+  if (rc ~= 0) then
+    db:emit(db:sqlerror())
+  end
+end
 local function main()
-  exec_sql_and_emit("SELECT 1 AS xyz") -- 1 row
-  exec_sql_and_emit("INSERT INTO fp1(x) VALUES(0)") -- 1 row
-  exec_sql_and_emit("SELECT x AS w FROM fp1 ORDER BY x") -- 2 rows
-  exec_sql_and_emit("SELECT x + x AS y FROM fp1 ORDER BY x") -- 2 rows
-  exec_sql_and_emit("SELECT SUM(x) AS z FROM fp1") -- 1 row
+  exec_fetch_and_emit("SELECT 1 AS xyz") -- 1 row
+  exec_and_nothing("INSERT INTO fp1(x) VALUES(0)") -- 1 row
+  exec_fetch_and_emit("SELECT x AS w FROM fp1 ORDER BY x") -- 2 rows
+  exec_fetch_and_emit("SELECT x + x AS y FROM fp1 ORDER BY x") -- 2 rows
+  exec_fetch_and_emit("SELECT SUM(x) AS z FROM fp1") -- 1 row
 end}$$
 EOF
 
