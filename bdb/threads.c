@@ -433,9 +433,7 @@ void *checkpoint_thread(void *arg)
                     broken);
         }
 
-        /* can't call checkpoint until llmeta is open if we are using rowlocks
-         */
-        if (gbl_rowlocks && !bdb_state->after_llmeta_init_done) {
+        if (gbl_rowlocks && !backend_opened()) {
             BDB_RELLOCK();
             sleep(1);
             continue;
@@ -456,7 +454,7 @@ void *checkpoint_thread(void *arg)
 
         /* This is spawned before we open tables- don't repopulate the
          * cache until the backend has opened */
-        if (backend_opened() && (gbl_pagelist_flush_interval > 0) &&
+        if ((gbl_pagelist_flush_interval > 0) &&
             ((now = time(NULL)) - last_pagelist_dump) >
                 gbl_pagelist_flush_interval) {
             if (!loaded_pagelist) {

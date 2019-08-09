@@ -430,14 +430,13 @@ void replace_file_name(FileInfo &fi, const std::string& repl_name,
     fi.set_filename(replace_dbname(repl_name, dbname, fi.get_filename()));
 }
 
-static void serialise_page_list(
-        const std::string& dbtxndir,
-        const std::string& dbdir)
+static void serialise_page_list(const std::string &dbtxndir,
+                                const std::string &dbdir)
 {
     std::string absfile, storename;
     struct stat st;
     makeabs(absfile, dbtxndir, "pagelist");
-    if(stat(absfile.c_str(), &st) == -1) {
+    if (stat(absfile.c_str(), &st) == -1) {
         return;
     }
     /* Pretend its a logfile */
