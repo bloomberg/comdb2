@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-cdb2sql $SP_OPTIONS - <<'EOF'
+cdb2sql --host $SP_HOST $SP_OPTIONS - <<'EOF'
 CREATE PROCEDURE test_fp VERSION '1' {
 local function exec_fetch_and_emit(sql)
   local rc
@@ -33,4 +33,4 @@ local function main()
 end}$$
 EOF
 
-cdb2sql $SP_OPTIONS "EXEC PROCEDURE test_fp()"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_fp()"

@@ -28,7 +28,7 @@ testcase_output=
 expected_output=
 
 # figure out which host should contain the fingerprints
-fp_host=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
+SP_HOST=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
 
 # Iterate through input files
 for testcase in $files ; do
@@ -59,7 +59,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql --host $fp_host -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        cmd="cdb2sql --host $SP_HOST -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
         echo $cmd
 
         # run command
