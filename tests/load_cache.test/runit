@@ -166,7 +166,7 @@ function copy_test
     write_prompt $func "Running $func"
     typeset compfile=$1
     typeset autocache=$2
-    export repname=rep$TESTID
+    export repname=rep${DBNAME}
     export repdir=${DBDIR}/$repname
     export replog=$repdir/log.txt
     export reppage="$repdir/reppage.txt"
