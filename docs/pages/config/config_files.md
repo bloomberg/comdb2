@@ -819,6 +819,7 @@ These options are toggle-able at runtime.
 |sql_time_threshold | 5000 (ms) | Sets the threshold time in ms after which queries are reported as running a long time.
 |nowatch | not set | Disable watchdog.  Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work.
 |page_latches | not set | ***Experimental*** If set, in rowlocks mode, will acquire fast latches on pages instead of full locks.
+|pagelist_flush_interval | 300 (s) | Flushes buffer-cache page numbers to logs/pagelist on this interval.  The database pre-heats the buffercache with these pages when it starts.  Setting to 0 disables.
 |disable_page_latches | | Turns off page latches
 |replicant_latches | not set | ***Experimental*** Also acquire latches on replicants
 |disable_replicant_latches | | Turns off page latches on replicants
