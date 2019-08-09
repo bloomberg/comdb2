@@ -1174,6 +1174,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
                 add_fingerprint(h->sql, clnt->work.zNormSql, cost, time,
                                 prepTime, rows, logger);
+            } else {
+                reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
             }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
