@@ -1,3 +1,4 @@
+(fingerprint='07790336d7a9c788dea2e269c35a7758', normalized_sql='SELECT?+?+?+?+?+?+?+?+?+?;', task='cdb2sql', qcount=1, cost=0, rows=1)
 (fingerprint='8d2a66837262d1dfda51584c688d02b7', normalized_sql='SELECT?+?+?+?+?+?+?+?+?;', task='cdb2sql', qcount=1, cost=0, rows=1)
 (fingerprint='84c0e107abfb90ff626250c9298a6d10', normalized_sql='SELECT?+?+?+?+?+?+?+?;', task='cdb2sql', qcount=1, cost=0, rows=1)
 (fingerprint='85a298c60c49db457752b85286f88a90', normalized_sql='SELECT?+?+?+?+?+?+?;', task='cdb2sql', qcount=1, cost=0, rows=1)

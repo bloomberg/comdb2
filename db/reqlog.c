@@ -2863,7 +2863,6 @@ int gather_client_sql_data_fingerprint(void *ent, void *arg) {
     }
     opt->stats[opt->nstats].host = opt->st->host;
     opt->stats[opt->nstats].task = strdup(opt->st->task);
-    opt->stats[opt->nstats].fingerprint = opt->stats[opt->nstats].fp;
     util_tohex(opt->stats[opt->nstats].fp, cnt->fingerprint, FINGERPRINTSZ);
     opt->stats[opt->nstats].count = cnt->count;
     opt->stats[opt->nstats].cost = cnt->cost;
@@ -2902,6 +2901,8 @@ int gather_client_sql_data(void **data_out, int *npoints) {
     else {
         *npoints = opt.nstats;
         *data_out = opt.stats;
+        for (int i = 0; i < opt.nstats; i++)
+            opt.stats[i].fingerprint = opt.stats[i].fp;
     }
 
     return rc;
