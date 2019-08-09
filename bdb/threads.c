@@ -460,8 +460,7 @@ void *checkpoint_thread(void *arg)
             ((now = time(NULL)) - last_pagelist_dump) >
                 gbl_pagelist_flush_interval) {
             if (!loaded_pagelist) {
-                rc = bdb_state->dbenv->memp_load_pagelist(
-                         bdb_state->dbenv);
+                rc = bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
                 assert(rc == 0);
                 loaded_pagelist = 1;
             } else {

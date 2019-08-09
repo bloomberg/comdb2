@@ -850,7 +850,7 @@ void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
 void SBUF2_FUNC(sbuf2nextline)(SBUF2 *sb)
 {
     char c;
-    while((c = sbuf2getc(sb)) >= 0 && c != '\n')
+    while ((c = sbuf2getc(sb)) >= 0 && c != '\n')
         ;
 }
 
