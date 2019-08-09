@@ -121,7 +121,7 @@ __memp_load_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-	u_int32_t cnt, lines;
+	u_int32_t pages, lines;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -129,10 +129,10 @@ __memp_load_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_load(dbenv, s, &cnt, &lines);
+	ret = __memp_load(dbenv, s, &pages, &lines);
 	if (rep_check)
 		__env_rep_exit(dbenv);
-	logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, cnt);
+	logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, pages);
 	return (ret);
 }
 
@@ -1164,6 +1164,22 @@ berk_memp_sync_alarm_ms(int x)
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 
+static int getcpage(SBUF2 *s, char *cpage, int cpagesz, int *endofline)
+{
+    (*endofline) = 0;
+    for (int i = 0; i < cpagesz; i++) {
+        char c = sbuf2getc(s);
+        if (c <= 0 || c == '\n')
+            (*endofline) = 1;
+        if (c <= 0 || c == '\n' || c == ' ') {
+            cpage[i] = '\0';
+            return i;
+        }
+        cpage[i] = c;
+    }
+    return -1;
+}
+
 /*
  *
  * __memp_load --
@@ -1173,28 +1189,27 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
  * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
  */
 int
-__memp_load(dbenv, s, cnt, lines)
+__memp_load(dbenv, s, pages, lines)
 	DB_ENV *dbenv;
 	SBUF2 *s;
-	u_int32_t *cnt;
+	u_int32_t *pages;
 	u_int32_t *lines;
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
 	u_int32_t lineno = 0;
-	int count_dbmfp;
+	int count_dbmfp, ret, endofline;
 	u_int8_t *pr;
-	int ret;
-	char line[DB_FILE_ID_LEN * 4];
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
-	char *p, *sp;
+	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
+	char *p, *sp, c;
 	db_pgno_t pg;
 	unsigned int hx;
 	void *addrp = NULL;
 
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
-	*cnt = 0;
+	(*lines) = (*pages) = 0;
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
@@ -1207,21 +1222,10 @@ __memp_load(dbenv, s, cnt, lines)
 		return -1;
 	}
 
-	while ((ret = sbuf2gets((char *)line, sizeof(line), s)) > 0) {
+	while ((ret = sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
 		lineno++;
-		p = &line[0];
-		if ((sp = strchr((char *)line, ' ')) == NULL) {
-			logmsg(LOGMSG_ERROR, "%s input file format error line %u\n",
-					__func__, lineno);
-			continue;
-		}
 
-		if ((int)(sp - p) != (DB_FILE_ID_LEN * 2)) {
-			logmsg(LOGMSG_ERROR, "%s input file incorrect fileid len "
-					"line %u\n", __func__, lineno);
-			continue;
-		}
-
+		p = cfileid;
 		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
 			sscanf(p, "%2x", &hx);
 			fileid[j] = hx;
@@ -1250,26 +1254,42 @@ __memp_load(dbenv, s, cnt, lines)
 			logmsg(LOGMSG_USER, " line %u, there were %d dbmfp total\n",
 					lineno, count_dbmfp);
 #endif
+			sbuf2nextline(s);
 			continue;
 		}
 
-		if ((sscanf(p, " %"PRIu32, &hx)) <= 0) {
-			logmsg(LOGMSG_DEBUG, "%s missing page on line %u\n",
-					__func__, lineno);
-			continue;
-		}
-		pg = hx;
-
+		if ((c = sbuf2getc(s)) != ' ') {
 #if PAGELIST_DEBUG
-		pr = fileid;
-		logmsg(LOGMSG_USER, "FGET-> ");
-		for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
-			logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
-		}
-		logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
+			logmsg(LOGMSG_USER, "%s line %u, invalid format\n",
+					__func__, lineno);
 #endif
-		touch_page(dbmfp, pg);
-		(*cnt)++;
+			sbuf2nextline(s);
+			continue;
+		}
+
+		while (getcpage(s, cpage, sizeof(cpage), &endofline) > 0) {
+			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
+				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
+                        "cpage %s\n", __func__, lineno, cpage);
+				break;
+			}
+			pg = hx;
+#if PAGELIST_DEBUG
+			pr = fileid;
+			logmsg(LOGMSG_USER, "FGET-> ");
+			for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
+				logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
+			}
+			logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
+#endif
+			touch_page(dbmfp, pg);
+			(*pages)++;
+
+			if (endofline)
+				break;
+		}
+		if (!endofline)
+			sbuf2nextline(s);
 	}
 	(*lines) = lineno;
 	return 0;
@@ -1298,8 +1318,8 @@ __memp_dump(dbenv, s, pages)
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int ar_cnt, ar_max, i, j, ret, t_ret;
-	u_int8_t *p;
+	int ar_cnt, ar_max, i, j, ret, t_ret, first = 1;
+	u_int8_t *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
 
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
@@ -1346,14 +1366,19 @@ __memp_dump(dbenv, s, pages)
 
 			for (int i = 0; i < ar_cnt; i++) {
 				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
-				p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
-				for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
-					sbuf2printf(s, "%2.2x", (u_int)*p);
+				pp = p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
+				if (first || memcmp(p, last_fileid, DB_FILE_ID_LEN)) {
+					if (!first)
+						sbuf2printf(s, "\n");
+					for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
+						sbuf2printf(s, "%2.2x", (u_int)*p);
+					}
+					memcpy(last_fileid, pp, DB_FILE_ID_LEN);
+					first = 0;
 				}
-				sbuf2printf(s, " %"PRIu32"\n", bharray[i].track_pgno);
+				sbuf2printf(s, " %"PRIu32, bharray[i].track_pgno);
 				(*pages)++;
 			}
-
 		}
 	}
 	return 0;

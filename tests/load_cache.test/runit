@@ -135,8 +135,8 @@ function sort_and_diff_files
     [[ -z $linecnt ]] && failexit "Cant read cache file"
     fd=$(echo "${linecnt} * 0.${failpct}" | bc)
     faildiff=${fd%%\.*}
-    sort $file1 > ${file1}.sort
-    sort $file2 > ${file2}.sort
+    cat $file1 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
+    cat $file2 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
     cnt=$(diff ${file1}.sort ${file2}.sort 2>&1| wc -l)
     (( $cnt > $faildiff )) && failexit "Sorted cache mis-match"
     echo "$file1 diffcount was $cnt, threshold was $faildiff"
