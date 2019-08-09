@@ -3198,7 +3198,7 @@ static void free_normalized_sql(
   struct sqlclntstate *clnt
 ){
   if (clnt->work.zNormSql) {
-    free(clnt->work.zNormSql);
+    /* NOTE: Actual memory owned by SQLite, do not free. */
     clnt->work.zNormSql = 0;
   }
 }
@@ -3237,7 +3237,7 @@ static void normalize_stmt_and_store(
       const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
       if (zNormSql) {
         assert(clnt->work.zNormSql==0);
-        clnt->work.zNormSql = strdup(zNormSql);
+        clnt->work.zNormSql = zNormSql;
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
       }
