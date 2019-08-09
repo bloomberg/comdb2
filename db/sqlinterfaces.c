@@ -3207,7 +3207,7 @@ static void free_original_normalized_sql(
   struct sqlclntstate *clnt
 ){
   if (clnt->work.zOrigNormSql) {
-    free(clnt->work.zOrigNormSql);
+    sqlite3_free(clnt->work.zOrigNormSql);
     clnt->work.zOrigNormSql = 0;
   }
 }
@@ -3246,8 +3246,7 @@ static void normalize_stmt_and_store(
       char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
-        clnt->work.zOrigNormSql = strdup(zOrigNormSql);
-        sqlite3_free(zOrigNormSql);
+        clnt->work.zOrigNormSql = zOrigNormSql;
       } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
       }
