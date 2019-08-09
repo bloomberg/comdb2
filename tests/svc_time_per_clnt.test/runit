@@ -4,6 +4,9 @@ bash -n "$0" | exit 1
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
 
+# wait until the effects of the previous query in the metrics goes away
+sleep 35
+
 cat << EOF | cdb2sql -s -tabs $dbnm --host $host - >actual 2>&1
 SELECT SLEEP(2)
 SELECT CAST(svc_time/1000 AS INT) from comdb2_clientstats where svc_time >= 2000
