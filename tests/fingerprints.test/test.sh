@@ -28,7 +28,7 @@ testcase_output=
 expected_output=
 
 # figure out which host should contain the fingerprints
-SP_HOST=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
+export SP_HOST=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
 
 # Iterate through input files
 for testcase in $files ; do
