@@ -2185,6 +2185,40 @@ static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
 
 static int lua_get_prepare_flags()
 {
+    /*
+    ** NOTE: Why are each of these flags used here?
+    **
+    **       PREPARE_DENY_DDL: Completely forbid any DDL from being
+    **                         executed.  This is important because
+    **                         various places in this subsystem may
+    **                         assume that the schema should not be 
+    **                         changed while a stored procedure is
+    **                         running.  Setting this flag ends up
+    **                         causing the custom SQLite authorizer
+    **                         callback for Comdb2 to forbid any
+    **                         operation that is considered DDL
+    **                         (e.g. CREATE TABLE, ANALYZE, etc).
+    **
+    **     PREPARE_IGNORE_ERR: Prevent any error encountered during
+    **                         the prepare phase (e.g. bad syntax,
+    **                         schema changed, etc) from putting the
+    **                         "clnt" into a persistent error state.
+    **                         The SQL query that caused the error
+    **                         cannot be executed; however, the
+    **                         running stored procedure can continue
+    **                         doing other work (i.e. perhaps via a
+    **                         different SQL query, etc).
+    **
+    **   PREPARE_NO_NORMALIZE: Skip calculating the normalized SQL
+    **                         query text for any SQL query that
+    **                         originates from within a stored
+    **                         procedure as these are now handled
+    **                         within this subsystem, via the 
+    **                         lua_end_step() function, which can
+    **                         (also) correctly calculate metrics
+    **                         associated with the normalized SQL
+    **                         query text and its fingerprint hash.
+    */
     return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR | PREPARE_NO_NORMALIZE;
 }
 
@@ -3207,6 +3241,18 @@ static int dbstmt_bind(Lua L)
     return dbstmt_bind_int(L, lua_touserdata(L, 1));
 }
 
+/*
+** NOTE: The "profile" (logical boolean) argument is used here to indicate
+**       whether or not the caller has its own BEGIN / ANOTHER / END loop
+**       (i.e. using the lua_*_step() functions).  When zero, it means the
+**       caller does have its own SQL statement stepping loop and this
+**       function must not call lua_begin_step() on the callers behalf when
+**       performing first-time setup for the result set.  When non-zero, it
+**       means the caller does not have its own SQL statement stepping loop
+**       (currently dbstmt_fetch() only) and this function must call the
+**       lua_begin_step() on the callers behalf when performing first-time
+**       setup for the result set.
+*/
 static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt, int profile)
 {
     if (dbstmt->fetched) {

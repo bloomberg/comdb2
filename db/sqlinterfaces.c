@@ -3217,6 +3217,20 @@ static void normalize_stmt_and_store(
   struct sql_state *rec
 ){
   if (gbl_fingerprint_queries) {
+    /*
+    ** NOTE: Query fingerprints are enabled.  There are two cases where this
+    **       function will be called:
+    **
+    **       1. From within the SQL query preparation pipeline (the function
+    **          "get_prepared_stmt_int()" and/or its friends).  In this case,
+    **          the "rec" pointer to this function will be non-NULL and have
+    **          the actual SQLite prepared statement along with its SQL text.
+    **
+    **       2. From within the "non-SQL" request handling pipeline, which is
+    **          currently limited to handling "EXEC PROCEDURE".  In this case,
+    **          the "rec" pointer to this function will be NULL and the SQL
+    **          text will be obtained directly from "clnt" instead.
+    */
     if (rec != NULL) {
       assert(rec->stmt);
       assert(rec->sql);
