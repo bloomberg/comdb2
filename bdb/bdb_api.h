@@ -1814,7 +1814,7 @@ bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
 int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
                                  int trak, int *bdberr);
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
