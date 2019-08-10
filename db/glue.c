@@ -716,7 +716,7 @@ int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 
     if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
         rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
-                0 /*adaptive*/, &seqnum);
+                                       0 /*adaptive*/, &seqnum);
     }
     return rc;
 }
