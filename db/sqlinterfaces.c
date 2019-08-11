@@ -1610,6 +1610,9 @@ static char *sqlenginestate_tostr(int state)
     case SQLENG_FNSH_RBK_STATE:
         return "SQLENG_FNSH_RBK_STATE";
         break;
+    case SQLENG_FNSH_ABORTED_STATE:
+        return "SQLENG_FNSH_ABORTED_STATE";
+        break;
     case SQLENG_WRONG_STATE:
         return "SQLENG_WRONG_STATE";
         break;

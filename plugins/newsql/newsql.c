@@ -283,11 +283,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
 {
     // Retries happen with a 'begin'.  This can't be a retry if we are already
     // in a transaction
-    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_RBK_STATE) {
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         return 0;
     }
 
