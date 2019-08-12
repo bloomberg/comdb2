@@ -3592,7 +3592,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
     }
 }
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
         bzero(seqnum, sizeof(seqnum_type));
@@ -3605,6 +3605,7 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
     }
+    return (seqnum->lsn.file > 0);
 }
 
 int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)

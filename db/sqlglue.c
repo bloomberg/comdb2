@@ -3696,6 +3696,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             rc = osql_delrec(pCur, thd);
             clnt->effects.num_deleted++;
             clnt->log_effects.num_deleted++;
+            clnt->nrows++;
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
@@ -3732,6 +3733,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             }
             rc = pCur->fdbc->delete (pCur, clnt, trans, pCur->genid);
             clnt->effects.num_deleted++;
+            clnt->nrows++;
         }
         clnt->ins_keys = 0ULL;
         clnt->del_keys = 0ULL;
@@ -8503,12 +8505,14 @@ int sqlite3BtreeInsert(
                                  blobs, MAXBLOBS, rec_flags);
                 clnt->effects.num_updated++;
                 clnt->log_effects.num_updated++;
+                clnt->nrows++;
             } else {
                 rc = osql_insrec(pCur, thd, pCur->ondisk_buf,
                                  getdatsize(pCur->db), blobs, MAXBLOBS,
                                  rec_flags);
                 clnt->effects.num_inserted++;
                 clnt->log_effects.num_inserted++;
+                clnt->nrows++;
             }
         } else {
             /* make sure we have a distributed transaction and use that to
@@ -8532,10 +8536,12 @@ int sqlite3BtreeInsert(
                 rc = pCur->fdbc->update(pCur, clnt, trans, pCur->genid, nKey,
                                         nData, (char *)pData);
                 clnt->effects.num_updated++;
+                clnt->nrows++;
             } else {
                 rc = pCur->fdbc->insert(pCur, clnt, trans, nKey, nData,
                                         (char *)pData);
                 clnt->effects.num_inserted++;
+                clnt->nrows++;
             }
         }
         clnt->ins_keys = 0ULL;

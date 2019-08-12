@@ -710,13 +710,15 @@ int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 {
     db_seqnum_type seqnum;
+    int rc = -1;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
 
-    bdb_get_myseqnum(bdb_handle, (void *)&seqnum);
-
-    return trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
-                                     0 /*adaptive*/, &seqnum);
+    if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
+        rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
+                                       0 /*adaptive*/, &seqnum);
+    }
+    return rc;
 }
 
 int trans_commit_logical_tran(void *trans, int *bdberr)
