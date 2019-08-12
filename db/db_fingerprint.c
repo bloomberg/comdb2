@@ -84,7 +84,7 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
 }
 
 void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
-                     int64_t cost, int64_t time, int64_t nrows,
+                     int64_t cost, int64_t time, int64_t prepTime, int64_t nrows,
                      struct reqlogger *logger, unsigned char *fingerprint_out)
 {
     assert(zSql);
@@ -113,6 +113,7 @@ void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
         t->count = 1;
         t->cost = cost;
         t->time = time;
+        t->prepTime = prepTime;
         t->rows = nrows;
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
@@ -192,6 +193,7 @@ void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
         t->count++;
         t->cost += cost;
         t->time += time;
+        t->prepTime += prepTime;
         t->rows += nrows;
         assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
         assert( t->zNormSql!=zNormSql );
