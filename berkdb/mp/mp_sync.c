@@ -1197,7 +1197,7 @@ __memp_load(dbenv, s, pages, lines)
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
-	u_int32_t lineno = 0;
+	u_int32_t lineno = 0, start, end;
 	int count_dbmfp, ret, endofline;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
@@ -1222,6 +1222,7 @@ __memp_load(dbenv, s, pages, lines)
 		return -1;
 	}
 
+	start = time(NULL);
 	while ((ret = sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
 		lineno++;
 
@@ -1270,7 +1271,7 @@ __memp_load(dbenv, s, pages, lines)
 		while (getcpage(s, cpage, sizeof(cpage), &endofline) > 0) {
 			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
 				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
-                        "cpage %s\n", __func__, lineno, cpage);
+						"cpage %s\n", __func__, lineno, cpage);
 				break;
 			}
 			pg = hx;
@@ -1291,6 +1292,9 @@ __memp_load(dbenv, s, pages, lines)
 		if (!endofline)
 			sbuf2nextline(s);
 	}
+	end = time(NULL);
+	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
+			*pages, (end - start));
 	(*lines) = lineno;
 	return 0;
 }
