@@ -123,6 +123,9 @@ int sqlite3VdbeUsesDoubleQuotedString(
 ){
   DblquoteStr *pStr;
   assert( zId!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pVdbe==0 ) return 1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
     if( strcmp(zId, pStr->z)==0 ) return 1;

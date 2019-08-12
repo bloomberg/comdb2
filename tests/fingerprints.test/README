@@ -1,0 +1,16 @@
+This test attempts to verify that SQL queries executed inside (and outside) of
+stored procedures end up being normalized and added to the fingerprints system
+table, along with their cost metrics.
+
+-------------------------------- SPECIAL NOTES --------------------------------
+
+The "t03.req" test file purposely excludes the following fingerprints from its
+result set (i.e. via the WHERE clause):
+
+    4f16a8ec9db90f803e406659938b2602: "SELECT 1" ==> "SELECT?;"
+    69d1558c950bbb908f4b8df0d63e2cf4: "SELECT comdb2_host();"
+    812bdde365a22a61bcd52bf005990c37: "EXEC PROCEDURE sys.cmd.send(?);"
+
+The corresponding SQL statements are excluded because these are (sometimes?)
+used by the test suite itself at various stages.  Since the exact quantity
+of these SQL statements is not deterministic, they must be excluded.

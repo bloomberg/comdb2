@@ -987,6 +987,32 @@ double query_cost(struct sql_thread *thd)
     return thd->cost;
 }
 
+void save_thd_cost_and_reset(
+  struct sqlthdstate *thd,
+  Vdbe *pVdbe
+){
+  pVdbe->luaSavedCost = thd->sqlthd->cost;
+  thd->sqlthd->cost = 0.0;
+}
+
+void restore_thd_cost_and_reset(
+  struct sqlthdstate *thd,
+  Vdbe *pVdbe
+){
+  thd->sqlthd->cost = pVdbe->luaSavedCost;
+  pVdbe->luaSavedCost = 0.0;
+}
+
+void clnt_query_cost(
+  struct sqlthdstate *thd,
+  double *pCost,
+  int64_t *pPrepMs
+){
+  struct sql_thread *sqlthd = thd->sqlthd;
+  if (pCost != NULL) *pCost = sqlthd->cost;
+  if (pPrepMs != NULL) *pPrepMs = sqlthd->prepms;
+}
+
 void sql_dump_hist_statements(void)
 {
     struct sql_hist *h;
@@ -1007,16 +1033,18 @@ void sql_dump_hist_statements(void)
         localtime_r((time_t *)&t, &tm);
         if (h->conn.pename[0]) {
             logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d %spindex %d task %.8s pid %d "
-                   "mach %d time %dms prepTime %dms cost %f sql: %s\n",
+                   "mach %d time %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
-                   (char *)h->conn.pename, h->conn.pid, h->conn.node, h->time,
-                   h->prepTime, h->cost, h->sql);
+                   (char *)h->conn.pename, h->conn.pid, h->conn.node,
+                   (long long int)h->cost.time, (long long int)h->cost.prepTime,
+                   h->cost.cost, h->sql);
         } else {
-            logmsg(LOGMSG_USER, 
-                   "%02d/%02d/%02d %02d:%02d:%02d %stime %dms prepTime %dms cost %f sql: %s\n",
+            logmsg(LOGMSG_USER,
+                   "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->time, h->prepTime, h->cost, h->sql);
+                   tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
+                   (long long int)h->cost.prepTime, h->cost.cost, h->sql);
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1047,6 +1075,24 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
     clnt->plugin.add_steps(clnt, steps);
 }
 
+static int is_stored_proc_sql(const char *sql)
+{
+    size_t len = sizeof("EXEC") - 1;
+    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
+        return 1;
+    }
+    len = sizeof("EXECUTE") - 1;
+    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
+        return 1;
+    }
+    return 0;
+}
+
+static int is_stored_proc(struct sqlclntstate *clnt)
+{
+    return is_stored_proc_sql(clnt->work.zSql);
+}
+
 /* Save copy of sql statement and performance data.  If any other code
    should run after a sql statement is completed it should end up here. */
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
@@ -1064,12 +1110,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->work.zSql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
-        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", 
+        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n",
                clnt->origin, clnt->work.zSql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
-               "[%s] warning: query created a temporary table: %s\n", 
+               "[%s] warning: query created a temporary table: %s\n",
                clnt->origin, clnt->work.zSql);
     }
 
@@ -1091,24 +1137,46 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup(clnt->work.zSql);
     else
         h->sql = strdup("unknown");
-    h->cost = query_cost(thd);
-    h->time = comdb2_time_epochms() - thd->startms;
-    h->prepTime = thd->prepms;
+    h->cost.cost = query_cost(thd);
+    h->cost.time = comdb2_time_epochms() - thd->startms;
+    h->cost.prepTime = thd->prepms;
     h->when = thd->stime;
     h->txnid = rqid;
 
-    time_metric_add(thedb->service_time, h->time);
+    time_metric_add(thedb->service_time, h->cost.time);
 
     /* request logging framework takes care of logging long sql requests */
-    reqlog_set_cost(logger, h->cost);
+    reqlog_set_cost(logger, h->cost.cost);
     if (rqid) {
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
     if (gbl_fingerprint_queries) {
-        if (h->sql && clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(h->sql, clnt->work.zNormSql, h->cost, h->time,
-                            h->prepTime, clnt->nrows, logger);
+        if (h->sql) {
+            double cost;
+            int64_t time;
+            int64_t prepTime;
+            int64_t rows;
+            if (is_stored_proc_sql(h->sql)) {
+                cost = clnt->spcost.cost;
+                time = clnt->spcost.time;
+                prepTime = clnt->spcost.prepTime;
+                rows = clnt->spcost.rows;
+            } else {
+                cost = h->cost.cost;
+                time = h->cost.time;
+                prepTime = h->cost.prepTime;
+                rows = clnt->nrows;
+            }
+            if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
+                add_fingerprint(h->sql, clnt->work.zOrigNormSql, cost, time,
+                                prepTime, rows, logger);
+            } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
+                add_fingerprint(h->sql, clnt->work.zNormSql, cost, time,
+                                prepTime, rows, logger);
+            } else {
+                reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
+            }
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -1128,7 +1196,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += get_sql_steps(thd);
-        time_metric_add(rawnodestats->svc_time, h->time);
+        time_metric_add(rawnodestats->svc_time, h->cost.time);
     }
 
     reset_sql_steps(thd);
@@ -1139,14 +1207,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     Pthread_mutex_lock(&gbl_sql_lock);
     {
-        quantize(q_sql_min, h->time);
-        quantize(q_sql_hour, h->time);
-        quantize(q_sql_all, h->time);
-        quantize(q_sql_steps_min, h->cost);
-        quantize(q_sql_steps_hour, h->cost);
-        quantize(q_sql_steps_all, h->cost);
+        quantize(q_sql_min, h->cost.time);
+        quantize(q_sql_hour, h->cost.time);
+        quantize(q_sql_all, h->cost.time);
+        quantize(q_sql_steps_min, h->cost.cost);
+        quantize(q_sql_steps_hour, h->cost.cost);
+        quantize(q_sql_steps_all, h->cost.cost);
 
-        add_steps(clnt, h->cost);
+        add_steps(clnt, h->cost.cost);
 
         listc_abl(&thedb->sqlhist, h);
         while (listc_size(&thedb->sqlhist) > gbl_sqlhistsz) {
@@ -2034,7 +2102,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         if (can_retry && !clnt->has_recording &&
             clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
-                logmsg(LOGMSG_USER, 
+                logmsg(LOGMSG_USER,
                         "Fail to add commit to transaction replay session\n");
 
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
@@ -2748,20 +2816,6 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int is_stored_proc(struct sqlclntstate *clnt)
-{
-    const char *sql = clnt->work.zSql;
-    size_t len = sizeof("EXEC") - 1;
-    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    len = sizeof("EXECUTE") - 1;
-    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    return 0;
-}
-
 /* if userpassword does not match this function
  * will write error response and return a non 0 rc
  */
@@ -3038,9 +3092,9 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
     rec->stmt = NULL;
 }
 
-static void _prepare_error(struct sqlthdstate *thd, 
+static void _prepare_error(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt,
-                                struct sql_state *rec, int rc, 
+                                struct sql_state *rec, int rc,
                                 struct errstat *err)
 {
     const char *errstr;
@@ -3140,22 +3194,63 @@ int sqlengine_prepare_engine(struct sqlthdstate *thd,
     return rc;
 }
 
+static void free_normalized_sql(
+  struct sqlclntstate *clnt
+){
+  if (clnt->work.zNormSql) {
+    /* NOTE: Actual memory owned by SQLite, do not free. */
+    clnt->work.zNormSql = 0;
+  }
+}
+
+static void free_original_normalized_sql(
+  struct sqlclntstate *clnt
+){
+  if (clnt->work.zOrigNormSql) {
+    free(clnt->work.zOrigNormSql);
+    clnt->work.zOrigNormSql = 0;
+  }
+}
+
 static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
   struct sql_state *rec
 ){
-  if (clnt->work.zNormSql) {
-    free(clnt->work.zNormSql);
-    clnt->work.zNormSql = 0;
-  }
-  assert(rec && rec->stmt);
-  assert(rec && rec->sql);
   if (gbl_fingerprint_queries) {
-    const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
-    if (zNormSql) {
-      clnt->work.zNormSql = strdup(zNormSql);
-    } else if (gbl_verbose_normalized_queries) {
-      logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+    /*
+    ** NOTE: Query fingerprints are enabled.  There are two cases where this
+    **       function will be called:
+    **
+    **       1. From within the SQL query preparation pipeline (the function
+    **          "get_prepared_stmt_int()" and/or its friends).  In this case,
+    **          the "rec" pointer to this function will be non-NULL and have
+    **          the actual SQLite prepared statement along with its SQL text.
+    **
+    **       2. From within the "non-SQL" request handling pipeline, which is
+    **          currently limited to handling "EXEC PROCEDURE".  In this case,
+    **          the "rec" pointer to this function will be NULL and the SQL
+    **          text will be obtained directly from "clnt" instead.
+    */
+    if (rec != NULL) {
+      assert(rec->stmt);
+      assert(rec->sql);
+      const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
+      if (zNormSql) {
+        assert(clnt->work.zNormSql==0);
+        clnt->work.zNormSql = zNormSql;
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
+      }
+    } else {
+      assert(clnt->work.zSql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
+      if (zOrigNormSql) {
+        assert(clnt->work.zOrigNormSql==0);
+        clnt->work.zOrigNormSql = strdup(zOrigNormSql);
+        sqlite3_free(zOrigNormSql);
+      } else if (gbl_verbose_normalized_queries) {
+        logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
+      }
     }
   }
 }
@@ -3223,7 +3318,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        normalize_stmt_and_store(clnt, rec);
+        free_normalized_sql(clnt);
+        if (!(flags & PREPARE_NO_NORMALIZE)) {
+            normalize_stmt_and_store(clnt, rec);
+        }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
@@ -3802,7 +3900,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
      */
-#if 0    
+#if 0
     logmsg(LOGMSG_ERROR, "XXX: %p Out of run_stmt rc=%d\n",
            (clnt->plugin.state)?clnt->plugin.state:"(NA)", rc);
 #endif
@@ -3879,6 +3977,17 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
+
+    /*
+    ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
+    **       because its execution bypasses the SQL engine;
+    **       however, the parser now recognizes it and so it
+    **       can be normalized.
+    */
+    free_original_normalized_sql(clnt);
+    normalize_stmt_and_store(clnt, NULL);
+
+    memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         if (!errstr) {
@@ -5008,10 +5117,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    if (clnt->work.zNormSql) {
-        free(clnt->work.zNormSql);
-        clnt->work.zNormSql = NULL;
-    }
+    free_normalized_sql(clnt);
+    free_original_normalized_sql(clnt);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5157,10 +5264,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
-    if (clnt->work.zNormSql) {
-        free(clnt->work.zNormSql);
-        clnt->work.zNormSql = 0;
-    }
+    free_normalized_sql(clnt);
+    free_original_normalized_sql(clnt);
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
@@ -5442,7 +5547,7 @@ static int closehndl(void *obj, void *arg) {
 
     conn = (struct sqlconn*) arg;
     h = (struct statement_handle*) obj;
-    
+
     sqlite3_finalize(h->p);
     free(h);
 }
@@ -5820,7 +5925,7 @@ done:
         struct per_request_stats *st;
         st = user_request_get_stats();
         if (st)
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                     "nreads %d (%lld bytes) nwrites %d (%lld bytes) nmempgets %d\n",
                     st->nreads, st->readbytes, st->nwrites, st->writebytes,
                     st->mempgets);
@@ -5850,7 +5955,7 @@ done:
     if (!clnt->fdb_state.remote_sql_sb) {
         rc = osql_block_commit(thd);
         if (rc)
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "%s: sqloff_block_send_done failed to write reply\n",
                     __func__);
     } else {
@@ -6325,7 +6430,7 @@ int watcher_warning_function(void *arg, int timeout, int gap)
 {
     struct sqlclntstate *clnt = (struct sqlclntstate *)arg;
 
-    logmsg(LOGMSG_WARN, 
+    logmsg(LOGMSG_WARN,
             "WARNING: appsock idle for %d seconds (%d), connected from %s\n",
             gap, timeout, (clnt->origin) ? clnt->origin : "(unknown)");
 

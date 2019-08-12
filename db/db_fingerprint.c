@@ -99,7 +99,11 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
-    reqlog_set_fingerprint(logger, (const char*)fingerprint, FINGERPRINTSZ);
+    if (logger != NULL) {
+        reqlog_set_fingerprint(
+            logger, (const char*)fingerprint, FINGERPRINTSZ
+        );
+    }
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
     ; /* NOTE: Do nothing, silence compiler warning. */
