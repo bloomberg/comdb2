@@ -103,38 +103,10 @@ if [[ -f partidx.csc2 ]] ; then
         exit 1
     fi
 fi
+
 # Iterate through input files
-for testcase in *.req ; do
-    test=${testcase%%.req}
-
-    output=${test}.out
-    expected=${test}.expected
-    # Be verbose
-    cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < ${test}.req > $output 2>&1"
-    echo $cmd
-    # run command
-    eval $cmd
-
-    # get testcase output
-    testcase_output=$(cat ${output} | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    # get expected output
-    expected_output=$(cat ${expected} | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    # verify 
-    if [[ "$testcase_output" != "$expected_output" ]] ; then
-        echo "  ^^^^^^^^^^^^"
-        echo "The above testcase (${testcase}) has failed!!!"
-        echo " "
-        echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/${test}.{expected,out}"
-        echo " "
-        diff ${expected} $output
-        echo " "
-        exit 1
-
-    fi
-
-done
+${TESTSROOTDIR}/tools/compare_results.sh -d $a_dbn -r req
+[ $? -eq 0 ] || exit 1
 
 echo "Testcase passed."
+exit 0
