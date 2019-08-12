@@ -3592,6 +3592,39 @@ case OP_MakeRecord: {
   */
   pRec = pLast;
   do{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /*
+    ** NOTE: sqlite3VdbeSerialType was inlined upstream at check-in
+    **       [d837ab0da5]; however, retaining the function call here
+    **       is simpler for Comdb2 maintainability purposes.
+    */
+    assert( memIsValid(pRec) );
+    serial_type = sqlite3VdbeSerialType(pRec, file_format, &len);
+    if( pRec->flags & MEM_Zero ){
+      if( serial_type==0 ){
+        /* Values with MEM_Null and MEM_Zero are created by xColumn virtual
+        ** table methods that never invoke sqlite3_result_xxxxx() while
+        ** computing an unchanging column value in an UPDATE statement.
+        ** Give such values a special internal-use-only serial-type of 10
+        ** so that they can be passed through to xUpdate and have
+        ** a true sqlite3_value_nochange(). */
+        assert( pOp->p5==OPFLAG_NOCHNG_MAGIC || CORRUPT_DB );
+        serial_type = 10;
+      }else if( nData ){
+        if( sqlite3VdbeMemExpandBlob(pRec) ) goto no_mem;
+      }else{
+        nZero += pRec->u.nZero;
+        len -= pRec->u.nZero;
+      }
+    }
+    nData += len;
+    testcase( serial_type==127 );
+    testcase( serial_type==128 );
+    nHdr += serial_type<=127 ? 1 : sqlite3VarintLen(serial_type);
+    pRec->uTemp = serial_type;
+    if( pRec==pData0 ) break;
+    pRec--;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( memIsValid(pRec) );
     if( pRec->flags & MEM_Null ){
       if( pRec->flags & MEM_Zero ){
@@ -3681,6 +3714,7 @@ case OP_MakeRecord: {
     }
     if( pRec==pData0 ) break;
     pRec--;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }while(1);
 
   /* EVIDENCE-OF: R-22564-11647 The header begins with a single varint
