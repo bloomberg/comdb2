@@ -628,6 +628,9 @@ int sqlite3VdbeCursorMoveto(VdbeCursor**, int*);
 int sqlite3VdbeCursorRestore(VdbeCursor*);
 u32 sqlite3VdbeSerialTypeLen(u32);
 u8 sqlite3VdbeOneByteSerialTypeLen(u8);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+u32 sqlite3VdbeSerialType(Mem*, int, u32*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 u32 sqlite3VdbeSerialPut(unsigned char*, Mem*, u32);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static inline
