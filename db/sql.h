@@ -523,7 +523,8 @@ enum prepare_flags {
     PREPARE_DENY_CREATE_TRIGGER = 2,
     PREPARE_DENY_PRAGMA = 4,
     PREPARE_DENY_DDL = 8,
-    PREPARE_IGNORE_ERR = 16
+    PREPARE_IGNORE_ERR = 16,
+    PREPARE_NO_NORMALIZE = 32
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
@@ -538,9 +539,17 @@ struct sql_state {
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
     char *zSql;           /* Original SQL query for this work. */
-    char *zNormSql;       /* Normalized version of original SQL query. */
+    const char *zNormSql; /* Normalized version of latest SQL query. */
+    char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+};
+
+struct sql_hist_cost {
+    double cost;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
 };
 
 /* Client specific sql state */
@@ -695,6 +704,7 @@ struct sqlclntstate {
     sqlclntstate_fdb_t fdb_state;
 
     int nrows;
+    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
@@ -995,9 +1005,7 @@ struct BtCursor {
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
     char *sql;
-    double cost;
-    int time;
-    int prepTime;
+    struct sql_hist_cost cost;
     int when;
     int64_t txnid;
     struct conninfo conn;
@@ -1201,9 +1209,12 @@ struct query_stats {
 };
 int get_query_stats(struct query_stats *stats);
 
+void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
+
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);
 
