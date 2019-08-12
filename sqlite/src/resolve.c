@@ -435,11 +435,11 @@ static int lookupName(
     else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -2;
-       pExpr->affinity = SQLITE_AFF_TEXT;
+       pExpr->affExpr = SQLITE_AFF_TEXT;
     }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
-       pExpr->affinity = SQLITE_AFF_TEXT;
+       pExpr->affExpr = SQLITE_AFF_TEXT;
     }
 
     /* Check if a partial index or an expression index contains blob fields. */
