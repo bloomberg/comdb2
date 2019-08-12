@@ -1586,7 +1586,7 @@ LogEst sqlite3LogEstFromDouble(double x){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || !defined(SQLITE_OMIT_VIRTUALTABLE) */
 
 #if defined(SQLITE_ENABLE_STMT_SCANSTATUS) || \
-    defined(SQLITE_ENABLE_STAT3_OR_STAT4) || \
+    defined(SQLITE_ENABLE_STAT4) || \
     defined(SQLITE_EXPLAIN_ESTIMATED_ROWS)
 /*
 ** Convert a LogEst into an integer.
@@ -1604,7 +1604,7 @@ u64 sqlite3LogEstToInt(LogEst x){
     defined(SQLITE_EXPLAIN_ESTIMATED_ROWS)
   if( x>60 ) return (u64)LARGEST_INT64;
 #else
-  /* If only SQLITE_ENABLE_STAT3_OR_STAT4 is on, then the largest input
+  /* If only SQLITE_ENABLE_STAT4 is on, then the largest input
   ** possible to this routine is 310, resulting in a maximum x of 31 */
   assert( x<=60 );
 #endif

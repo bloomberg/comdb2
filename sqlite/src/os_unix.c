@@ -5821,6 +5821,7 @@ static UnixUnusedFd *findReusableFd(const char *zPath, int flags){
       UnixUnusedFd **pp;
       assert( sqlite3_mutex_notheld(pInode->pLockMutex) );
       sqlite3_mutex_enter(pInode->pLockMutex);
+      flags &= (SQLITE_OPEN_READONLY|SQLITE_OPEN_READWRITE);
       for(pp=&pInode->pUnused; *pp && (*pp)->flags!=flags; pp=&((*pp)->pNext));
       pUnused = *pp;
       if( pUnused ){
@@ -6124,7 +6125,8 @@ static int unixOpen(
 
   if( p->pPreallocatedUnused ){
     p->pPreallocatedUnused->fd = fd;
-    p->pPreallocatedUnused->flags = flags;
+    p->pPreallocatedUnused->flags = 
+                          flags & (SQLITE_OPEN_READONLY|SQLITE_OPEN_READWRITE);
   }
 
   if( isDelete ){

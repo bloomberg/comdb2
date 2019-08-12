@@ -2585,9 +2585,6 @@ void sqlite3RegisterBuiltinFunctions(void){
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   sqlite3WindowFunctions();
-#if defined(SQLITE_ENABLE_STAT3) || defined(SQLITE_ENABLE_STAT4)
-  sqlite3AnalyzeFunctions();
-#endif
   sqlite3RegisterDateTimeFunctions();
   sqlite3InsertBuiltinFuncs(aBuiltinFunc, ArraySize(aBuiltinFunc));
 
