@@ -80,6 +80,7 @@ int sqlite3IndexHasDuplicateRootPage(Index *pIndex){
 **     argv[2] = associated table if an index or trigger
 **     argv[3] = root page number for table or index. 0 for trigger or view.
 **     argv[4] = SQL text for the CREATE statement.
+**     argv[5] = CSC2 text for the CREATE statement (Comdb2 only).
 **
 */
 int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
@@ -87,7 +88,11 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
   sqlite3 *db = pData->db;
   int iDb = pData->iDb;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( argc==6 );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( argc==5 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   UNUSED_PARAMETER2(NotUsed, argc);
   assert( sqlite3_mutex_held(db->mutex) );
   DbClearProperty(db, iDb, DB_Empty);
@@ -185,7 +190,11 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   Table *pTab;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   Db *pDb;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  char const *azArg[7];
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   char const *azArg[6];
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int meta[5];
   InitData initData;
   const char *zMasterName;
@@ -220,17 +229,30 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   azArg[4] = "CREATE TABLE x(type text,name text,tbl_name text,"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
                             "rootpage int,sql text,csc2 text)";
+  azArg[5] = "schema {\n"
+             "  vutf8 type null = yes\n"
+             "  vutf8 name null = yes\n"
+             "  vutf8 tbl_name null = yes\n"
+             "  int rootpage null = yes\n"
+             "  vutf8 sql null = yes\n"
+             "  vutf8 csc2 null = yes\n"
+             "}\n";
+  azArg[6] = 0;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
                             "rootpage int,sql text)";
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   azArg[5] = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   initData.db = db;
   initData.iDb = iDb;
   initData.rc = SQLITE_OK;
   initData.pzErrMsg = pzErrMsg;
   initData.mInitFlags = mFlags;
   initData.nInitRow = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3InitCallback(&initData, 6, (char **)azArg, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3InitCallback(&initData, 5, (char **)azArg, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( initData.rc ){
     rc = initData.rc;
     goto error_out;
