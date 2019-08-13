@@ -1501,7 +1501,7 @@ __memp_load(dbenv, s, pages, lines)
 	Pthread_mutex_unlock(&lk);
 	end = time(NULL);
 
-	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
+	logmsg(LOGMSG_DEBUG, "Loaded %u bufferpool pages in %u seconds\n",
 			*pages, (end - start));
 	(*lines) = lineno;
 	return 0;
