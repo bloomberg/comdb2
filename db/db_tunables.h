@@ -798,7 +798,7 @@ REGISTER_TUNABLE("null_blob_fix", NULL, TUNABLE_BOOLEAN,
                  NULL);
 REGISTER_TUNABLE(
     "nullfkey",
-    "Do not enforce foreign key constraints for null keys. (Default: off)",
+    "Do not enforce foreign key constraints for null keys. (Default: on)",
     TUNABLE_BOOLEAN, &gbl_nullfkey, READONLY | NOARG | READEARLY, NULL, NULL,
     NULL, NULL);
 /*
