@@ -207,6 +207,7 @@ __memp_falloc_len(mfp, offset, len)
 	}
 }
 
+u_int64_t gbl_memp_pgreads = 0;
 
 /*
  * __memp_fget_internal --
@@ -793,8 +794,9 @@ alloc:		/*
 
 
 	if (F_ISSET(bhp, BH_TRASH)) {
+		gbl_memp_pgreads++;
 		if ((ret = __memp_pgread(dbmfp,
-			    hp, bhp,
+				hp, bhp,
 			    LF_ISSET(DB_MPOOL_CREATE) ? 1 : 0,
 			    is_recovery_page)) != 0)
 			 goto err;

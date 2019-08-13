@@ -231,6 +231,7 @@ extern int gbl_pagelist_flush_interval;
 extern int gbl_load_cache_threads;
 extern int gbl_load_cache_max_pages;
 extern int gbl_max_pages_per_cache_thread;
+extern int gbl_memp_flush_pagelist_threshold;
 
 extern long long sampling_threshold;
 

@@ -1752,7 +1752,7 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
 
 REGISTER_TUNABLE("pagelist_flush_interval",
                  "Save bufferpool once every this many seconds.  "
-                 "(Default: 300)",
+                 "(Default: 30)",
                  TUNABLE_INTEGER, &gbl_pagelist_flush_interval, 0, NULL, NULL,
                  NULL, NULL);
 
@@ -1768,11 +1768,16 @@ REGISTER_TUNABLE("load_cache_max_pages",
                  TUNABLE_INTEGER, &gbl_load_cache_max_pages, 0, NULL, NULL,
                  NULL, NULL);
 
-
 REGISTER_TUNABLE("max_pages_per_cache_thread",
                  "Number of threads loading pages to cache.  "
                  "(Default: 8192)",
                  TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("memp_flush_pagelist_threshold",
+                 "Don't flush the pagelist until this percentage of pages have "
+                 "changed.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_memp_flush_pagelist_threshold, 0, NULL,
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE("snapshot_serial_verify_retry",

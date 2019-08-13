@@ -121,7 +121,8 @@ __memp_load_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-	u_int32_t pages, lines;
+	u_int32_t lines;
+    u_int64_t pagecount;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -129,10 +130,10 @@ __memp_load_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_load(dbenv, s, &pages, &lines);
+	ret = __memp_load(dbenv, s, &pagecount, &lines);
 	if (rep_check)
 		__env_rep_exit(dbenv);
-	logmsg(LOGMSG_INFO, "%s loaded %u pages\n", __func__, pages);
+	logmsg(LOGMSG_INFO, "%s loaded %"PRIu64" pages\n", __func__, pagecount);
 	return (ret);
 }
 
@@ -148,7 +149,7 @@ __memp_dump_pp(dbenv, s)
 	SBUF2 *s;
 {
 	int rep_check, ret;
-	u_int32_t pages;
+	u_int64_t pagecount;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
@@ -156,7 +157,7 @@ __memp_dump_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_dump(dbenv, s, &pages);
+	ret = __memp_dump(dbenv, s, &pagecount);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -190,11 +191,12 @@ __memp_load_pagelist_pp(dbenv)
  * __memp_flush_pagelist_pp --
  *	DB_ENV->memp_flush_pages pre/post processing.
  *
- * PUBLIC: int __memp_flush_pagelist_pp __P((DB_ENV *));
+ * PUBLIC: int __memp_flush_pagelist_pp __P((DB_ENV *, u_int32_t));
  */
 int
-__memp_flush_pagelist_pp(dbenv)
+__memp_flush_pagelist_pp(dbenv, force)
 	DB_ENV *dbenv;
+    u_int32_t force;
 {
 	int rep_check, ret;
 
@@ -204,7 +206,7 @@ __memp_flush_pagelist_pp(dbenv)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_flush_pagelist(dbenv);
+	ret = __memp_flush_pagelist(dbenv, force);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -1257,12 +1259,10 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		}
 	} 
 
-    if (thdpool) {
-        Pthread_mutex_lock(fileid_env->lk);
-        (*fileid_env->active_threads)--;
-        Pthread_cond_signal(fileid_env->cd);
-        Pthread_mutex_unlock(fileid_env->lk);
-    }
+	Pthread_mutex_lock(fileid_env->lk);
+	(*fileid_env->active_threads)--;
+	Pthread_cond_signal(fileid_env->cd);
+	Pthread_mutex_unlock(fileid_env->lk);
 
 	__os_free(dbenv, pagelist->pages);
 	__os_free(dbenv, pagelist);
@@ -1303,7 +1303,7 @@ output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, SBUF2 *s)
 	return 0;
 }
 
-static inline int add_page_to_fileid_page(DB_ENV *dbenv, fileid_page_list_t *pagelist,
+static inline int add_page_to_fileid_list(DB_ENV *dbenv, fileid_page_list_t *pagelist,
 		db_pgno_t pg)
 {
 	int ret;
@@ -1332,7 +1332,7 @@ add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
 		memcpy(pagelist->fileid, fileid, DB_FILE_ID_LEN);
 		hash_add(hash, pagelist);
 	}
-	return add_page_to_fileid_page(dbenv, pagelist, pg);
+	return add_page_to_fileid_list(dbenv, pagelist, pg);
 }
 
 static int free_fileid_page(void *obj, void *arg)
@@ -1360,7 +1360,6 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
 	(*fileid_env->active_threads)++;
 	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
 					fileid_env, 0, NULL, 0)) != 0) {
-		(*fileid_env->active_threads)--;
 		Pthread_mutex_unlock(fileid_env->lk);
 		load_fileids(NULL, fileid_env, NULL, 0);
 	} else {
@@ -1373,20 +1372,20 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
  *	Load bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_load
- * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
+ * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t *, u_int32_t *));
  */
 int
-__memp_load(dbenv, s, pages, lines)
+__memp_load(dbenv, s, pagecount, lines)
 	DB_ENV *dbenv;
 	SBUF2 *s;
-	u_int32_t *pages;
+	u_int64_t *pagecount;
 	u_int32_t *lines;
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
 	fileid_page_env_t *fileid_env = NULL;
  	u_int32_t lineno = 0, start, end;
-	int ret, endofline = 0, max_pages = gbl_load_cache_max_pages;
+	int ret = 0, endofline = 0, max_pages = gbl_load_cache_max_pages;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
 	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
@@ -1399,7 +1398,7 @@ __memp_load(dbenv, s, pages, lines)
 	pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 	pthread_cond_t cd = PTHREAD_COND_INITIALIZER;
 	int active_threads = 0;
-	(*lines) = (*pages) = 0;
+	(*lines) = (*pagecount) = 0;
 
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
@@ -1414,8 +1413,8 @@ __memp_load(dbenv, s, pages, lines)
 	}
 
 	start = time(NULL);
-	while ((!max_pages || (*pages) < max_pages) && (ret = sbuf2fread(cfileid,
-					sizeof(cfileid), 1, s)) == 1) {
+	while ((!max_pages || (*pagecount) < max_pages) && (ret =
+				sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
 		lineno++;
 
 		p = cfileid;
@@ -1433,7 +1432,7 @@ __memp_load(dbenv, s, pages, lines)
 			continue;
 		}
 
-		while ((!max_pages || (*pages) < max_pages) && getcpage(s, cpage,
+		while ((!max_pages || (*pagecount) < max_pages) && getcpage(s, cpage,
 					sizeof(cpage), &endofline) > 0) {
 			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
 				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
@@ -1447,15 +1446,16 @@ __memp_load(dbenv, s, pages, lines)
 								&fileid_env)) != 0) {
 					logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
 							__func__, __LINE__, ret);
-					return ret;
+					goto done;
 				}
 
 				if ((ret = __os_calloc(dbenv, 1, sizeof(fileid_page_list_t),
 								&fileid_env->pagelist)) != 0) {
 					__os_free(dbenv, fileid_env);
+					fileid_env = NULL;
 					logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
 							__func__, __LINE__, ret);
-					return ret;
+					goto done;
 				}
 
 				fileid_env->dbenv = dbenv;
@@ -1465,12 +1465,14 @@ __memp_load(dbenv, s, pages, lines)
 				memcpy(fileid_env->pagelist->fileid, fileid, DB_FILE_ID_LEN);
 			}
 
-			if ((ret = add_page_to_fileid_page(dbenv, fileid_env->pagelist, pg)) != 0) {
+			if ((ret = add_page_to_fileid_list(dbenv, fileid_env->pagelist,
+							pg)) != 0) {
 				__os_free(dbenv, fileid_env->pagelist);
 				__os_free(dbenv, fileid_env);
+				fileid_env = NULL;
 				logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
 						__func__, __LINE__, ret);
-				return ret;
+				goto done;
 			}
 
 			if (fileid_env->pagelist->cnt >= gbl_max_pages_per_cache_thread) {
@@ -1478,7 +1480,7 @@ __memp_load(dbenv, s, pages, lines)
 				fileid_env = NULL;
 			}
 
-			(*pages)++;
+			(*pagecount)++;
 
 			if (endofline)
 				break;
@@ -1494,6 +1496,7 @@ __memp_load(dbenv, s, pages, lines)
 		load_fileids_thdpool(fileid_env);
 		fileid_env = NULL;
 	}
+done:
 	Pthread_mutex_lock(&lk);
 	while(active_threads > 0) {
 		Pthread_cond_wait(&cd, &lk);
@@ -1501,10 +1504,10 @@ __memp_load(dbenv, s, pages, lines)
 	Pthread_mutex_unlock(&lk);
 	end = time(NULL);
 
-	logmsg(LOGMSG_DEBUG, "Loaded %u bufferpool pages in %u seconds\n",
-			*pages, (end - start));
+	logmsg(LOGMSG_DEBUG, "Loaded %"PRIu64" bufferpool pages in %u seconds\n",
+			*pagecount, (end - start));
 	(*lines) = lineno;
-	return 0;
+	return ret;
 }
 
 /*
@@ -1512,13 +1515,13 @@ __memp_load(dbenv, s, pages, lines)
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_dump
- * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int32_t *));
+ * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t *));
  */
 int
-__memp_dump(dbenv, s, pages)
+__memp_dump(dbenv, s, pagecount)
 	DB_ENV *dbenv;
 	SBUF2 *s;
-	u_int32_t *pages;
+	u_int64_t *pagecount;
 {
 	BH *bhp;
 	BH_TRACK *bharray;
@@ -1536,7 +1539,7 @@ __memp_dump(dbenv, s, pages)
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
 
-	(*pages) = 0;
+	(*pagecount) = 0;
 	fileid_pages = hash_init(DB_FILE_ID_LEN);
 	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
 		c_mp = dbmp->reginfo[n_cache].primary;
@@ -1567,14 +1570,14 @@ __memp_dump(dbenv, s, pages)
 							"%d\n", __func__, ret);
 					return ret;
 				}
-				(*pages)++;
+				(*pagecount)++;
 			}
 			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		}
 	}
 
-    output_fileid_page_hash(dbenv, fileid_pages, s);
-    destroy_fileid_page_hash(dbenv, fileid_pages);
+	output_fileid_page_hash(dbenv, fileid_pages, s);
+	destroy_fileid_page_hash(dbenv, fileid_pages);
 
 	return 0;
 }
@@ -1585,6 +1588,9 @@ static pthread_mutex_t page_flush_lk = PTHREAD_MUTEX_INITIALIZER;
 #define PAGELISTTEMP "pagelist.tmp"
 
 char *bdb_trans(const char infile[], char outfile[]);
+
+extern u_int64_t gbl_memp_pgreads;
+static u_int64_t memp_pagecount = 0;
 
 /*
  * __memp_load_pagelist --
@@ -1598,7 +1604,8 @@ __memp_load_pagelist(dbenv)
 	DB_ENV *dbenv;
 {
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
-	u_int32_t cnt, lines;
+	u_int32_t lines;
+	u_int64_t cnt;
 	int fd, ret;
 	SBUF2 *s;
 
@@ -1629,31 +1636,38 @@ __memp_load_pagelist(dbenv)
 #endif
 	} else {
 #if PAGELIST_DEBUG
-		logmsg(LOGMSG_USER, "%s loaded cache %u pages processed %u lines, "
-				"ret=%d\n", __func__, cnt, lines, ret);
+		logmsg(LOGMSG_USER, "%s loaded cache %"PRIu64" pages processed %u "
+				"lines, ret=%d\n", __func__, cnt, lines, ret);
 #endif
 	}
 	sbuf2close(s);
 
 done:
+	memp_pagecount = cnt;
 	Pthread_mutex_unlock(&page_flush_lk);
+	gbl_memp_pgreads = 0;
 	return ret;
 }
+
+int gbl_memp_flush_pagelist_threshold = 20;
 
 /*
  * __memp_flush_pagelist --
  *	Dump bufferpool pagelist to log directory
  *
  * PUBLIC: int __memp_flush_pagelist
- * PUBLIC:	 __P((DB_ENV *));
+ * PUBLIC:	 __P((DB_ENV *, u_int32_t));
  */
 int
-__memp_flush_pagelist(dbenv)
+__memp_flush_pagelist(dbenv, force)
 	DB_ENV *dbenv;
+	u_int32_t force;
 {
 	static int count = 0;
 	int fd, ret = 0;
-	u_int32_t cnt, lines;
+	u_int32_t lines;
+	u_int64_t cnt;
+	int thresh = gbl_memp_flush_pagelist_threshold;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;
 #if PAGELIST_DEBUG
@@ -1661,6 +1675,11 @@ __memp_flush_pagelist(dbenv)
 #endif
 	SBUF2 *s;
 
+	if (!force && thresh > 0) {
+		u_int64_t target = ((memp_pagecount * thresh) / 100);
+		if (gbl_memp_pgreads < target)
+			return 0;
+	}
 	Pthread_mutex_lock(&page_flush_lk);
 
 	snprintf(path, sizeof(path), "%s/%s", dbenv->db_home, PAGELIST);
@@ -1687,12 +1706,13 @@ __memp_flush_pagelist(dbenv)
 			count++);
 	rrnpath = bdb_trans(rnpath, rnpathbuf);
 	rename(rpath, rrnpath);
-	logmsg(LOGMSG_USER, "%s dumped cache %s %u pages, rename returns %d\n",
-			__func__, rpath, cnt, ret);
+	logmsg(LOGMSG_USER, "%s dumped cache %s %"PRIu64" pages, rename returns "
+			"%d\n", __func__, rpath, cnt, ret);
 #endif
 	ret = rename(rtmppath, rpath);
 
 done:
+    memp_pagecount = cnt;
 	Pthread_mutex_unlock(&page_flush_lk);
 	return ret;
 }

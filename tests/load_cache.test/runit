@@ -131,13 +131,23 @@ function sort_and_diff_files
     typeset linecnt
     typeset faildiff
     typeset cnt
-    linecnt=$(wc -l ${file1} | awk '{print $1}')
+
+    # Reformat cache files: one line per page
+    cat $file1 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
+    cat $file2 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file2}.sort
+
+    # Count number of lines in reformatted file
+    linecnt=$(wc -l ${file1}.sort | awk '{print $1}')
     [[ -z $linecnt ]] && failexit "Cant read cache file"
+
+    # Calculate number of differences we are allowed
     fd=$(echo "${linecnt} * 0.${failpct}" | bc)
     faildiff=${fd%%\.*}
-    cat $file1 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
-    cat $file2 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
+
+    # Count how many lines are different
     cnt=$(diff ${file1}.sort ${file2}.sort 2>&1| wc -l)
+
+    # Fail if too many differences
     (( $cnt > $faildiff )) && failexit "Sorted cache mis-match"
     echo "$file1 diffcount was $cnt, threshold was $faildiff"
 }

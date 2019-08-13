@@ -1410,7 +1410,7 @@ int bdb_load_pagelist(bdb_state_type *bdb_state)
 
 int bdb_flush_pagelist(bdb_state_type *bdb_state)
 {
-    return bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv);
+    return bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv, 1);
 }
 
 extern int gbl_pagelist_flush_interval;

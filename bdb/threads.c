@@ -381,7 +381,7 @@ extern int db_is_stopped();
 int64_t gbl_last_checkpoint_ms;
 int64_t gbl_total_checkpoint_ms;
 int gbl_checkpoint_count;
-int gbl_pagelist_flush_interval = 300;
+int gbl_pagelist_flush_interval = 30;
 int backend_opened(void);
 
 void *checkpoint_thread(void *arg)
@@ -461,7 +461,7 @@ void *checkpoint_thread(void *arg)
                 bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
                 loaded_pagelist = 1;
             } else {
-                bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv);
+                bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv, 0);
                 last_pagelist_dump = now;
             }
         }
