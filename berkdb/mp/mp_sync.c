@@ -1180,8 +1180,14 @@ static int getcpage(SBUF2 *s, char *cpage, int cpagesz, int *endofline)
     return -1;
 }
 
+typedef struct fileid_page_list {
+    u_int8_t fileid[DB_FILE_ID_LEN];
+    db_pgno_t *pages;
+    u_int64_t cnt;
+    u_int64_t alloced;
+} fileid_page_list_t;
+
 /*
- *
  * __memp_load --
  *	Load bufferpool fileids and pages to a file
  *
@@ -1299,6 +1305,98 @@ __memp_load(dbenv, s, pages, lines)
 	return 0;
 }
 
+#define PAGELIST_INIT 1024
+
+struct sbuf_env {
+	DB_ENV *dbenv;
+	SBUF2 *s;
+};
+
+static inline int
+pgcmp(const void *p1, const void *p2)
+{
+    db_pgno_t *page1 = (db_pgno_t *)p1;
+    db_pgno_t *page2 = (db_pgno_t *)p2;
+    if (*page1 == *page2) {
+        return 0;
+    } else if (*page1 < *page2) {
+        return -1;
+    } else {
+        return 1;
+    }
+    abort();
+}
+
+static int
+output_fileid_page(void *obj, void *arg)
+{
+    struct sbuf_env *sbenv = (struct sbuf_env *)arg;
+    u_int8_t *p;
+    DB_ENV *dbenv = sbenv->dbenv;
+    SBUF2 *s = sbenv->s;
+	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
+    qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
+    p = pagelist->fileid;
+
+    for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
+        sbuf2printf(s, "%2.2x", (u_int)*p);
+    }
+    for (u_int64_t pages = 0; pages < pagelist->cnt; pages++) {
+        sbuf2printf(s, " %"PRIu32, pagelist->pages[pages]);
+    }
+    sbuf2printf(s, "\n");
+    return 0;
+}
+
+static int
+output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, SBUF2 *s)
+{
+    struct sbuf_env sbenv = { .dbenv = dbenv, .s = s };
+	hash_for(hash, output_fileid_page, &sbenv);
+    return 0;
+}
+
+static int
+add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
+{
+	int ret;
+	fileid_page_list_t *pagelist = hash_find(hash, fileid);
+	if (!pagelist) {
+		if ((ret = __os_calloc(dbenv, 1, sizeof(*pagelist), &pagelist)) != 0) {
+			return ret;
+		}
+		memcpy(pagelist->fileid, fileid, DB_FILE_ID_LEN);
+		hash_add(hash, pagelist);
+	}
+	if (pagelist->cnt == pagelist->alloced) {
+		u_int64_t alloccount = (pagelist->alloced == 0) ? PAGELIST_INIT :
+				(pagelist->alloced * 2);
+		if ((ret = __os_realloc(dbenv, alloccount * sizeof(db_pgno_t),
+						&pagelist->pages)) != 0) {
+			return ret;
+		}
+		pagelist->alloced = alloccount;
+	}
+	pagelist->pages[pagelist->cnt++] = pg;
+	return 0;
+}
+
+static int free_fileid_page(void *obj, void *arg)
+{
+	fileid_page_list_t *f = (fileid_page_list_t *)obj;
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	__os_free(dbenv, f->pages);
+	return 0;
+}
+
+static void
+destroy_fileid_page_hash(DB_ENV *dbenv, hash_t *hash)
+{
+	hash_for(hash, free_fileid_page, dbenv);
+	hash_clear(hash);
+	hash_free(hash);
+}
+
 
 /*
  * __memp_dump --
@@ -1322,18 +1420,15 @@ __memp_dump(dbenv, s, pages)
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int ar_cnt, ar_max, i, j, ret, t_ret, first = 1;
-	u_int8_t *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
+	int i, j, ret, t_ret, first = 1;
+	u_int8_t *fileid, *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
+	hash_t *fileid_pages = NULL;
 
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
 
-	ar_max = mp->nreg * mp->htab_buckets;
-	if ((ret =
-		__os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
-		return (ret);
-
 	(*pages) = 0;
+	fileid_pages = hash_init(DB_FILE_ID_LEN);
 	for (n_cache = 0; n_cache < mp->nreg; ++n_cache) {
 		c_mp = dbmp->reginfo[n_cache].primary;
 
@@ -1344,7 +1439,7 @@ __memp_dump(dbenv, s, pages)
 				continue;
 
 			MUTEX_LOCK(dbenv, &hp->hash_mutex);
-			for (ar_cnt = 0, bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
+			for (bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
 				bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
 
 				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
@@ -1352,39 +1447,26 @@ __memp_dump(dbenv, s, pages)
 				if (F_ISSET(mfp, MP_TEMP) || mfp->lsn_off == -1)
 					continue;
 
-				bharray[ar_cnt].track_hp = hp;
-				bharray[ar_cnt].track_pgno = bhp->pgno;
-				bharray[ar_cnt].track_off = bhp->mf_offset;
-				ar_cnt++;
+				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+				fileid = R_ADDR(dbmp->reginfo, mfp->fileid_off);
 
-				if (ar_cnt >= ar_max) {
-					if ((ret = __os_realloc(dbenv,
-							(ar_max * 2) *
-							sizeof(BH_TRACK),
-							&bharray)) != 0)
-						break;
-					ar_max *= 2;
+				if ((ret = add_fileid_page(dbenv, fileid_pages, fileid,
+								bhp->pgno)) != 0) {
+					MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+					destroy_fileid_page_hash(dbenv, fileid_pages);
+					logmsg(LOGMSG_ERROR, "%s error adding fileid page, %d\n",
+							__func__, ret);
+					return ret;
 				}
-			}
-			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
-
-			for (int i = 0; i < ar_cnt; i++) {
-				mfp = R_ADDR(dbmp->reginfo, bharray[i].track_off);
-				pp = p = R_ADDR(dbmp->reginfo, mfp->fileid_off);
-				if (first || memcmp(p, last_fileid, DB_FILE_ID_LEN)) {
-					if (!first)
-						sbuf2printf(s, "\n");
-					for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
-						sbuf2printf(s, "%2.2x", (u_int)*p);
-					}
-					memcpy(last_fileid, pp, DB_FILE_ID_LEN);
-					first = 0;
-				}
-				sbuf2printf(s, " %"PRIu32, bharray[i].track_pgno);
 				(*pages)++;
 			}
+			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		}
 	}
+
+    output_fileid_page_hash(dbenv, fileid_pages, s);
+    destroy_fileid_page_hash(dbenv, fileid_pages);
+
 	return 0;
 }
 
