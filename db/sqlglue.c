@@ -903,8 +903,11 @@ int convert_sql_failure_reason_str(const struct convert_failure *reason,
 {
     if (reason->source_sql_field_flags & MEM_Null) {
         return snprintf(out, outlen, " from SQL NULL");
-    } else if (reason->source_sql_field_flags & (MEM_Int|MEM_IntReal)) {
+    } else if (reason->source_sql_field_flags & MEM_Int) {
         return snprintf(out, outlen, " from SQL integer '%lld'",
+                        reason->source_sql_field_info.ival);
+    } else if (reason->source_sql_field_flags & MEM_IntReal) {
+        return snprintf(out, outlen, " from SQL integer '%lld' as real",
                         reason->source_sql_field_info.ival);
     } else if (reason->source_sql_field_flags & MEM_Real) {
         return snprintf(out, outlen, " from SQL real '%f'",
