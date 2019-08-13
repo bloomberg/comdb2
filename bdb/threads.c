@@ -458,13 +458,12 @@ void *checkpoint_thread(void *arg)
             ((now = time(NULL)) - last_pagelist_dump) >
                 gbl_pagelist_flush_interval) {
             if (!loaded_pagelist) {
-                rc = bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
-                assert(rc == 0);
+                bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
                 loaded_pagelist = 1;
             } else {
                 bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv);
+                last_pagelist_dump = now;
             }
-            last_pagelist_dump = now;
         }
 
         end = comdb2_time_epochms();

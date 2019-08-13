@@ -1756,6 +1756,18 @@ REGISTER_TUNABLE("pagelist_flush_interval",
                  TUNABLE_INTEGER, &gbl_pagelist_flush_interval, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("load_cache_threads",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8)",
+                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("max_pages_per_cache_thread",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8192)",
+                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, 0, NULL,
+                 NULL, NULL, NULL);
+
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",

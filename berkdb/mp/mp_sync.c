@@ -1124,6 +1124,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 static struct thdpool *loadcache_thdpool;
 int gbl_load_cache_threads = 8;
+int gbl_max_pages_per_cache_thread = 8192;
 
 void
 init_trickle_threads(void)
@@ -1253,38 +1254,6 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
     __os_free(dbenv, fileid_env);
 }
 
-static int
-load_fileid_pages(void *obj, void *arg)
-{
-    int ret;
-    fileid_load_info_t *load = (fileid_load_info_t *)arg;
-	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
-    fileid_page_env_t *fileid_env;
-
-    if ((ret = __os_malloc(load->dbenv, sizeof(*fileid_env), &fileid_env))
-            != 0) {
-        logmsg(LOGMSG_ERROR, "%s error allocating memory\n", __func__);
-        return 1;
-    }
-
-    fileid_env->dbenv = load->dbenv;
-    fileid_env->pagelist = pagelist;
-    if ((ret = thdpool_enqueue(load->load_thdpool, load_fileids, fileid_env, 0,
-                    NULL, 0)) != 0) {
-        load_fileids(NULL, &fileid_env, NULL, 0);
-    }
-    return 0;
-}
-
-static int
-load_fileid_pages_from_hash(DB_ENV *dbenv, hash_t *hash)
-{
-    fileid_load_info_t load = { .dbenv = dbenv };
-    load.load_thdpool = loadcache_thdpool;
-	hash_for(hash, load_fileid_pages, &load);
-    return 0;
-}
-
 struct sbuf_env {
 	DB_ENV *dbenv;
 	SBUF2 *s;
@@ -1319,18 +1288,10 @@ output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, SBUF2 *s)
     return 0;
 }
 
-static int
-add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
+static inline int add_page_to_fileid_page(DB_ENV *dbenv, fileid_page_list_t *pagelist,
+		db_pgno_t pg)
 {
 	int ret;
-	fileid_page_list_t *pagelist = hash_find(hash, fileid);
-	if (!pagelist) {
-		if ((ret = __os_calloc(dbenv, 1, sizeof(*pagelist), &pagelist)) != 0) {
-			return ret;
-		}
-		memcpy(pagelist->fileid, fileid, DB_FILE_ID_LEN);
-		hash_add(hash, pagelist);
-	}
 	if (pagelist->cnt == pagelist->alloced) {
 		u_int64_t alloccount = (pagelist->alloced == 0) ? PAGELIST_INIT :
 				(pagelist->alloced * 2);
@@ -1342,6 +1303,21 @@ add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
 	}
 	pagelist->pages[pagelist->cnt++] = pg;
 	return 0;
+}
+
+static inline int
+add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
+{
+	int ret;
+	fileid_page_list_t *pagelist = hash_find(hash, fileid);
+	if (!pagelist) {
+		if ((ret = __os_calloc(dbenv, 1, sizeof(*pagelist), &pagelist)) != 0) {
+			return ret;
+		}
+		memcpy(pagelist->fileid, fileid, DB_FILE_ID_LEN);
+		hash_add(hash, pagelist);
+	}
+	return add_page_to_fileid_page(dbenv, pagelist, pg);
 }
 
 static int free_fileid_page(void *obj, void *arg)
@@ -1361,6 +1337,16 @@ destroy_fileid_page_hash(DB_ENV *dbenv, hash_t *hash)
 	hash_free(hash);
 }
 
+static void
+load_fileids_thdpool(fileid_page_env_t *fileid_env)
+{
+	int ret;
+	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
+					fileid_env, 0, NULL, 0)) != 0) {
+		load_fileids(NULL, fileid_env, NULL, 0);
+	}
+}
+
 /*
  * __memp_load --
  *	Load bufferpool fileids and pages to a file
@@ -1377,7 +1363,8 @@ __memp_load(dbenv, s, pages, lines)
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
-	u_int32_t lineno = 0, start, end;
+	fileid_page_env_t *fileid_env = NULL;
+ 	u_int32_t lineno = 0, start, end;
 	int ret, endofline;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
@@ -1386,12 +1373,9 @@ __memp_load(dbenv, s, pages, lines)
 	db_pgno_t pg;
 	unsigned int hx;
 	void *addrp = NULL;
-	hash_t *fileid_pages = NULL;
-
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
 	(*lines) = (*pages) = 0;
-	fileid_pages = hash_init(DB_FILE_ID_LEN);
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
@@ -1431,11 +1415,37 @@ __memp_load(dbenv, s, pages, lines)
 			}
 			pg = hx;
 
-			if ((ret = add_fileid_page(dbenv, fileid_pages, fileid, pg))!= 0) {
-				destroy_fileid_page_hash(dbenv, fileid_pages);
-				logmsg(LOGMSG_ERROR, "%s error adding fileid page to hash, %d\n",
-						__func__, ret);
+			if (fileid_env == NULL) { 
+				if ((ret = __os_malloc(dbenv, sizeof(*fileid_env), 
+								&fileid_env)) != 0) {
+					logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
+							__func__, __LINE__, ret);
+					return ret;
+				}
+
+				if ((ret = __os_calloc(dbenv, 1, sizeof(fileid_page_list_t),
+								&fileid_env->pagelist)) != 0) {
+					__os_free(dbenv, fileid_env);
+					logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
+							__func__, __LINE__, ret);
+					return ret;
+				}
+
+				fileid_env->dbenv = dbenv;
+				memcpy(fileid_env->pagelist->fileid, fileid, DB_FILE_ID_LEN);
+			}
+
+			if ((ret = add_page_to_fileid_page(dbenv, fileid_env->pagelist, pg)) != 0) {
+				__os_free(dbenv, fileid_env->pagelist);
+				__os_free(dbenv, fileid_env);
+				logmsg(LOGMSG_ERROR, "%s line %d error alocating memory, %d\n",
+						__func__, __LINE__, ret);
 				return ret;
+			}
+
+			if (fileid_env->pagelist->cnt >= gbl_max_pages_per_cache_thread) {
+				load_fileids_thdpool(fileid_env);
+				fileid_env = NULL;
 			}
 
 			(*pages)++;
@@ -1443,13 +1453,20 @@ __memp_load(dbenv, s, pages, lines)
 			if (endofline)
 				break;
 		}
+		if (fileid_env) {
+			load_fileids_thdpool(fileid_env);
+			fileid_env = NULL;
+		}
 		if (!endofline)
 			sbuf2nextline(s);
 	}
-    load_fileid_pages_from_hash(dbenv, fileid_pages);
+	if (fileid_env) {
+		load_fileids_thdpool(fileid_env);
+		fileid_env = NULL;
+	}
 	end = time(NULL);
-    hash_clear(fileid_pages);
-    hash_free(fileid_pages);
+
+	/* This isn't really true- the thdpool is still working on it .. */
 	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
 			*pages, (end - start));
 	(*lines) = lineno;
