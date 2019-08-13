@@ -2380,20 +2380,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 srs_tran_destroy(&clnt);
             } else {
                 rc = srs_tran_replay(&clnt, arg->thr_self);
-                /* NC: A hack to match current master behavior and fix a perf
-                 * regression caused by extra retries for uncommitable txns.
-                 * This hack would allow the connection to survive after this
-                 * (first) replay. But, since the replay has already bumped the
-                 * clnt->verify_retries, the OSQL_FLAGS_CHECK_SELFLOCK flag
-                 * gets set for the osql request forcing genid verification on
-                 * the master, causing an early "uncommitable txn" error for
-                 * the subsequent bad transaction. And since the returned error
-                 * is not-retriable, the connection gets dropped. Note: For
-                 * the second bad transaction, "uncommitable txn" is returned
-                 * on the very first attempt, avoiding retries - thus fixing
-                 * the performance regression.
-                 */
-                rc = 0;
             }
 
             if (clnt.osql.history == NULL) {
