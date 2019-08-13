@@ -1144,7 +1144,9 @@ init_trickle_threads(void)
     thdpool_set_linger(loadcache_thdpool, 10);
 	thdpool_set_minthds(loadcache_thdpool, 0);
 	thdpool_set_maxthds(loadcache_thdpool, gbl_load_cache_threads);
-	thdpool_set_maxqueue(loadcache_thdpool, 8000);
+	thdpool_set_maxqueue(loadcache_thdpool, 0);
+	thdpool_set_maxqueueoverride(loadcache_thdpool, 0);
+	thdpool_set_wait(loadcache_thdpool, 0);
 }
 
 int gbl_parallel_memptrickle = 1;
