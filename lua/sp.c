@@ -119,6 +119,7 @@ struct dbstmt_t {
     sqlite3_stmt *stmt;
     int rows_changed;
     uint16_t num_tbls;
+    uint8_t readonly;
     uint8_t fetched;
     uint8_t initial; // 1: stmt tables are locked
     struct sql_state *rec; // only db:prepare will set
@@ -2641,6 +2642,7 @@ dbstmt_t *new_dbstmt(Lua lua, SP sp, sqlite3_stmt *stmt)
     if (dbstmt->num_tbls) {
         LIST_INSERT_HEAD(&sp->dbstmts, dbstmt, entries);
     }
+    dbstmt->readonly = sqlite3_stmt_readonly(stmt);
     return dbstmt;
 }
 static int dbtable_where(lua_State *lua)
@@ -3470,6 +3472,9 @@ static int dbstmt_fetch(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
+    if (!dbstmt->readonly) {
+        return luaL_error(lua, "statement must be read-only");
+    }
     setup_first_sqlite_step(sp, dbstmt, 1);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
@@ -3483,6 +3488,9 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
+    if (!dbstmt->readonly) {
+        return luaL_error(L, "statement must be read-only");
+    }
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
@@ -3772,7 +3780,7 @@ static int db_exec(Lua lua)
         return 2;
     }
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
-    if (sqlite3_stmt_readonly(stmt)) {
+    if (dbstmt->readonly) {
         // dbstmt:fetch() will run it
         lua_pushinteger(lua, 0);
         return 2;
