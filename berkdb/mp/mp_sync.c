@@ -1122,6 +1122,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	Pthread_mutex_unlock(&pgpool_lk);
 }
 
+static struct thdpool *loadcache_thdpool;
+int gbl_load_cache_threads = 8;
 
 void
 init_trickle_threads(void)
@@ -1136,6 +1138,12 @@ init_trickle_threads(void)
 
 	pgpool =
 	    pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
+
+    loadcache_thdpool = thdpool_create("loadcache", 0);
+    thdpool_set_linger(loadcache_thdpool, 10);
+	thdpool_set_minthds(loadcache_thdpool, 0);
+	thdpool_set_maxthds(loadcache_thdpool, gbl_load_cache_threads);
+	thdpool_set_maxqueue(loadcache_thdpool, 8000);
 }
 
 int gbl_parallel_memptrickle = 1;
@@ -1151,8 +1159,6 @@ berkdb_iopool_process_message(char *line, int lline, int st)
 	thdpool_process_message(trickle_thdpool, line, lline, st);
 }
 
-
-
 static int memp_sync_alarm_ms = 500;
 
 void
@@ -1161,8 +1167,6 @@ berk_memp_sync_alarm_ms(int x)
 	logmsg(LOGMSG_DEBUG, "__berkdb_sync_alarm_ms = %d\n", x);
 	memp_sync_alarm_ms = x;
 }
-
-void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 
 static int getcpage(SBUF2 *s, char *cpage, int cpagesz, int *endofline)
 {
@@ -1187,130 +1191,7 @@ typedef struct fileid_page_list {
     u_int64_t alloced;
 } fileid_page_list_t;
 
-/*
- * __memp_load --
- *	Load bufferpool fileids and pages to a file
- *
- * PUBLIC: int __memp_load
- * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
- */
-int
-__memp_load(dbenv, s, pages, lines)
-	DB_ENV *dbenv;
-	SBUF2 *s;
-	u_int32_t *pages;
-	u_int32_t *lines;
-{
-	DB_MPOOL *dbmp;
-	DB_MPOOLFILE *dbmfp;
-	u_int32_t lineno = 0, start, end;
-	int count_dbmfp, ret, endofline;
-	u_int8_t *pr;
-	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
-	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
-	char *p, *sp, c;
-	db_pgno_t pg;
-	unsigned int hx;
-	void *addrp = NULL;
-
-	dbmp = dbenv->mp_handle;
-	dbmfp = NULL;
-	(*lines) = (*pages) = 0;
-
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-	if (dbmfp == NULL) {
-#if PAGELIST_DEBUG
-		logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
-				__func__);
-#endif
-		return -1;
-	}
-
-	start = time(NULL);
-	while ((ret = sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
-		lineno++;
-
-		p = cfileid;
-		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
-			sscanf(p, "%2x", &hx);
-			fileid[j] = hx;
-		}
-
-		if (!dbmfp || memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN)) {
-			count_dbmfp = 0;
-			MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-			for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
-					dbmfp = TAILQ_NEXT(dbmfp, q)) {
-				count_dbmfp++;
-				if (memcmp(dbmfp->fileid, fileid, DB_FILE_ID_LEN) == 0)
-					break;
-			}
-			MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-		}
-
-		if (!dbmfp) {
-#if PAGELIST_DEBUG
-			logmsg(LOGMSG_USER, "%s unable to find DBMFP ",
-					__func__);
-			pr = fileid;
-			for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
-				logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
-			}
-			logmsg(LOGMSG_USER, " line %u, there were %d dbmfp total\n",
-					lineno, count_dbmfp);
-#endif
-			sbuf2nextline(s);
-			continue;
-		}
-
-		if ((c = sbuf2getc(s)) != ' ') {
-#if PAGELIST_DEBUG
-			logmsg(LOGMSG_USER, "%s line %u, invalid format\n",
-					__func__, lineno);
-#endif
-			sbuf2nextline(s);
-			continue;
-		}
-
-		while (getcpage(s, cpage, sizeof(cpage), &endofline) > 0) {
-			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
-				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
-						"cpage %s\n", __func__, lineno, cpage);
-				break;
-			}
-			pg = hx;
-#if PAGELIST_DEBUG
-			pr = fileid;
-			logmsg(LOGMSG_USER, "FGET-> ");
-			for (int j = 0 ; j < DB_FILE_ID_LEN; ++j, ++pr) {
-				logmsg(LOGMSG_USER, "%2.2x", (u_int)*pr);
-			}
-			logmsg(LOGMSG_USER, " %"PRIu32"\n", pg);
-#endif
-			touch_page(dbmfp, pg);
-			(*pages)++;
-
-			if (endofline)
-				break;
-		}
-		if (!endofline)
-			sbuf2nextline(s);
-	}
-	end = time(NULL);
-	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
-			*pages, (end - start));
-	(*lines) = lineno;
-	return 0;
-}
-
 #define PAGELIST_INIT 1024
-
-struct sbuf_env {
-	DB_ENV *dbenv;
-	SBUF2 *s;
-};
 
 static inline int
 pgcmp(const void *p1, const void *p2)
@@ -1326,6 +1207,88 @@ pgcmp(const void *p1, const void *p2)
     }
     abort();
 }
+
+typedef struct fileid_load_info
+{
+    DB_ENV *dbenv;
+    struct thdpool *load_thdpool;
+} fileid_load_info_t;
+
+typedef struct fileid_page_env
+{
+    DB_ENV *dbenv;
+    fileid_page_list_t *pagelist;
+} fileid_page_env_t;
+
+void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
+
+static void
+load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
+{
+    fileid_page_env_t *fileid_env = (fileid_page_env_t *)work;
+    fileid_page_list_t *pagelist = fileid_env->pagelist;
+
+    DB_ENV *dbenv;
+	DB_MPOOL *dbmp;
+	DB_MPOOLFILE *dbmfp;
+
+    dbenv = fileid_env->dbenv;
+	dbmp = dbenv->mp_handle;
+	dbmfp = NULL;
+
+    MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+    for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
+            dbmfp = TAILQ_NEXT(dbmfp, q)) {
+        if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0)
+            break;
+    }
+    MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+    if (dbmfp) {
+        for(int pages = 0 ; pages < pagelist->cnt; pages++) {
+            touch_page(dbmfp, pagelist->pages[pages]);
+        }
+    } 
+    __os_free(dbenv, pagelist->pages);
+    __os_free(dbenv, pagelist);
+    __os_free(dbenv, fileid_env);
+}
+
+static int
+load_fileid_pages(void *obj, void *arg)
+{
+    int ret;
+    fileid_load_info_t *load = (fileid_load_info_t *)arg;
+	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
+    fileid_page_env_t *fileid_env;
+
+    if ((ret = __os_malloc(load->dbenv, sizeof(*fileid_env), &fileid_env))
+            != 0) {
+        logmsg(LOGMSG_ERROR, "%s error allocating memory\n", __func__);
+        return 1;
+    }
+
+    fileid_env->dbenv = load->dbenv;
+    fileid_env->pagelist = pagelist;
+    if ((ret = thdpool_enqueue(load->load_thdpool, load_fileids, fileid_env, 0,
+                    NULL, 0)) != 0) {
+        load_fileids(NULL, &fileid_env, NULL, 0);
+    }
+    return 0;
+}
+
+static int
+load_fileid_pages_from_hash(DB_ENV *dbenv, hash_t *hash)
+{
+    fileid_load_info_t load = { .dbenv = dbenv };
+    load.load_thdpool = loadcache_thdpool;
+	hash_for(hash, load_fileid_pages, &load);
+    return 0;
+}
+
+struct sbuf_env {
+	DB_ENV *dbenv;
+	SBUF2 *s;
+};
 
 static int
 output_fileid_page(void *obj, void *arg)
@@ -1386,6 +1349,7 @@ static int free_fileid_page(void *obj, void *arg)
 	fileid_page_list_t *f = (fileid_page_list_t *)obj;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	__os_free(dbenv, f->pages);
+	__os_free(dbenv, f);
 	return 0;
 }
 
@@ -1397,6 +1361,100 @@ destroy_fileid_page_hash(DB_ENV *dbenv, hash_t *hash)
 	hash_free(hash);
 }
 
+/*
+ * __memp_load --
+ *	Load bufferpool fileids and pages to a file
+ *
+ * PUBLIC: int __memp_load
+ * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
+ */
+int
+__memp_load(dbenv, s, pages, lines)
+	DB_ENV *dbenv;
+	SBUF2 *s;
+	u_int32_t *pages;
+	u_int32_t *lines;
+{
+	DB_MPOOL *dbmp;
+	DB_MPOOLFILE *dbmfp;
+	u_int32_t lineno = 0, start, end;
+	int ret, endofline;
+	u_int8_t *pr;
+	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
+	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
+	char *p, *sp, c;
+	db_pgno_t pg;
+	unsigned int hx;
+	void *addrp = NULL;
+	hash_t *fileid_pages = NULL;
+
+	dbmp = dbenv->mp_handle;
+	dbmfp = NULL;
+	(*lines) = (*pages) = 0;
+	fileid_pages = hash_init(DB_FILE_ID_LEN);
+
+	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
+	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+	if (dbmfp == NULL) {
+#if PAGELIST_DEBUG
+		logmsg(LOGMSG_USER, "%s mp_handle has no mpoolfiles\n",
+				__func__);
+#endif
+		return -1;
+	}
+
+	start = time(NULL);
+	while ((ret = sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
+		lineno++;
+
+		p = cfileid;
+		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
+			sscanf(p, "%2x", &hx);
+			fileid[j] = hx;
+		}
+
+		if ((c = sbuf2getc(s)) != ' ') {
+#if PAGELIST_DEBUG
+			logmsg(LOGMSG_USER, "%s line %u, invalid format\n",
+					__func__, lineno);
+#endif
+			sbuf2nextline(s);
+			continue;
+		}
+
+		while (getcpage(s, cpage, sizeof(cpage), &endofline) > 0) {
+			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
+				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
+						"cpage %s\n", __func__, lineno, cpage);
+				break;
+			}
+			pg = hx;
+
+			if ((ret = add_fileid_page(dbenv, fileid_pages, fileid, pg))!= 0) {
+				destroy_fileid_page_hash(dbenv, fileid_pages);
+				logmsg(LOGMSG_ERROR, "%s error adding fileid page to hash, %d\n",
+						__func__, ret);
+				return ret;
+			}
+
+			(*pages)++;
+
+			if (endofline)
+				break;
+		}
+		if (!endofline)
+			sbuf2nextline(s);
+	}
+    load_fileid_pages_from_hash(dbenv, fileid_pages);
+	end = time(NULL);
+    hash_clear(fileid_pages);
+    hash_free(fileid_pages);
+	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
+			*pages, (end - start));
+	(*lines) = lineno;
+	return 0;
+}
 
 /*
  * __memp_dump --
@@ -1454,8 +1512,8 @@ __memp_dump(dbenv, s, pages)
 								bhp->pgno)) != 0) {
 					MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 					destroy_fileid_page_hash(dbenv, fileid_pages);
-					logmsg(LOGMSG_ERROR, "%s error adding fileid page, %d\n",
-							__func__, ret);
+					logmsg(LOGMSG_ERROR, "%s error adding fileid page to hash "
+							"%d\n", __func__, ret);
 					return ret;
 				}
 				(*pages)++;
