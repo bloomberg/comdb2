@@ -1059,7 +1059,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                         once = 0;
                     }
                     ctrace("!sqlite3IsNumber \"%.*s\" %s\n", m->n, m->z,
-                           clnt->work.zSql);
+                           clnt->sql);
                 }
             }
         }
@@ -2070,7 +2070,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 
     reset_clnt(&clnt, NULL, 1);
     clnt.sb = NULL;
-    clnt.work.zSql= (char *)temp;
+    clnt.sql = (char *)temp;
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
 
@@ -2104,7 +2104,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
     got_curtran = 1;
 
-    rc = sqlite3_exec(hndl, clnt.work.zSql, NULL, NULL, &err);
+    rc = sqlite3_exec(hndl, clnt.sql, NULL, NULL, &err);
 done:
     if (err) {
         logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
@@ -8905,7 +8905,7 @@ void sql_dump_running_statements(void)
         localtime_r((time_t *)&t, &tm);
         Pthread_mutex_lock(&thd->lk);
 
-        if (thd->clnt && thd->clnt->work.zSql) {
+        if (thd->clnt && thd->clnt->sql) {
             if (thd->clnt->osql.rqid) {
                 uuidstr_t us;
                 snprintf(rqid, sizeof(rqid), "txn %016llx %s",
@@ -8920,7 +8920,7 @@ void sql_dump_running_statements(void)
             snap_uid_t snap;
             get_cnonce(thd->clnt, &snap);
             log_cnonce(snap.key, snap.keylen);
-            logmsg(LOGMSG_USER, "%s\n", thd->clnt->work.zSql);
+            logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
 
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -10769,7 +10769,7 @@ const char *comdb2_get_sql(void)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     if (thd)
-        return thd->clnt->work.zSql;
+        return thd->clnt->sql;
 
     return NULL;
 }
@@ -11051,7 +11051,7 @@ void stat4dump(int more, char *table, int istrace)
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
-    clnt.work.zSql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
+    clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
 
     struct sql_thread *thd = start_sql_thread();
     get_copy_rootpages(thd);
@@ -11064,7 +11064,7 @@ void stat4dump(int more, char *table, int istrace)
         goto put;
     }
     clnt.no_transaction = 1;
-    if ((rc = sqlite3_exec(db, clnt.work.zSql, NULL, NULL, NULL)) != SQLITE_OK) {
+    if ((rc = sqlite3_exec(db, clnt.sql, NULL, NULL, NULL)) != SQLITE_OK) {
         goto close;
     }
     int (*outFunc)(const char *fmt, ...) = printf_logmsg_wrap;
@@ -11904,7 +11904,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.work.zSql = sql;
+    clnt.sql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;
 
@@ -12289,7 +12289,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.work.zSql = (char *)query;
+    clnt.sql = (char *)query;
     clnt.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
@@ -12396,7 +12396,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         start_internal_sql_clnt(&clnt);
         clnt.dbtran.mode = TRANLEVEL_SOSQL;
-        clnt.work.zSql = table->check_constraint_query[i];
+        clnt.sql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
 
