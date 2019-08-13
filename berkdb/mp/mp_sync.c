@@ -1141,10 +1141,10 @@ init_trickle_threads(void)
 	Pthread_mutex_init(&pgpool_lk, NULL);
 
 	pgpool =
-	    pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
+		pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
 
-    loadcache_thdpool = thdpool_create("loadcache", 0);
-    thdpool_set_linger(loadcache_thdpool, 10);
+	loadcache_thdpool = thdpool_create("loadcache", 0);
+	thdpool_set_linger(loadcache_thdpool, 10);
 	thdpool_set_minthds(loadcache_thdpool, 0);
 	thdpool_set_maxthds(loadcache_thdpool, gbl_load_cache_threads);
 	thdpool_set_maxqueue(loadcache_thdpool, 0);
@@ -1156,7 +1156,7 @@ int gbl_parallel_memptrickle = 1;
 
 extern int comdb2_time_epochms();
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
-    int st);
+	int st);
 
 void
 berkdb_iopool_process_message(char *line, int lline, int st)
@@ -1176,25 +1176,25 @@ berk_memp_sync_alarm_ms(int x)
 
 static int getcpage(SBUF2 *s, char *cpage, int cpagesz, int *endofline)
 {
-    (*endofline) = 0;
-    for (int i = 0; i < cpagesz; i++) {
-        char c = sbuf2getc(s);
-        if (c <= 0 || c == '\n')
-            (*endofline) = 1;
-        if (c <= 0 || c == '\n' || c == ' ') {
-            cpage[i] = '\0';
-            return i;
-        }
-        cpage[i] = c;
-    }
-    return -1;
+	(*endofline) = 0;
+	for (int i = 0; i < cpagesz; i++) {
+		char c = sbuf2getc(s);
+		if (c <= 0 || c == '\n')
+			(*endofline) = 1;
+		if (c <= 0 || c == '\n' || c == ' ') {
+			cpage[i] = '\0';
+			return i;
+		}
+		cpage[i] = c;
+	}
+	return -1;
 }
 
 typedef struct fileid_page_list {
-    u_int8_t fileid[DB_FILE_ID_LEN];
-    db_pgno_t *pages;
-    u_int64_t cnt;
-    u_int64_t alloced;
+	u_int8_t fileid[DB_FILE_ID_LEN];
+	db_pgno_t *pages;
+	u_int64_t cnt;
+	u_int64_t alloced;
 } fileid_page_list_t;
 
 #define PAGELIST_INIT 1024
@@ -1202,22 +1202,22 @@ typedef struct fileid_page_list {
 static inline int
 pgcmp(const void *p1, const void *p2)
 {
-    db_pgno_t *page1 = (db_pgno_t *)p1;
-    db_pgno_t *page2 = (db_pgno_t *)p2;
-    if (*page1 == *page2) {
-        return 0;
-    } else if (*page1 < *page2) {
-        return -1;
-    } else {
-        return 1;
-    }
-    abort();
+	db_pgno_t *page1 = (db_pgno_t *)p1;
+	db_pgno_t *page2 = (db_pgno_t *)p2;
+	if (*page1 == *page2) {
+		return 0;
+	} else if (*page1 < *page2) {
+		return -1;
+	} else {
+		return 1;
+	}
+	abort();
 }
 
 typedef struct fileid_load_info
 {
-    DB_ENV *dbenv;
-    struct thdpool *load_thdpool;
+	DB_ENV *dbenv;
+	struct thdpool *load_thdpool;
 } fileid_load_info_t;
 
 typedef struct fileid_page_env
@@ -1712,7 +1712,8 @@ __memp_flush_pagelist(dbenv, force)
 	ret = rename(rtmppath, rpath);
 
 done:
-    memp_pagecount = cnt;
+	memp_pagecount = cnt;
+	gbl_memp_pgreads = 0;
 	Pthread_mutex_unlock(&page_flush_lk);
 	return ret;
 }
