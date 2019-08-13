@@ -811,7 +811,7 @@ static int comdb2_authorizer_for_sqlite(
         return SQLITE_DENY;
       } else if (pAuthState->clnt != NULL) {
         logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, pAuthState->clnt->work.zSql);
+               __LINE__, __func__, pAuthState->clnt->sql);
         return SQLITE_OK;
       } else {
         return SQLITE_DENY;
@@ -1090,7 +1090,7 @@ static int is_stored_proc_sql(const char *sql)
 
 static int is_stored_proc(struct sqlclntstate *clnt)
 {
-    return is_stored_proc_sql(clnt->work.zSql);
+    return is_stored_proc_sql(clnt->sql);
 }
 
 /* Save copy of sql statement and performance data.  If any other code
@@ -1107,16 +1107,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (clnt->limits.maxcost_warn && (thd->cost > clnt->limits.maxcost_warn)) {
         logmsg(LOGMSG_USER,
                "[%s] warning: query exceeded cost threshold (%f >= %f): %s\n",
-               clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->work.zSql);
+               clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
         logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n",
-               clnt->origin, clnt->work.zSql);
+               clnt->origin, clnt->sql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
                "[%s] warning: query created a temporary table: %s\n",
-               clnt->origin, clnt->work.zSql);
+               clnt->origin, clnt->sql);
     }
 
     thd->crtshard = 0;
@@ -1133,8 +1133,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     listc_init(&lst, offsetof(struct sql_hist, lnk));
 
     struct sql_hist *h = calloc(1, sizeof(struct sql_hist));
-    if (clnt->work.zSql)
-        h->sql = strdup(clnt->work.zSql);
+    if (clnt->sql)
+        h->sql = strdup(clnt->sql);
     else
         h->sql = strdup("unknown");
     h->cost.cost = query_cost(thd);
@@ -1390,8 +1390,8 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
 
-    if (strlen(clnt->work.zSql) > 6)
-        epoch = retrieve_snapshot_info(&clnt->work.zSql[6], clnt->tzname);
+    if (strlen(clnt->sql) > 6)
+        epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
 
     if (epoch < 0) {
         /* overload this for now */
@@ -1418,7 +1418,7 @@ void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
  */
 static void sql_update_usertran_state(struct sqlclntstate *clnt)
 {
-    const char *sql = clnt->work.zSql;
+    const char *sql = clnt->sql;
 
     if (!clnt->in_client_trans) {
         clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
@@ -1431,7 +1431,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     /* begin, commit, rollback should arrive over the socket only
        for socksql, recom, snapisol and serial */
-    if (!strncasecmp(clnt->work.zSql, "begin", 5)) {
+    if (!strncasecmp(clnt->sql, "begin", 5)) {
         clnt->snapshot = 0;
 
         /*fprintf(stderr, "got begin\n");*/
@@ -1464,7 +1464,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                 (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                 offsetof(struct clnt_ddl_context, name), 0);
         }
-    } else if (!strncasecmp(clnt->work.zSql, "commit", 6)) {
+    } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -1480,7 +1480,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->in_client_trans = 0;
             clnt->trans_has_sp = 0;
         }
-    } else if (!strncasecmp(clnt->work.zSql, "rollback", 8)) {
+    } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -1521,7 +1521,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->work.zSql);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     /* this is a good "begin", just say "ok" */
@@ -1529,7 +1529,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* clients don't expect column data if it's a converted request */
     reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" new transaction\n",
-                (clnt->work.zSql) ? clnt->work.zSql : "(???.)");
+                (clnt->sql) ? clnt->sql : "(???.)");
 
     if (clnt->osql.replay)
         goto done;
@@ -1555,12 +1555,12 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-    reqlog_new_sql_request(thd->logger, clnt->work.zSql);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     reqlog_logf(thd->logger, REQL_QUERY,
                 "\"%s\" wrong transaction command receive\n",
-                (clnt->work.zSql) ? clnt->work.zSql : "(???.)");
+                (clnt->sql) ? clnt->sql : "(???.)");
 
     write_response(clnt, RESPONSE_ERROR_BAD_STATE,
                    "sqlinterfaces: wrong sql handle state\n", 0);
@@ -1723,7 +1723,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int irc = 0;
     int outrc = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->work.zSql);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     int64_t rows = clnt->log_effects.num_updated +
@@ -1750,7 +1750,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
-                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)");
+                    (clnt->sql) ? clnt->sql : "(???.)");
 
         rc = SQLITE_OK;
     } else {
@@ -1772,7 +1772,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                         reqlog_logf(thd->logger, REQL_QUERY,
                                     "\"%s\" RECOM commit irc=%d rc=%d\n",
-                                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)", irc,
+                                    (clnt->sql) ? clnt->sql : "(???.)", irc,
                                     rc);
                     } else {
                         if (rc == SQLITE_ABORT) {
@@ -1785,7 +1785,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                         reqlog_logf(thd->logger, REQL_QUERY,
                                     "\"%s\" RECOM abort irc=%d rc=%d\n",
-                                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)", irc,
+                                    (clnt->sql) ? clnt->sql : "(???.)", irc,
                                     rc);
                     }
                     if (irc) {
@@ -1803,7 +1803,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             rc);
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" RECOM abort(2) irc=%d rc=%d\n",
-                            (clnt->work.zSql) ? clnt->work.zSql : "(???.)", irc, rc);
+                            (clnt->sql) ? clnt->sql : "(???.)", irc, rc);
             }
 
             break;
@@ -1832,7 +1832,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                         reqlog_logf(thd->logger, REQL_QUERY,
                                     "\"%s\" %s commit irc=%d rc=%d\n",
-                                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)",
+                                    (clnt->sql) ? clnt->sql : "(???.)",
                                     (clnt->dbtran.mode == TRANLEVEL_SERIAL)
                                         ? "SERIAL"
                                         : "SNAPISOL",
@@ -1856,7 +1856,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                         reqlog_logf(thd->logger, REQL_QUERY,
                                     "\"%s\" %s abort irc=%d rc=%d\n",
-                                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)",
+                                    (clnt->sql) ? clnt->sql : "(???.)",
                                     (clnt->dbtran.mode == TRANLEVEL_SERIAL)
                                         ? "SERIAL"
                                         : "SNAPISOL",
@@ -1900,7 +1900,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" %s abort(2) irc=%d rc=%d\n",
-                            (clnt->work.zSql) ? clnt->work.zSql : "(???.)",
+                            (clnt->sql) ? clnt->sql : "(???.)",
                             (clnt->dbtran.mode == TRANLEVEL_SERIAL)
                                 ? "SERIAL"
                                 : "SNAPISOL",
@@ -1931,7 +1931,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
                 reqlog_logf(
                     thd->logger, REQL_QUERY, "\"%s\" SOCKSL abort replay=%d\n",
-                    (clnt->work.zSql) ? clnt->work.zSql : "(???.)", clnt->osql.replay);
+                    (clnt->sql) ? clnt->sql : "(???.)", clnt->osql.replay);
             }
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
                 if (gbl_early_verify && !clnt->early_retry &&
@@ -1987,19 +1987,19 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     sql_debug_logf(
                         clnt, __func__, __LINE__,
                         "'%s' socksql failed commit rc=%d replay=%d\n",
-                        clnt->work.zSql ? clnt->work.zSql : "(?)", rc, clnt->osql.replay);
+                        clnt->sql ? clnt->sql : "(?)", rc, clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL failed commit rc=%d replay=%d\n",
-                                (clnt->work.zSql) ? clnt->work.zSql : "(???.)", rc,
+                                (clnt->sql) ? clnt->sql : "(???.)", rc,
                                 clnt->osql.replay);
                 } else if (rc == 0) {
                     sql_debug_logf(clnt, __func__, __LINE__,
                                    "'%s' socksql commit rc=%d replay=%d\n",
-                                   clnt->work.zSql ? clnt->work.zSql : "(?)", rc,
+                                   clnt->sql ? clnt->sql : "(?)", rc,
                                    clnt->osql.replay);
                     reqlog_logf(thd->logger, REQL_QUERY,
                                 "\"%s\" SOCKSL commit rc=%d replay=%d\n",
-                                (clnt->work.zSql) ? clnt->work.zSql : "(???.)", rc,
+                                (clnt->sql) ? clnt->sql : "(???.)", rc,
                                 clnt->osql.replay);
                 }
 
@@ -2015,11 +2015,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "'%s' socksql abort rc=%d replay=%d\n",
-                               clnt->work.zSql ? clnt->work.zSql : "(?)", rc,
+                               clnt->sql ? clnt->sql : "(?)", rc,
                                clnt->osql.replay);
                 reqlog_logf(thd->logger, REQL_QUERY,
                             "\"%s\" SOCKSL abort(2) rc=%d replay=%d\n",
-                            (clnt->work.zSql) ? clnt->work.zSql : "(???.)", rc,
+                            (clnt->sql) ? clnt->sql : "(???.)", rc,
                             clnt->osql.replay);
             }
 
@@ -2093,7 +2093,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done sendresp=%d\n",
-                        (clnt->work.zSql) ? clnt->work.zSql : "(???.)", sendresponse);
+                        (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
         }
     } else {
         /* If this is a verify or serializable error and the client hasn't
@@ -2108,7 +2108,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
 
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retrying\n",
-                        (clnt->work.zSql) ? clnt->work.zSql : "(???.)");
+                        (clnt->sql) ? clnt->sql : "(???.)");
 
             outrc = SQLITE_OK; /* logical error */
             goto done;
@@ -2119,7 +2119,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             (clnt->osql.replay == OSQL_RETRY_LAST || clnt->verifyretry_off)) {
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done (hit last) sendresp=%d\n",
-                        (clnt->work.zSql) ? clnt->work.zSql : "(???.)", sendresponse);
+                        (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
@@ -2127,7 +2127,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
                                                  "(non verify error rc=%d) "
                                                  "sendresp=%d\n",
-                        (clnt->work.zSql) ? clnt->work.zSql : "(???.)", rc, sendresponse);
+                        (clnt->sql) ? clnt->sql : "(???.)", rc, sendresponse);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         } else {
             assert(can_retry && clnt->has_recording &&
@@ -2878,7 +2878,7 @@ static void setup_reqlog(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     /* debug */
-    thr_set_current_sql(clnt->work.zSql);
+    thr_set_current_sql(clnt->sql);
 
     /* debug */
     clnt->debug_sqlclntstate = pthread_self();
@@ -2906,7 +2906,7 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         toggle_case_sensitive_like(thd->sqldb, 1);
 
     if (gbl_dump_sql_dispatched)
-        logmsg(LOGMSG_USER, "SQL mode=%d [%s]\n", clnt->dbtran.mode, clnt->work.zSql);
+        logmsg(LOGMSG_USER, "SQL mode=%d [%s]\n", clnt->dbtran.mode, clnt->sql);
 
     reqlog_set_clnt(thd->logger, clnt);
 }
@@ -3027,14 +3027,14 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     }
 
     /* this is a new stmt (never was in cache before) so create cache object */
-    const char *sqlptr = clnt->work.zSql;
+    const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
 
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
-            add_sql_hint_table(rec->cache_hint, clnt->work.zSql);
+            add_sql_hint_table(rec->cache_hint, clnt->sql);
         }
     }
     return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
@@ -3103,7 +3103,7 @@ static void _prepare_error(struct sqlthdstate *thd,
         return;
 
     if (clnt->in_client_trans && (rec->status & CACHE_HAS_HINT ||
-                                  has_sqlcache_hint(clnt->work.zSql, NULL, NULL)) &&
+                                  has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
         !(rec->status & CACHE_FOUND_STR) &&
         (clnt->osql.replay == OSQL_RETRY_NONE)) {
 
@@ -3135,7 +3135,7 @@ static void _prepare_error(struct sqlthdstate *thd,
     if (!ignoreErr) clnt->had_errors = 1;
 
     if (gbl_print_syntax_err) {
-        logmsg(LOGMSG_WARN, "sqlite3_prepare() failed for: %s [%s]\n", clnt->work.zSql,
+        logmsg(LOGMSG_WARN, "sqlite3_prepare() failed for: %s [%s]\n", clnt->sql,
                 errstr);
     }
 
@@ -3242,14 +3242,14 @@ static void normalize_stmt_and_store(
         logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
       }
     } else {
-      assert(clnt->work.zSql);
-      char *zOrigNormSql = sqlite3Normalize(0, clnt->work.zSql);
+      assert(clnt->sql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);
         sqlite3_free(zOrigNormSql);
       } else if (gbl_verbose_normalized_queries) {
-        logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->work.zSql);
+        logmsg(LOGMSG_USER, "FAILED sqlite3Normalize({%s})\n", clnt->sql);
       }
     }
   }
@@ -3557,7 +3557,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
     sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
 
     if (p) {
-        rc = sqlite3_expert_sql(p, clnt->work.zSql, &zErr);
+        rc = sqlite3_expert_sql(p, clnt->sql, &zErr);
     }
 
     if (rc == SQLITE_OK) {
@@ -3643,7 +3643,7 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
 {
     if (clnt->osql.replay == OSQL_RETRY_DO)
         return 1;
-    if (clnt->isselect || is_with_statement(clnt->work.zSql))
+    if (clnt->isselect || is_with_statement(clnt->sql))
         return 0;
     if (clnt->in_client_trans) {
         if (from_error && !clnt->had_errors) /* send on first error */
@@ -3693,7 +3693,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     /* TODO: we can be more precise and retry things at a later LSN so long as
      * nothing has overwritten the original readsets */
-    if (clnt->isselect || is_with_statement(clnt->work.zSql)) {
+    if (clnt->isselect || is_with_statement(clnt->sql)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
     clnt->has_recording |= v->recording;
@@ -4022,7 +4022,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
     struct errstat err = {0};
     struct sql_state rec = {0};
-    rec.sql = clnt->work.zSql;
+    rec.sql = clnt->sql;
     char *allocd_str = NULL;
 
     do {
@@ -4363,7 +4363,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
 
 #ifdef DEBUG
-    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.30s'\n", clnt->work.zSql);
+    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.30s'\n", clnt->sql);
 #endif
 
     /* access control */
@@ -4593,7 +4593,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     sqlite3_stmt *stmt;
     const char *tail;
-    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->work.zSql, -1, &stmt,
+    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
                                             &tail);
     if (rc != SQLITE_OK) {
         return rc;
@@ -4811,7 +4811,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     if (fail_dispatch)
         return -1;
 
-    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->work.zSql);
+    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
 
     q_depth_tag_and_sql = thd_queue_depth();
@@ -5905,12 +5905,12 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     else
         cid = (char *)&clnt->osql.rqid;
 
-    reqlog_new_sql_request(poolthd->logger, clnt->work.zSql);
+    reqlog_new_sql_request(poolthd->logger, clnt->sql);
     log_queue_time(poolthd->logger, clnt);
     bzero(&clnt->fail_reason, sizeof(clnt->fail_reason));
     bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
     struct sql_state rec = {0};
-    rec.sql = clnt->work.zSql;
+    rec.sql = clnt->sql;
     if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr,
                                 PREPARE_NONE)) {
         goto done;
@@ -5919,7 +5919,7 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     user_request_begin(REQUEST_TYPE_QTRAP, FLAG_REQUEST_TRACK_EVERYTHING);
     if (gbl_dump_sql_dispatched)
         logmsg(LOGMSG_USER, "BLOCKSQL mode=%d [%s]\n", clnt->dbtran.mode,
-                clnt->work.zSql);
+                clnt->sql);
     ret = execute_sql_query_offload_inner_loop(clnt, poolthd, rec.stmt);
 done:
     if ((gbl_who > 0) || debug_this_request(gbl_debug_until)) {
@@ -6420,10 +6420,10 @@ static void sql_thread_describe(void *obj, FILE *out)
     }
 
     if (clnt->origin[0]) {
-        logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->work.zSql);
+        logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->sql);
     } else {
         host = get_origin_mach_by_buf(clnt->sb);
-        logmsg(LOGMSG_USER, "(old client) %s \"%s\"\n", host, clnt->work.zSql);
+        logmsg(LOGMSG_USER, "(old client) %s \"%s\"\n", host, clnt->sql);
     }
 }
 
@@ -6488,7 +6488,7 @@ void run_internal_sql(char *sql)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.work.zSql = skipws(sql);
+    clnt.sql = skipws(sql);
 
     dispatch_sql_query(&clnt);
     if (clnt.query_rc || clnt.saved_errstr) {
@@ -6545,7 +6545,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].time_in_state_int = clnt->state_start_time;
       Pthread_mutex_lock(&clnt->state_lk);
       if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
-         c[connid].sql = strdup(clnt->work.zSql);
+         c[connid].sql = strdup(clnt->sql);
       } else {
          c[connid].sql = NULL;
       }
@@ -6567,11 +6567,11 @@ static int internal_read_response(struct sqlclntstate *a, int b, void *c, int d)
 }
 static void *internal_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
-    return strdup(clnt->work.zSql);
+    return strdup(clnt->sql);
 }
 static void *internal_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
-    clnt->work.zSql = arg;
+    clnt->sql = arg;
     return NULL;
 }
 static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
@@ -6690,7 +6690,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
 #ifdef DEBUGQUERY
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
-    clnt->work.zSql = skipws(sql);
+    clnt->sql = skipws(sql);
     dispatch_sql_query(clnt);
     int rc = 0;
 
