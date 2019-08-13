@@ -19,6 +19,16 @@ usage() {
     exit 1
 }
 
+prepare_abort() {
+    prep_log=$1
+    testname=$2
+    echo "failed to prepare table(s) for $testname test"
+    echo "prepare logs:"
+    cat $prep_log
+    echo "exiting .."
+    exit 1
+}
+
 while getopts "sd:r:e:" options; do
     case "${options}" in
         d) dbname=${OPTARG} ;;
@@ -40,7 +50,22 @@ sqlfiles=`ls *.$sql_extn`
 for sqlfile in $sqlfiles; do
     echo "$sqlfile"
     testname=`echo $sqlfile | cut -d "." -f 1`
-    cmd="cdb2sql $script_mode -f $sqlfile ${CDB2_OPTIONS} $dbname default "
+    prep_log=$testname.prepare.err
+
+    touch $prep_log
+
+    for schema in `ls $testname.*.csc2 2> /dev/null` ; do
+        table=`echo $schema | cut -d "." -f2`
+        cdb2sql ${CDB2_OPTIONS} $dbname default "drop table if exists $table" > $prep_log 2>&1
+        [ $? -eq 0 ] || prepare_abort $prep_log $testname
+
+        cdb2sql ${CDB2_OPTIONS} $dbname default "create table $table { `cat $schema` }" > $prep_log 2>&1
+        [ $? -eq 0 ] || prepare_abort $prep_log $testname
+    done
+
+    rm $prep_log
+
+    cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"
     $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
                           s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
