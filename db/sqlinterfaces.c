@@ -5045,6 +5045,7 @@ static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
 int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
+    case SQL_TDEF_COMDB2:
     case SQL_TDEF_SOCK:
         return TRANLEVEL_SOSQL;
 
