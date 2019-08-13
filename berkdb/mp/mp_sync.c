@@ -1386,7 +1386,7 @@ __memp_load(dbenv, s, pages, lines)
 	DB_MPOOLFILE *dbmfp;
 	fileid_page_env_t *fileid_env = NULL;
  	u_int32_t lineno = 0, start, end;
-	int ret, endofline, max_pages = gbl_load_cache_max_pages;
+	int ret, endofline = 0, max_pages = gbl_load_cache_max_pages;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
 	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
