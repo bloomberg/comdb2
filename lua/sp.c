@@ -118,6 +118,7 @@ struct dbstmt_t {
     sqlite3_stmt *stmt;
     int rows_changed;
     uint16_t num_tbls;
+    uint8_t readonly;
     uint8_t fetched;
     uint8_t initial; // 1: stmt tables are locked
     struct sql_state *rec; // only db:prepare will set
@@ -2231,7 +2232,7 @@ static inline void no_stmt_chk(Lua L, const dbstmt_t *dbstmt)
 static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
 {
     no_stmt_chk(lua, dbstmt);
-    if (dbstmt->fetched) {
+    if (dbstmt->fetched > 0) {
         dbstmt->fetched = 0;
         sqlite3_reset(dbstmt->stmt);
     }
@@ -2640,6 +2641,7 @@ dbstmt_t *new_dbstmt(Lua lua, SP sp, sqlite3_stmt *stmt)
     if (dbstmt->num_tbls) {
         LIST_INSERT_HEAD(&sp->dbstmts, dbstmt, entries);
     }
+    dbstmt->readonly = sqlite3_stmt_readonly(stmt);
     return dbstmt;
 }
 static int dbtable_where(lua_State *lua)
@@ -3399,13 +3401,13 @@ static int dbstmt_bind(Lua L)
 */
 static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt, int profile)
 {
-    if (dbstmt->fetched) {
+    if (dbstmt->fetched > 0) {
         // tbls already locked by previous step()
         return;
     }
     run_stmt_setup(sp->clnt, dbstmt->stmt);
     if (profile) lua_begin_step(sp->clnt, sp, dbstmt->stmt);
-    dbstmt->fetched = 1;
+    dbstmt->fetched++;
     if (dbstmt->rec == NULL) {
         // Not a prepared-stmt.
         // tbls locked by get_prepared_stmt_try_lock()
@@ -3442,6 +3444,11 @@ static int dbstmt_exec(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
+    if (!dbstmt->readonly && dbstmt->fetched > 1) {
+        db_reset(lua);
+        lua_pushinteger(lua, 0);
+        return 1;
+    }
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
@@ -3451,6 +3458,7 @@ static int dbstmt_exec(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
     dbstmt->rows_changed = sqlite3_changes(sqldb);
+    dbstmt->fetched++;
     if (rc == SQLITE_DONE) {
         sqlite3_reset(stmt);
         db_reset(lua);
@@ -3469,6 +3477,7 @@ static int dbstmt_fetch(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
+    if (!dbstmt->readonly && dbstmt->fetched > 1) return 0;
     setup_first_sqlite_step(sp, dbstmt, 1);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
@@ -3482,6 +3491,7 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
+    if (!dbstmt->readonly && dbstmt->fetched > 1) return push_and_return(L, 0);
     setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
@@ -3771,7 +3781,7 @@ static int db_exec(Lua lua)
         return 2;
     }
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
-    if (sqlite3_stmt_readonly(stmt)) {
+    if (dbstmt->readonly) {
         // dbstmt:fetch() will run it
         lua_pushinteger(lua, 0);
         return 2;
@@ -3787,6 +3797,7 @@ static int db_exec(Lua lua)
     lua_end_step(sp->clnt, sp, stmt);
     if (rc == SQLITE_DONE) {
         dbstmt->rows_changed = sqlite3_changes(sqldb);
+        dbstmt->fetched++;
         sp->rc = 0;
     } else {
         const char *err;

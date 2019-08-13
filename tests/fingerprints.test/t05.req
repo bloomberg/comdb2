@@ -27,4 +27,4 @@ create procedure fp_test_2 version 'sptest' {
 put default procedure fp_test_2 'sptest'
 exec procedure fp_test_2()
 
-select * from comdb2_fingerprints where normalized_sql = 'SELECT?,?,?,?,?;' order by 1;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql = 'SELECT?,?,?,?,?;' order by 1;
