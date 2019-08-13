@@ -770,12 +770,6 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
-  }else if( sqlite3_stricmp(zName, "priority")==0 ){
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
-    if( clnt!=NULL ){
-      sqlite3_result_int64(context, clnt->priority);
-    }
   }else if( sqlite3_stricmp(zName, "version")==0 ){
     char *zVersion = sqlite3_mprintf("[%s] [%s] [%s] [%s] [%s]", gbl_db_version,
                                      gbl_db_codename, gbl_db_semver,
@@ -807,6 +801,12 @@ static void comdb2CtxinfoFunc(
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
     sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
+  }else if( sqlite3_stricmp(zName, "priority")==0 ){
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+    if( clnt!=NULL ){
+      sqlite3_result_int64(context, clnt->priority);
+    }
   }
 }
 
