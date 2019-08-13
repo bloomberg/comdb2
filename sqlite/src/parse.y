@@ -1568,21 +1568,12 @@ uniqueflag(A) ::= .        {A = OE_None;}
     int sortOrder
   ){
     ExprList *p = sqlite3ExprListAppend(pParse, pPrior, 0);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* Allow sort order in FK index columns. */
-    if( hasCollate && pParse->db->init.busy==0)
-    {
-      sqlite3ErrorMsg(pParse, "syntax error after column name \"%.*s\"",
-                         pIdToken->n, pIdToken->z);
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( (hasCollate || sortOrder!=SQLITE_SO_UNDEFINED)
         && pParse->db->init.busy==0
     ){
       sqlite3ErrorMsg(pParse, "syntax error after column name \"%.*s\"",
                          pIdToken->n, pIdToken->z);
     }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ExprListSetName(pParse, p, pIdToken, 1);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     sqlite3ExprListSetSortOrder(p, sortOrder);
@@ -2372,13 +2363,20 @@ cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {
 }
 cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, &V, &X);
+}
 
 /////////////////////////////// DROP PROCEDURE ////////////////////////////////
-}
+
 cmd ::= DROP PROCEDURE nm(N) INTEGER(V). {
     comdb2DropProcedure(pParse, &N, &V, 0);
 }
+cmd ::= DROP PROCEDURE nm(N) VERSION INTEGER(V). {
+    comdb2DropProcedure(pParse, &N, &V, 0);
+}
 cmd ::= DROP PROCEDURE nm(N) STRING(V). {
+    comdb2DropProcedure(pParse, &N, &V, 1);
+}
+cmd ::= DROP PROCEDURE nm(N) VERSION STRING(V). {
     comdb2DropProcedure(pParse, &N, &V, 1);
 }
 

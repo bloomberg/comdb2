@@ -127,27 +127,6 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 
 
-#putting this here for now -- make sure verify behaves as we expect
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify.out
-echo "Usage: verify(\"<table>\")
-[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed." > verify.exp
-if ! diff verify.exp verify.out ; then
-    failexit "Verify did not fail correctly, see verify.out"
-fi
-
-echo "Table \"nonexistent\" does not exist.
-[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed." > verify.exp
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
-if ! diff verify.exp verify.out ; then
-    failexit "Verify did not fail correctly, see verify.out"
-fi
-
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-if ! grep succeeded verify.out > /dev/null ; then
-    failexit "Verify did not succeed, see verify.out"
-fi
-
-
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
 max_iter=40

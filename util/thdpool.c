@@ -49,6 +49,8 @@
 #include "comdb2_pthread_create.h"
 #endif
 
+int gbl_random_thdpool_work_timeout = 0;
+
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
@@ -96,6 +98,7 @@ struct thdpool {
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
+    unsigned nwaitthd;  /* current number of wait/consumer threads */
     unsigned peaknthd;  /* maximum num threads ever */
     unsigned maxqueue;  /* maximum work items to queue */
     unsigned peakqueue; /* peak queue size */
@@ -267,6 +270,27 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
+void thdpool_destroy(struct thdpool **pool_p)
+{
+    if (!*pool_p)
+        return;
+    struct thdpool *pool = *pool_p;
+    *pool_p = NULL;
+
+    Pthread_mutex_lock(&pool_list_lk);
+    listc_rfl(&threadpools, pool);
+    Pthread_mutex_unlock(&pool_list_lk);
+
+    Pthread_cond_destroy(&pool->wait_for_thread);
+    Pthread_mutex_destroy(&pool->mutex);
+    Pthread_attr_destroy(&pool->attrs);
+
+    free(pool->busy_hist);
+    pool_free(pool->pool);
+    free(pool->name);
+    free(pool);
+}
+
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
                      void *user)
 {
@@ -384,6 +408,8 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
                 pool->num_failed_dispatches);
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
         logmsgf(LOGMSG_USER, fh, "  Maximum num threads       : %u\n", pool->maxnthd);
+        logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n",
+                pool->nwaitthd);
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue current size   : %u\n",
@@ -577,9 +603,18 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     } else {
         struct workitem *next;
         while ((next = priority_queue_next(&thd->pool->queue)) != NULL) {
-            if (thd->pool->maxqueueagems > 0 &&
+            int force_timeout = 0;
+            if ((thd->pool->maxqueueagems > 0) &&
+                gbl_random_thdpool_work_timeout &&
+                !(rand() % gbl_random_thdpool_work_timeout)) {
+                force_timeout = 1;
+                logmsg(LOGMSG_WARN,
+                       "%s: forcing a random work item timeout\n",
+                       __func__);
+            }
+            if (force_timeout || (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - next->queue_time_ms >
-                    thd->pool->maxqueueagems) {
+                    thd->pool->maxqueueagems)) {
                 if (thd->pool->dque_fn)
                     thd->pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {
@@ -653,7 +688,8 @@ static void *thdpool_thd(void *voidarg)
             struct timespec *ts = NULL;
             int thr_exit = 0;
 
-            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > pool->maxnthd)
+            if (pool->maxnthd > 0 &&
+                listc_size(&pool->thdlist) > (pool->maxnthd + pool->nwaitthd))
                 check_exit = 1;
             else
                 check_exit = 0;
@@ -737,8 +773,8 @@ static void *thdpool_thd(void *voidarg)
         if (check_exit) {
             LOCK(&pool->mutex)
             {
-                if (pool->maxnthd > 0 &&
-                    listc_size(&pool->thdlist) > pool->maxnthd) {
+                if (pool->maxnthd > 0 && listc_size(&pool->thdlist) >
+                                             (pool->maxnthd + pool->nwaitthd)) {
                     listc_rfl(&pool->thdlist, thd);
                     if (thd->on_freelist)
                         abort();
@@ -841,8 +877,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             assert(thd->on_freelist);
             thd->on_freelist = 0;
         }
-        if (!thd && (force_dispatch || pool->maxnthd == 0 ||
-                     listc_size(&pool->thdlist) < pool->maxnthd)) {
+        if (!thd &&
+            (force_dispatch || pool->maxnthd == 0 ||
+             listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
 
             thd = calloc(1, sizeof(struct thd));
@@ -1035,6 +1072,16 @@ int thdpool_get_nthds(struct thdpool *pool)
 int thdpool_get_nfreethds(struct thdpool *pool)
 {
     return pool->freelist.count;
+}
+
+void thdpool_add_waitthd(struct thdpool *pool)
+{
+    pool->nwaitthd++;
+}
+
+void thdpool_remove_waitthd(struct thdpool *pool)
+{
+    pool->nwaitthd--;
 }
 
 int thdpool_get_maxthds(struct thdpool *pool)

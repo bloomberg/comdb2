@@ -1,0 +1,1 @@
+SELECT fingerprint, count, total_cost, total_rows, normalized_sql FROM comdb2_fingerprints WHERE fingerprint NOT IN (x'4f16a8ec9db90f803e406659938b2602', x'69d1558c950bbb908f4b8df0d63e2cf4', x'812bdde365a22a61bcd52bf005990c37') ORDER BY fingerprint;

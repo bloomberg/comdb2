@@ -21,7 +21,7 @@ source $testdir/tester.tcl
 do_test delete-1.1 {
   set v [catch {execsql {DELETE FROM test1}} msg]
   lappend v $msg
-} {1 {Table not found}}
+} {0 {1 {no such table: test1}}}
 
 # Try to delete from sqlite_master
 #

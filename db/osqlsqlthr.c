@@ -1504,7 +1504,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         /* pass to master the state of verify retry.
          * if verify retry is on and error is retryable, don't write to
          * blkseq on master because replicant will retry */
-        snap_info.replicant_can_retry = replicant_can_retry(clnt);
+        snap_info.replicant_is_able_to_retry = replicant_is_able_to_retry(clnt);
         snap_info.effects = clnt->effects;
         comdb2uuidcpy(snap_info.uuid, osql->uuid);
         snap_info_p = &snap_info;

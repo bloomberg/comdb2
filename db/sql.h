@@ -240,7 +240,7 @@ typedef dbtran_type trans_t;
 typedef struct {
     char name[MAXTABLELEN];
     int ixnum;
-    struct temp_table *sampled_table;
+    sampler_t *sampler;
     int sampling_pct;
     unsigned long long n_recs;
     unsigned long long n_sampled_recs;
@@ -528,7 +528,8 @@ enum prepare_flags {
     PREPARE_DENY_CREATE_TRIGGER = 2,
     PREPARE_DENY_PRAGMA = 4,
     PREPARE_DENY_DDL = 8,
-    PREPARE_IGNORE_ERR = 16
+    PREPARE_IGNORE_ERR = 16,
+    PREPARE_NO_NORMALIZE = 32
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
@@ -543,10 +544,17 @@ struct sql_state {
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
     char *zSql;           /* Original SQL query for this work. */
-    char *zNormSql;       /* Normalized version of latest SQL query. */
+    const char *zNormSql; /* Normalized version of latest SQL query. */
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+};
+
+struct sql_hist_cost {
+    double cost;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
 };
 
 /* Client specific sql state */
@@ -720,6 +728,7 @@ struct sqlclntstate {
     sqlclntstate_fdb_t fdb_state;
 
     int nrows;
+    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
@@ -821,6 +830,8 @@ struct sqlclntstate {
      * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
     char* origin_host;
+    int8_t sent_data_to_client;
+    int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
 };
 
@@ -937,8 +948,7 @@ struct BtCursor {
     /* special case for a temp table: pointer to a temp table handle */
     struct temptable *tmptable;
 
-    /* sampled (previously misnamed compressed) idx temptable */
-    struct temptable *sampled_idx;
+    sampler_t *sampler;
 
     blob_status_t blobs;
 
@@ -1019,9 +1029,7 @@ struct BtCursor {
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
     char *sql;
-    double cost;
-    int time;
-    int prepTime;
+    struct sql_hist_cost cost;
     int when;
     int64_t txnid;
     struct conninfo conn;
@@ -1037,9 +1045,6 @@ struct sql_thread {
     int nmove;
     int nfind;
     int nwrite;
-    int ntmpwrite;
-    int ntmpread;
-    int nblobs;
     int bufsz;
     int id;
     char *buf;
@@ -1115,7 +1120,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse);
 
-int replicant_can_retry(struct sqlclntstate *clnt);
+int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);
@@ -1162,7 +1167,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
-void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *,
+                      struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
@@ -1227,9 +1233,12 @@ struct query_stats {
 };
 int get_query_stats(struct query_stats *stats);
 
+void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
+
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *);
 

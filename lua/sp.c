@@ -419,6 +419,10 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
     return 0;
 }
 
+extern struct thdpool *gbl_sqlengine_thdpool;
+
+pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
                                   int register_timeoutms)
 {
@@ -429,20 +433,33 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     if (retry <= 0) {
         retry = 1;
     }
+
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
         if (register_timeoutms) {
             if (retry == 0) {
                 luabb_error(L, sp, " trigger:%s registration timeout %dms",
                             reg->spname, register_timeoutms);
-                return -2;
+                rc = -2;
+                goto out;
             }
             --retry;
         }
         if (check_retry_conditions(L, 1) != 0) {
-            return luabb_error(L, sp, sp->error);
+            rc = luabb_error(L, sp, sp->error);
+            goto out;
         }
         sleep(1);
     }
+
+out:
+    Pthread_mutex_lock(&consumer_sqlthds_mutex);
+    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
+    Pthread_mutex_unlock(&consumer_sqlthds_mutex);
+
     return rc;
 }
 
@@ -1048,6 +1065,10 @@ static int enable_global_variables(lua_State *lua)
     return 0;
 }
 
+static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
+static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_end_all_step(struct sqlclntstate *, SP);
 static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
@@ -1115,11 +1136,14 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
     }
     // now, actually create the temp table
-    *lk = malloc(sizeof(pthread_mutex_t));
+    *lk = calloc(1, sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
+    }
+    lua_end_step(sp->clnt, sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
     unlock_schema_lk();
     sqlite3_finalize(stmt);
@@ -1127,6 +1151,12 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     if (rc == SQLITE_DONE) {
         return 0;
     } else {
+        logmsg(LOGMSG_ERROR, "%s: FAILED ddl={%s}, rc=%d\n",
+                __func__, ddl, rc);
+
+        Pthread_mutex_destroy(*lk);
+        free(*lk);
+        *lk = NULL;
         luabb_error(lua, sp, sqlite3ErrStr(rc));
     }
 out:
@@ -1232,12 +1262,15 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
     struct sqlclntstate *clnt = sp->clnt;
-    int rc = sqlite3_step(stmt);
+    int rc = sqlite3_maybe_step(clnt, stmt);
 
     if (rc == SQLITE_DONE) {
+        lua_end_step(clnt, sp, stmt);
         return rc;
     } else if (rc != SQLITE_ROW) {
         return luaL_error(lua, sqlite3_errmsg(getdb(sp)));
+    } else {
+        lua_another_step(clnt, stmt, rc);
     }
 
     lua_newtable(lua);
@@ -1933,6 +1966,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         lua_pop(lua, 1);
         if ((sp->max_num_instructions > 0) &&
             (sp->num_instructions > sp->max_num_instructions)) {
+            lua_end_all_step(sp->clnt, sp);
             luabb_error(
                 lua, NULL,
                 "Exceeded instruction quota (%d). Set db:setmaxinstructions()",
@@ -2083,9 +2117,109 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     return sp->rc;
 }
 
+static void lua_begin_step(struct sqlclntstate *clnt, SP sp,
+                           sqlite3_stmt *pStmt)
+{
+    int64_t time = comdb2_time_epochms();
+    Vdbe *pVdbe = (Vdbe*)pStmt;
+
+    if ((sp != NULL) && (pVdbe != NULL)) {
+        save_thd_cost_and_reset(sp->thd, pVdbe);
+        pVdbe->luaStartTime = time;
+        pVdbe->luaRows = 0;
+    }
+}
+
+static void lua_another_step(struct sqlclntstate *clnt,
+                             sqlite3_stmt *pStmt, int rc)
+{
+    Vdbe *pVdbe = (Vdbe*)pStmt;
+
+    if ((pVdbe != NULL) && (rc == SQLITE_ROW)) {
+        pVdbe->luaRows++;
+    }
+}
+
+static void lua_end_step(struct sqlclntstate *clnt, SP sp,
+                         sqlite3_stmt *pStmt)
+{
+    int64_t time = comdb2_time_epochms();
+    Vdbe *pVdbe = (Vdbe*)pStmt;
+
+    if ((sp != NULL) && (pVdbe != NULL)) {
+        const char *zNormSql = sqlite3_normalized_sql(pStmt);
+
+        if (zNormSql != NULL) {
+            double cost = 0.0;
+            int64_t prepMs = 0;
+            int64_t timeMs;
+
+            clnt_query_cost(sp->thd, &cost, &prepMs);
+            timeMs = time - pVdbe->luaStartTime + prepMs;
+
+            add_fingerprint(
+                sqlite3_sql(pStmt), zNormSql, cost,
+                timeMs, prepMs, pVdbe->luaRows, NULL
+            );
+
+            clnt->spcost.cost += cost;
+            clnt->spcost.time += timeMs;
+            clnt->spcost.prepTime += prepMs;
+            clnt->spcost.rows += pVdbe->luaRows;
+        }
+
+        restore_thd_cost_and_reset(sp->thd, pVdbe);
+    }
+}
+
+static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
+{
+    if (sp != NULL) {
+        dbstmt_t *dbstmt, *tmp;
+        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
+        {
+            lua_end_step(clnt, sp, dbstmt->stmt);
+        }
+    }
+}
+
 static int lua_get_prepare_flags()
 {
-    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
+    /*
+    ** NOTE: Why are each of these flags used here?
+    **
+    **       PREPARE_DENY_DDL: Completely forbid any DDL from being
+    **                         executed.  This is important because
+    **                         various places in this subsystem may
+    **                         assume that the schema should not be 
+    **                         changed while a stored procedure is
+    **                         running.  Setting this flag ends up
+    **                         causing the custom SQLite authorizer
+    **                         callback for Comdb2 to forbid any
+    **                         operation that is considered DDL
+    **                         (e.g. CREATE TABLE, ANALYZE, etc).
+    **
+    **     PREPARE_IGNORE_ERR: Prevent any error encountered during
+    **                         the prepare phase (e.g. bad syntax,
+    **                         schema changed, etc) from putting the
+    **                         "clnt" into a persistent error state.
+    **                         The SQL query that caused the error
+    **                         cannot be executed; however, the
+    **                         running stored procedure can continue
+    **                         doing other work (i.e. perhaps via a
+    **                         different SQL query, etc).
+    **
+    **   PREPARE_NO_NORMALIZE: Skip calculating the normalized SQL
+    **                         query text for any SQL query that
+    **                         originates from within a stored
+    **                         procedure as these are now handled
+    **                         within this subsystem, via the 
+    **                         lua_end_step() function, which can
+    **                         (also) correctly calculate metrics
+    **                         associated with the normalized SQL
+    **                         query text and its fingerprint hash.
+    */
+    return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR | PREPARE_NO_NORMALIZE;
 }
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
@@ -2207,8 +2341,11 @@ static int dbtable_insert(Lua lua)
     }
     lua_pop(lua, 1); /* Keep just dbtable on stack. */
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
+    }
+    lua_end_step(sp->clnt, sp, stmt);
 
     if (rc == SQLITE_DONE) rc = 0;
 
@@ -2262,8 +2399,11 @@ static int dbtable_copyfrom(Lua lua)
         return rc;
     }
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
+    }
+    lua_end_step(sp->clnt, sp, stmt);
 
     sqlite3_finalize(stmt);
 
@@ -3101,13 +3241,26 @@ static int dbstmt_bind(Lua L)
     return dbstmt_bind_int(L, lua_touserdata(L, 1));
 }
 
-static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
+/*
+** NOTE: The "profile" (logical boolean) argument is used here to indicate
+**       whether or not the caller has its own BEGIN / ANOTHER / END loop
+**       (i.e. using the lua_*_step() functions).  When zero, it means the
+**       caller does have its own SQL statement stepping loop and this
+**       function must not call lua_begin_step() on the callers behalf when
+**       performing first-time setup for the result set.  When non-zero, it
+**       means the caller does not have its own SQL statement stepping loop
+**       (currently dbstmt_fetch() only) and this function must call the
+**       lua_begin_step() on the callers behalf when performing first-time
+**       setup for the result set.
+*/
+static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt, int profile)
 {
     if (dbstmt->fetched) {
         // tbls already locked by previous step()
         return;
     }
     run_stmt_setup(sp->clnt, dbstmt->stmt);
+    if (profile) lua_begin_step(sp->clnt, sp, dbstmt->stmt);
     dbstmt->fetched = 1;
     if (dbstmt->rec == NULL) {
         // Not a prepared-stmt.
@@ -3145,11 +3298,14 @@ static int dbstmt_exec(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
+    }
+    lua_end_step(sp->clnt, sp, stmt);
     dbstmt->rows_changed = sqlite3_changes(sqldb);
     if (rc == SQLITE_DONE) {
         sqlite3_reset(stmt);
@@ -3165,13 +3321,14 @@ static int dbstmt_exec(Lua lua)
 
 static int dbstmt_fetch(Lua lua)
 {
+    SP sp = getsp(lua);
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    setup_first_sqlite_step(getsp(lua), dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 1);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
-    donate_stmt(getsp(lua), dbstmt);
+    donate_stmt(sp, dbstmt);
     return 0;
 }
 
@@ -3181,16 +3338,19 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int cols = column_count(NULL, stmt);
     int rc;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
         if (l_send_back_row(L, stmt, cols) != 0) {
             rc = -1;
             break;
         }
     }
+    lua_end_step(sp->clnt, sp, stmt);
     reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
     return push_and_return(L, rc);
@@ -3340,7 +3500,11 @@ int db_csvcopy(Lua lua)
           }
       	  if (csv.cTerm == 0) break;
         }
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) ;
+        lua_begin_step(sp->clnt, sp, stmt);
+        while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+            lua_another_step(sp->clnt, stmt, rc);
+        }
+        lua_end_step(sp->clnt, sp, stmt);
 
         for (int i = 0; i < pos-1; i++) {
             free(b_val[i]);
@@ -3402,10 +3566,13 @@ static int db_exec(Lua lua)
     }
 
     // a write stmt - run it now
-    setup_first_sqlite_step(sp, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt, 0);
     sqlite3 *sqldb = getdb(sp);
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-        ;
+    lua_begin_step(sp->clnt, sp, stmt);
+    while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
+        lua_another_step(sp->clnt, stmt, rc);
+    }
+    lua_end_step(sp->clnt, sp, stmt);
     if (rc == SQLITE_DONE) {
         dbstmt->rows_changed = sqlite3_changes(sqldb);
         sp->rc = 0;
@@ -4269,7 +4436,7 @@ static int db_consumer(Lua L)
         return 0;
     }
     char spname[strlen(sp->spname) + 1];
-    strncpy(spname, sp->spname, strlen(sp->spname) + 1);
+    strcpy(spname, sp->spname);
     Q4SP(qname, spname);
 
     struct dbtable *db = getqueuebyname(qname);

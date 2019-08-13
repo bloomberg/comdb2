@@ -78,7 +78,6 @@ register_linearizable.test
 sigstopcluster.test
 cinsert_linearizable.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
-restart_socksql.test      -- dont run this for now since masterbranch fails it
 phys_rep.test
 <END>
 

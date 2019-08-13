@@ -88,6 +88,8 @@ int gbl_watcher_thread_ran = 0;
 int gbl_lost_master_time = 0;
 int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
+int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
+int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
@@ -3590,7 +3592,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
     }
 }
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
         bzero(seqnum, sizeof(seqnum_type));
@@ -3603,6 +3605,7 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
     }
+    return (seqnum->lsn.file > 0);
 }
 
 int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
@@ -5194,6 +5197,7 @@ void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
+    extern int gbl_truncating_log;
     char *master_host = db_eid_invalid;
     int stopped_count = 0;
     int i;
@@ -5234,7 +5238,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (1) {
+    while (!db_is_stopped()) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5249,16 +5253,17 @@ void *watcher_thread(void *arg)
             sleep(diff);
         }
 
-        if (db_is_stopped()) {
+        if (gbl_truncating_log) {
             stopped_count++;
-            if (stopped_count > 30) {
-                logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
+            if (stopped_count > gbl_long_log_truncation_abort_thresh_sec) {
+                logmsg(LOGMSG_FATAL,
+                       "%s: truncating log for %d seconds, aborting\n",
                        __func__, stopped_count);
                 abort();
             }
-            if (stopped_count > 3) {
-                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
-                       stopped_count);
+            if (stopped_count > gbl_long_log_truncation_warn_thresh_sec) {
+                logmsg(LOGMSG_WARN, "%s: truncating log for %d seconds\n",
+                       __func__, stopped_count);
             }
             sleep(1);
             gbl_watcher_thread_ran = comdb2_time_epoch();

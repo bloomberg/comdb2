@@ -971,9 +971,13 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                       od_len, fndlen, rc);
         reqerrstr(iq, COMDB2_UPD_RC_UNKN_REC, "find old record failed");
         *opfailcode = OP_FAILED_VERIFY;
-        if (rc == RC_INTERNAL_RETRY)
+        if (rc == RC_INTERNAL_RETRY) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d find old record failed with "
+                   "internal_retry\n",
+                   __func__, __LINE__);
             retrc = rc;
-        else
+        } else
             retrc = ERR_VERIFY;
         goto err;
     }
@@ -2765,7 +2769,7 @@ done:
     free(stuff);
 }
 
-int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int odhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     void *out;
     size_t len;
@@ -2800,7 +2804,7 @@ int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     return 0;
 }
 
-int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int unodhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     int rc;
     void *out;

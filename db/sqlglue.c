@@ -590,7 +590,7 @@ static int is_sqlite_db_init(BtCursor *pCur)
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
  */
-static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
+static int sql_tick(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt;
     int rc;
@@ -613,7 +613,7 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (uses_bdb_locking && bdb_lock_desired(thedb->bdb_env)) {
+    if (bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
 
         logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
@@ -665,7 +665,7 @@ static int gbl_query_id = 1;
 int comdb2_sql_tick()
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    return sql_tick(thd, 0);
+    return sql_tick(thd);
 }
 
 void sql_get_query_id(struct sql_thread *thd)
@@ -2039,7 +2039,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
-    struct sqlclntstate client = {0};
+    struct sqlclntstate clnt;
     struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
@@ -2061,29 +2061,29 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         sql_mem_shutdown(NULL);
         return -1;
     }
-    ents = create_master_entry_array(&db, 1, &nents);
+    ents = create_master_entry_array(&db, 1, thedb->view_hash, &nents);
     if (!ents) {
         logmsg(LOGMSG_ERROR, "%s: failed to create master entries\n", __func__);
         sql_mem_shutdown(NULL);
         return -1;
     }
 
-    reset_clnt(&client, NULL, 1);
-    client.sb = NULL;
-    client.work.zSql= (char *)temp;
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.dbtran.mode = TRANLEVEL_SOSQL;
+    reset_clnt(&clnt, NULL, 1);
+    clnt.sb = NULL;
+    clnt.work.zSql= (char *)temp;
+    sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
 
     /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
      * mark db->schema->ix_blob if the index expression has blob fields */
     sm.sc = db->schema;
-    client.verify_indexes = 1;
-    client.schema_mems = &sm;
+    clnt.verify_indexes = 1;
+    clnt.schema_mems = &sm;
 
     struct sql_thread *sqlthd = start_sql_thread();
     sql_get_query_id(sqlthd);
-    client.debug_sqlclntstate = pthread_self();
-    sqlthd->clnt = &client;
+    clnt.debug_sqlclntstate = pthread_self();
+    sqlthd->clnt = &clnt;
 
     get_copy_rootpages_custom(sqlthd, ents, nents);
 
@@ -2095,7 +2095,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         goto done;
     }
 
-    rc = get_curtran(thedb->bdb_env, &client);
+    rc = get_curtran(thedb->bdb_env, &clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s: td %lu unable to get a CURSOR transaction, rc = %d!\n",
@@ -2104,7 +2104,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
     got_curtran = 1;
 
-    rc = sqlite3_exec(hndl, client.work.zSql, NULL, NULL, &err);
+    rc = sqlite3_exec(hndl, clnt.work.zSql, NULL, NULL, &err);
 done:
     if (err) {
         logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
@@ -2112,12 +2112,12 @@ done:
             reqerrstr(iq, ERR_SC, "%s", err);
         sqlite3_free(err);
     }
-    if (got_curtran && put_curtran(thedb->bdb_env, &client))
+    if (got_curtran && put_curtran(thedb->bdb_env, &clnt))
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
         sqlite3_close(hndl);
 
-    cleanup_clnt(&client);
+    cleanup_clnt(&clnt);
     done_sql_thread();
     sql_mem_shutdown(NULL);
     return rc;
@@ -2196,8 +2196,7 @@ static inline int i64cmp(const i64 *key1, const i64 *key2)
  * This is a helper to the other cursor_move functions, which
  * are part of a cursor's method function block.
  */
-static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
-                               int uses_bdb_locking)
+static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 {
     struct sql_thread *thd = pCur->thd;
     int rc = SQLITE_OK;
@@ -2231,7 +2230,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
     }
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd, uses_bdb_locking);
+        rc = sql_tick(thd);
         if (rc) {
             *done = 1;
             return rc;
@@ -2350,7 +2349,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return SQLITE_ACCESS;
     }
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -2489,7 +2488,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
         return SQLITE_ACCESS;
     }
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -2633,7 +2632,7 @@ static int tmptbl_cursor_move(BtCursor *pCur, int *pRes, int how)
     int done = 0;
     int rc = SQLITE_OK;
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done)
         return rc;
 
@@ -2675,33 +2674,28 @@ static int tmptbl_cursor_move(BtCursor *pCur, int *pRes, int how)
 
 static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
 {
-    int bdberr = 0;
     int done = 0;
     int rc = SQLITE_OK;
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done)
         return rc;
 
     switch (how) {
     case CFIRST:
-        rc = bdb_temp_table_first(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                  &bdberr);
+        rc = sampler_first(pCur->sampler);
         break;
 
     case CLAST:
-        rc = bdb_temp_table_last(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_last(pCur->sampler);
         break;
 
     case CPREV:
-        rc = bdb_temp_table_prev(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_prev(pCur->sampler);
         break;
 
     case CNEXT:
-        rc = bdb_temp_table_next(thedb->bdb_env, pCur->sampled_idx->cursor,
-                                 &bdberr);
+        rc = sampler_next(pCur->sampler);
         break;
     }
 
@@ -2716,7 +2710,7 @@ static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
     }
 
     else {
-        void *tmp = bdb_temp_table_key(pCur->sampled_idx->cursor);
+        void *tmp = sampler_key(pCur->sampler);
 
         rc = ondisk_to_sqlite_tz(pCur->db, pCur->sc, tmp, 2, 0, pCur->keybuf,
                                  pCur->keybuf_alloc, 0, NULL, NULL, NULL,
@@ -2817,7 +2811,7 @@ static int cursor_move_remote(BtCursor *pCur, int *pRes, int how)
 
     assert(pCur->fdbc != NULL);
 
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 1);
+    rc = cursor_move_preprop(pCur, pRes, how, &done);
     if (done) {
         return rc;
     }
@@ -3373,6 +3367,7 @@ int sqlite3BtreeOpen(
         int masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
+        if (rc != SQLITE_OK) goto done;
         assert(masterPgno == 1); /* sqlite_temp_master root page number */
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
@@ -3391,11 +3386,11 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         bt->is_remote = 1;
         /* NOTE: this is a lockless pointer; at the time of setting this, we got
-        a lock in sqlite3AddAndLockTable, so it should be good. The sqlite engine will
-        keep this structure around after fdb tables are changed. While fdb will NOT
-        go away, its tables can dissapear or change schema.  Cached schema in Table
-        object needs to be matched against fdb->tbl and make sure they are consistent before
-        doing anything on the attached fdb
+        a lock in sqlite3AddAndLockTable, so it should be good. The sqlite
+        engine will keep this structure around after fdb tables are changed.
+        While fdb will NOT go away, its tables can dissapear or change schema.
+        Cached schema in Table object needs to be matched against fdb->tbl and
+        make sure they are consistent before doing anything on the attached fdb
         */
         bt->fdb = get_fdb(zFilename);
         if (!bt->fdb) {
@@ -3701,6 +3696,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             rc = osql_delrec(pCur, thd);
             clnt->effects.num_deleted++;
             clnt->log_effects.num_deleted++;
+            clnt->nrows++;
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
@@ -3737,6 +3733,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             }
             rc = pCur->fdbc->delete (pCur, clnt, trans, pCur->genid);
             clnt->effects.num_deleted++;
+            clnt->nrows++;
         }
         clnt->ins_keys = 0ULL;
         clnt->del_keys = 0ULL;
@@ -3881,7 +3878,8 @@ int sqlite3BtreeSetAutoVacuum(Btree *pBt, int autoVacuum)
 int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 {
     *piMoved = 0;
-    if (!pBt->is_temporary) return UNIMPLEMENTED;
+    if (!pBt->is_temporary)
+        return UNIMPLEMENTED;
     struct temptable *tmp = hash_find(pBt->temp_tables, &iTable);
     if (tmp->owner == pBt) {
         int bdberr;
@@ -4088,7 +4086,7 @@ int sqlite3BtreeKey(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
     // the following code is slated for removal
     if (pCur->is_sampled_idx) {
         /* this is in ondisk format- i want to convert */
-        buf = bdb_temp_table_key(pCur->sampled_idx->cursor);
+        buf = sampler_key(pCur->sampler);
         rc = ondisk_to_sqlite_tz(pCur->db, pCur->sc, pCur->ondisk_key, 2, 0,
                                  pCur->keybuf, pCur->keybuflen, 0, NULL, NULL,
                                  NULL, &reqsz, NULL, pCur);
@@ -5074,8 +5072,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;
         free(pNewTbl);
-        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n",
-               __func__, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n", __func__,
+               bdberr);
         rc = SQLITE_INTERNAL;
         goto done;
     }
@@ -5402,7 +5400,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     assert(0 == pCur->is_sampled_idx);
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd, pCur->bt->is_temporary == 0);
+        rc = sql_tick(thd);
         if (rc)
             return rc;
     }
@@ -6235,15 +6233,14 @@ skip:
             free(pCur->keybuf);
 
         if (pCur->is_sampled_idx) {
-            rc = bdb_temp_table_close_cursor(
-                thedb->bdb_env, pCur->sampled_idx->cursor, &bdberr);
+            rc = sampler_close(pCur->sampler);
+            pCur->sampler = NULL;
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor rc %d\n",
                        __func__, bdberr);
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
-            free(pCur->sampled_idx);
         } else if (pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
                 rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
@@ -6411,7 +6408,6 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
 
     pCur->nblobs++;
     if (thd) {
-        thd->nblobs++;
         thd->cost += pCur->blob_cost;
     }
 
@@ -6972,7 +6968,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
                            BtCursor *cur,   /* Write new cursor here */
                            struct sql_thread *thd)
 {
-    int bdberr = 0;
     int key_size;
     int sz;
     struct sqlclntstate *clnt = thd->clnt;
@@ -6986,25 +6981,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     cur->cursor_move = cursor_move_compressed;
 
-    cur->sampled_idx = calloc(1, sizeof(struct temptable));
-    if (!cur->sampled_idx) {
-        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temptable) failed\n",
-                __func__);
-        return SQLITE_INTERNAL;
-    }
-
-    cur->sampled_idx->tbl =
-        analyze_get_sampled_temptable(clnt, db->tablename, cur->ixnum);
-    assert(cur->sampled_idx->tbl != NULL);
-
-    cur->sampled_idx->cursor = bdb_temp_table_cursor(
-        thedb->bdb_env, cur->sampled_idx->tbl, pArg, &bdberr);
-    if (cur->sampled_idx->cursor == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:bdb_temp_table_cursor failed\n", __func__);
-        return SQLITE_INTERNAL;
-    }
-
-    bdb_temp_table_set_cmp_func(cur->sampled_idx->tbl, (tmptbl_cmp)xCmp);
+    cur->sampler = analyze_get_sampler(clnt, db->tablename, cur->ixnum);
 
     cur->db = db;
     cur->tableversion = cur->db->tableversion;
@@ -7019,7 +6996,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     if (!cur->ondisk_key) {
         logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
                key_size + sizeof(int));
-        free(cur->sampled_idx);
         return SQLITE_INTERNAL;
     }
     cur->ondisk_keybuf_alloc = key_size;
@@ -7027,7 +7003,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->keybuf = malloc(sz);
     if (!cur->keybuf) {
         logmsg(LOGMSG_ERROR, "%s: keybuf malloc %d failed\n", __func__, sz);
-        free(cur->sampled_idx);
         free(cur->ondisk_key);
         return SQLITE_INTERNAL;
     }
@@ -8090,13 +8065,13 @@ int sqlite3BtreeCursor(
             if (hash_find(pBt->temp_tables, &pgno) == NULL) {
                 assert(tmptbl_clone == NULL);
                 rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);
-                assert(pgno == iTable);
             }
         }
         if (rc == SQLITE_OK) {
-            rc = sqlite3BtreeCursor_temptable(
-                pBt, pgno, wrFlag & BTREE_CUR_WR, temp_table_cmp, pKeyInfo,
-                cur, thd);
+            assert(pgno == iTable);
+            rc = sqlite3BtreeCursor_temptable(pBt, pgno, wrFlag & BTREE_CUR_WR,
+                                              temp_table_cmp, pKeyInfo, cur,
+                                              thd);
         }
         cur->find_cost = cur->move_cost = 0.1;
         cur->write_cost = 0.2;
@@ -8530,12 +8505,14 @@ int sqlite3BtreeInsert(
                                  blobs, MAXBLOBS, rec_flags);
                 clnt->effects.num_updated++;
                 clnt->log_effects.num_updated++;
+                clnt->nrows++;
             } else {
                 rc = osql_insrec(pCur, thd, pCur->ondisk_buf,
                                  getdatsize(pCur->db), blobs, MAXBLOBS,
                                  rec_flags);
                 clnt->effects.num_inserted++;
                 clnt->log_effects.num_inserted++;
+                clnt->nrows++;
             }
         } else {
             /* make sure we have a distributed transaction and use that to
@@ -8559,10 +8536,12 @@ int sqlite3BtreeInsert(
                 rc = pCur->fdbc->update(pCur, clnt, trans, pCur->genid, nKey,
                                         nData, (char *)pData);
                 clnt->effects.num_updated++;
+                clnt->nrows++;
             } else {
                 rc = pCur->fdbc->insert(pCur, clnt, trans, nKey, nData,
                                         (char *)pData);
                 clnt->effects.num_inserted++;
+                clnt->nrows++;
             }
         }
         clnt->ins_keys = 0ULL;
@@ -10079,11 +10058,7 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
 
 void *get_lastkey(BtCursor *pCur)
 {
-    if (pCur->is_sampled_idx) {
-        return bdb_temp_table_key(pCur->sampled_idx->cursor);
-    } else {
-        return pCur->lastkey;
-    }
+    return pCur->is_sampled_idx ? sampler_key(pCur->sampler) : pCur->lastkey;
 }
 
 void set_cook_fields(BtCursor *pCur, int cols)
@@ -11198,8 +11173,8 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
         ;
     tmptbl_clone = NULL;
     if (rc != SQLITE_DONE) {
-        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc, err,
-               sql);
+        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc,
+               err ? err : "(none)", sql ? sql : "(empty)");
         abort();
     }
     sqlite3_finalize(stmt);
@@ -12303,24 +12278,24 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err)
 {
-    struct sqlclntstate client;
+    struct sqlclntstate clnt;
     sqlite3 *sqldb;
     int rc;
     int crc;
     char *msg;
     long long ret = LLONG_MIN;
 
-    reset_clnt(&client, NULL, 1);
-    strncpy0(client.tzname, "UTC", sizeof(client.tzname));
-    sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.work.zSql = (char *)query;
-    client.debug_sqlclntstate = pthread_self();
+    reset_clnt(&clnt, NULL, 1);
+    strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
+    sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.work.zSql = (char *)query;
+    clnt.debug_sqlclntstate = pthread_self();
 
     sql_get_query_id(thd);
-    thd->clnt = &client;
+    thd->clnt = &clnt;
 
-    if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
+    if ((rc = get_curtran(thedb->bdb_env, &clnt)) != 0) {
         errstat_set_rcstrf(err, -1, "%s: failed to open a new curtran, rc=%d",
                            __func__, rc);
         goto done;
@@ -12343,7 +12318,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:
-    crc = put_curtran(thedb->bdb_env, &client);
+    crc = put_curtran(thedb->bdb_env, &clnt);
     if (crc && !rc)
         errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
 done:
