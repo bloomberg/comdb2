@@ -6103,13 +6103,54 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
     }
-#if WITH_SSL
+
     if (rc == 0) {
+#if WITH_SSL
         rc = set_up_ssl_params(hndl);
         if (rc)
             debugprint("set_up_ssl_params returns %d\n", rc);
-    }
 #endif
+        /*
+         * Check and set user and password if they have been specified using
+         * the environment variables.
+         */
+        char cmd[60];
+        int length;
+
+        if (getenv("COMDB2_USER")) {
+            length = snprintf(cmd, sizeof(cmd), "set user %s",
+                              getenv("COMDB2_USER"));
+            if (length > sizeof(cmd)) {
+                fprintf(stderr, "COMDB2_USER too long\n");
+                rc = -1;
+            } else if (length < 0) {
+                fprintf(stderr, "Failed to set user using COMDB2_USER "
+                                "environment variable\n");
+                rc = -1;
+            } else {
+                debugprint(
+                    "Setting user via COMDB2_USER environment variable\n");
+                rc = process_set_command(hndl, cmd);
+            }
+        }
+
+        if (getenv("COMDB2_PASSWORD")) {
+            length = snprintf(cmd, sizeof(cmd), "set password %s",
+                              getenv("COMDB2_PASSWORD"));
+            if (length > sizeof(cmd)) {
+                fprintf(stderr, "COMDB2_PASSWORD too long\n");
+                rc = -1;
+            } else if (length < 0) {
+                fprintf(stderr, "Failed to set password using COMDB2_PASSWORD "
+                                "environment variable\n");
+                rc = -1;
+            } else {
+                debugprint("Setting password via COMDB2_PASSWORD environment "
+                           "variable\n");
+                rc = process_set_command(hndl, cmd);
+            }
+        }
+    }
 
     if (hndl->send_stack)
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
