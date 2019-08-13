@@ -1124,6 +1124,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 static struct thdpool *loadcache_thdpool;
 int gbl_load_cache_threads = 8;
+int gbl_load_cache_max_pages = 0;
 int gbl_max_pages_per_cache_thread = 8192;
 
 void
@@ -1385,7 +1386,7 @@ __memp_load(dbenv, s, pages, lines)
 	DB_MPOOLFILE *dbmfp;
 	fileid_page_env_t *fileid_env = NULL;
  	u_int32_t lineno = 0, start, end;
-	int ret, endofline;
+	int ret, endofline, max_pages = gbl_load_cache_max_pages;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
 	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
@@ -1413,7 +1414,8 @@ __memp_load(dbenv, s, pages, lines)
 	}
 
 	start = time(NULL);
-	while ((ret = sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
+	while ((!max_pages || (*pages) < max_pages) && (ret = sbuf2fread(cfileid,
+					sizeof(cfileid), 1, s)) == 1) {
 		lineno++;
 
 		p = cfileid;
@@ -1431,7 +1433,8 @@ __memp_load(dbenv, s, pages, lines)
 			continue;
 		}
 
-		while (getcpage(s, cpage, sizeof(cpage), &endofline) > 0) {
+		while ((!max_pages || (*pages) < max_pages) && getcpage(s, cpage,
+					sizeof(cpage), &endofline) > 0) {
 			if ((sscanf(cpage, "%"PRIu32, &hx)) <= 0) {
 				logmsg(LOGMSG_DEBUG, "%s bad page format on line %u "
 						"cpage %s\n", __func__, lineno, cpage);

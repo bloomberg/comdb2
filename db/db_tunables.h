@@ -1762,6 +1762,13 @@ REGISTER_TUNABLE("load_cache_threads",
                  TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("load_cache_max_pages",
+                 "Maximum number of pages that will load into cache.  Setting "
+                 "to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_load_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+
 REGISTER_TUNABLE("max_pages_per_cache_thread",
                  "Number of threads loading pages to cache.  "
                  "(Default: 8192)",

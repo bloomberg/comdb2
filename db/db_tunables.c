@@ -229,6 +229,7 @@ extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
 extern int gbl_pagelist_flush_interval;
 extern int gbl_load_cache_threads;
+extern int gbl_load_cache_max_pages;
 extern int gbl_max_pages_per_cache_thread;
 
 extern long long sampling_threshold;
