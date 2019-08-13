@@ -1759,8 +1759,8 @@ REGISTER_TUNABLE("pagelist_flush_interval",
 REGISTER_TUNABLE("load_cache_threads",
                  "Number of threads loading pages to cache.  "
                  "(Default: 8)",
-                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL, NULL,
+                 NULL);
 
 REGISTER_TUNABLE("load_cache_max_pages",
                  "Maximum number of pages that will load into cache.  Setting "
