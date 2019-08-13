@@ -1217,8 +1217,11 @@ typedef struct fileid_load_info
 
 typedef struct fileid_page_env
 {
-    DB_ENV *dbenv;
-    fileid_page_list_t *pagelist;
+	DB_ENV *dbenv;
+	fileid_page_list_t *pagelist;
+	pthread_mutex_t *lk;
+	pthread_cond_t *cd;
+	int *active_threads;
 } fileid_page_env_t;
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
@@ -1226,32 +1229,39 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 static void
 load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 {
-    fileid_page_env_t *fileid_env = (fileid_page_env_t *)work;
-    fileid_page_list_t *pagelist = fileid_env->pagelist;
+	fileid_page_env_t *fileid_env = (fileid_page_env_t *)work;
+	fileid_page_list_t *pagelist = fileid_env->pagelist;
 
-    DB_ENV *dbenv;
+	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
 
-    dbenv = fileid_env->dbenv;
+	dbenv = fileid_env->dbenv;
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
 
-    MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-    for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
-            dbmfp = TAILQ_NEXT(dbmfp, q)) {
-        if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0)
-            break;
-    }
-    MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-    if (dbmfp) {
-        for(int pages = 0 ; pages < pagelist->cnt; pages++) {
-            touch_page(dbmfp, pagelist->pages[pages]);
-        }
-    } 
-    __os_free(dbenv, pagelist->pages);
-    __os_free(dbenv, pagelist);
-    __os_free(dbenv, fileid_env);
+	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
+	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
+			dbmfp = TAILQ_NEXT(dbmfp, q)) {
+		if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0)
+			break;
+	}
+	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+
+	if (dbmfp) {
+		for(int pages = 0 ; pages < pagelist->cnt; pages++) {
+			touch_page(dbmfp, pagelist->pages[pages]);
+		}
+	} 
+
+	Pthread_mutex_lock(fileid_env->lk);
+	(*fileid_env->active_threads)--;
+	Pthread_cond_signal(fileid_env->cd);
+	Pthread_mutex_unlock(fileid_env->lk);
+
+	__os_free(dbenv, pagelist->pages);
+	__os_free(dbenv, pagelist);
+	__os_free(dbenv, fileid_env);
 }
 
 struct sbuf_env {
@@ -1262,30 +1272,30 @@ struct sbuf_env {
 static int
 output_fileid_page(void *obj, void *arg)
 {
-    struct sbuf_env *sbenv = (struct sbuf_env *)arg;
-    u_int8_t *p;
-    DB_ENV *dbenv = sbenv->dbenv;
-    SBUF2 *s = sbenv->s;
+	struct sbuf_env *sbenv = (struct sbuf_env *)arg;
+	u_int8_t *p;
+	DB_ENV *dbenv = sbenv->dbenv;
+	SBUF2 *s = sbenv->s;
 	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
-    qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
-    p = pagelist->fileid;
+	qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
+	p = pagelist->fileid;
 
-    for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
-        sbuf2printf(s, "%2.2x", (u_int)*p);
-    }
-    for (u_int64_t pages = 0; pages < pagelist->cnt; pages++) {
-        sbuf2printf(s, " %"PRIu32, pagelist->pages[pages]);
-    }
-    sbuf2printf(s, "\n");
-    return 0;
+	for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
+		sbuf2printf(s, "%2.2x", (u_int)*p);
+	}
+	for (u_int64_t pages = 0; pages < pagelist->cnt; pages++) {
+		sbuf2printf(s, " %"PRIu32, pagelist->pages[pages]);
+	}
+	sbuf2printf(s, "\n");
+	return 0;
 }
 
 static int
 output_fileid_page_hash(DB_ENV *dbenv, hash_t *hash, SBUF2 *s)
 {
-    struct sbuf_env sbenv = { .dbenv = dbenv, .s = s };
+	struct sbuf_env sbenv = { .dbenv = dbenv, .s = s };
 	hash_for(hash, output_fileid_page, &sbenv);
-    return 0;
+	return 0;
 }
 
 static inline int add_page_to_fileid_page(DB_ENV *dbenv, fileid_page_list_t *pagelist,
@@ -1341,9 +1351,15 @@ static void
 load_fileids_thdpool(fileid_page_env_t *fileid_env)
 {
 	int ret;
+	Pthread_mutex_lock(fileid_env->lk);
+	(*fileid_env->active_threads)++;
 	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
 					fileid_env, 0, NULL, 0)) != 0) {
+		(*fileid_env->active_threads)--;
+		Pthread_mutex_unlock(fileid_env->lk);
 		load_fileids(NULL, fileid_env, NULL, 0);
+	} else {
+		Pthread_mutex_unlock(fileid_env->lk);
 	}
 }
 
@@ -1352,7 +1368,7 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
  *	Load bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_load
- * PUBLIC:     __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
+ * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int32_t *, u_int32_t *));
  */
 int
 __memp_load(dbenv, s, pages, lines)
@@ -1375,7 +1391,11 @@ __memp_load(dbenv, s, pages, lines)
 	void *addrp = NULL;
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
+	pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+	pthread_cond_t cd = PTHREAD_COND_INITIALIZER;
+	int active_threads = 0;
 	(*lines) = (*pages) = 0;
+
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
@@ -1432,6 +1452,9 @@ __memp_load(dbenv, s, pages, lines)
 				}
 
 				fileid_env->dbenv = dbenv;
+				fileid_env->lk = &lk;
+				fileid_env->cd = &cd;
+				fileid_env->active_threads = &active_threads;
 				memcpy(fileid_env->pagelist->fileid, fileid, DB_FILE_ID_LEN);
 			}
 
@@ -1464,9 +1487,13 @@ __memp_load(dbenv, s, pages, lines)
 		load_fileids_thdpool(fileid_env);
 		fileid_env = NULL;
 	}
+	Pthread_mutex_lock(&lk);
+	while(active_threads > 0) {
+		Pthread_cond_wait(&cd, &lk);
+	}
+	Pthread_mutex_unlock(&lk);
 	end = time(NULL);
 
-	/* This isn't really true- the thdpool is still working on it .. */
 	logmsg(LOGMSG_INFO, "Loaded %u bufferpool pages in %u seconds\n",
 			*pages, (end - start));
 	(*lines) = lineno;
