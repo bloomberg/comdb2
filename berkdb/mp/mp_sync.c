@@ -1256,10 +1256,12 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		}
 	} 
 
-	Pthread_mutex_lock(fileid_env->lk);
-	(*fileid_env->active_threads)--;
-	Pthread_cond_signal(fileid_env->cd);
-	Pthread_mutex_unlock(fileid_env->lk);
+    if (thdpool) {
+        Pthread_mutex_lock(fileid_env->lk);
+        (*fileid_env->active_threads)--;
+        Pthread_cond_signal(fileid_env->cd);
+        Pthread_mutex_unlock(fileid_env->lk);
+    }
 
 	__os_free(dbenv, pagelist->pages);
 	__os_free(dbenv, pagelist);
