@@ -14,10 +14,63 @@
    limitations under the License.
  */
 
+#include "sqliteInt.h"
 #include "priority_queue.h"
 #include "sql.h"
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
+
+/*
+** A structure defining how to do GLOB-style comparisons.  Stolen
+** from "sqlite/src/func.c".
+*/
+struct compareInfo {
+  u8 matchAll;          /* "*" or "%" */
+  u8 matchOne;          /* "?" or "_" */
+  u8 matchSet;          /* "[" or 0 */
+  u8 noCase;            /* true to ignore case differences */
+};
+
+static int glob_match(
+  const char *zStr1,
+  const char *zStr2
+){
+  return 0;
+}
+
+static int glob_nocase_match(
+  const char *zStr1,
+  const char *zStr2
+){
+  return 0;
+}
+
+static int regexp_match(
+  const char *zStr1,
+  const char *zStr2
+){
+  return 0;
+}
+
+static int regexp_nocase_match(
+  const char *zStr1,
+  const char *zStr2
+){
+  return 0;
+}
+
+static xStrCmp comdb2_get_xstrcmp_for_mode(
+  ruleset_match_mode_t mode
+){
+  int noCase = mode & RULESET_MM_NOCASE;
+  mode &= ~RULESET_MM_NOCASE;
+  switch( mode ){
+    case RULESET_MM_EXACT:  return noCase ? strcasecmp : strcmp;
+    case RULESET_MM_GLOB:   return noCase ? glob_nocase_match : glob_match;
+    case RULESET_MM_REGEXP: return noCase ? regexp_nocase_match : regexp_match;
+  }
+  return NULL;
+}
 
 static const char *comdb2_ruleset_action_to_str(
   enum ruleset_action action,
@@ -112,28 +165,51 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   xMemCmp memoryComparer,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
-  unsigned char *pFingerprint,
   struct ruleset_result *result
 ){
-  if ((rule->zOriginHost != NULL) &&
-      (stringComparer(rule->zOriginHost, clnt->origin_host) != 0)) {
-    return RULESET_M_FALSE;
+  if (stringComparer == NULL) {
+    stringComparer = comdb2_get_xstrcmp_for_mode(rule->mode);
   }
-  if ((rule->zOriginTask != NULL) &&
-      (stringComparer(rule->zOriginTask, clnt->conninfo.pename) != 0)) {
-    return RULESET_M_FALSE;
+  if (stringComparer != NULL) {
+    if ((rule->zOriginHost != NULL) &&
+        (stringComparer(rule->zOriginHost, clnt->origin_host) != 0)) {
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+    if ((rule->zOriginTask != NULL) &&
+        (stringComparer(rule->zOriginTask, clnt->conninfo.pename) != 0)) {
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+    if ((rule->zUser != NULL) && (!clnt->have_user ||
+        (stringComparer(rule->zUser, clnt->user) != 0))) {
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+    if ((rule->zSql != NULL) &&
+        (stringComparer(rule->zSql, clnt->work.zSql) != 0)) {
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+  } else {
+    if (rule->zOriginHost != NULL) {
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
+    if (rule->zOriginTask != NULL) {
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
+    if (rule->zUser != NULL) {
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
+    if (rule->zSql != NULL) {
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
   }
-  if ((rule->zUser != NULL) && (!clnt->have_user ||
-      (stringComparer(rule->zUser, clnt->user) != 0))) {
-    return RULESET_M_FALSE;
-  }
-  if ((rule->zSql != NULL) &&
-      (stringComparer(rule->zSql, clnt->work.zSql) != 0)) {
-    return RULESET_M_FALSE;
-  }
-  if ((rule->pFingerprint != NULL) &&
-      (memoryComparer(rule->pFingerprint, pFingerprint, FPSZ) != 0)) {
-    return RULESET_M_FALSE;
+  if (memoryComparer != NULL) {
+    if ((rule->pFingerprint != NULL) &&
+        (memoryComparer(rule->pFingerprint, clnt->work.aFingerprint, FPSZ) != 0)) {
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
+  } else {
+    if (rule->pFingerprint != NULL) {
+      return RULESET_M_NONE; /* no comparer ==> no matching */
+    }
   }
   switch (rule->action) {
     case RULESET_A_NONE: {
@@ -154,6 +230,14 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
              "%s: unsupported rule action %d\n", __func__, rule->action);
     }
   }
+  /*
+  ** NOTE: If we get to this point, it is for one of the following reasons:
+  **
+  **       1. There are no criteria specified for this rule; therefore, it
+  **          is always considered to "match".
+  **
+  **       2. This rule matched using the specified mode and all criteria.
+  */
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
@@ -162,14 +246,13 @@ size_t comdb2_evaluate_ruleset(
   xMemCmp memoryComparer,
   struct ruleset *rules,
   struct sqlclntstate *clnt,
-  unsigned char *pFingerprint,
   struct ruleset_result *result
 ){
   size_t count = 0;
   for (int i = 0; i < rules->nRule; i++) {
     ruleset_match_t match = comdb2_evaluate_ruleset_item(
       stringComparer, memoryComparer, &rules->aRule[i],
-      clnt, pFingerprint, result
+      clnt, result
     );
     if (match == RULESET_M_STOP) { count++; break; }
     if (match == RULESET_M_TRUE) { count++; }
@@ -185,7 +268,7 @@ size_t comdb2_ruleset_result_to_str(
   char zActBuf[32] = {0};
   char zPriBuf[32] = {0};
 
-  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s", 
+  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s",
       comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf)),
       comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf))
   );

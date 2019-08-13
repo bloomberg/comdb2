@@ -4928,6 +4928,16 @@ int sqlite3DbstatRegister(sqlite3*);
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Moved from "func.c" for use by Comdb2.
+*/
+struct compareInfo {
+  u8 matchAll;          /* "*" or "%" */
+  u8 matchOne;          /* "?" or "_" */
+  u8 matchSet;          /* "[" or 0 */
+  u8 noCase;            /* true to ignore case differences */
+};
+
 enum {
     SQLITE_ATTR_QUANTITY   = 1,
     SQLITE_ATTR_BOOLEAN    = 2

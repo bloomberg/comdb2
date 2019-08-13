@@ -1010,6 +1010,11 @@ static void total_changes(
   sqlite3_result_int(context, sqlite3_total_changes(db));
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Moved to "sqliteInt.h" for use by Comdb2.
+*/
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** A structure defining how to do GLOB-style comparisons.
 */
@@ -1019,6 +1024,7 @@ struct compareInfo {
   u8 matchSet;          /* "[" or 0 */
   u8 noCase;            /* true to ignore case differences */
 };
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** For LIKE and GLOB matching on EBCDIC machines, assume that every
@@ -1086,7 +1092,11 @@ static const struct compareInfo likeInfoAlt = { '%', '_',   0, 0 };
 **
 ** This routine is usually quick, but can be N**2 in the worst case.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int patternCompare(
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static int patternCompare(
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   const u8 *zPattern,              /* The glob pattern */
   const u8 *zString,               /* The string to compare against the glob */
   const struct compareInfo *pInfo, /* Information about how to do the compare */

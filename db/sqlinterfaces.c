@@ -4638,22 +4638,30 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         /*
         ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
         **       because its execution bypasses the SQL engine;
-        **       however, the parser now recognizes it.
+        **       however, the parser now recognizes it and so it
+        **       can be normalized.
         */
+        free_original_normalized_sql(clnt);
         normalize_stmt_and_store(clnt, NULL);
-        size_t nOrigNormSql = 0;
-        calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
-                         clnt->work.aFingerprint);
+
+        if (clnt->work.zOrigNormSql) {
+            size_t nOrigNormSql = 0;
+
+            calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
+                             clnt->work.aFingerprint);
+        }
+
         return 0; /* success */
     }
     int rc;
     struct errstat err = {0}; /* NOT USED */
     clnt->work.rec.sql = clnt->work.zSql;
     rc = get_prepared_bound_stmt(
-        clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_RECREATE
+        clnt->thd, clnt, &clnt->work.rec, &err, PREPARE_NONE
     );
-    if (rc == 0) {
+    if ((rc == 0) && clnt->work.zNormSql) {
         size_t nNormSql = 0;
+
         calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                          clnt->work.aFingerprint);
     }

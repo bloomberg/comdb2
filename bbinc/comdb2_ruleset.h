@@ -46,6 +46,19 @@ enum ruleset_flags {
                            * the request will NOT be retried. TODO: ? */
 };
 
+// TODO: Comments...
+enum ruleset_match_mode {
+  RULESET_MM_NONE = 0,
+
+  RULESET_MM_EXACT = 1,
+
+  RULESET_MM_GLOB = 2,
+
+  RULESET_MM_REGEXP = 4,
+
+  RULESET_MM_NOCASE = 8
+};
+
 enum ruleset_match {
   RULESET_M_NONE = 0,     /* The ruleset or item was not matched, possibly
                            * because no matching was performed. */
@@ -69,6 +82,10 @@ struct ruleset_item {
 
   enum ruleset_flags flags;       /* The behavioral flags associated with the
                                    * rule, e.g. stop-on-match, etc. */
+
+  enum ruleset_match_mode mode;   /* The matching mode used for the string
+                                   * comparisons, e.g. exact, glob, regexp,
+                                   * etc. */
 
   char *zOriginHost;              /* Obtained via "clnt->origin_host".  If not
                                    * NULL this will be matched using exact
@@ -113,7 +130,9 @@ struct ruleset_result {
 
 typedef int (*xStrCmp)(const char *, const char *);
 typedef int (*xMemCmp)(const void *, const void *, size_t);
+
 typedef enum ruleset_match ruleset_match_t;
+typedef enum ruleset_match_mode ruleset_match_mode_t;
 
 priority_t comdb2_clamp_priority(
   priority_t priority
@@ -130,7 +149,6 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
   xMemCmp memoryComparer,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
-  unsigned char *pFingerprint,
   struct ruleset_result *result
 );
 
@@ -139,7 +157,6 @@ size_t comdb2_evaluate_ruleset(
   xMemCmp memoryComparer,
   struct ruleset *rules,
   struct sqlclntstate *clnt,
-  unsigned char *pFingerprint,
   struct ruleset_result *result
 );
 
