@@ -206,8 +206,12 @@ function copy_test
     fi
 
     write_prompt $func "Starting replicant database, replog is $replog"
-    ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
-    reppid=$!
+    if [[ -n "$TEST_TIMEOUT" ]] ; then
+        ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+        reppid=$!
+    else
+        ( $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+    fi
 
     waitmach localhost $repname -n
     sleep $sleeptime

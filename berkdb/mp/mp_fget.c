@@ -727,6 +727,7 @@ alloc:		/*
 				F_CLR(bhp, BH_PREFAULT);
 			}
 
+			gbl_memp_pgreads++;
 			if (did_io != NULL)
 				*did_io = 1;
 		}
@@ -794,7 +795,6 @@ alloc:		/*
 
 
 	if (F_ISSET(bhp, BH_TRASH)) {
-		gbl_memp_pgreads++;
 		if ((ret = __memp_pgread(dbmfp,
 				hp, bhp,
 			    LF_ISSET(DB_MPOOL_CREATE) ? 1 : 0,

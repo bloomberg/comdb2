@@ -2310,8 +2310,15 @@ __memp_flush_pagelist(dbenv, force)
 
 	if (!force && thresh > 0) {
 		u_int64_t target = ((memp_pagecount * thresh) / 100);
-		if (gbl_memp_pgreads < target)
+#if PAGELIST_DEBUG
+		logmsg(LOGMSG_USER, "%s memp_pagecount is %"PRIu64
+				" and thresh is %d, target is %"PRIu64", pgreads is %"
+				PRIu64"\n", __func__, memp_pagecount, thresh, target,
+				gbl_memp_pgreads);
+#endif
+		if (gbl_memp_pgreads < target) {
 			return 0;
+		}
 	}
 	Pthread_mutex_lock(&page_flush_lk);
 
