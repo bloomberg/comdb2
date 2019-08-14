@@ -5063,14 +5063,14 @@ retry:
             Pthread_mutex_lock(&clnt->wait_mutex);
             if (clnt->done) {
                 Pthread_mutex_unlock(&clnt->wait_mutex);
-                goto check_retry;
+                goto check_query_rc;
             }
             int rc;
             rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex,
                                         &st);
             if (clnt->done) {
                 Pthread_mutex_unlock(&clnt->wait_mutex);
-                goto check_retry;
+                goto check_query_rc;
             }
             if (rc == ETIMEDOUT) {
                 struct timespec diff;
@@ -5115,7 +5115,7 @@ retry:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-check_retry: ; /* empty statement, make compiler happy */
+check_query_rc: ; /* empty statement, make compiler happy */
     int rc2 = clnt->query_rc;
     if (rc2 == ERR_QUERY_DELAYED) {
         useconds_t ms = 1000 * gbl_retry_dispatch_ms; /* milli to micro */
