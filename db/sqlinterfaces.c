@@ -5038,7 +5038,7 @@ static void mark_clnt_as_recently_used(struct sqlclntstate *clnt)
     }
 }
 
-int wait_for_sql_query(struct sqlclntstate *clnt)
+int wait_for_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     /* successful dispatch or queueing, enable heartbeats */
     Pthread_mutex_lock(&clnt->wait_mutex);
@@ -5127,7 +5127,7 @@ retry:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-done:
+done: ; /* empty statement, make compiler happy */
     int rc2 = clnt->query_rc;
     if (rc2 == ERR_QUERY_DELAYED) {
         useconds_t ms = 1000 * gbl_retry_dispatch_ms; /* milli to micro */
@@ -5158,7 +5158,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
     int rc = enqueue_sql_query(clnt, priority);
     if (rc != 0) return rc;
 
-    return wait_for_sql_query(clnt);
+    return wait_for_sql_query(clnt, priority);
 }
 
 void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
