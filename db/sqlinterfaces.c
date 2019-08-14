@@ -4755,6 +4755,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         osql_log_time_done(clnt);
         clnt_change_state(clnt, CONNECTION_IDLE);
         signal_clnt_as_done(clnt);
+        put_curtran(thedb->bdb_env, clnt);
         return;
     }
 
@@ -4767,6 +4768,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         osql_log_time_done(clnt);
         clnt_change_state(clnt, CONNECTION_IDLE);
         signal_clnt_as_done(clnt);
+        put_curtran(thedb->bdb_env, clnt);
         return;
     }
 
@@ -4833,6 +4835,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     debug_close_sb(clnt);
     signal_clnt_as_done(clnt);
     thrman_setid(thrman_self(), "[done]");
+    put_curtran(thedb->bdb_env, clnt);
 }
 
 static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
