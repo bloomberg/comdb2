@@ -5146,7 +5146,6 @@ check_retry: ; /* empty statement, make compiler happy */
         logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}",
                __func__, rc2, clnt->sql);
     }
-done:
     if (self)
         thrman_where(self, "query done");
     return rc2;
