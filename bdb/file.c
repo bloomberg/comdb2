@@ -1383,7 +1383,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file)
         if (fd >= 0)
             close(fd);
         logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
-                errno);
+               errno);
         return -1;
     }
     rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s);
