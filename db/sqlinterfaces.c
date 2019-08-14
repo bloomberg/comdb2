@@ -2799,7 +2799,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 /* Return current authenticated user for the session */
 char *get_current_user(struct sqlclntstate *clnt)
 {
-    if (!clnt->is_x509_user && clnt->have_user) {
+    if (clnt && !clnt->is_x509_user && clnt->have_user) {
         return clnt->user;
     }
     return NULL;

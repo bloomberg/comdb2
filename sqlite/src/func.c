@@ -25,7 +25,6 @@
 #include "sql.h"
 #include "bdb_int.h"
 
-char *get_current_user(struct sqlclntstate *clnt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -804,11 +803,11 @@ static void comdb2CtxinfoFunc(
 
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "parallel")==0 ){
-    sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
-  } else if( sqlite3_stricmp(zName, "user")==0 ){
     if (clnt) {
-      sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
+      sqlite3_result_int(context, clnt->conns!=NULL);
     }
+  } else if( sqlite3_stricmp(zName, "user")==0 ){
+    sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
   }
 }
 
@@ -970,10 +969,7 @@ static void comdb2UserFunc(
 
   struct sql_thread *thd = pthread_getspecific(query_info_key);
   struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
-
-  if (clnt) {
-    sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
-  }
+  sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
