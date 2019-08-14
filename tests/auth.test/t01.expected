@@ -1,2 +1,5 @@
 ('user1'='user1')
+(comdb2_user()='user1')
+(comdb2_user()='user1')
 ('authentication turned on'='authentication turned on')
+(comdb2_user()='user1')
