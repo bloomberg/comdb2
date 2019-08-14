@@ -1151,7 +1151,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    char fingerprint[FINGERPRINTSZ];
+    unsigned char fingerprint[FINGERPRINTSZ];
     int have_fingerprint = 0;
     if (gbl_fingerprint_queries) {
         if (h->sql) {

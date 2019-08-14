@@ -25,8 +25,88 @@
 #include <ezsystables.h>
 #include "sql.h"
 
-int gather_client_sql_data(void **data_out, int *npoints);
-void free_client_sql_data(void *data, int npoints);
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
+struct gather_options {
+    struct client_sql_systable_data *stats;
+    int nalloced;
+    int nstats;
+};
+
+static int gather_client_sql_data_fingerprint(void *ent, void *arg) {
+    struct gather_options *opt = (struct gather_options*) arg;
+    struct query_count *cnt = (struct query_count*) ent;
+
+    if (opt->nstats == opt->nalloced) {
+        opt->nalloced = opt->nalloced * 2 + 16;
+        void *p = realloc(opt->stats, sizeof(struct client_sql_systable_data) * opt->nalloced);
+        if (p == NULL)
+            return 1;
+        opt->stats = p;
+    }
+    opt->stats[opt->nstats].host = opt->st->host;
+    opt->stats[opt->nstats].task = strdup(opt->st->task);
+    util_tohex(opt->stats[opt->nstats].fp, cnt->fingerprint, FINGERPRINTSZ);
+    opt->stats[opt->nstats].count = cnt->count;
+    opt->stats[opt->nstats].cost = cnt->cost;
+    opt->stats[opt->nstats].rows = cnt->rows;
+    opt->stats[opt->nstats].timems = cnt->timems;
+    opt->nstats++;
+    return 0;
+}
+
+static int gather_client_sql_data_single(void *ent, void *arg) {
+    struct gather_options *opt = (struct gather_options*) arg;
+    nodestats_t *st = (nodestats_t*) ent;
+    opt->st = st;
+    Pthread_mutex_lock(&st->rawtotals.lk);
+    int rc = 0;
+    if (st->rawtotals.fingerprints)
+        rc = hash_for(st->rawtotals.fingerprints, gather_client_sql_data_fingerprint, arg);
+    Pthread_mutex_unlock(&st->rawtotals.lk);
+    return rc;
+}
+
+static int gather_client_sql_data(void **data_out, int *npoints) {
+    struct gather_options opt = {0};
+
+    *npoints = 0;
+
+    Pthread_rwlock_wrlock(&clientstats_lk);
+    int rc = 0;
+    if (clientstats)
+        rc = hash_for(clientstats, gather_client_sql_data_single, &opt);
+    Pthread_rwlock_unlock(&clientstats_lk);
+    if (rc)
+        free_client_sql_data(opt.stats, opt.nstats);
+    else {
+        *npoints = opt.nstats;
+        *data_out = opt.stats;
+        for (int i = 0; i < opt.nstats; i++)
+            opt.stats[i].fingerprint = opt.stats[i].fp;
+    }
+
+    return rc;
+} 
+
+static void free_client_sql_data(void *data, int npoints) {
+    struct client_sql_systable_data *stats = (struct client_sql_systable_data*) data;
+    for (int i = 0; i < npoints; i++) {
+        free(stats[i].task);
+    }
+    free(stats);
+}
+
 
 static sqlite3_module systblSQLClientStatsModule = {
     .access_flag = CDB2_ALLOW_USER,

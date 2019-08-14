@@ -49,7 +49,7 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
 
 void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t prepTime, int64_t nrows,
-                     struct reqlogger *logger, char *fingerprint_out) {
+                     struct reqlogger *logger, unsigned char *fingerprint_out) {
     assert(zSql);
     size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
@@ -116,5 +116,6 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
     }
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
-    memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
+    if (fingerprint_out)
+        memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
 }

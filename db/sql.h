@@ -1216,7 +1216,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *, char *fingerprint_out);
+                     int64_t, struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1260,6 +1260,6 @@ struct query_count {
     int64_t last_timems;
 };
 
-void add_fingerprint_to_rawstats(struct rawnodestats *stats, char *fingerprint, int cost, int rows, int timems);
+void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
 
 #endif
