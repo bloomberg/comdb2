@@ -2159,7 +2159,8 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
 
             add_fingerprint(
                 sqlite3_sql(pStmt), zNormSql, cost,
-                timeMs, prepMs, pVdbe->luaRows, NULL
+                timeMs, prepMs, pVdbe->luaRows, NULL,
+                NULL
             );
 
             clnt->spcost.cost += cost;

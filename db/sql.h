@@ -1262,4 +1262,16 @@ struct query_count {
 
 void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
 
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
 #endif
