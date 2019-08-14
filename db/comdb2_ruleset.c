@@ -23,6 +23,12 @@
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
 static const struct compareInfo globNoCaseInfo = { '*', '?', '[', 1 };
 
+extern int patternCompare(const u8*,const u8*,const struct compareInfo*,u32);
+
+extern const char *re_compile(void**,const char*,int);
+extern int re_match(void*,const unsigned char*,int);
+extern void re_free(void*);
+
 static int glob_match(
   const char *zStr1,
   const char *zStr2
@@ -43,7 +49,7 @@ static ruleset_string_match_t do_regexp_match(
   int noCase
 ){
   int rc;
-  ReCompiled *pRe = 0;
+  void *pRe = 0;
   const char *zErr;
 
   zErr = re_compile(&pRe, zPattern, noCase);
