@@ -280,7 +280,7 @@ const char *WriteRespString[] = { RESPONSE_TYPES };
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 
 int gbl_client_heartbeat_ms = 100;
-int gbl_retry_dispatch_ms = 100;
+int gbl_retry_dispatch_ms = 50;
 int gbl_fail_client_write_lock = 0;
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
@@ -5055,6 +5055,8 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
     if (self)
         thrman_where(self, "waiting for query");
 
+retry:
+
     if (clnt->heartbeat) {
         if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
             send_heartbeat(clnt);
@@ -5064,15 +5066,6 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
         clock_gettime(CLOCK_REALTIME, &first);
         last = first;
         while (1) {
-            if (db_is_stopped()) {
-                logmsg(LOGMSG_WARN,
-                       "%s: Stopped waiting for query (1), exiting...\n",
-                       __func__);
-                send_run_error(clnt, "Client api should change nodes",
-                               CDB2ERR_CHANGENODE);
-                clnt->query_rc = -1;
-                break;
-            }
             struct timespec now, st;
             clock_gettime(CLOCK_REALTIME, &now);
             mshb.tv_sec = (gbl_client_heartbeat_ms / 1000);
@@ -5129,24 +5122,33 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
     } else {
         Pthread_mutex_lock(&clnt->wait_mutex);
         while (!clnt->done) {
-            if (db_is_stopped()) {
-                logmsg(LOGMSG_WARN,
-                       "%s: Stopped waiting for query (2), exiting...\n",
-                       __func__);
-                send_run_error(clnt, "Client api should change nodes",
-                               CDB2ERR_CHANGENODE);
-                clnt->query_rc = -1;
-                break;
-            }
             Pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
         }
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
 done:
+    int rc2 = clnt->query_rc;
+    if (rc2 == ERR_QUERY_DELAYED) {
+        useconds_t ms = 1000 * gbl_retry_dispatch_ms; /* milli to micro */
+        rc2 = usleep(ms);
+        if (rc2) {
+            logmsg(LOGMSG_ERROR, "%s: usleep(%llu), rc2=%d errno=%d",
+                   __func__, (unsigned long long)ms, rc2, errno);
+            /* cannot usleep? still want to keep retrying (?) */
+            sleep(1); /* however, we don't want to spin */
+        }
+        if (db_is_stopped()) return ERR_QUERY_DELAYED; /* permanent error */
+        rc2 = enqueue_sql_query(clnt, priority);
+        if (rc2 != 0) return rc2; /* could not re-enqueue? */
+        goto retry;
+    } else if (rc2 == ERR_QUERY_REJECTED) {
+        logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}",
+               __func__, rc2, clnt->sql);
+    }
     if (self)
         thrman_where(self, "query done");
-    return clnt->query_rc;
+    return rc2;
 }
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
@@ -5156,28 +5158,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
     int rc = enqueue_sql_query(clnt, priority);
     if (rc != 0) return rc;
 
-    do {
-        rc = wait_for_sql_query(clnt);
-        if (rc == ERR_QUERY_DELAYED) {
-            useconds_t ms = 1000 * gbl_retry_dispatch_ms;
-            int rc = usleep(ms);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: usleep(%llu), rc=%d errno=%d",
-                       __func__, (unsigned long long)ms, rc, errno);
-                /* ok, cannot usleep... still want to keep retrying (?) */
-                sleep(1); /* however, we don't want to spin */
-            }
-            if (db_is_stopped()) return 1;
-            rc = enqueue_sql_query(clnt, priority);
-            if (rc != 0) return rc;
-            continue;
-        } else if (rc == ERR_QUERY_REJECTED) {
-            logmsg(LOGMSG_ERROR, "%s: REJECTED rc=%d {%s}",
-                   __func__, rc, clnt->sql);
-        }
-        break;
-    } while (1); /* internal break */
-    return rc;
+    return wait_for_sql_query(clnt);
 }
 
 void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
