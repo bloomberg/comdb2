@@ -66,9 +66,11 @@ SQLITE_EXTENSION_INIT1
 ** this file to prevent name collisions with C-library functions of the
 ** same name.
 */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 #define re_match   sqlite3re_match
 #define re_compile sqlite3re_compile
 #define re_free    sqlite3re_free
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* The end-of-input character */
 #define RE_EOF            0    /* End of input */

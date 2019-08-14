@@ -66,7 +66,7 @@ static ruleset_string_match_t do_regexp_match(
            __func__, zPattern);
     return RULESET_S_ERROR;
   }
-  if( re_match(pRe, zStr, -1) ){
+  if( re_match(pRe, (const unsigned char *)zStr, -1) ){
     rc = RULESET_S_TRUE;
   }else{
     rc = RULESET_S_FALSE;
