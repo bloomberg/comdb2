@@ -67,6 +67,12 @@ enum ruleset_match_mode {
                            * GLOB, and REGEXP. */
 };
 
+enum ruleset_string_match {
+  RULESET_S_TRUE = 0,
+  RULESET_S_FALSE = 1,
+  RULESET_S_ERROR = 2
+};
+
 enum ruleset_match {
   RULESET_M_NONE = 0,     /* The ruleset or item was not matched, possibly
                            * because no matching was performed. */
@@ -139,6 +145,7 @@ struct ruleset_result {
 typedef int (*xStrCmp)(const char *, const char *);
 typedef int (*xMemCmp)(const void *, const void *, size_t);
 
+typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
 
