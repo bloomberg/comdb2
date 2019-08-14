@@ -155,7 +155,7 @@ static int run_sql_part_trans(sqlite3 *sqldb, struct sqlclntstate *client,
     char *msg;
 
     /* set sql and analyze flavor */
-    client->work.zSql = sql;
+    client->sql = sql;
 
     /* set thread info */
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1342,7 +1342,7 @@ void handle_backout(SBUF2 *sb, char *table)
     if (rc == 0)
         sbuf2printf(sb, "SUCCESS\n");
     else {
-        sbuf2printf(sb, "?Error occured with query: '%s'\n", clnt.work.zSql);
+        sbuf2printf(sb, "?Error occured with query: '%s'\n", clnt.sql);
         sbuf2printf(sb, "FAILED\n");
     }
 
