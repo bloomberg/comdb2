@@ -4703,6 +4703,7 @@ static int can_execute_sql_query_now(
   logmsg(LOGMSG_DEBUG, "%s: %lld (client) vs %lld (pool): %s\n",
          __func__, clnt->priority, thdpool_priority,
          clnt->priority <= thdpool_priority ? "NOW": "DEFER");
+  if (thdpool_priority == PRIORITY_T_INVALID) return 1; /* empty pool */
   return clnt->priority <= thdpool_priority;
 }
 
