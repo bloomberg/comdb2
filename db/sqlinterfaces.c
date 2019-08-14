@@ -4769,17 +4769,19 @@ void sqlengine_work_appsock(void *thddata, void *work)
         return;
     }
 
-    int prepRc = prepare_and_calc_fingerprint(clnt);
+    if (gbl_fingerprint_queries) {
+        int prepRc = prepare_and_calc_fingerprint(clnt);
 
-    if (prepRc != 0) {
-        clnt->query_rc = prepRc;
-        put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
-        signal_clnt_as_done(clnt);
-        put_curtran(thedb->bdb_env, clnt);
-        return;
+        if (prepRc != 0) {
+            clnt->query_rc = prepRc;
+            put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
+            clnt->osql.timings.query_finished = osql_log_time();
+            osql_log_time_done(clnt);
+            clnt_change_state(clnt, CONNECTION_IDLE);
+            signal_clnt_as_done(clnt);
+            put_curtran(thedb->bdb_env, clnt);
+            return;
+        }
     }
 
     int iRejected = 0;
