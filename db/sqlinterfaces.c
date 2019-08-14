@@ -4697,7 +4697,13 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  return clnt->priority <= thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+  priority_t thdpool_priority = thdpool_get_highest_priority(
+      gbl_sqlengine_thdpool
+  );
+  logmsg(LOGMSG_DEBUG, "%s: %d (client) vs %d (pool): %s\n",
+         __func__, clnt->priority, thdpool_priority,
+         clnt->priority <= thdpool_priority ? "NOW": "DEFER");
+  return clnt->priority <= thdpool_priority;
 }
 
 void sqlengine_work_appsock(void *thddata, void *work)
