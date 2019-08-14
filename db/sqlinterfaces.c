@@ -4700,7 +4700,7 @@ static int can_execute_sql_query_now(
   priority_t thdpool_priority = thdpool_get_highest_priority(
       gbl_sqlengine_thdpool
   );
-  logmsg(LOGMSG_DEBUG, "%s: %d (client) vs %d (pool): %s\n",
+  logmsg(LOGMSG_DEBUG, "%s: %lld (client) vs %lld (pool): %s\n",
          __func__, clnt->priority, thdpool_priority,
          clnt->priority <= thdpool_priority ? "NOW": "DEFER");
   return clnt->priority <= thdpool_priority;
