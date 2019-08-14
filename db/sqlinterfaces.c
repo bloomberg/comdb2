@@ -4751,6 +4751,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 
+    reqlog_set_origin(thd->logger, "%s", clnt->origin);
+
     assert(clnt->dbtran.pStmt == NULL);
 
     /* everything going in is cursor based */
@@ -4798,7 +4800,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     clnt_change_state(clnt, CONNECTION_RUNNING);
-    reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
         clnt->client_understands_query_stats && clnt->osql.rqid)
