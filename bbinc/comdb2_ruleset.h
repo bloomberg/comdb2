@@ -46,17 +46,25 @@ enum ruleset_flags {
                            * the request will NOT be retried. TODO: ? */
 };
 
-// TODO: Comments...
 enum ruleset_match_mode {
-  RULESET_MM_NONE = 0,
+  RULESET_MM_NONE = 0,    /* No matching.  If string criteria are specified
+                           * for this rule, it will not be matched and NONE
+                           * will be returned as the result. */
 
-  RULESET_MM_EXACT = 1,
+  RULESET_MM_EXACT = 1,   /* The string criteria for the rule should be
+                           * matched exactly. */
 
-  RULESET_MM_GLOB = 2,
+  RULESET_MM_GLOB = 2,    /* The string criteria for the rule are actually
+                           * GLOB patterns, which permits metacharacters
+                           * '?' and '*' as wildcards and character subsets
+                           * within square braackets '[' and ']'. */
 
-  RULESET_MM_REGEXP = 4,
+  RULESET_MM_REGEXP = 4,  /* The string criteria for the rule are actually
+                           * regular expression patterns. */
 
-  RULESET_MM_NOCASE = 8
+  RULESET_MM_NOCASE = 8   /* Matches should be performed in case-insensitive
+                           * manner.  This flag may be combined with EXACT,
+                           * GLOB, and REGEXP. */
 };
 
 enum ruleset_match {
