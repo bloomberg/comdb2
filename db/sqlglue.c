@@ -10193,6 +10193,11 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
                               ? gbl_move_deadlk_max_attempt
                               : 500;
         do {
+            if (access_control_check_sql_read(pCur, thd)) {
+                rc = SQLITE_ACCESS;
+                break;
+            }
+
             rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
             if (rc == BDBERR_DEADLOCK &&
                 recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {

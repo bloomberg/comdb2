@@ -1,0 +1,8 @@
+(user='---------- OP user ----------')
+(rows inserted=1)
+(i=1)
+(count(*)=1)
+(user='---------- non-OP user ----------')
+[select * from 't1@user1'] failed with rc -106 Read access denied to t1@user1 for user user2 bdberr=15
+[select count(*) from 't1@user1'] failed with rc -106 Read access denied to t1@user1 for user user2 bdberr=15
+(user='---------- OP user ----------')
