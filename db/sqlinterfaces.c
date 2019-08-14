@@ -5039,6 +5039,15 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
         clock_gettime(CLOCK_REALTIME, &first);
         last = first;
         while (1) {
+            if (db_is_stopped()) {
+                logmsg(LOGMSG_WARN,
+                       "%s: Stopped waiting for query (1), exiting...\n",
+                       __func__);
+                send_run_error(clnt, "Client api should change nodes",
+                               CDB2ERR_CHANGENODE);
+                clnt->query_rc = -1;
+                break;
+            }
             struct timespec now, st;
             clock_gettime(CLOCK_REALTIME, &now);
             mshb.tv_sec = (gbl_client_heartbeat_ms / 1000);
@@ -5095,6 +5104,15 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
     } else {
         Pthread_mutex_lock(&clnt->wait_mutex);
         while (!clnt->done) {
+            if (db_is_stopped()) {
+                logmsg(LOGMSG_WARN,
+                       "%s: Stopped waiting for query (2), exiting...\n",
+                       __func__);
+                send_run_error(clnt, "Client api should change nodes",
+                               CDB2ERR_CHANGENODE);
+                clnt->query_rc = -1;
+                break;
+            }
             Pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
         }
         Pthread_mutex_unlock(&clnt->wait_mutex);
