@@ -4678,9 +4678,9 @@ static int can_execute_sql_query_now(
   size_t count = comdb2_evaluate_ruleset(
     NULL, memcmp, &thd->rules, clnt, &result
   );
-  char zResult[100] = {0};
-  comdb2_ruleset_result_to_str(&result, zResult, sizeof(zResult));
-  logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zResult);
+  char zRuleRes[100] = {0};
+  comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
+  logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zRuleRes);
   *piRejected = 0;
   switch (result.action) {
     case RULESET_A_REJECT: {
@@ -4700,11 +4700,18 @@ static int can_execute_sql_query_now(
   priority_t thdpool_priority = thdpool_get_highest_priority(
       gbl_sqlengine_thdpool
   );
+  int rc;
+  if (thdpool_priority == PRIORITY_T_INVALID) {
+    rc = 1; /* empty pool */
+  } else if (clnt->priority <= thdpool_priority) {
+    rc = 1; /* query has priority */
+  } else {
+    rc = 0; /* query should wait */
+  }
+  const char *zResult = rc ? "NOW" : "DEFER";
   logmsg(LOGMSG_DEBUG, "%s: %lld (client) vs %lld (pool): %s\n",
-         __func__, clnt->priority, thdpool_priority,
-         clnt->priority <= thdpool_priority ? "NOW": "DEFER");
-  if (thdpool_priority == PRIORITY_T_INVALID) return 1; /* empty pool */
-  return clnt->priority <= thdpool_priority;
+         __func__, clnt->priority, thdpool_priority, zResult);
+  return rc;
 }
 
 void sqlengine_work_appsock(void *thddata, void *work)
@@ -4842,7 +4849,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     debug_close_sb(clnt);
     signal_clnt_as_done(clnt);
     thrman_setid(thrman_self(), "[done]");
-    put_curtran(thedb->bdb_env, clnt);
 }
 
 static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
