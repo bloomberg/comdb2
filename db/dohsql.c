@@ -810,13 +810,13 @@ static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
-    return strdup(clnt->work.zSql);
+    return strdup(clnt->sql);
 }
 static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
-    clnt->work.zSql = arg;
+    clnt->sql = arg;
     return NULL;
 }
 static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
@@ -1054,7 +1054,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->appsock_id = getarchtid();
     init_sqlclntstate(conn->clnt, (char *)conn->clnt->osql.uuid, 1);
     conn->clnt->origin = clnt->origin;
-    conn->clnt->work.zSql = strdup(sql);
+    conn->clnt->sql = strdup(sql);
     plugin_set_callbacks(conn->clnt, dohsql);
     conn->clnt->plugin.state = conn;
     where = thrman_get_where(thrman_self());
@@ -1085,8 +1085,8 @@ static void _shard_disconnect(dohsql_connector_t *conn)
         free(conn->cols);
 
     free(conn->params);
-    free(clnt->work.zSql);
-    clnt->work.zSql = NULL;
+    free(clnt->sql);
+    clnt->sql = NULL;
     cleanup_clnt(clnt);
     free(clnt);
 }
@@ -1334,7 +1334,7 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 
 const char *dohsql_get_sql(struct sqlclntstate *clnt, int index)
 {
-    return clnt->conns->conns[index].clnt->work.zSql;
+    return clnt->conns->conns[index].clnt->sql;
 }
 
 int comdb2_register_limit(int iLimit, int iSavedLimit)

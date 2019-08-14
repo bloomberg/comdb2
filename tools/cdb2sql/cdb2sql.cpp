@@ -1208,7 +1208,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int ncols;
     int col;
     FILE *out = stdout;
-    char cmd[60];
     int startms = now_ms();
 
     if (printmode & DISP_STDERR)
@@ -1258,43 +1257,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
             if (rc) {
                 fprintf(stderr, "failed to run set getcost 1\n");
                 return 1;
-            }
-        }
-
-        /*
-          Check and set user and password if they have been specified using
-          the environment variables.
-
-          Note: It is good to report the user about the use of environment
-          variables to set user/password to avoid any surprises.
-        */
-        if (getenv("COMDB2_USER")) {
-            int length = snprintf(cmd, sizeof(cmd), "set user %s",
-                                  getenv("COMDB2_USER"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_USER too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set user using COMDB2_USER, "
-                                "exiting\n");
-                return 1;
-            } else {
-                printf("Set user using COMDB2_USER\n");
-            }
-        }
-
-        if (getenv("COMDB2_PASSWORD")) {
-            int length = snprintf(cmd, sizeof(cmd), "set password %s",
-                                  getenv("COMDB2_PASSWORD"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set password using "
-                                "COMDB2_PASSWORD, exiting\n");
-                return 1;
-            } else {
-                printf("Set password using COMDB2_PASSWORD\n");
             }
         }
     }
