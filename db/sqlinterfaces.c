@@ -5124,6 +5124,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
                 /* ok, cannot usleep... still want to keep retrying (?) */
                 sleep(1); /* however, we don't want to spin */
             }
+            if (db_is_stopped()) return 1;
             rc = enqueue_sql_query(clnt, priority);
             if (rc != 0) return rc;
             continue;
