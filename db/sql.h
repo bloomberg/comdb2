@@ -543,7 +543,6 @@ struct sql_state {
 /* This structure is designed to hold several pieces of data related to
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
-    char *zSql;           /* Original SQL query for this work. */
     const char *zNormSql; /* Normalized version of latest SQL query. */
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
@@ -596,6 +595,7 @@ struct sqlclntstate {
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
+    char *sql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -1251,5 +1251,8 @@ int gather_connection_info(struct connection_info **info, int *num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
+
+/* Returns the current user for the session */
+char *get_current_user(struct sqlclntstate *clnt);
 
 #endif

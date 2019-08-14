@@ -1,1 +1,4 @@
+[select comdb2_user()] failed with rc -106 access denied
+[select comdb2_user()] failed with rc -106 access denied
+[select comdb2_user()] failed with rc -106 access denied
 [select 'user3'] failed with rc -106 access denied

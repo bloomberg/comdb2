@@ -2691,7 +2691,7 @@ static void *dispatch_lua_thread(void *arg)
     clnt.appdata = parent_clnt->appdata;
     clnt.plugin = parent_clnt->plugin;
     clnt.sp = thd->sp;
-    clnt.work.zSql = thd->sql;
+    clnt.sql = thd->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
@@ -3121,7 +3121,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     thd = calloc(sizeof(dbthread_type), 1);
     thd->lua = newlua;
     thd->sp = newsp;
-    thd->sql = sp->clnt->work.zSql;
+    thd->sql = sp->clnt->sql;
     thd->clnt = sp->clnt;
     thd->status = THREAD_STATUS_DISPATCH_WAITING;
     Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
@@ -6392,7 +6392,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err)
 {
-    const char *s = clnt->work.zSql;
+    const char *s = clnt->sql;
     char spname[MAX_SPNAME];
     long long sprc = 0;
     int rc, args, new_vm;
@@ -6607,7 +6607,7 @@ void *exec_trigger(trigger_reg_t *reg)
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.work.zSql = sql;
+    clnt.sql = sql;
     clnt.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);

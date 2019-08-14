@@ -934,3 +934,4 @@ partition_info |
 comdb2_host | Returns the hostname on which this query is executing.
 comdb2_dbname | Returns the name of the connected database.
 comdb2_prevquerycost | Returns the cost of the previously executed query, when possible.
+comdb2_user() | Returns the name of the current authenticated user for the session.

@@ -204,10 +204,20 @@ public class Comdb2Handle extends AbstractConnection {
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
-        String envvar = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        statement_effects = (envvar != null && !envvar.equals("0"));
+        String queryeffectsEnv = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        statement_effects = (queryeffectsEnv != null && !queryeffectsEnv.equals("0"));
         if (statement_effects)
             sets.add("set queryeffects statement");
+
+        String userEnv = System.getenv("COMDB2_USER");
+        if (userEnv != null) {
+            sets.add("set user " + userEnv);
+        }
+
+        String passwordEnv = System.getenv("COMDB2_PASSWORD");
+        if (passwordEnv != null) {
+            sets.add("set password " + passwordEnv);
+        }
 
         if (verifyretry)
             sets.add("set verifyretry on");

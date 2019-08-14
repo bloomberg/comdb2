@@ -214,7 +214,7 @@ ruleset_match_t comdb2_evaluate_ruleset_item(
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
     if( rule->zSql!=NULL &&
-        stringComparer(clnt->work.zSql, rule->zSql)!=0 ){
+        stringComparer(clnt->sql, rule->zSql)!=0 ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
   }else{
