@@ -20,17 +20,6 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 
-/*
-** A structure defining how to do GLOB-style comparisons.  Stolen
-** from "sqlite/src/func.c".
-*/
-struct compareInfo {
-  u8 matchAll;          /* "*" or "%" */
-  u8 matchOne;          /* "?" or "_" */
-  u8 matchSet;          /* "[" or 0 */
-  u8 noCase;            /* true to ignore case differences */
-};
-
 static int glob_match(
   const char *zStr1,
   const char *zStr2

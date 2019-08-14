@@ -4676,8 +4676,7 @@ static int can_execute_sql_query_now(
   struct ruleset_result result = {0};
   result.priority = clnt->priority;
   size_t count = comdb2_evaluate_ruleset(
-    strcasecmp, memcmp, &thd->rules, clnt,
-    clnt->work.aFingerprint, &result
+    NULL, memcmp, &thd->rules, clnt, &result
   );
   char zResult[100] = {0};
   comdb2_ruleset_result_to_str(&result, zResult, sizeof(zResult));

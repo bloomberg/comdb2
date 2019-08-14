@@ -195,6 +195,7 @@ static int re_space_char(int c){
 ** string zIn[].  Return true on a match and false if there is no match.
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+int re_match(ReCompiled *pRe, const unsigned char *zIn, int nIn){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static int re_match(ReCompiled *pRe, const unsigned char *zIn, int nIn){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
