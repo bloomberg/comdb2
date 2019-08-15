@@ -225,10 +225,10 @@ function autocache_enabled
     [[ $debug == "1" ]] && set -x
     typeset func="autocache_enabled"
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'pagelist_flush_interval'")
-    if [[ "$x" != "0" ]]; then 
-        echo "ON"
-    else
+    if [[ "$x" == "0" ]]; then 
         echo "OFF"
+    else
+        echo "ON"
     fi
 }
 
