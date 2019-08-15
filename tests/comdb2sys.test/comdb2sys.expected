@@ -329,6 +329,7 @@
 (name='max_tag_name_length', description='Maximum tag name length', value=64)
 [SELECT * FROM comdb2_limits ORDER BY name] rc 0
 (name='appsockpool')
+(name='loadcache')
 (name='memptrickle')
 (name='osqlpfaultpool')
 (name='pgcompactpool')

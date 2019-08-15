@@ -6034,9 +6034,14 @@ const char *comdb2_get_dbname(void)
     return thedb->envname;
 }
 
-int sc_ready(void)
+int backend_opened(void)
 {
     return gbl_backend_opened;
+}
+
+int sc_ready(void)
+{
+    return backend_opened();
 }
 
 static void create_service_file(const char *lrlname)

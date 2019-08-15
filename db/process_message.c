@@ -1977,6 +1977,27 @@ clipper_usage:
         if (thedb->bdb_env == NULL)
             return -1;
         backend_cmd(dbenv, line, lline, st);
+    } else if (tokcmp(tok, ltok, "load_cache") == 0) {
+        if (thedb->bdb_env == NULL)
+            return -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            load_cache_default();
+        } else
+            load_cache(tok);
+    } else if (tokcmp(tok, ltok, "dump_cache") == 0) {
+        char filename[PATH_MAX];
+        if (thedb->bdb_env == NULL)
+            return -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            dump_cache_default();
+        } else {
+            tokcpy(tok, ltok, filename);
+            tok = segtok(line, lline, &st, &ltok);
+            int max_pages = (ltok != 0) ? toknum(tok, ltok) : 0;
+            dump_cache(filename, max_pages);
+        }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;

@@ -847,6 +847,13 @@ void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb)
     return sb->userptr;
 }
 
+void SBUF2_FUNC(sbuf2nextline)(SBUF2 *sb)
+{
+    char c;
+    while ((c = sbuf2getc(sb)) >= 0 && c != '\n')
+        ;
+}
+
 #if SBUF2_SERVER
 #include <lockmacros.h> /* LOCK & UNLOCK */
 #include <plhash.h>    /* hash_t */
