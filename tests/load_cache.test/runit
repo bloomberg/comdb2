@@ -125,7 +125,7 @@ function dump_cache
 function sort_and_diff_files
 {
     [[ $debug == "1" ]] && set -x
-    typeset func="diff_files"
+    typeset func="sort_and_diff_files"
     write_prompt $func "Running $func"
     typeset file1=$1
     typeset file2=$2
