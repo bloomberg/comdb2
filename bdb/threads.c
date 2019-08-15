@@ -381,7 +381,7 @@ extern int db_is_stopped();
 int64_t gbl_last_checkpoint_ms;
 int64_t gbl_total_checkpoint_ms;
 int gbl_checkpoint_count;
-int gbl_pagelist_flush_interval = 30;
+int gbl_cache_flush_interval = 30;
 int backend_opened(void);
 
 void *checkpoint_thread(void *arg)
@@ -390,7 +390,7 @@ void *checkpoint_thread(void *arg)
     int checkpointtime;
     int checkpointtimepoll;
     int checkpointrand;
-    int loaded_pagelist = 0, last_pagelist_dump = 0;
+    int loaded_cache = 0, last_cache_dump = 0;
     bdb_state_type *bdb_state;
     int start, end;
     int total_sleep_msec;
@@ -454,15 +454,15 @@ void *checkpoint_thread(void *arg)
 
         /* This is spawned before we open tables- don't repopulate the
          * cache until the backend has opened */
-        if ((gbl_pagelist_flush_interval > 0) &&
-            ((now = time(NULL)) - last_pagelist_dump) >
-                gbl_pagelist_flush_interval) {
-            if (!loaded_pagelist) {
-                bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
-                loaded_pagelist = 1;
+        if ((gbl_cache_flush_interval > 0) &&
+            ((now = time(NULL)) - last_cache_dump) >
+                gbl_cache_flush_interval) {
+            if (!loaded_cache) {
+                bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
+                loaded_cache = 1;
             } else {
-                bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv, 0);
-                last_pagelist_dump = now;
+                bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 0);
+                last_cache_dump = now;
             }
         }
 

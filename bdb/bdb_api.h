@@ -1043,11 +1043,11 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
 /* Load from serialized cache */
 int bdb_load_cache(bdb_state_type *bdb_state, const char *file);
 
-/* Load default pagelist */
-int bdb_load_pagelist(bdb_state_type *bdb_state);
+/* Load default cache */
+int bdb_load_cache_default(bdb_state_type *bdb_state);
 
-/* Flush default pagelist */
-int bdb_flush_pagelist(bdb_state_type *bdb_state);
+/* Flush default cache */
+int bdb_dump_cache_default(bdb_state_type *bdb_state);
 
 /* force a flush to disk of all in memory stuff , but don't force a checkpoint
  */

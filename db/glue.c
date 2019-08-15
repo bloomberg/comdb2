@@ -4870,14 +4870,14 @@ void load_cache(const char *file)
     bdb_load_cache(thedb->bdb_env, file);
 }
 
-void load_pagelist(void)
+void load_cache_default(void)
 {
-    bdb_load_pagelist(thedb->bdb_env);
+    bdb_load_cache_default(thedb->bdb_env);
 }
 
-void flush_pagelist(void)
+void dump_cache_default(void)
 {
-    bdb_flush_pagelist(thedb->bdb_env);
+    bdb_dump_cache_default(thedb->bdb_env);
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

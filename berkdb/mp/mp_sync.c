@@ -1761,37 +1761,37 @@ __memp_dump_pp(dbenv, s, max_pages)
 }
 
 /*
- * __memp_load_pagelist_pp --
- *	DB_ENV->memp_load_pagelist pre/post processing.
+ * __memp_load_default_pp --
+ *	DB_ENV->memp_load_default pre/post processing.
  *
- * PUBLIC: int __memp_load_pagelist_pp __P((DB_ENV *));
+ * PUBLIC: int __memp_load_default_pp __P((DB_ENV *));
  */
 int
-__memp_load_pagelist_pp(dbenv)
+__memp_load_default_pp(dbenv)
 	DB_ENV *dbenv;
 {
 	int rep_check, ret;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->mp_handle, "memp_load_pagelist", DB_INIT_MPOOL);
+		dbenv->mp_handle, "memp_load_default", DB_INIT_MPOOL);
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_load_pagelist(dbenv);
+	ret = __memp_load_default(dbenv);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
 }
 
 /*
- * __memp_flush_pagelist_pp --
- *	DB_ENV->memp_flush_pages pre/post processing.
+ * __memp_dump_default_pp --
+ *	DB_ENV->memp_dump_default pre/post processing.
  *
- * PUBLIC: int __memp_flush_pagelist_pp __P((DB_ENV *, u_int32_t));
+ * PUBLIC: int __memp_dump_default_pp __P((DB_ENV *, u_int32_t));
  */
 int
-__memp_flush_pagelist_pp(dbenv, force)
+__memp_dump_default_pp(dbenv, force)
 	DB_ENV *dbenv;
     u_int32_t force;
 {
@@ -1799,11 +1799,11 @@ __memp_flush_pagelist_pp(dbenv, force)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->mp_handle, "memp_flush_pagelist", DB_INIT_MPOOL);
+		dbenv->mp_handle, "memp_dump_default", DB_INIT_MPOOL);
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_flush_pagelist(dbenv, force);
+	ret = __memp_dump_default(dbenv, force);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -2303,14 +2303,14 @@ extern u_int64_t gbl_memp_pgreads;
 static u_int64_t memp_pagecount = 0;
 
 /*
- * __memp_load_pagelist --
- *	Load bufferpool pagelist to log directory
+ * __memp_load_default --
+ *	Load bufferpool cache to log directory
  *
- * PUBLIC: int __memp_load_pagelist
+ * PUBLIC: int __memp_load_default
  * PUBLIC:	 __P((DB_ENV *));
  */
 int
-__memp_load_pagelist(dbenv)
+__memp_load_default(dbenv)
 	DB_ENV *dbenv;
 {
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
@@ -2359,17 +2359,17 @@ done:
 	return ret;
 }
 
-int gbl_memp_flush_pagelist_threshold = 20;
+int gbl_memp_dump_cache_threshold = 20;
 
 /*
- * __memp_flush_pagelist --
+ * __memp_dump_default --
  *	Dump bufferpool pagelist to log directory
  *
- * PUBLIC: int __memp_flush_pagelist
+ * PUBLIC: int __memp_dump_default
  * PUBLIC:	 __P((DB_ENV *, u_int32_t));
  */
 int
-__memp_flush_pagelist(dbenv, force)
+__memp_dump_default(dbenv, force)
 	DB_ENV *dbenv;
 	u_int32_t force;
 {
@@ -2377,7 +2377,7 @@ __memp_flush_pagelist(dbenv, force)
 	int fd, ret = 0;
 	u_int32_t lines;
 	u_int64_t cnt;
-	int thresh = gbl_memp_flush_pagelist_threshold;
+	int thresh = gbl_memp_dump_cache_threshold;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;
 #if PAGELIST_DEBUG

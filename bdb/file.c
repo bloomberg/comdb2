@@ -1406,17 +1406,15 @@ int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
     return rc;
 }
 
-int bdb_load_pagelist(bdb_state_type *bdb_state)
+int bdb_load_cache_default(bdb_state_type *bdb_state)
 {
-    return bdb_state->dbenv->memp_load_pagelist(bdb_state->dbenv);
+    return bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
 }
 
-int bdb_flush_pagelist(bdb_state_type *bdb_state)
+int bdb_dump_cache_default(bdb_state_type *bdb_state)
 {
-    return bdb_state->dbenv->memp_flush_pagelist(bdb_state->dbenv, 1);
+    return bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 1);
 }
-
-extern int gbl_pagelist_flush_interval;
 
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
