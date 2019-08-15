@@ -1020,6 +1020,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 static struct thdpool *loadcache_thdpool;
 int gbl_load_cache_threads = 8;
 int gbl_load_cache_max_pages = 0;
+int gbl_dump_cache_max_pages = 0;
 int gbl_max_pages_per_cache_thread = 8192;
 
 void
@@ -1831,6 +1832,19 @@ typedef struct fileid_page_list {
 } fileid_page_list_t;
 
 #define PAGELIST_INIT 1024
+#define PAGEARRAY_INIT 4096
+
+typedef struct page_fget_count {
+	fileid_page_list_t *fileid_page_list;
+	db_pgno_t page;
+	u_int32_t fget_count;
+} page_fget_count_t;
+
+typedef struct sorted_page_list {
+	u_int64_t cnt;
+	u_int64_t alloced;
+	page_fget_count_t *pagearray;
+} sorted_page_list_t;
 
 static inline int
 pgcmp(const void *p1, const void *p2)
@@ -1843,6 +1857,21 @@ pgcmp(const void *p1, const void *p2)
 		return -1;
 	} else {
 		return 1;
+	}
+	abort();
+}
+
+static inline int
+pgrefcmp(const void *p1, const void *p2)
+{
+	page_fget_count_t *page1 = (page_fget_count_t *)p1;
+	page_fget_count_t *page2 = (page_fget_count_t *)p2;
+	if (page1->fget_count == page2->fget_count) {
+		return 0;
+	} else if (page1->fget_count < page2->fget_count) {
+		return 1;
+	} else {
+		return -1;
 	}
 	abort();
 }
@@ -1918,6 +1947,9 @@ output_fileid_page(void *obj, void *arg)
 	qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
 	p = pagelist->fileid;
 
+    if (pagelist->cnt == 0)
+        return 0;
+
 	for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
 		sbuf2printf(s, "%2.2x", (u_int)*p);
 	}
@@ -1953,8 +1985,29 @@ static inline int add_page_to_fileid_list(DB_ENV *dbenv, fileid_page_list_t *pag
 	return 0;
 }
 
+static inline int add_page_to_sorted_page_list(DB_ENV *dbenv, sorted_page_list_t
+		*pagearray, fileid_page_list_t *pagelist, db_pgno_t pg, u_int32_t fget_count)
+{
+	int ret;
+	if (pagearray->cnt == pagearray->alloced) {
+		u_int64_t alloccount = (pagearray->alloced == 0) ? PAGEARRAY_INIT :
+				(pagearray->alloced * 2);
+		if ((ret = __os_realloc(dbenv, alloccount * sizeof(page_fget_count_t),
+						&pagearray->pagearray)) != 0) {
+			return ret;
+		}
+		pagearray->alloced = alloccount;
+	}
+	pagearray->pagearray[pagearray->cnt].fileid_page_list = pagelist;
+	pagearray->pagearray[pagearray->cnt].page = pg;
+	pagearray->pagearray[pagearray->cnt].fget_count = fget_count;
+	pagearray->cnt++;
+	return 0;
+}
+
 static inline int
-add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
+add_fileid_page(DB_ENV *dbenv, hash_t *hash, sorted_page_list_t *pagearray,
+		u_int8_t *fileid, db_pgno_t pg, u_int32_t fget_count)
 {
 	int ret;
 	fileid_page_list_t *pagelist = hash_find(hash, fileid);
@@ -1965,7 +2018,8 @@ add_fileid_page(DB_ENV *dbenv, hash_t *hash, u_int8_t *fileid, db_pgno_t pg)
 		memcpy(pagelist->fileid, fileid, DB_FILE_ID_LEN);
 		hash_add(hash, pagelist);
 	}
-	return add_page_to_fileid_list(dbenv, pagelist, pg);
+	return add_page_to_sorted_page_list(dbenv, pagearray, pagelist, pg,
+			fget_count);
 }
 
 static int free_fileid_page(void *obj, void *arg)
@@ -2165,9 +2219,11 @@ __memp_dump(dbenv, s, pagecount)
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int i, j, ret, t_ret, first = 1;
+	int i, j, ret, t_ret, first = 1, max_pages = gbl_dump_cache_max_pages,
+		dump_pages;
 	u_int8_t *fileid, *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
 	hash_t *fileid_pages = NULL;
+	sorted_page_list_t pagearray = {0};
 
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
@@ -2195,20 +2251,36 @@ __memp_dump(dbenv, s, pagecount)
 				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
 				fileid = R_ADDR(dbmp->reginfo, mfp->fileid_off);
 
-				if ((ret = add_fileid_page(dbenv, fileid_pages, fileid,
-								bhp->pgno)) != 0) {
+				if ((ret = add_fileid_page(dbenv, fileid_pages, &pagearray,
+								fileid, bhp->pgno, bhp->fget_count)) != 0) {
 					MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 					destroy_fileid_page_hash(dbenv, fileid_pages);
+					__os_free(dbenv, pagearray.pagearray);
 					logmsg(LOGMSG_ERROR, "%s error adding fileid page to hash "
 							"%d\n", __func__, ret);
 					return ret;
 				}
-				(*pagecount)++;
 			}
 			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		}
 	}
+	qsort(pagearray.pagearray, pagearray.cnt, sizeof(page_fget_count_t),
+			pgrefcmp);
 
+	if (!max_pages)
+		dump_pages = pagearray.cnt;
+	else
+		dump_pages = (max_pages < pagearray.cnt) ? max_pages : pagearray.cnt;
+
+	u_int32_t lastfget = UINT_MAX;
+	for (int i = 0; i < dump_pages; i++) {
+		page_fget_count_t *page_fget = &pagearray.pagearray[i];
+		assert(page_fget->fget_count <= lastfget);
+		lastfget = page_fget->fget_count;
+		add_page_to_fileid_list(dbenv, page_fget->fileid_page_list, page_fget->page);
+		(*pagecount)++;
+	}
+	__os_free(dbenv, pagearray.pagearray);
 	output_fileid_page_hash(dbenv, fileid_pages, s);
 	destroy_fileid_page_hash(dbenv, fileid_pages);
 

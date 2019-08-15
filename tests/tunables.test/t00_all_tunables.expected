@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=931)
+(TUNABLES_COUNT=932)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -242,6 +242,7 @@
 (name='dtastripe', description='', type='INTEGER', value='8', read_only='Y')
 (name='dump_after_byteswap', description='dump page after byteswap', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_blkseq', description='Dump all blkseq inserts and replays', type='BOOLEAN', value='OFF', read_only='N')
+(name='dump_cache_max_pages', description='Maximum number of pages that will dump into a pagelist.  Setting to 0 means that there is no limit.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='dump_fsql_response', description='Dump fsql out messages', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_locks_on_repwait', description='Dump locks on repwaits', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_page_on_byteswap_error', description='fsnap a malformed page from byteswap', type='BOOLEAN', value='OFF', read_only='N')

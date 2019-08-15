@@ -837,6 +837,8 @@ alloc:		/*
 #endif
 
 	*(void **)addrp = bhp->buf;
+	if (bhp->fget_count < UINT_MAX)
+			bhp->fget_count++;
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);

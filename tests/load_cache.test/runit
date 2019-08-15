@@ -128,7 +128,8 @@ function sort_and_diff_files
     write_prompt $func "Running $func"
     typeset file1=$1
     typeset file2=$2
-    typeset linecnt
+    typeset dumpmax=${3:-0}
+    typeset linecnt1
     typeset faildiff
     typeset cnt
 
@@ -137,11 +138,13 @@ function sort_and_diff_files
     cat $file2 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file2}.sort
 
     # Count number of lines in reformatted file
-    linecnt=$(wc -l ${file1}.sort | awk '{print $1}')
-    [[ -z $linecnt ]] && failexit "Cant read cache file"
+    linecnt1=$(wc -l ${file1}.sort | awk '{print $1}')
+    [[ -z $linecnt1 ]] && failexit "Cant read cache file"
+
+    [[ "$dumpmax" != "0" ]] && [[ "$linecnt1" -ne "$dumpmax" ]] && failexit "Maxdump tunable was not honored, $linecnt1 vs $dumpmax"
 
     # Calculate number of differences we are allowed
-    fd=$(echo "${linecnt} * 0.${failpct}" | bc)
+    fd=$(echo "${linecnt1} * 0.${failpct}" | bc)
     faildiff=${fd%%\.*}
 
     # Count how many lines are different
@@ -159,12 +162,13 @@ function check_results
     write_prompt $func "Running $func"
     typeset file1=$1
     typeset file2=$2
+    typeset dumpmax=$3
 
     if [[ -z "$CLUSTER" ]]; then
-        sort_and_diff_files $file1 $file2
+        sort_and_diff_files $file1 $file2 $dumpmax
     else 
         for n in $CLUSTER ; do
-            sort_and_diff_files ${file1}.$n ${file2}.$n
+            sort_and_diff_files ${file1}.$n ${file2}.$n $dumpmax
         done
     fi
 }
@@ -220,6 +224,22 @@ function copy_test
     sort_and_diff_files $reppage $check
 }
 
+function load_max
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="load_max"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'load_cache_max_pages'")
+    echo "$x"
+}
+
+function dump_max
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="dump_max"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'dump_cache_max_pages'")
+    echo "$x"
+}
+
 function autocache_enabled
 {
     [[ $debug == "1" ]] && set -x
@@ -240,6 +260,7 @@ function run_test
     typeset orig="$DBDIR/cache.txt"
     typeset check="$DBDIR/check_cache.txt"
     typeset autocache=$(autocache_enabled)
+    typeset dump_max_pages=$(dump_max)
     bulk_insert_records t1 $loadrecs
     flush_cluster
     sleep $sleeptime
@@ -252,7 +273,7 @@ function run_test
     fi
     sleep $sleeptime
     dump_cache $check
-    check_results $orig $check 
+    check_results $orig $check $dump_max_pages
     flush_cluster
     copy_test $orig $autocache
 }
