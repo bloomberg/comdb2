@@ -4740,6 +4740,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+        clnt->client_understands_query_stats && clnt->osql.rqid)
+        osql_query_dbglog(sqlthd, clnt->queryid);
+
     assert(clnt->dbtran.pStmt == NULL);
 
     /* everything going in is cursor based */
@@ -4785,10 +4789,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     clnt_change_state(clnt, CONNECTION_RUNNING);
-
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
-        clnt->client_understands_query_stats && clnt->osql.rqid)
-        osql_query_dbglog(sqlthd, clnt->queryid);
 
     /* it is a new query, it is time to clean the error */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
