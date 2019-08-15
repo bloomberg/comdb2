@@ -1216,7 +1216,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *);
+                     int64_t, struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1230,5 +1230,36 @@ void clnt_unregister(struct sqlclntstate *clnt);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
+
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
+struct query_count {
+    char fingerprint[FINGERPRINTSZ];
+
+    // TODO: counter_t that we automatically reset when needed
+    int64_t count;
+    int64_t last_count;
+
+    int64_t cost;
+    int64_t last_cost;
+
+    int64_t rows;
+    int64_t last_rows;
+
+    int64_t timems;
+    int64_t last_timems;
+};
+
+void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
 
 #endif

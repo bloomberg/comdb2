@@ -1151,12 +1151,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
+
+    unsigned char fingerprint[FINGERPRINTSZ];
+    int have_fingerprint = 0;
+    double cost;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
+
     if (gbl_fingerprint_queries) {
         if (h->sql) {
-            double cost;
-            int64_t time;
-            int64_t prepTime;
-            int64_t rows;
             if (is_stored_proc_sql(h->sql)) {
                 cost = clnt->spcost.cost;
                 time = clnt->spcost.time;
@@ -1170,10 +1174,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
                 add_fingerprint(h->sql, clnt->work.zOrigNormSql, cost, time,
-                                prepTime, rows, logger);
+                                prepTime, rows, logger, fingerprint);
+                have_fingerprint = 1;
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
                 add_fingerprint(h->sql, clnt->work.zNormSql, cost, time,
-                                prepTime, rows, logger);
+                                prepTime, rows, logger, fingerprint);
+                have_fingerprint = 1;
             } else {
                 reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
             }
@@ -1197,6 +1203,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += get_sql_steps(thd);
         time_metric_add(rawnodestats->svc_time, h->cost.time);
+        if (have_fingerprint)
+            add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, rows, time);
     }
 
     reset_sql_steps(thd);

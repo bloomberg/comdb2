@@ -6033,7 +6033,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
-    hndl->send_stack = 1;
+    hndl->send_stack = 0;
     hndl->read_intrans_results = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to

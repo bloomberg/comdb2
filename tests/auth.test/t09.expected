@@ -239,6 +239,7 @@
 (candidate='comdb2_repl_stats')
 (candidate='comdb2_replication_netqueue')
 (candidate='comdb2_sc_status')
+(candidate='comdb2_sql_client_stats')
 (candidate='comdb2_sqlpool_queue')
 (candidate='comdb2_systables')
 (candidate='comdb2_tablepermissions')

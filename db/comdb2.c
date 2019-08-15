@@ -4493,7 +4493,7 @@ void *statthd(void *p)
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count == thresh)) { /* every thresh-seconds */
+            if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
@@ -4745,25 +4745,8 @@ void *statthd(void *p)
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
-            }
 
-            if (count % 60 == 0) {
-                /* dump here */
-                quantize_ctrace(q_min, "Tagged requests this minute");
-                quantize_clear(q_min);
-                quantize_ctrace(q_sql_min, "SQL requests this minute");
-                quantize_clear(q_sql_min);
-                quantize_ctrace(q_sql_steps_min, "SQL steps this minute");
-                quantize_clear(q_sql_steps_min);
-            }
-            if (count % 3600 == 0) {
-                /* dump here */
-                quantize_ctrace(q_hour, "Tagged requests this hour");
-                quantize_clear(q_hour);
-                quantize_ctrace(q_sql_hour, "SQL requests this hour");
-                quantize_clear(q_sql_hour);
-                quantize_ctrace(q_sql_steps_hour, "SQL steps this hour");
-                quantize_clear(q_sql_steps_hour);
+                dump_client_sql_data(statlogger, 1);
             }
         }
 

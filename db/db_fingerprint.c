@@ -49,7 +49,7 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
 
 void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t prepTime, int64_t nrows,
-                     struct reqlogger *logger) {
+                     struct reqlogger *logger, unsigned char *fingerprint_out) {
     assert(zSql);
     size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
@@ -82,9 +82,19 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
+
+        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+        util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
+        struct reqlogger *statlogger = NULL;
+
+        // dump to statreqs immediately
+        statlogger = reqlog_alloc();
+        reqlog_diffstat_init(statlogger);
+        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp, t->zNormSql);
+        reqlog_diffstat_dump(statlogger);
+        reqlog_free(statlogger);
+
         if (gbl_verbose_normalized_queries) {
-            char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
-            util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
         }
@@ -106,5 +116,6 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
     }
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
-    ; /* NOTE: Do nothing, silence compiler warning. */
+    if (fingerprint_out)
+        memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
 }

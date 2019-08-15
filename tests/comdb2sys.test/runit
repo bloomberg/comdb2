@@ -108,5 +108,7 @@ fi
 ${TESTSROOTDIR}/tools/compare_results.sh -d $a_dbn -r req
 [ $? -eq 0 ] || exit 1
 
-echo "Testcase passed."
-exit 0
+./testsqlclients - $a_dbn
+rc=$?
+
+exit $rc

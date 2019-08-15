@@ -2157,10 +2157,13 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             clnt_query_cost(sp->thd, &cost, &prepMs);
             timeMs = time - pVdbe->luaStartTime + prepMs;
 
+            unsigned char fingerprint[FINGERPRINTSZ];
             add_fingerprint(
                 sqlite3_sql(pStmt), zNormSql, cost,
-                timeMs, prepMs, pVdbe->luaRows, NULL
-            );
+                timeMs, prepMs, pVdbe->luaRows, NULL,
+                fingerprint);
+            if (clnt->rawnodestats)
+                add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
 
             clnt->spcost.cost += cost;
             clnt->spcost.time += timeMs;
