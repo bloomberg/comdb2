@@ -4659,6 +4659,7 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
             calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                              clnt->work.aFingerprint);
         }
+        put_prepared_stmt(clnt->thd, clnt, &rec, rc);
         return rc;
     }
 }
@@ -4775,7 +4776,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     if (!can_execute_sql_query_now(thd, clnt, &iRejected)) {
         clnt->query_rc = iRejected ? ERR_QUERY_REJECTED : ERR_QUERY_DELAYED;
-        put_prepared_stmt(thd, clnt, &clnt->work.rec, clnt->query_rc);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
         clnt_change_state(clnt, CONNECTION_IDLE);
