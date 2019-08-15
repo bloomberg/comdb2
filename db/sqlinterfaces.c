@@ -5118,15 +5118,8 @@ retry:
 check_query_rc: ; /* empty statement, make compiler happy */
     int rc2 = clnt->query_rc;
     if (rc2 == ERR_QUERY_DELAYED) {
-        useconds_t ms = 1000 * gbl_retry_dispatch_ms; /* milli to micro */
-        rc2 = usleep(ms);
-        if (rc2) {
-            logmsg(LOGMSG_ERROR, "%s: usleep(%llu), rc2=%d errno=%d",
-                   __func__, (unsigned long long)ms, rc2, errno);
-            /* cannot usleep? still want to keep retrying (?) */
-            sleep(1); /* however, we don't want to spin */
-        }
-        if (db_is_stopped()) return ERR_QUERY_DELAYED; /* permanent error */
+        if (db_is_stopped()) return rc2; /* now permanent error */
+        usleep(1000 * gbl_retry_dispatch_ms);
         rc2 = enqueue_sql_query(clnt, priority);
         if (rc2 != 0) return rc2; /* could not re-enqueue? */
         goto retry;
