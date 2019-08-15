@@ -1375,7 +1375,7 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
 }
 
 int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
-        int max_pages)
+                           int max_pages)
 {
     int rc, fd;
     SBUF2 *s;

@@ -455,8 +455,7 @@ void *checkpoint_thread(void *arg)
         /* This is spawned before we open tables- don't repopulate the
          * cache until the backend has opened */
         if ((gbl_cache_flush_interval > 0) &&
-            ((now = time(NULL)) - last_cache_dump) >
-                gbl_cache_flush_interval) {
+            ((now = time(NULL)) - last_cache_dump) > gbl_cache_flush_interval) {
             if (!loaded_cache) {
                 bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
                 loaded_cache = 1;

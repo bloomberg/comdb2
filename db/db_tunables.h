@@ -1777,14 +1777,14 @@ REGISTER_TUNABLE("dump_cache_max_pages",
 REGISTER_TUNABLE("max_pages_per_cache_thread",
                  "Number of threads loading pages to cache.  "
                  "(Default: 8192)",
-                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread,
-                 INTERNAL, NULL, NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("memp_dump_cache_threshold",
                  "Don't flush the cache until this percentage of pages have "
                  "changed.  (Default: 20)",
-                 TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
