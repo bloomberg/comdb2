@@ -1374,7 +1374,8 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
     return 0;
 }
 
-int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file)
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
+        int max_pages)
 {
     int rc, fd;
     SBUF2 *s;
@@ -1386,7 +1387,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file)
                errno);
         return -1;
     }
-    rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s);
+    rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s, max_pages);
     sbuf2close(s);
     return rc;
 }

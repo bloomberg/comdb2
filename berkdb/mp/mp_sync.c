@@ -1737,12 +1737,13 @@ __memp_load_pp(dbenv, s)
  * __memp_dump_pp --
  *	DB_ENV->memp_dump pre/post processing.
  *
- * PUBLIC: int __memp_dump_pp __P((DB_ENV *, SBUF2 *));
+ * PUBLIC: int __memp_dump_pp __P((DB_ENV *, SBUF2 *, u_int64_t));
  */
 int
-__memp_dump_pp(dbenv, s)
+__memp_dump_pp(dbenv, s, max_pages)
 	DB_ENV *dbenv;
 	SBUF2 *s;
+	u_int64_t max_pages;
 {
 	int rep_check, ret;
 	u_int64_t pagecount;
@@ -1753,7 +1754,7 @@ __memp_dump_pp(dbenv, s)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __memp_dump(dbenv, s, &pagecount);
+	ret = __memp_dump(dbenv, s, max_pages, &pagecount);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
@@ -1947,9 +1948,8 @@ output_fileid_page(void *obj, void *arg)
 	qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
 	p = pagelist->fileid;
 
-    if (pagelist->cnt == 0)
-        return 0;
-
+	if (pagelist->cnt == 0)
+		return 0;
 	for (int j = 0; j < DB_FILE_ID_LEN; ++j, ++p) {
 		sbuf2printf(s, "%2.2x", (u_int)*p);
 	}
@@ -2202,12 +2202,13 @@ done:
  *	Write bufferpool fileids and pages to a file
  *
  * PUBLIC: int __memp_dump
- * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t *));
+ * PUBLIC:	 __P((DB_ENV *, SBUF2 *, u_int64_t, u_int64_t *));
  */
 int
-__memp_dump(dbenv, s, pagecount)
+__memp_dump(dbenv, s, max_pages, pagecount)
 	DB_ENV *dbenv;
 	SBUF2 *s;
+	u_int64_t max_pages;
 	u_int64_t *pagecount;
 {
 	BH *bhp;
@@ -2219,8 +2220,8 @@ __memp_dump(dbenv, s, pagecount)
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int i, j, ret, t_ret, first = 1, max_pages = gbl_dump_cache_max_pages,
-		dump_pages;
+	u_int64_t dump_pages;
+	int i, j, ret, t_ret, first = 1;
 	u_int8_t *fileid, *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
 	hash_t *fileid_pages = NULL;
 	sorted_page_list_t pagearray = {0};
@@ -2264,18 +2265,22 @@ __memp_dump(dbenv, s, pagecount)
 			MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		}
 	}
-	qsort(pagearray.pagearray, pagearray.cnt, sizeof(page_fget_count_t),
-			pgrefcmp);
 
 	if (!max_pages)
 		dump_pages = pagearray.cnt;
 	else
 		dump_pages = (max_pages < pagearray.cnt) ? max_pages : pagearray.cnt;
 
+	/* Sort so we output the most used pages if we only want a subset */
+	if (dump_pages != pagearray.cnt)
+		qsort(pagearray.pagearray, pagearray.cnt, sizeof(page_fget_count_t),
+				pgrefcmp);
+
 	u_int32_t lastfget = UINT_MAX;
-	for (int i = 0; i < dump_pages; i++) {
+	for (u_int64_t i = 0; i < dump_pages; i++) {
 		page_fget_count_t *page_fget = &pagearray.pagearray[i];
-		assert(page_fget->fget_count <= lastfget);
+		assert((page_fget->fget_count <= lastfget) ||
+				(dump_pages == pagearray.cnt));
 		lastfget = page_fget->fget_count;
 		add_page_to_fileid_list(dbenv, page_fget->fileid_page_list, page_fget->page);
 		(*pagecount)++;
@@ -2410,7 +2415,7 @@ __memp_flush_pagelist(dbenv, force)
 		ret = -1;
 		goto done;
 	}
-	__memp_dump(dbenv, s, &cnt);
+	__memp_dump(dbenv, s, gbl_dump_cache_max_pages, &cnt);
 	sbuf2close(s);
 
 #if PAGELIST_DEBUG

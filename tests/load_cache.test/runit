@@ -109,12 +109,13 @@ function dump_cache
     write_prompt $func "Running $func"
     typeset file=${1:-cache.txt}
     typeset dbname=${2:-$DBNAME}
+    typeset maxpages=${3:-0}
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $file\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
     else
         export first=1
         for n in $CLUSTER ; do 
-            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $file\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
             scp $SSH_OPT ${n}:${file} ${file}
             cp ${file} ${file}.${n}
         done
@@ -264,7 +265,7 @@ function run_test
     bulk_insert_records t1 $loadrecs
     flush_cluster
     sleep $sleeptime
-    dump_cache $orig
+    dump_cache $orig $DBNAME $dump_max_pages
     bounce_database $sleeptime
     sleep $(( sleeptime + 10 ))
     # Should load automatically if autocache is enabled
@@ -272,7 +273,7 @@ function run_test
         load_cache $orig
     fi
     sleep $sleeptime
-    dump_cache $check
+    dump_cache $check $DBNAME $dump_max_pages
     check_results $orig $check $dump_max_pages
     flush_cluster
     copy_test $orig $autocache

@@ -2000,7 +2000,10 @@ clipper_usage:
                    "serialize requires filename to serialize to\n");
             return -1;
         }
-        dump_cache(tok);
+
+        tok = segtok(line, lline, &st, &ltok);
+        int max_pages = (ltok != 0) ? toknum(tok, ltok) : 0;
+        dump_cache(tok, max_pages);
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;

@@ -2343,7 +2343,7 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
-	int  (*memp_dump) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_dump) __P((DB_ENV *, SBUF2 *, u_int64_t maxpages));
 	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
 	int  (*memp_flush_pagelist) __P((DB_ENV *, u_int32_t));
 	int  (*memp_load_pagelist) __P((DB_ENV *));
