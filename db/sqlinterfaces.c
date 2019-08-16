@@ -4681,7 +4681,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
 static int can_execute_sql_query_now(
   struct sqlthdstate *thd,
   struct sqlclntstate *clnt,
-  int *piRejected
+  int *pbRejected
 ){
   struct ruleset_result result = {0};
   result.priority = clnt->priority;
@@ -4691,10 +4691,10 @@ static int can_execute_sql_query_now(
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
   logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zRuleRes);
-  *piRejected = 0;
+  *pbRejected = 0;
   switch (result.action) {
     case RULESET_A_REJECT: {
-      *piRejected = 1;
+      *pbRejected = 1;
       return 0;
     }
     case RULESET_A_LOW_PRIO:
@@ -4780,10 +4780,16 @@ void sqlengine_work_appsock(void *thddata, void *work)
         preview_and_calc_fingerprint(clnt);
     }
 
-    int iRejected = 0;
+    int bRejected = 0;
 
-    if (!can_execute_sql_query_now(thd, clnt, &iRejected)) {
-        clnt->query_rc = iRejected ? ERR_QUERY_REJECTED : ERR_QUERY_DELAYED;
+    if (!can_execute_sql_query_now(thd, clnt, &bRejected)) {
+        if (bRejected) {
+            send_run_error(clnt, "Client api should change nodes",
+                           CDB2ERR_CHANGENODE);
+            clnt->query_rc = ERR_QUERY_REJECTED;
+        } else {
+            clnt->query_rc = ERR_QUERY_DELAYED;
+        }
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
         clnt_change_state(clnt, CONNECTION_IDLE);
