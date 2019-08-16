@@ -1635,6 +1635,7 @@ struct sqlite3 {
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_PrepareOnly    HI(0x1000)  /* Pending flag for prepare_v3() */
+#define SQLITE_PreviewOnly    HI(0x2000)  /* Pending flag for prepare_v3() */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -3331,6 +3332,12 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
+  int preview_only;         /* Preview-only mode, this is used to determine
+                             * the normalized SQL prior to running a query.
+                             * The normalized SQL is used to calculate the
+                             * MD5 fingerprint, which can then be used to
+                             * raise or lower the priority of the SQL query
+                             * relative to other pending SQL queries. */
   int prepare_only;         /* Prepare-only mode, skip schema changes that
                              * originate from DDL, etc.  This is primarily
                              * of interest to the DDL integration code in

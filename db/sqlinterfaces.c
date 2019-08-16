@@ -856,6 +856,15 @@ int sqlite3_is_prepare_only(
   return 0;
 }
 
+int sqlite3_is_preview_only(
+  struct sqlclntstate *clnt
+){
+  if( clnt!=NULL && clnt->preview_only ){
+    return 1;
+  }
+  return 0;
+}
+
 int sqlite3_maybe_step(
   struct sqlclntstate *clnt,
   sqlite3_stmt *stmt
@@ -3052,10 +3061,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                           stmt);
 }
 
-void put_prepared_stmt_distributed(struct sqlthdstate *thd,
-                                   struct sqlclntstate *clnt,
-                                   struct sql_state *rec, int outrc,
-                                   int distributed)
+static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
+                                          struct sqlclntstate *clnt,
+                                          struct sql_state *rec, int outrc,
+                                          int distributed)
 {
     int rc;
 
@@ -3295,6 +3304,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
+
+    if (sqlite3_is_preview_only(clnt))
+        sqlPrepFlags |= SQLITE_PREPARE_PREVIEW;
 
     if (!gbl_allow_pragma)
         flags |= PREPARE_DENY_PRAGMA;
@@ -4625,7 +4637,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     return rc;
 }
 
-static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
+static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
     if (is_stored_proc(clnt)) {
         /*
@@ -4650,9 +4662,11 @@ static int prepare_and_calc_fingerprint(struct sqlclntstate *clnt)
         struct sql_state rec = {0};
         struct errstat err = {0}; /* NOT USED */
         rec.sql = clnt->sql;
+        clnt->preview_only = 1;
         rc = get_prepared_bound_stmt(
             clnt->thd, clnt, &rec, &err, PREPARE_NONE
         );
+        clnt->preview_only = 0;
         if ((rc == 0) && clnt->work.zNormSql) {
             size_t nNormSql = 0;
 
@@ -4763,7 +4777,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     if (gbl_fingerprint_queries) {
-        prepare_and_calc_fingerprint(clnt);
+        preview_and_calc_fingerprint(clnt);
     }
 
     int iRejected = 0;
@@ -5367,6 +5381,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->extended_tm = 0;
 
     clnt->prepare_only = 0;
+    clnt->preview_only = 0;
     clnt->is_readonly = 0;
     clnt->ignore_coherency = 0;
     clnt->admin = 0;

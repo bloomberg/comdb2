@@ -419,6 +419,11 @@ int comdb2IsPrepareOnly(Parse* pParse)
     return pParse==NULL || pParse->prepare_only;
 }
 
+int comdb2IsPreviewOnly(Parse* pParse)
+{
+    return pParse==NULL || pParse->preview_only;
+}
+
 int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
