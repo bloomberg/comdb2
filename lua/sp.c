@@ -1046,7 +1046,7 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
         sqlite3_finalize(stmt);
     } else {
-        put_prepared_stmt(sp->thd, sp->clnt, dbstmt->rec, sp->rc);
+        put_prepared_stmt(sp->thd, sp->clnt, dbstmt->rec, 0, sp->rc);
     }
     if (dbstmt->num_tbls) {
         LIST_REMOVE(dbstmt, entries);

@@ -3063,14 +3063,17 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
 
 static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
                                           struct sqlclntstate *clnt,
-                                          struct sql_state *rec, int outrc,
+                                          struct sql_state *rec,
+                                          int noCache, int outrc,
                                           int distributed)
 {
-    int rc = outrc; /* NOTE: This was not used, it is now. */
+    int rc;
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    if (rc == 0) {
+    if (noCache) {
+        rc = 1;
+    } else {
         rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
     }
     if (rc != 0 && rec->stmt) {
@@ -3093,9 +3096,9 @@ static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
  *
  */
 void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                       struct sql_state *rec, int outrc)
+                       struct sql_state *rec, int noCache, int outrc)
 {
-    put_prepared_stmt_distributed(thd, clnt, rec, outrc, 0);
+    put_prepared_stmt_distributed(thd, clnt, rec, noCache, outrc, 0);
 }
 
 static void update_schema_remotes(struct sqlclntstate *clnt,
@@ -3975,7 +3978,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         compare_estimate_cost(stmt);
     }
 
-    put_prepared_stmt_distributed(thd, clnt, rec, outrc, distributed);
+    put_prepared_stmt_distributed(thd, clnt, rec, 0, outrc, distributed);
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
@@ -4666,7 +4669,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         rec.sql = clnt->sql;
         clnt->preview_only = 1;
         rc = get_prepared_bound_stmt(
-            clnt->thd, clnt, &rec, &err, PREPARE_NONE
+            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR
         );
         clnt->preview_only = 0;
         if ((rc == 0) && clnt->work.zNormSql) {
@@ -4675,7 +4678,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
             calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                              clnt->work.aFingerprint);
         }
-        put_prepared_stmt(clnt->thd, clnt, &rec, 1);
+        put_prepared_stmt(clnt->thd, clnt, &rec, 1, rc);
         return rc;
     }
 }
@@ -4720,7 +4723,7 @@ static int can_execute_sql_query_now(
   } else {
     rc = 0; /* query should wait */
   }
-  const char *zResult = rc ? "NOW" : "DEFER";
+  const char *zResult = rc ? "NOW" : "LATER";
   logmsg(LOGMSG_DEBUG, "%s: %lld (client) vs %lld (pool): %s\n",
          __func__, clnt->priority, thdpool_priority, zResult);
   return rc;
