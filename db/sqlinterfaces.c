@@ -3066,11 +3066,13 @@ static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
                                           struct sql_state *rec, int outrc,
                                           int distributed)
 {
-    int rc;
+    int rc = outrc; /* NOTE: This was not used, it is now. */
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
+    if (rc == 0) {
+        rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
+    }
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
@@ -4673,7 +4675,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
             calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                              clnt->work.aFingerprint);
         }
-        put_prepared_stmt(clnt->thd, clnt, &rec, rc);
+        put_prepared_stmt(clnt->thd, clnt, &rec, 1);
         return rc;
     }
 }
