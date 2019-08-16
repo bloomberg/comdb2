@@ -41,6 +41,12 @@ static void restore_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
     clnt->plugin.restore_stmt(clnt, item->stmt);
 }
 
+static void unrestore_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
+{
+    if (!clnt->plugin.unrestore_stmt) return;
+    clnt->plugin.unrestore_stmt(clnt, item->stmt);
+}
+
 static void destroy_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
 {
     clnt->plugin.destroy_stmt(clnt, item->stmt);
@@ -287,8 +293,11 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
             restore_stmt(clnt, item);
-            if ((rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT)) != 0)
+            if ((rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT)) != 0) {
+                unrestore_stmt(clnt, item);
                 break;
+            }
+            unrestore_stmt(clnt, item);
             if (!osql->history)
                 break;
             nq++;

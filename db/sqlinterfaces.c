@@ -3363,7 +3363,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
-               "TRAILING CHARACTERS AFTER QUERY TERMINATION: \"%s\"\n", tail);
+               "TRAILING CHARACTERS AFTER QUERY TERMINATION (%d): \"%s\"\n",
+               rc, tail);
     }
     return rc;
 }
@@ -6768,6 +6769,10 @@ static void *internal_save_stmt(struct sqlclntstate *clnt, void *arg)
 static void *internal_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     clnt->sql = arg;
+    return NULL;
+}
+static void *internal_unrestore_stmt(struct sqlclntstate *clnt, void *arg)
+{
     return NULL;
 }
 static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
