@@ -84,7 +84,7 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         hash_add(gbl_fingerprint_hash, t);
 
         char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
-        util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
+        util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
         struct reqlogger *statlogger = NULL;
 
         // dump to statreqs immediately
