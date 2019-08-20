@@ -176,7 +176,6 @@ again:
 				bufsz, offset, nretries, errno, strerror(errno));
 			if (errno != EINTR && errno != EBUSY)
 				poll(NULL, 0, 10);
-			}
 	    }
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
@@ -346,7 +345,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 	}
 	if (*niop == (size_t) parlen)
 		return (0);
-	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd errno %d %s\n", __func__, parlen, *niop, io_errno, strerror(io_errno));
+	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, parlen, *niop);
 	abort();
 slow:
 #endif
@@ -852,7 +851,6 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
-	int io_errno = 0;
 
 
 #if defined(HAVE_PREAD) && defined(HAVE_PWRITE)
@@ -931,7 +929,6 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 			*niop += single_niop;
 			c_pgno += max_bufs;
 			bufs += max_bufs;
-	        io_errno = errno;
 
 			if (nobufs < (*niop / pagesize) + max_bufs)
 				max_bufs = nobufs % max_bufs;
@@ -987,7 +984,6 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 			*niop += single_niop;
 			c_pgno += max_bufs;
 			bufs += max_bufs;
-	        io_errno = errno;
 
 			if (nobufs < (*niop / pagesize) + max_bufs)
 				max_bufs = nobufs % max_bufs;
