@@ -166,13 +166,15 @@ again:
 	abuf = get_aligned_buffer(buf, bufsz, 1);
 	LOGCOPY_TOLSN(&lsn_before, abuf);
 	do {
-        if (rand() % 1000 == 0) {
-            rc = -1;
-            errno = EIO;
-            break;
-        }
-
 		rc = pwrite(fd, abuf, bufsz, offset);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, 
+                    "pwrite fd %d sz %zu off %ld retry %d %d %s\n", fd,
+                    bufsz, offset, nretries, errno, strerror(errno));
+            if (errno != EINTR && errno != EBUSY)
+                poll(NULL, 0, 10);
+        }
+ 
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -180,12 +182,6 @@ again:
 				rc = -1;
 				errno = ENOSPC;
 			}
-		}
-		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, 
-                    "pwrite fd %d sz %zu off %ld retry %d\n", fd,
-			    bufsz, offset, nretries);
-			poll(NULL, 0, 10);
 		}
 		if (rc == bufsz && dbenv->attr.check_pwrites) {
 			int crc;
@@ -224,8 +220,7 @@ again:
 				}
 			}
 		}
-	} while (rc == -1 && errno == ENOSPC &&
-	    ++nretries < dbenv->attr.num_write_retries);
+	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
 	return rc;
 }
 
@@ -248,7 +243,6 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 	int ret;
 	struct timespec s, rem;
 	int rc;
-    int io_errno = 0;
 
 	if (op == DB_IO_READ && __slow_read_ns) {
 		s.tv_sec = 0;
@@ -294,7 +288,6 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				*niop =
 				    pread(fhp->fd, buf, parlen,
 				    (off_t) pgno * pagesize);
-            io_errno = errno;
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -444,7 +437,6 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	int ret;
 	struct timespec s, rem;
 	int rc;
-    int io_errno = 0;
 
 	if (op == DB_IO_READ && __slow_read_ns) {
 		s.tv_sec = 0;
@@ -546,7 +538,6 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 			*niop =
 			    pread(fhp->fd, buf, pagesize,
 			    (off_t) pgno * pagesize);
-        io_errno = errno;
 
 		if (__berkdb_num_read_ios)
 			(*__berkdb_num_read_ios)++;
@@ -575,7 +566,6 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				*niop =
 				    pwrite(fhp->fd, buf, pagesize,
 				    (off_t) pgno * pagesize);
-            io_errno = errno;
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -620,7 +610,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
-    logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd errno %d %s\n", __func__, pagesize, *niop, io_errno, strerror(io_errno));
+    logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize, *niop);
     abort();
 slow:
 #endif
@@ -644,7 +634,7 @@ err:	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
 
 }
 
-int __berkdb_direct_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
+static int __berkdb_direct_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
 	void *abuf;
 	int rc;
 
@@ -656,7 +646,7 @@ int __berkdb_direct_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
     return rc;
 }
 
-int __berkdb_direct_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
+static int __berkdb_direct_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
 	void *abuf;
 	int rc;
     int nretries = 0;
@@ -665,8 +655,14 @@ int __berkdb_direct_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
     abuf = get_aligned_buffer(buf, bufsz, 1);
     do {
         rc = write(fd, abuf, bufsz);
-    } while (rc == -1 && errno == ENOSPC &&
-            ++nretries < dbenv->attr.num_write_retries);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, 
+                    "write fd %d sz %zu retry %d error %d %s\n", fd,
+                    bufsz, nretries, errno, strerror(errno));
+            if (errno != EINTR && errno != EBUSY)
+                poll(NULL, 0, 10);
+        }
+    } while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
     return rc;
 }
 
@@ -875,6 +871,12 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 
 	do {
 		rc = pwrite(fd, abuf, nobufs * pagesize, offset);
+        if (rc == -1) {
+			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d error %d %s\n",
+			    fd, (int)(nobufs * pagesize), offset, nretries, errno, strerror(errno));
+            if (errno != EINTR && errno != EBUSY)
+                poll(NULL, 0, 10);
+        }
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -883,13 +885,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 				errno = ENOSPC;
 			}
 		}
-		if (nretries > 0) {
-			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d\n",
-			    fd, (int)(nobufs * pagesize), offset, nretries);
-			poll(NULL, 0, 10);
-		}
-	} while (rc == -1 && errno == ENOSPC
-	    && ++nretries < dbenv->attr.num_write_retries);
+	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
 	return rc;
 }
 #endif
