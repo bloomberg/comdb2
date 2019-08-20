@@ -1573,9 +1573,12 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     write_response(clnt, RESPONSE_ERROR_BAD_STATE,
                    "sqlinterfaces: wrong sql handle state\n", 0);
 
+#ifndef NDEBUG
+    int hadHistory = clnt->osql.history!=NULL;
+#endif
     if (srs_tran_destroy(clnt))
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
-    assert(reqlog_get_clnt(thd->logger) == NULL);
+    assert(!hadHistory || reqlog_get_clnt(thd->logger) == NULL);
 
     clnt->intrans = 0;
     reset_clnt_flags(clnt);
@@ -2167,10 +2170,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
+#ifndef NDEBUG
+        int hadHistory = clnt->osql.history!=NULL;
+#endif
         if (srs_tran_destroy(clnt))
             logmsg(LOGMSG_ERROR,
                    "Fail to destroy transaction replay session\n");
-        assert(reqlog_get_clnt(thd->logger) == NULL);
+        assert(!hadHistory || reqlog_get_clnt(thd->logger) == NULL);
     }
 
 done:
