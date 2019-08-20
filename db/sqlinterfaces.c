@@ -110,6 +110,15 @@
 
 #include "dohsql.h"
 
+enum tsql_meta_command {
+  TSMC_NONE = 0,
+  TSMC_BEGIN = 1,
+  TSMC_COMMIT = 2,
+  TSMC_ROLLBACK = 3
+};
+
+typedef enum tsql_meta_command tsql_meta_command_t;
+
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
@@ -1086,22 +1095,44 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
     clnt->plugin.add_steps(clnt, steps);
 }
 
-static int is_stored_proc_sql(const char *sql)
+/*
+** NOTE: This function checks if zSql starts with one of the SQL (meta)
+**       command names from the azMeta array.  The azMeta array must have
+**       a final element with a NULL value.  The return value will either
+**       be zero upon failing to find a match -OR- one plus the matching
+**       index upon finding a match.
+*/
+static int is_meta_sql(const char *zSql, const char *azMeta[])
 {
-    size_t len = sizeof("EXEC") - 1;
-    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    len = sizeof("EXECUTE") - 1;
-    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
-        return 1;
+    for (int i = 0; azMeta[i]; i++) {
+        size_t len = strlen(azMeta[i]);
+        if ((strncasecmp(zSql, azMeta[i], len) == 0) && isspace(zSql[len])) {
+            return i + 1;
+        }
     }
     return 0;
+}
+
+static int is_stored_proc_sql(const char *zSql)
+{
+    static const char *azMeta[] = { "EXEC", "EXECUTE", NULL };
+    return is_meta_sql(zSql, azMeta);
 }
 
 static int is_stored_proc(struct sqlclntstate *clnt)
 {
     return is_stored_proc_sql(clnt->sql);
+}
+
+static tsql_meta_command_t is_transaction_meta_sql(const char *zSql)
+{
+    static const char *azMeta[] = { "BEGIN", "COMMIT", "ROLLBACK", NULL };
+    return is_meta_sql(zSql, azMeta);
+}
+
+static tsql_meta_command_t is_transaction_meta(struct sqlclntstate *clnt)
+{
+    return is_transaction_meta_sql(clnt->sql);
 }
 
 /* Save copy of sql statement and performance data.  If any other code
@@ -1450,7 +1481,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     /* begin, commit, rollback should arrive over the socket only
        for socksql, recom, snapisol and serial */
-    if (!strncasecmp(clnt->sql, "begin", 5)) {
+    tsql_meta_command_t meta = is_transaction_meta_sql(clnt->sql);
+
+    if (meta == TSMC_BEGIN) {
         clnt->snapshot = 0;
 
         /*fprintf(stderr, "got begin\n");*/
@@ -1483,7 +1516,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                 (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                 offsetof(struct clnt_ddl_context, name), 0);
         }
-    } else if (!strncasecmp(clnt->sql, "commit", 6)) {
+    } else if (meta == TSMC_COMMIT) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -1499,7 +1532,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->in_client_trans = 0;
             clnt->trans_has_sp = 0;
         }
-    } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
+    } else if (meta == TSMC_ROLLBACK) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -4671,6 +4704,14 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         }
 
         return 0; /* success */
+    } else if (is_transaction_meta(clnt)) {
+        /*
+        ** NOTE: The BEGIN, COMMIT, and ROLLBACK SQL (meta-)commands
+        **       do not go through the SQLite parser (i.e. they are
+        **       processed out-of-band).  Therefore, they are exempt
+        **       from fingerprinting.
+        */
+        return 0; /* success */
     } else {
         int rc;
         struct sql_state rec = {0};
@@ -4791,6 +4832,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     if (gbl_fingerprint_queries) {
+        /* IGNORED */
         preview_and_calc_fingerprint(clnt);
     }
 
