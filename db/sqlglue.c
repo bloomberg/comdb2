@@ -4666,7 +4666,8 @@ int sqlite3BtreeCommit(Btree *pBt)
 
     if (!clnt->intrans || clnt->no_transaction ||
         (!clnt->no_transaction && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
-         clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
+         clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
+         clnt->ctrl_sqlengine != SQLENG_FNSH_ABORTED_STATE)) {
         rc = SQLITE_OK;
         goto done;
     }
@@ -4674,7 +4675,8 @@ int sqlite3BtreeCommit(Btree *pBt)
     clnt->recno = 0;
 
     /* reset the state of the sqlengine */
-    if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE)
+    if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE ||
+        clnt->ctrl_sqlengine == SQLENG_FNSH_ABORTED_STATE)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 

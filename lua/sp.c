@@ -5798,6 +5798,8 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
         /* Don't make new parent transaction on this rollback. */
         sp->make_parent_trans = 0;
         db_rollback_int(lua, &tmp);
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_FNSH_ABORTED_STATE);
     }
 
     if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
