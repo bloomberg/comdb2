@@ -5045,8 +5045,11 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     /*
     ** WARNING: This code assumes that higher priority values have
     **          lower numerical values.
+    **
+    ** TODO: Should this code reset an existing client sequence number
+    **       to a higher value?  I do not think so.
     */
-    clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
+    if (clnt->seqNo == 0) clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
 
