@@ -62,9 +62,8 @@ struct thr_handle *thrman_self(void);
 void thrman_where(struct thr_handle *thr, const char *where);
 void thrman_wheref(struct thr_handle *thr, const char *fmt, ...);
 void thrman_origin(struct thr_handle *thr, const char *origin);
-/* Forward declaration so the file can be included without including comdb2.h */
-typedef struct sqlpool sqlpool_t;
-void thrman_set_sqlpool(struct thr_handle *thr, sqlpool_t *sqlpool);
+struct sqlpool;
+void thrman_set_sqlpool(struct thr_handle *thr, struct sqlpool *);
 void thrman_setid(struct thr_handle *thr, const char *idstr);
 void thrman_setfd(struct thr_handle *thr, int fd);
 void thrman_setsqlthd(struct thr_handle *thr);

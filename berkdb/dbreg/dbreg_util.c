@@ -547,7 +547,7 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 
 	/* Increment the prefault refcount for this */
 	if (prefault_refcount) {
-		ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, 1);
+		ATOMIC_ADD32(dblp->dbentry[ndx].pfcnt, 1);
 	}
 
 err:	MUTEX_THREAD_UNLOCK(dbenv, dblp->mutexp);
@@ -567,7 +567,7 @@ __dbreg_prefault_complete(dbenv, ndx)
 	DB_ASSERT(ndx < dblp->dbentry_cnt);
 	DB_ASSERT(dblp->dbentry[ndx].pfcnt > 0);
 
-	ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, -1);
+	ATOMIC_ADD32(dblp->dbentry[ndx].pfcnt, -1);
 }
 
 // PUBLIC: int __dbreg_id_to_db_prefault __P((DB_ENV *, DB_TXN *, DB **, int32_t, int));

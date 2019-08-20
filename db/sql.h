@@ -984,7 +984,7 @@ struct sql_thread {
     int ntmpread;
     int nblobs;
     int bufsz;
-    int id;
+    uint32_t id;
     char *buf;
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;

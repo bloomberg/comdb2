@@ -230,7 +230,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
         rc = 0; // should just fail SC
     }
 
-    ATOMIC_ADD(usedb->sc_deletes, 1);
+    ATOMIC_ADD32(usedb->sc_deletes, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
@@ -485,7 +485,7 @@ done:
         reqpopprefixes(iq, 1);
     }
 
-    ATOMIC_ADD(usedb->sc_adds, 1);
+    ATOMIC_ADD32(usedb->sc_adds, 1);
     free(new_dta);
     return rc;
 }
@@ -533,7 +533,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
         rc = 0; // should just fail SC
     }
 
-    ATOMIC_ADD(usedb->sc_updates, 1);
+    ATOMIC_ADD32(usedb->sc_updates, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
