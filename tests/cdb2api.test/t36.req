@@ -1,13 +1,48 @@
+select "---- test 1 ----" as test
 begin
 insert kjskjhf kjsd
 commit
 
+select "---- test 2 ----" as test
 set intransresults on
 begin
 insert kjskjhf kjsd
 rollback
 
+select "---- test 3 ----" as test
 set intransresults off
 begin
 insert kjskjhf kjsd
 commit
+
+select "---- test 4 ----" as test
+set intransresults on
+begin
+select 1
+foo
+select 1
+commit
+
+select "---- test 5 ----" as test
+set intransresults off
+begin
+select 1
+foo
+select 1
+commit
+
+select "---- test 6 ----" as test
+set intransresults on
+begin
+select 1
+foo
+select 1
+rollback
+
+select "---- test 7 ----" as test
+set intransresults off
+begin
+select 1
+foo
+select 1
+rollback
