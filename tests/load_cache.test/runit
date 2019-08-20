@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/bounce_database.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+
+export debug=1
+export sleeptime=10
+export reppid=-1
+export failpct=15
+export loadrecs=1000000
+export comdb2ar=${COMDB2AR_EXE}
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+
+[[ $debug == "1" ]] && set -x
+
+function cleanup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cleanup"
+    write_prompt $func "Running $func"
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+        done
+    else
+        kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
+    fi
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    write_prompt $func "Running $func"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    cleanup
+    exit -1
+}
+
+function bulk_insert_records
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="bulk_insert_records"
+    write_prompt $func "Running $func"
+    typeset table=${1:-t1}
+    typeset cnt=${2:-100000}
+    typeset chunk=${3:-10000}
+    j=0
+    while [[ $cnt -gt 0 ]]; do
+        if [[ $cnt -lt $chunk ]]; then
+            amt=$cnt
+        else
+            amt=$chunk
+        fi
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $table select * from generate_series(1, $amt)" >/dev/null
+        let cnt=$(( cnt - amt ))
+    done
+}
+
+function flush_cluster
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="flush_cluster"
+    write_prompt $func "Running $func"
+
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"flush\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"dump_cache\")"
+    else
+        for n in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"flush\")"
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"dump_cache\")"
+        done
+    fi
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    write_prompt $func "Running $func"
+    drop_table
+    create_table
+}
+
+function load_cache
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="load_cache"
+    write_prompt $func "Running $func"
+    typeset file=${1:-cache.txt}
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"load_cache $file\")"
+    else
+        for n in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"load_cache $file\")"
+        done
+    fi
+}
+
+function dump_cache
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="dump_cache"
+    write_prompt $func "Running $func"
+    typeset file=${1:-cache.txt}
+    typeset dbname=${2:-$DBNAME}
+    typeset maxpages=${3:-0}
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname default "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
+    else
+        export first=1
+        for n in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $dbname --host $n "exec procedure sys.cmd.send(\"dump_cache $file $maxpages\")"
+            scp $SSH_OPT ${n}:${file} ${file}
+            cp ${file} ${file}.${n}
+        done
+    fi
+}
+
+function sort_and_diff_files
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="sort_and_diff_files"
+    write_prompt $func "Running $func"
+    typeset file1=$1
+    typeset file2=$2
+    typeset dumpmax=${3:-0}
+    typeset linecnt1
+    typeset faildiff
+    typeset cnt
+
+    # Reformat cache files: one line per page
+    cat $file1 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file1}.sort
+    cat $file2 | while read fileid r ; do for x in $r ; do echo $fileid $x ; done ; done | sort > ${file2}.sort
+
+    # Count number of lines in reformatted file
+    linecnt1=$(wc -l ${file1}.sort | awk '{print $1}')
+    [[ -z $linecnt1 ]] && failexit "Cant read cache file"
+
+    [[ "$dumpmax" != "0" ]] && [[ "$linecnt1" -ne "$dumpmax" ]] && failexit "Maxdump tunable was not honored, $linecnt1 vs $dumpmax"
+
+    # Calculate number of differences we are allowed
+    fd=$(echo "${linecnt1} * 0.${failpct}" | bc)
+    faildiff=${fd%%\.*}
+
+    # Count how many lines are different
+    cnt=$(diff ${file1}.sort ${file2}.sort 2>&1| wc -l)
+
+    # Fail if too many differences
+    (( $cnt > $faildiff )) && failexit "Sorted cache mis-match"
+    echo "$file1 diffcount was $cnt, threshold was $faildiff"
+}
+
+function check_results
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="check_results"
+    write_prompt $func "Running $func"
+    typeset file1=$1
+    typeset file2=$2
+    typeset dumpmax=$3
+
+    if [[ -z "$CLUSTER" ]]; then
+        sort_and_diff_files $file1 $file2 $dumpmax
+    else 
+        for n in $CLUSTER ; do
+            sort_and_diff_files ${file1}.$n ${file2}.$n $dumpmax
+        done
+    fi
+}
+
+function copy_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="copy_test"
+    write_prompt $func "Running $func"
+    typeset compfile=$1
+    typeset autocache=$2
+    export repname=rep${DBNAME}
+    export repdir=${DBDIR}/$repname
+    export replog=$repdir/log.txt
+    export reppage="$repdir/reppage.txt"
+    export myhost=$(hostname)
+
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+    fi
+
+    if [[ -n "$CLUSTER" ]]; then
+        if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+            rmt=""
+        else
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+
+    write_prompt $func "Creating physical rep $repname"
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir
+
+    if [[ "$autocache" != "ON" ]] ; then
+        echo "cache_flush_interval 10" >> $repdir/${repname}.lrl
+        cp $check $repdir/logs/pagelist
+    fi
+
+    write_prompt $func "Starting replicant database, replog is $replog"
+    if [[ -n "$TEST_TIMEOUT" ]] ; then
+        ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+        reppid=$!
+    else
+        ( $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+    fi
+
+    waitmach localhost $repname -n
+    sleep $sleeptime
+    $CDB2SQL_EXE --tabs $repname --host localhost "exec procedure sys.cmd.send(\"dump_cache $reppage\")"
+    kill -9 $(cat $repdir/${repname}.pid)
+    sort_and_diff_files $reppage $check
+}
+
+function load_max
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="load_max"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'load_cache_max_pages'")
+    echo "$x"
+}
+
+function dump_max
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="dump_max"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'dump_cache_max_pages'")
+    echo "$x"
+}
+
+function autocache_enabled
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="autocache_enabled"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_tunables where name = 'cache_flush_interval'")
+    if [[ "$x" == "0" ]]; then 
+        echo "OFF"
+    else
+        echo "ON"
+    fi
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "Running $func"
+    typeset orig="$DBDIR/cache.txt"
+    typeset check="$DBDIR/check_cache.txt"
+    typeset autocache=$(autocache_enabled)
+    typeset dump_max_pages=$(dump_max)
+    bulk_insert_records t1 $loadrecs
+    flush_cluster
+    sleep $sleeptime
+    dump_cache $orig $DBNAME $dump_max_pages
+    bounce_database $sleeptime
+    sleep $(( sleeptime + 10 ))
+    # Should load automatically if autocache is enabled
+    if [[ "$autocache" != "ON" ]] ; then
+        load_cache $orig
+    fi
+    sleep $sleeptime
+    dump_cache $check $DBNAME $dump_max_pages
+    check_results $orig $check $dump_max_pages
+    flush_cluster
+    copy_test $orig $autocache
+}
+
+setup
+run_test
+cleanup
+echo "Success"

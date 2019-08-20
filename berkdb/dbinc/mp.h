@@ -332,6 +332,7 @@ struct __bh {
 	u_int16_t	flags;
 	u_int16_t	generation;	/* This changes before page changes */
 	u_int32_t	priority;	/* LRU priority. */
+	u_int32_t	fget_count;	/* Number memp_fgets. */
 	SH_TAILQ_ENTRY(__bh) hq;	/* MPOOL hash bucket queue. */
 
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */

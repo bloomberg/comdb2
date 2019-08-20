@@ -1290,6 +1290,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         cdb2_hndl_tp *hndl;
         /* replicate_from <db_name> [dbs to query] */
+        if (gbl_exit)
+            return -1;
+
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
                                  "can only replicate from a single source\n");
