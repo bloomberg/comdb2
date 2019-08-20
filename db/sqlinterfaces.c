@@ -4781,13 +4781,13 @@ static int can_execute_sql_query_now(
         !(rand() % gbl_random_sql_work_rejected)) {
       logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} reject\n",
              __func__, clnt->sql);
-      result.action = RULESET_A_REJECT;
+      *pbRejected = 1;
+      return 0;
     } else if (gbl_random_sql_work_delayed &&
         !(rand() % gbl_random_sql_work_delayed)) {
       logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} delay\n",
              __func__, clnt->sql);
-      result.action = RULESET_A_LOW_PRIO;
-      result.priority = PRIORITY_T_LOWEST;
+      return 0;
     }
   }
   /* END FAULT INJECTION TEST CODE */
@@ -4819,7 +4819,8 @@ static int can_execute_sql_query_now(
     rc = 0; /* query should wait */
   }
   const char *zResult = rc ? "NOW" : "LATER";
-  logmsg(LOGMSG_DEBUG, "%s: %lld {%s} ==> %lld (client) vs %lld (pool): %s\n",
+  logmsg(LOGMSG_DEBUG,
+         "%s: seqNo=%lld, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
          __func__, clnt->seqNo, clnt->sql, clnt->priority, thdpool_priority,
          zResult);
   return rc;
