@@ -4772,7 +4772,8 @@ static int can_execute_sql_query_now(
   );
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
-  logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zRuleRes);
+  logmsg(LOGMSG_DEBUG, "%s: sql={%s}, count=%d, %s\n", __func__, clnt->sql,
+         (int)count, zRuleRes);
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
       (result.action != RULESET_A_LOW_PRIO)) {
@@ -4818,8 +4819,9 @@ static int can_execute_sql_query_now(
     rc = 0; /* query should wait */
   }
   const char *zResult = rc ? "NOW" : "LATER";
-  logmsg(LOGMSG_DEBUG, "%s: %lld (client) vs %lld (pool): %s\n",
-         __func__, clnt->priority, thdpool_priority, zResult);
+  logmsg(LOGMSG_DEBUG, "%s: %lld {%s} ==> %lld (client) vs %lld (pool): %s\n",
+         __func__, clnt->seqNo, clnt->sql, clnt->priority, thdpool_priority,
+         zResult);
   return rc;
 }
 
@@ -5234,7 +5236,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
         if (rc2 != 0) return rc2; /* could not re-enqueue? */
         goto retry;
     } else if (rc2 == ERR_QUERY_REJECTED) {
-        logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}",
+        logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}\n",
                __func__, rc2, clnt->sql);
     }
     if (self)
