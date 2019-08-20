@@ -5439,6 +5439,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         Pthread_mutex_init(&clnt->state_lk, NULL);
     }
     else {
+       clnt->seqNo = 0;
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
