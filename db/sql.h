@@ -387,7 +387,6 @@ struct plugin_callbacks {
 
     replay_func *save_stmt; /* newsql_save_stmt */
     replay_func *restore_stmt; /* newsql_restore_stmt */
-    replay_func *unrestore_stmt; /* newsql_unrestore_stmt */
     replay_func *destroy_stmt; /* newsql_destroy_stmt */
     replay_func *print_stmt; /* newsql_print_stmt */
 
@@ -451,7 +450,6 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, read_response);                       \
         make_plugin_callback(clnt, name, save_stmt);                           \
         make_plugin_callback(clnt, name, restore_stmt);                        \
-        make_plugin_callback(clnt, name, unrestore_stmt);                      \
         make_plugin_callback(clnt, name, destroy_stmt);                        \
         make_plugin_callback(clnt, name, print_stmt);                          \
         make_plugin_callback(clnt, name, param_count);                         \

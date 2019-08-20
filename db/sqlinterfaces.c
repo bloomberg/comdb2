@@ -6821,10 +6821,6 @@ static void *internal_restore_stmt(struct sqlclntstate *clnt, void *arg)
     clnt->sql = arg;
     return NULL;
 }
-static void *internal_unrestore_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    return NULL;
-}
 static void *internal_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     free(arg);

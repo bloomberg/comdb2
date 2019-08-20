@@ -1147,24 +1147,6 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
     return NULL;
 }
 
-static void *newsql_unrestore_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    struct newsql_stmt *stmt = arg;
-    struct newsql_appdata *appdata = clnt->appdata;
-
-    clnt->sql = stmt->saved_sql;
-
-    strncpy0(clnt->tzname, stmt->saved_tzname, sizeof(clnt->tzname));
-
-    appdata->sqlquery = stmt->saved_sqlquery;
-    stmt->saved_sqlquery = 0;
-
-    appdata->query = stmt->saved_query;
-    stmt->saved_query = 0;
-
-    return NULL;
-}
-
 static void *newsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_stmt *stmt = arg;

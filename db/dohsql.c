@@ -819,12 +819,6 @@ static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
     clnt->sql = arg;
     return NULL;
 }
-static void *dohsql_unrestore_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
-    return NULL;
-}
 static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
