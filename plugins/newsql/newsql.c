@@ -1111,10 +1111,6 @@ static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
 struct newsql_stmt {
     CDB2QUERY *query;
     char tzname[CDB2_MAX_TZNAME];
-    CDB2QUERY *saved_query;
-    CDB2SQLQUERY *saved_sqlquery;
-    char saved_tzname[CDB2_MAX_TZNAME];
-    char *saved_sql;
 };
 
 static void *newsql_save_stmt(struct sqlclntstate *clnt, void *arg)
@@ -1130,20 +1126,10 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_stmt *stmt = arg;
     struct newsql_appdata *appdata = clnt->appdata;
-    CDB2QUERY *query = stmt->query;
-
-    stmt->saved_query = appdata->query;
-    appdata->query = query;
-
-    stmt->saved_sqlquery = appdata->sqlquery;
+    CDB2QUERY *query = appdata->query = stmt->query;
     appdata->sqlquery = query->sqlquery;
-
-    strncpy0(stmt->saved_tzname, clnt->tzname, sizeof(stmt->saved_tzname));
     strncpy0(clnt->tzname, stmt->tzname, sizeof(clnt->tzname));
-
-    stmt->saved_sql = clnt->sql;
     clnt->sql = query->sqlquery->sql_query;
-
     return NULL;
 }
 
