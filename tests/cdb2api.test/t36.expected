@@ -1,3 +1,22 @@
+(test='---- test 1 ----')
 [commit] failed with rc -3 near "kjskjhf": syntax error
+(test='---- test 2 ----')
 [insert kjskjhf kjsd] failed with rc -3 near "kjskjhf": syntax error
+(test='---- test 3 ----')
 [commit] failed with rc -3 near "kjskjhf": syntax error
+(test='---- test 4 ----')
+(1=1)
+[foo] failed with rc -3 near "foo": syntax error
+[select 1] failed with rc -3 
+[commit] failed with rc -3 
+(test='---- test 5 ----')
+(1=1)
+[select 1] failed with rc -3 near "foo": syntax error
+[commit] failed with rc -3 
+(test='---- test 6 ----')
+(1=1)
+[foo] failed with rc -3 near "foo": syntax error
+[select 1] failed with rc -3 
+(test='---- test 7 ----')
+(1=1)
+[select 1] failed with rc -3 near "foo": syntax error
