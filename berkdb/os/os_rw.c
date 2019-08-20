@@ -162,22 +162,22 @@ __berkdb_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
 
 	pthread_once(&once, init_iobuf);
 
-    if (direct)
-        abuf = get_aligned_buffer(buf, bufsz, 1);
-    else
-        abuf = buf;
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 1);
+	else
+		abuf = buf;
 again:
 	LOGCOPY_TOLSN(&lsn_before, abuf);
 	do {
 		rc = pwrite(fd, abuf, bufsz, offset);
-        if (rc == -1) {
-            logmsg(LOGMSG_ERROR, 
-                    "pwrite fd %d sz %zu off %ld retry %d %d %s\n", fd,
-                    bufsz, offset, nretries, errno, strerror(errno));
-            if (errno != EINTR && errno != EBUSY)
-                poll(NULL, 0, 10);
-        }
- 
+		if (rc == -1) {
+			logmsg(LOGMSG_ERROR, 
+				"pwrite fd %d sz %zu off %ld retry %d %d %s\n", fd,
+				bufsz, offset, nretries, errno, strerror(errno));
+			if (errno != EINTR && errno != EBUSY)
+				poll(NULL, 0, 10);
+			}
+	    }
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -306,8 +306,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-            *niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-                    parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -333,8 +333,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				__berkdb_trace_func(s);
 			}
 		} else {
-            *niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-                    parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 		}
 
 		if (__berkdb_num_write_ios)
@@ -346,8 +346,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 	}
 	if (*niop == (size_t) parlen)
 		return (0);
-    logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd errno %d %s\n", __func__, parlen, *niop, io_errno, strerror(io_errno));
-    abort();
+	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd errno %d %s\n", __func__, parlen, *niop, io_errno, strerror(io_errno));
+	abort();
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -511,8 +511,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-            *niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-                    pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -538,9 +538,9 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				__berkdb_trace_func(s);
 			}
 		} else {
-            *niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-                    pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
-        }
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+		}
 
 		if (__berkdb_num_write_ios)
 			(*__berkdb_num_write_ios)++;
@@ -551,8 +551,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
-    logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize, *niop);
-    abort();
+	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize, *niop);
+	abort();
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -580,31 +580,31 @@ static int __berkdb_direct_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) 
 	int rc;
 
 	pthread_once(&once, init_iobuf);
-    abuf = get_aligned_buffer(buf, bufsz, 0);
-    rc = read(fd, abuf, bufsz);
-    if (rc > 0 && buf != abuf)
-        memcpy(buf, abuf, rc);
-    return rc;
+	abuf = get_aligned_buffer(buf, bufsz, 0);
+	rc = read(fd, abuf, bufsz);
+	if (rc > 0 && buf != abuf)
+		memcpy(buf, abuf, rc);
+	return rc;
 }
 
 static int __berkdb_direct_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
 	void *abuf;
 	int rc;
-    int nretries = 0;
+	int nretries = 0;
 
 	pthread_once(&once, init_iobuf);
-    abuf = get_aligned_buffer(buf, bufsz, 1);
-    do {
-        rc = write(fd, abuf, bufsz);
-        if (rc == -1) {
-            logmsg(LOGMSG_ERROR, 
-                    "write fd %d sz %zu retry %d error %d %s\n", fd,
-                    bufsz, nretries, errno, strerror(errno));
-            if (errno != EINTR && errno != EBUSY)
-                poll(NULL, 0, 10);
-        }
-    } while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
-    return rc;
+	abuf = get_aligned_buffer(buf, bufsz, 1);
+	do {
+		rc = write(fd, abuf, bufsz);
+		if (rc == -1) {
+			logmsg(LOGMSG_ERROR, 
+					"write fd %d sz %zu retry %d error %d %s\n", fd,
+					bufsz, nretries, errno, strerror(errno));
+			if (errno != EINTR && errno != EBUSY)
+				poll(NULL, 0, 10);
+		}
+	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
+	return rc;
 }
 
 /*
@@ -812,12 +812,12 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 
 	do {
 		rc = pwrite(fd, abuf, nobufs * pagesize, offset);
-        if (rc == -1) {
+		if (rc == -1) {
 			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d error %d %s\n",
 			    fd, (int)(nobufs * pagesize), offset, nretries, errno, strerror(errno));
-            if (errno != EINTR && errno != EBUSY)
-                poll(NULL, 0, 10);
-        }
+				if (errno != EINTR && errno != EBUSY)
+						poll(NULL, 0, 10);
+		}
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -852,7 +852,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
-    int io_errno = 0;
+	int io_errno = 0;
 
 
 #if defined(HAVE_PREAD) && defined(HAVE_PWRITE)
@@ -931,7 +931,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 			*niop += single_niop;
 			c_pgno += max_bufs;
 			bufs += max_bufs;
-            io_errno = errno;
+	        io_errno = errno;
 
 			if (nobufs < (*niop / pagesize) + max_bufs)
 				max_bufs = nobufs % max_bufs;
@@ -987,7 +987,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 			*niop += single_niop;
 			c_pgno += max_bufs;
 			bufs += max_bufs;
-            io_errno = errno;
+	        io_errno = errno;
 
 			if (nobufs < (*niop / pagesize) + max_bufs)
 				max_bufs = nobufs % max_bufs;
@@ -1034,8 +1034,8 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 
 	if (*niop == (size_t)(pagesize * nobufs))
 		return (0);
-    logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize * nobufs, *niop);
-    abort();
+	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize * nobufs, *niop);
+	abort();
 slow:
 #endif
 	/* TODO: __os_pwritev/__os_readv */
@@ -1066,17 +1066,17 @@ __os_truncate(dbenv, fhp, offset)
 	DB_FH *fhp;
     off_t offset;
 {
-    int rc;
+	int rc;
 	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) && fhp->fd != -1);
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
-    rc = ftruncate(fhp->fd, offset);
+	rc = ftruncate(fhp->fd, offset);
 	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
-    if (rc == -1) {
-        logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
-                (unsigned int)offset, errno, strerror(errno));
-        return -1;
-    }
-    return rc;
+	if (rc == -1) {
+		logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
+			(unsigned int)offset, errno, strerror(errno));
+		return -1;
+	}
+	return rc;
 }
 
 #ifdef HAVE_FILESYSTEM_NOTZERO
