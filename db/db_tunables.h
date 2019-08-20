@@ -1181,6 +1181,14 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_delayed",
+                 "Force a random SQL query to be delayed 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_delayed,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_rejected",
+                 "Force a random SQL query to be rejected 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_rejected,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",

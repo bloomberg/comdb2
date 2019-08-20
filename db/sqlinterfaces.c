@@ -176,6 +176,9 @@ int gbl_bpfunc_auth_gen = 1;
 long long gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
+int gbl_random_sql_work_delayed = 0;
+int gbl_random_sql_work_rejected = 0;
+
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);
@@ -4770,6 +4773,23 @@ static int can_execute_sql_query_now(
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
   logmsg(LOGMSG_DEBUG, "%s: count=%d, %s\n", __func__, (int)count, zRuleRes);
+  /* BEGIN FAULT INJECTION TEST CODE */
+  if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
+      (result.action != RULESET_A_LOW_PRIO)) {
+    if (gbl_random_sql_work_rejected &&
+        !(rand() % gbl_random_sql_work_rejected)) {
+      logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} reject\n",
+             __func__, clnt->sql);
+      result.action = RULESET_A_REJECT;
+    } else if (gbl_random_sql_work_delayed &&
+        !(rand() % gbl_random_sql_work_delayed)) {
+      logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} delay\n",
+             __func__, clnt->sql);
+      result.action = RULESET_A_LOW_PRIO;
+      result.priority = PRIORITY_T_LOWEST;
+    }
+  }
+  /* END FAULT INJECTION TEST CODE */
   *pbRejected = 0;
   switch (result.action) {
     case RULESET_A_REJECT: {
