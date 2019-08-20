@@ -34,7 +34,7 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-typedef struct dbtable dbtable;
+struct dbtable;
 struct consumer;
 struct thr_handle;
 struct reqlogger;
@@ -797,9 +797,9 @@ typedef struct dbtable {
      * when behind the cursor.  This helps us know how many
      * records we've really done (since every update behind the cursor
      * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
+    uint32_t sc_adds;
+    uint32_t sc_deletes;
+    uint32_t sc_updates;
 
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
@@ -1685,7 +1685,7 @@ extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
 extern volatile int gbl_dbopen_gen;
-extern volatile int gbl_analyze_gen;
+extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 extern volatile int gbl_schema_change_in_progress;
 extern int gbl_sc_report_freq;

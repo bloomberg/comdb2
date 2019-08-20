@@ -2823,10 +2823,10 @@ int comdb2bma_mark_unlocked(comdb2bma ma)
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */
 /* blob allocator limit */
-size_t gbl_blobmem_cap = -1;
+size_t gbl_blobmem_cap = SIZE_MAX;
 /* blobs whose size are larger than the threshold are allocated by blob
  * allocator */
-unsigned gbl_blob_sz_thresh_bytes = -1;
+uint32_t gbl_blob_sz_thresh_bytes = UINT32_MAX;
 /* blob allocator */
 comdb2bma blobmem;
 /* } COMDB2 GLOBAL BLOB MEMORY ALLOCATOR */

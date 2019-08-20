@@ -1475,7 +1475,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     logger->startus = comdb2_time_epochus();
     reqlog_start_request(logger);
 
-    logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
+    logger->nsqlreqs = ATOMIC_LOAD32(gbl_nnewsql);
     if (sqlstmt)
         reqlog_set_sql(logger, sqlstmt);
 }

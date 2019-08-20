@@ -5097,7 +5097,7 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 
     /* get local address of connection */
     int ret =
-        getsockname(host_node_ptr->fd, (struct sockaddr_in *)&lcl_addr_inet,
+        getsockname(host_node_ptr->fd, (struct sockaddr *)&lcl_addr_inet,
                     (socklen_t *)&lcl_len);
     if (ret != 0) {
         logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",

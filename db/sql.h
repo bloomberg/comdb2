@@ -1029,7 +1029,7 @@ struct sql_thread {
     int nfind;
     int nwrite;
     int bufsz;
-    int id;
+    uint32_t id;
     char *buf;
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;

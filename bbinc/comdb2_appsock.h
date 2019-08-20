@@ -48,7 +48,7 @@ struct comdb2_appsock {
     /* Usage message */
     const char *usage;
     /* Execution count, incremented atomically */
-    unsigned int exec_count;
+    uint32_t exec_count;
     /* appsock-specific flags */
     int flags;
     /* The handler function */
