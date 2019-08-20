@@ -5238,12 +5238,12 @@ check_query_rc: ; /* empty statement, make compiler happy */
         usleep(1000 * gbl_retry_dispatch_ms);
         rc2 = enqueue_sql_query(clnt, priority);
         if (rc2 != 0) return rc2; /* could not re-enqueue? */
-        logmsg(LOGMSG_INFO, "%s: RETRYING rc2=%d {%s}\n",
-               __func__, rc2, clnt->sql);
+        logmsg(LOGMSG_INFO, "%s: RETRYING seqNo=%lld, rc2=%d {%s}\n",
+               __func__, clnt->seqNo, rc2, clnt->sql);
         goto retry;
     } else if (rc2 == ERR_QUERY_REJECTED) {
-        logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}\n",
-               __func__, rc2, clnt->sql);
+        logmsg(LOGMSG_ERROR, "%s: REJECTED seqNo=%lld, rc2=%d {%s}\n",
+               __func__, clnt->seqNo, rc2, clnt->sql);
     }
     if (self)
         thrman_where(self, "query done");
