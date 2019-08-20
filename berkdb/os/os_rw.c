@@ -186,43 +186,6 @@ again:
 				errno = ENOSPC;
 			}
 		}
-		if (rc == bufsz && dbenv->attr.check_pwrites) {
-			int crc;
-
-			if (nretries == dbenv->attr.num_write_retries)
-				abort();
-
-			memset(abuf, 0, sizeof(DB_LSN));
-			crc = pread(fd, abuf, bufsz, offset);
-			if (crc != bufsz) {
-				logmsg(LOGMSG_ERROR, 
-                    "trying to verify pwrite fd %d sz %d off %ld (pgno %u) but got rc %d errno %d\n",
-				    fd, (int)bufsz, offset,
-				    (uint32_t) (offset / bufsz), crc, errno);
-				if (++nretries < dbenv->attr.num_write_retries) {
-					logmsg(LOGMSG_ERROR, "Trying again\n");
-					goto again;
-				}
-			} else {
-				LOGCOPY_TOLSN(&lsn_after, abuf);
-				if (log_compare(&lsn_before, &lsn_after) ||
-				    (dbenv->attr.check_pwrites_debug &&
-					((rand() % 100) <
-					    dbenv->attr.check_pwrites_debug))) {
-					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %zu off %ld (pgno %u) lsn before "
-					    PR_LSN ", lsn after " PR_LSN
-					    ", retry %d\n", fd, bufsz, offset,
-					    (uint32_t) (offset / bufsz),
-					    PARM_LSN(lsn_before),
-					    PARM_LSN(lsn_after), nretries);
-					if (++nretries <
-					    dbenv->attr.num_write_retries) {
-						logmsg(LOGMSG_ERROR, "Trying again\n");
-						goto again;
-					}
-				}
-			}
-		}
 	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
 	return rc;
 }
