@@ -5235,6 +5235,8 @@ check_query_rc: ; /* empty statement, make compiler happy */
         usleep(1000 * gbl_retry_dispatch_ms);
         rc2 = enqueue_sql_query(clnt, priority);
         if (rc2 != 0) return rc2; /* could not re-enqueue? */
+        logmsg(LOGMSG_INFO, "%s: RETRYING rc2=%d {%s}\n",
+               __func__, rc2, clnt->sql);
         goto retry;
     } else if (rc2 == ERR_QUERY_REJECTED) {
         logmsg(LOGMSG_ERROR, "%s: REJECTED rc2=%d {%s}\n",
