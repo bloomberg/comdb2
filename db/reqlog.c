@@ -2761,6 +2761,11 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
     logger->context = context;
 }
 
+struct sqlclntstate *reqlog_get_clnt(struct reqlogger *logger)
+{
+    return logger->clnt;
+}
+
 void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     logger->clnt = clnt;

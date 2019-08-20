@@ -2903,6 +2903,7 @@ void reqlog_set_error(struct reqlogger *logger, const char *error,
 int reqlog_get_error_code(struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+struct sqlclntstate *reqlog_get_clnt(struct reqlogger *);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 
 void process_nodestats(void);

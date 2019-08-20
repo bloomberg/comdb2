@@ -1575,6 +1575,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
     if (srs_tran_destroy(clnt))
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
+    assert(reqlog_get_clnt(thd->logger) == NULL);
 
     clnt->intrans = 0;
     reset_clnt_flags(clnt);
@@ -2169,6 +2170,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         if (srs_tran_destroy(clnt))
             logmsg(LOGMSG_ERROR,
                    "Fail to destroy transaction replay session\n");
+        assert(reqlog_get_clnt(thd->logger) == NULL);
     }
 
 done:
