@@ -199,11 +199,10 @@ const char *char_atglyph_words[] = {
 static char *char_atglyph_generator(const char *text, int state)
 {
     static int len;
-    const char *name;
     if (!state) { // if state is 0 get the length of text
         len = strlen(text);
     }
-    for (const char& name: char_atglyph_generator) {
+    for (auto&& name: char_atglyph_words) {
       if (len == 0 || strncasecmp(name, text, len) == 0) {
         return strdup(name);
       }
@@ -215,11 +214,10 @@ static char *char_atglyph_generator(const char *text, int state)
 static char *level_one_generator(const char *text, int state)
 {
     static int len;
-    const char *name;
     if (!state) { //if state is 0 get the length of text
         len = strlen (text);
     }
-    for (const char& name: level_one_words) {
+    for (auto&& name: level_one_words) {
       if (len == 0 || strncasecmp (name, text, len) == 0) {
         return strdup (name);
       }
