@@ -4772,8 +4772,8 @@ static int can_execute_sql_query_now(
   );
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
-  logmsg(LOGMSG_DEBUG, "%s: sql={%s}, count=%d, %s\n", __func__, clnt->sql,
-         (int)count, zRuleRes);
+  logmsg(LOGMSG_DEBUG, "%s: seqNo=%lld, sql={%s}, count=%d, %s\n", __func__,
+         clnt->seqNo, clnt->sql, (int)count, zRuleRes);
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
       (result.action != RULESET_A_LOW_PRIO)) {
@@ -5034,7 +5034,8 @@ static priority_t combinePriorities(
   }
 }
 
-static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
+                             int skipSeqNo)
 {
     char msg[1024];
     char *sqlcpy;
@@ -5049,7 +5050,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     ** TODO: Should this code reset an existing client sequence number
     **       to a higher value?  I do not think so.
     */
-    if (clnt->seqNo == 0) clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
+    if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
 
@@ -5236,7 +5237,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
     if (rc2 == ERR_QUERY_DELAYED) {
         if (db_is_stopped()) return rc2; /* now permanent error */
         usleep(1000 * gbl_retry_dispatch_ms);
-        rc2 = enqueue_sql_query(clnt, priority);
+        rc2 = enqueue_sql_query(clnt, priority, 1);
         if (rc2 != 0) return rc2; /* could not re-enqueue? */
         logmsg(LOGMSG_INFO, "%s: RETRYING seqNo=%lld, rc2=%d {%s}\n",
                __func__, clnt->seqNo, rc2, clnt->sql);
@@ -5254,7 +5255,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     mark_clnt_as_recently_used(clnt);
 
-    int rc = enqueue_sql_query(clnt, priority);
+    int rc = enqueue_sql_query(clnt, priority, 0);
     if (rc != 0) return rc;
 
     return wait_for_sql_query(clnt, priority);
