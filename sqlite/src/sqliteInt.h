@@ -1635,7 +1635,7 @@ struct sqlite3 {
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_PrepareOnly    HI(0x1000)  /* Pending flag for prepare_v3() */
-#define SQLITE_PreviewOnly    HI(0x2000)  /* Pending flag for prepare_v3() */
+#define SQLITE_PreviewOnly    HI(0x2000)  /* Preview flag for prepare_v3() */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
