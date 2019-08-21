@@ -2702,6 +2702,7 @@ static int whereLoopAddBtreeIndex(
     ** it to pNew->rRun, which is currently set to the cost of the index
     ** seek only. Then, if this is a non-covering index, add the cost of
     ** visiting the rows in the main table.  */
+    assert( pSrc->pTab->szTabRow>0 );
     rCostIdx = pNew->nOut + 1 + (15*pProbe->szIdxRow)/pSrc->pTab->szTabRow;
     pNew->rRun = sqlite3LogEstAdd(rLogSize, rCostIdx);
     if( (pNew->wsFlags & (WHERE_IDX_ONLY|WHERE_IPK))==0 ){
@@ -3808,15 +3809,21 @@ static i8 wherePathSatisfiesOrderBy(
           u16 eOp = pLoop->aLTerm[j]->eOperator;
 
           /* Skip over == and IS and ISNULL terms.  (Also skip IN terms when
-          ** doing WHERE_ORDERBY_LIMIT processing). 
+          ** doing WHERE_ORDERBY_LIMIT processing).  Except, IS and ISNULL
+          ** terms imply that the index is not UNIQUE NOT NULL in which case
+          ** the loop need to be marked as not order-distinct because it can
+          ** have repeated NULL rows.
           **
           ** If the current term is a column of an ((?,?) IN (SELECT...)) 
           ** expression for which the SELECT returns more than one column,
           ** check that it is the only column used by this loop. Otherwise,
           ** if it is one of two or more, none of the columns can be
-          ** considered to match an ORDER BY term.  */
+          ** considered to match an ORDER BY term.
+          */
           if( (eOp & eqOpMask)!=0 ){
-            if( eOp & WO_ISNULL ){
+            if( eOp & (WO_ISNULL|WO_IS) ){
+              testcase( eOp & WO_ISNULL );
+              testcase( eOp & WO_IS );
               testcase( isOrderDistinct );
               isOrderDistinct = 0;
             }
