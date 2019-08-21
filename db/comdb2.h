@@ -3609,6 +3609,7 @@ extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
+extern int gbl_prioritize_queries;
 
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;

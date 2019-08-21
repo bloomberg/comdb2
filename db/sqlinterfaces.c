@@ -4878,27 +4878,29 @@ void sqlengine_work_appsock(void *thddata, void *work)
         return;
     }
 
-    if (gbl_fingerprint_queries) {
-        /* IGNORED */
-        preview_and_calc_fingerprint(clnt);
-    }
-
-    int bRejected = 0;
-
-    if (!can_execute_sql_query_now(thd, clnt, &bRejected)) {
-        if (bRejected) {
-            send_run_error(clnt, "Client api should change nodes",
-                           CDB2ERR_CHANGENODE);
-            clnt->query_rc = ERR_QUERY_REJECTED;
-        } else {
-            clnt->query_rc = ERR_QUERY_DELAYED;
+    if (gbl_prioritize_queries) {
+        if (gbl_fingerprint_queries) {
+            /* IGNORED */
+            preview_and_calc_fingerprint(clnt);
         }
-        clnt->osql.timings.query_finished = osql_log_time();
-        osql_log_time_done(clnt);
-        clnt_change_state(clnt, CONNECTION_IDLE);
-        signal_clnt_as_done(clnt);
-        put_curtran(thedb->bdb_env, clnt);
-        return;
+
+        int bRejected = 0;
+
+        if (!can_execute_sql_query_now(thd, clnt, &bRejected)) {
+            if (bRejected) {
+                send_run_error(clnt, "Client api should change nodes",
+                               CDB2ERR_CHANGENODE);
+                clnt->query_rc = ERR_QUERY_REJECTED;
+            } else {
+                clnt->query_rc = ERR_QUERY_DELAYED;
+            }
+            clnt->osql.timings.query_finished = osql_log_time();
+            osql_log_time_done(clnt);
+            clnt_change_state(clnt, CONNECTION_IDLE);
+            signal_clnt_as_done(clnt);
+            put_curtran(thedb->bdb_env, clnt);
+            return;
+        }
     }
 
     clnt_change_state(clnt, CONNECTION_RUNNING);
