@@ -1107,10 +1107,18 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
 */
 static int is_meta_sql(const char *zSql, const char *azMeta[])
 {
+    size_t len = strlen(zSql);
     for (int i = 0; azMeta[i]; i++) {
-        size_t len = strlen(azMeta[i]);
-        if ((strncasecmp(zSql, azMeta[i], len) == 0) && isspace(zSql[len])) {
-            return i + 1;
+        size_t metaLen = strlen(azMeta[i]);
+        if (strncasecmp(zSql, azMeta[i], metaLen) == 0) {
+            if (len == metaLen) {
+                return i + 1; /* end-of-string */
+            } else {
+                char nextCh = zSql[metaLen];
+                if ((nextCh == ';') || isspace(nextCh)) {
+                    return i + 1; /* command delimiter */
+                }
+            }
         }
     }
     return 0;
