@@ -911,6 +911,11 @@ REGISTER_TUNABLE("prioritize_queries",
                  "Prioritize SQL queries based on origin and fingerprint. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_prioritize_queries",
+                 "Show prioritized SQL queries based on origin and "
+                 "fingerprint.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_verbose_prioritize_queries, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);
