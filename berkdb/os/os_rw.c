@@ -345,8 +345,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 	}
 	if (*niop == (size_t) parlen)
 		return (0);
-	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, parlen, *niop);
-	abort();
+    // This is for testing partial writes, so we fully expect partial IO here.
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -550,8 +549,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
-	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize, *niop);
-	abort();
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop);
+    // try to do a seek + read/write
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -1030,8 +1029,8 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 
 	if (*niop == (size_t)(pagesize * nobufs))
 		return (0);
-	logmsg(LOGMSG_FATAL, "%s: failed io: expected %zd got %zd\n", __func__, pagesize * nobufs, *niop);
-	abort();
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize * nobufs, *niop);
+    // iov - we failed to write the pages as a unit, fall through and try them individually
 slow:
 #endif
 	/* TODO: __os_pwritev/__os_readv */
