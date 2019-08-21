@@ -21,9 +21,10 @@
 #include <ezsystables.h>
 #include "sql.h"
 #include "plhash.h"
+#include "tohex.h"
 
 struct fingerprint_track_systbl {
-    systable_blobtype fp_blob;
+    char *fingerprint;
     int64_t count;    /* Cumulative number of times executed */
     int64_t cost;     /* Cumulative cost */
     int64_t time;     /* Cumulative preparation and execution time */
@@ -31,6 +32,8 @@ struct fingerprint_track_systbl {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
+
+    char fp[FINGERPRINTSZ*2+1];
 };
 
 extern hash_t *gbl_fingerprint_hash;
@@ -40,10 +43,8 @@ static void release_callback(void *data, int npoints)
 {
     struct fingerprint_track_systbl *pFp = (struct fingerprint_track_systbl *)data;
     if (pFp != NULL) {
-        for (int index = 0; index < npoints; index++) {
-            free(pFp[index].fp_blob.value);
+        for (int index = 0; index < npoints; index++)
             free(pFp[index].zNormSql);
-        }
         free(pFp);
     }
 }
@@ -68,15 +69,8 @@ static int fingerprints_callback(void **data, int *npoints)
                 pEntry = hash_first(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
                 while (pEntry != NULL) {
                     assert( copied<count );
-                    pFp[copied].fp_blob.value = calloc(FINGERPRINTSZ, sizeof(char));
-                    if (pFp[copied].fp_blob.value != NULL) {
-                        pFp[copied].fp_blob.size = FINGERPRINTSZ;
-                        memcpy(pFp[copied].fp_blob.value, pEntry->fingerprint,
-                               pFp[copied].fp_blob.size);
-                    } else {
-                        rc = SQLITE_NOMEM;
-                        break;
-                    }
+                    util_tohex(pFp[copied].fp, pEntry->fingerprint, FINGERPRINTSZ);
+                    pFp[copied].fingerprint = pFp[copied].fp;
                     pFp[copied].count = pEntry->count;
                     pFp[copied].cost = pEntry->cost;
                     pFp[copied].time = pEntry->time;
@@ -115,20 +109,20 @@ int systblFingerprintsInit(sqlite3 *db)
         "comdb2_fingerprints",
         &systblFingerprintsModule,
         fingerprints_callback, release_callback,
-        sizeof(struct fingerprint_track),
-        CDB2_BLOB, "fingerprint", -1,
-        offsetof(struct fingerprint_track, fingerprint),
+        sizeof(struct fingerprint_track_systbl),
+        CDB2_CSTRING, "fingerprint", -1,
+        offsetof(struct fingerprint_track_systbl, fingerprint),
         CDB2_INTEGER, "count", -1,
-        offsetof(struct fingerprint_track, count),
+        offsetof(struct fingerprint_track_systbl, count),
         CDB2_INTEGER, "total_cost", -1,
-        offsetof(struct fingerprint_track, cost),
+        offsetof(struct fingerprint_track_systbl, cost),
         CDB2_INTEGER, "total_time", -1,
-        offsetof(struct fingerprint_track, time),
+        offsetof(struct fingerprint_track_systbl, time),
         CDB2_INTEGER, "total_prep_time", -1,
-        offsetof(struct fingerprint_track, prepTime),
+        offsetof(struct fingerprint_track_systbl, prepTime),
         CDB2_INTEGER, "total_rows", -1,
-        offsetof(struct fingerprint_track, rows),
+        offsetof(struct fingerprint_track_systbl, rows),
         CDB2_CSTRING, "normalized_sql", -1,
-        offsetof(struct fingerprint_track, zNormSql),
+        offsetof(struct fingerprint_track_systbl, zNormSql),
         SYSTABLE_END_OF_FIELDS);
 }

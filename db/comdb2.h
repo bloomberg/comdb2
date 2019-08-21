@@ -540,6 +540,9 @@ struct rawnodestats {
     unsigned sql_rows;
 
     struct time_metric *svc_time; /* <-- offsetof */
+
+    pthread_mutex_t lk;
+    hash_t *fingerprints;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
@@ -2433,6 +2436,10 @@ int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
 int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
 
 void flush_db(void);
+void dump_cache(const char *file, int max_pages);
+void load_cache(const char *file);
+void load_cache_default(void);
+void dump_cache_default(void);
 int compare_all_tags(const char *table, FILE *out);
 int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
@@ -3647,4 +3654,6 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 #endif /* !INCLUDED_COMDB2_H */

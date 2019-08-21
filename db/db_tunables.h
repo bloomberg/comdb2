@@ -1750,6 +1750,42 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("cache_flush_interval",
+                 "Save bufferpool once every this many seconds.  "
+                 "(Default: 30)",
+                 TUNABLE_INTEGER, &gbl_cache_flush_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("load_cache_threads",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8)",
+                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("load_cache_max_pages",
+                 "Maximum number of pages that will load into cache.  Setting "
+                 "to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_load_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("dump_cache_max_pages",
+                 "Maximum number of pages that will dump into a pagelist.  "
+                 "Setting to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_dump_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("max_pages_per_cache_thread",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8192)",
+                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("memp_dump_cache_threshold",
+                 "Don't flush the cache until this percentage of pages have "
+                 "changed.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",
