@@ -198,16 +198,23 @@ typedef struct osqlstate {
 } osqlstate_t;
 
 enum ctrl_sqleng {
-    SQLENG_NORMAL_PROCESS =
-        0, /* no user specified transactions, i.e. begin/commit */
-    SQLENG_PRE_STRT_STATE =
-        1, /* "begin" was submitted, mark this as user transaction begin */
-    SQLENG_STRT_STATE = 2,     /* we are waiting for a non-"begin" user query */
-    SQLENG_INTRANS_STATE = 3,  /* we have a transaction, ignore further
-                                  BtreeTransBegin until commit/rollback */
-    SQLENG_FNSH_STATE = 4,     /* "commit" was submitted */
-    SQLENG_FNSH_RBK_STATE = 5, /* "rollback" was submitted */
-    SQLENG_WRONG_STATE = 6,     /* duplicated command submitted */
+    /* No user specified transactions, i.e. BEGIN/COMMIT */
+    SQLENG_NORMAL_PROCESS,
+    /* "BEGIN" was submitted, mark this as user transaction begin */
+    SQLENG_PRE_STRT_STATE,
+    /* We have seen 'BEGIN' and now waiting for a non-"BEGIN" user query */
+    SQLENG_STRT_STATE,
+    /* We have a transaction, ignore further BtreeTransBegin until
+     * COMMIT/ROLLBACK */
+    SQLENG_INTRANS_STATE,
+    /* "COMMIT" was submitted */
+    SQLENG_FNSH_STATE,
+    /* "ROLLBACK" was submitted */
+    SQLENG_FNSH_RBK_STATE,
+    /* Transaction has been aborted due to a bad command */
+    SQLENG_FNSH_ABORTED_STATE,
+    /* We have entered a wrong stated (possibly a bug) */
+    SQLENG_WRONG_STATE,
 };
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
