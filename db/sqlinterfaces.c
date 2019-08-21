@@ -5450,12 +5450,14 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         Pthread_mutex_init(&clnt->state_lk, NULL);
     }
     else {
-       clnt->seqNo = 0;
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
        clnt_change_state(clnt, CONNECTION_RESET);
     }
+
+    clnt->seqNo = 0;
+    clnt->priority = PRIORITY_T_INVALID;
 
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
