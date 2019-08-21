@@ -142,16 +142,6 @@ void hash_free(hash_t *h);
 /* free resized tables at synchronization point (for threaded programs) */
 void hash_free_resized_tables(hash_t *h);
 
-/* enable lock-free hash query (no need for mutex in threaded applications)
- * Caller promises to use only hash_findobj_readonly() and hash_find_readonly()
- * for hash queries and acknowledges that both hash buckets and hash table will
- * be copied in full upon table resize, and not free()d until hash is destroyed.
- * (Cost: memory usage for hash buckets and hash table will almost double)
- * At application synchronization points, hash_free_resized_tables() can be
- * called by the application to release deleted/resized internal hash structures
- */
-void hash_config_lockfree_query(hash_t *h);
-
 /* enable/disable stat collection for hash queries */
 void hash_config_query_stats(hash_t *h, const int enable);
 

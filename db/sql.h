@@ -198,16 +198,23 @@ typedef struct osqlstate {
 } osqlstate_t;
 
 enum ctrl_sqleng {
-    SQLENG_NORMAL_PROCESS =
-        0, /* no user specified transactions, i.e. begin/commit */
-    SQLENG_PRE_STRT_STATE =
-        1, /* "begin" was submitted, mark this as user transaction begin */
-    SQLENG_STRT_STATE = 2,     /* we are waiting for a non-"begin" user query */
-    SQLENG_INTRANS_STATE = 3,  /* we have a transaction, ignore further
-                                  BtreeTransBegin until commit/rollback */
-    SQLENG_FNSH_STATE = 4,     /* "commit" was submitted */
-    SQLENG_FNSH_RBK_STATE = 5, /* "rollback" was submitted */
-    SQLENG_WRONG_STATE = 6,     /* duplicated command submitted */
+    /* No user specified transactions, i.e. BEGIN/COMMIT */
+    SQLENG_NORMAL_PROCESS,
+    /* "BEGIN" was submitted, mark this as user transaction begin */
+    SQLENG_PRE_STRT_STATE,
+    /* We have seen 'BEGIN' and now waiting for a non-"BEGIN" user query */
+    SQLENG_STRT_STATE,
+    /* We have a transaction, ignore further BtreeTransBegin until
+     * COMMIT/ROLLBACK */
+    SQLENG_INTRANS_STATE,
+    /* "COMMIT" was submitted */
+    SQLENG_FNSH_STATE,
+    /* "ROLLBACK" was submitted */
+    SQLENG_FNSH_RBK_STATE,
+    /* Transaction has been aborted due to a bad command */
+    SQLENG_FNSH_ABORTED_STATE,
+    /* We have entered a wrong stated (possibly a bug) */
+    SQLENG_WRONG_STATE,
 };
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -1216,7 +1223,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *);
+                     int64_t, struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1230,5 +1237,36 @@ void clnt_unregister(struct sqlclntstate *clnt);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
+
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
+struct query_count {
+    char fingerprint[FINGERPRINTSZ];
+
+    // TODO: counter_t that we automatically reset when needed
+    int64_t count;
+    int64_t last_count;
+
+    int64_t cost;
+    int64_t last_cost;
+
+    int64_t rows;
+    int64_t last_rows;
+
+    int64_t timems;
+    int64_t last_timems;
+};
+
+void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
 
 #endif

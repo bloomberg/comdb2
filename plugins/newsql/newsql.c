@@ -283,11 +283,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
 {
     // Retries happen with a 'begin'.  This can't be a retry if we are already
     // in a transaction
-    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_RBK_STATE) {
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         return 0;
     }
 
@@ -2279,6 +2275,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
+            clnt.had_errors = 0;
+            clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
         }
         if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
@@ -2358,31 +2356,20 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.heartbeat = 1;
         ATOMIC_ADD(gbl_nnewsql, 1);
 
-        if (clnt.had_errors && strncasecmp(clnt.sql, "commit", 6) &&
-            strncasecmp(clnt.sql, "rollback", 8)) {
-            if (clnt.in_client_trans == 0) {
-                clnt.had_errors = 0;
-                /* tell blobmem that I want my priority back
-                   when the sql thread is done */
-                comdb2bma_pass_priority_back(blobmem);
-                rc = dispatch_sql_query(&clnt);
-            } else {
-                /* Do Nothing */
-                newsql_heartbeat(&clnt);
-            }
-        } else if (clnt.had_errors) {
-            /* Do Nothing */
-            if (clnt.ctrl_sqlengine == SQLENG_STRT_STATE)
-                clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
+        bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
+                                 strncasecmp(clnt.sql, "rollback", 8) == 0)
+                                    ? true
+                                    : false;
 
-            clnt.had_errors = 0;
-            clnt.in_client_trans = 0;
-            rc = -1;
-        } else {
+        if (!clnt.had_errors || isCommitRollback) {
             /* tell blobmem that I want my priority back
                when the sql thread is done */
             comdb2bma_pass_priority_back(blobmem);
             rc = dispatch_sql_query(&clnt);
+
+            if (clnt.had_errors && isCommitRollback) {
+                rc = -1;
+            }
         }
         clnt_change_state(&clnt, CONNECTION_IDLE);
 
@@ -2391,15 +2378,21 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
             } else {
-                srs_tran_replay(&clnt, arg->thr_self);
+                rc = srs_tran_replay(&clnt, arg->thr_self);
+            }
+
+            if (clnt.osql.history == NULL) {
+                query = APPDATA->query = NULL;
             }
         } else {
             /* if this transaction is done (marked by SQLENG_NORMAL_PROCESS),
                clean transaction sql history
             */
             if (clnt.osql.history &&
-                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
+                query = APPDATA->query = NULL;
+            }
         }
 
         if (rc && !clnt.in_client_trans)

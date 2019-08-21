@@ -1374,6 +1374,48 @@ static int bdb_flush_cache(bdb_state_type *bdb_state)
     return 0;
 }
 
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
+                           int max_pages)
+{
+    int rc, fd;
+    SBUF2 *s;
+    if ((fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
+        (s = sbuf2open(fd, 0)) == NULL) {
+        if (fd >= 0)
+            close(fd);
+        logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
+               errno);
+        return -1;
+    }
+    rc = bdb_state->dbenv->memp_dump(bdb_state->dbenv, s, max_pages);
+    sbuf2close(s);
+    return rc;
+}
+
+int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
+{
+    int rc, fd;
+    SBUF2 *s;
+    if ((fd = open(file, O_RDONLY, 0)) < 0 || (s = sbuf2open(fd, 0)) == NULL) {
+        if (fd >= 0)
+            close(fd);
+        return -1;
+    }
+    rc = bdb_state->dbenv->memp_load(bdb_state->dbenv, s);
+    sbuf2close(s);
+    return rc;
+}
+
+int bdb_load_cache_default(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
+}
+
+int bdb_dump_cache_default(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 1);
+}
+
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
     int rc;

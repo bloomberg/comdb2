@@ -1,8 +1,8 @@
-(fingerprint=x'23476e0d735c4cf482b94c485e3d7127', count=1, total_cost=37, total_rows=7, normalized_sql='EXEC PROCEDURE test_fp();')
-(fingerprint=x'2d4fbab7f6a9c85c75bbb7fb6b43c863', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT sum(x)AS z FROM fp1;')
-(fingerprint=x'5bef07d72bc6a66e49bef817dd3bab9d', count=4, total_cost=0, total_rows=4, normalized_sql='INSERT INTO fp1(x)VALUES(?);')
-(fingerprint=x'5e7c0c2caf9a22cac49643a5a01d7760', count=1, total_cost=13, total_rows=3, normalized_sql='SELECT*FROM fp1 ORDER BY x;')
-(fingerprint=x'8292b8dcacbbf4b0f44c9864898470af', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE test_fp VERSION?{
+(fingerprint='23476e0d735c4cf482b94c485e3d7127', count=1, total_cost=37, total_rows=7, normalized_sql='EXEC PROCEDURE test_fp();')
+(fingerprint='2d4fbab7f6a9c85c75bbb7fb6b43c863', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT sum(x)AS z FROM fp1;')
+(fingerprint='5bef07d72bc6a66e49bef817dd3bab9d', count=4, total_cost=0, total_rows=4, normalized_sql='INSERT INTO fp1(x)VALUES(?);')
+(fingerprint='5e7c0c2caf9a22cac49643a5a01d7760', count=1, total_cost=13, total_rows=3, normalized_sql='SELECT*FROM fp1 ORDER BY x;')
+(fingerprint='8292b8dcacbbf4b0f44c9864898470af', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE test_fp VERSION?{
 local function exec_fetch_and_emit(sql)
   local rc
   local n, q
@@ -32,10 +32,10 @@ local function main()
   exec_fetch_and_emit("SELECT x + x AS y FROM fp1 ORDER BY x") -- 2 rows
   exec_fetch_and_emit("SELECT SUM(x) AS z FROM fp1") -- 1 row
 end};')
-(fingerprint=x'84496375cf558c93e22ce29e18ea7187', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE fp1(x integer);')
-(fingerprint=x'b12bfa0963ad238396f59e2e1e96b218', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT count(*)FROM fp1;')
-(fingerprint=x'b16c596087126535ffc0e991e3477d8a', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?AS xyz;')
-(fingerprint=x'c7f22188d3a63015bac874fd692fd350', count=1, total_cost=12, total_rows=2, normalized_sql='SELECT x AS w FROM fp1 ORDER BY x;')
-(fingerprint=x'cb377fe3503a8413402ff6fdbf8d9f11', count=1, total_cost=12, total_rows=2, normalized_sql='SELECT x+x AS y FROM fp1 ORDER BY x;')
-(fingerprint=x'd12630393a2ab9bf00df2f53a9355b10', count=1, total_cost=13, total_rows=1, normalized_sql='SELECT x,x+x,sum(x)FROM fp1 ORDER BY x;')
-(fingerprint=x'ea1c1d9dd89564e809f6501de86061dd', count=1, total_cost=13, total_rows=1, normalized_sql='DELETE FROM fp1 WHERE x=?;')
+(fingerprint='84496375cf558c93e22ce29e18ea7187', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE fp1(x integer);')
+(fingerprint='b12bfa0963ad238396f59e2e1e96b218', count=1, total_cost=12, total_rows=1, normalized_sql='SELECT count(*)FROM fp1;')
+(fingerprint='b16c596087126535ffc0e991e3477d8a', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?AS xyz;')
+(fingerprint='c7f22188d3a63015bac874fd692fd350', count=1, total_cost=12, total_rows=2, normalized_sql='SELECT x AS w FROM fp1 ORDER BY x;')
+(fingerprint='cb377fe3503a8413402ff6fdbf8d9f11', count=1, total_cost=12, total_rows=2, normalized_sql='SELECT x+x AS y FROM fp1 ORDER BY x;')
+(fingerprint='d12630393a2ab9bf00df2f53a9355b10', count=1, total_cost=13, total_rows=1, normalized_sql='SELECT x,x+x,sum(x)FROM fp1 ORDER BY x;')
+(fingerprint='ea1c1d9dd89564e809f6501de86061dd', count=1, total_cost=13, total_rows=1, normalized_sql='DELETE FROM fp1 WHERE x=?;')

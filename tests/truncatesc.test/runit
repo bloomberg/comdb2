@@ -8,7 +8,7 @@ dbnm=$1
 
 export sleeptime=5
 export repsleep=5
-export repname=rep$TESTID
+export repname=rep${DBNAME}
 export repdir=${DBDIR}/$repname
 export comdb2ar=${COMDB2AR_EXE}
 export myhost=$(hostname)
