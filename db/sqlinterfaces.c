@@ -4134,6 +4134,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         clear_cost(thd->sqlthd);
 
         /* get an sqlite engine */
+        assert(rec.stmt == NULL);
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
