@@ -285,6 +285,8 @@ void thdpool_destroy(struct thdpool **pool_p)
     Pthread_mutex_destroy(&pool->mutex);
     Pthread_attr_destroy(&pool->attrs);
 
+    priority_queue_clear(&pool->queue);
+
     free(pool->busy_hist);
     pool_free(pool->pool);
     free(pool->name);

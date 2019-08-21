@@ -66,6 +66,9 @@ priority_queue_t *priority_queue_new();
 /* initialize a queue */
 void priority_queue_initialize(priority_queue_t *q);
 
+/* return all resources for queue */
+void priority_queue_clear(priority_queue_t *q);
+
 /* return all resources for queue, free mem */
 void priority_queue_free(priority_queue_t **pq);
 

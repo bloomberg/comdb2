@@ -32,19 +32,24 @@ void priority_queue_initialize(priority_queue_t *q){
   }
 }
 
+void priority_queue_clear(priority_queue_t *q){
+  if (q != NULL) {
+    priority_queue_item_t *tmp, *iter;
+
+    LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
+    {
+      listc_rfl(&q->list, iter);
+      free(iter);
+    }
+  }
+}
+
 void priority_queue_free(priority_queue_t **pq){
   if (pq != NULL) {
     priority_queue_t *q = *pq;
 
     if (q != NULL) {
-      priority_queue_item_t *tmp, *iter;
-
-      LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
-      {
-        listc_rfl(&q->list, iter);
-        free(iter);
-      }
-
+      priority_queue_clear(q);
       free(q);
     }
 
