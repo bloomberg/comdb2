@@ -573,35 +573,37 @@ err:	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
 
 }
 
-static int __berkdb_direct_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
+static int __berkdb_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int direct) {
 	void *abuf;
 	int rc;
 
 	pthread_once(&once, init_iobuf);
-	abuf = get_aligned_buffer(buf, bufsz, 0);
+    if (direct)
+        abuf = get_aligned_buffer(buf, bufsz, 0);
+    else
+        abuf = buf;
 	rc = read(fd, abuf, bufsz);
 	if (rc > 0 && buf != abuf)
 		memcpy(buf, abuf, rc);
 	return rc;
 }
 
-static int __berkdb_direct_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz) {
+static int __berkdb_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int direct) {
 	void *abuf;
 	int rc;
 	int nretries = 0;
 
 	pthread_once(&once, init_iobuf);
-	abuf = get_aligned_buffer(buf, bufsz, 1);
-	do {
-		rc = write(fd, abuf, bufsz);
-		if (rc == -1) {
-			logmsg(LOGMSG_ERROR, 
-					"write fd %d sz %zu retry %d error %d %s\n", fd,
-					bufsz, nretries, errno, strerror(errno));
-			if (errno != EINTR && errno != EBUSY)
-				poll(NULL, 0, 10);
-		}
-	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
+    if (direct)
+        abuf = get_aligned_buffer(buf, bufsz, 1);
+    else
+        abuf = buf;
+    rc = write(fd, abuf, bufsz);
+    if (rc == -1) {
+        logmsg(LOGMSG_ERROR, 
+                "write fd %d sz %zu retry %d error %d %s\n", fd,
+                bufsz, nretries, errno, strerror(errno));
+    }
 	return rc;
 }
 
@@ -633,10 +635,7 @@ __os_read(dbenv, fhp, addr, len, nrp)
 	for (taddr = addr, offset = 0; offset < len; taddr += nr, offset += nr) {
 retry:		if ((nr = DB_GLOBAL(j_read) != NULL ?
 			DB_GLOBAL(j_read)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp,
-			    DB_FH_DIRECT) ? __berkdb_direct_read(dbenv, fhp->fd, taddr,
-			    len - offset) : read(fhp->fd, taddr,
-			    len - offset))<0) {
+			 __berkdb_read(dbenv, fhp->fd, taddr, len - offset, F_ISSET(fhp, DB_FH_DIRECT))) < 0) {
 			ret = __os_get_errno();
 			if ((ret == EINTR || ret == EBUSY) &&
 			    ++retries < DB_RETRY)
@@ -721,9 +720,7 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 retry:
 		nw = DB_GLOBAL(j_write) != NULL ?
 			DB_GLOBAL(j_write)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp, DB_FH_DIRECT) ? 
-			__berkdb_direct_write(dbenv, fhp->fd, taddr, len - offset) : write(fhp->fd, taddr,
-					len - offset);
+			__berkdb_write(dbenv, fhp->fd, taddr, len - offset, F_ISSET(fhp, DB_FH_DIRECT));
 		if (debug_enospc && off >= 0) {
 			int p = rand() % 100;
 
@@ -744,19 +741,13 @@ retry:
 		}
 		if (nw < 0) {
 			ret = __os_get_errno();
-			if (ret == ENOSPC) {
-				logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d\n",
-						__func__, fhp->fd, (int) (len - offset), retries);
-				if (++retries < dbenv->attr.num_write_retries) {
-					poll(NULL, 0, 10);
-					goto retry;
-				}
+            logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d err %d %s\n",
+                    __func__, fhp->fd, (int) (len - offset), retries, ret, strerror(ret));
+            if (++retries < dbenv->attr.num_write_retries) {
+                if (ret != EINTR || ret != EBUSY)
+                    poll(NULL, 0, 10);
+                goto retry;
 			}
-			if ((ret == EINTR || ret == EBUSY) &&
-					++retries < dbenv->attr.num_write_retries)
-				goto retry;
-			__db_err(dbenv, "write: %p, %lu: %s",
-					taddr, (u_long) len - offset, strerror(ret));
 			return (ret);
 		}
 	}
