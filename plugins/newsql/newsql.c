@@ -2371,6 +2371,12 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 rc = -1;
             }
         }
+
+        if (rc) {
+            logmsg(LOGMSG_DEBUG, "%s:%d failure to dispatch query (rc: %d)\n",
+                   __func__, __LINE__, rc);
+        }
+
         clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
@@ -2394,9 +2400,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 query = APPDATA->query = NULL;
             }
         }
-
-        if (rc && !clnt.in_client_trans)
-            goto done;
 
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
