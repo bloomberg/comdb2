@@ -2327,14 +2327,19 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     return 0;
 }
 
-static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+static void cleanup_stmt_entry_only(stmt_hash_entry_type *entry)
 {
-    if (entry->query && gbl_debug_temptables) {
+    if (entry->query) {
         free(entry->query);
         entry->query = NULL;
     }
-    sqlite3_finalize(entry->stmt);
     sqlite3_free(entry);
+}
+
+static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+{
+    sqlite3_finalize(entry->stmt);
+    cleanup_stmt_entry_only(entry);
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
@@ -2365,12 +2370,12 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     } else {
         list = &thd->noparam_stmt_list;
     }
-    listc_rfl(list, entry);
+    listc_maybe_rfl(list, entry);
     int rc = hash_del(thd->stmt_caching_table, entry->sql);
     if (rc)
         logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
                rc);
-    assert(rc == 0);
+    // assert(rc == 0);
 }
 
 /* This will call requeue_stmt_entry() after it has allocated memory
@@ -3087,32 +3092,36 @@ static inline int dont_cache_this_sql(struct sql_state *rec)
  * needs to cleanup this rec->stmt */
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
-                                 struct sql_state *rec, int outrc,
+                                 struct sql_state *rec,
+                                 int noCache, int outrc,
                                  int distributed)
 {
+    if (noCache) {
+        goto cleanup;
+    }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
-        return 1;
+        goto cleanup;
     }
     if (distributed || clnt->conns || clnt->plugin.state) {
-        return 1;
+        goto cleanup;
     }
     if (thd && thd->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
-        return 1;
+        goto cleanup;
     }
     if (dont_cache_this_sql(rec)) {
-        return 1;
+        goto cleanup;
     }
     sqlite3_stmt *stmt = rec->stmt;
     if (stmt == NULL) {
-        return 1;
+        goto cleanup;
     }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0) {
-        return 1;
+        goto cleanup;
     }
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
         sqlite3_stmt_has_remotes(stmt)) {
-        return 1;
+        goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
         if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
@@ -3134,6 +3143,13 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     }
     return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
                           stmt);
+cleanup:
+    if (rec->stmt_entry != NULL) {
+        remove_stmt_entry(thd, rec->stmt_entry);
+        cleanup_stmt_entry_only(rec->stmt_entry);
+        rec->stmt_entry = NULL;
+    }
+    return 1;
 }
 
 static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
@@ -3146,11 +3162,7 @@ static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    if (noCache) {
-        rc = 1;
-    } else {
-        rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
-    }
+    rc = put_prepared_stmt_int(thd, clnt, rec, noCache, outrc, distributed);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
