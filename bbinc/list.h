@@ -75,6 +75,9 @@ extern void listc_free(listc_t *l);
  * struct */
 extern void listc_init(void *list, int offset);
 
+/* maybe remove from list. returns item removed or NULL */
+extern void *listc_maybe_rfl(void *list, void *obj);
+
 /* remove from list. returns item removed*/
 extern void *listc_rfl(void *list, void *obj);
 
