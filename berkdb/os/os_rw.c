@@ -137,14 +137,17 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 }
 
 static int
-__berkdb_direct_pread(int fd, void *buf, size_t bufsz, off_t offset)
+__berkdb_pread(int fd, void *buf, size_t bufsz, off_t offset, int direct)
 {
 	void *abuf;
 	int rc;
 
 	pthread_once(&once, init_iobuf);
 
-	abuf = get_aligned_buffer(buf, bufsz, 0);
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 0);
+	else
+		abuf = buf;
 	rc = pread(fd, abuf, bufsz, offset);
 	if (rc > 0 && buf != abuf)
 		memcpy(buf, abuf, rc);
@@ -171,10 +174,11 @@ again:
 	do {
 		rc = pwrite(fd, abuf, bufsz, offset);
 		if (rc == -1) {
+            int err = errno;
 			logmsg(LOGMSG_ERROR, 
 				"pwrite fd %d sz %zu off %ld retry %d %d %s\n", fd,
-				bufsz, offset, nretries, errno, strerror(errno));
-			if (errno != EINTR && errno != EBUSY)
+				bufsz, offset, nretries, err, strerror(err));
+			if (err != EINTR && err != EBUSY)
 				poll(NULL, 0, 10);
 	    }
 		if (dbenv->attr.debug_enospc_chance) {
@@ -245,14 +249,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pread(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pread(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pread(fhp->fd, buf, parlen,
+				(off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -277,15 +275,12 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
-		} else if (F_ISSET(fhp, DB_FH_DIRECT))
-			*niop =
-			    __berkdb_direct_pread(fhp->fd, buf, parlen,
-			    (off_t) pgno * pagesize);
-		else
-			*niop =
-			    pread(fhp->fd, buf, parlen,
-			    (off_t) pgno * pagesize);
-
+		} 
+		else {
+			*niop = __berkdb_pread(fhp->fd, buf, parlen,
+					(off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
+		}
 		if (__berkdb_num_read_ios)
 			(*__berkdb_num_read_ios)++;
 		if (read_callback)
@@ -306,7 +301,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 			x1 = bb_berkdb_fasttime();
 
 			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-					parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+					parlen, (off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -333,7 +329,8 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 			}
 		} else {
 			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-					parlen, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+					parlen, (off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
 		}
 
 		if (__berkdb_num_write_ios)
@@ -449,14 +446,9 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pread(fhp->fd, buf,
-				    pagesize, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pread(fhp->fd, buf, pagesize,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pread(fhp->fd, buf,
+				    pagesize, (off_t) pgno * pagesize,
+					F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
@@ -481,14 +473,11 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
-		} else if (F_ISSET(fhp, DB_FH_DIRECT))
+		} else {
 			*niop =
-			    __berkdb_direct_pread(fhp->fd, buf, pagesize,
-			    (off_t) pgno * pagesize);
-		else
-			*niop =
-			    pread(fhp->fd, buf, pagesize,
-			    (off_t) pgno * pagesize);
+			    __berkdb_pread(fhp->fd, buf, pagesize,
+			    (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+		}
 
 		if (__berkdb_num_read_ios)
 			(*__berkdb_num_read_ios)++;
@@ -537,7 +526,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 			}
 		} else {
 			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
-					pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+					pagesize, (off_t) pgno * pagesize,
+					F_ISSET(fhp, DB_FH_DIRECT));
 		}
 
 		if (__berkdb_num_write_ios)
@@ -578,10 +568,10 @@ static int __berkdb_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int dir
 	int rc;
 
 	pthread_once(&once, init_iobuf);
-    if (direct)
-        abuf = get_aligned_buffer(buf, bufsz, 0);
-    else
-        abuf = buf;
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 0);
+	else
+		abuf = buf;
 	rc = read(fd, abuf, bufsz);
 	if (rc > 0 && buf != abuf)
 		memcpy(buf, abuf, rc);
@@ -594,16 +584,16 @@ static int __berkdb_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int di
 	int nretries = 0;
 
 	pthread_once(&once, init_iobuf);
-    if (direct)
-        abuf = get_aligned_buffer(buf, bufsz, 1);
-    else
-        abuf = buf;
-    rc = write(fd, abuf, bufsz);
-    if (rc == -1) {
-        logmsg(LOGMSG_ERROR, 
-                "write fd %d sz %zu retry %d error %d %s\n", fd,
-                bufsz, nretries, errno, strerror(errno));
-    }
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 1);
+	else
+		abuf = buf;
+	rc = write(fd, abuf, bufsz);
+	if (rc == -1) {
+		logmsg(LOGMSG_ERROR, 
+				"write fd %d sz %zu retry %d error %d %s\n", fd,
+				bufsz, nretries, errno, strerror(errno));
+	}
 	return rc;
 }
 
@@ -635,9 +625,10 @@ __os_read(dbenv, fhp, addr, len, nrp)
 	for (taddr = addr, offset = 0; offset < len; taddr += nr, offset += nr) {
 retry:		if ((nr = DB_GLOBAL(j_read) != NULL ?
 			DB_GLOBAL(j_read)(fhp->fd, taddr, len - offset) :
-			 __berkdb_read(dbenv, fhp->fd, taddr, len - offset, F_ISSET(fhp, DB_FH_DIRECT))) < 0) {
+			 __berkdb_read(dbenv, fhp->fd, taddr, len - offset, 
+				 F_ISSET(fhp, DB_FH_DIRECT))) < 0) {
 			ret = __os_get_errno();
-			if ((ret == EINTR || ret == EBUSY) &&
+			if ((ret == EINTR || ret == EBUSY) && nr == -1 &&
 			    ++retries < DB_RETRY)
 				goto retry;
 			__db_err(dbenv, "read: %p, %lu: %s",
@@ -720,7 +711,8 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 retry:
 		nw = DB_GLOBAL(j_write) != NULL ?
 			DB_GLOBAL(j_write)(fhp->fd, taddr, len - offset) :
-			__berkdb_write(dbenv, fhp->fd, taddr, len - offset, F_ISSET(fhp, DB_FH_DIRECT));
+			__berkdb_write(dbenv, fhp->fd, taddr, len - offset,
+					F_ISSET(fhp, DB_FH_DIRECT));
 		if (debug_enospc && off >= 0) {
 			int p = rand() % 100;
 
@@ -741,12 +733,12 @@ retry:
 		}
 		if (nw < 0) {
 			ret = __os_get_errno();
-            logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d err %d %s\n",
-                    __func__, fhp->fd, (int) (len - offset), retries, ret, strerror(ret));
-            if (++retries < dbenv->attr.num_write_retries) {
-                if (ret != EINTR || ret != EBUSY)
-                    poll(NULL, 0, 10);
-                goto retry;
+			logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d err %d %s\n",
+					__func__, fhp->fd, (int) (len - offset), retries, ret, strerror(ret));
+			if (++retries < dbenv->attr.num_write_retries) {
+				if (ret != EINTR && ret != EBUSY)
+					poll(NULL, 0, 10);
+				goto retry;
 			}
 			return (ret);
 		}
@@ -801,10 +793,11 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 
 	do {
 		rc = pwrite(fd, abuf, nobufs * pagesize, offset);
+		int err = errno;
 		if (rc == -1) {
 			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d error %d %s\n",
-			    fd, (int)(nobufs * pagesize), offset, nretries, errno, strerror(errno));
-				if (errno != EINTR && errno != EBUSY)
+			    fd, (int)(nobufs * pagesize), offset, nretries, err, strerror(err));
+				if (err != EINTR && err != EBUSY)
 						poll(NULL, 0, 10);
 		}
 		if (dbenv->attr.debug_enospc_chance) {
