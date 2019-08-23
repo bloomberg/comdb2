@@ -138,6 +138,7 @@ elseif(${CMAKE_C_COMPILER_ID} STREQUAL XL)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qchars=signed")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -maix64")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lthread")
   # I can't figure out how to export OBJECT_MODE=64 in the generated Makefile.
   # So passing -X64 to ar:
   set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> -X64 qc <TARGET> <LINK_FLAGS> <OBJECTS>")
