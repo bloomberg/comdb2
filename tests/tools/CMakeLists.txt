@@ -1,11 +1,15 @@
 include_directories(
+  ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
+  ${PROJECT_BINARY_DIR}/protobuf
   ${SQLITE3_INCLUDE_DIR}
 )
+
+add_definitions(-DSBUF2_SERVER=0)
 
 macro(add_exe exe)
     add_executable(${exe} ${ARGN})
@@ -14,7 +18,6 @@ endmacro()
 
 add_exe(blob blob.c)
 add_exe(bound bound.cpp)
-add_exe(cdb2_client cdb2_client.c)
 add_exe(cdb2api_caller cdb2api_caller.cpp)
 add_exe(cdb2bind cdb2bind.c)
 add_exe(comdb2_blobtest comdb2_blobtest.c)
@@ -42,7 +45,6 @@ add_exe(register register.c nemesis.c testutil.c)
 add_exe(breakloop breakloop.c nemesis.c testutil.c)
 add_exe(cdb2_open cdb2_open.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
-add_exe(cdb2api_unit cdb2api_unit.c)
 add_exe(malloc_resize_test malloc_resize_test.c)
 add_exe(cdb2_close_early cdb2_close_early.c)
 add_exe(cdb2api_read_intrans_results cdb2api_read_intrans_results.c)
@@ -58,16 +60,17 @@ list(APPEND test-tools api_hello_world_lib)
 
 add_custom_target(test-tools DEPENDS ${test-tools})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs test_threadpool)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs test_threadpool)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
+if(NOT COMDB2_SKIP_CDB2API_SO)
+  add_exe(cdb2_client cdb2_client.c)
+  target_link_libraries(cdb2_client cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} ${UNWIND_LIBRARY})
 
-# cdb2api shared object
-target_link_libraries(cdb2_client cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-include_directories(${PROJECT_SOURCE_DIR}/bb ${PROJECT_BINARY_DIR}/protobuf/ )
-add_definitions(-DSBUF2_SERVER=0)
-target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} )
+  add_exe(cdb2api_unit cdb2api_unit.c)
+  target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} ${UNWIND_LIBRARY})
+endif()
 
 # needs readline!
 target_link_libraries(hatest cdb2api ${READLINE_LIBRARY} ${CURSES_LIBRARIES} ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
@@ -83,6 +86,6 @@ target_link_libraries(test_threadpool mem dlmalloc util -Ibbinc ${CMAKE_DL_LIBS}
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc util ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest cldeadlock comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs test_threadpool)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop hatest cldeadlock comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs test_threadpool)
     target_link_libraries(${executable} ${UNWIND_LIBRARY})
 endforeach()
