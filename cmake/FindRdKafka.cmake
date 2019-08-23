@@ -3,7 +3,7 @@ find_pkg_for_comdb2(RdKafka
   "librdkafka/rdkafka.h"
   "rdkafka"
   "${RDKAFKA_ROOT_DIR}"
-  "lib;include"
+  ""
   RDKAFKA_INCLUDE_DIR
   RDKAFKA_LIBRARY
 )
