@@ -20,9 +20,9 @@
  * The per-process table that maps log file-id's to DB structures.
  */
 typedef	struct __db_entry {
-	DB	    *dbp;		/* Open dbp for this file id. */
-	int	    deleted;		/* File was not found during open. */
-	int	    pfcnt;  /* Number of prefaulted pages, we 
+	DB	        *dbp;		/* Open dbp for this file id. */
+	int	        deleted;	/* File was not found during open. */
+	uint32_t        pfcnt;          /* Number of prefaulted pages, we
 					 * can't close until they're flushed.
 					 */
 } DB_ENTRY;

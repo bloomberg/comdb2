@@ -116,7 +116,7 @@ extern int gbl_debug_tmptbl_corrupt_mem;
 // Don't create new btree, use this one (tmptbl_clone)
 static __thread struct temptable *tmptbl_clone = NULL;
 
-int gbl_sql_temptable_count;
+uint32_t gbl_sql_temptable_count;
 
 void free_cached_idx(uint8_t **cached_idx)
 {
@@ -660,7 +660,7 @@ static int sql_tick(struct sql_thread *thd)
 }
 
 pthread_key_t query_info_key;
-static int gbl_query_id = 1;
+static uint32_t gbl_query_id = 1;
 
 int comdb2_sql_tick()
 {
@@ -671,7 +671,7 @@ int comdb2_sql_tick()
 void sql_get_query_id(struct sql_thread *thd)
 {
     if (thd) {
-        thd->id = ATOMIC_ADD(gbl_query_id, 1);
+        thd->id = ATOMIC_ADD32(gbl_query_id, 1);
     }
 }
 
@@ -3175,7 +3175,7 @@ static int temptable_free(void *obj, void *arg)
         int bdberr;
         int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
         if (rc == 0) {
-            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+            ATOMIC_ADD32(gbl_sql_temptable_count, -1);
         } else {
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
                    __func__, tmp->tbl, rc);
@@ -3885,7 +3885,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         int bdberr;
         int rc = bdb_temp_table_close(thedb->bdb_env, tmp->tbl, &bdberr);
         if (rc == 0) {
-            ATOMIC_ADD(gbl_sql_temptable_count, -1);
+            ATOMIC_ADD32(gbl_sql_temptable_count, -1);
         } else {
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close(%p) rc %d\n",
                    __func__, tmp->tbl, rc);
@@ -5062,14 +5062,14 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     pNewTbl->rootpage = ++pBt->num_temp_tables;
     if (pBt->is_hashtable) {
         pNewTbl->tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
-        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD32(gbl_sql_temptable_count, 1);
     } else if (tmptbl_clone) {
         pNewTbl->lk = tmptbl_clone->lk;
         pNewTbl->tbl = tmptbl_clone->tbl;
         pNewTbl->owner = tmptbl_clone->owner;
     } else {
         pNewTbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
-        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD32(gbl_sql_temptable_count, 1);
     }
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;

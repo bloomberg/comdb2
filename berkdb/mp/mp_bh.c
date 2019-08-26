@@ -410,8 +410,8 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	if (pgidx < 0)
 		return DB_PAGE_NOTFOUND;
 
-	ATOMIC_ADD(hp->hash_page_dirty, 1);
-	ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+	ATOMIC_ADD32(hp->hash_page_dirty, 1);
+	ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
@@ -1096,8 +1096,8 @@ file_dead:
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
 			    bhp->mf_offset, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
-			ATOMIC_ADD(hp->hash_page_dirty, -1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
+			ATOMIC_ADD32(hp->hash_page_dirty, -1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, -1);
 
 			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */

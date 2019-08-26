@@ -1835,7 +1835,7 @@ static int do_query_on_master_check(struct dbenv *dbenv,
 
     if (do_master_check && bdb_master_should_reject(dbenv->bdb_env) &&
         allow_master_exec == 0) {
-        ATOMIC_ADD(gbl_masterrejects, 1);
+        ATOMIC_ADD32(gbl_masterrejects, 1);
         /* Send sql response with dbinfo. */
         if (allow_master_dbinfo)
             send_dbinforesponse(dbenv, clnt->sb);
@@ -2354,7 +2354,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
 
         clnt.heartbeat = 1;
-        ATOMIC_ADD(gbl_nnewsql, 1);
+        ATOMIC_ADD32(gbl_nnewsql, 1);
 
         bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
                                  strncasecmp(clnt.sql, "rollback", 8) == 0)

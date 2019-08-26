@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include "thread_util.h"
 #include "thdpool.h"
@@ -20,8 +21,8 @@ void thdpool_alarm_on_queing(int len)
 
 typedef struct { 
     int spawned_count;
-    int completed_count;
-    int sum;
+    uint32_t completed_count;
+    uint32_t sum;
 } common_t;
 
 typedef struct { 
@@ -32,9 +33,9 @@ typedef struct {
 static void handler_work_pp(struct thdpool *pool, void *work, void *thddata, int op)
 {
     info_t *info = work; 
-    ATOMIC_ADD(info->c->sum, info->id);
+    ATOMIC_ADD32(info->c->sum, info->id);
     usleep(rand() % 1000);
-    ATOMIC_ADD(info->c->completed_count, 1);
+    ATOMIC_ADD32(info->c->completed_count, 1);
     free(work);
 }
 

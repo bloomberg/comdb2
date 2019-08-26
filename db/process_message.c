@@ -1380,10 +1380,10 @@ clipper_usage:
         }
     }
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
-        extern int gbl_temptable_count;
-        extern int gbl_sql_temptable_count;
-        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
-        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        extern uint32_t gbl_temptable_count;
+        extern uint32_t gbl_sql_temptable_count;
+        uint32_t temptable_count = ATOMIC_LOAD32(gbl_temptable_count);
+        uint32_t sql_temptable_count = ATOMIC_LOAD32(gbl_sql_temptable_count);
         logmsg(LOGMSG_USER,
                 "Overall temptable count is %d, SQL temptable count is %d\n",
                 temptable_count, sql_temptable_count);
