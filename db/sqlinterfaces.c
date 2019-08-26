@@ -3037,7 +3037,7 @@ int override_type(struct sqlclntstate *clnt, int i)
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                            struct sql_state *rec)
+                            struct sql_state *rec, int prepFlags)
 {
     rec->status = CACHE_DISABLED;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
@@ -3065,10 +3065,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
     if (rec->stmt) {
         rec->sql = sqlite3_sql(rec->stmt); // save expanded query
-        int rc = sqlite3LockStmtTables(rec->stmt);
-        if (rc) {
-            cleanup_stmt_entry(rec->stmt_entry);
-            rec->stmt = NULL;
+        if ((prepFlags & PREPARE_NO_LOCKS) == 0) {
+            int rc = sqlite3LockStmtTables(rec->stmt);
+            if (rc) {
+                cleanup_stmt_entry(rec->stmt_entry);
+                rec->stmt = NULL;
+            }
         }
     }
 }
@@ -3378,6 +3380,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
+    int noLocks = (flags & PREPARE_NO_LOCKS);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -3388,7 +3391,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec);
+    get_cached_stmt(thd, clnt, rec, flags);
     int sqlPrepFlags = 0;
 
     if (gbl_fingerprint_queries)
@@ -3420,7 +3423,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
-            rc = sqlite3LockStmtTables(rec->stmt);
+            if (!noLocks) rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
             return SQLITE_SCHEMA_REMOTE;
@@ -4766,7 +4769,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         rec.sql = clnt->sql;
         clnt->preview_only = 1;
         rc = get_prepared_bound_stmt(
-            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR
+            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_NO_LOCKS
         );
         clnt->preview_only = 0;
         if ((rc == 0) && clnt->work.zNormSql) {

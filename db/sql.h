@@ -536,7 +536,8 @@ enum prepare_flags {
     PREPARE_DENY_PRAGMA = 4,
     PREPARE_DENY_DDL = 8,
     PREPARE_IGNORE_ERR = 16,
-    PREPARE_NO_NORMALIZE = 32
+    PREPARE_NO_NORMALIZE = 32,
+    PREPARE_NO_LOCKS = 64
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
