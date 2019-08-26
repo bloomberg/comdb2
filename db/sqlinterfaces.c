@@ -173,7 +173,7 @@ int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
-long long gbl_clnt_seq_no = 0;
+uint64_t gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 int gbl_random_sql_work_delayed = 0;
@@ -4797,7 +4797,7 @@ static int can_execute_sql_query_now(
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
   if (gbl_verbose_prioritize_queries) {
-    logmsg(LOGMSG_DEBUG, "%s: seqNo=%lld, sql={%s}, count=%d, %s\n",
+    logmsg(LOGMSG_DEBUG, "%s: seqNo=%llu, sql={%s}, count=%d, %s\n",
            __func__, clnt->seqNo, clnt->sql, (int)count, zRuleRes);
   }
   /* BEGIN FAULT INJECTION TEST CODE */
@@ -4847,7 +4847,7 @@ static int can_execute_sql_query_now(
   const char *zResult = rc ? "NOW" : "LATER";
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG,
-           "%s: seqNo=%lld, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
+           "%s: seqNo=%llu, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
            __func__, clnt->seqNo, clnt->sql, clnt->priority, thdpool_priority,
            zResult);
   }
@@ -5080,7 +5080,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     ** TODO: Should this code reset an existing client sequence number
     **       to a higher value?  I do not think so.
     */
-    if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD(gbl_clnt_seq_no, 1);
+    if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
 
@@ -5275,7 +5275,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
             */
             if (gbl_verbose_prioritize_queries) {
                 logmsg(LOGMSG_ERROR,
-                       "%s: FAILED ENQUEUE RETRYING ms=%d, seqNo=%lld, "
+                       "%s: FAILED ENQUEUE RETRYING ms=%d, seqNo=%llu, "
                        "rc2=%d {%s}\n", __func__, gbl_retry_dispatch_ms,
                        clnt->seqNo, rc2, clnt->sql);
             }
@@ -5283,7 +5283,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
         }
         if (gbl_verbose_prioritize_queries) {
             logmsg(LOGMSG_INFO,
-                   "%s: RETRYING ms=%d, seqNo=%lld, rc2=%d {%s}\n",
+                   "%s: RETRYING ms=%d, seqNo=%llu, rc2=%d {%s}\n",
                    __func__, gbl_retry_dispatch_ms, clnt->seqNo, rc2,
                    clnt->sql);
         }
@@ -5293,7 +5293,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
         ** TODO: This log message should be unconditional?
         */
         logmsg(LOGMSG_ERROR,
-               "%s: REJECTED seqNo=%lld, rc2=%d {%s}\n",
+               "%s: REJECTED seqNo=%llu, rc2=%d {%s}\n",
                __func__, clnt->seqNo, rc2, clnt->sql);
     }
     if (self)

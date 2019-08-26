@@ -567,7 +567,7 @@ struct sql_hist_cost {
 
 /* Client specific sql state */
 struct sqlclntstate {
-    long long seqNo;           /* Monotonically increasing sequence number
+    uint64_t seqNo;            /* Monotonically increasing sequence number
                                 * assigned during dispatch.  This value is
                                 * not allowed to be zero.  Further, it must
                                 * be based on a value that is never reset
