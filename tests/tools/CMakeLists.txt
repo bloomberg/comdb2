@@ -27,7 +27,6 @@ add_exe(hatest hatest.c)
 add_exe(cldeadlock cldeadlock.c)
 add_exe(insert_lots_mt insert_lots_mt.cpp)
 add_exe(leakcheck leakcheck.c)
-add_exe(localrep localrep.c strbuf.c)
 add_exe(overflow_blobtest overflow_blobtest.c)
 add_exe(ptrantest ptrantest.c)
 add_exe(recom recom.c)
@@ -57,7 +56,7 @@ add_exe(api_libs api_libs.c)
 add_library(api_hello_world_lib SHARED api_hello_world_lib.c)
 list(APPEND test-tools api_hello_world_lib)
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
@@ -81,7 +80,7 @@ target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} $
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc util ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop hatest cldeadlock comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop hatest cldeadlock comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout api_events deadlock_load selectv_deadlock selectv_rcode api_libs)
     target_link_libraries(${executable} ${UNWIND_LIBRARY})
 endforeach()
 
