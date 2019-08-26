@@ -5723,6 +5723,7 @@ int sqlite3_value_dup_inplace(
   memset(pNew, 0, sizeof(Mem));
   memcpy(pNew, pOrig, MEMCELLSIZE);
   pNew->flags &= ~MEM_Dyn;
+  pNew->szMalloc = 0;
   pNew->db = 0;
   if( pNew->flags&(MEM_Str|MEM_Blob) ){
     int rc;
