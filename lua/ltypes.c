@@ -1410,7 +1410,7 @@ static int l_datetime_tostring_int(lua_State *lua, int idx)
     char buf[64];
 
     datetime_t_to_dttz(&dt->val, &dz);
-    dttz_to_str(&dz, buf, sizeof(buf), &sz, dt->val.tzname);
+    dttz_to_str(&dz, buf, sizeof(buf), &sz, getsp(lua)->clnt->tzname);
     lua_pushstring(lua, buf);
     return 1;
 }
