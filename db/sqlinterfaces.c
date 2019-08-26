@@ -3381,6 +3381,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 {
     int recreate = (flags & PREPARE_RECREATE);
     int noLocks = (flags & PREPARE_NO_LOCKS);
+    int prepareOnly = (flags & PREPARE_ONLY);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -3397,7 +3398,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (gbl_fingerprint_queries)
         sqlPrepFlags |= SQLITE_PREPARE_NORMALIZE;
 
-    if (sqlite3_is_prepare_only(clnt))
+    if (prepareOnly || sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
 
     if (sqlite3_is_preview_only(clnt))
@@ -4769,7 +4770,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         rec.sql = clnt->sql;
         clnt->preview_only = 1;
         rc = get_prepared_bound_stmt(
-            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_NO_LOCKS
+            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_NO_LOCKS | PREPARE_ONLY
         );
         clnt->preview_only = 0;
         if ((rc == 0) && clnt->work.zNormSql) {
