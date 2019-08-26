@@ -5727,7 +5727,7 @@ int sqlite3_value_dup_inplace(
   pNew->db = 0;
   if( pNew->flags&(MEM_Str|MEM_Blob) ){
     int rc;
-    pNew->flags &= ~(MEM_Static|MEM_Dyn);
+    pNew->flags &= ~MEM_Static;
     pNew->flags |= MEM_Ephem;
     rc = sqlite3VdbeMemMakeWriteable(pNew);
     if( rc!=SQLITE_OK ) return rc;
