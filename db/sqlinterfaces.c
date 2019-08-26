@@ -4798,7 +4798,8 @@ static int can_execute_sql_query_now(
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG, "%s: seqNo=%llu, sql={%s}, count=%d, %s\n",
-           __func__, clnt->seqNo, clnt->sql, (int)count, zRuleRes);
+           __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
+           (int)count, zRuleRes);
   }
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
@@ -4848,8 +4849,8 @@ static int can_execute_sql_query_now(
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG,
            "%s: seqNo=%llu, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
-           __func__, clnt->seqNo, clnt->sql, clnt->priority, thdpool_priority,
-           zResult);
+           __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
+           clnt->priority, thdpool_priority, zResult);
   }
   return rc;
 }
@@ -5277,15 +5278,15 @@ check_query_rc: ; /* empty statement, make compiler happy */
                 logmsg(LOGMSG_ERROR,
                        "%s: FAILED ENQUEUE RETRYING ms=%d, seqNo=%llu, "
                        "rc2=%d {%s}\n", __func__, gbl_retry_dispatch_ms,
-                       clnt->seqNo, rc2, clnt->sql);
+                       (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
             }
             return rc2; /* could not re-enqueue? */
         }
         if (gbl_verbose_prioritize_queries) {
             logmsg(LOGMSG_INFO,
                    "%s: RETRYING ms=%d, seqNo=%llu, rc2=%d {%s}\n",
-                   __func__, gbl_retry_dispatch_ms, clnt->seqNo, rc2,
-                   clnt->sql);
+                   __func__, gbl_retry_dispatch_ms,
+                   (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
         }
         goto retry;
     } else if ((rc2 == ERR_QUERY_REJECTED) && gbl_verbose_prioritize_queries) {
@@ -5294,7 +5295,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
         */
         logmsg(LOGMSG_ERROR,
                "%s: REJECTED seqNo=%llu, rc2=%d {%s}\n",
-               __func__, clnt->seqNo, rc2, clnt->sql);
+               __func__, (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
     }
     if (self)
         thrman_where(self, "query done");
