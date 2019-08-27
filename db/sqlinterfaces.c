@@ -3056,7 +3056,7 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
     if (rec->stmt) {
         rec->sql = sqlite3_sql(rec->stmt); // save expanded query
-        if ((prepFlags & PREPARE_NO_LOCKS) == 0) {
+        if ((prepFlags & PREPARE_ONLY) == 0) {
             int rc = sqlite3LockStmtTables(rec->stmt);
             if (rc) {
                 cleanup_stmt_entry(rec->stmt_entry);
@@ -3371,7 +3371,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
-    int noLocks = (flags & PREPARE_NO_LOCKS);
     int prepareOnly = (flags & PREPARE_ONLY);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
@@ -3412,7 +3411,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
-            if (!noLocks) rc = sqlite3LockStmtTables(rec->stmt);
+            if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
             return SQLITE_SCHEMA_REMOTE;
@@ -4757,7 +4756,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         struct errstat err = {0}; /* NOT USED */
         rec.sql = clnt->sql;
         rc = get_prepared_bound_stmt(
-            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_NO_LOCKS | PREPARE_ONLY
+            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_ONLY
         );
         if ((rc == 0) && clnt->work.zNormSql) {
             size_t nNormSql = 0;
