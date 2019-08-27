@@ -185,8 +185,8 @@ static void comdb2_adjust_result_priority(
   priority_t adjustment,
   struct ruleset_result *result
 ){
-  result->priority = comdb2_clamp_priority(
-    comdb2_adjust_priority(action, result->priority, adjustment)
+  result->priority = comdb2_adjust_priority(
+    action, result->priority, adjustment
   );
 }
 

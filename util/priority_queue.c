@@ -121,7 +121,7 @@ priority_t priority_queue_highest(
   priority_queue_t *q
 ){
   if (q == NULL) return PRIORITY_T_INVALID;
-  priority_queue_item_t *i = listc_ptl(&q->list);
+  priority_queue_item_t *i = LISTC_TOP(&q->list);
   return (i != NULL) ? i->priority : PRIORITY_T_INVALID;
 }
 
