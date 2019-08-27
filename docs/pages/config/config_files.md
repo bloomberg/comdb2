@@ -972,11 +972,11 @@ configurations:
 
 * `legacy_schema` (introduced in `7.0`)
 Turning it off would enable support for newer (backwards incompatible) CSC2
-constructs introduced in 7.0. The features include: uniqnulls (UNIQUE/PRIMARY
+constructs introduced in `7.0`. The features include: uniqnulls (UNIQUE/PRIMARY
 KEY in DDL), partial index, index on expression and non-null default value for
 datetime fields. This list could grow in future.
 
 * `noenv_messages` (introduced in `7.0`)
 Turing it `on` would enable support for upsert and partial index, both
-introduced in 7.0.
+introduced in `7.0`.
 
