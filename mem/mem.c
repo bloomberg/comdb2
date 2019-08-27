@@ -1219,7 +1219,8 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
     out->file = file;
     out->func = func;
     out->line = line;
-    out->debug = 0;
+
+    out->debug = (debug_master_switch | debug_switches[find_switch_index(name)]);
 
 #ifdef PER_THREAD_MALLOC
     out->refs = 0;
