@@ -731,7 +731,7 @@ int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
-int gbl_allow_incoherent_sql = 1;
+int gbl_allow_incoherent_sql = 0;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;
