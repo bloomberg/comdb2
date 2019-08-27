@@ -186,7 +186,7 @@ static void comdb2_ruleset_flags_to_str(
   }
   if( nBuf>0 && flags&RULESET_F_STOP ){
     int nRet = snprintf(zBuf, nBuf, " STOP");
-    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   /* more flags here... */
 }
@@ -234,19 +234,19 @@ static void comdb2_ruleset_match_mode_to_str(
   }
   if( nBuf>0 && flags&RULESET_MM_EXACT ){
     int nRet = snprintf(zBuf, nBuf, " EXACT");
-    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && flags&RULESET_MM_GLOB ){
     int nRet = snprintf(zBuf, nBuf, " GLOB");
-    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && flags&RULESET_MM_REGEXP ){
     int nRet = snprintf(zBuf, nBuf, " REGEXP");
-    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && flags&RULESET_MM_NOCASE ){
     int nRet = snprintf(zBuf, nBuf, " NOCASE");
-    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
 }
 
