@@ -446,26 +446,29 @@ int comdb2_load_ruleset(
   const char *zFileName,
   struct ruleset **pRules
 ){
-  int fd;
-  SBUF2 *sb;
+  char *zLine[8192];
+  int nLine = 0;
+  int fd = -1;
+  SBUF2 *sb = NULL;
   i64 count = 0;
   struct ruleset *rules = NULL;
 
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
-
-    return -1;
+    snprintf(zLine, sizeof(zLine), "open failed for \"%s\" errno=%d",
+             zFileName, errno);
+    goto failure;
   }
   sb = sbuf2open(fd, 0);
   if( sb==NULL ){
-
-    close(fd);
-    return -1;
+    snprintf(zLine, sizeof(zLine), "sbuf2open failed for \"%s\" errno=%d",
+             zFileName, errno);
+    goto failure;
   }
   while( 1 ){
-    char zLine[1024];
     memset(zLine, 0, sizeof(zLine));
     if( sbuf2gets(zLine, sizeof(zLine), sb)<=0 ) break;
+    nLine++;
     if( !zLine[0] ) continue; /* blank line */
     char *zBuf = zLine;
     char *zTok = NULL;
@@ -474,21 +477,37 @@ int comdb2_load_ruleset(
     if( rules!=NULL ){
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, expected start-of-rule",
+                 zFileName, nLine);
+        goto failure;
       }
       if( sqlite3_stricmp(zTok, "rule")!=0 ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, expected literal string \"rule\"",
+                 zFileName, nLine);
+        goto failure;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, missing token after \"rule\"",
+                 zFileName, nLine);
+        goto failure;
       }
       i64 ruleNo = 0;
       if( sqlite3Atoi64(zTok, &ruleNo, strlen(zTok), SQLITE_UTF8)!=0 ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, bad rule number \"%s\", not an integer",
+                 zFileName, nLine, zTok);
+        goto failure;
       }
       if( ruleNo<1 || ruleNo>count ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, rule number %lld out-of-bounds, "
+                 "must be between 1 and %lld",
+                 zFileName, nLine, ruleNo, count);
+        goto failure;
       }
       ruleNo--;
       zTok = strtok(NULL, RULESET_DELIM);
@@ -514,31 +533,55 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "fingerprint")==0 ){
 
         }else{
-          /* error... not a valid rule field */
+          snprintf(zLine, sizeof(zLine),
+                   "%s:%d, unknown rule %lld field \"%s\"",
+                   zFileName, nLine, ruleNo, zTok);
+          goto failure;
         }
         zTok = strtok(NULL, RULESET_DELIM);
       }
     }else{
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, expected count-of-rules",
+                 zFileName, nLine);
+        goto failure;
       }
       if( sqlite3_stricmp(zTok, "count")!=0 ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, expected literal string \"count\"",
+                 zFileName, nLine);
+        goto failure;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, missing rule count",
+                 zFileName, nLine);
+        goto failure;
       }
       if( sqlite3Atoi64(zTok, &count, strlen(zTok), SQLITE_UTF8)!=0 ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, bad rule count \"%s\", not an integer",
+                 zFileName, nLine, zTok);
+        goto failure;
       }
       rules = calloc(count, sizeof(struct ruleset));
       if( rules==NULL ){
-
+        snprintf(zLine, sizeof(zLine),
+                 "%s:%d, cannot allocate %lld rules",
+                 zFileName, nLine, count);
+        goto failure;
       }
     }
   }
   sbuf2close(sb);
   close(fd);
   return 0;
+failure:
+  if( rules!=NULL ) free(rules);
+  if( sb!=NULL ) sbuf2close(sb);
+  if( fd!=-1 ) close(fd);
+  return -1;
 }
