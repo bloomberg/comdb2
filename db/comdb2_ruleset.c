@@ -104,7 +104,7 @@ static xStrCmp comdb2_get_xstrcmp_for_mode(
   return NULL;
 }
 
-static const void comdb2_ruleset_str_to_action(
+static void comdb2_ruleset_str_to_action(
   enum ruleset_action *pAction,
   char *zBuf
 ){
@@ -152,7 +152,7 @@ static const char *comdb2_ruleset_action_to_str(
   }
 }
 
-static const void comdb2_ruleset_str_to_flags(
+static void comdb2_ruleset_str_to_flags(
   enum ruleset_flags *pFlags,
   char *zBuf
 ){
@@ -191,7 +191,7 @@ static void comdb2_ruleset_flags_to_str(
   /* more flags here... */
 }
 
-static const void comdb2_ruleset_str_to_match_mode(
+static void comdb2_ruleset_str_to_match_mode(
   enum ruleset_match_mode *pMode,
   char *zBuf
 ){
