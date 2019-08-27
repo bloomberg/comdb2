@@ -2100,6 +2100,13 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
+static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
+{
+    /* If this isn't from an admin session and the node isn't coherent
+       and we disallow running queries on an incoherent node, reject */
+    return (!admin && !bdb_am_i_coherent(bdb_state) &&
+            !gbl_allow_incoherent_sql);
+}
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
@@ -2131,8 +2138,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (!arg->admin && !bdb_am_i_coherent(dbenv->bdb_env) &&
-        !gbl_allow_incoherent_sql) {
+    if (incoh_reject(arg->admin, dbenv->bdb_env)) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2174,9 +2180,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    extern int gbl_allow_incoherent_sql;
-    if (!clnt.admin && !gbl_allow_incoherent_sql &&
-        !bdb_am_i_coherent(thedb->bdb_env)) {
+    if (incoh_reject(clnt.admin, thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -2343,8 +2347,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (!clnt.admin && clnt.ignore_coherency == 0 &&
-            !gbl_allow_incoherent_sql && !bdb_am_i_coherent(thedb->bdb_env) &&
+        if (clnt.ignore_coherency == 0 &&
+            incoh_reject(clnt.admin, thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
