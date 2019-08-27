@@ -1,0 +1,6 @@
+create procedure foo version 'bar' {
+    local function main()
+    db:rollback()
+    end
+}$$
+exec procedure foo()
