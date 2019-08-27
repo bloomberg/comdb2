@@ -769,7 +769,6 @@ struct sqlclntstate {
     hash_t *dml_tables;
     hash_t *ddl_contexts;
 
-    int ignore_coherency;
     int statement_query_effects;
 
     int verify_remote_schemas;

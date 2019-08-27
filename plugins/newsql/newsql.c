@@ -1746,14 +1746,6 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 printf("setting clnt->planner_effort to %d\n",
                        clnt->planner_effort);
 #endif
-            } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
-                sqlstr += 15;
-                sqlstr = skipws(sqlstr);
-                if (strncasecmp(sqlstr, "on", 2) == 0) {
-                    clnt->ignore_coherency = 1;
-                } else {
-                    clnt->ignore_coherency = 0;
-                }
             } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
                 sqlstr += 14;
                 sqlstr = skipws(sqlstr);
@@ -2347,8 +2339,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (clnt.ignore_coherency == 0 &&
-            incoh_reject(clnt.admin, thedb->bdb_env) &&
+        if (incoh_reject(clnt.admin, thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
