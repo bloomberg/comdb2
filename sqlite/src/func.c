@@ -806,6 +806,10 @@ static void comdb2CtxinfoFunc(
     if( clnt ){
       sqlite3_result_int(context, clnt->conns!=NULL);
     }
+  }else if( sqlite3_stricmp(zName, "sequence")==0 ){
+    if( clnt ){
+      sqlite3_result_int64(context, clnt->seqNo);
+    }
   }else if( sqlite3_stricmp(zName, "priority")==0 ){
     if( clnt ){
       sqlite3_result_int64(context, clnt->priority);
