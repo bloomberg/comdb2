@@ -4858,7 +4858,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
         q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
 
-    time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
+    time_metric_add(thedb->concurrent_queries,
+                    thdpool_get_nthds(gbl_sqlengine_thdpool) -
+                        thdpool_get_nfreethds(gbl_sqlengine_thdpool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
