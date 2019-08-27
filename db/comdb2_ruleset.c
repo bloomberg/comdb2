@@ -228,23 +228,23 @@ static void comdb2_ruleset_match_mode_to_str(
   char *zBuf,
   size_t nBuf
 ){
-  if( nBuf>0 && flags==RULESET_MM_NONE ){
+  if( nBuf>0 && mode==RULESET_MM_NONE ){
     snprintf(zBuf, nBuf, "NONE");
     return;
   }
-  if( nBuf>0 && flags&RULESET_MM_EXACT ){
+  if( nBuf>0 && mode&RULESET_MM_EXACT ){
     int nRet = snprintf(zBuf, nBuf, " EXACT");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  if( nBuf>0 && flags&RULESET_MM_GLOB ){
+  if( nBuf>0 && mode&RULESET_MM_GLOB ){
     int nRet = snprintf(zBuf, nBuf, " GLOB");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  if( nBuf>0 && flags&RULESET_MM_REGEXP ){
+  if( nBuf>0 && mode&RULESET_MM_REGEXP ){
     int nRet = snprintf(zBuf, nBuf, " REGEXP");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  if( nBuf>0 && flags&RULESET_MM_NOCASE ){
+  if( nBuf>0 && mode&RULESET_MM_NOCASE ){
     int nRet = snprintf(zBuf, nBuf, " NOCASE");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
