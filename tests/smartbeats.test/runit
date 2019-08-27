@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+# Create a table
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'create table t (i int)'
+# Insert a record
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'insert into t values(1)'
+# Background updater to push LSN further
+yes "update t set i = 1 where 1" | cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default >/dev/null 2>&1 &
+# Remember the PID
+wpid=$!
+# Test smartbeats
+${TESTSBUILDDIR}/smartbeats $dbnm &
+tpid=$!
+
+# Kill the PID after 15 seconds
+sleep 15
+kill -9 $wpid
+
+set -e
+wait $tpid

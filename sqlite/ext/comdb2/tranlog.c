@@ -116,6 +116,7 @@ extern pthread_mutex_t gbl_logput_lk;
 extern pthread_cond_t gbl_logput_cond;
 extern pthread_mutex_t gbl_durable_lsn_lk;
 extern pthread_cond_t gbl_durable_lsn_cond;
+extern int comdb2_sql_tick();
 
 /*
 ** Advance a tranlog cursor to the next log entry
@@ -207,6 +208,13 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       if (pCur->flags & TRANLOG_FLAGS_BLOCK &&
               !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
           do {
+
+              /* Tick up. Return an error if sql_tick() fails
+                 (peer dropped connection, reached max query time, etc.) */
+              rc = comdb2_sql_tick();
+              if (rc != 0)
+                  return rc;
+
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
