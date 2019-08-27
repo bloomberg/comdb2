@@ -136,6 +136,9 @@ int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 #define CDB2_CACHE_SSL_SESS_DEFAULT 0
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 
+#define CDB2_MIN_TLS_VER_DEFAULT 0
+static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
@@ -303,6 +306,7 @@ static void reset_the_configuration(void)
 
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
 #endif
 
     reset_sockpool();
@@ -1011,6 +1015,7 @@ struct cdb2_hndl {
     char *ca;
     char *crl;
     int cache_ssl_sess;
+    double min_tls_ver;
     cdb2_ssl_sess_list *sess_list;
     int nid_dbname;
 #endif
@@ -1369,6 +1374,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_cache_ssl_sess = !!atoi(tok);
+            } else if (strcasecmp(SSL_MIN_TLS_VER_OPT, tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    cdb2_min_tls_ver = atof(tok);
 #endif /* WITH_SSL */
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -2109,7 +2118,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 
     rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
                      &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
-                     hndl->errstr, sizeof(hndl->errstr));
+                     hndl->min_tls_ver, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
         return -1;
@@ -3942,6 +3951,11 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
         if (hndl->cache_ssl_sess)
             cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+    } else if (strncasecmp(p, SSL_MIN_TLS_VER_OPT,
+                           sizeof(SSL_MIN_TLS_VER_OPT) - 1) == 0) {
+        p += sizeof(SSL_MIN_TLS_VER_OPT);
+        p = cdb2_skipws(p);
+        hndl->min_tls_ver = atof(p);
     } else {
         rc = -1;
     }
@@ -5864,6 +5878,13 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     if (hndl->cache_ssl_sess)
         cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
+    if ((sslenv = getenv("SSL_MIN_TLS_VER")) != NULL)
+        hndl->min_tls_ver = atof(sslenv);
+    else
+        hndl->min_tls_ver = cdb2_min_tls_ver;
+    if (hndl->cache_ssl_sess)
+        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
     cdb2_sslcertpath[0] = '\0';
@@ -5874,6 +5895,7 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
     return 0;
 }
 
