@@ -710,17 +710,13 @@ static int sqlite3Prepare(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
   int isPrepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
-  int wasPreviewOnly = (db->flags&SQLITE_PREPARE_PREVIEW)!=0;
-  int isPreviewOnly = (prepFlags&SQLITE_PREPARE_PREVIEW)!=0;
   if( isPrepareOnly ) db->flags |= SQLITE_PrepareOnly;
-  if( isPreviewOnly ) db->flags |= SQLITE_PreviewOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   sParse.prepare_only = isPrepareOnly;
-  sParse.preview_only = isPreviewOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
@@ -862,7 +858,6 @@ end_prepare:
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
-  if( !wasPreviewOnly && isPreviewOnly ) db->flags &= ~SQLITE_PreviewOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }

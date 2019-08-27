@@ -665,14 +665,10 @@ void ast_print(ast_t *ast)
 }
 
 extern int comdb2IsPrepareOnly(Parse*);
-extern int comdb2IsPreviewOnly(Parse*);
 
 int comdb2_check_parallel(Parse *pParse)
 {
     if (comdb2IsPrepareOnly(pParse))
-        return 0;
-
-    if (comdb2IsPreviewOnly(pParse))
         return 0;
 
     ast_t *ast = pParse->ast;

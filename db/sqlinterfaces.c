@@ -867,15 +867,6 @@ int sqlite3_is_prepare_only(
   return 0;
 }
 
-int sqlite3_is_preview_only(
-  struct sqlclntstate *clnt
-){
-  if( clnt!=NULL && clnt->preview_only ){
-    return 1;
-  }
-  return 0;
-}
-
 int sqlite3_maybe_step(
   struct sqlclntstate *clnt,
   sqlite3_stmt *stmt
@@ -3401,9 +3392,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (prepareOnly || sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
 
-    if (sqlite3_is_preview_only(clnt))
-        sqlPrepFlags |= SQLITE_PREPARE_PREVIEW;
-
     if (!gbl_allow_pragma)
         flags |= PREPARE_DENY_PRAGMA;
 
@@ -4768,11 +4756,9 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         struct sql_state rec = {0};
         struct errstat err = {0}; /* NOT USED */
         rec.sql = clnt->sql;
-        clnt->preview_only = 1;
         rc = get_prepared_bound_stmt(
             clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_NO_LOCKS | PREPARE_ONLY
         );
-        clnt->preview_only = 0;
         if ((rc == 0) && clnt->work.zNormSql) {
             size_t nNormSql = 0;
 
@@ -5550,7 +5536,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->extended_tm = 0;
 
     clnt->prepare_only = 0;
-    clnt->preview_only = 0;
     clnt->is_readonly = 0;
     clnt->ignore_coherency = 0;
     clnt->admin = 0;
