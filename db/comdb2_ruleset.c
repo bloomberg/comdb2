@@ -14,6 +14,8 @@
    limitations under the License.
  */
 
+#include <fcntl.h>
+#include <unistd.h>
 #include "sqliteInt.h"
 #include "priority_queue.h"
 #include "sql.h"
@@ -465,14 +467,21 @@ int comdb2_load_ruleset(
     memset(zLine, 0, sizeof(zLine));
     if( sbuf2gets(zLine, sizeof(zLine), sb)<=0 ) break;
     if( !zLine[0] ) continue; /* blank line */
-    while( isspace(zLine[0]) ) zLine++; /* skip leading spaces */
-    if( zLine[0]=='#' ) continue; /* comment line */
+    char *zBuf = zLine;
+    char *zTok = NULL;
+    while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
+    if( zBuf[0]=='#' ) continue; /* comment line */
     if( rules!=NULL ){
-      if( sqlite3_stricmp(zLine, "rule")!=0 ){
+      zTok = strtok(zBuf, RULESET_DELIM);
+      if( zTok==NULL ){
 
       }
-      char *zTok = strtok(zLine, RULESET_DELIM);
+      if( sqlite3_stricmp(zTok, "rule")!=0 ){
+
+      }
+      zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
+
       }
       i64 ruleNo = 0;
       if( sqlite3Atoi64(zTok, &ruleNo, strlen(zTok), SQLITE_UTF8)!=0 ){
@@ -484,25 +493,25 @@ int comdb2_load_ruleset(
       ruleNo--;
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok ){
-        if( sqlite3_stricmp(zLine, "action")==0 ){
+        if( sqlite3_stricmp(zTok, "action")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "adjustment")==0 ){
+        }else if( sqlite3_stricmp(zTok, "adjustment")==0 ){
 
 
 
-        }else if( sqlite3_stricmp(zLine, "flags")==0 ){
+        }else if( sqlite3_stricmp(zTok, "flags")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "mode")==0 ){
+        }else if( sqlite3_stricmp(zTok, "mode")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "originHost")==0 ){
+        }else if( sqlite3_stricmp(zTok, "originHost")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "originTask")==0 ){
+        }else if( sqlite3_stricmp(zTok, "originTask")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "user")==0 ){
+        }else if( sqlite3_stricmp(zTok, "user")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "sql")==0 ){
+        }else if( sqlite3_stricmp(zTok, "sql")==0 ){
 
-        }else if( sqlite3_stricmp(zLine, "fingerprint")==0 ){
+        }else if( sqlite3_stricmp(zTok, "fingerprint")==0 ){
 
         }else{
           /* error... not a valid rule field */
@@ -510,11 +519,15 @@ int comdb2_load_ruleset(
         zTok = strtok(NULL, RULESET_DELIM);
       }
     }else{
-      if( sqlite3_stricmp(zLine, "count")!=0 ){
+      zTok = strtok(zBuf, RULESET_DELIM);
+      if( zTok==NULL ){
+      }
+      if( sqlite3_stricmp(zTok, "count")!=0 ){
 
       }
-      char *zTok = strtok(zLine, RULESET_DELIM);
+      zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
+
       }
       if( sqlite3Atoi64(zTok, &count, strlen(zTok), SQLITE_UTF8)!=0 ){
 
