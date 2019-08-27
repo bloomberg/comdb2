@@ -20,6 +20,8 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 
+#define RULESET_DELIM "\t\n\r\v\f ,"
+
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
 static const struct compareInfo globNoCaseInfo = { '*', '?', '[', 1 };
 
@@ -102,10 +104,31 @@ static xStrCmp comdb2_get_xstrcmp_for_mode(
   return NULL;
 }
 
+static const void comdb2_ruleset_str_to_action(
+  enum ruleset_action *pAction,
+  char *zBuf
+){
+  *pAction = RULESET_A_INVALID; /* assume the worst */
+  if( !zBuf ) return;
+  while( isspace(zBuf[0]) ) zBuf++;
+  if( sqlite3_stricmp(zBuf, "NONE")==0 ){
+    *pAction = RULESET_A_NONE;
+  }else if( sqlite3_stricmp(zBuf, "REJECT")==0 ){
+    *pAction = RULESET_A_REJECT;
+  }else if( sqlite3_stricmp(zBuf, "UNREJECT")==0 ){
+    *pAction = RULESET_A_UNREJECT;
+  }else if( sqlite3_stricmp(zBuf, "LOW_PRIO")==0 ){
+    *pAction = RULESET_A_LOW_PRIO;
+  }else if( sqlite3_stricmp(zBuf, "HIGH_PRIO")==0 ){
+    *pAction = RULESET_A_HIGH_PRIO;
+  }
+}
+
 static const char *comdb2_ruleset_action_to_str(
   enum ruleset_action action,
   char *zBuf,
-  size_t nBuf
+  size_t nBuf,
+  int bStrict
 ){
   switch( action ){
     case RULESET_A_NONE:
@@ -119,16 +142,119 @@ static const char *comdb2_ruleset_action_to_str(
     case RULESET_A_HIGH_PRIO:
       return "HIGH_PRIO";
     default: {
-      snprintf(zBuf, nBuf, "0x%x", action);
-      return zBuf;
+      if( bStrict ){
+        return NULL;
+      }else{
+        snprintf(zBuf, nBuf, "0x%x", action);
+        return zBuf;
+      }
     }
+  }
+}
+
+static const void comdb2_ruleset_str_to_flags(
+  enum ruleset_flags *pFlags,
+  char *zBuf
+){
+  enum ruleset_flags flags = RULESET_F_NONE;
+  int count = 0;
+  *pFlags = RULESET_F_INVALID; /* assume the worst */
+  if( !zBuf ) return;
+  char *zTok = strtok(zBuf, RULESET_DELIM);
+  while( zTok ){
+    if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      count++;
+    }else if( sqlite3_stricmp(zTok, "STOP")==0 ){
+      flags |= RULESET_F_STOP;
+      count++;
+    }else{
+      return; /* TODO: Bad flag, fail? */
+    }
+    zTok = strtok(NULL, RULESET_DELIM);
+  }
+  if( count>0 ) *pFlags = flags;
+}
+
+static void comdb2_ruleset_flags_to_str(
+  enum ruleset_flags flags,
+  char *zBuf,
+  size_t nBuf
+){
+  if( nBuf>0 && flags==RULESET_F_NONE ){
+    snprintf(zBuf, nBuf, "NONE");
+    return;
+  }
+  if( nBuf>0 && flags&RULESET_F_STOP ){
+    int nRet = snprintf(zBuf, nBuf, " STOP");
+    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
+  /* more flags here... */
+}
+
+static const void comdb2_ruleset_str_to_match_mode(
+  enum ruleset_match_mode *pMode,
+  char *zBuf
+){
+  enum ruleset_match_mode mode = RULESET_MM_NONE;
+  int count = 0;
+  *pMode = RULESET_MM_INVALID; /* assume the worst */
+  if( !zBuf ) return;
+  char *zTok = strtok(zBuf, RULESET_DELIM);
+  while( zTok ){
+    if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      count++;
+    }else if( sqlite3_stricmp(zTok, "EXACT")==0 ){
+      mode |= RULESET_MM_EXACT;
+      count++;
+    }else if( sqlite3_stricmp(zTok, "GLOB")==0 ){
+      mode |= RULESET_MM_GLOB;
+      count++;
+    }else if( sqlite3_stricmp(zTok, "REGEXP")==0 ){
+      mode |= RULESET_MM_REGEXP;
+      count++;
+    }else if( sqlite3_stricmp(zTok, "NOCASE")==0 ){
+      mode |= RULESET_MM_NOCASE;
+      count++;
+    }else{
+      return; /* TODO: Bad flag, fail? */
+    }
+    zTok = strtok(NULL, RULESET_DELIM);
+  }
+  if( count>0 ) *pMode = mode;
+}
+
+static void comdb2_ruleset_match_mode_to_str(
+  enum ruleset_match_mode mode,
+  char *zBuf,
+  size_t nBuf
+){
+  if( nBuf>0 && flags==RULESET_MM_NONE ){
+    snprintf(zBuf, nBuf, "NONE");
+    return;
+  }
+  if( nBuf>0 && flags&RULESET_MM_EXACT ){
+    int nRet = snprintf(zBuf, nBuf, " EXACT");
+    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
+  if( nBuf>0 && flags&RULESET_MM_GLOB ){
+    int nRet = snprintf(zBuf, nBuf, " GLOB");
+    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
+  if( nBuf>0 && flags&RULESET_MM_REGEXP ){
+    int nRet = snprintf(zBuf, nBuf, " REGEXP");
+    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
+  if( nBuf>0 && flags&RULESET_MM_NOCASE ){
+    int nRet = snprintf(zBuf, nBuf, " NOCASE");
+    if( nRef>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
 }
 
 static const char *comdb2_priority_to_str(
   priority_t priority,
   char *zBuf,
-  size_t nBuf
+  size_t nBuf,
+  int bStrict
 ){
   /*
   ** WARNING: This code assumes that higher priority values have
@@ -150,8 +276,12 @@ static const char *comdb2_priority_to_str(
     case PRIORITY_T_DEFAULT:
       return "DEFAULT";
     default: {
-      snprintf(zBuf, nBuf, "0x%llx", priority);
-      return zBuf;
+      if( bStrict ){
+        return NULL;
+      }else{
+        snprintf(zBuf, nBuf, "0x%llx", priority);
+        return zBuf;
+      }
     }
   }
 }
@@ -304,7 +434,7 @@ size_t comdb2_ruleset_result_to_str(
   char zPriBuf[32] = {0};
 
   return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s",
-      comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf)),
-      comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf))
+      comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf), 1),
+      comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf), 1)
   );
 }
