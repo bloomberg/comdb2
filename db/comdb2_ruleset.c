@@ -19,6 +19,7 @@
 #include "sql.h"
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
+#include "sbuf2.h"
 
 #define RULESET_DELIM "\t\n\r\v\f ,"
 
@@ -437,4 +438,94 @@ size_t comdb2_ruleset_result_to_str(
       comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf), 1),
       comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf), 1)
   );
+}
+
+int comdb2_load_ruleset(
+  const char *zFileName,
+  struct ruleset **pRules
+){
+  int fd;
+  SBUF2 *sb;
+  i64 count = 0;
+  struct ruleset *rules = NULL;
+
+  fd = open(zFileName, O_RDONLY);
+  if( fd==-1 ){
+
+    return -1;
+  }
+  sb = sbuf2open(fd, 0);
+  if( sb==NULL ){
+
+    close(fd);
+    return -1;
+  }
+  while( 1 ){
+    char zLine[1024];
+    memset(zLine, 0, sizeof(zLine));
+    if( sbuf2gets(zLine, sizeof(zLine), sb)<=0 ) break;
+    if( !zLine[0] ) continue; /* blank line */
+    while( isspace(zLine[0]) ) zLine++; /* skip leading spaces */
+    if( zLine[0]=='#' ) continue; /* comment line */
+    if( rules!=NULL ){
+      if( sqlite3_stricmp(zLine, "rule")!=0 ){
+
+      }
+      char *zTok = strtok(zLine, RULESET_DELIM);
+      if( zTok==NULL ){
+      }
+      i64 ruleNo = 0;
+      if( sqlite3Atoi64(zTok, &ruleNo, strlen(zTok), SQLITE_UTF8)!=0 ){
+
+      }
+      if( ruleNo<1 || ruleNo>count ){
+
+      }
+      ruleNo--;
+      zTok = strtok(NULL, RULESET_DELIM);
+      while( zTok ){
+        if( sqlite3_stricmp(zLine, "action")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "adjustment")==0 ){
+
+
+
+        }else if( sqlite3_stricmp(zLine, "flags")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "mode")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "originHost")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "originTask")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "user")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "sql")==0 ){
+
+        }else if( sqlite3_stricmp(zLine, "fingerprint")==0 ){
+
+        }else{
+          /* error... not a valid rule field */
+        }
+        zTok = strtok(NULL, RULESET_DELIM);
+      }
+    }else{
+      if( sqlite3_stricmp(zLine, "count")!=0 ){
+
+      }
+      char *zTok = strtok(zLine, RULESET_DELIM);
+      if( zTok==NULL ){
+      }
+      if( sqlite3Atoi64(zTok, &count, strlen(zTok), SQLITE_UTF8)!=0 ){
+
+      }
+      rules = calloc(count, sizeof(struct ruleset));
+      if( rules==NULL ){
+
+      }
+    }
+  }
+  sbuf2close(sb);
+  close(fd);
+  return 0;
 }
