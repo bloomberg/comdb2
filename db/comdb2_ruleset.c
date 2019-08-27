@@ -156,7 +156,7 @@ static const char *comdb2_priority_to_str(
   }
 }
 
-priority_t comdb2_clamp_priority(
+static priority_t comdb2_clamp_priority(
   priority_t priority
 ){
   /*
@@ -168,7 +168,7 @@ priority_t comdb2_clamp_priority(
   return priority;
 }
 
-priority_t comdb2_adjust_priority(
+static priority_t comdb2_adjust_priority(
   enum ruleset_action action,
   priority_t priority,
   priority_t adjustment
@@ -190,7 +190,7 @@ static void comdb2_adjust_result_priority(
   );
 }
 
-ruleset_match_t comdb2_evaluate_ruleset_item(
+static ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
   struct ruleset_item *rule,

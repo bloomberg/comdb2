@@ -149,24 +149,6 @@ typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
 
-priority_t comdb2_clamp_priority(
-  priority_t priority
-);
-
-priority_t comdb2_adjust_priority(
-  enum ruleset_action action,
-  priority_t priority,
-  priority_t adjustment
-);
-
-ruleset_match_t comdb2_evaluate_ruleset_item(
-  xStrCmp stringComparer,
-  xMemCmp memoryComparer,
-  struct ruleset_item *rule,
-  struct sqlclntstate *clnt,
-  struct ruleset_result *result
-);
-
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
