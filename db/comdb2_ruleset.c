@@ -450,12 +450,12 @@ static int blob_string_to_fingerprint(
   if( nIn!=35 ) return 1;
   if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
   if( zIn[1]!='\'' ) return 3;
-  if( zIn[nLen-1]!='\'' ) return 4;
+  if( zIn[nIn-1]!='\'' ) return 4;
   int i = 0;
-  for(i=2; i<nLen-1; i+=2){
+  for(i=2; i<nIn-1; i+=2){
     int j = i - 2;
     if( !sqlite3Isxdigit(zIn[i]) ) return 5;
-    zOut[j/2] = (sqlite3HexToInt(z[i])<<4) | sqlite3HexToInt(z[i+1]);
+    zOut[j/2] = (sqlite3HexToInt(zIn[i])<<4) | sqlite3HexToInt(zIn[i+1]);
   }
   return 0;
 }
@@ -465,7 +465,7 @@ int comdb2_load_ruleset(
   struct ruleset **pRules
 ){
   int rc;
-  char *zLine[8192];
+  char zLine[8192];
   int nLine = 0;
   int fd = -1;
   SBUF2 *sb = NULL;
@@ -536,7 +536,7 @@ int comdb2_load_ruleset(
         goto failure;
       }
       ruleNo--;
-      pRule = rules->aRule[ruleNo];
+      pRule = &rules->aRule[ruleNo];
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         if( sqlite3_stricmp(zTok, "action")==0 ){
@@ -677,7 +677,7 @@ int comdb2_load_ruleset(
 failure:
   if( rules->aRule!=NULL ){
     for(int i=0; i<rules->nRule; i++){
-      pRule = rules->aRule[i];
+      pRule = &rules->aRule[i];
       if( pRule->pFingerprint!=NULL ){
         free(pRule->pFingerprint);
       }
