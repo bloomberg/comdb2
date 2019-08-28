@@ -461,6 +461,85 @@ static int blob_string_to_fingerprint(
   return 0;
 }
 
+void comdb2_dump_ruleset(struct ruleset *rules){
+  if( rules==NULL ) return;
+  logmsg(LOGMSG_USER,
+         "%s: ruleset %p, generation %d, %zu rules\n",
+         __func__, rules, rules->generation, rules->nRule);
+  if( rules->aRule==NULL ){
+    logmsg(LOGMSG_USER,
+           "%s: rules for ruleset %p are missing!\n", __func__, rules);
+    return;
+  }
+  char zAction[20];
+  char zFlags[100];
+  char zMode[100];
+  char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
+
+  for(int i=0; i<rules->nRule; i++){
+    struct ruleset_item *pRule = &rules->aRule[i];
+
+    memset(zAction, 0, sizeof(zAction));
+    memset(zFlags, 0, sizeof(zFlags));
+    memset(zMode, 0, sizeof(zMode));
+    memset(zFingerprint, 0, sizeof(zFingerprint));
+
+    comdb2_ruleset_action_to_str(pRule->action, zAction, sizeof(zAction), 1);
+    comdb2_ruleset_flags_to_str(pRule->flags, zFlags, sizeof(zFlags));
+    comdb2_ruleset_match_mode_to_str(pRule->mode, zMode, sizeof(zMode));
+
+    logmsg(LOGMSG_USER,
+           "%s: ruleset %p rule #%d, action {%s} (0x%llX), "
+           "adjustment %lld, flags {%s} (0x%llX), mode {%s} (0x%llX), "
+           "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
+           "fingerprint {%s}\n", __func__, rules, (int)(i+1),
+           zAction, (unsigned long long int)pRule->action,
+           pRule->adjustment,
+           zFlags, (unsigned long long int)pRule->flags,
+           zMode, (unsigned long long int)pRule->mode,
+           pRule->zOriginHost ? pRule->zOriginHost : "<null>",
+           pRule->zOriginTask ? pRule->zOriginTask : "<null>",
+           pRule->zUser ? pRule->zUser : "<null>",
+           pRule->zSql ? pRule->zSql : "<null>",
+           pRule->pFingerprint ?
+               util_tohex(zFingerprint, pRule->pFingerprint, FPSZ) :
+               "<null>");
+  }
+}
+
+void comdb2_free_ruleset(struct ruleset *rules){
+  if( rules!=NULL ){
+    if( rules->aRule!=NULL ){
+      for(int i=0; i<rules->nRule; i++){
+        struct ruleset_item *pRule = &rules->aRule[i];
+        if( pRule->zOriginHost!=NULL ){
+          free(pRule->zOriginHost);
+          pRule->zOriginHost = NULL;
+        }
+        if( pRule->zOriginTask!=NULL ){
+          free(pRule->zOriginTask);
+          pRule->zOriginTask = NULL;
+        }
+        if( pRule->zUser!=NULL ){
+          free(pRule->zUser);
+          pRule->zUser = NULL;
+        }
+        if( pRule->zSql!=NULL ){
+          free(pRule->zSql);
+          pRule->zSql = NULL;
+        }
+        if( pRule->pFingerprint!=NULL ){
+          free(pRule->pFingerprint);
+          pRule->pFingerprint = NULL;
+        }
+      }
+      free(rules->aRule);
+      rules->aRule = NULL;
+    }
+    free(rules);
+  }
+}
+
 int comdb2_load_ruleset(
   const char *zFileName,
   struct ruleset **pRules
@@ -471,7 +550,6 @@ int comdb2_load_ruleset(
   int fd = -1;
   SBUF2 *sb = NULL;
   i64 count = 0;
-  struct ruleset_item *pRule = NULL;
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
@@ -537,7 +615,7 @@ int comdb2_load_ruleset(
         goto failure;
       }
       ruleNo--;
-      pRule = &rules->aRule[ruleNo];
+      struct ruleset_item *pRule = &rules->aRule[ruleNo];
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         if( sqlite3_stricmp(zTok, "action")==0 ){
@@ -751,16 +829,7 @@ int comdb2_load_ruleset(
   goto done;
 
 failure:
-  if( rules->aRule!=NULL ){
-    for(int i=0; i<rules->nRule; i++){
-      pRule = &rules->aRule[i];
-      if( pRule->pFingerprint!=NULL ){
-        free(pRule->pFingerprint);
-      }
-    }
-    free(rules->aRule);
-  }
-  if( rules!=NULL ) free(rules);
+  comdb2_free_ruleset(rules);
   rc = 1;
 
 done:
