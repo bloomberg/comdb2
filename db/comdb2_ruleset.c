@@ -22,6 +22,7 @@
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 #include "sbuf2.h"
+#include "tohex.h"
 
 #define RULESET_DELIM "\t\n\r\v\f ,"
 #define RULESET_TEXT_DELIM ";"
