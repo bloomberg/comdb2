@@ -503,7 +503,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
            pRule->zUser ? pRule->zUser : "<null>",
            pRule->zSql ? pRule->zSql : "<null>",
            pRule->pFingerprint ?
-               util_tohex(zFingerprint, pRule->pFingerprint, FPSZ) :
+               util_tohex(zFingerprint, (char *)pRule->pFingerprint, FPSZ) :
                "<null>");
   }
 }
