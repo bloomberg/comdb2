@@ -547,12 +547,25 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          comdb2_ruleset_str_to_action(&pRule->action, zTok);
+          if( pRule->action==RULESET_A_INVALID ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, bad 'action' field value \"%s\"",
+                     zFileName, nLine, zTok);
+            goto failure;
+          }
         }else if( sqlite3_stricmp(zTok, "adjustment")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'adjustment' field",
                      zFileName, nLine);
+            goto failure;
+          }
+          if( sqlite3Atoi64(zTok, &pRule->adjustment, strlen(zTok), SQLITE_UTF8)!=0 ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, bad adjustment \"%s\", not an integer",
+                     zFileName, nLine, zTok);
             goto failure;
           }
         }else if( sqlite3_stricmp(zTok, "flags")==0 ){
@@ -563,6 +576,13 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          comdb2_ruleset_str_to_flags(&pRule->flags, zTok);
+          if( pRule->flags==RULESET_F_INVALID ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, bad 'flags' field value \"%s\"",
+                     zFileName, nLine, zTok);
+            goto failure;
+          }
         }else if( sqlite3_stricmp(zTok, "mode")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
@@ -571,11 +591,25 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          comdb2_ruleset_str_to_match_mode(&pRule->mode, zTok);
+          if( pRule->mode==RULESET_MM_INVALID ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, bad 'mode' field value \"%s\"",
+                     zFileName, nLine, zTok);
+            goto failure;
+          }
         }else if( sqlite3_stricmp(zTok, "originHost")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'originHost' field",
+                     zFileName, nLine);
+            goto failure;
+          }
+          pRule->zOriginHost = strdup(zTok);
+          if( pRule->zOriginHost==NULL ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, could not allocate 'originHost' value",
                      zFileName, nLine);
             goto failure;
           }
@@ -587,6 +621,13 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          pRule->zOriginTask = strdup(zTok);
+          if( pRule->zOriginTask==NULL ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, could not allocate 'originTask' value",
+                     zFileName, nLine);
+            goto failure;
+          }
         }else if( sqlite3_stricmp(zTok, "user")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
@@ -595,11 +636,25 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          pRule->zUser = strdup(zTok);
+          if( pRule->zUser==NULL ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, could not allocate 'user' value",
+                     zFileName, nLine);
+            goto failure;
+          }
         }else if( sqlite3_stricmp(zTok, "sql")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'sql' field",
+                     zFileName, nLine);
+            goto failure;
+          }
+          pRule->zSql = strdup(zTok);
+          if( pRule->zSql==NULL ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, could not allocate 'sql' value",
                      zFileName, nLine);
             goto failure;
           }
