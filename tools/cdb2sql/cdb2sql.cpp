@@ -174,26 +174,14 @@ void cdb2sql_usage(int exit_val)
 }
 
 const char *level_one_words[] = {
-  "@",
-  "ALTER", "ANALYZE",
-  "BEGIN",
-  "COMMIT",
-  "CREATE",
-  "DELETE", "DROP", "DRYRUN",
-  "EXEC", "EXPLAIN",
-  "INSERT",
-  "PUT",
-  "REBUILD",
-  "ROLLBACK",
-  "SELECT", "SELECTV", "SET",
-  "TRUNCATE",
-  "UPDATE",
-  "WITH",
+    "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
+    "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
+    "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
 };
 
 const char *char_atglyph_words[] = {
-    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
-    "send",       "strblobs", "time",
+    "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "row_sleep",  "send", "strblobs", "time",
 };
 
 static char *char_atglyph_generator(const char *text, int state)
@@ -202,10 +190,10 @@ static char *char_atglyph_generator(const char *text, int state)
     if (!state) { // if state is 0 get the length of text
         len = strlen(text);
     }
-    for (auto&& name: char_atglyph_words) {
-      if (len == 0 || strncasecmp(name, text, len) == 0) {
-        return strdup(name);
-      }
+    for (const auto &name : char_atglyph_words) {
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
     }
     return (NULL); // If no names matched, then return NULL.
 }
@@ -217,10 +205,10 @@ static char *level_one_generator(const char *text, int state)
     if (!state) { //if state is 0 get the length of text
         len = strlen (text);
     }
-    for (auto&& name: level_one_words) {
-      if (len == 0 || strncasecmp (name, text, len) == 0) {
-        return strdup (name);
-      }
+    for (const auto &name : level_one_words) {
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
     }
     return (NULL); // If no names matched, then return NULL.
 }
