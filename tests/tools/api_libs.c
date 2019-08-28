@@ -55,15 +55,15 @@ int main(int argc, char **argv)
     cdb2_open(&hndl, "dummy", "localhost", CDB2_DIRECT_CPU);
     cdb2_close(hndl);
     /* Uninstall */
-    cdb2_set_comdb2db_info("comdb2_config:uninstall_static_libs");
+    cdb2_set_comdb2db_info("comdb2_config:disable_static_libs");
     cdb2_open(&hndl, "dummy", "localhost", CDB2_DIRECT_CPU);
     cdb2_close(hndl);
     /* Install again */
-    cdb2_set_comdb2db_info("comdb2_config:install_static_libs");
+    cdb2_set_comdb2db_info("comdb2_config:enable_static_libs");
     cdb2_open(&hndl, "dummy", "localhost", CDB2_DIRECT_CPU);
     cdb2_close(hndl);
     /* Uninstall again */
-    cdb2_set_comdb2db_info("comdb2_config:uninstall_static_libs");
+    cdb2_set_comdb2db_info("comdb2_config:disable_static_libs");
     cdb2_open(&hndl, "dummy", "localhost", CDB2_DIRECT_CPU);
     cdb2_close(hndl);
     return 0;
