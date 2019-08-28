@@ -677,7 +677,7 @@ int comdb2_load_ruleset(
 failure:
   if( rules->aRule!=NULL ){
     for(int i=0; i<rules->nRule; i++){
-      pRule = rules->aRule[ruleNo];
+      pRule = rules->aRule[i];
       if( pRule->pFingerprint!=NULL ){
         free(pRule->pFingerprint);
       }
