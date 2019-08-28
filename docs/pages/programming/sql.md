@@ -778,6 +778,9 @@ Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#cli
 
 Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
+### SET SSL_MIN_TLS_VER
+Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
 ## Common syntax rules
 
 ### qualified-table-name
