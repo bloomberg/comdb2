@@ -1388,10 +1388,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
-            } else if (strcasecmp("install_static_libs", tok) == 0) {
+            } else if (strcasecmp("install_static_libs_v2", tok) == 0 ||
+                       strcasecmp("enable_static_libs", tok) == 0) {
                 if (cdb2_install != NULL)
                     (*cdb2_install)();
-            } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
+            } else if (strcasecmp("uninstall_static_libs_v2", tok) == 0 ||
+                       strcasecmp("disable_static_libs", tok) == 0) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
                 if (cdb2_uninstall != NULL)
