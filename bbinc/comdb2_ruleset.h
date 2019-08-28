@@ -77,9 +77,15 @@ enum ruleset_match_mode {
 };
 
 enum ruleset_string_match {
-  RULESET_S_TRUE = 0,
-  RULESET_S_FALSE = 1,
-  RULESET_S_ERROR = 2
+  RULESET_S_TRUE = 0,     /* The string comparison function was able to match
+                           * the string value against the specified pattern. */
+
+  RULESET_S_FALSE = 1,    /* The string comparison function was did not match
+                           * the string value against the specified pattern. */
+
+  RULESET_S_ERROR = 2     /* The string comparison function encountered some
+                           * kind of error that prevented it from completing
+                           * its matching. */
 };
 
 enum ruleset_match {
@@ -170,6 +176,11 @@ size_t comdb2_ruleset_result_to_str(
   struct ruleset_result *result,
   char *zBuf,
   size_t nBuf
+);
+
+int comdb2_load_ruleset(
+  const char *zFileName,
+  struct ruleset **pRules
 );
 
 #endif /* _COMDB2_RULESET_H_ */

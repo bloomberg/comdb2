@@ -24,6 +24,7 @@
 #include "sbuf2.h"
 
 #define RULESET_DELIM "\t\n\r\v\f ,"
+#define RULESET_TEXT_DELIM ";"
 
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
 static const struct compareInfo globNoCaseInfo = { '*', '?', '[', 1 };
@@ -443,7 +444,7 @@ size_t comdb2_ruleset_result_to_str(
 }
 
 static int blob_string_to_fingerprint(
-  char *zIn, /* format must be: "X'0123456789ABCDEF0123456789ABCDEF'" */
+  char *zIn, /* format must be: X'0123456789ABCDEF0123456789ABCDEF' */
   unsigned char *zOut /* must be a block of at least FPSZ */
 ){
   size_t nIn = strlen(zIn);
@@ -569,7 +570,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
         }else if( sqlite3_stricmp(zTok, "flags")==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
+          zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'flags' field",
@@ -584,7 +585,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
         }else if( sqlite3_stricmp(zTok, "mode")==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
+          zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'mode' field",
@@ -656,7 +657,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
         }else if( sqlite3_stricmp(zTok, "sql")==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
+          zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
             snprintf(zLine, sizeof(zLine),
                      "%s:%d, expected value for 'sql' field",

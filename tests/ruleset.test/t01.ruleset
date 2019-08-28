@@ -1,0 +1,15 @@
+
+# NOTE: First empty non-blank, non-comment line must be rule count.
+count 2
+
+rule 1 action reject
+rule 1 sql SELECT 1, 2 + 3; mode glob
+rule 1 flags stop;
+rule 1 flags none
+
+rule 2 mode exact, nocase; flags stop
+rule 2 adjustment 1
+rule 2 originHost testHost1 originTask testTask1
+rule 2 user joe
+
+rule 1 fingerprint X'0123456789ABCDEF0123456789ABCDEF' user joe
