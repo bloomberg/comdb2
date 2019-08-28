@@ -606,6 +606,10 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          if( pRule->zOriginHost ){
+            free(pRule->zOriginHost);
+            pRule->zOriginHost = NULL;
+          }
           pRule->zOriginHost = strdup(zTok);
           if( pRule->zOriginHost==NULL ){
             snprintf(zLine, sizeof(zLine),
@@ -620,6 +624,10 @@ int comdb2_load_ruleset(
                      "%s:%d, expected value for 'originTask' field",
                      zFileName, nLine);
             goto failure;
+          }
+          if( pRule->zOriginTask ){
+            free(pRule->zOriginTask);
+            pRule->zOriginTask = NULL;
           }
           pRule->zOriginTask = strdup(zTok);
           if( pRule->zOriginTask==NULL ){
@@ -636,6 +644,10 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          if( pRule->zUser ){
+            free(pRule->zUser);
+            pRule->zUser = NULL;
+          }
           pRule->zUser = strdup(zTok);
           if( pRule->zUser==NULL ){
             snprintf(zLine, sizeof(zLine),
@@ -651,6 +663,10 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
+          if( pRule->zSql ){
+            free(pRule->zSql);
+            pRule->zUser = NULL;
+          }
           pRule->zSql = strdup(zTok);
           if( pRule->zSql==NULL ){
             snprintf(zLine, sizeof(zLine),
@@ -665,6 +681,10 @@ int comdb2_load_ruleset(
                      "%s:%d, expected value for 'fingerprint' field",
                      zFileName, nLine);
             goto failure;
+          }
+          if( pRule->pFingerprint ){
+            free(pRule->pFingerprint);
+            pRule->pFingerprint = NULL;
           }
           pRule->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
           if( pRule->pFingerprint==NULL ){
