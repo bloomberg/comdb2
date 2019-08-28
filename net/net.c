@@ -4719,7 +4719,7 @@ static void *connect_thread(void *arg)
     thread_started("connect thread");
     THREAD_TYPE(__func__);
 
-    int len;
+    socklen_t len;
 
     int flags;
     struct pollfd pfd;
@@ -4916,7 +4916,7 @@ static void *connect_thread(void *arg)
         }
 
         len = sizeof(err);
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, (socklen_t *)&len)) {
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)) {
             logmsgperror("tcplib:lclconn:getsockopt");
 #ifndef _HP_SOURCE
             exit(1);
@@ -5093,13 +5093,9 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
 static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
-    size_t lcl_len = sizeof(lcl_addr_inet);
-
-    /* get local address of connection */
-    int ret =
-        getsockname(host_node_ptr->fd, (struct sockaddr *)&lcl_addr_inet,
-                    (socklen_t *)&lcl_len);
-    if (ret != 0) {
+    socklen_t lcl_len = sizeof(lcl_addr_inet);
+    if (getsockname(host_node_ptr->fd, (struct sockaddr *)&lcl_addr_inet,
+                    &lcl_len)) {
         logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
                host_node_ptr->fd);
         return 0;
@@ -5334,10 +5330,10 @@ static inline int findpeer(int fd, char *addr, int len)
 {
     int rc;
     struct sockaddr_in peeraddr;
-    int pl = sizeof(struct sockaddr_in);
+    socklen_t pl = sizeof(struct sockaddr_in);
 
     /* find peer ip */
-    rc = getpeername(fd, (struct sockaddr *)&peeraddr, (socklen_t *)&pl);
+    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &pl);
     if (rc) {
         snprintf(addr, len, "<unknown>");
         return -1;
@@ -5460,7 +5456,7 @@ static void *accept_thread(void *arg)
     connect_and_accept_t *ca;
     pthread_t tid;
     char paddr[64];
-    size_t clilen;
+    socklen_t clilen;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
@@ -5513,8 +5509,7 @@ static void *accept_thread(void *arg)
         if (portmux_fds) {
             new_fd = portmux_accept(portmux_fds, -1);
         } else {
-            new_fd = accept(listenfd, (struct sockaddr *)&cliaddr,
-                            (socklen_t *)&clilen);
+            new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
         }
         if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
             logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
@@ -5527,8 +5522,7 @@ static void *accept_thread(void *arg)
         }
 
         if(portmux_fds) {
-            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr,
-                             (socklen_t *)&clilen);
+            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
                        "Failed to get peer address, error: %d %s\n", errno,
