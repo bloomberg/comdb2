@@ -442,15 +442,35 @@ size_t comdb2_ruleset_result_to_str(
   );
 }
 
+static int blob_string_to_fingerprint(
+  char *zIn, /* format must be: "X'0123456789ABCDEF0123456789ABCDEF'" */
+  unsigned char *zOut /* must be a block of at least FPSZ */
+){
+  size_t nIn = strlen(zIn);
+  if( nIn!=35 ) return 1;
+  if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
+  if( zIn[1]!='\'' ) return 3;
+  if( zIn[nLen-1]!='\'' ) return 4;
+  int i = 0;
+  for(i=2; i<nLen-1; i+=2){
+    int j = i - 2;
+    if( !sqlite3Isxdigit(zIn[i]) ) return 5;
+    zOut[j/2] = (sqlite3HexToInt(z[i])<<4) | sqlite3HexToInt(z[i+1]);
+  }
+  return 0;
+}
+
 int comdb2_load_ruleset(
   const char *zFileName,
   struct ruleset **pRules
 ){
+  int rc;
   char *zLine[8192];
   int nLine = 0;
   int fd = -1;
   SBUF2 *sb = NULL;
   i64 count = 0;
+  struct ruleset_item *pRule = NULL;
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
@@ -516,7 +536,7 @@ int comdb2_load_ruleset(
         goto failure;
       }
       ruleNo--;
-      struct ruleset_item *pRule = rules->aRule[ruleNo];
+      pRule = rules->aRule[ruleNo];
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         if( sqlite3_stricmp(zTok, "action")==0 ){
@@ -591,22 +611,19 @@ int comdb2_load_ruleset(
                      zFileName, nLine);
             goto failure;
           }
-
-/*
-      This was taken from the SQLite tokenizer... adapt as necessary here.
-      testcase( z[0]=='x' ); testcase( z[0]=='X' );
-      if( z[1]=='\'' ){
-        *tokenType = TK_BLOB;
-        for(i=2; sqlite3Isxdigit(z[i]); i++){}
-        if( z[i]!='\'' || i%2 ){
-          *tokenType = TK_ILLEGAL;
-          while( z[i] && z[i]!='\'' ){ i++; }
-        }
-        if( z[i] ) i++;
-        return i;
-      }
-*/
-
+          pRule->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
+          if( pRule->pFingerprint==NULL ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, cannot allocate fingerprint",
+                     zFileName, nLine);
+            goto failure;
+          }
+          if( blob_string_to_fingerprint(zTok, pRule->pFingerprint) ){
+            snprintf(zLine, sizeof(zLine),
+                     "%s:%d, cannot parse 'fingerprint' field from \"%s\"",
+                     zFileName, nLine, zTok);
+            goto failure;
+          }
         }else{
           snprintf(zLine, sizeof(zLine),
                    "%s:%d, unknown rule %lld field \"%s\"",
@@ -652,14 +669,26 @@ int comdb2_load_ruleset(
       }
     }
   }
+
   *pRules = rules;
-  sbuf2close(sb);
-  close(fd);
-  return 0;
+  rc = 0;
+  goto done;
+
 failure:
-  if( rules->aRule!=NULL ) free(rules->aRule);
+  if( rules->aRule!=NULL ){
+    for(int i=0; i<rules->nRule; i++){
+      pRule = rules->aRule[ruleNo];
+      if( pRule->pFingerprint!=NULL ){
+        free(pRule->pFingerprint);
+      }
+    }
+    free(rules->aRule);
+  }
   if( rules!=NULL ) free(rules);
+  rc = 1;
+
+done:
   if( sb!=NULL ) sbuf2close(sb);
   if( fd!=-1 ) close(fd);
-  return -1;
+  return rc;
 }
