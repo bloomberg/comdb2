@@ -551,6 +551,8 @@ struct sql_state {
 /* This structure is designed to hold several pieces of data related to
  * work-in-progress on client SQL requests. */
 struct sqlworkstate {
+    int retries;          /* How many times has this work been enqueued due
+                           * to having a low priority? */
     const char *zNormSql; /* Normalized version of latest SQL query. */
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */

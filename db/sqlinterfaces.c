@@ -5066,6 +5066,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     ** TODO: Should this code reset an existing client sequence number
     **       to a higher value?  I do not think so.
     */
+    clnt->work.retries = ATOMIC_ADD32(clnt->work.retries, 1);
     if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
@@ -5447,8 +5448,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
+    clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    memset(clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5596,8 +5600,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
+    clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    memset(clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
