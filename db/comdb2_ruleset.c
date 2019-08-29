@@ -573,6 +573,7 @@ int comdb2_load_ruleset(
     char *zBuf = zLine;
     char *zTok = NULL;
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
+    if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
     if( zBuf[0]=='#' ) continue; /* comment line */
     if( rules!=NULL ){
       zTok = strtok(zBuf, RULESET_DELIM);
