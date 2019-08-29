@@ -912,14 +912,14 @@ int comdb2_save_ruleset(
 
   fd = open(zFileName, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if( fd==-1 ){
-    snprintf(zError, sizeof(zError), "%s:%d, open failed errno=%d",
-             zFileName, lineNo, errno);
+    snprintf(zError, sizeof(zError), "%s, open failed errno=%d",
+             zFileName, errno);
     goto failure;
   }
   sb = sbuf2open(fd, 0);
   if( sb==NULL ){
-    snprintf(zError, sizeof(zError), "%s:%d, sbuf2open failed errno=%d",
-             zFileName, lineNo, errno);
+    snprintf(zError, sizeof(zError), "%s, sbuf2open failed errno=%d",
+             zFileName, errno);
     goto failure;
   }
   sbuf2printf(sb, "version %d\n\n", 1);
@@ -971,7 +971,7 @@ int comdb2_save_ruleset(
     }
     if( pRule->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
-      util_tohex(zBuf, (char *)pRule->pFingerprint, FPSZ)
+      util_tohex(zBuf, (char *)pRule->pFingerprint, FPSZ);
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
     }
