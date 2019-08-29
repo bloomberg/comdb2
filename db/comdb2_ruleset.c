@@ -186,14 +186,15 @@ static void comdb2_ruleset_flags_to_str(
     snprintf(zBuf, nBuf, "NONE");
     return;
   }
+  char *zOrig = zBuf;
   int nRet;
   if( nBuf>0 && flags&RULESET_F_STOP ){
     nRet = snprintf(zBuf, nBuf, "STOP ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  int nLen = strlen(zBuf);
-  if( nLen>0 && zBuf[nLen-1]==' ' ){
-    zBuf[nLen-1] = '\0';
+  int nLen = strlen(zOrig);
+  if( nLen>0 && zOrig[nLen-1]==' ' ){
+    zOrig[nLen-1] = '\0';
   }
 }
 
@@ -239,6 +240,7 @@ static void comdb2_ruleset_match_mode_to_str(
     snprintf(zBuf, nBuf, "NONE");
     return;
   }
+  char *zOrig = zBuf;
   int nRet;
   if( nBuf>0 && mode&RULESET_MM_EXACT ){
     nRet = snprintf(zBuf, nBuf, "EXACT ");
@@ -256,9 +258,9 @@ static void comdb2_ruleset_match_mode_to_str(
     nRet = snprintf(zBuf, nBuf, "NOCASE ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  int nLen = strlen(zBuf);
-  if( nLen>0 && zBuf[nLen-1]==' ' ){
-    zBuf[nLen-1] = '\0';
+  int nLen = strlen(zOrig);
+  if( nLen>0 && zOrig[nLen-1]==' ' ){
+    zOrig[nLen-1] = '\0';
   }
 }
 
