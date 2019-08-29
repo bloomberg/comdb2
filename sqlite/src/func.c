@@ -798,8 +798,7 @@ static void comdb2CtxinfoFunc(
     return;
   }
 
-  struct sql_thread *thd = pthread_getspecific(query_info_key);
-  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+  struct sqlclntstate *clnt = get_sql_clnt();
 
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "parallel")==0 ){
@@ -979,9 +978,8 @@ static void comdb2UserFunc(
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
 
-  struct sql_thread *thd = pthread_getspecific(query_info_key);
-  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
-  sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
+  sqlite3_result_text(context, get_current_user(get_sql_clnt()), -1,
+                      SQLITE_STATIC);
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

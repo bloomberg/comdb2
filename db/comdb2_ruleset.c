@@ -26,7 +26,7 @@
 
 #define RULESET_MAX_COUNT 1000
 
-#define RULESET_DELIM "\t\n\r\v\f ,"
+#define RULESET_DELIM "\t\n\r\v\f "
 #define RULESET_FLAG_DELIM "\t\n\r\v\f ,{}"
 #define RULESET_TEXT_DELIM ";"
 

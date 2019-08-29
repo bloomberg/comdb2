@@ -1368,15 +1368,25 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "dump_ruleset") == 0) {
+        comdb2_dump_ruleset(gbl_ruleset);
+    }
+    else if (tokcmp(tok, ltok, "evaluate_ruleset") == 0) {
+        char zRuleRes[100] = {0};
+        struct ruleset_result ruleRes = {0};
+        size_t matchCount = comdb2_evaluate_ruleset(
+            NULL, NULL, gbl_ruleset, get_sql_clnt(), &ruleRes
+        );
+        comdb2_ruleset_result_to_str(&ruleRes, zRuleRes, sizeof(zRuleRes));
+        logmsg(LOGMSG_USER, "ruleset %p matched %zu result %s\n",
+               gbl_ruleset, matchCount, zRuleRes);
+    }
     else if (tokcmp(tok, ltok, "reload_ruleset") == 0) {
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
-            int rc;
             tokcpy(tok, ltok, zFileName);
-            rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
-            if (rc == 0) comdb2_dump_ruleset(gbl_ruleset);
-            return rc;
+            return comdb2_load_ruleset(zFileName, &gbl_ruleset);
         } else {
             logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
             return -1;
@@ -1386,7 +1396,6 @@ clipper_usage:
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
-            int rc;
             tokcpy(tok, ltok, zFileName);
             rc = comdb2_save_ruleset(zFileName, gbl_ruleset);
             if (rc == 0) {

@@ -295,6 +295,12 @@ int gbl_client_heartbeat_ms = 100;
 int gbl_retry_dispatch_ms = 50;
 int gbl_fail_client_write_lock = 0;
 
+struct sqlclntstate *get_sql_clnt(void){
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  if (thd == NULL) return NULL;
+  return thd->clnt;
+}
+
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
