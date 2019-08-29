@@ -1,6 +1,6 @@
 
-# NOTE: First empty non-blank, non-comment line must be rule count.
-count 2
+# NOTE: First empty non-blank, non-comment line must be rule version.
+version 1
 
 rule 1 action reject
 rule 1 sql SELECT 1, 2 + 3; mode glob

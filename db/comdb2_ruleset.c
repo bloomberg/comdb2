@@ -24,6 +24,8 @@
 #include "sbuf2.h"
 #include "tohex.h"
 
+#define RULESET_MAX_COUNT 1000
+
 #define RULESET_DELIM "\t\n\r\v\f ,"
 #define RULESET_FLAG_DELIM "\t\n\r\v\f ,{}"
 #define RULESET_TEXT_DELIM ";"
@@ -552,7 +554,7 @@ int comdb2_load_ruleset(
   int lineNo = 0;
   int fd = -1;
   SBUF2 *sb = NULL;
-  i64 count = 0;
+  i64 version = 0;
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
@@ -615,12 +617,27 @@ int comdb2_load_ruleset(
                  zFileName, lineNo, zTok);
         goto failure;
       }
-      if( ruleNo<1 || ruleNo>count ){
+      if( ruleNo<1 || ruleNo>RULESET_MAX_COUNT ){
         snprintf(zError, sizeof(zError),
                  "%s:%d, rule number %lld out-of-bounds, "
-                 "must be between 1 and %lld",
-                 zFileName, lineNo, ruleNo, count);
+                 "must be between 1 and %d",
+                 zFileName, lineNo, ruleNo, RULESET_MAX_COUNT);
         goto failure;
+      }
+      if( ruleNo>rules->nRule ){
+        size_t nNewRule = ruleNo - rules->nRule;
+        struct ruleset_item *aNewRule = realloc(
+          rules->aRule, (size_t)ruleNo*sizeof(struct ruleset_item)
+        );
+        if( aNewRule==NULL ){
+          snprintf(zError, sizeof(zError),
+                   "%s:%d, cannot allocate %lld rules",
+                   zFileName, lineNo, ruleNo);
+          goto failure;
+        }
+        memset(&aNewRule[rules->nRule],0,nNewRule*sizeof(struct ruleset_item));
+        rules->aRule = aNewRule;
+        rules->nRule = ruleNo;
       }
       ruleNo--;
       struct ruleset_item *pRule = &rules->aRule[ruleNo];
@@ -802,31 +819,29 @@ int comdb2_load_ruleset(
                  zFileName, lineNo);
         goto failure;
       }
-      if( sqlite3_stricmp(zTok, "count")!=0 ){
+      if( sqlite3_stricmp(zTok, "version")!=0 ){
         snprintf(zError, sizeof(zError),
-                 "%s:%d, expected literal string \"count\"",
+                 "%s:%d, expected literal string \"version\"",
                  zFileName, lineNo);
         goto failure;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zError, sizeof(zError),
-                 "%s:%d, missing rule count",
+                 "%s:%d, missing rule version",
                  zFileName, lineNo);
         goto failure;
       }
-      if( sqlite3Atoi64(zTok, &count, strlen(zTok), SQLITE_UTF8)!=0 ){
+      if( sqlite3Atoi64(zTok, &version, strlen(zTok), SQLITE_UTF8)!=0 ){
         snprintf(zError, sizeof(zError),
-                 "%s:%d, bad rule count \"%s\", not an integer",
+                 "%s:%d, bad rule version \"%s\", not an integer",
                  zFileName, lineNo, zTok);
         goto failure;
       }
-      rules->nRule = count;
-      rules->aRule = calloc(count, sizeof(struct ruleset_item));
-      if( rules->aRule==NULL ){
+      if( version!=1 ){
         snprintf(zError, sizeof(zError),
-                 "%s:%d, cannot allocate %lld rules",
-                 zFileName, lineNo, count);
+                 "%s:%d, unsupported rule version %lld",
+                 zFileName, lineNo, version);
         goto failure;
       }
     }
