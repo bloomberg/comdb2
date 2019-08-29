@@ -298,10 +298,21 @@ void sqlite3DequoteExpr(Expr *p){
  */
 int sqlite3IsCorrectlyQuoted(char *z){
   char quote = z[0];
-  if(!sqlite3Isquote(quote)) return 1;
   int i = 1;
-  while (z[i] != '\0') i++;
-  if( i > 1) return z[i-1] == quote;
+  if( !sqlite3Isquote(quote) ) return 1;
+  while( z[i]!='\0' ) i++;
+  if( i>1 ) return z[i-1]==quote;
+  return 0;
+}
+int sqlite3IsCorrectlyQuoted2(char *z, int *quoted){
+  char quote = z[0];
+  int i = 1;
+  int q = 0;
+  if( !sqlite3Isquote(quote) ){ *quoted = 0; return 1; }
+  *quoted = 1;
+  while( z[i]!='\0' ){ if( z[i]==quote ) q++; i++; }
+  if( q>0 ) return 0;
+  if( i>1 ) return z[i-1]==quote;
   return 0;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

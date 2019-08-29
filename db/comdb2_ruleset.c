@@ -25,6 +25,7 @@
 #include "tohex.h"
 
 #define RULESET_DELIM "\t\n\r\v\f ,"
+#define RULESET_FLAG_DELIM "\t\n\r\v\f ',"
 #define RULESET_TEXT_DELIM ";"
 
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
@@ -157,10 +158,12 @@ static void comdb2_ruleset_str_to_flags(
   char *zBuf
 ){
   enum ruleset_flags flags = RULESET_F_NONE;
+  int quoted = 0;
   int count = 0;
   *pFlags = RULESET_F_INVALID; /* assume the worst */
   if( !zBuf ) return;
-  char *zTok = strtok(zBuf, RULESET_DELIM);
+  if( !sqlite3IsCorrectlyQuoted2(zBuf, &quoted) ) return;
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       count++;
@@ -170,7 +173,7 @@ static void comdb2_ruleset_str_to_flags(
     }else{
       return; /* TODO: Bad flag, fail? */
     }
-    zTok = strtok(NULL, RULESET_DELIM);
+    zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pFlags = flags;
 }
@@ -184,8 +187,9 @@ static void comdb2_ruleset_flags_to_str(
     snprintf(zBuf, nBuf, "NONE");
     return;
   }
+  int nRet;
   if( nBuf>0 && flags&RULESET_F_STOP ){
-    int nRet = snprintf(zBuf, nBuf, " STOP");
+    nRet = snprintf(zBuf, nBuf, " STOP");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   /* more flags here... */
@@ -196,10 +200,12 @@ static void comdb2_ruleset_str_to_match_mode(
   char *zBuf
 ){
   enum ruleset_match_mode mode = RULESET_MM_NONE;
+  int quoted = 0;
   int count = 0;
   *pMode = RULESET_MM_INVALID; /* assume the worst */
   if( !zBuf ) return;
-  char *zTok = strtok(zBuf, RULESET_DELIM);
+  if( !sqlite3IsCorrectlyQuoted2(zBuf, &quoted) ) return;
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       count++;
@@ -218,7 +224,7 @@ static void comdb2_ruleset_str_to_match_mode(
     }else{
       return; /* TODO: Bad flag, fail? */
     }
-    zTok = strtok(NULL, RULESET_DELIM);
+    zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pMode = mode;
 }
@@ -232,20 +238,21 @@ static void comdb2_ruleset_match_mode_to_str(
     snprintf(zBuf, nBuf, "NONE");
     return;
   }
+  int nRet;
   if( nBuf>0 && mode&RULESET_MM_EXACT ){
-    int nRet = snprintf(zBuf, nBuf, " EXACT");
+    nRet = snprintf(zBuf, nBuf, " EXACT");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_GLOB ){
-    int nRet = snprintf(zBuf, nBuf, " GLOB");
+    nRet = snprintf(zBuf, nBuf, " GLOB");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_REGEXP ){
-    int nRet = snprintf(zBuf, nBuf, " REGEXP");
+    nRet = snprintf(zBuf, nBuf, " REGEXP");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_NOCASE ){
-    int nRet = snprintf(zBuf, nBuf, " NOCASE");
+    nRet = snprintf(zBuf, nBuf, " NOCASE");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
 }
