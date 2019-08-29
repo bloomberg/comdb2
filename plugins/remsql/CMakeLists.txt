@@ -32,3 +32,4 @@ include_directories(
 
 set(SOURCES remsql.c fdb_comm.c)
 add_plugin(remsql STATIC "${SOURCES}")
+add_dependencies(remsql sqlite) # Wait for parse.h

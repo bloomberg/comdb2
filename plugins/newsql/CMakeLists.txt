@@ -32,3 +32,4 @@ include_directories(
 )
 
 add_plugin(newsql STATIC newsql.c)
+add_dependencies(newsql sqlite) # Wait for parse.h
