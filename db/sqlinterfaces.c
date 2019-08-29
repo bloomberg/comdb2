@@ -5451,7 +5451,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
-    memset(clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(&clnt->work.rec, 0, sizeof(struct sql_state));
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     destroy_hash(clnt->ddl_tables, free_it);
@@ -5603,7 +5603,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
-    memset(clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(&clnt->work.rec, 0, sizeof(struct sql_state));
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clnt->arr = NULL;
