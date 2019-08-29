@@ -1,10 +1,11 @@
-include(${CMAKE_MODULE_PATH}/pkg_helper.cmake)
-find_pkg_for_comdb2(SQLite3
-  "sqlite3.h"
-  "sqlite3"
-  "${SQLITE3_ROOT_DIR}"
-  ""
-  SQLITE3_INCLUDE_DIR
-  SQLITE3_LIBRARY 
+find_path(SQLITE3_INCLUDE_DIR
+  NAMES sqlite3.h
+  HINTS ${SQLITE3_ROOT_DIR}
 )
-mark_as_advanced(SQLITE3_INCLUDE_DIR SQLITE3_LIBRARY)
+find_library(SQLITE3_LIBRARY
+  NAMES sqlite3
+  HINTS ${SQLITE3_ROOT_DIR}
+)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(SQLITE3 DEFAULT_MSG SQLITE3_INCLUDE_DIR)
+find_package_handle_standard_args(libsqlite3 DEFAULT_MSG SQLITE3_LIBRARY)
