@@ -1382,7 +1382,7 @@ clipper_usage:
             NULL, NULL, gbl_ruleset, get_sql_clnt(), &ruleRes
         );
         comdb2_ruleset_result_to_str(&ruleRes, zRuleRes, sizeof(zRuleRes));
-        logmsg(LOGMSG_USER, "ruleset %p matched %zu result %s\n",
+        logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
                gbl_ruleset, matchCount, zRuleRes);
     }
     else if (tokcmp(tok, ltok, "reload_ruleset") == 0) {
