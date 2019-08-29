@@ -912,6 +912,11 @@ int comdb2_save_ruleset(
   int fd = -1;
   SBUF2 *sb = NULL;
 
+  if( rules==NULL ){
+    snprintf(zError, sizeof(zError), "%s, cannot save invalid ruleset",
+             zFileName);
+    goto failure;
+  }
   fd = open(zFileName, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if( fd==-1 ){
     snprintf(zError, sizeof(zError), "%s, open failed errno=%d",
