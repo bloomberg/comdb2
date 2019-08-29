@@ -100,7 +100,8 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 enum {
     THDPOOL_ENQUEUE_FRONT = 0x1,
     THDPOOL_FORCE_DISPATCH = 0x2,
-    THDPOOL_FORCE_QUEUE = 0x4
+    THDPOOL_FORCE_QUEUE = 0x4,
+    THDPOOL_QUEUE_ONLY = 0x8
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                     int queue_override, char *persistent_info, uint32_t flags,

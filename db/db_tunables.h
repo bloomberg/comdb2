@@ -1190,6 +1190,11 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.thdpool_queue_only",
+                 "Force SQL query work items to be queued by the thread pool "
+                 "even when a thread may be available.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_thdpool_queue_only,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.random_sql_work_delayed",
                  "Force a random SQL query to be delayed 1/this many times.  "
                  "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_delayed,

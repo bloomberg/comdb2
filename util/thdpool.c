@@ -819,6 +819,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
+    int queue_only = (flags & THDPOOL_QUEUE_ONLY);
 
     /* If the special "enqueue at front" flag is set, only default priority
      * to highest (i.e. using a[nother] specific priority overrides flag). */
@@ -875,12 +876,16 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * until the lock is released, which gives us a window to assign the
      * work item to the new thread. */
     again:
-        thd = listc_rtl(&pool->freelist);
-        if (thd) {
-            assert(thd->on_freelist);
-            thd->on_freelist = 0;
+        if (queue_only) {
+            thd = NULL;
+        } else {
+            thd = listc_rtl(&pool->freelist);
+            if (thd) {
+                assert(thd->on_freelist);
+                thd->on_freelist = 0;
+            }
         }
-        if (!thd &&
+        if (!queue_only && !thd &&
             (force_dispatch || pool->maxnthd == 0 ||
              listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
@@ -929,7 +934,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_creates++;
         }
 
-        if (thd == NULL && pool->wait) {
+        if (!queue_only && thd == NULL && pool->wait) {
 
             pool->waiting_for_thread = 1;
             Pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);

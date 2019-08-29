@@ -176,6 +176,7 @@ int gbl_bpfunc_auth_gen = 1;
 uint64_t gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
+int gbl_thdpool_queue_only = 0;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
@@ -5124,6 +5125,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
+    if (gbl_thdpool_queue_only) {
+        flags |= THDPOOL_QUEUE_ONLY;
+    }
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags, clnt->priority)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
