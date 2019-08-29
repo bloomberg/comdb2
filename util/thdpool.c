@@ -876,16 +876,12 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * until the lock is released, which gives us a window to assign the
      * work item to the new thread. */
     again:
-        if (queue_only) {
-            thd = NULL;
-        } else {
-            thd = listc_rtl(&pool->freelist);
-            if (thd) {
-                assert(thd->on_freelist);
-                thd->on_freelist = 0;
-            }
+        thd = listc_rtl(&pool->freelist);
+        if (thd) {
+            assert(thd->on_freelist);
+            thd->on_freelist = 0;
         }
-        if (!queue_only && !thd &&
+        if (!thd &&
             (force_dispatch || pool->maxnthd == 0 ||
              listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
@@ -944,9 +940,16 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         }
 
         if (thd) {
-            item = &thd->work;
-            pool->num_passed++;
+            if (queue_only) {
+                listc_atl(&pool->freelist, thd);
+                thd->on_freelist = 1;
+                goto queue_work;
+            } else {
+                item = &thd->work;
+                pool->num_passed++;
+            }
         } else {
+queue_work:
             /* queue work */
             if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
