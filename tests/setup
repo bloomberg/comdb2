@@ -199,6 +199,10 @@ setup_db() {
         cp $PWD/$csc2 $DBDIR/
     done >> ${LRL}
 
+    for ruleset in $(ls *.ruleset 2>/dev/null); do
+        cp $PWD/$ruleset $DBDIR/
+    done
+
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
     cd $DBDIR >/dev/null
 

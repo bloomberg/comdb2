@@ -10,16 +10,16 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
-cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset t1.ruleset')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/t01.ruleset')"
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
-cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset t1_saved.ruleset')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/t01_saved.ruleset')"
 
-if ! diff t1.ruleset t1_saved.ruleset ; then
+if ! diff $DBDIR/t01.ruleset $DBDIR/t01_saved.ruleset ; then
   echo output is different from expected
   exit 1
 fi
