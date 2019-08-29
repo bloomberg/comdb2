@@ -557,14 +557,14 @@ int comdb2_load_ruleset(
   }
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
-    snprintf(zError, sizeof(zError), "open failed for \"%s\" errno=%d",
-             zFileName, errno);
+    snprintf(zError, sizeof(zError), "%s:%d, open failed errno=%d",
+             zFileName, lineNo, errno);
     goto failure;
   }
   sb = sbuf2open(fd, 0);
   if( sb==NULL ){
-    snprintf(zError, sizeof(zError), "sbuf2open failed for \"%s\" errno=%d",
-             zFileName, errno);
+    snprintf(zError, sizeof(zError), "%s:%d, sbuf2open failed errno=%d",
+             zFileName, lineNo, errno);
     goto failure;
   }
   while( 1 ){
@@ -831,7 +831,7 @@ int comdb2_load_ruleset(
   goto done;
 
 failure:
-  logmsg(LOGMSG_ERROR, zLine);
+  logmsg(LOGMSG_ERROR, zError);
   comdb2_free_ruleset(rules);
   rc = 1;
 
