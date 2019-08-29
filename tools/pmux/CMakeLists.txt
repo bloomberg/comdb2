@@ -1,3 +1,4 @@
+find_package(SQLite3 REQUIRED)
 add_executable(pmux
   pmux.cpp
   ${PROJECT_SOURCE_DIR}/util/bb_daemon.c
@@ -16,7 +17,7 @@ include_directories(
 set(libs
   cdb2api
   sockpool
-  ${PROTOBUF_C_LIBRARY}
+  ${PROTOBUF-C_LIBRARY}
   ${SQLITE3_LIBRARY}
   ${CMAKE_DL_LIBS}
 )

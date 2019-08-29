@@ -1,7 +1,5 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(LIBNAME "dbqueuedb")
-
 INCLUDE_DIRECTORIES(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
@@ -24,15 +22,8 @@ INCLUDE_DIRECTORIES(
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/sqlite
-  "."
-  ${PROTOBUF_C_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
-  ${COMDB2_ROBO_INCLUDE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-file(GLOB SOURCES *.c)
-
-add_plugin(${LIBNAME} "STATIC" "${SOURCES}")
-
-# Wait for parse.h
-add_dependencies(${LIBNAME} sqlite)
+add_plugin(dbqueuedb STATIC dbqueuedb.c)

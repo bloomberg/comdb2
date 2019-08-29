@@ -11,6 +11,18 @@ add_definitions(
   -DUSE_TCL_STUBS
 )
 
+find_path(TCL_INCLUDE_DIR
+  NAMES tcl.h
+  HINTS ${TCL_ROOT_DIR}
+)
+find_library(TCL_LIBRARY
+  NAMES tcl8.6 tcl8.5
+  HINTS ${TCL_ROOT_DIR}
+)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(TCL DEFAULT_MSG TCL_INCLUDE_DIR)
+find_package_handle_standard_args(libtcl DEFAULT_MSG TCL_LIBRARY)
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/cdb2api
@@ -19,9 +31,9 @@ include_directories(
 add_dependencies(tclcdb2 cdb2api)
 target_link_libraries(tclcdb2
   cdb2api
-  ${TCL_LIBRARY_FILE}
+  ${TCL_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${ZLIB_LIBRARIES}
-  ${PROTOBUF_C_LIBRARY}
+  ${PROTOBUF-C_LIBRARY}
   ${UNWIND_LIBRARY}
 )

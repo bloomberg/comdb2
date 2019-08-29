@@ -190,7 +190,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
@@ -222,13 +222,13 @@ target_link_libraries(comdb2
   m
   ${CMAKE_DL_LIBS}
   ${LZ4_LIBRARY}
+  ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
-  ${PROTOBUF_C_LIBRARY}
+  ${PROTOBUF-C_LIBRARY}
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
-  ${RDKAFKA_LIBRARY}
 )
 
 configure_file(copycomdb2 copycomdb2 @ONLY)
