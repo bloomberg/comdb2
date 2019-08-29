@@ -83,6 +83,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_global.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "comdb2_ruleset.h"
 
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
@@ -1364,6 +1365,23 @@ clipper_usage:
         logmsg(LOGMSG_USER, 
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
                 blkmax, gbl_maxwthreads);
+    }
+
+    else if (tokcmp(tok, ltok, "load_ruleset") == 0) {
+        char zFileName[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
+            struct ruleset *rules = NULL;
+            int rc;
+            tokcpy(tok, ltok, zFileName);
+            rc = comdb2_load_ruleset(zFileName, &rules);
+            if (rc == 0) comdb2_dump_ruleset(rules);
+            comdb2_free_ruleset(rules); rules = NULL;
+            return rc;
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
+            return -1;
+        }
     }
 
     else if (tokcmp(tok, ltok, "temptable_clear") == 0) {

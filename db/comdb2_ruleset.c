@@ -824,6 +824,7 @@ int comdb2_load_ruleset(
   goto done;
 
 failure:
+  logmsg(LOGMSG_ERROR, zLine);
   comdb2_free_ruleset(rules);
   rc = 1;
 
