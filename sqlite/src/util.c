@@ -312,7 +312,13 @@ int sqlite3IsCorrectlyBraced(char *z){
     i++;
   }
   if( q>0 ) return 0; /* braces inside content? */
-  if( i>1 ) return z[0]=='{' && z[i-1]=='}';
+  if( i>1 ){
+    if( z[0]=='{' && z[i-1]=='}' ){
+      return 1;
+    }else if( z[0]!='{' && z[0]!='}' && z[i-1]!='{' && z[i-1]!='}' ){
+      return 1;
+    }
+  }
   return 0;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
