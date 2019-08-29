@@ -1388,7 +1388,7 @@ clipper_usage:
         if (ltok != 0) {
             int rc;
             tokcpy(tok, ltok, zFileName);
-            rc = comdb2_save_ruleset(zFileName, &gbl_ruleset);
+            rc = comdb2_save_ruleset(zFileName, gbl_ruleset);
             if (rc == 0) {
                 logmsg(LOGMSG_USER, "Ruleset saved to file \"%s\"\n",
                        zFileName);
