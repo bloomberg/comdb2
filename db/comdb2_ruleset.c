@@ -934,7 +934,7 @@ int comdb2_save_ruleset(
     struct ruleset_item *pRule = &rules->aRule[i];
     int ruleNo = i+1;
     int mayNeedLf = 1;
-    if( pRule->action!=RULESET_A_NONE ){
+    if( pRule->action!=RULESET_A_INVALID ){
       zStr = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
       if( zStr!=NULL ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
