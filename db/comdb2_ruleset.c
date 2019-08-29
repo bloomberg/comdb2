@@ -424,13 +424,15 @@ size_t comdb2_evaluate_ruleset(
   struct ruleset_result *result
 ){
   size_t count = 0;
-  for(int i=0; i<rules->nRule; i++){
-    ruleset_match_t match = comdb2_evaluate_ruleset_item(
-      stringComparer, memoryComparer, &rules->aRule[i],
-      clnt, result
-    );
-    if( match==RULESET_M_STOP ){ count++; break; }
-    if( match==RULESET_M_TRUE ){ count++; }
+  if( rules!=NULL ){
+    for(int i=0; i<rules->nRule; i++){
+      ruleset_match_t match = comdb2_evaluate_ruleset_item(
+        stringComparer, memoryComparer, &rules->aRule[i],
+        clnt, result
+      );
+      if( match==RULESET_M_STOP ){ count++; break; }
+      if( match==RULESET_M_TRUE ){ count++; }
+    }
   }
   return count;
 }
