@@ -470,7 +470,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
            "%s: rules for ruleset %p are missing!\n", __func__, rules);
     return;
   }
-  char *zAction;
+  const char *zAction;
   char zFlags[100];
   char zMode[100];
   char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
