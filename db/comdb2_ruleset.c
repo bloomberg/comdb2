@@ -341,20 +341,20 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     stringComparer = comdb2_get_xstrcmp_for_mode(rule->mode);
   }
   if( stringComparer!=NULL ){
-    if( rule->zOriginHost!=NULL &&
-        stringComparer(clnt->origin_host, rule->zOriginHost)!=0 ){
+    if( rule->zOriginHost!=NULL && ((clnt->origin_host==NULL) ||
+        stringComparer(clnt->origin_host, rule->zOriginHost)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
-    if( rule->zOriginTask!=NULL &&
-        stringComparer(clnt->conninfo.pename, rule->zOriginTask)!=0 ){
+    if( rule->zOriginTask!=NULL && ((clnt->conninfo.pename==NULL) ||
+        stringComparer(clnt->conninfo.pename, rule->zOriginTask)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
     if( rule->zUser!=NULL && (!clnt->have_user ||
         stringComparer(clnt->user, rule->zUser)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
-    if( rule->zSql!=NULL &&
-        stringComparer(clnt->sql, rule->zSql)!=0 ){
+    if( rule->zSql!=NULL && ((clnt->sql==NULL) ||
+        stringComparer(clnt->sql, rule->zSql)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
   }else{
