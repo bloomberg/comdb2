@@ -85,6 +85,7 @@ extern int __berkdb_read_alarm_ms;
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 
+extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_rowlocks;
@@ -1367,16 +1368,31 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
-    else if (tokcmp(tok, ltok, "load_ruleset") == 0) {
+    else if (tokcmp(tok, ltok, "reload_ruleset") == 0) {
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
-            struct ruleset *rules = NULL;
             int rc;
             tokcpy(tok, ltok, zFileName);
-            rc = comdb2_load_ruleset(zFileName, &rules);
+            rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
             if (rc == 0) comdb2_dump_ruleset(rules);
-            comdb2_free_ruleset(rules); rules = NULL;
+            return rc;
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
+            return -1;
+        }
+    }
+    else if (tokcmp(tok, ltok, "save_ruleset") == 0) {
+        char zFileName[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
+            int rc;
+            tokcpy(tok, ltok, zFileName);
+            rc = comdb2_save_ruleset(zFileName, &gbl_ruleset);
+            if (rc == 0) {
+                logmsg(LOGMSG_USER, "Ruleset saved to file \"%s\"\n",
+                       zFileName);
+            }
             return rc;
         } else {
             logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
