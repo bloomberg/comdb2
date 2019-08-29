@@ -935,6 +935,7 @@ int comdb2_save_ruleset(
       }
     }
     if( pRule->adjustment!=0 ){
+      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(sb, "rule %d adjustment %lld\n", ruleNo, pRule->adjustment);
     }
     if( pRule->flags!=RULESET_F_NONE ){
