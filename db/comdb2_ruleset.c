@@ -467,7 +467,7 @@ static int blob_string_to_fingerprint(
 void comdb2_dump_ruleset(struct ruleset *rules){
   if( rules==NULL ) return;
   logmsg(LOGMSG_USER,
-         "%s: ruleset %p, generation %d, %zu rules\n",
+         "%s: ruleset %p, generation %d, count %zu\n",
          __func__, rules, rules->generation, rules->nRule);
   if( rules->aRule==NULL ){
     logmsg(LOGMSG_USER,
