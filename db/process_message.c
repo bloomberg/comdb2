@@ -1375,7 +1375,7 @@ clipper_usage:
             int rc;
             tokcpy(tok, ltok, zFileName);
             rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
-            if (rc == 0) comdb2_dump_ruleset(rules);
+            if (rc == 0) comdb2_dump_ruleset(gbl_ruleset);
             return rc;
         } else {
             logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
