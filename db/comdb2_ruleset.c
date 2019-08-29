@@ -136,16 +136,11 @@ static const char *comdb2_ruleset_action_to_str(
   int bStrict
 ){
   switch( action ){
-    case RULESET_A_NONE:
-      return "NONE";
-    case RULESET_A_REJECT:
-      return "REJECT";
-    case RULESET_A_UNREJECT:
-      return "UNREJECT";
-    case RULESET_A_LOW_PRIO:
-      return "LOW_PRIO";
-    case RULESET_A_HIGH_PRIO:
-      return "HIGH_PRIO";
+    case RULESET_A_NONE:      return "NONE";
+    case RULESET_A_REJECT:    return "REJECT";
+    case RULESET_A_UNREJECT:  return "UNREJECT";
+    case RULESET_A_LOW_PRIO:  return "LOW_PRIO";
+    case RULESET_A_HIGH_PRIO: return "HIGH_PRIO";
     default: {
       if( bStrict ){
         return NULL;
@@ -268,18 +263,12 @@ static const char *comdb2_priority_to_str(
   assert( priority>=PRIORITY_T_HIGHEST );
   assert( priority<=PRIORITY_T_LOWEST );
   switch( priority ){
-    case PRIORITY_T_INVALID:
-      return "INVALID";
-    case PRIORITY_T_HIGHEST:
-      return "HIGHEST";
-    case PRIORITY_T_LOWEST:
-      return "LOWEST";
-    case PRIORITY_T_HEAD:
-      return "HEAD";
-    case PRIORITY_T_TAIL:
-      return "TAIL";
-    case PRIORITY_T_DEFAULT:
-      return "DEFAULT";
+    case PRIORITY_T_INVALID: return "INVALID";
+    case PRIORITY_T_HIGHEST: return "HIGHEST";
+    case PRIORITY_T_LOWEST:  return "LOWEST";
+    case PRIORITY_T_HEAD:    return "HEAD";
+    case PRIORITY_T_TAIL:    return "TAIL";
+    case PRIORITY_T_DEFAULT: return "DEFAULT";
     default: {
       if( bStrict ){
         return NULL;
