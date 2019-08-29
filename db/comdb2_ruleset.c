@@ -25,7 +25,7 @@
 #include "tohex.h"
 
 #define RULESET_DELIM "\t\n\r\v\f ,"
-#define RULESET_FLAG_DELIM "\t\n\r\v\f ',"
+#define RULESET_FLAG_DELIM "\t\n\r\v\f ,{}"
 #define RULESET_TEXT_DELIM ";"
 
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
@@ -158,11 +158,10 @@ static void comdb2_ruleset_str_to_flags(
   char *zBuf
 ){
   enum ruleset_flags flags = RULESET_F_NONE;
-  int quoted = 0;
   int count = 0;
   *pFlags = RULESET_F_INVALID; /* assume the worst */
   if( !zBuf ) return;
-  if( !sqlite3IsCorrectlyQuoted2(zBuf, &quoted) ) return;
+  if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
@@ -200,11 +199,10 @@ static void comdb2_ruleset_str_to_match_mode(
   char *zBuf
 ){
   enum ruleset_match_mode mode = RULESET_MM_NONE;
-  int quoted = 0;
   int count = 0;
   *pMode = RULESET_MM_INVALID; /* assume the worst */
   if( !zBuf ) return;
-  if( !sqlite3IsCorrectlyQuoted2(zBuf, &quoted) ) return;
+  if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
