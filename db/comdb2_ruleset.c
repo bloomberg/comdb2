@@ -540,6 +540,7 @@ int comdb2_load_ruleset(
   struct ruleset **pRules
 ){
   int rc;
+  char zError[8192];
   char zLine[8192];
   size_t nLine;
   int lineNo = 0;
@@ -549,20 +550,20 @@ int comdb2_load_ruleset(
   struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
-    snprintf(zLine, sizeof(zLine),
+    snprintf(zError, sizeof(zError),
              "%s:%d, cannot allocate ruleset",
              zFileName, lineNo);
     goto failure;
   }
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
-    snprintf(zLine, sizeof(zLine), "open failed for \"%s\" errno=%d",
+    snprintf(zError, sizeof(zError), "open failed for \"%s\" errno=%d",
              zFileName, errno);
     goto failure;
   }
   sb = sbuf2open(fd, 0);
   if( sb==NULL ){
-    snprintf(zLine, sizeof(zLine), "sbuf2open failed for \"%s\" errno=%d",
+    snprintf(zError, sizeof(zError), "sbuf2open failed for \"%s\" errno=%d",
              zFileName, errno);
     goto failure;
   }
@@ -583,33 +584,33 @@ int comdb2_load_ruleset(
     if( rules->aRule!=NULL ){
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, expected start-of-rule",
                  zFileName, lineNo);
         goto failure;
       }
       if( sqlite3_stricmp(zTok, "rule")!=0 ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, expected literal string \"rule\"",
                  zFileName, lineNo);
         goto failure;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, missing token after \"rule\"",
                  zFileName, lineNo);
         goto failure;
       }
       i64 ruleNo = 0;
       if( sqlite3Atoi64(zTok, &ruleNo, strlen(zTok), SQLITE_UTF8)!=0 ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, bad rule number \"%s\", not an integer",
                  zFileName, lineNo, zTok);
         goto failure;
       }
       if( ruleNo<1 || ruleNo>count ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, rule number %lld out-of-bounds, "
                  "must be between 1 and %lld",
                  zFileName, lineNo, ruleNo, count);
@@ -622,14 +623,14 @@ int comdb2_load_ruleset(
         if( sqlite3_stricmp(zTok, "action")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'action' field",
                      zFileName, lineNo);
             goto failure;
           }
           comdb2_ruleset_str_to_action(&pRule->action, zTok);
           if( pRule->action==RULESET_A_INVALID ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, bad 'action' field value \"%s\"",
                      zFileName, lineNo, zTok);
             goto failure;
@@ -637,13 +638,13 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "adjustment")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'adjustment' field",
                      zFileName, lineNo);
             goto failure;
           }
           if( sqlite3Atoi64(zTok, &pRule->adjustment, strlen(zTok), SQLITE_UTF8)!=0 ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, bad adjustment \"%s\", not an integer",
                      zFileName, lineNo, zTok);
             goto failure;
@@ -651,14 +652,14 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "flags")==0 ){
           zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'flags' field",
                      zFileName, lineNo);
             goto failure;
           }
           comdb2_ruleset_str_to_flags(&pRule->flags, zTok);
           if( pRule->flags==RULESET_F_INVALID ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, bad 'flags' field value \"%s\"",
                      zFileName, lineNo, zTok);
             goto failure;
@@ -666,14 +667,14 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "mode")==0 ){
           zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'mode' field",
                      zFileName, lineNo);
             goto failure;
           }
           comdb2_ruleset_str_to_match_mode(&pRule->mode, zTok);
           if( pRule->mode==RULESET_MM_INVALID ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, bad 'mode' field value \"%s\"",
                      zFileName, lineNo, zTok);
             goto failure;
@@ -681,7 +682,7 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "originHost")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'originHost' field",
                      zFileName, lineNo);
             goto failure;
@@ -692,7 +693,7 @@ int comdb2_load_ruleset(
           }
           pRule->zOriginHost = strdup(zTok);
           if( pRule->zOriginHost==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate 'originHost' value",
                      zFileName, lineNo);
             goto failure;
@@ -700,7 +701,7 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "originTask")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'originTask' field",
                      zFileName, lineNo);
             goto failure;
@@ -711,7 +712,7 @@ int comdb2_load_ruleset(
           }
           pRule->zOriginTask = strdup(zTok);
           if( pRule->zOriginTask==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate 'originTask' value",
                      zFileName, lineNo);
             goto failure;
@@ -719,7 +720,7 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "user")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'user' field",
                      zFileName, lineNo);
             goto failure;
@@ -730,7 +731,7 @@ int comdb2_load_ruleset(
           }
           pRule->zUser = strdup(zTok);
           if( pRule->zUser==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate 'user' value",
                      zFileName, lineNo);
             goto failure;
@@ -738,7 +739,7 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "sql")==0 ){
           zTok = strtok(NULL, RULESET_TEXT_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'sql' field",
                      zFileName, lineNo);
             goto failure;
@@ -749,7 +750,7 @@ int comdb2_load_ruleset(
           }
           pRule->zSql = strdup(zTok);
           if( pRule->zSql==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate 'sql' value",
                      zFileName, lineNo);
             goto failure;
@@ -757,7 +758,7 @@ int comdb2_load_ruleset(
         }else if( sqlite3_stricmp(zTok, "fingerprint")==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, expected value for 'fingerprint' field",
                      zFileName, lineNo);
             goto failure;
@@ -768,19 +769,19 @@ int comdb2_load_ruleset(
           }
           pRule->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
           if( pRule->pFingerprint==NULL ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, cannot allocate fingerprint",
                      zFileName, lineNo);
             goto failure;
           }
           if( blob_string_to_fingerprint(zTok, pRule->pFingerprint) ){
-            snprintf(zLine, sizeof(zLine),
+            snprintf(zError, sizeof(zError),
                      "%s:%d, cannot parse 'fingerprint' field from \"%s\"",
                      zFileName, lineNo, zTok);
             goto failure;
           }
         }else{
-          snprintf(zLine, sizeof(zLine),
+          snprintf(zError, sizeof(zError),
                    "%s:%d, unknown rule %lld field \"%s\"",
                    zFileName, lineNo, ruleNo, zTok);
           goto failure;
@@ -790,26 +791,26 @@ int comdb2_load_ruleset(
     }else{
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, expected count-of-rules",
                  zFileName, lineNo);
         goto failure;
       }
       if( sqlite3_stricmp(zTok, "count")!=0 ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, expected literal string \"count\"",
                  zFileName, lineNo);
         goto failure;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, missing rule count",
                  zFileName, lineNo);
         goto failure;
       }
       if( sqlite3Atoi64(zTok, &count, strlen(zTok), SQLITE_UTF8)!=0 ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, bad rule count \"%s\", not an integer",
                  zFileName, lineNo, zTok);
         goto failure;
@@ -817,7 +818,7 @@ int comdb2_load_ruleset(
       rules->nRule = count;
       rules->aRule = calloc(count, sizeof(struct ruleset_item));
       if( rules->aRule==NULL ){
-        snprintf(zLine, sizeof(zLine),
+        snprintf(zError, sizeof(zError),
                  "%s:%d, cannot allocate %lld rules",
                  zFileName, lineNo, count);
         goto failure;
