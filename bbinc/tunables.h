@@ -49,7 +49,7 @@ typedef enum {
     INVERSE_VALUE = 1 << 4,
 
     /* The tunable has been deprecated. */
-    DEPRECATED = 1 << 5,
+    DEPRECATED_TUNABLE = 1 << 5,
 
     /* The tunable has been marked experimental. */
     EXPERIMENTAL = 1 << 6,
