@@ -1,0 +1,3 @@
+This test attempts to execute SQL queries that may match against various loaded
+rulesets.  If a ruleset is matched, a SQL query may be rejected and/or have its
+priority changed.

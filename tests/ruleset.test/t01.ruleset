@@ -1,23 +1,15 @@
-
-# NOTE: First empty non-blank, non-comment line must be rule version.
 version 1
 
 rule 1 action reject
-rule 1 sql SELECT 1, 2 + 3; mode glob
-rule 1 flags stop;
-rule 1 flags none
+rule 1 fingerprint X'0123456789ABCDEF0123456789ABCDEF'
 
-rule 2 mode exact, nocase; flags stop
-rule 2 adjustment 1
-rule 2 originHost testHost1 originTask testTask1
-rule 2 user joe
+rule 2 action low_prio
+rule 2 adjustment 1000
+rule 2 fingerprint X'0123456789ABCDEF0123456789ABCDEF'
 
-rule 1 fingerprint X'0123456789ABCDEF0123456789ABCDEF' user joe
-
-rule 3 user david
 rule 3 action high_prio
-rule 3 adjustment 100
+rule 3 adjustment 1000
+rule 3 fingerprint X'0123456789ABCDEF0123456789ABCDEF'
 
-rule 4 user matthew
-rule 4 action low_prio
-rule 4 adjustment 100
+rule 4 action none
+rule 4 fingerprint X'0123456789ABCDEF0123456789ABCDEF'
