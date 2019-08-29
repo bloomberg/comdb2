@@ -13,3 +13,11 @@ rule 2 originHost testHost1 originTask testTask1
 rule 2 user joe
 
 rule 1 fingerprint X'0123456789ABCDEF0123456789ABCDEF' user joe
+
+rule 3 user david
+rule 3 action high_prio
+rule 3 adjustment 100
+
+rule 4 user matthew
+rule 4 action low_prio
+rule 4 adjustment 100
