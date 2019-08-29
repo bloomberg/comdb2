@@ -457,6 +457,7 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
 
 int comdb2SqlDryrunSchemaChange(OpFunc *f)
 {
+    struct sqlclntstate *clnt = get_sql_clnt();
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
 
     FILE *fl = tmpfile();
