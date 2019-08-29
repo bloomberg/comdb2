@@ -188,10 +188,13 @@ static void comdb2_ruleset_flags_to_str(
   }
   int nRet;
   if( nBuf>0 && flags&RULESET_F_STOP ){
-    nRet = snprintf(zBuf, nBuf, " STOP");
+    nRet = snprintf(zBuf, nBuf, "STOP ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
-  /* more flags here... */
+  int nLen = strlen(zBuf);
+  if( nLen>0 && zBuf[nLen-1]==' ' ){
+    zBuf[nLen-1] = '\0';
+  }
 }
 
 static void comdb2_ruleset_str_to_match_mode(
@@ -238,20 +241,24 @@ static void comdb2_ruleset_match_mode_to_str(
   }
   int nRet;
   if( nBuf>0 && mode&RULESET_MM_EXACT ){
-    nRet = snprintf(zBuf, nBuf, " EXACT");
+    nRet = snprintf(zBuf, nBuf, "EXACT ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_GLOB ){
-    nRet = snprintf(zBuf, nBuf, " GLOB");
+    nRet = snprintf(zBuf, nBuf, "GLOB ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_REGEXP ){
-    nRet = snprintf(zBuf, nBuf, " REGEXP");
+    nRet = snprintf(zBuf, nBuf, "REGEXP ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
   }
   if( nBuf>0 && mode&RULESET_MM_NOCASE ){
-    nRet = snprintf(zBuf, nBuf, " NOCASE");
+    nRet = snprintf(zBuf, nBuf, "NOCASE ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
+  int nLen = strlen(zBuf);
+  if( nLen>0 && zBuf[nLen-1]==' ' ){
+    zBuf[nLen-1] = '\0';
   }
 }
 
@@ -429,12 +436,9 @@ size_t comdb2_ruleset_result_to_str(
   char *zBuf,
   size_t nBuf
 ){
-  char zActBuf[32] = {0};
-  char zPriBuf[32] = {0};
-
   return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s",
-      comdb2_ruleset_action_to_str(result->action, zActBuf, sizeof(zActBuf), 1),
-      comdb2_priority_to_str(result->priority, zPriBuf, sizeof(zPriBuf), 1)
+      comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
+      comdb2_priority_to_str(result->priority, NULL, 0, 1)
   );
 }
 
@@ -466,7 +470,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
            "%s: rules for ruleset %p are missing!\n", __func__, rules);
     return;
   }
-  char zAction[20];
+  char *zAction;
   char zFlags[100];
   char zMode[100];
   char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
@@ -474,12 +478,11 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   for(int i=0; i<rules->nRule; i++){
     struct ruleset_item *pRule = &rules->aRule[i];
 
-    memset(zAction, 0, sizeof(zAction));
     memset(zFlags, 0, sizeof(zFlags));
     memset(zMode, 0, sizeof(zMode));
     memset(zFingerprint, 0, sizeof(zFingerprint));
 
-    comdb2_ruleset_action_to_str(pRule->action, zAction, sizeof(zAction), 1);
+    zAction = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
     comdb2_ruleset_flags_to_str(pRule->flags, zFlags, sizeof(zFlags));
     comdb2_ruleset_match_mode_to_str(pRule->mode, zMode, sizeof(zMode));
 
@@ -488,7 +491,8 @@ void comdb2_dump_ruleset(struct ruleset *rules){
            "adjustment %lld, flags {%s} (0x%llX), mode {%s} (0x%llX), "
            "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
            "fingerprint {%s}\n", __func__, rules, (int)(i+1),
-           zAction, (unsigned long long int)pRule->action,
+           zAction ? zAction : "<null>",
+           (unsigned long long int)pRule->action,
            pRule->adjustment,
            zFlags, (unsigned long long int)pRule->flags,
            zMode, (unsigned long long int)pRule->mode,
