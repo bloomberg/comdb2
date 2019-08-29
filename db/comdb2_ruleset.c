@@ -112,6 +112,13 @@ static xStrCmp comdb2_get_xstrcmp_for_mode(
   return NULL;
 }
 
+static xMemCmp comdb2_get_xmemcmp_for_mode(
+  ruleset_match_mode_t mode
+){
+  if( mode==RULESET_MM_EXACT ) return memcmp;
+  return NULL;
+}
+
 static void comdb2_ruleset_str_to_action(
   enum ruleset_action *pAction,
   char *zBuf
@@ -167,6 +174,7 @@ static void comdb2_ruleset_str_to_flags(
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      flags |= RULESET_F_NONE;
       count++;
     }else if( sqlite3_stricmp(zTok, "STOP")==0 ){
       flags |= RULESET_F_STOP;
@@ -212,6 +220,7 @@ static void comdb2_ruleset_str_to_match_mode(
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      mode |= RULESET_MM_NONE;
       count++;
     }else if( sqlite3_stricmp(zTok, "EXACT")==0 ){
       mode |= RULESET_MM_EXACT;
@@ -313,6 +322,10 @@ static priority_t comdb2_adjust_priority(
   priority_t priority,
   priority_t adjustment
 ){
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
   if( action==RULESET_A_HIGH_PRIO ){
     adjustment = -adjustment;
   }
@@ -370,6 +383,9 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     if( rule->zSql!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
+  }
+  if( memoryComparer==NULL ){
+    memoryComparer = comdb2_get_xmemcmp_for_mode(rule->mode);
   }
   if( memoryComparer!=NULL ){
     if( rule->pFingerprint!=NULL && memoryComparer(
