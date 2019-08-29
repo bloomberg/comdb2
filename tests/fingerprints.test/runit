@@ -5,7 +5,6 @@ set -x
 dbname=$1
 
 echo "Starting tests"
-echo "Using SP_HOST: $SP_HOST"
 echo "Using SP_OPTIONS: $SP_OPTIONS"
 ./test.sh $dbname
 rc=$?
