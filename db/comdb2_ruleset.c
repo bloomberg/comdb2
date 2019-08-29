@@ -575,7 +575,7 @@ int comdb2_load_ruleset(
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
     if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
     if( zBuf[0]=='#' ) continue; /* comment line */
-    if( rules!=NULL ){
+    if( rules->aRule!=NULL ){
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zLine, sizeof(zLine),
