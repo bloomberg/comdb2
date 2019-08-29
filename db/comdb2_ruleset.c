@@ -589,7 +589,7 @@ int comdb2_load_ruleset(
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
     if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
     if( zBuf[0]=='#' ) continue; /* comment line */
-    if( rules->aRule!=NULL ){
+    if( version!=0 ){
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zError, sizeof(zError),
@@ -815,7 +815,7 @@ int comdb2_load_ruleset(
       zTok = strtok(zBuf, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zError, sizeof(zError),
-                 "%s:%d, expected count-of-rules",
+                 "%s:%d, expected version-of-rules",
                  zFileName, lineNo);
         goto failure;
       }
