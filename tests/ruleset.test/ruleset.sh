@@ -5,12 +5,14 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')"
 
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('load_ruleset t1.ruleset')"
 
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
@@ -25,6 +27,7 @@ fi
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('evaluate_ruleset')"
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
 
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 3;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"

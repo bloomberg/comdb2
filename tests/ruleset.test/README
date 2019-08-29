@@ -1,3 +1,12 @@
 This test attempts to execute SQL queries that may match against various loaded
 rulesets.  If a ruleset is matched, a SQL query may be rejected and/or have its
 priority changed.
+
+-------------------------------- SPECIAL NOTES --------------------------------
+
+The "t01.ruleset" ruleset file uses the following fingerprints:
+
+    4f16a8ec9db90f803e406659938b2602: "SELECT?;" (NONE)
+    fb34995274c6a68a94ae4b9fcfd2d535: "SELECT x FROM t1 ORDER BY x;" (HIGH_PRIO)
+    025d05c1652fddfdc0c20a065d0d6615: "SELECT x FROM t1;" (LOW_PRIO)
+    a9c8b6ddb5b9e55ee41b7f5a46ec4e45: "SELECT*FROM t1;" (REJECT)
