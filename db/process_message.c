@@ -1368,6 +1368,10 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "free_ruleset") == 0) {
+        comdb2_free_ruleset(gbl_ruleset);
+        gbl_ruleset = NULL;
+    }
     else if (tokcmp(tok, ltok, "dump_ruleset") == 0) {
         comdb2_dump_ruleset(gbl_ruleset);
     }
