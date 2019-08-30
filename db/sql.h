@@ -105,8 +105,6 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
-
-    struct ruleset rules;
 };
 
 typedef struct osqltimings {

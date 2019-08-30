@@ -167,6 +167,7 @@ extern int gbl_print_syntax_err;
 extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
 extern int gbl_disable_sql_dlmalloc;
+extern struct ruleset *gbl_ruleset;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
@@ -4784,7 +4785,7 @@ static int can_execute_sql_query_now(
   struct ruleset_result result = {0};
   result.priority = clnt->priority;
   size_t count = comdb2_evaluate_ruleset(
-    NULL, memcmp, &thd->rules, clnt, &result
+    NULL, memcmp, gbl_ruleset, clnt, &result
   );
   char zRuleRes[100] = {0};
   comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
