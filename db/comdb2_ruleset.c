@@ -486,7 +486,7 @@ size_t comdb2_evaluate_ruleset(
   if( rules!=NULL ){
     for(int i=0; i<rules->nRule; i++){
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
-        stringComparer, memoryComparer, i rules, &rules->aRule[i],
+        stringComparer, memoryComparer, i, rules, &rules->aRule[i],
         clnt, result
       );
       if( match==RULESET_M_STOP ){ count++; break; }
@@ -544,26 +544,26 @@ void comdb2_free_ruleset(struct ruleset *rules){
   if( rules!=NULL ){
     if( rules->aRule!=NULL ){
       for(int i=0; i<rules->nRule; i++){
-        struct ruleset_item *pRule = &rules->aRule[i];
-        if( pRule->zOriginHost!=NULL ){
-          free(pRule->zOriginHost);
-          pRule->zOriginHost = NULL;
+        struct ruleset_item *rule = &rules->aRule[i];
+        if( rule->zOriginHost!=NULL ){
+          free(rule->zOriginHost);
+          rule->zOriginHost = NULL;
         }
-        if( pRule->zOriginTask!=NULL ){
-          free(pRule->zOriginTask);
-          pRule->zOriginTask = NULL;
+        if( rule->zOriginTask!=NULL ){
+          free(rule->zOriginTask);
+          rule->zOriginTask = NULL;
         }
-        if( pRule->zUser!=NULL ){
-          free(pRule->zUser);
-          pRule->zUser = NULL;
+        if( rule->zUser!=NULL ){
+          free(rule->zUser);
+          rule->zUser = NULL;
         }
-        if( pRule->zSql!=NULL ){
-          free(pRule->zSql);
-          pRule->zSql = NULL;
+        if( rule->zSql!=NULL ){
+          free(rule->zSql);
+          rule->zSql = NULL;
         }
-        if( pRule->pFingerprint!=NULL ){
-          free(pRule->pFingerprint);
-          pRule->pFingerprint = NULL;
+        if( rule->pFingerprint!=NULL ){
+          free(rule->pFingerprint);
+          rule->pFingerprint = NULL;
         }
       }
       free(rules->aRule);
@@ -671,7 +671,7 @@ int comdb2_load_ruleset(
         rules->nRule = ruleNo;
       }
       ruleNo--;
-      struct ruleset_item *pRule = &rules->aRule[ruleNo];
+      struct ruleset_item *rule = &rules->aRule[ruleNo];
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         zField = "action";
@@ -683,8 +683,8 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_action(&pRule->action, zTok);
-          if( pRule->action==RULESET_A_INVALID ){
+          comdb2_ruleset_str_to_action(&rule->action, zTok);
+          if( rule->action==RULESET_A_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s field value '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -702,7 +702,7 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( sqlite3Atoi64(zTok, &pRule->adjustment, strlen(zTok),
+          if( sqlite3Atoi64(zTok, &rule->adjustment, strlen(zTok),
                             SQLITE_UTF8)!=0 ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s', not an integer",
@@ -721,8 +721,8 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_flags(&pRule->flags, zTok);
-          if( pRule->flags==RULESET_F_INVALID ){
+          comdb2_ruleset_str_to_flags(&rule->flags, zTok);
+          if( rule->flags==RULESET_F_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -740,8 +740,8 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_match_mode(&pRule->mode, zTok);
-          if( pRule->mode==RULESET_MM_INVALID ){
+          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok);
+          if( rule->mode==RULESET_MM_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -759,12 +759,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( pRule->zOriginHost ){
-            free(pRule->zOriginHost);
-            pRule->zOriginHost = NULL;
+          if( rule->zOriginHost ){
+            free(rule->zOriginHost);
+            rule->zOriginHost = NULL;
           }
-          pRule->zOriginHost = strdup(zTok);
-          if( pRule->zOriginHost==NULL ){
+          rule->zOriginHost = strdup(zTok);
+          if( rule->zOriginHost==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -782,12 +782,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( pRule->zOriginTask ){
-            free(pRule->zOriginTask);
-            pRule->zOriginTask = NULL;
+          if( rule->zOriginTask ){
+            free(rule->zOriginTask);
+            rule->zOriginTask = NULL;
           }
-          pRule->zOriginTask = strdup(zTok);
-          if( pRule->zOriginTask==NULL ){
+          rule->zOriginTask = strdup(zTok);
+          if( rule->zOriginTask==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -805,12 +805,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( pRule->zUser ){
-            free(pRule->zUser);
-            pRule->zUser = NULL;
+          if( rule->zUser ){
+            free(rule->zUser);
+            rule->zUser = NULL;
           }
-          pRule->zUser = strdup(zTok);
-          if( pRule->zUser==NULL ){
+          rule->zUser = strdup(zTok);
+          if( rule->zUser==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -828,12 +828,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( pRule->zSql ){
-            free(pRule->zSql);
-            pRule->zUser = NULL;
+          if( rule->zSql ){
+            free(rule->zSql);
+            rule->zUser = NULL;
           }
-          pRule->zSql = strdup(zTok);
-          if( pRule->zSql==NULL ){
+          rule->zSql = strdup(zTok);
+          if( rule->zSql==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -851,18 +851,18 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( pRule->pFingerprint ){
-            free(pRule->pFingerprint);
-            pRule->pFingerprint = NULL;
+          if( rule->pFingerprint ){
+            free(rule->pFingerprint);
+            rule->pFingerprint = NULL;
           }
-          pRule->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
-          if( pRule->pFingerprint==NULL ){
+          rule->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
+          if( rule->pFingerprint==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate %s value",
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( blob_string_to_fingerprint(zTok, pRule->pFingerprint) ){
+          if( blob_string_to_fingerprint(zTok, rule->pFingerprint) ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not parse %s value from '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -959,55 +959,55 @@ int comdb2_save_ruleset(
   }
   sbuf2printf(sb, "version %d\n\n", 1);
   for(int i=0; i<rules->nRule; i++){
-    struct ruleset_item *pRule = &rules->aRule[i];
+    struct ruleset_item *rule = &rules->aRule[i];
     int ruleNo = i+1;
     int mayNeedLf = 1;
-    if( pRule->action!=RULESET_A_INVALID ){
-      zStr = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
+    if( rule->action!=RULESET_A_INVALID ){
+      zStr = comdb2_ruleset_action_to_str(rule->action, NULL, 0, 1);
       if( zStr!=NULL ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
         sbuf2printf(sb, "rule #%d action %s\n", ruleNo, zStr);
       }
     }
-    if( pRule->adjustment!=0 ){
+    if( rule->adjustment!=0 ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d adjustment %lld\n", ruleNo, pRule->adjustment);
+      sbuf2printf(sb, "rule #%d adjustment %lld\n", ruleNo, rule->adjustment);
     }
-    if( pRule->flags!=RULESET_F_NONE ){
+    if( rule->flags!=RULESET_F_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
-      comdb2_ruleset_flags_to_str(pRule->flags, zBuf, sizeof(zBuf));
+      comdb2_ruleset_flags_to_str(rule->flags, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
         sbuf2printf(sb, "rule #%d flags {%s}\n", ruleNo, zBuf);
       }
     }
-    if( pRule->mode!=RULESET_MM_NONE ){
+    if( rule->mode!=RULESET_MM_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
-      comdb2_ruleset_match_mode_to_str(pRule->mode, zBuf, sizeof(zBuf));
+      comdb2_ruleset_match_mode_to_str(rule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
         sbuf2printf(sb, "rule #%d mode {%s}\n", ruleNo, zBuf);
       }
     }
-    if( pRule->zOriginHost!=NULL ){
+    if( rule->zOriginHost!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d originHost %s\n", ruleNo, pRule->zOriginHost);
+      sbuf2printf(sb, "rule #%d originHost %s\n", ruleNo, rule->zOriginHost);
     }
-    if( pRule->zOriginTask!=NULL ){
+    if( rule->zOriginTask!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d originTask %s\n", ruleNo, pRule->zOriginTask);
+      sbuf2printf(sb, "rule #%d originTask %s\n", ruleNo, rule->zOriginTask);
     }
-    if( pRule->zUser!=NULL ){
+    if( rule->zUser!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d user %s\n", ruleNo, pRule->zUser);
+      sbuf2printf(sb, "rule #%d user %s\n", ruleNo, rule->zUser);
     }
-    if( pRule->zSql!=NULL ){
+    if( rule->zSql!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d sql %s\n", ruleNo, pRule->zSql);
+      sbuf2printf(sb, "rule #%d sql %s\n", ruleNo, rule->zSql);
     }
-    if( pRule->pFingerprint!=NULL ){
+    if( rule->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
-      util_tohex(zBuf, (char *)pRule->pFingerprint, FPSZ);
+      util_tohex(zBuf, (char *)rule->pFingerprint, FPSZ);
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(sb, "rule #%d fingerprint X'%s'\n", ruleNo, zBuf);
     }
