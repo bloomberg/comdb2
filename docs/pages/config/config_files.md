@@ -33,7 +33,7 @@ for this file in one of these locations, in this order:
 
 Lines beginning with '#' are treated as comments and skipped.  Other lines should consist of a directive and its value.
 
-## Database tunables.
+## Database tunables
 
 ### Cache size
 
@@ -904,3 +904,79 @@ These options are toggle-able at runtime.
 |disable_datetime_ms_us_sc | |
 |default_datetime_precision | |
 -->
+
+### Compatibility
+In order to allow seamless migration between older and newer Comdb2 versions,
+some tunables are introduced to disable incompatible features introduced in
+newer versions.
+
+* `legacy_tunables` (introduced in `7.0`)
+This tunable disables all new features/behaviours that, if used, would have
+prevented downgrading to older versions. It implicitly enables following
+configurations:
+
+```
+    allow_negative_column_size
+    berkattr elect_highest_committed_gen 0
+    clean_exit_on_sigterm off
+    create_default_user
+    ddl_cascade_drop 0
+    decoupled_logputs off
+    disable_inplace_blob_optimization
+    disable_inplace_blobs
+    disable_osql_blob_optimization
+    disable_tpsc_tblvers
+    disallow write from beta if prod
+    dont_forbid_ulonglong
+    dont_init_with_inplace_updates
+    dont_init_with_instant_schema_change
+    dont_init_with_ondisk_header
+    dont_prefix_foreign_keys
+    dont_sort_nulls_with_header
+    dont_superset_foreign_keys
+    enable_sql_stmt_caching none
+    enable_tagged_api
+    env_messages
+    init_with_time_based_genids
+    legacy_schema on
+    logmsg level info
+    logmsg notimestamp
+    logput window 1
+    noblobstripe
+    nochecksums
+    nocrc32c
+    nokeycompr
+    no_null_blob_fix
+    norcache
+    no_static_tag_blob_fix
+    nullfkey off
+    nullsort high
+    off fix_cstr
+    off osql_odh_blob
+    off return_long_column_names
+    on accept_on_child_nets
+    on disable_etc_services_lookup
+    online_recovery off
+    osql_check_replicant_numops off
+    osql_send_startgen off
+    queuedb_genid_filename off
+    reorder_socksql_no_deadlock off
+    setattr DIRECTIO 0
+    setattr ENABLE_SEQNUM_GENERATIONS 0
+    setattr MASTER_LEASE 0
+    setattr NET_SEND_GBLCONTEXT 1
+    setattr SC_DONE_SAME_TRAN 0
+    unnatural_types 1
+    usenames
+```
+
+* `legacy_schema` (introduced in `7.0`)
+Turning it off would enable support for newer (backwards incompatible) CSC2
+constructs introduced in `7.0`. The features include: uniqnulls (UNIQUE/PRIMARY
+KEY in DDL), partial index, index on expression and non-null default value for
+datetime fields. This list could grow in future.
+
+* `noenv_messages` (introduced in `7.0`)
+Turing it `on` would enable support for upsert and partial index, both
+introduced in `7.0`.
+
