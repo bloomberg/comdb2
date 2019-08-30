@@ -343,9 +343,51 @@ static void comdb2_adjust_result_priority(
   );
 }
 
+static void comdb2_dump_ruleset_item(
+  loglvl level,
+  char *zMessage,
+  int ruleNo,
+  struct ruleset *rules,
+  struct ruleset_item *rule
+){
+  const char *zAction;
+  char zFlags[100]; /* TODO: When there are more flags, increase this. */
+  char zMode[100];  /* TODO: When there are more modes, increase this. */
+  char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
+
+  memset(zFlags, 0, sizeof(zFlags));
+  memset(zMode, 0, sizeof(zMode));
+  memset(zFingerprint, 0, sizeof(zFingerprint));
+
+  zAction = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
+  comdb2_ruleset_flags_to_str(pRule->flags, zFlags, sizeof(zFlags));
+  comdb2_ruleset_match_mode_to_str(pRule->mode, zMode, sizeof(zMode));
+
+  if( pRule->pFingerprint!=NULL ){
+    util_tohex(zFingerprint, (char *)pRule->pFingerprint, FPSZ);
+  }else{
+    snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
+  }
+
+  logmsg(level, "%s: ruleset %p rule #%d %s, action {%s} (0x%llX), "
+         "adjustment %lld, flags {%s} (0x%llX), mode {%s} (0x%llX), "
+         "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
+         "fingerprint {%s}\n", __func__, rules, ruleNo,
+         zMessage ? zMessage : "<null>", zAction ? zAction : "<null>",
+         (unsigned long long int)pRule->action, pRule->adjustment,
+         zFlags, (unsigned long long int)pRule->flags,
+         zMode, (unsigned long long int)pRule->mode,
+         pRule->zOriginHost ? pRule->zOriginHost : "<null>",
+         pRule->zOriginTask ? pRule->zOriginTask : "<null>",
+         pRule->zUser ? pRule->zUser : "<null>",
+         pRule->zSql ? pRule->zSql : "<null>", zFingerprint);
+}
+
 static ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
+  int ruleNo,
+  struct ruleset *rules,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
   struct ruleset_result *result
@@ -429,6 +471,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
+  comdb2_dump_ruleset_item(LOGMSG_DEBUG, "MATCHED", ruleNo, rules, rule);
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
@@ -443,7 +486,7 @@ size_t comdb2_evaluate_ruleset(
   if( rules!=NULL ){
     for(int i=0; i<rules->nRule; i++){
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
-        stringComparer, memoryComparer, &rules->aRule[i],
+        stringComparer, memoryComparer, i rules, &rules->aRule[i],
         clnt, result
       );
       if( match==RULESET_M_STOP ){ count++; break; }
@@ -492,39 +535,8 @@ void comdb2_dump_ruleset(struct ruleset *rules){
            "%s: rules for ruleset %p are missing!\n", __func__, rules);
     return;
   }
-  const char *zAction;
-  char zFlags[100];
-  char zMode[100];
-  char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
-
   for(int i=0; i<rules->nRule; i++){
-    struct ruleset_item *pRule = &rules->aRule[i];
-
-    memset(zFlags, 0, sizeof(zFlags));
-    memset(zMode, 0, sizeof(zMode));
-    memset(zFingerprint, 0, sizeof(zFingerprint));
-
-    zAction = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
-    comdb2_ruleset_flags_to_str(pRule->flags, zFlags, sizeof(zFlags));
-    comdb2_ruleset_match_mode_to_str(pRule->mode, zMode, sizeof(zMode));
-
-    logmsg(LOGMSG_USER,
-           "%s: ruleset %p rule #%d, action {%s} (0x%llX), "
-           "adjustment %lld, flags {%s} (0x%llX), mode {%s} (0x%llX), "
-           "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
-           "fingerprint {%s}\n", __func__, rules, (int)(i+1),
-           zAction ? zAction : "<null>",
-           (unsigned long long int)pRule->action,
-           pRule->adjustment,
-           zFlags, (unsigned long long int)pRule->flags,
-           zMode, (unsigned long long int)pRule->mode,
-           pRule->zOriginHost ? pRule->zOriginHost : "<null>",
-           pRule->zOriginTask ? pRule->zOriginTask : "<null>",
-           pRule->zUser ? pRule->zUser : "<null>",
-           pRule->zSql ? pRule->zSql : "<null>",
-           pRule->pFingerprint ?
-               util_tohex(zFingerprint, (char *)pRule->pFingerprint, FPSZ) :
-               "<null>");
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, i, rules, &rules->aRule[i]);
   }
 }
 
@@ -860,7 +872,7 @@ int comdb2_load_ruleset(
           continue;
         }
         snprintf(zError, sizeof(zError),
-                 "%s:%d, unknown field '%s' for rule %lld",
+                 "%s:%d, unknown field '%s' for rule #%lld",
                  zFileName, lineNo, zTok, ruleNo);
         goto failure;
       }
@@ -954,19 +966,19 @@ int comdb2_save_ruleset(
       zStr = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
       if( zStr!=NULL ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d action %s\n", ruleNo, zStr);
+        sbuf2printf(sb, "rule #%d action %s\n", ruleNo, zStr);
       }
     }
     if( pRule->adjustment!=0 ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d adjustment %lld\n", ruleNo, pRule->adjustment);
+      sbuf2printf(sb, "rule #%d adjustment %lld\n", ruleNo, pRule->adjustment);
     }
     if( pRule->flags!=RULESET_F_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_flags_to_str(pRule->flags, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
+        sbuf2printf(sb, "rule #%d flags {%s}\n", ruleNo, zBuf);
       }
     }
     if( pRule->mode!=RULESET_MM_NONE ){
@@ -974,30 +986,30 @@ int comdb2_save_ruleset(
       comdb2_ruleset_match_mode_to_str(pRule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule %d mode {%s}\n", ruleNo, zBuf);
+        sbuf2printf(sb, "rule #%d mode {%s}\n", ruleNo, zBuf);
       }
     }
     if( pRule->zOriginHost!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d originHost %s\n", ruleNo, pRule->zOriginHost);
+      sbuf2printf(sb, "rule #%d originHost %s\n", ruleNo, pRule->zOriginHost);
     }
     if( pRule->zOriginTask!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d originTask %s\n", ruleNo, pRule->zOriginTask);
+      sbuf2printf(sb, "rule #%d originTask %s\n", ruleNo, pRule->zOriginTask);
     }
     if( pRule->zUser!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d user %s\n", ruleNo, pRule->zUser);
+      sbuf2printf(sb, "rule #%d user %s\n", ruleNo, pRule->zUser);
     }
     if( pRule->zSql!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d sql %s\n", ruleNo, pRule->zSql);
+      sbuf2printf(sb, "rule #%d sql %s\n", ruleNo, pRule->zSql);
     }
     if( pRule->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
       util_tohex(zBuf, (char *)pRule->pFingerprint, FPSZ);
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
+      sbuf2printf(sb, "rule #%d fingerprint X'%s'\n", ruleNo, zBuf);
     }
   }
   rc = 0;
