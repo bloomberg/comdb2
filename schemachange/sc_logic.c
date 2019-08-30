@@ -201,7 +201,7 @@ static void free_sc(struct schema_change_type *s)
 
     /* Bail out if we're in a time partition rollout otherwise
        we may deadlock with a regular schema change. The time partition
-       rollout will invoke this function again without holding views_lk. */
+       rollout will invoke csc2_free_all() without holding views_lk. */
     if (s->views_locked)
         return;
 
@@ -376,9 +376,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         goto end;
     broadcast_sc_start(s->tablename, iq->sc_seed, iq->sc_host,
                        time(NULL));                   // dont care rcode
-
     rc = pre(iq, s, NULL);                            // non-tran ??
-
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
         errstat_set_strf(
