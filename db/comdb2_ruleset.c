@@ -486,7 +486,7 @@ size_t comdb2_evaluate_ruleset(
   if( rules!=NULL ){
     for(int i=0; i<rules->nRule; i++){
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
-        stringComparer, memoryComparer, i, rules, &rules->aRule[i],
+        stringComparer, memoryComparer, i+1, rules, &rules->aRule[i],
         clnt, result
       );
       if( match==RULESET_M_STOP ){ count++; break; }
@@ -536,7 +536,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
     return;
   }
   for(int i=0; i<rules->nRule; i++){
-    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, i, rules, &rules->aRule[i]);
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, i+1, rules, &rules->aRule[i]);
   }
 }
 
