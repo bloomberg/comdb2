@@ -954,6 +954,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             item = &thd->work;
             pool->num_passed++;
         } else {
+#ifndef NDEBUG
+            /* TODO: Carefully evaluate this code for non-debug builds. */
             /* if there are no active threads (i.e. we did not start one?),
              * there is not much point in queueing an event that may never
              * be processed? */
@@ -962,8 +964,10 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                        __func__, pool->name);
                 return -1;
             }
+#endif
             /* queue work */
-            if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
+            if ((pool->maxqueue > 0) &&
+                priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
                      (enqueue_front || !pool->maxqueueoverride ||
