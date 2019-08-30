@@ -1,4 +1,3 @@
-find_package(TCL REQUIRED)
 find_package(TclStub REQUIRED)
 
 add_library(tclcdb2 SHARED tclcdb2.c)
