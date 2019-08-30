@@ -359,12 +359,12 @@ static void comdb2_dump_ruleset_item(
   memset(zMode, 0, sizeof(zMode));
   memset(zFingerprint, 0, sizeof(zFingerprint));
 
-  zAction = comdb2_ruleset_action_to_str(pRule->action, NULL, 0, 1);
-  comdb2_ruleset_flags_to_str(pRule->flags, zFlags, sizeof(zFlags));
-  comdb2_ruleset_match_mode_to_str(pRule->mode, zMode, sizeof(zMode));
+  zAction = comdb2_ruleset_action_to_str(rule->action, NULL, 0, 1);
+  comdb2_ruleset_flags_to_str(rule->flags, zFlags, sizeof(zFlags));
+  comdb2_ruleset_match_mode_to_str(rule->mode, zMode, sizeof(zMode));
 
-  if( pRule->pFingerprint!=NULL ){
-    util_tohex(zFingerprint, (char *)pRule->pFingerprint, FPSZ);
+  if( rule->pFingerprint!=NULL ){
+    util_tohex(zFingerprint, (char *)rule->pFingerprint, FPSZ);
   }else{
     snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
   }
@@ -374,13 +374,13 @@ static void comdb2_dump_ruleset_item(
          "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
          "fingerprint {%s}\n", __func__, rules, ruleNo,
          zMessage ? zMessage : "<null>", zAction ? zAction : "<null>",
-         (unsigned long long int)pRule->action, pRule->adjustment,
-         zFlags, (unsigned long long int)pRule->flags,
-         zMode, (unsigned long long int)pRule->mode,
-         pRule->zOriginHost ? pRule->zOriginHost : "<null>",
-         pRule->zOriginTask ? pRule->zOriginTask : "<null>",
-         pRule->zUser ? pRule->zUser : "<null>",
-         pRule->zSql ? pRule->zSql : "<null>", zFingerprint);
+         (unsigned long long int)rule->action, rule->adjustment,
+         zFlags, (unsigned long long int)rule->flags,
+         zMode, (unsigned long long int)rule->mode,
+         rule->zOriginHost ? rule->zOriginHost : "<null>",
+         rule->zOriginTask ? rule->zOriginTask : "<null>",
+         rule->zUser ? rule->zUser : "<null>",
+         rule->zSql ? rule->zSql : "<null>", zFingerprint);
 }
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
