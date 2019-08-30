@@ -394,7 +394,7 @@ set all_graphs {
   drop {
     line DROP {or
       {line TABLE {opt IF EXISTS} /table-name}
-      {line PROCEDURE /procedure-name {opt VERSION} {or /string-literal /numeric-literal}}
+      {line PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
       {line LUA {or
         {line {or TRIGGER CONSUMER} /procedure-name}
         {line {or SCALAR AGGREGATE} FUNCTION /procedure-name}}}
