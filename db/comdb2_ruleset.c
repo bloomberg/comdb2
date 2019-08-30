@@ -966,19 +966,19 @@ int comdb2_save_ruleset(
       zStr = comdb2_ruleset_action_to_str(rule->action, NULL, 0, 1);
       if( zStr!=NULL ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule #%d action %s\n", ruleNo, zStr);
+        sbuf2printf(sb, "rule %d action %s\n", ruleNo, zStr);
       }
     }
     if( rule->adjustment!=0 ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d adjustment %lld\n", ruleNo, rule->adjustment);
+      sbuf2printf(sb, "rule %d adjustment %lld\n", ruleNo, rule->adjustment);
     }
     if( rule->flags!=RULESET_F_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_flags_to_str(rule->flags, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule #%d flags {%s}\n", ruleNo, zBuf);
+        sbuf2printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
       }
     }
     if( rule->mode!=RULESET_MM_NONE ){
@@ -986,30 +986,30 @@ int comdb2_save_ruleset(
       comdb2_ruleset_match_mode_to_str(rule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-        sbuf2printf(sb, "rule #%d mode {%s}\n", ruleNo, zBuf);
+        sbuf2printf(sb, "rule %d mode {%s}\n", ruleNo, zBuf);
       }
     }
     if( rule->zOriginHost!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d originHost %s\n", ruleNo, rule->zOriginHost);
+      sbuf2printf(sb, "rule %d originHost %s\n", ruleNo, rule->zOriginHost);
     }
     if( rule->zOriginTask!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d originTask %s\n", ruleNo, rule->zOriginTask);
+      sbuf2printf(sb, "rule %d originTask %s\n", ruleNo, rule->zOriginTask);
     }
     if( rule->zUser!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d user %s\n", ruleNo, rule->zUser);
+      sbuf2printf(sb, "rule %d user %s\n", ruleNo, rule->zUser);
     }
     if( rule->zSql!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d sql %s\n", ruleNo, rule->zSql);
+      sbuf2printf(sb, "rule %d sql %s\n", ruleNo, rule->zSql);
     }
     if( rule->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
       util_tohex(zBuf, (char *)rule->pFingerprint, FPSZ);
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule #%d fingerprint X'%s'\n", ruleNo, zBuf);
+      sbuf2printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
     }
   }
   rc = 0;
