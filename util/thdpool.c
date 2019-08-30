@@ -99,6 +99,7 @@ struct thdpool {
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
+    unsigned nactthd;   /* current number of active threads */
     unsigned nwaitthd;  /* current number of wait/consumer threads */
     unsigned peaknthd;  /* maximum num threads ever */
     unsigned maxqueue;  /* maximum work items to queue */
@@ -411,8 +412,8 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
                 pool->num_failed_dispatches);
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
         logmsgf(LOGMSG_USER, fh, "  Maximum num threads       : %u\n", pool->maxnthd);
-        logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n",
-                pool->nwaitthd);
+        logmsgf(LOGMSG_USER, fh, "  Num active threads        : %u\n", pool->nactthd);
+        logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n", pool->nwaitthd);
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue current size   : %u\n",
@@ -654,9 +655,12 @@ static inline void free_work_persistent_info(struct thd *thd,
 
 static void *thdpool_thd(void *voidarg)
 {
-    int check_exit = 0;
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
+
+    ATOMIC_ADD32(pool->nactthd, 1);
+
+    int check_exit = 0;
     void *thddata = NULL;
 
     thdpool_thdinit_fn init_fn;
@@ -809,6 +813,7 @@ thread_exit:
 
     free(thd);
 
+    ATOMIC_ADD32(pool->nactthd, -1);
     return NULL;
 }
 
@@ -876,12 +881,16 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * until the lock is released, which gives us a window to assign the
      * work item to the new thread. */
     again:
-        thd = listc_rtl(&pool->freelist);
-        if (thd) {
-            assert(thd->on_freelist);
-            thd->on_freelist = 0;
+        if (queue_only) {
+            thd = NULL;
+        } else {
+            thd = listc_rtl(&pool->freelist);
+            if (thd) {
+                assert(thd->on_freelist);
+                thd->on_freelist = 0;
+            }
         }
-        if (!thd &&
+        if (!queue_only && !thd &&
             (force_dispatch || pool->maxnthd == 0 ||
              listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
@@ -940,16 +949,14 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         }
 
         if (thd) {
-            if (queue_only) {
-                listc_atl(&pool->freelist, thd);
-                thd->on_freelist = 1;
-                goto queue_work;
-            } else {
-                item = &thd->work;
-                pool->num_passed++;
-            }
+            item = &thd->work;
+            pool->num_passed++;
         } else {
-queue_work:
+            if (ATOMIC_LOAD32(pool->nactthd) == 0) {
+                logmsg(LOGMSG_ERROR, "%s(%s):cannot queue, no thread active\n",
+                       __func__, pool->name);
+                return -1;
+            }
             /* queue work */
             if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||

@@ -10,6 +10,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
+cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 1"
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/t01.ruleset')"
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;"
