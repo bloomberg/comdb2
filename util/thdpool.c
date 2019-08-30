@@ -660,6 +660,9 @@ static void *thdpool_thd(void *voidarg)
 
     ATOMIC_ADD32(pool->nactthd, 1);
 
+    logmsg(LOGMSG_DEBUG, "%s(%s): thread is now active\n",
+           __func__, pool->name);
+
     int check_exit = 0;
     void *thddata = NULL;
 
@@ -812,6 +815,9 @@ thread_exit:
     thread_memdestroy();
 
     free(thd);
+
+    logmsg(LOGMSG_DEBUG, "%s(%s): thread is now inactive\n",
+           __func__, pool->name);
 
     ATOMIC_ADD32(pool->nactthd, -1);
     return NULL;
