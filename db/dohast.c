@@ -90,7 +90,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         return NULL;
     }
 
-    if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
+    if (((*order_dir)[0] = lst->a[0].sortFlags) & KEYINFO_ORDER_DESC) {
         tmp = sqlite3_mprintf("%s DeSC", ret);
         sqlite3_free(ret);
         ret = tmp;
@@ -105,7 +105,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         }
         tmp = sqlite3_mprintf(
             "%s, %s%s", ret, newterm,
-            (((*order_dir)[i] = lst->a[i].sortOrder) != 0) ? " DeSC" : "");
+            (((*order_dir)[i] = lst->a[i].sortFlags) & KEYINFO_ORDER_DESC) ? " DeSC" : "");
         sqlite3_free(newterm);
         sqlite3_free(ret);
         ret = tmp;
