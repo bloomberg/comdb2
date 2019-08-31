@@ -5029,7 +5029,7 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            if (pListItem->sortFlags == KEYINFO_ORDER_DESC) {
+            if (pListItem->sortFlags & KEYINFO_ORDER_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -5556,7 +5556,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortFlags == KEYINFO_ORDER_DESC) {
+            if (pFromCol->a[i].sortFlags & KEYINFO_ORDER_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -5580,7 +5580,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortFlags == KEYINFO_ORDER_DESC) {
+        if (pToCol->a[i].sortFlags & KEYINFO_ORDER_DESC) {
             idx_part->flags |= INDEX_ORDER_DESC;
         }
         // idx_part->column = 0;

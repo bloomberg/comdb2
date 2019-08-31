@@ -859,11 +859,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        "Create a temp %s, and cursor [%d] to operate on it",
                        (op->p3 ? "index" : "table"), op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
+                if (info->aSortFlags[i] & KEYINFO_ORDER_DESC)
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
@@ -1115,11 +1115,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                             "[%d] to operate on it",
                        op->p2, op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
+                if (info->aSortFlags[i] & KEYINFO_ORDER_DESC)
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
