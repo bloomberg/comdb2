@@ -3666,7 +3666,9 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
                 pList->a[i].zName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
-                    pList->a[i].sortFlags = KEYINFO_ORDER_DESC;
+                    pList->a[i].sortFlags |= KEYINFO_ORDER_DESC;
+                } else {
+                    pList->a[i].sortFlags &= ~KEYINFO_ORDER_DESC;
                 }
 
                 i++;
