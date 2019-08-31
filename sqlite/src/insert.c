@@ -120,7 +120,11 @@ const char *sqlite3IndexAffinityStr(sqlite3 *db, Index *pIdx){
         aff = sqlite3ExprAffinity(pIdx->aColExpr->a[n].pExpr);
       }
       if( aff<SQLITE_AFF_BLOB ) aff = SQLITE_AFF_BLOB;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( aff>SQLITE_AFF_NUMERIC && aff!=SQLITE_AFF_DECIMAL && aff!=SQLITE_AFF_SMALL ){ aff = SQLITE_AFF_NUMERIC; }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( aff>SQLITE_AFF_NUMERIC) aff = SQLITE_AFF_NUMERIC;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pIdx->zColAff[n] = aff;
     }
     pIdx->zColAff[n] = 0;
