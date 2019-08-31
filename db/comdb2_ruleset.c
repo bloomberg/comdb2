@@ -348,7 +348,8 @@ static void comdb2_dump_ruleset_item(
   char *zMessage,
   int ruleNo,
   struct ruleset *rules,
-  struct ruleset_item *rule
+  struct ruleset_item *rule,
+  struct sqlclntstate *clnt
 ){
   const char *zAction;
   char zFlags[100]; /* TODO: When there are more flags, increase this. */
@@ -369,13 +370,13 @@ static void comdb2_dump_ruleset_item(
     snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
   }
 
-  logmsg(level, "%s: ruleset %p rule #%d %s, action {%s} (0x%llX), "
-         "adjustment %lld, flags {%s} (0x%llX), mode {%s} (0x%llX), "
-         "originHost {%s}, originTask {%s}, user {%s}, sql {%s}, "
-         "fingerprint {%s}\n", __func__, rules, ruleNo,
-         zMessage ? zMessage : "<null>", zAction ? zAction : "<null>",
-         (unsigned long long int)rule->action, rule->adjustment,
-         zFlags, (unsigned long long int)rule->flags,
+  logmsg(level, "%s: ruleset %p rule #%d %s seqNo %%llu, action "
+         "{%s} (0x%llX), adjustment %lld, flags {%s} (0x%llX), mode "
+         "{%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
+         "sql {%s}, fingerprint {%s}\n", __func__, rules, ruleNo, zMessage ?
+         zMessage : "<null>", (unsigned long long int)(clnt ? clnt->seqNo : 0),
+         zAction ? zAction : "<null>", (unsigned long long int)rule->action,
+         rule->adjustment, zFlags, (unsigned long long int)rule->flags,
          zMode, (unsigned long long int)rule->mode,
          rule->zOriginHost ? rule->zOriginHost : "<null>",
          rule->zOriginTask ? rule->zOriginTask : "<null>",
@@ -471,7 +472,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
-  comdb2_dump_ruleset_item(LOGMSG_DEBUG, "MATCHED", ruleNo, rules, rule);
+  comdb2_dump_ruleset_item(LOGMSG_DEBUG,"MATCHED",ruleNo,rules,rule,clnt);
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
@@ -536,7 +537,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
     return;
   }
   for(int i=0; i<rules->nRule; i++){
-    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, i+1, rules, &rules->aRule[i]);
+    comdb2_dump_ruleset_item(LOGMSG_USER,NULL,i+1,rules,&rules->aRule[i],NULL);
   }
 }
 
