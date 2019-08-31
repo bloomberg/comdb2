@@ -18,7 +18,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1;"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
-cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/t01_saved.ruleset')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/t01_saved.ruleset')" | sed 's/file ".*"/file "t01_saved.ruleset"/g' | sed 's/ruleset 0x[0-9A-Fa-f]+/0x00000000/g'
 
 if ! diff $DBDIR/t01.ruleset $DBDIR/t01_saved.ruleset ; then
   echo output is different from expected
