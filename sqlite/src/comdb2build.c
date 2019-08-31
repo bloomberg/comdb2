@@ -3666,9 +3666,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
                 pList->a[i].zName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
-                    pList->a[i].sortOrder = SQLITE_SO_DESC;
-                } else {
-                    pList->a[i].sortOrder = SQLITE_SO_ASC;
+                    pList->a[i].sortFlags = KEYINFO_ORDER_DESC;
                 }
 
                 i++;
@@ -5558,7 +5556,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortOrder == SQLITE_SO_DESC) {
+            if (pFromCol->a[i].sortFlags == KEYINFO_ORDER_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -5582,7 +5580,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortOrder == SQLITE_SO_DESC) {
+        if (pToCol->a[i].sortFlags == KEYINFO_ORDER_DESC) {
             idx_part->flags |= INDEX_ORDER_DESC;
         }
         // idx_part->column = 0;
