@@ -370,7 +370,7 @@ static void comdb2_dump_ruleset_item(
     snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
   }
 
-  logmsg(level, "%s: ruleset %p rule #%d %s seqNo %%llu, action "
+  logmsg(level, "%s: ruleset %p rule #%d %s seqNo %llu, action "
          "{%s} (0x%llX), adjustment %lld, flags {%s} (0x%llX), mode "
          "{%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
          "sql {%s}, fingerprint {%s}\n", __func__, rules, ruleNo, zMessage ?
