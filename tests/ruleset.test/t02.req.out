@@ -8,6 +8,7 @@
 (x=1)
 (x=2)
 (x=3)
+(out='Ruleset loaded from file "t01.ruleset"')
 (2=2)
 (x=1)
 (x=2)

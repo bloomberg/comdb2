@@ -1390,7 +1390,12 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
             tokcpy(tok, ltok, zFileName);
-            return comdb2_load_ruleset(zFileName, &gbl_ruleset);
+            rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
+            if (rc == 0) {
+                logmsg(LOGMSG_USER, "Ruleset loaded from file \"%s\"\n",
+                       zFileName);
+            }
+            return rc;
         } else {
             logmsg(LOGMSG_ERROR, "Expected ruleset file name\n");
             return -1;
