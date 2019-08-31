@@ -5029,7 +5029,7 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            if (pListItem->sortOrder == SQLITE_SO_DESC) {
+            if (pListItem->sortFlags == KEYINFO_ORDER_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
