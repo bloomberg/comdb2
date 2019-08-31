@@ -220,17 +220,17 @@ ifcapable subquery {
     queryplan {
       SELECT * FROM t1 WHERE w IN (99) ORDER BY w
     }
-  } {99 6 10000 10006 nosort t1 i1w}
+  } {99 6 10000 10006 sort t1 i1w}
   do_test where2-5.2b {
     queryplan {
       SELECT * FROM t1 WHERE w IN (99) ORDER BY w DESC
     }
-  } {99 6 10000 10006 nosort t1 i1w}
+  } {99 6 10000 10006 sort t1 i1w}
   do_test where2-5.2c {
     queryplan {
       SELECT * FROM t1 WHERE w IN ('99') ORDER BY w
     }
-  } {99 6 10000 10006 nosort t1 i1w}
+  } {99 6 10000 10006 sort t1 i1w}
 
 
   do_test where2-5.2d {
@@ -247,12 +247,12 @@ ifcapable subquery {
     queryplan {
       SELECT * FROM t2 WHERE s IN (99) ORDER BY s DESC
     }
-  } {99 6 10000 10006 99 nosort t2 i2s}
+  } {99 6 10000 10006 99 sort t2 i2s}
   do_test where2-5.2g {
     queryplan {
       SELECT * FROM t2 WHERE s IN ('99') ORDER BY s
     }
-  } {99 6 10000 10006 99 nosort t2 i2s}
+  } {99 6 10000 10006 99 sort t2 i2s}
 
 
 }
