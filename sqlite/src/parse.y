@@ -1558,7 +1558,7 @@ uniqueflag(A) ::= .        {A = OE_None;}
     }
     sqlite3ExprListSetName(pParse, p, pIdToken, 1);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3ExprListSetSortOrder(p, sortOrder);
+    sqlite3ExprListSetSortOrder(p, sortOrder, SQLITE_SO_UNDEFINED);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     return p;
   }
