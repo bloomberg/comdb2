@@ -55,7 +55,6 @@ char sqlite3TableColumnAffinity(Table *pTab, int iCol){
 */
 char sqlite3ExprAffinity(Expr *pExpr){
   int op;
-  if( pExpr->flags & EP_Generic ) return 0;
   while( ExprHasProperty(pExpr, EP_Skip) ){
     assert( pExpr->op==TK_COLLATE );
     pExpr = pExpr->pLeft;
@@ -117,10 +116,22 @@ Expr *sqlite3ExprAddCollateString(Parse *pParse, Expr *pExpr, const char *zC){
 }
 
 /*
-** Skip over any TK_COLLATE operators and any unlikely()
-** or likelihood() function at the root of an expression.
+** Skip over any TK_COLLATE operators.
 */
 Expr *sqlite3ExprSkipCollate(Expr *pExpr){
+  while( pExpr && ExprHasProperty(pExpr, EP_Skip) ){
+    assert( pExpr->op==TK_COLLATE );
+    pExpr = pExpr->pLeft;
+  }   
+  return pExpr;
+}
+
+/*
+** Skip over any TK_COLLATE operators and/or any unlikely()
+** or likelihood() or likely() functions at the root of an
+** expression.
+*/
+Expr *sqlite3ExprSkipCollateAndLikely(Expr *pExpr){
   while( pExpr && ExprHasProperty(pExpr, EP_Skip|EP_Unlikely) ){
     if( ExprHasProperty(pExpr, EP_Unlikely) ){
       assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
@@ -155,7 +166,6 @@ CollSeq *sqlite3ExprCollSeq(Parse *pParse, Expr *pExpr){
   Expr *p = pExpr;
   while( p ){
     int op = p->op;
-    if( p->flags & EP_Generic ) break;
     if( op==TK_REGISTER ) op = p->op2;
     if( (op==TK_AGG_COLUMN || op==TK_COLUMN || op==TK_TRIGGER)
      && p->y.pTab!=0
@@ -1417,8 +1427,9 @@ ExprList *sqlite3ExprListDup(sqlite3 *db, ExprList *p, int flags){
     }
     pItem->zName = sqlite3DbStrDup(db, pOldItem->zName);
     pItem->zSpan = sqlite3DbStrDup(db, pOldItem->zSpan);
-    pItem->sortOrder = pOldItem->sortOrder;
+    pItem->sortFlags = pOldItem->sortFlags;
     pItem->done = 0;
+    pItem->bNulls = pOldItem->bNulls;
     pItem->bSpanIsTab = pOldItem->bSpanIsTab;
     pItem->bSorterRef = pOldItem->bSorterRef;
     pItem->u = pOldItem->u;
@@ -1641,6 +1652,10 @@ ExprList *sqlite3ExprListAppendVector(
 
   for(i=0; i<pColumns->nId; i++){
     Expr *pSubExpr = sqlite3ExprForVectorField(pParse, pExpr, i);
+    assert( pSubExpr!=0 || db->mallocFailed );
+    assert( pSubExpr==0 || pSubExpr->iTable==0 );
+    if( pSubExpr==0 ) continue;
+    pSubExpr->iTable = pColumns->nId;
     pList = sqlite3ExprListAppend(pParse, pList, pSubExpr);
     if( pList ){
       assert( pList->nExpr==iFirst+i+1 );
@@ -1673,15 +1688,34 @@ vector_append_error:
 /*
 ** Set the sort order for the last element on the given ExprList.
 */
-void sqlite3ExprListSetSortOrder(ExprList *p, int iSortOrder){
+void sqlite3ExprListSetSortOrder(ExprList *p, int iSortOrder, int eNulls){
+  struct ExprList_item *pItem;
   if( p==0 ) return;
-  assert( SQLITE_SO_UNDEFINED<0 && SQLITE_SO_ASC>=0 && SQLITE_SO_DESC>0 );
   assert( p->nExpr>0 );
-  if( iSortOrder<0 ){
-    assert( p->a[p->nExpr-1].sortOrder==SQLITE_SO_ASC );
-    return;
+
+  assert( SQLITE_SO_UNDEFINED<0 && SQLITE_SO_ASC==0 && SQLITE_SO_DESC>0 );
+  assert( iSortOrder==SQLITE_SO_UNDEFINED 
+       || iSortOrder==SQLITE_SO_ASC 
+       || iSortOrder==SQLITE_SO_DESC 
+  );
+  assert( eNulls==SQLITE_SO_UNDEFINED 
+       || eNulls==SQLITE_SO_ASC 
+       || eNulls==SQLITE_SO_DESC 
+  );
+
+  pItem = &p->a[p->nExpr-1];
+  assert( pItem->bNulls==0 );
+  if( iSortOrder==SQLITE_SO_UNDEFINED ){
+    iSortOrder = SQLITE_SO_ASC;
   }
-  p->a[p->nExpr-1].sortOrder = (u8)iSortOrder;
+  pItem->sortFlags = (u8)iSortOrder;
+
+  if( eNulls!=SQLITE_SO_UNDEFINED ){
+    pItem->bNulls = 1;
+    if( iSortOrder!=eNulls ){
+      pItem->sortFlags |= KEYINFO_ORDER_BIGNULL;
+    }
+  }
 }
 
 /*
@@ -2182,27 +2216,30 @@ int sqlite3ExprCanBeNull(const Expr *p){
 */
 int sqlite3ExprNeedsNoAffinityChange(const Expr *p, char aff){
   u8 op;
+  int unaryMinus = 0;
   if( aff==SQLITE_AFF_BLOB ) return 1;
-  while( p->op==TK_UPLUS || p->op==TK_UMINUS ){ p = p->pLeft; }
+  while( p->op==TK_UPLUS || p->op==TK_UMINUS ){
+    if( p->op==TK_UMINUS ) unaryMinus = 1;
+    p = p->pLeft;
+  }
   op = p->op;
   if( op==TK_REGISTER ) op = p->op2;
   switch( op ){
     case TK_INTEGER: {
-      return aff==SQLITE_AFF_INTEGER || aff==SQLITE_AFF_NUMERIC;
+      return aff>=SQLITE_AFF_NUMERIC;
     }
     case TK_FLOAT: {
-      return aff==SQLITE_AFF_REAL || aff==SQLITE_AFF_NUMERIC;
+      return aff>=SQLITE_AFF_NUMERIC;
     }
     case TK_STRING: {
-      return aff==SQLITE_AFF_TEXT;
+      return !unaryMinus && aff==SQLITE_AFF_TEXT;
     }
     case TK_BLOB: {
-      return 1;
+      return !unaryMinus;
     }
     case TK_COLUMN: {
       assert( p->iTable>=0 );  /* p cannot be part of a CHECK constraint */
-      return p->iColumn<0
-          && (aff==SQLITE_AFF_INTEGER || aff==SQLITE_AFF_NUMERIC);
+      return aff>=SQLITE_AFF_NUMERIC && p->iColumn<0;
     }
     default: {
       return 0;
@@ -2896,7 +2933,7 @@ void sqlite3CodeRhsOfIN(
 **
 ** The pExpr parameter is the SELECT or EXISTS operator to be coded.
 **
-** The register that holds the result.  For a multi-column SELECT, 
+** Return the register that holds the result.  For a multi-column SELECT, 
 ** the result is stored in a contiguous array of registers and the
 ** return value is the register of the left-most result column.
 ** Return 0 if an error occurs.
@@ -3451,7 +3488,7 @@ void sqlite3ExprCodeMove(Parse *pParse, int iFrom, int iTo, int nReg){
 ** the correct value for the expression.
 */
 static void exprToRegister(Expr *pExpr, int iReg){
-  Expr *p = sqlite3ExprSkipCollate(pExpr);
+  Expr *p = sqlite3ExprSkipCollateAndLikely(pExpr);
   p->op2 = p->op;
   p->op = TK_REGISTER;
   p->iTable = iReg;
@@ -3984,8 +4021,8 @@ expr_code_doover:
         pExpr->pLeft->iTable = sqlite3CodeSubselect(pParse, pExpr->pLeft);
       }
       assert( pExpr->iTable==0 || pExpr->pLeft->op==TK_SELECT );
-      if( pExpr->iTable
-       && pExpr->iTable!=(n = sqlite3ExprVectorSize(pExpr->pLeft)) 
+      if( pExpr->iTable!=0
+       && pExpr->iTable!=(n = sqlite3ExprVectorSize(pExpr->pLeft))
       ){
         sqlite3ErrorMsg(pParse, "%d columns assigned %d values",
                                 pExpr->iTable, n);
@@ -4280,7 +4317,7 @@ int sqlite3ExprCodeAtInit(
 */
 int sqlite3ExprCodeTemp(Parse *pParse, Expr *pExpr, int *pReg){
   int r2;
-  pExpr = sqlite3ExprSkipCollate(pExpr);
+  pExpr = sqlite3ExprSkipCollateAndLikely(pExpr);
   if( ConstFactorOk(pParse)
    && pExpr->op!=TK_REGISTER
    && sqlite3ExprIsConstantNotJoin(pExpr)
@@ -5015,7 +5052,7 @@ int sqlite3ExprListCompare(ExprList *pA, ExprList *pB, int iTab){
   for(i=0; i<pA->nExpr; i++){
     Expr *pExprA = pA->a[i].pExpr;
     Expr *pExprB = pB->a[i].pExpr;
-    if( pA->a[i].sortOrder!=pB->a[i].sortOrder ) return 1;
+    if( pA->a[i].sortFlags!=pB->a[i].sortFlags ) return 1;
     if( sqlite3ExprCompare(0, pExprA, pExprB, iTab) ) return 1;
   }
   return 0;
@@ -5027,20 +5064,23 @@ int sqlite3ExprListCompare(ExprList *pA, ExprList *pB, int iTab){
 */
 int sqlite3ExprCompareSkip(Expr *pA, Expr *pB, int iTab){
   return sqlite3ExprCompare(0,
-             sqlite3ExprSkipCollate(pA),
-             sqlite3ExprSkipCollate(pB),
+             sqlite3ExprSkipCollateAndLikely(pA),
+             sqlite3ExprSkipCollateAndLikely(pB),
              iTab);
 }
 
 /*
 ** Return non-zero if Expr p can only be true if pNN is not NULL.
+**
+** Or if seenNot is true, return non-zero if Expr p can only be
+** non-NULL if pNN is not NULL
 */
 static int exprImpliesNotNull(
   Parse *pParse,      /* Parsing context */
   Expr *p,            /* The expression to be checked */
   Expr *pNN,          /* The expression that is NOT NULL */
   int iTab,           /* Table being evaluated */
-  int seenNot         /* True if p is an operand of NOT */
+  int seenNot         /* Return true only if p can be any non-NULL value */
 ){
   assert( p );
   assert( pNN );
@@ -5052,19 +5092,19 @@ static int exprImpliesNotNull(
       if( seenNot && ExprHasProperty(p, EP_xIsSelect) ) return 0;
       assert( ExprHasProperty(p,EP_xIsSelect)
            || (p->x.pList!=0 && p->x.pList->nExpr>0) );
-      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, seenNot);
+      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, 1);
     }
     case TK_BETWEEN: {
       ExprList *pList = p->x.pList;
       assert( pList!=0 );
       assert( pList->nExpr==2 );
       if( seenNot ) return 0;
-      if( exprImpliesNotNull(pParse, pList->a[0].pExpr, pNN, iTab, seenNot)
-       || exprImpliesNotNull(pParse, pList->a[1].pExpr, pNN, iTab, seenNot)
+      if( exprImpliesNotNull(pParse, pList->a[0].pExpr, pNN, iTab, 1)
+       || exprImpliesNotNull(pParse, pList->a[1].pExpr, pNN, iTab, 1)
       ){
         return 1;
       }
-      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, seenNot);
+      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, 1);
     }
     case TK_EQ:
     case TK_NE:
@@ -5074,20 +5114,21 @@ static int exprImpliesNotNull(
     case TK_GE:
     case TK_PLUS:
     case TK_MINUS:
+    case TK_BITOR:
+    case TK_LSHIFT:
+    case TK_RSHIFT: 
+    case TK_CONCAT: 
+      seenNot = 1;
+      /* Fall thru */
     case TK_STAR:
     case TK_REM:
     case TK_BITAND:
-    case TK_BITOR:
-    case TK_SLASH:
-    case TK_LSHIFT:
-    case TK_RSHIFT: 
-    case TK_CONCAT: {
+    case TK_SLASH: {
       if( exprImpliesNotNull(pParse, p->pRight, pNN, iTab, seenNot) ) return 1;
       /* Fall thru into the next case */
     }
     case TK_SPAN:
     case TK_COLLATE:
-    case TK_BITNOT:
     case TK_UPLUS:
     case TK_UMINUS: {
       return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, seenNot);
@@ -5095,8 +5136,9 @@ static int exprImpliesNotNull(
     case TK_TRUTH: {
       if( seenNot ) return 0;
       if( p->op2!=TK_IS ) return 0;
-      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, seenNot);
+      return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, 1);
     }
+    case TK_BITNOT:
     case TK_NOT: {
       return exprImpliesNotNull(pParse, p->pLeft, pNN, iTab, 1);
     }
@@ -5162,7 +5204,6 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
   if( ExprHasProperty(pExpr, EP_FromJoin) ) return WRC_Prune;
   switch( pExpr->op ){
     case TK_ISNOT:
-    case TK_NOT:
     case TK_ISNULL:
     case TK_NOTNULL:
     case TK_IS:
@@ -5171,7 +5212,6 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
     case TK_IN:
     case TK_FUNCTION:
       testcase( pExpr->op==TK_ISNOT );
-      testcase( pExpr->op==TK_NOT );
       testcase( pExpr->op==TK_ISNULL );
       testcase( pExpr->op==TK_NOTNULL );
       testcase( pExpr->op==TK_IS );
@@ -5185,6 +5225,18 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
         pWalker->eCode = 1;
         return WRC_Abort;
       }
+      return WRC_Prune;
+
+    case TK_AND:
+      if( sqlite3ExprImpliesNonNullRow(pExpr->pLeft, pWalker->u.iCur)
+       && sqlite3ExprImpliesNonNullRow(pExpr->pRight, pWalker->u.iCur)
+      ){
+        pWalker->eCode = 1;
+      }
+      return WRC_Prune;
+
+    case TK_BETWEEN:
+      sqlite3WalkExpr(pWalker, pExpr->pLeft);
       return WRC_Prune;
 
     /* Virtual tables are allowed to use constraints like x=NULL.  So
@@ -5207,6 +5259,7 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
       ){
        return WRC_Prune;
       }
+
     default:
       return WRC_Continue;
   }
@@ -5236,7 +5289,7 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
 */
 int sqlite3ExprImpliesNonNullRow(Expr *p, int iTab){
   Walker w;
-  p = sqlite3ExprSkipCollate(p);
+  p = sqlite3ExprSkipCollateAndLikely(p);
   while( p ){
     if( p->op==TK_NOTNULL ){
       p = p->pLeft;

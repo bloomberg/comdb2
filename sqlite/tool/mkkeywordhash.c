@@ -218,6 +218,7 @@ static Keyword aKeywordTable[] = {
   { "EXPLAIN",          "TK_EXPLAIN",      EXPLAIN                },
   { "FAIL",             "TK_FAIL",         CONFLICT|TRIGGER       },
   { "FILTER",           "TK_FILTER",       WINDOWFUNC             },
+  { "FIRST",            "TK_FIRST",        ALWAYS                 },
   { "FOLLOWING",        "TK_FOLLOWING",    WINDOWFUNC             },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   { "FOR",              "TK_FOR",          ALWAYS                 },
@@ -247,6 +248,7 @@ static Keyword aKeywordTable[] = {
   { "ISNULL",           "TK_ISNULL",       ALWAYS                 },
   { "JOIN",             "TK_JOIN",         ALWAYS                 },
   { "KEY",              "TK_KEY",          ALWAYS                 },
+  { "LAST",             "TK_LAST",         ALWAYS                 },
   { "LEFT",             "TK_JOIN_KW",      ALWAYS                 },
   { "LIKE",             "TK_LIKE_KW",      ALWAYS                 },
   { "LIMIT",            "TK_LIMIT",        ALWAYS                 },
@@ -257,6 +259,7 @@ static Keyword aKeywordTable[] = {
   { "NOTHING",          "TK_NOTHING",      UPSERT                 },
   { "NOTNULL",          "TK_NOTNULL",      ALWAYS                 },
   { "NULL",             "TK_NULL",         ALWAYS                 },
+  { "NULLS",            "TK_NULLS",        ALWAYS                 },
   { "OF",               "TK_OF",           ALWAYS                 },
   { "OFFSET",           "TK_OFFSET",       ALWAYS                 },
   { "ON",               "TK_ON",           ALWAYS                 },

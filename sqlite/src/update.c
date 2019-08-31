@@ -758,11 +758,9 @@ void sqlite3Update(
   }
 
   if( !isView ){
-    int addr1 = 0;        /* Address of jump instruction */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     int bUseLastIndex = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     /* Do constraint checks. */
     assert( regOldRowid>0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -775,20 +773,23 @@ void sqlite3Update(
         aXRef, 0);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
+    /* If REPLACE conflict handling may have been used, or if the PK of the
+    ** row is changing, then the GenerateConstraintChecks() above may have
+    ** moved cursor iDataCur. Reseek it. */
+    if( bReplace || chngKey ){
+      if( pPk ){
+        sqlite3VdbeAddOp4Int(v, OP_NotFound,iDataCur,labelContinue,regKey,nKey);
+      }else{
+        sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue,regOldRowid);
+      }
+    }
+
     /* Do FK constraint checks. */
     if( hasFK ){
       sqlite3FkCheck(pParse, pTab, regOldRowid, 0, aXRef, chngKey);
     }
 
     /* Delete the index entries associated with the current record.  */
-    if( bReplace || chngKey ){
-      if( pPk ){
-        addr1 = sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, 0, regKey, nKey);
-      }else{
-        addr1 = sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, 0, regOldRowid);
-      }
-      VdbeCoverageNeverTaken(v);
-    }
     sqlite3GenerateRowIndexDelete(pParse, pTab, iDataCur, iIdxCur, aRegIdx, -1);
 
     /* If changing the rowid value, or if there are foreign key constraints
@@ -818,9 +819,6 @@ void sqlite3Update(
       sqlite3VdbeAddOp2(v, OP_Delete, iDataCur, 0);
     }
 #endif
-    if( bReplace || chngKey ){
-      sqlite3VdbeJumpHere(v, addr1);
-    }
 
     if( hasFK ){
       sqlite3FkCheck(pParse, pTab, 0, regNewRowid, aXRef, chngKey);
