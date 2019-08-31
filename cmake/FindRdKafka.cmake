@@ -1,10 +1,11 @@
-include(${CMAKE_MODULE_PATH}/pkg_helper.cmake)
-find_pkg_for_comdb2(RdKafka
-  "librdkafka/rdkafka.h"
-  "rdkafka"
-  "${RDKAFKA_ROOT_DIR}"
-  "lib;include"
-  RDKAFKA_INCLUDE_DIR
-  RDKAFKA_LIBRARY
+find_path(RDKAFKA_INCLUDE_DIR
+  NAMES librdkafka/rdkafka.h
+  HINTS ${RDKAFKA_ROOT_DIR}
 )
-mark_as_advanced(RDKAFKA_INCLUDE_DIR RDKAFKA_LIBRARY)
+find_library(RDKAFKA_LIBRARY
+  NAMES rdkafka
+  HINTS ${RDKAFKA_ROOT_DIR}
+)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(RDKAFKA DEFAULT_MSG RDKAFKA_INCLUDE_DIR)
+find_package_handle_standard_args(librdkafka DEFAULT_MSG RDKAFKA_LIBRARY)

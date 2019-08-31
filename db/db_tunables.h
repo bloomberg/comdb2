@@ -71,7 +71,7 @@ REGISTER_TUNABLE("analyze_tbl_threads",
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,
-                 DEPRECATED | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("blob_mem_mb", "Blob allocator: Sets the max "
                                 "memory limit to allow for blob "
                                 "values (in MB). (Default: 0)",
@@ -151,7 +151,7 @@ REGISTER_TUNABLE("ctrace_dbdir",
                  TUNABLE_BOOLEAN, &gbl_ctrace_dbdir, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_gzip", NULL, TUNABLE_INTEGER, &ctrace_gzip,
-                 DEPRECATED | READONLY, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "ddl_cascade_drop",
     "On DROP, also drop the dependent keys/constraints. (Default: 1)",
@@ -674,7 +674,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED_TUNABLE | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
@@ -878,7 +878,7 @@ REGISTER_TUNABLE("page_latches",
                  NULL, NULL, NULL);
 /*
 REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
-                 &placeholder, DEPRECATED|READONLY, NULL, NULL, NULL,
+                 &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,
                  NULL);
 */
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,

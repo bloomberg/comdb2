@@ -589,7 +589,6 @@ static __thread hash_t *sql_blocks;
 static int dump_block(void *obj, void *arg)
 {
     struct blk *b = (struct blk *)obj;
-    int i;
     int *had_blocks = (int *)arg;
 
     if (!b->in_init) {
@@ -597,9 +596,9 @@ static int dump_block(void *obj, void *arg)
             logmsg(LOGMSG_USER, "outstanding blocks:\n");
             *had_blocks = 1;
         }
-        logmsg(LOGMSG_USER, "%lld %x ", b->sz, b->p);
+        logmsg(LOGMSG_USER, "%zu %p ", b->sz, b->p);
         for (int i = 0; i < b->nframes; i++)
-            logmsg(LOGMSG_USER, "%x ", b->frames[i]);
+            logmsg(LOGMSG_USER, "%p ", b->frames[i]);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -4859,7 +4858,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
         q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
 
-    time_metric_add(thedb->concurrent_queries, thdpool_get_nthds(gbl_sqlengine_thdpool));
+    time_metric_add(thedb->concurrent_queries,
+                    thdpool_get_nthds(gbl_sqlengine_thdpool) -
+                        thdpool_get_nfreethds(gbl_sqlengine_thdpool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
@@ -5247,7 +5248,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->prepare_only = 0;
     clnt->is_readonly = 0;
-    clnt->ignore_coherency = 0;
     clnt->admin = 0;
 
     /* reset page-order. */

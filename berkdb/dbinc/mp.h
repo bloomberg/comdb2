@@ -188,7 +188,7 @@ typedef SH_TAILQ_HEAD(HashTab, __bh) HashTab;
 struct __db_mpool_hash {
 	DB_MUTEX	hash_mutex;	/* Per-bucket mutex. */
 	HashTab 	hash_bucket;	/* Head of bucket. */
-	int32_t 	hash_page_dirty;/* Count of dirty pages. */
+	uint32_t 	hash_page_dirty;/* Count of dirty pages. */
 	u_int32_t	hash_priority;	/* Minimum priority of bucket buffer. */
 };
 

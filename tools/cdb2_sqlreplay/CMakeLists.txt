@@ -6,7 +6,7 @@ include_directories(
 set(libs
   cdb2api
   cson
-  ${PROTOBUF_C_LIBRARY}
+  ${PROTOBUF-C_LIBRARY}
 )
 if(WITH_SSL)
   list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})

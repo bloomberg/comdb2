@@ -233,7 +233,7 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
 #if defined(_AIX) || defined(_LINUX_SOURCE)
     socklen_t len;
 #else
-    int len;
+    socklen_t len;
 #endif
     if (timeoutms <= 0)
         return connect(s, name, namelen); /*no timeout specified*/

@@ -38,8 +38,6 @@ BERK_DEF_ATTR(btpf_cu_gap, "How close a cursor should be (pages) to the prefault
 BERK_DEF_ATTR(btpf_min_th, "Preload pages only if the tree has heigth less than this parameter", BERK_ATTR_TYPE_INTEGER, 1)
 BERK_DEF_ATTR(recovery_verify, "After recovery, run a full pass to make sure everything is applied", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(recovery_verify_fatal, "Abort if recovery_verify is set, and fails.", BERK_ATTR_TYPE_BOOLEAN, 0)
-BERK_DEF_ATTR(check_pwrites, "Read page after direct pwrite, check that it matches", BERK_ATTR_TYPE_BOOLEAN, 0)
-BERK_DEF_ATTR(check_pwrites_debug, "Read page after direct pwrite, check that it matches", BERK_ATTR_TYPE_INTEGER, 0)
 BERK_DEF_ATTR(cache_lc, "Collect logs into LSN_COLLECTIONs as they come in", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(cache_lc_max, "Keep this many transactions around in LC cache", BERK_ATTR_TYPE_INTEGER, 16)
 BERK_DEF_ATTR(cache_lc_debug, "Lots of verbose messages out of LC cache system", BERK_ATTR_TYPE_BOOLEAN, 0)

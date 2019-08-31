@@ -3,7 +3,7 @@
 bash -n "$0" | exit 1
 dbnm=$1
 echo "
-comdb2_config:install_static_libs
+comdb2_config:enable_static_libs
 comdb2_config:lib=${TESTSBUILDDIR}/libapi_hello_world_lib.so
 " >>$DBDIR/comdb2db.cfg
 ${TESTSBUILDDIR}/api_libs $dbnm 2>&1 | diff expected -
