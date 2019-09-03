@@ -910,7 +910,8 @@ In order to allow seamless migration between older and newer Comdb2 versions,
 some tunables are introduced to disable incompatible features introduced in
 newer versions.
 
-* `legacy_tunables` (introduced in `7.0`)
+#### `legacy_tunables` (introduced in `7.0`)
+
 This tunable disables all new features/behaviours that, if used, would have
 prevented downgrading to older versions. It implicitly enables following
 configurations:
@@ -970,13 +971,15 @@ configurations:
     usenames
 ```
 
-* `legacy_schema` (introduced in `7.0`)
-Turning it off would enable support for newer (backwards incompatible) CSC2
+#### `legacy_schema` (introduced in `7.0`)
+
+Turning it `off` would enable support for newer (backwards incompatible) CSC2
 constructs introduced in `7.0`. The features include: uniqnulls (UNIQUE/PRIMARY
 KEY in DDL), partial index, index on expression and non-null default value for
 datetime fields. This list could grow in future.
 
-* `noenv_messages` (introduced in `7.0`)
+#### `noenv_messages` (introduced in `7.0`)
+
 Turing it `on` would enable support for upsert and partial index, both
 introduced in `7.0`.
 
