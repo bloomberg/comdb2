@@ -2784,11 +2784,12 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 print_message = 1;
                 if (bdb_state->attr->make_slow_replicants_incoherent) {
                     if (bdb_state->coherent_state[worst_node_ix] ==
-                            STATE_COHERENT)
+                        STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
                     set_coherent_state(bdb_state, worst_node, STATE_INCOHERENT_SLOW,
                             __func__, __LINE__);
-                    bdb_state->last_downgrade_time[worst_node_ix] = gettimeofday_ms();
+                    bdb_state->last_downgrade_time[worst_node_ix] =
+                        gettimeofday_ms();
                     made_incoherent_slow = 1;
                 }
             }
@@ -3094,7 +3095,8 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
+                                                   nodelist[i]);
         } else {
             rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
