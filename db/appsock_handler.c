@@ -124,7 +124,6 @@ void appsock_quick_stat(void)
 void appsock_stat(void)
 {
     comdb2_appsock_t *rec;
-    unsigned int exec_count;
     unsigned int bkt;
     void *ent;
 
@@ -135,7 +134,7 @@ void appsock_stat(void)
 
     for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
          rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
-        exec_count = ATOMIC_LOAD(rec->exec_count);
+        uint32_t exec_count = ATOMIC_LOAD32(rec->exec_count);
         if (exec_count > 0) {
             logmsg(LOGMSG_USER, "  num %-16s  %u\n", rec->name, exec_count);
         }
@@ -145,12 +144,11 @@ void appsock_stat(void)
 void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
 {
     comdb2_appsock_t *rec;
-    unsigned int exec_count;
     unsigned int bkt;
     void *ent;
+    uint32_t exec_count = 0;
 
     *n_appsock = total_appsock_conns;
-    exec_count = 0;
 
     /*
       Iterate through the list of registered appsock handlers
@@ -159,7 +157,7 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
     for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
          rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
         if (rec->flags & APPSOCK_FLAG_IS_SQL) {
-            exec_count += ATOMIC_LOAD(rec->exec_count);
+            exec_count += ATOMIC_LOAD32(rec->exec_count);
         }
     }
     *n_sql = exec_count;
@@ -236,7 +234,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         thrman_where(thr_self, appsock->name);
 
         /* Increment the execution count. */
-        ATOMIC_ADD(appsock->exec_count, 1);
+        ATOMIC_ADD32(appsock->exec_count, 1);
 
         /* Invoke the handler. */
         rc = appsock->appsock_handler(&arg);

@@ -1036,6 +1036,19 @@ int bdb_rebuild_done(bdb_state_type *bdb_handle);
 /* force a flush to disk of all in memory stuff */
 int bdb_flush(bdb_state_type *bdb_handle, int *bdberr);
 
+/* Serialize cache to this file */
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
+                           int max_pages);
+
+/* Load from serialized cache */
+int bdb_load_cache(bdb_state_type *bdb_state, const char *file);
+
+/* Load default cache */
+int bdb_load_cache_default(bdb_state_type *bdb_state);
+
+/* Flush default cache */
+int bdb_dump_cache_default(bdb_state_type *bdb_state);
+
 /* force a flush to disk of all in memory stuff , but don't force a checkpoint
  */
 int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);
@@ -1814,7 +1827,7 @@ bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
 int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
                                  int trak, int *bdberr);
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+# Have 4 SQL threads
+cdb2sql $dbnm --host $host 'SELECT SLEEP(5)' &
+cdb2sql $dbnm --host $host 'SELECT SLEEP(5)' &
+cdb2sql $dbnm --host $host 'SELECT SLEEP(5)' &
+cdb2sql $dbnm --host $host 'SELECT SLEEP(5)' &
+
+# wait for becoming idle
+wait
+
+nthds=`cdb2sql --tabs $dbnm --host $host 'exec procedure sys.cmd.send("sqlenginepool stat")' | grep 'Current num threads' | cut -f2 -d':'`
+if [ $nthds != 4 ]; then
+    echo nthds is $nthds >&2
+    exit 1
+fi
+
+sleep 31
+
+nsql=`cdb2sql --tabs $dbnm --host $host 'SELECT CAST(value AS INT) FROM comdb2_metrics WHERE name = "concurrent_sql"'`
+if [ $nsql != 0 ]; then
+    echo nsql is $nsql >&2
+    exit 1
+fi
+
+wait

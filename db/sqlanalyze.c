@@ -46,7 +46,7 @@ static int analyze_thread_memory = 1048576;
 extern void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
-volatile int analyze_running_flag = 0;
+volatile uint32_t analyze_running_flag = 0;
 static int analyze_abort_requested = 0;
 
 /* global enable / disable switch */
@@ -1003,7 +1003,7 @@ static inline int check_stat1(SBUF2 *sb)
 static inline int set_analyze_running(SBUF2 *sb)
 {
     analyze_abort_requested = 0; 
-    int old = XCHANGE(analyze_running_flag, 1); // set analyze_running_flag
+    uint32_t old = XCHANGE32(analyze_running_flag, 1); // set analyze_running_flag
     if (1 == old) // analyze_running_flag was already 1, so bail out
     {
         sbuf2printf(sb, ">%s: analyze is already running\n", __func__);

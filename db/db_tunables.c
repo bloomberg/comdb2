@@ -227,6 +227,12 @@ extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_cache_flush_interval;
+extern int gbl_load_cache_threads;
+extern int gbl_load_cache_max_pages;
+extern int gbl_dump_cache_max_pages;
+extern int gbl_max_pages_per_cache_thread;
+extern int gbl_memp_dump_cache_threshold;
 
 extern long long sampling_threshold;
 

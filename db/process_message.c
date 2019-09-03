@@ -1380,10 +1380,10 @@ clipper_usage:
         }
     }
     else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
-        extern int gbl_temptable_count;
-        extern int gbl_sql_temptable_count;
-        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
-        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        extern uint32_t gbl_temptable_count;
+        extern uint32_t gbl_sql_temptable_count;
+        uint32_t temptable_count = ATOMIC_LOAD32(gbl_temptable_count);
+        uint32_t sql_temptable_count = ATOMIC_LOAD32(gbl_sql_temptable_count);
         logmsg(LOGMSG_USER,
                 "Overall temptable count is %d, SQL temptable count is %d\n",
                 temptable_count, sql_temptable_count);
@@ -1977,6 +1977,27 @@ clipper_usage:
         if (thedb->bdb_env == NULL)
             return -1;
         backend_cmd(dbenv, line, lline, st);
+    } else if (tokcmp(tok, ltok, "load_cache") == 0) {
+        if (thedb->bdb_env == NULL)
+            return -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            load_cache_default();
+        } else
+            load_cache(tok);
+    } else if (tokcmp(tok, ltok, "dump_cache") == 0) {
+        char filename[PATH_MAX];
+        if (thedb->bdb_env == NULL)
+            return -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            dump_cache_default();
+        } else {
+            tokcpy(tok, ltok, filename);
+            tok = segtok(line, lline, &st, &ltok);
+            int max_pages = (ltok != 0) ? toknum(tok, ltok) : 0;
+            dump_cache(filename, max_pages);
+        }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         if (thedb->bdb_env == NULL)
             return -1;

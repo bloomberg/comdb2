@@ -69,27 +69,11 @@ const char *get_mach_class_str(char *host)
     return mach_class_class2name(get_mach_class(host));
 }
 
-static int disable_rmt_dbupdates(const char *mach)
-{
-    enum mach_class rmtclass, myclass;
-
-    rmtclass = get_mach_class(mach);
-    myclass = get_my_mach_class();
-
-    if (rmtclass == CLASS_TEST && rmtclass != CLASS_BETA &&
-        myclass != CLASS_TEST)
-        return 1;
-    return 0;
-}
-
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 {
 
     enum mach_class rmtclass;
     int ix = nodeix(host);
-
-    if (disable_rmt_dbupdates(host))
-        return 0;
 
     if (btst(pol->explicit_disallow_machs, ix))
         return 0;

@@ -282,7 +282,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
-  ENABLE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW LUA LZ4 NONE
+  ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
+  LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -1993,6 +1994,16 @@ wqlist(A) ::= wqlist(A) COMMA nm(X) eidlist_opt(Y) AS LP select(Z) RP. {
 ////////////////////////// COMDB2 SYNTAX EXTENSIONS ///////////////////////////
 // These rules are used to support the syntax extensions provided by COMDB2.
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+//////////////////////////////// EXEC / EXECUTE ///////////////////////////////
+cmd ::= EXEC sproccmd.
+cmd ::= EXECUTE sproccmd.
+
+exec_proc_arg ::= NULL|FLOAT|BLOB|STRING|INTEGER.
+exec_proc_arg_list ::= exec_proc_arg.
+exec_proc_arg_list ::= exec_proc_arg_list COMMA exec_proc_arg.
+
+sproccmd ::= PROCEDURE ids LP exec_proc_arg_list RP.
+
 ////////////////////////////////// GET / PUT //////////////////////////////////
 cmd ::= GET getcmd.
 
@@ -2352,13 +2363,20 @@ cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {
 }
 cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, &V, &X);
+}
 
 /////////////////////////////// DROP PROCEDURE ////////////////////////////////
-}
+
 cmd ::= DROP PROCEDURE nm(N) INTEGER(V). {
     comdb2DropProcedure(pParse, &N, &V, 0);
 }
+cmd ::= DROP PROCEDURE nm(N) VERSION INTEGER(V). {
+    comdb2DropProcedure(pParse, &N, &V, 0);
+}
 cmd ::= DROP PROCEDURE nm(N) STRING(V). {
+    comdb2DropProcedure(pParse, &N, &V, 1);
+}
+cmd ::= DROP PROCEDURE nm(N) VERSION STRING(V). {
     comdb2DropProcedure(pParse, &N, &V, 1);
 }
 

@@ -101,7 +101,7 @@ struct reqlogger {
     /* the bound parameters */
     cson_value *bound_param_cson;
 
-    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
+    uint32_t nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
