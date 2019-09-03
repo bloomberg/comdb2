@@ -225,7 +225,7 @@ static inline int print_verify_progress(verify_common_t *par, int now)
         goto out;
 
     // enough time has passed, attempt to update
-    int res = CAS(par->last_reported, last, now);
+    int res = CAS32(par->last_reported, last, now);
     if (!res) goto out; // someonelse updated, get out
 
     if (bdb_dropped_connection(par->sb)) {
@@ -300,7 +300,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe, unsigned 
     logmsg(LOGMSG_DEBUG, "%p:%s Entering stripe=%d\n", (void *)pthread_self(), __func__, dtastripe);
 
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->items_processed, 1);
+        ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
 
@@ -633,7 +633,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         locprint(par->sb, par->lua_callback, par->lua_params, "!ix %d first rc %d\n", ix, rc);
     }
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->items_processed, 1);
+        ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
 
@@ -988,7 +988,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe, uns
 
     rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_FIRST);
     while (rc == 0 && !par->client_dropped_connection) {
-        ATOMIC_ADD(par->items_processed, 1);
+        ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
         unsigned long long genid_flipped;
@@ -1130,7 +1130,7 @@ void bdb_verify_handler(td_processing_info_t *info)
     }
 
     BDB_RELLOCK();
-    ATOMIC_ADD(par->threads_completed, 1);
+    ATOMIC_ADD32(par->threads_completed, 1);
 }
 
 static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work, void *thddata,
