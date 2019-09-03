@@ -4863,6 +4863,49 @@ done:
     return rc;
 }
 
+int rollback_tran(struct sql_thread *thd, struct sqlclntstate *clnt)
+{
+    int rc = SQLITE_OK;
+
+    switch (clnt->dbtran.mode) {
+    default:
+        logmsg(LOGMSG_ERROR, "%s: unknown mode %d\n", __func__, clnt->dbtran.mode);
+        rc = SQLITE_INTERNAL;
+        break;
+
+    case TRANLEVEL_RECOM:
+        if (clnt->dbtran.shadow_tran) {
+            rc = recom_abort(clnt);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
+        }
+        break;
+
+    case TRANLEVEL_SNAPISOL:
+        if (clnt->dbtran.shadow_tran) {
+            rc = snapisol_abort(clnt);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
+        }
+        break;
+
+    case TRANLEVEL_SERIAL:
+        if (clnt->dbtran.shadow_tran) {
+            rc = serial_abort(clnt);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
+        }
+        break;
+
+    case TRANLEVEL_SOSQL:
+        rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        break;
+
+    }
+
+    return rc;
+}
+
 /*
  ** Rollback the transaction in progress.  All cursors will be
  ** invalided by this operation.  Any attempt to use a cursor
@@ -4900,54 +4943,19 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     clnt->intrans = 0;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 #if 0
-   fprintf(stderr, "%p rollbacks transaction %d %d\n", clnt, pthread_self(),
-         clnt->dbtran.mode);
+    fprintf(stderr, "%p rollbacks transaction %d %d\n", clnt, pthread_self(),
+            clnt->dbtran.mode);
 #endif
 
-    switch (clnt->dbtran.mode) {
-    default:
-        logmsg(LOGMSG_ERROR, "%s: unknown mode %d\n", __func__, clnt->dbtran.mode);
-        rc = SQLITE_INTERNAL;
-        goto done;
-
-    case TRANLEVEL_RECOM:
-        if (clnt->dbtran.shadow_tran) {
-            rc = recom_abort(clnt);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
-        }
-
-        /* UPSERT: Restore the isolation level back to what it was. */
-        if (clnt->translevel_changed) {
-            clnt->dbtran.mode = TRANLEVEL_SOSQL;
-            clnt->translevel_changed = 0;
-            logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
-                   tranlevel_tostr(clnt->dbtran.mode));
-        }
-
-        break;
-
-    case TRANLEVEL_SNAPISOL:
-        if (clnt->dbtran.shadow_tran) {
-            rc = snapisol_abort(clnt);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
-        }
-        break;
-
-    case TRANLEVEL_SERIAL:
-        if (clnt->dbtran.shadow_tran) {
-            rc = serial_abort(clnt);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "%s: recom abort rc=%d??\n", __func__, rc);
-        }
-        break;
-
-    case TRANLEVEL_SOSQL:
-        rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
-        break;
-
+    /* UPSERT: Restore the isolation level back to what it was. */
+    if (clnt->dbtran.mode == TRANLEVEL_RECOM && clnt->translevel_changed) {
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+        clnt->translevel_changed = 0;
+        logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
+                tranlevel_tostr(clnt->dbtran.mode));
     }
+
+    rc = rollback_tran(thd, clnt);
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
@@ -8377,6 +8385,65 @@ int sqlite3BtreeInsert(
             rc = UNIMPLEMENTED;
             goto done;
         }
+
+
+        if (clnt->dbtran.maxchunksize > 0) {
+            if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
+
+                /* commit current transaction and reopen another one */
+
+                /* disconnect berkeley db cursors */
+                rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                if (rc) {
+                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+                    sqlite3VdbeError(pCur->vdbe,
+                            "Failed to disconnect berkeleydb cursors");
+                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+
+                    rc = SQLITE_ERROR;
+                    goto done;
+                }
+
+                /* commit current transaction */
+                sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
+                rc = handle_sql_commitrollback(clnt->thd, clnt, 0);
+                if (rc) {
+                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+                    sqlite3VdbeError(pCur->vdbe,
+                            "Failed to commit chunk");
+                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+
+                    rc = SQLITE_ERROR;
+                    goto done;
+                }
+
+                /* need to reset shadow table fast point in cursors */
+                if (thd->bt) {
+                    BtCursor *cur = NULL;
+                    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk) {
+                        cur->shadtbl = NULL;
+                    }
+                }
+
+                /* restart a new transaction */
+                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                        SQLENG_PRE_STRT_STATE);
+                rc = handle_sql_begin(clnt->thd, clnt, 0);
+                if (rc) {
+                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+                    sqlite3VdbeError(pCur->vdbe,
+                            "Failed to start a new chunk");
+                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+
+                    rc = SQLITE_ERROR;
+                    goto done;
+                }
+
+                clnt->dbtran.crtchunksize = 0;
+            } else {
+                clnt->dbtran.crtchunksize++;
+            }
+        } 
 
         /* We ignore keys on insert but save dirty keys.
          * Keys are added if keys were set dirty when a record

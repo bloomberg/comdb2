@@ -1468,34 +1468,51 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
                 sqlstr = skipws(sqlstr);
-                clnt->dbtran.mode = TRANLEVEL_INVALID;
-                newsql_clr_high_availability(clnt);
-                if (strncasecmp(sqlstr, "read", 4) == 0) {
-                    sqlstr += 4;
+ 
+                if (strncasecmp(sqlstr, "chunk", 5) == 0) {
+                    int tmp;
+                    sqlstr += 5;
                     sqlstr = skipws(sqlstr);
-                    if (strncasecmp(sqlstr, "committed", 4) == 0) {
-                        clnt->dbtran.mode = TRANLEVEL_RECOM;
+
+                    if (!sqlstr || ( (tmp = atoi(sqlstr)) <= 0)) {
+                        snprintf(err, sizeof(err),
+                                "set transaction chunk N: missing chunk size N \"%s\"",
+                                sqlstr);
+                        rc = ii + 1;
                     }
-                } else if (strncasecmp(sqlstr, "serial", 6) == 0) {
-                    clnt->dbtran.mode = TRANLEVEL_SERIAL;
-                    if (clnt->hasql_on == 1) {
-                        newsql_set_high_availability(clnt);
+                    else {
+                        clnt->dbtran.maxchunksize = tmp;
                     }
-                } else if (strncasecmp(sqlstr, "blocksql", 7) == 0) {
-                    clnt->dbtran.mode = TRANLEVEL_SOSQL;
-                } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
-                    sqlstr += 4;
-                    clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
-                    clnt->verify_retries = 0;
-                    if (clnt->hasql_on == 1) {
-                        newsql_set_high_availability(clnt);
-                        logmsg(
-                            LOGMSG_ERROR,
-                            "Enabling snapshot isolation high availability\n");
+                } else {
+                    clnt->dbtran.mode = TRANLEVEL_INVALID;
+                    newsql_clr_high_availability(clnt);
+                    if (strncasecmp(sqlstr, "read", 4) == 0) {
+                        sqlstr += 4;
+                        sqlstr = skipws(sqlstr);
+                        if (strncasecmp(sqlstr, "committed", 9) == 0) {
+                            clnt->dbtran.mode = TRANLEVEL_RECOM;
+                        }
+                    } else if (strncasecmp(sqlstr, "serial", 6) == 0) {
+                        clnt->dbtran.mode = TRANLEVEL_SERIAL;
+                        if (clnt->hasql_on == 1) {
+                            newsql_set_high_availability(clnt);
+                        }
+                    } else if (strncasecmp(sqlstr, "blocksql", 7) == 0) {
+                        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+                    } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
+                        sqlstr += 4;
+                        clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
+                        clnt->verify_retries = 0;
+                        if (clnt->hasql_on == 1) {
+                            newsql_set_high_availability(clnt);
+                            logmsg(
+                                    LOGMSG_ERROR,
+                                    "Enabling snapshot isolation high availability\n");
+                        }
                     }
+                    if (clnt->dbtran.mode == TRANLEVEL_INVALID)
+                        rc = ii + 1;
                 }
-                if (clnt->dbtran.mode == TRANLEVEL_INVALID)
-                    rc = ii + 1;
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);

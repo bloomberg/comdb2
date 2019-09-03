@@ -238,6 +238,8 @@ typedef struct {
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
+    int maxchunksize; /* multi-transaction bulk mode */
+    int crtchunksize; /* how many rows are processed already */
 } dbtran_type;
 typedef dbtran_type trans_t;
 
