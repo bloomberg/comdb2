@@ -6,6 +6,7 @@
 #include <plhash.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_swap.h"

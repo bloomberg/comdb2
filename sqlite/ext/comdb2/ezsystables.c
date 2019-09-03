@@ -274,7 +274,9 @@ static int systbl_filter(
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
-  return SQLITE_OK;
+    struct ez_systable_cursor *pCur = (struct ez_systable_cursor*) pVtabCursor;
+    pCur->rowid = 0;
+    return SQLITE_OK;
 }
 
 

@@ -1,81 +1,35 @@
 [grant write on comdb2_metrics to 'sysmon'] failed with rc -3 Can't GRANT/REVOKE non-READ permissions on system table
 [grant ddl on comdb2_metrics to 'sysmon'] failed with rc -3 Can't GRANT/REVOKE non-READ permissions on system table
-[set user 'user1'] rc 0
-[set password 'password1'] rc 0
-[put password 'secret' for 'replicant'] rc 0
-[put password 'secret' for 'sysmon'] rc 0
-[put password 'secret' for 'other'] rc 0
-[grant read on comdb2_transaction_logs to 'replicant'] rc 0
-[grant read on comdb2_metrics to 'sysmon'] rc 0
-[grant read on comdb2_fingerprints to 'sysmon'] rc 0
 (username='other', isOP='N')
 (username='replicant', isOP='N')
 (username='sysmon', isOP='N')
 (username='user1', isOP='Y')
 (username='user2', isOP='N')
 (username='user3', isOP='N')
-[select * from comdb2_users order by username] rc 0
 ( user1 (OP user) =' can access all system tables ')
-[select " can access all system tables " as " user1 (OP user) "] rc 0
 (1=1)
-[select 1 from comdb2_appsock_handlers limit 1] rc 0
 (1=1)
-[select 1 from comdb2_clientstats limit 1] rc 0
 (1=1)
-[select 1 from comdb2_cluster limit 1] rc 0
 (1=1)
-[select 1 from comdb2_fingerprints limit 1] rc 0
 (1=1)
-[select 1 from comdb2_locks limit 1] rc 0
-[select 1 from comdb2_logical_operations limit 1] rc 0
 (1=1)
-[select 1 from comdb2_metrics limit 1] rc 0
 (1=1)
-[select 1 from comdb2_net_userfuncs limit 1] rc 0
 (1=1)
-[select 1 from comdb2_opcode_handlers limit 1] rc 0
 (1=1)
-[select 1 from comdb2_plugins limit 1] rc 0
-[select 1 from comdb2_procedures limit 1] rc 0
-[select 1 from comdb2_queues limit 1] rc 0
 (count(*)=0)
-[select count(*) from comdb2_repl_stats where host='dummy'] rc 0
 (count(*)=0)
-[select count(*) from comdb2_replication_netqueue where machine='dummy'] rc 0
-[select 1 from comdb2_sqlpool_queue limit 1] rc 0
 (1=1)
-[select 1 from comdb2_threadpools limit 1] rc 0
-[select 1 from comdb2_timepartevents limit 1] rc 0
-[select 1 from comdb2_timepartitions limit 1] rc 0
-[select 1 from comdb2_timepartshards limit 1] rc 0
 (1=1)
-[select 1 from comdb2_timeseries limit 1] rc 0
 (1=1)
-[select 1 from comdb2_transaction_logs limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tunables limit 1] rc 0
 (1=1)
-[select 1 from comdb2_type_samples limit 1] rc 0
 (1=1)
-[select 1 from comdb2_columns limit 1] rc 0
-[select 1 from comdb2_constraints limit 1] rc 0
-[select 1 from comdb2_keycomponents limit 1] rc 0
-[select 1 from comdb2_keys limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tablepermissions limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tables limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tablesizes limit 1] rc 0
-[select 1 from comdb2_triggers limit 1] rc 0
 (1=1)
-[select 1 from comdb2_keywords limit 1] rc 0
 (1=1)
-[select 1 from comdb2_limits limit 1] rc 0
 (1=1)
-[select 1 from comdb2_users limit 1] rc 0
-[set user 'replicant'] rc 0
-[set password 'secret'] rc 0
 ( replicant =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
@@ -98,32 +52,14 @@
 [select 1 from comdb2_timepartshards limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
-[select " cannot access following system tables " as " replicant "] rc 0
 ( replicant =' limited access to following system tables ')
-[select " limited access to following system tables " as " replicant "] rc 0
-[select 1 from comdb2_columns limit 1] rc 0
-[select 1 from comdb2_constraints limit 1] rc 0
-[select 1 from comdb2_keycomponents limit 1] rc 0
-[select 1 from comdb2_keys limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tablepermissions limit 1] rc 0
-[select 1 from comdb2_tables limit 1] rc 0
-[select 1 from comdb2_tablesizes limit 1] rc 0
-[select 1 from comdb2_triggers limit 1] rc 0
 ( replicant =' can following system tables ')
-[select " can following system tables " as " replicant "] rc 0
 (1=1)
-[select 1 from comdb2_transaction_logs limit 1] rc 0
 (1=1)
-[select 1 from comdb2_keywords limit 1] rc 0
 (1=1)
-[select 1 from comdb2_limits limit 1] rc 0
 (1=1)
-[select 1 from comdb2_type_samples limit 1] rc 0
 (1=1)
-[select 1 from comdb2_users limit 1] rc 0
-[set user 'sysmon'] rc 0
-[set password 'secret'] rc 0
 ( sysmon =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
@@ -145,34 +81,15 @@
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
-[select " cannot access following system tables " as " sysmon "] rc 0
 ( sysmon =' limited access to following system tables ')
-[select " limited access to following system tables " as " sysmon "] rc 0
-[select 1 from comdb2_columns limit 1] rc 0
-[select 1 from comdb2_constraints limit 1] rc 0
-[select 1 from comdb2_keycomponents limit 1] rc 0
-[select 1 from comdb2_keys limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tablepermissions limit 1] rc 0
-[select 1 from comdb2_tables limit 1] rc 0
-[select 1 from comdb2_tablesizes limit 1] rc 0
-[select 1 from comdb2_triggers limit 1] rc 0
 ( sysmon =' can access following system tables ')
-[select " can access following system tables " as " sysmon "] rc 0
 (1=1)
-[select 1 from comdb2_fingerprints limit 1] rc 0
 (1=1)
-[select 1 from comdb2_metrics limit 1] rc 0
 (1=1)
-[select 1 from comdb2_keywords limit 1] rc 0
 (1=1)
-[select 1 from comdb2_limits limit 1] rc 0
 (1=1)
-[select 1 from comdb2_type_samples limit 1] rc 0
 (1=1)
-[select 1 from comdb2_users limit 1] rc 0
-[set user 'other'] rc 0
-[set password 'secret'] rc 0
 ( other =' cannot access following system tables ')
 [select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
@@ -196,25 +113,10 @@
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
-[select " cannot access following system tables " as " other "] rc 0
 ( other =' limited access to following system tables ')
-[select " limited access to following system tables " as " other "] rc 0
-[select 1 from comdb2_columns limit 1] rc 0
-[select 1 from comdb2_constraints limit 1] rc 0
-[select 1 from comdb2_keycomponents limit 1] rc 0
-[select 1 from comdb2_keys limit 1] rc 0
 (1=1)
-[select 1 from comdb2_tablepermissions limit 1] rc 0
-[select 1 from comdb2_tables limit 1] rc 0
-[select 1 from comdb2_tablesizes limit 1] rc 0
-[select 1 from comdb2_triggers limit 1] rc 0
 ( other =' can access following system tables ')
-[select " can access following system tables " as " other "] rc 0
 (1=1)
-[select 1 from comdb2_keywords limit 1] rc 0
 (1=1)
-[select 1 from comdb2_limits limit 1] rc 0
 (1=1)
-[select 1 from comdb2_type_samples limit 1] rc 0
 (1=1)
-[select 1 from comdb2_users limit 1] rc 0

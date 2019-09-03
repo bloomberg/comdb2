@@ -84,7 +84,7 @@ struct hashobj {
     unsigned char data[/*len*/];
 };
 
-int gbl_temptable_count;
+uint32_t gbl_temptable_count;
 
 static char *get_stack_backtrace(void)
 {
@@ -636,7 +636,7 @@ done:
 #endif
     ++gbl_temptable_created;
 
-    if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
+    if (tbl != NULL) ATOMIC_ADD32(gbl_temptable_count, 1);
 
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
@@ -1517,7 +1517,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
             bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
             bdb_state->temp_stats->st_pages += tmp->st_pages;
-            ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty,
+            ATOMIC_ADD32(bdb_state->temp_stats->st_page_dirty,
                        tmp->st_page_dirty);
             bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
             bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
@@ -1610,7 +1610,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
         bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
         bdb_state->temp_stats->st_pages += tmp->st_pages;
-        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
+        ATOMIC_ADD32(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
         bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
         bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
         bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
@@ -1687,7 +1687,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 #endif
 
     if (rc == 0) {
-        ATOMIC_ADD(gbl_temptable_count, -1);
+        ATOMIC_ADD32(gbl_temptable_count, -1);
     } else {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close(%p) rc %d\n",
                __func__, tbl, rc);

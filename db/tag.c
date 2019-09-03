@@ -4288,7 +4288,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
         field_idx = field; /* find_field_idx_in_tag(from, to_field->name);*/
         from_field = &from->member[field_idx];
 
-        if (nulls && stype_is_null(inbuf + from_field->offset)) {
+        if (nulls && field_is_null(from, from_field, inbuf)) {
             *nulls = 1;
         }
 

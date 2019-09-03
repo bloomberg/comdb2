@@ -1,15 +1,23 @@
 #!/bin/sh
 
 bash -n "$0" | exit 1
+set -e
+
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
 
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host - >/dev/null
 EXEC PROCEDURE sys.cmd.send("memstat debug on sqlite")
 EXEC PROCEDURE sys.cmd.send("memstat debug start")
-SELECT 1
-EXEC PROCEDURE sys.cmd.send("memstat debug stop")
 EOF
 
-stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite")'`
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'SELECT sleep(5)' &
+sleep 1
+stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite 1")'`
+addr2line -fsp -e $COMDB2_EXE $stacks | grep malloc.c
+
+wait
+
+stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite 1")'`
 addr2line -fsp -e $COMDB2_EXE $stacks | grep sql_statement_done

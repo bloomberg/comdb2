@@ -314,7 +314,7 @@ int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
 
 int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
-    ATOMIC_ADD(gbl_analyze_gen, 1);
+    ATOMIC_ADD32(gbl_analyze_gen, 1);
     return do_llog(bdb_state, sc_analyze, NULL, wait, NULL, bdberr);
 }
 

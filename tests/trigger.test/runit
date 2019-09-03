@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-dbname=$1
-if [[ -z $dbname ]] ; then
-  echo dbname missing
-  exit 1
-fi
-
-for testreq in `ls t*.req` ; do
-  testname=`echo $testreq | cut -d "." -f 1`
-
-  cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default &> $testname.output
-  diff $testname.expected $testname.output
-
-  if [[ $? -eq 0 ]]; then
-    echo "passed $testname"
-  else
-    echo "failed $testname"
-    echo "see diffs here: $HOSTNAME"
-    echo "> diff -u ${PWD}/{$testname.expected,$testname.output}"
-    echo
-    exit 1
-  fi
-done
-
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -r req
+[ $? -eq 0 ] || exit 1
 exit 0

@@ -24,6 +24,7 @@
 #include "comdb2.h"
 #include "sql.h"
 #include "bdb_int.h"
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -796,11 +797,17 @@ static void comdb2CtxinfoFunc(
   if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ){
     return;
   }
+
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "parallel")==0 ){
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
-    sqlite3_result_int(context, clnt!=NULL && clnt->conns!=NULL);
+    if (clnt) {
+      sqlite3_result_int(context, clnt->conns!=NULL);
+    }
+  } else if( sqlite3_stricmp(zName, "user")==0 ){
+    sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
   }
 }
 
@@ -952,6 +959,19 @@ static void comdb2StartTimeFunc(
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
 }
+
+static void comdb2UserFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+  sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
+}
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2582,6 +2602,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_dbname,         0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
+    FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
