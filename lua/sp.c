@@ -5798,9 +5798,17 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
         int tmp;
         /* Don't make new parent transaction on this rollback. */
         sp->make_parent_trans = 0;
+
         db_rollback_int(lua, &tmp);
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_FNSH_ABORTED_STATE);
+
+        if (clnt->in_client_trans) {
+            /* We have rolled back the transaction before having seen a commit
+             * or rollback from the client. Let's fix the transaction state.
+             */
+            assert(clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS);
+            sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                    SQLENG_FNSH_ABORTED_STATE);
+        }
     }
 
     if (gbl_break_lua && (gbl_break_lua == pthread_self())) {

@@ -1,0 +1,2 @@
+(version='bar')
+[exec procedure foo()] failed with rc -3 [db:rollback()...]:3: No transaction to COMMIT/ROLLBACK
