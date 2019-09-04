@@ -3319,8 +3319,10 @@ char *csc2_strdup(char *s)
 
 void csc2_free_all(void)
 {
-    comdb2ma_destroy(csc2a);
-    csc2a = NULL;
+    if (csc2a != NULL) {
+        comdb2ma_destroy(csc2a);
+        csc2a = NULL;
+    }
 
     if (errors) {
         strbuf_free(errors);
