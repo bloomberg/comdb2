@@ -440,9 +440,17 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %ld rtrs %u \"%s\"\n",
-                sess->rqid, sess->offhost, (long)sess->end - sess->initstart,
-                (sess->iq ? sess->iq->retries : 0), sess->sql ? sess->sql : "()");
+    if (sess->rqid == OSQL_RQID_USE_UUID) {
+        uuidstr_t us;
+        comdb2uuidstr(sess->uuid, us);
+        reqlog_logf(reqlog, REQL_INFO, "uuid %s ", us);
+    }
+    else 
+        reqlog_logf(reqlog, REQL_INFO, "rqid %llx ", sess->rqid);
+
+    reqlog_logf(reqlog, REQL_INFO, "node %s sec %ld rtrs %u \"%s\"\n",
+                sess->offhost, (long)sess->end - sess->initstart,
+                sess->iq ? sess->iq->retries : 0, sess->sql ? sess->sql : "()");
 }
 
 /**
