@@ -3374,7 +3374,7 @@ void csc2_error(const char *fmt, ...)
     va_end(args);
     strbuf_append(errors, out);
     logmsg(LOGMSG_ERROR, "%s", out);
-    free(out);
+    comdb2_free(out);
 }
 
 void csc2_syntax_error(const char *fmt, ...)
@@ -3402,5 +3402,5 @@ void csc2_syntax_error(const char *fmt, ...)
     vsnprintf(out, len, fmt, args);
     va_end(args);
     strbuf_append(syntax_errors, out);
-    free(out);
+    comdb2_free(out);
 }
