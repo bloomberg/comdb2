@@ -5074,7 +5074,6 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     ** TODO: Should this code reset an existing client sequence number
     **       to a higher value?  I do not think so.
     */
-    clnt->work.retries = ATOMIC_ADD32(clnt->work.retries, 1);
     if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
@@ -5268,6 +5267,7 @@ check_query_rc: ; /* empty statement, make compiler happy */
         if (db_is_stopped()) return rc2; /* now permanent error */
         usleep(1000 * gbl_retry_dispatch_ms);
         if (db_is_stopped()) return rc2; /* now permanent error */
+        clnt->work.retries = ATOMIC_ADD32(clnt->work.retries, 1);
         rc2 = enqueue_sql_query(clnt, priority, 1);
         if (rc2 != 0) {
             /*
