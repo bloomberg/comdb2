@@ -333,7 +333,7 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in **version R7**, follows the usual standard data
+The second approach, added in version `7.0`, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using this syntax implicitly creates a ```UNIQUE``` index
 named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
@@ -437,7 +437,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in **version R7**, supports the usual standard data
+The second approach, added in version `7.0`, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -485,7 +485,7 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0. Indexes on
+table. The support for ```CREATE INDEX``` was added in version `7.0`. Indexes on
 expression cannot be currently created via this command.
 
 ### DROP INDEX
@@ -495,7 +495,7 @@ expression cannot be currently created via this command.
 The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
 INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
-same name. The support for ```DROP INDEX``` was added in version 7.0.
+same name. The support for ```DROP INDEX``` was added in version `7.0`.
 
 ### CREATE VIEW
 

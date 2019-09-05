@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #include "thread_util.h"
 #include "thdpool.h"

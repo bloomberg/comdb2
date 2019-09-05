@@ -62,6 +62,7 @@
 #include <luautil.h>
 #include <logmsg.h>
 #include <tohex.h>
+#include <ctrace.h>
 
 #ifdef WITH_RDKAFKA    
 
@@ -5797,9 +5798,17 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
         int tmp;
         /* Don't make new parent transaction on this rollback. */
         sp->make_parent_trans = 0;
+
         db_rollback_int(lua, &tmp);
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_FNSH_ABORTED_STATE);
+
+        if (clnt->in_client_trans) {
+            /* We have rolled back the transaction before having seen a commit
+             * or rollback from the client. Let's fix the transaction state.
+             */
+            assert(clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS);
+            sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                    SQLENG_FNSH_ABORTED_STATE);
+        }
     }
 
     if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
@@ -6625,6 +6634,7 @@ void *exec_trigger(trigger_reg_t *reg)
     // luaL_error() will cause abort()
     Lua L = NULL;
     dbconsumer_t *q = NULL;
+    ctrace("trigger:%s assigned; now running\n", reg->spname);
     while (1) {
         int rc, args = 0;
         char *err = NULL;
@@ -6647,6 +6657,7 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         if ((rc = run_sp(&clnt, args, &err)) != 0) {
         bad:
+            ctrace("trigger:%s err:%s\n", reg->spname, err);
             free(err);
             if (args != -2) {
                 sleep(5); // slow down buggy sp from spinning
@@ -6655,8 +6666,7 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         if (lua_gettop(L) != 1 || !lua_isnumber(L, 1) ||
             (rc = lua_tonumber(L, 1)) != 0) {
-            logmsg(LOGMSG_DEBUG, "trigger:%s rc:%s\n", sp->spname,
-                   lua_tostring(L, 1));
+            ctrace("trigger:%s rc:%s\n", reg->spname, lua_tostring(L, 1));
             err = strdup("trigger returned bad rc");
             db_rollback_int(L, &rc);
             goto bad;
@@ -6667,15 +6677,15 @@ void *exec_trigger(trigger_reg_t *reg)
             goto bad;
         }
         if ((rc = commit_sp(L, &err)) != 0) {
-            logmsg(LOGMSG_ERROR, "trigger:%s %016" PRIx64 " commit failed rc:%d -- %s\n",
-                   sp->spname, q->info.trigger_cookie, rc, err);
+            ctrace("trigger:%s %016" PRIx64 " commit failed rc:%d -- %s\n",
+                   reg->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
         put_curtran(thedb->bdb_env, &clnt);
     }
     if (q) {
         luabb_trigger_unregister(L, q);
-        logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
+        ctrace("trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
         free(q);
     } else {
         force_unregister(L, reg);
