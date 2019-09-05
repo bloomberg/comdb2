@@ -344,7 +344,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
         if (thread_stats->n_preads) {
             cson_object_set(perfobj, "reads",
                             cson_new_int(thread_stats->n_preads));
-            cson_object_set(perfobj, "readtimetime",
+            cson_object_set(perfobj, "readtime",
                             cson_new_int(thread_stats->pread_time_us));
         }
         if (thread_stats->n_pwrites) {
