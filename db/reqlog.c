@@ -1559,7 +1559,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                     expanded_fp);
     }
 
-    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
+    dumpf(logger, out, " rqid %s from %s rc %d\n", logger->id, reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
