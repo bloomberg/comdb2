@@ -432,7 +432,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
 {
     *tottm = sess->end - sess->initstart;
     *rtt = sess->end - sess->start;
-    *rtrs = sess->retries;
+    *rtrs = sess->iq ? sess->iq->retries : 0;
 }
 
 /**
@@ -442,7 +442,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
     reqlog_logf(reqlog, REQL_INFO, "rqid %llx node %s sec %ld rtrs %u \"%s\"\n",
                 sess->rqid, sess->offhost, (long)sess->end - sess->initstart,
-                sess->retries, (sess->sql) ? sess->sql : "()");
+                (sess->iq ? sess->iq->retries : 0), sess->sql ? sess->sql : "()");
 }
 
 /**
