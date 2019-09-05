@@ -962,6 +962,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             if (ATOMIC_LOAD32(pool->nactthd) == 0) {
                 logmsg(LOGMSG_ERROR, "%s(%s):cannot queue, no threads active\n",
                        __func__, pool->name);
+                pool->num_failed_dispatches++;
+                errUNLOCK(&pool->mutex);
                 return -1;
             }
 #endif
