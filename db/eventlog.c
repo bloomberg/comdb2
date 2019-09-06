@@ -504,6 +504,10 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(
             obj, "error",
             cson_value_new_string(logger->error, strlen(logger->error)));
+
+        if (logger->iq && logger->iq->retries > 0)
+            cson_object_set(obj, "deadlockretries",
+                            cson_new_int(logger->iq->retries));
     }
 
     cson_object_set(obj, "host",
