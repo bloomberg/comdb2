@@ -109,7 +109,7 @@ TRANSIZE=0
 
 gen_series_test
 
-$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debug.toblock_random_deadlock_trans 30")'
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debug.toblock_random_deadlock_trans on")'
 
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
 assertcnt $((THRDS * CNT * ITERATIONS))

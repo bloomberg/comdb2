@@ -79,7 +79,7 @@ extern int gbl_partial_indexes;
 
 extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
-int gbl_toblock_random_deadlock_trans; // 0 to 100
+int gbl_toblock_random_deadlock_trans;
 
 typedef struct osql_blknds {
     char *nds[MAX_CLUSTER];        /* list of nodes to blackout in offloading */
@@ -6911,8 +6911,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
 
-        int abc = (rand() % 100);
-        if (gbl_toblock_random_deadlock_trans && abc < gbl_toblock_random_deadlock_trans) {
+        if (gbl_toblock_random_deadlock_trans && (rand() % 100) == 0) {
             rc = RC_INTERNAL_RETRY;
         }
 
