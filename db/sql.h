@@ -555,6 +555,7 @@ struct sqlworkstate {
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+    char zRuleRes[100];   /* Ruleset match result, if any. */
 };
 
 struct sql_hist_cost {

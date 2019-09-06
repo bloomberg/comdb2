@@ -4788,12 +4788,14 @@ static int can_execute_sql_query_now(
   size_t count = comdb2_evaluate_ruleset(
     NULL, memcmp, gbl_ruleset, clnt, &result
   );
-  char zRuleRes[100] = {0};
-  comdb2_ruleset_result_to_str(&result, zRuleRes, sizeof(zRuleRes));
+  memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
+  comdb2_ruleset_result_to_str(
+    &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
+  );
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG, "%s: seqNo=%llu, sql={%s}, count=%d, %s\n",
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
-           (int)count, zRuleRes);
+           (int)count, clnt->work.zRuleRes);
   }
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
