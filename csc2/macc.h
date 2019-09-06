@@ -9,8 +9,7 @@
 #include "dynschemaload.h"
 #include <cdb2_constants.h>
 
-#include "mem_csc2.h"
-#include "mem_override.h"
+#include "mem.h"
 
 extern char *revision;
 
