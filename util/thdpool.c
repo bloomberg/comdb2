@@ -704,7 +704,7 @@ static void *thdpool_thd(void *voidarg)
             else
                 check_exit = 0;
 
-            if (pool->wait && pool->waiting_for_thread)
+            if (pool->waiting_for_thread)
                 Pthread_cond_signal(&pool->wait_for_thread);
 
             /* Get work.  If there is no work then place us on the free
@@ -848,6 +848,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         struct thd *thd;
         struct workitem *item = NULL;
         unsigned nbusy;
+        int did_create = 0;
 
         if (pool->stopped) {
             pool->num_failed_dispatches++;
@@ -934,6 +935,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 Pthread_cond_destroy(&thd->cond);
                 free(thd);
                 return -1;
+            } else {
+                did_create = 1;
             }
             if (listc_size(&pool->thdlist) > pool->peaknthd) {
                 pool->peaknthd = listc_size(&pool->thdlist);
@@ -941,13 +944,13 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_creates++;
         }
 
-        if (thd == NULL && pool->wait) {
+        if ((queue_only && did_create) || (thd == NULL && pool->wait)) {
 
             pool->waiting_for_thread = 1;
             Pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
             pool->waiting_for_thread = 0;
 
-            goto again;
+            if (!queue_only) goto again;
         }
 
         if (!queue_only && thd) {
