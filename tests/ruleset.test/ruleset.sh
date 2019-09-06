@@ -34,6 +34,3 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;"
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('evaluate_ruleset')"
-
-# debug.random_sql_work_delayed
-# debug.random_sql_work_rejected

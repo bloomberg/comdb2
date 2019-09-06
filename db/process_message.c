@@ -1371,6 +1371,7 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "free_ruleset") == 0) {
         comdb2_free_ruleset(gbl_ruleset);
         gbl_ruleset = NULL;
+        logmsg(LOGMSG_USER, "Freed in-memory ruleset\n");
     }
     else if (tokcmp(tok, ltok, "dump_ruleset") == 0) {
         comdb2_dump_ruleset(gbl_ruleset);
