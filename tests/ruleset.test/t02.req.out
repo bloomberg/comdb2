@@ -1,3 +1,5 @@
+(out='Freed in-memory ruleset')
+(out='Freed in-memory ruleset')
 (1=1)
 (x=1)
 (x=2)
@@ -19,6 +21,7 @@
 (x=3)
 (out='Ruleset saved to file "t01_saved.ruleset"')
 (out='ruleset 0x00000000 matched 0, action=NONE, priority=HIGHEST')
+(out='Freed in-memory ruleset')
 (3=3)
 (x=1)
 (x=2)
