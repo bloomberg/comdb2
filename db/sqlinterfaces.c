@@ -2360,7 +2360,8 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
  * used by two sql at the same time).
  */
 static void remove_stmt_entry(struct sqlthdstate *thd,
-                              stmt_hash_entry_type *entry)
+                              stmt_hash_entry_type *entry,
+                              int noComplain)
 {
     assert(entry);
 
@@ -2372,10 +2373,10 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     }
     listc_maybe_rfl(list, entry);
     int rc = hash_del(thd->stmt_caching_table, entry->sql);
-    if (rc)
+    if (!noComplain && rc)
         logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
                rc);
-    // assert(rc == 0);
+    assert(noComplain || rc == 0);
 }
 
 /* This will call requeue_stmt_entry() after it has allocated memory
@@ -2436,7 +2437,7 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
     if (*entry == NULL)
         return -1;
 
-    remove_stmt_entry(thd, *entry); // will add again when done
+    remove_stmt_entry(thd, *entry, 0); // will add again when done
 
     return 0;
 }
@@ -3147,7 +3148,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                           stmt);
 cleanup:
     if (rec->stmt_entry != NULL) {
-        remove_stmt_entry(thd, rec->stmt_entry);
+        remove_stmt_entry(thd, rec->stmt_entry, 1);
         cleanup_stmt_entry_only(rec->stmt_entry);
         rec->stmt_entry = NULL;
     }
