@@ -4802,14 +4802,16 @@ static int can_execute_sql_query_now(
       (result.action != RULESET_A_LOW_PRIO)) {
     if (gbl_random_sql_work_rejected &&
         !(rand() % gbl_random_sql_work_rejected)) {
-      logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} reject\n",
-             __func__, clnt->sql);
+      logmsg(LOGMSG_WARN,
+             "%s: seqNo=%llu, forcing random SQL work item {%s} reject\n",
+             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
       *pbRejected = 1;
       return 0;
     } else if (gbl_random_sql_work_delayed &&
         !(rand() % gbl_random_sql_work_delayed)) {
-      logmsg(LOGMSG_WARN, "%s: forcing random SQL work item {%s} delay\n",
-             __func__, clnt->sql);
+      logmsg(LOGMSG_WARN,
+             "%s: seqNo=%llu, forcing random SQL work item {%s} delay\n",
+             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
       return 0;
     }
   }
@@ -4830,9 +4832,12 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  priority_t thdpool_priority = (priority_t)gbl_debug_force_thdpool_priority;
-  if (thdpool_priority == PRIORITY_T_HIGHEST) {
-    thdpool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+  priority_t thdpool_priority = PRIORITY_T_INVALID;
+  if (count > 0) {
+    thdpool_priority = (priority_t)gbl_debug_force_thdpool_priority;
+    if (thdpool_priority == PRIORITY_T_HIGHEST) {
+      thdpool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+    }
   }
   int rc;
   if (thdpool_priority == PRIORITY_T_INVALID) {
