@@ -1354,6 +1354,8 @@ static int process_this_session(
     uuid_t uuid;
 
     iq->queryid = osql_sess_queryid(sess);
+    iq->startprocessingus = comdb2_time_epochus();
+    reqlog_set_queue_time(iq->reqlogger, iq->startprocessingus - iq->startus);
 
     osql_sess_getuuid(sess, uuid);
 

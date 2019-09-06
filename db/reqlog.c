@@ -2689,7 +2689,7 @@ void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...)
     logger->origin[sizeof(logger->origin) - 1] = 0;
 }
 
-const char *reqlog_get_origin(struct reqlogger *logger)
+const char *reqlog_get_origin(const struct reqlogger *logger)
 {
     return logger->origin;
 }
@@ -2702,6 +2702,11 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
     if (logger) logger->queuetimeus = timeus;
+}
+
+uint64_t reqlog_get_queue_time(const struct reqlogger *logger)
+{
+    return logger->queuetimeus;
 }
 
 void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
@@ -2745,7 +2750,7 @@ void reqlog_set_error(struct reqlogger *logger, const char *error,
     logger->error_code = error_code;
 }
 
-int reqlog_get_error_code(struct reqlogger *logger)
+int reqlog_get_error_code(const struct reqlogger *logger)
 {
     return logger->error_code;
 }
@@ -2766,7 +2771,7 @@ void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
     logger->clnt = clnt;
 }
 
-int reqlog_get_retries(struct reqlogger *logger)
+int reqlog_get_retries(const struct reqlogger *logger)
 {
     return logger->iq ? logger->iq->retries : 0;
 }
