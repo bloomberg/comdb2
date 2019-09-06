@@ -940,7 +940,8 @@ void serialise_database(
 
     for (std::list<std::string>::const_iterator it = ruleset_files.begin();
                                              it != ruleset_files.end(); ++it) {
-        support_files.push_back(*it);
+        std::string rulesetfile = "rulesets/" + *it;
+        support_files.push_back(rulesetfile);
     }
 
     // List of incremental comparison files to determine new/updated/deleted files
