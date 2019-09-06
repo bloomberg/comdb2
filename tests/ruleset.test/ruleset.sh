@@ -11,16 +11,16 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 1"
 cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.force_thdpool_priority' 1"
-cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/t01.ruleset')" | sed 's/file ".*"/file "t01.ruleset"/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/rulesets/t01.ruleset')" | sed 's/file ".*"/file "t01.ruleset"/g'
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
-cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/t01_saved.ruleset')" | sed 's/file ".*"/file "t01_saved.ruleset"/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/rulesets/t01_saved.ruleset')" | sed 's/file ".*"/file "t01_saved.ruleset"/g'
 
-if ! diff $DBDIR/t01.ruleset $DBDIR/t01_saved.ruleset ; then
+if ! diff $DBDIR/rulesets/t01.ruleset $DBDIR/rulesets/t01_saved.ruleset ; then
   echo output is different from expected
   exit 1
 fi
