@@ -911,6 +911,11 @@ REGISTER_TUNABLE("prioritize_queries",
                  "Prioritize SQL queries based on origin and fingerprint. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("prioritize_max_retries",
+                 "The maximum number of retries, if any, before a SQL query "
+                 "is allowed to execute without having its priority checked. "
+                 "(Default: 1)", TUNABLE_INTEGER, &gbl_prioritize_max_retries,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.force_thdpool_priority",
                  "Force highest thread pool priority to the specified value "
                  "instead of actually reading it from the thread pool queue. "
