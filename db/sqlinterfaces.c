@@ -178,6 +178,7 @@ uint64_t gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 int gbl_thdpool_queue_only = 0;
+int gbl_debug_force_thdpool_priority = (int)PRIORITY_T_HIGHEST;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
@@ -4827,9 +4828,10 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  priority_t thdpool_priority = thdpool_get_highest_priority(
-      gbl_sqlengine_thdpool
-  );
+  priority_t thdpool_priority = (priority_t)gbl_debug_force_thdpool_priority;
+  if (thdpool_priority == PRIORITY_T_HIGHEST) {
+    thdpool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+  }
   int rc;
   if (thdpool_priority == PRIORITY_T_INVALID) {
     rc = 1; /* empty pool */

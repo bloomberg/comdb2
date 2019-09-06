@@ -911,6 +911,12 @@ REGISTER_TUNABLE("prioritize_queries",
                  "Prioritize SQL queries based on origin and fingerprint. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.force_thdpool_priority",
+                 "Force highest thread pool priority to the specified value "
+                 "instead of actually reading it from the thread pool queue. "
+                 "(Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_force_thdpool_priority, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_prioritize_queries",
                  "Show prioritized SQL queries based on origin and "
                  "fingerprint.  (Default: off)", TUNABLE_BOOLEAN,

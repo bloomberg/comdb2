@@ -3610,6 +3610,7 @@ extern int gbl_mifid2_datetime_range;
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
 extern int gbl_prioritize_queries;
+extern int gbl_debug_force_thdpool_priority;
 extern int gbl_verbose_prioritize_queries;
 
 /* Global switch for perfect checkpoint. */
