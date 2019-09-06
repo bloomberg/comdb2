@@ -11,6 +11,11 @@
 (x=2)
 (x=3)
 (out='Ruleset loaded from file "t01.ruleset"')
+(out='comdb2_dump_ruleset: ruleset 0x00000000, generation 0, count 4')
+(out='comdb2_dump_ruleset_item: ruleset 0x00000000 rule #1 <null> seqNo 0, action {REJECT} (0x1), adjustment 0, flags {NONE} (0x0), mode {NONE} (0x0), originHost {<null>}, originTask {<null>}, user {<null>}, sql {<null>}, fingerprint {a9c8b6ddb5b9e55ee41b7f5a46ec4e45}')
+(out='comdb2_dump_ruleset_item: ruleset 0x00000000 rule #2 <null> seqNo 0, action {LOW_PRIO} (0x4), adjustment 1000, flags {NONE} (0x0), mode {NONE} (0x0), originHost {<null>}, originTask {<null>}, user {<null>}, sql {<null>}, fingerprint {f309b21fc81151d21268e9399b36994a}')
+(out='comdb2_dump_ruleset_item: ruleset 0x00000000 rule #3 <null> seqNo 0, action {HIGH_PRIO} (0x8), adjustment 1000, flags {NONE} (0x0), mode {NONE} (0x0), originHost {<null>}, originTask {<null>}, user {<null>}, sql {<null>}, fingerprint {fb34995274c6a68a94ae4b9fcfd2d535}')
+(out='comdb2_dump_ruleset_item: ruleset 0x00000000 rule #4 <null> seqNo 0, action {NONE} (0x0), adjustment 0, flags {NONE} (0x0), mode {NONE} (0x0), originHost {<null>}, originTask {<null>}, user {<null>}, sql {<null>}, fingerprint {4f16a8ec9db90f803e406659938b2602}')
 (2=2)
 [SELECT * FROM t1] failed with rc -1 Client api should change nodes
 (comdb2_ctxinfo('retries')=1, x=1)
