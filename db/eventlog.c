@@ -499,6 +499,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
 
     if (logger->error) {
+        cson_object_set(obj, "rc", cson_new_int(logger->rc));
         cson_object_set(obj, "error_code", cson_new_int(logger->error_code));
         cson_object_set(
             obj, "error",
