@@ -409,10 +409,6 @@ if [[ "$out" == "0" ]]; then
     failexit "Inplace update should update updateid to nonzero"
 fi
 
-for node in $cluster ; do
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("reql longrequest 0")'
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("reql longsqlrequest 0")'
-done
 
 test_t1() {
 	INITNUMREC=100
