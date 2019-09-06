@@ -502,9 +502,10 @@ size_t comdb2_ruleset_result_to_str(
   char *zBuf,
   size_t nBuf
 ){
+  char zBuf[100] = {0};
   return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s",
       comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
-      comdb2_priority_to_str(result->priority, NULL, 0, 1)
+      comdb2_priority_to_str(result->priority, zBuf, sizeof(zBuf), 0)
   );
 }
 
