@@ -23,7 +23,7 @@
 #include <pthread.h>
 
 struct ireq;
-typedef struct dbtable dbtable;
+struct dbtable;
 
 /* libcmacc2 populates these structures.
    Schema records are added from upon parsing a "csc" directive.
@@ -416,7 +416,7 @@ int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail, int *tail
                            char *outbuf, struct convert_failure *reason,
                            const char *tzname);
 
-int create_key_from_ondisk_blobs(const dbtable *db, int ixnum, char **tail,
+int create_key_from_ondisk_blobs(const struct dbtable *db, int ixnum, char **tail,
                                  int *taillen, char *mangled_key,
                                  const char *fromtag, const char *inbuf,
                                  int inbuflen, const char *totag, char *outbuf,
@@ -431,7 +431,7 @@ int create_key_from_ondisk_sch(struct dbtable *db, struct schema *fromsch, int i
                                struct convert_failure *reason,
                                const char *tzname);
 
-int create_key_from_ondisk_sch_blobs(const dbtable *db, struct schema *fromsch,
+int create_key_from_ondisk_sch_blobs(const struct dbtable *db, struct schema *fromsch,
                                      int ixnum, char **tail, int *taillen,
                                      char *mangled_key, const char *fromtag,
                                      const char *inbuf, int inbuflen,

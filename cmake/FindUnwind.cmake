@@ -1,14 +1,11 @@
-include(${CMAKE_MODULE_PATH}/pkg_helper.cmake)
-set(lib unwind)
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-  set(lib System)
-endif()
-find_pkg_for_comdb2(Unwind
-  "libunwind.h"
-  "${lib}"
-  "${UNWIND_ROOT_DIR}"
-  ""
-  UNWIND_INCLUDE_DIR
-  UNWIND_LIBRARY
+find_path(UNWIND_INCLUDE_DIR
+  NAMES libunwind.h
+  HINTS ${UNWIND_ROOT_DIR}
 )
-mark_as_advanced(UNWIND_INCLUDE_DIR UNWIND_LIBRARY)
+find_library(UNWIND_LIBRARY
+  NAMES unwind System
+  HINTS ${UNWIND_ROOT_DIR}
+)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(UNWIND DEFAULT_MSG UNWIND_INCLUDE_DIR)
+find_package_handle_standard_args(libunwind DEFAULT_MSG UNWIND_LIBRARY)

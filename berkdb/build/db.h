@@ -877,7 +877,7 @@ struct __db_mpool_stat {
 	u_int64_t st_page_trickle;	/* Pages written by memp_trickle. */
 	u_int64_t st_pages;		/* Total number of pages. */
 	u_int64_t st_page_clean;	/* Clean pages. */
-	int32_t   st_page_dirty;	/* Dirty pages. */
+	uint32_t  st_page_dirty;	/* Dirty pages. */
 	u_int64_t st_hash_buckets;	/* Number of hash buckets. */
 	u_int64_t st_hash_searches;	/* Total hash chain searches. */
 	u_int64_t st_hash_longest;	/* Longest hash chain searched. */

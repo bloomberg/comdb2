@@ -662,8 +662,8 @@ alloc:		/*
 
 		/* If we extended the file, make sure the page is never lost. */
 		if (extending) {
-			ATOMIC_ADD(hp->hash_page_dirty, 1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+			ATOMIC_ADD32(hp->hash_page_dirty, 1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
 			if (dbenv->tx_perfect_ckp) {
 				/* Set page first-dirty-LSN to not logged */

@@ -6,12 +6,8 @@ add_library(csc2
   maccparse.h
   maccprocarr.c
   maccwrite2.c
-  mem_csc2.h
 )
 add_definitions(-DYYMAXDEPTH=1100)
-set(module csc2)
-set(MODULE CSC2)
-configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_csc2.h @ONLY)
 find_program(yacc NAMES bison yacc)
 if(NOT yacc)
   message(FATAL_ERROR "yacc not found!")

@@ -547,7 +547,7 @@ convert_records:
             sleep(5);
         }
         if (gbl_sc_resume_start > 0)
-            ATOMIC_ADD(gbl_sc_resume_start, -1);
+            ATOMIC_ADD32(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 
