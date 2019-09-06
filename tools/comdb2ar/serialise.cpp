@@ -938,12 +938,6 @@ void serialise_database(
     std::list<std::string> ruleset_files;
     listdir(ruleset_files, rulesetdir);
 
-    for (std::list<std::string>::const_iterator it = ruleset_files.begin();
-                                             it != ruleset_files.end(); ++it) {
-        std::string rulesetfile = "rulesets/" + *it;
-        support_files.push_back(rulesetfile);
-    }
-
     // List of incremental comparison files to determine new/updated/deleted files
     std::list<std::string> incr_files_list;
     std::set<std::string> incr_files;
@@ -1333,6 +1327,18 @@ void serialise_database(
                 serialise_file(fi, iom);
             }
             islrl = false;
+        }
+
+        // Now do ruleset files (if any).
+        // These are special because the relative "rulesets/" prefix must be
+        // preserved, unlike support files, where only the base file name is
+        // considered.
+        for(std::list<std::string>::const_iterator it = ruleset_files.begin();
+                it != ruleset_files.end();
+                ++it) {
+            abspath = "rulesets/" + *it;
+            FileInfo fi(FileInfo::RULESET_FILE, abspath, dbdir);
+            serialise_file(fi, iom);
         }
 
         // Now do optional files (if any)
