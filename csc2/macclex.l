@@ -23,8 +23,6 @@
 #include <ctype.h>
 #include <string.h>
 #include "maccparse.h"
-#include "mem_csc2.h"
-#include "mem_override.h"
 #include "logmsg.h"
 extern int current_line;
 extern YYSTYPE yylval;
