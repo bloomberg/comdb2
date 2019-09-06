@@ -5316,9 +5316,9 @@ check_query_rc: ; /* empty statement, make compiler happy */
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
-    clnt->work.retries = 0;
     mark_clnt_as_recently_used(clnt);
 
+    clnt->work.retries = 0;
     int rc = enqueue_sql_query(clnt, priority, 0);
     if (rc != 0) return rc;
 
