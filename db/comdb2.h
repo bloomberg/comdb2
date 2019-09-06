@@ -3389,6 +3389,7 @@ extern int gbl_sql_tranlevel_preserved;
 
 void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
 const char *reqlog_get_origin(struct reqlogger *logger);
+int reqlog_get_retries(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,

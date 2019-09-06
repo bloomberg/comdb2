@@ -2766,6 +2766,11 @@ void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
     logger->clnt = clnt;
 }
 
+int reqlog_get_retries(struct reqlogger *logger)
+{
+    return logger->iq ? logger->iq->retries : 0;
+}
+
 struct dump_client_sql_options  {
     struct reqlogger *logger;
     int do_snap;
