@@ -936,7 +936,9 @@ void serialise_database(
 
     std::string rulesetdir = dbdir + "/rulesets";
     std::list<std::string> ruleset_files;
-    listdir(ruleset_files, rulesetdir);
+    if(file_exists(rulesetdir)) {
+        listdir(ruleset_files, rulesetdir);
+    }
 
     // List of incremental comparison files to determine new/updated/deleted files
     std::list<std::string> incr_files_list;
