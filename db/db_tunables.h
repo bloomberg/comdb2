@@ -1794,4 +1794,7 @@ REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
+                 TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

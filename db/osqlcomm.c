@@ -6911,8 +6911,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
 
-        if (gbl_toblock_random_deadlock_trans && (rand() % 100) > gbl_toblock_random_deadlock_trans) {
-            printf("deadlock trasaction\n");
+        int abc = (rand() % 100);
+        if (gbl_toblock_random_deadlock_trans && abc < gbl_toblock_random_deadlock_trans) {
             rc = RC_INTERNAL_RETRY;
         }
 
