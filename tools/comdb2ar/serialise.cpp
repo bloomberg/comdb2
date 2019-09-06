@@ -1336,7 +1336,7 @@ void serialise_database(
         for(std::list<std::string>::const_iterator it = ruleset_files.begin();
                 it != ruleset_files.end();
                 ++it) {
-            abspath = "rulesets/" + *it;
+            abspath = dbdir + "/rulesets/" + *it;
             FileInfo fi(FileInfo::RULESET_FILE, abspath, dbdir);
             serialise_file(fi, iom);
         }
