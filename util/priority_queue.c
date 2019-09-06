@@ -94,7 +94,7 @@ int priority_queue_add(
 
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
   {
-    if (iter->priority >= p) {
+    if ((iter != NULL) && (iter->priority >= p)) {
       assert(p != PRIORITY_T_DEFAULT);
       i->priority = p;
       listc_add_before(&q->list, i, iter);
@@ -122,13 +122,14 @@ priority_t priority_queue_highest(
 ){
   if (q == NULL) return PRIORITY_T_INVALID;
   priority_queue_item_t *i = LISTC_TOP(&q->list);
-  return (i != NULL) ? i->priority : PRIORITY_T_INVALID;
+  if (i == NULL) return PRIORITY_T_INVALID;
+  return i->priority;
 }
 
 int priority_queue_count(
   priority_queue_t *q
 ){
-  if (q == NULL) return -1;
+  if (q == NULL) return -1; /* invalid count */
   return listc_size(&q->list);
 }
 
@@ -142,6 +143,8 @@ void priority_queue_foreach(
   priority_queue_item_t *tmp, *iter;
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
   {
-    (fn)(p1, iter->pData, p2);
+    if (iter != NULL) {
+      (fn)(p1, iter->pData, p2);
+    }
   }
 }
