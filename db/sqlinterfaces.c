@@ -4910,7 +4910,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         return;
     }
 
-    if (gbl_prioritize_queries) {
+    if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
         if ((gbl_prioritize_max_retries <= 0) ||
             (clnt->work.retries < gbl_prioritize_max_retries)) {
             if (gbl_fingerprint_queries) {
