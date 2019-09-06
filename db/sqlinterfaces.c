@@ -4842,7 +4842,7 @@ static int can_execute_sql_query_now(
   }
   int rc;
   if (thdpool_priority == PRIORITY_T_INVALID) {
-    rc = 1; /* empty pool */
+    rc = 1; /* empty pool -OR- no ruleset loaded */
   } else if (clnt->priority <= thdpool_priority) {
     rc = 1; /* query has priority */
   } else {
