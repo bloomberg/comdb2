@@ -5,7 +5,7 @@ rule 1 fingerprint X'a9c8b6ddb5b9e55ee41b7f5a46ec4e45'
 
 rule 2 action LOW_PRIO
 rule 2 adjustment 1000
-rule 2 fingerprint X'025d05c1652fddfdc0c20a065d0d6615'
+rule 2 fingerprint X'f309b21fc81151d21268e9399b36994a'
 
 rule 3 action HIGH_PRIO
 rule 3 adjustment 1000
