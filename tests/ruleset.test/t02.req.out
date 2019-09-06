@@ -10,9 +10,7 @@
 (x=3)
 (out='Ruleset loaded from file "t01.ruleset"')
 (2=2)
-(x=1)
-(x=2)
-(x=3)
+[SELECT * FROM t1] failed with rc -1 Client api should change nodes
 (comdb2_ctxinfo('retries')=1, x=1)
 (comdb2_ctxinfo('retries')=1, x=2)
 (comdb2_ctxinfo('retries')=1, x=3)
