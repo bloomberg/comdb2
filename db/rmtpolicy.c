@@ -71,7 +71,6 @@ const char *get_mach_class_str(char *host)
 
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 {
-
     enum mach_class rmtclass;
     int ix = nodeix(host);
 
@@ -277,7 +276,9 @@ int process_allow_command(char *line, int lline)
         }
     } else if (cls != CLASS_UNKNOWN) {
         if (allow == 1) {
+            //logmsg(LOGMSG_USER, "az bset %s pol->explicit_allow_classes %d machines %d\n", pol->descr, pol->explicit_allow_classes, cls);
             bset(&pol->explicit_allow_classes, cls);
+            //logmsg(LOGMSG_USER, "az after bset %s pol->explicit_allow_classes %d test %d machines %d\n", pol->descr, pol->explicit_allow_classes, btst(&pol->explicit_allow_classes, cls), cls);
             bclr(&pol->explicit_disallow_classes, cls);
             logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr,
                    mach_class_class2name(cls));
@@ -305,4 +306,34 @@ ignore:
 bad:
     logmsg(LOGMSG_ERROR, "bad command <%*.*s>\n", lline, lline, line);
     return -1;
+}
+
+void dump_policy_structure(const struct rmtpol *pol) 
+{
+    logmsg(LOGMSG_USER, "Policy '%s'\n", pol->descr);
+    for (int i = 0; i < sizeof(pol->explicit_disallow_machs); i++) {
+        if (btst(pol->explicit_disallow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_disallow mach %d\n", i);
+    }
+    for (int i = 0; i < sizeof(pol->explicit_allow_machs); i++){
+        if (btst(pol->explicit_allow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_allow mach %d\n", i);
+    }
+
+    int c = 0;
+    while (++c <= 6) { //start from dev
+        if (btst(&pol->explicit_disallow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_disallow class %s\n",
+                   mach_class_class2name(c));
+        if (btst(&pol->explicit_allow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_allow class %s\n",
+                   mach_class_class2name(c));
+    }
+}
+
+void dump_remote_policy() 
+{
+    dump_policy_structure(&write_pol);
+    dump_policy_structure(&brd_pol);
+    dump_policy_structure(&cluster_pol);
 }
