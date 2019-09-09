@@ -17,6 +17,7 @@
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int gbl_strict_dbl_quotes;
 int sqlite3IsComdb2Rowid(Table *pTab, const char *);
 int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *);
 int is_comdb2_index_blob(const char *dbname, int icol);
