@@ -116,6 +116,6 @@ rule 3 mode GLOB
 rule 3 originTask */cdb2sql
 
 rule 4 action NONE
-rule 5 mode REGEXP, NOCASE
+rule 4 mode REGEXP, NOCASE
 rule 4 sql ^CREATE +.*$
 ```
