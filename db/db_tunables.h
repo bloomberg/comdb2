@@ -876,6 +876,11 @@ REGISTER_TUNABLE("page_latches",
                  "instead of full locks. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_page_latches, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "pageordertablescan",
+    "Perform table scans in page order and not row order. (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_page_order_table_scan, NOARG, NULL, NULL,
+    page_order_table_scan_update, NULL);
 /*
 REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
                  &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,

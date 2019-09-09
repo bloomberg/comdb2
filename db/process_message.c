@@ -3744,19 +3744,6 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "iopool") == 0) {
         berkdb_iopool_process_message(line, lline, st);
-    } else if (tokcmp(tok, ltok, "pageordertablescan") == 0) {
-        int state;
-        tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "on") == 0) {
-            state = 1;
-        } else if (tokcmp(tok, ltok, "off") == 0) {
-            state = 0;
-        } else {
-            logmsg(LOGMSG_ERROR, "Expected on/off\n");
-            return 0;
-        }
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, state);
-        logmsg(LOGMSG_USER, "Page order table scan set to %s.\n", state ? "on" : "off");
     }
 
     /* page_order_scan per-table message trap */
