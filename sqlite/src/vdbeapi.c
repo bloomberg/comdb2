@@ -1136,15 +1136,10 @@ static const Mem *columnNullValue(void){
         /* .eSubtype   = */ (u8)0,
         /* .n          = */ (int)0,
         /* .z          = */ (char*)0,
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* .db         = */ (sqlite3*)0,
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* .zMalloc    = */ (char*)0,
         /* .szMalloc   = */ (int)0,
         /* .uTemp      = */ (u32)0,
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
         /* .db         = */ (sqlite3*)0,
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* .xDel       = */ (void(*)(void*))0,
 #ifdef SQLITE_DEBUG
         /* .pScopyFrom = */ (Mem*)0,
