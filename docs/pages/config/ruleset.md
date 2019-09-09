@@ -54,7 +54,7 @@ The supported set of property names and their required formats is:
 |originTask     | Any Pattern string suitable for match mode.  May not contain whitespace. |
 |user           | Any Pattern string suitable for match mode.  May not contain whitespace. |
 |sql            | Any Pattern string suitable for match mode.  May contain whitespace. |
-|fingerprint    | SQLite compatible BLOB as string literal, e.g. x'0123ABCD'. |
+|fingerprint    | SQLite compatible BLOB as string literal, e.g. `x'0123ABCD'`. |
 
 ### Flags syntax
 
