@@ -96,8 +96,11 @@ enum ruleset_match {
 
   RULESET_M_TRUE = 2,     /* The ruleset or item was matched. */
 
-  RULESET_M_STOP = 4      /* The ruleset or item was matched -AND- processing
+  RULESET_M_STOP = 4,     /* The ruleset or item was matched -AND- processing
                            * of the ruleset or item should stop. */
+
+  RULESET_M_ERROR = 8     /* The ruleset or item could not be matched due
+                           * to one or more errors. */
 };
 
 struct ruleset_item {
@@ -165,6 +168,8 @@ typedef int (*xMemCmp)(const void *, const void *, size_t);
 typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
+
+int comdb2_ruleset_fingerprints_allowed(void);
 
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,

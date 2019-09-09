@@ -4734,12 +4734,21 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 
 static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
 {
-    if (is_stored_proc(clnt)) {
+    if (is_transaction_meta(clnt)) {
+        /*
+        ** NOTE: The BEGIN, COMMIT, and ROLLBACK SQL (meta-)commands
+        **       do not go through the SQLite parser (i.e. they are
+        **       processed out-of-band).  Therefore, they are exempt
+        **       from fingerprinting.
+        */
+        return 0; /* success */
+    } else {
         /*
         ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
         **       because its execution bypasses the SQL engine;
         **       however, the parser now recognizes it and so it
-        **       can be normalized.
+        **       can be normalized.  Other than that, all other
+        **       normalization is
         */
         free_original_normalized_sql(clnt);
         normalize_stmt_and_store(clnt, NULL);
@@ -4752,40 +4761,17 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         }
 
         return 0; /* success */
-    } else if (is_transaction_meta(clnt)) {
-        /*
-        ** NOTE: The BEGIN, COMMIT, and ROLLBACK SQL (meta-)commands
-        **       do not go through the SQLite parser (i.e. they are
-        **       processed out-of-band).  Therefore, they are exempt
-        **       from fingerprinting.
-        */
-        return 0; /* success */
-    } else {
-        int rc;
-        struct sql_state rec = {0};
-        struct errstat err = {0}; /* NOT USED */
-        rec.sql = clnt->sql;
-        rc = get_prepared_bound_stmt(
-            clnt->thd, clnt, &rec, &err, PREPARE_IGNORE_ERR | PREPARE_ONLY
-        );
-        if ((rc == 0) && clnt->work.zNormSql) {
-            size_t nNormSql = 0;
-
-            calc_fingerprint(clnt->work.zNormSql, &nNormSql,
-                             clnt->work.aFingerprint);
-        }
-        put_prepared_stmt(clnt->thd, clnt, &rec, 1, rc);
-        return rc;
     }
 }
 
 static int can_execute_sql_query_now(
   struct sqlthdstate *thd,
   struct sqlclntstate *clnt,
-  int *pbRejected
+  int *pbRejected,
+  priority_t *pPriority
 ){
   struct ruleset_result result = {0};
-  result.priority = clnt->priority;
+  result.priority = *pPriority;
   size_t count = comdb2_evaluate_ruleset(
     NULL, memcmp, gbl_ruleset, clnt, &result
   );
@@ -4825,7 +4811,7 @@ static int can_execute_sql_query_now(
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
-      clnt->priority = result.priority;
+      *pPriority = result.priority;
       break;
     }
   }
@@ -4843,7 +4829,7 @@ static int can_execute_sql_query_now(
   int rc;
   if (thdpool_priority == PRIORITY_T_INVALID) {
     rc = 1; /* empty pool -OR- no ruleset loaded */
-  } else if (clnt->priority <= thdpool_priority) {
+  } else if (*pPriority <= thdpool_priority) {
     rc = 1; /* query has priority */
   } else {
     rc = 0; /* query should wait */
@@ -4853,7 +4839,7 @@ static int can_execute_sql_query_now(
     logmsg(LOGMSG_DEBUG,
            "%s: seqNo=%llu, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
-           clnt->priority, thdpool_priority, zResult);
+           *pPriority, thdpool_priority, zResult);
   }
   return rc;
 }
@@ -4864,17 +4850,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
 
-    /*
-    ** WARNING: This code assumes that higher priority values have
-    **          lower numerical values.
-    */
-    assert(clnt->seqNo > 0);
-    assert(clnt->priority >= PRIORITY_T_HIGHEST);
-    assert(clnt->priority != PRIORITY_T_INVALID);
-    assert(clnt->priority != PRIORITY_T_HEAD);
-    assert(clnt->priority != PRIORITY_T_TAIL);
-    assert(clnt->priority != PRIORITY_T_DEFAULT);
-
     assert(sqlthd);
     sqlthd->clnt = clnt;
     clnt->thd = thd;
@@ -4882,7 +4857,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
-    clnt_change_state(clnt, CONNECTION_PREPARING);
+    clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
 
@@ -4909,36 +4884,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
         signal_clnt_as_done(clnt);
         return;
     }
-
-    if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
-        if ((gbl_prioritize_max_retries <= 0) ||
-            (clnt->work.retries < gbl_prioritize_max_retries)) {
-            if (gbl_fingerprint_queries) {
-                /* IGNORED */
-                preview_and_calc_fingerprint(clnt);
-            }
-
-            int bRejected = 0;
-
-            if (!can_execute_sql_query_now(thd, clnt, &bRejected)) {
-                if (bRejected) {
-                    send_run_error(clnt, "Client api should change nodes",
-                                   CDB2ERR_CHANGENODE);
-                    clnt->query_rc = ERR_QUERY_REJECTED;
-                } else {
-                    clnt->query_rc = ERR_QUERY_DELAYED;
-                }
-                clnt->osql.timings.query_finished = osql_log_time();
-                osql_log_time_done(clnt);
-                clnt_change_state(clnt, CONNECTION_IDLE);
-                signal_clnt_as_done(clnt);
-                put_curtran(thedb->bdb_env, clnt);
-                return;
-            }
-        }
-    }
-
-    clnt_change_state(clnt, CONNECTION_RUNNING);
 
     /* it is a new query, it is time to clean the error */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
@@ -5090,6 +5035,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
+
+    assert(clnt->seqNo > 0);
+    assert(clnt->priority >= PRIORITY_T_HIGHEST);
+    assert(clnt->priority != PRIORITY_T_INVALID);
+    assert(clnt->priority != PRIORITY_T_HEAD);
+    assert(clnt->priority != PRIORITY_T_TAIL);
+    assert(clnt->priority != PRIORITY_T_DEFAULT);
 
     struct thr_handle *self = thrman_self();
     if (self) {
@@ -5317,6 +5269,27 @@ check_query_rc: ; /* empty statement, make compiler happy */
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     mark_clnt_as_recently_used(clnt);
+
+    if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
+        if ((gbl_prioritize_max_retries <= 0) ||
+            (clnt->work.retries < gbl_prioritize_max_retries)) {
+            if (gbl_fingerprint_queries &&
+                comdb2_ruleset_fingerprints_allowed()) {
+                /* IGNORED */
+                preview_and_calc_fingerprint(clnt);
+            }
+
+            int bRejected = 0;
+
+            if (!can_execute_sql_query_now(thd, clnt, &bRejected, &priority)) {
+                if (bRejected) {
+                    send_run_error(clnt, "Client api should change nodes",
+                                   CDB2ERR_CHANGENODE);
+                    return ERR_QUERY_REJECTED;
+                }
+            }
+        }
+    }
 
     clnt->work.retries = 0;
     int rc = enqueue_sql_query(clnt, priority, 0);

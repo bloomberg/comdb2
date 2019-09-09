@@ -908,7 +908,7 @@ REGISTER_TUNABLE("print_syntax_err",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("prioritize_queries",
-                 "Prioritize SQL queries based on origin and fingerprint. "
+                 "Prioritize SQL queries based on loaded rulesets. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prioritize_max_retries",

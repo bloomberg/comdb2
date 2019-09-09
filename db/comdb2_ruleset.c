@@ -431,6 +431,18 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   if( memoryComparer==NULL ){
     memoryComparer = comdb2_get_xmemcmp_for_mode(rule->mode);
   }
+  if( rule->pFingerprint!=NULL && !comdb2_ruleset_fingerprints_allowed() ){
+    char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
+
+    memset(zFingerprint, 0, sizeof(zFingerprint));
+    util_tohex(zFingerprint, (char *)rule->pFingerprint, FPSZ);
+
+    logmsg(LOGMSG_ERROR,
+           "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
+           "disabled\n", __func__, ruleNo, zFingerprint);
+
+    return RULESET_M_ERROR; /* have forbidden criteria */
+  }
   if( memoryComparer!=NULL ){
     if( rule->pFingerprint!=NULL && memoryComparer(
             clnt->work.aFingerprint, rule->pFingerprint, FPSZ)!=0 ){
@@ -477,6 +489,19 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
+int comdb2_ruleset_fingerprints_allowed(void){
+  /*
+  ** NOTE: When strict fingerprints are enabled double-quoted strings within
+  **       SQL queries will be assumed to refer to database identifiers, not
+  **       string literals.  In that mode, fingerprint based matching rules
+  **       make sense because SQL queries would be normalized consistently,
+  **       even if the query is not prepared first.  This is necessary, in
+  **       part, because preparing SQL queries on non-SQL engine threads is
+  **       seen as too expensive.
+  */
+  return 1; /* TODO: Modify to use new tunable from the other PR. */
+}
+
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
@@ -491,6 +516,11 @@ size_t comdb2_evaluate_ruleset(
         stringComparer, memoryComparer, i+1, rules, &rules->aRule[i],
         clnt, result
       );
+      if( match==RULESET_M_ERROR ){
+        /* HACK: Invalidate current ruleset result if error. */
+        memset(result, 0, sizeof(struct ruleset_result));
+        break;
+      }
       if( match==RULESET_M_STOP ){ count++; break; }
       if( match==RULESET_M_TRUE ){ count++; }
     }
@@ -860,6 +890,12 @@ int comdb2_load_ruleset(
         }
         zField = "fingerprint";
         if( sqlite3_stricmp(zTok, zField)==0 ){
+          if( !comdb2_ruleset_fingerprints_allowed() ){
+            snprintf(zError, sizeof(zError),
+                     "%s:%d, field '%s' forbidden by configuration",
+                     zFileName, lineNo, zField);
+            goto failure;
+          }
           rules->nFingerprint++;
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
