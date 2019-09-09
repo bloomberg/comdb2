@@ -20,7 +20,7 @@
 extern int gbl_maxretries;
 extern volatile int gbl_dbopen_gen;
 extern volatile int gbl_lua_version;
-extern volatile int gbl_analyze_gen;
+extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
 typedef enum scdone {
@@ -46,7 +46,8 @@ typedef enum scdone {
     lua_sfunc,
     lua_afunc,
     rename_table,
-    change_stripe
+    change_stripe,
+    user_view,
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

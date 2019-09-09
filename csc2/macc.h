@@ -9,8 +9,7 @@
 #include "dynschemaload.h"
 #include <cdb2_constants.h>
 
-#include "mem_csc2.h"
-#include "mem_override.h"
+#include "mem.h"
 
 extern char *revision;
 
@@ -104,6 +103,7 @@ struct fieldopt {
 };
 
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
+enum ct_type { CT_FKEY, CT_CHECK };
 
 extern struct constraint {
     char *consname;
@@ -115,6 +115,13 @@ extern struct constraint {
 } constraints[MAXCNSTRTS];
 
 extern int nconstraints;
+
+extern struct check_constraint {
+    char *consname;
+    char *expr;
+} check_constraints[MAXCNSTRTS];
+
+extern int n_check_constraints;
 
 extern struct symbol {
     char *nm;   /* symbol name                     */
@@ -292,11 +299,11 @@ extern void OUT(char *fmt, ...);
 int numkeys();
 int numix();
 void resolve_case_names();
-void end_constraint_list(void);
 void set_constraint_mod(int start, int op, int type);
-void set_constraint_name(char *name);
-void start_constraint_list(char *tblname);
+void set_constraint_name(char *name, enum ct_type type);
+void start_constraint_list(char *keyname);
 void add_constraint(char *tbl, char *key);
+void add_check_constraint(char *expr);
 void add_constant(char *name, int value, short type);
 void add_fldopt(int opttype, int valtype, void *value);
 void reset_array();

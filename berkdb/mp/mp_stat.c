@@ -142,7 +142,7 @@ __memp_stat(dbenv, gspp, fspp, flags)
 			 * st_page_clean	calculated here
 			 */
 			__memp_stat_hash(&dbmp->reginfo[i], c_mp, &dtmp);
-			ATOMIC_ADD(sp->st_page_dirty, dtmp);
+			ATOMIC_ADD32(sp->st_page_dirty, dtmp);
 			sp->st_page_clean += c_mp->stat.st_pages - dtmp;
 			sp->st_hash_buckets += c_mp->stat.st_hash_buckets;
 			sp->st_hash_searches += c_mp->stat.st_hash_searches;

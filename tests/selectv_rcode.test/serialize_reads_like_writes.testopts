@@ -1,0 +1,2 @@
+disable_selectvonly_tran_nop 1
+serialize_reads_like_writes 1

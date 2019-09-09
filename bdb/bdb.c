@@ -45,8 +45,9 @@
 
 #include <segstring.h>
 #include "nodemap.h"
-#include <logmsg.h>
-#include <locks_wrap.h>
+#include "thread_stats.h"
+#include "logmsg.h"
+#include "locks_wrap.h"
 
 extern void berkdb_dumptrans(DB_ENV *);
 extern int __db_panic(DB_ENV *dbenv, int err);
@@ -710,30 +711,30 @@ void bdb_reset_thread_stats(void)
 }
 
 /* Call this at the end of a request to get our stats. */
-const struct bdb_thread_stats *bdb_get_thread_stats(void)
+const struct berkdb_thread_stats *bdb_get_thread_stats(void)
 {
 #ifdef BERKDB_4_2
-    return (const struct bdb_thread_stats *)bb_berkdb_get_thread_stats();
+    return (const struct berkdb_thread_stats *)bb_berkdb_get_thread_stats();
 #else
-    static struct bdb_thread_stats zero = {0};
+    static struct berkdb_thread_stats zero = {0};
     return &zero;
 #endif
 }
 
 /* Call this any time to get process wide stats (which get updated locklessly)
  */
-const struct bdb_thread_stats *bdb_get_process_stats(void)
+const struct berkdb_thread_stats *bdb_get_process_stats(void)
 {
 #ifdef BERKDB_4_2
-    return (const struct bdb_thread_stats *)bb_berkdb_get_process_stats();
+    return (const struct berkdb_thread_stats *)bb_berkdb_get_process_stats();
 #else
-    static struct bdb_thread_stats zero = {0};
+    static struct berkdb_thread_stats zero = {0};
     return &zero;
 #endif
 }
 
 /* Report bdb stats into the given logging function. */
-void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                      int (*printfn)(const char *, void *), void *context)
 {
     char s[128];
@@ -773,7 +774,7 @@ void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
     }
 }
 
-void bdb_fprintf_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_fprintf_stats(const struct berkdb_thread_stats *st, const char *prefix,
                        FILE *out)
 {
     bdb_print_stats(st, "  ", (int (*)(const char *, void *))fputs, out);

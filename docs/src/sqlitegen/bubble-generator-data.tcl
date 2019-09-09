@@ -30,6 +30,7 @@ set all_graphs {
          create-proc
          create-lua-func
          create-time-part
+         create-view
          drop
          truncate
          analyze
@@ -144,16 +145,21 @@ set all_graphs {
              {optx ( {loop /column-name ,} )}}
        {line
            {or
-             {line VALUES {loop {line ( {loop expr ,} )} ,}}
-             select-stmt
+               {line
+                   {or
+                       {line VALUES {loop {line ( {loop expr ,} )} ,}}
+                       select-stmt
+                   }
+                   {opt upsert-clause}
+               }
+               {line DEFAULT VALUES}
            }
-           {opt upsert-clause}
        }
   }
 
   upsert-clause {
       stack
-      {line ON CONFLICT {opt ( index-column-list ) WHERE expr }
+      {line ON CONFLICT {opt ( index-column-list ) {opt WHERE expr }}
       }
       {line DO
           {or
@@ -382,6 +388,9 @@ set all_graphs {
     {line AS /partition-name PERIOD {or 'DAILY' 'WEEKLY' 'MONTHLY' 'YEARLY'}}
     {line RETENTION /numeric-literal START /datetime-literal}
   }
+  create-view {line
+    {line CREATE VIEW {opt IF NOT EXISTS} /view-name AS /select-stmt}
+  }
   drop {
     line DROP {or
       {line TABLE {opt IF EXISTS} /table-name}
@@ -390,6 +399,7 @@ set all_graphs {
         {line {or TRIGGER CONSUMER} /procedure-name}
         {line {or SCALAR AGGREGATE} FUNCTION /procedure-name}}}
       {line TIME PARTITION /partition-name}
+      {line VIEW {opt IF EXISTS} /view-name}
     }
   }
   truncate {
@@ -489,7 +499,7 @@ stack
     }
   }
   exec-procedure {
-      line EXEC PROCEDURE /procedure-name ( {opt {line
+      line {or EXEC EXECUTE} PROCEDURE /procedure-name ( {opt {line
               {loop
               {line /argument } ,
       }}} ) 
@@ -611,18 +621,22 @@ stack
 
   constraint-section {
       loop
-      {stack
-          {line /keyname -> 
-               {or 
-                    {line /ref-table-name : /ref-keyname }
-                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
-               }
+      {or
+          {stack
+              {opt /constraint-name =}
+              {line /keyname -> 
+                   {or 
+                        {line /ref-table-name : /ref-keyname }
+                        {line {loop {line < /ref-table-name : /ref-keyname > } } }
+                   }
+              }
+              {opt 
+                {loop 
+                   {line on {or update delete} {or cascade restrict }}
+                }
+              }
           }
-          {opt 
-            {loop 
-               {line on {or update delete} {or cascade restrict }}
-            }
-          }
+          {line check /constraint-name = lbrc where /expr rbrc}
       }
   }
 
@@ -678,7 +692,13 @@ stack
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
       {line INDEX }
-      {line {opt CONSTRAINT constraint-name } foreign-key-def }
+      {line
+          {opt CONSTRAINT constraint-name }
+          {or
+              {line foreign-key-def }
+              {line CHECK ( expr ) }
+          }
+      }
       {line OPTION DBPAD = signed-number }
   }
 
@@ -694,7 +714,10 @@ stack
       {line PRIMARY KEY ( index-column-list ) }
       {stack
           {line {opt CONSTRAINT constraint-name } }
-          {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+          {or
+              {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+              {line CHECK ( expr ) }
+          }
       }
   }
 

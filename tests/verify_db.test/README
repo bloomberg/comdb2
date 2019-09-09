@@ -1,0 +1,2 @@
+This test will introduce inconsistencies when writing to data, indices, and blobs
+and make sure that verify will catch such errors.

@@ -300,7 +300,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, 1);
+        ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
     /*
     ** if s->partialuprecs, we're going radio silent from this point forward
@@ -309,7 +309,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
-        Pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
         int max_threads =
@@ -334,9 +333,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_locked, s);
         } else {
-            Pthread_mutex_lock(&s->mtx);
+            Pthread_mutex_lock(&s->mtxStart);
             rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                                 (void *(*)(void *))do_schema_change_tran, arg);
+            if (rc == 0) {
+                Pthread_cond_wait(&s->condStart, &s->mtxStart);
+            }
+            Pthread_mutex_unlock(&s->mtxStart);
         }
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -586,7 +589,7 @@ int do_dryrun(struct schema_change_type *s)
     newdb->odh = s->headers;
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         goto fail;
     }
 
@@ -955,7 +958,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout_schemas(newdb->tablename);
         abort();
     }

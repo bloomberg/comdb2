@@ -1,0 +1,88 @@
+(test='1. Test CHECK CONSTRAINT behavior')
+(rows inserted=1)
+[INSERT INTO t1 VALUES('greenish')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
+[INSERT INTO t1 VALUES('black')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
+(color='red')
+(test='2. ALTER TABLE')
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows inserted=1)
+(rows inserted=1)
+[ALTER TABLE t1 ADD CONSTRAINT valid_colors CHECK (color IN ('red', 'green', 'blue'))] failed with rc 240 Error verifying constraints changed rrn xx genid xx
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows deleted=1)
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+constraints
+	{
+		check "valid_colors" = {where color IN ('red', 'green', 'blue')}
+	}
+')
+(color='blue')
+[INSERT INTO t1 VALUES('white')] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'valid_colors' unable to add record rc = 320
+(csc2='schema
+	{
+		cstring color[11] null = yes 
+	}
+')
+(rows inserted=1)
+(color='blue')
+(color='white')
+(test='3. Invalid use cases')
+[CREATE TABLE t1(i INT, CHECK ())] failed with rc -3 near ")": syntax error
+[CREATE TABLE t1(i INT, CHECK (SELECT 1))] failed with rc -3 near "SELECT": syntax error
+[CREATE TABLE t1(i INT, CHECK (i > MAX(i)))] failed with rc 240 malformed database schema (t1) - misuse of aggregate function MAX()
+[CREATE TABLE t1(i INT, CHECK (i > (SELECT MAX(i))))] failed with rc 240 malformed database schema (t1) - subqueries prohibited in CHECK constraints
+(test='4. Test for updates')
+(rows inserted=1)
+[UPDATE t1 SET i = 10 WHERE i = 1] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3DCCE6D2' unable to update record rc = 320
+(i=1)
+(test='5. Test for some obscure expressions')
+[INSERT INTO t1 VALUES(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_50FF6780' unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_50FF6780' unable to add record rc = 320
+(rows inserted=1)
+(rows inserted=1)
+[INSERT INTO t1 VALUES(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_D376ECF2' unable to add record rc = 320
+[INSERT INTO t1 VALUES(11)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_D376ECF2' unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_688DD408' unable to add record rc = 320
+[INSERT INTO t1 VALUES("aaa")] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_1E2CE26C' unable to add record rc = 320
+(test='6. Test for strings')
+[INSERT INTO t1 VALUES('foo')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_BB206189' unable to add record rc = 320
+(rows inserted=1)
+(v='bar')
+[INSERT INTO t1 VALUES('foo')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_3AA1A76' unable to add record rc = 320
+(rows inserted=1)
+(v='bar')
+(test='7. TRUNCATE TABLE')
+(rows inserted=3)
+(COUNT(*)=3=1)
+(COUNT(*)=0=1)
+(test='8. Multiple check constraints')
+(name='FK', type='FOREIGN KEY', tablename='t2', keyname='$KEY_1E994F88', foreigntablename='t1', foreignkeyname='$KEY_877B2989', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='CONS1', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i > 10')
+(name='$CONSTRAINT_9C3BA03F', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i < 100')
+[INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320
+[INSERT INTO t2 values(11)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '$KEY_877B2989'
+[INSERT INTO t2 values(111)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9C3BA03F' unable to add record rc = 320
+(rows inserted=3)
+[INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320
+(rows inserted=1)
+[INSERT INTO t2 values(111)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9C3BA03F' unable to add record rc = 320
+(i=1)
+(i=11)
+(i=111)
+(test='9. Check expression using a keyword')
+[CREATE TABLE t1(order VARCHAR(100), CHECK(order IN ("aaa")))] failed with rc -3 near "order": syntax error
+[CREATE TABLE t1("order" VARCHAR(100), CHECK(order IN ("aaa")))] failed with rc -3 near "order": syntax error
+[INSERT INTO t1 VALUES('aaaa')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_A48D84B' unable to add record rc = 320
+(rows inserted=1)
+(order='aaa')

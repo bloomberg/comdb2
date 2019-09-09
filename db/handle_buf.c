@@ -426,10 +426,8 @@ static void *thd_req(void *vthd)
     int numwriterthreads;
 
     thread_started("request");
+    THREAD_TYPE("tag");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = "tag";
-#endif
     thr_self = thrman_register(THRTYPE_REQ);
     logger = thrman_get_reqlogger(thr_self);
 
@@ -679,6 +677,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         sndbak_open_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                     } else {
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
+                        iq->sb = NULL;
                     }
                 } else if (iq->is_sorese) {
                     if (iq->sorese.osqllog) {
@@ -713,6 +712,7 @@ static int reterr_withfree(struct ireq *iq, int rc)
                 iq->request_data = iq->p_buf_out_start = NULL;
             } else {
                 sndbak_socket(iq->sb, NULL, 0, rc);
+                iq->sb = NULL;
             }
         } else {
             /* we don't do this anymore for sorese requests */

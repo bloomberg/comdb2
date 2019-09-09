@@ -52,6 +52,8 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
 
 void sql_dump_hist_statements(void);
+void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
+                             const char *func, int line);
 
 enum {
     SQL_PRAGMA_CASE_SENSITIVE_LIKE = 1,

@@ -422,7 +422,7 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
 
     newdb->iq = iq;
 
-    if (add_cmacc_stmt(newdb, 1) != 0) {
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
@@ -430,23 +430,17 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
         return -1;
     }
 
-    extern int gbl_partial_indexes;
-    extern int gbl_expressions_indexes;
-    if ((gbl_partial_indexes && newdb->ix_partial) ||
-        (gbl_expressions_indexes && newdb->ix_expr)) {
-        int ret = 0;
-        ret = new_indexes_syntax_check(iq, newdb);
-        if (ret) {
-            Pthread_mutex_unlock(&csc2_subsystem_mtx);
-            sc_errf(s, "New indexes syntax error\n");
-            backout(newdb);
-            cleanup_newdb(newdb);
-            return SC_CSC2_ERROR;
-        } else {
-            sc_printf(s, "New indexes ok\n");
-        }
-        newdb->ix_blob = newdb->schema->ix_blob;
+    if ((rc = sql_syntax_check(iq, newdb))) {
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Sqlite syntax check failed\n");
+        backout(newdb);
+        cleanup_newdb(newdb);
+        return SC_CSC2_ERROR;
+    } else {
+        sc_printf(s, "Sqlite syntax check succeeded\n");
     }
+    newdb->ix_blob = newdb->schema->ix_blob;
+
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
@@ -557,7 +551,7 @@ convert_records:
             sleep(5);
         }
         if (gbl_sc_resume_start > 0)
-            ATOMIC_ADD(gbl_sc_resume_start, -1);
+            ATOMIC_ADD32(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 

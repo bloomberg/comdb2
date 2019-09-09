@@ -32,17 +32,28 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
-void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
-                     int64_t time, int64_t nrows, struct reqlogger *logger) {
-    assert(zSql);
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]) {
+    MD5Context ctx = {0};
+
     assert(zNormSql);
-    size_t nNormSql = strlen(zNormSql);
-    unsigned char fingerprint[FINGERPRINTSZ];
-    MD5Context ctx;
+    assert(pnNormSql);
+
+    *pnNormSql = strlen(zNormSql);
+
     MD5Init(&ctx);
-    MD5Update(&ctx, (unsigned char *)zNormSql, nNormSql);
-    memset(fingerprint, 0, sizeof(fingerprint));
+    MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
+    memset(fingerprint, 0, FINGERPRINTSZ);
     MD5Final(fingerprint, &ctx);
+}
+
+void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
+                     int64_t time, int64_t prepTime, int64_t nrows,
+                     struct reqlogger *logger, unsigned char *fingerprint_out) {
+    assert(zSql);
+    size_t nNormSql = 0;
+    unsigned char fingerprint[FINGERPRINTSZ];
+    calc_fingerprint(zNormSql, &nNormSql, fingerprint);
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
     struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
@@ -66,13 +77,24 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         t->count = 1;
         t->cost = cost;
         t->time = time;
+        t->prepTime = prepTime;
         t->rows = nrows;
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
+
+        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+        util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
+        struct reqlogger *statlogger = NULL;
+
+        // dump to statreqs immediately
+        statlogger = reqlog_alloc();
+        reqlog_diffstat_init(statlogger);
+        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp, t->zNormSql);
+        reqlog_diffstat_dump(statlogger);
+        reqlog_free(statlogger);
+
         if (gbl_verbose_normalized_queries) {
-            char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
-            util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
         }
@@ -80,14 +102,20 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         t->count++;
         t->cost += cost;
         t->time += time;
+        t->prepTime += prepTime;
         t->rows += nrows;
         assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
         assert( t->zNormSql!=zNormSql );
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
-    reqlog_set_fingerprint(logger, (const char*)fingerprint, FINGERPRINTSZ);
+    if (logger != NULL) {
+        reqlog_set_fingerprint(
+            logger, (const char*)fingerprint, FINGERPRINTSZ
+        );
+    }
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
-    ; /* NOTE: Do nothing, silence compiler warning. */
+    if (fingerprint_out)
+        memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
 }

@@ -91,8 +91,10 @@ enum cdb2_errors {
 
     CDB2ERR_DUPLICATE = 299,
     CDB2ERR_READONLY = 305,
+    CDB2ERR_NOTSERIAL = 230,
     CDB2ERR_TZNAME_FAIL = 401,
     CDB2ERR_CHANGENODE = 402,
+    CDB2ERR_CHECK_CONSTRAINT = 403,
 
     CDB2ERR_UNKNOWN = 300
 
@@ -273,8 +275,10 @@ typedef enum cdb2_event_type {
     CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
 
     /* Lifecycle events */
+    CDB2_BEFORE_DISCOVERY = 1 << 27,
+    CDB2_AFTER_DISCOVERY = 1 << 28,
     CDB2_AT_OPEN = 1 << 29,
-    CDB2_AT_CLOSE = 1 << 30,
+    CDB2_AT_CLOSE = 1 << 30
 } cdb2_event_type;
 
 typedef enum cdb2_event_arg {

@@ -385,7 +385,11 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
     sqlite3DbFree(db, zSql);
 #ifndef SQLITE_OMIT_ANALYZE
     if( rc==SQLITE_OK ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      rc = sqlite3AnalysisLoad(db, iDb);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3AnalysisLoad(db, iDb);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif
   }
@@ -674,6 +678,9 @@ int sqlite3SchemaToIndex(sqlite3 *db, Schema *pSchema){
 */
 void sqlite3ParserReset(Parse *pParse){
   sqlite3 *db = pParse->db;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pParse->ast ) ast_destroy(&pParse->ast, db);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, pParse->aLabel);
   sqlite3ExprListDelete(db, pParse->pConstExpr);
   if( db ){
@@ -850,7 +857,6 @@ end_prepare:
 
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( sParse.ast ) ast_destroy(&sParse.ast, db);
   if( !wasPrepareOnly && isPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;

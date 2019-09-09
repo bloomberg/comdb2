@@ -77,7 +77,7 @@ int srs_tran_create(struct sqlclntstate *clnt)
     int rc = 0;
 
     if (osql->history) {
-        fprintf(stderr, "%s: the history should be empty!\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: the history should be empty!\n", __func__);
         cheap_stack_trace();
         rc = srs_tran_destroy(clnt);
         if (rc)
@@ -86,7 +86,7 @@ int srs_tran_create(struct sqlclntstate *clnt)
 
     osql->history = (srs_tran_t *)calloc(1, sizeof(srs_tran_t));
     if (!osql->history) {
-        fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_t));
+        logmsg(LOGMSG_ERROR, "malloc %zu\n", sizeof(srs_tran_t));
         return -1;
     }
 #if 0
@@ -112,8 +112,8 @@ void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
     osql->replay_line = line;
     osql->last_replay = osql->replay;
     /*
-    fprintf(stderr, "Replay set from %s:%d clnt %p from %d to %d\n", file, line,
-            clnt, osql->replay, replay);
+    logmsg(LOGMSG_ERROR, "Replay set from %s:%d clnt %p from %d to %d\n", file,
+    line, clnt, osql->replay, replay);
             */
     osql->replay = replay;
 }
@@ -139,8 +139,9 @@ int srs_tran_destroy(struct sqlclntstate *clnt)
 
 done:
     if (osql->replay != OSQL_RETRY_NONE) {
-        fprintf(stderr, "%s: cleaned history but state is wrong %d, fixing\n",
-                __func__, osql->replay);
+        logmsg(LOGMSG_ERROR,
+               "%s: cleaned history but state is wrong %d, fixing\n", __func__,
+               osql->replay);
         cheap_stack_trace();
         osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
     }
@@ -175,8 +176,8 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     /* don't grow session when the transaction is simply repeated */
     if (osql->replay != OSQL_RETRY_NONE) {
         if (!osql->history) {
-            fprintf(stderr, "%s: state is %d but no history???\n", __func__,
-                    osql->replay);
+            logmsg(LOGMSG_ERROR, "%s: state is %d but no history???\n",
+                   __func__, osql->replay);
             cheap_stack_trace();
 
             return -1;
@@ -238,7 +239,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     clnt->verify_retries = 0;
 
     if (!osql->history) {
-        fprintf(stderr, "Trying to replay, but no history?\n");
+        logmsg(LOGMSG_ERROR, "Trying to replay, but no history?\n");
         cheap_stack_trace();
         return -1;
     }
@@ -246,18 +247,20 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     do {
         reset_query_effects(clnt); /* Reset it for each retry*/
         if (!osql->history) {
-            fprintf(stderr, "Trying to replay, but no history?\n");
+            logmsg(LOGMSG_ERROR, "Trying to replay, but no history?\n");
             abort();
         }
 
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
 
+        /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
             /* we need to free all the shadows but selectv table (recgenid) */
             rc = osql_shadtbl_reset_for_selectv(clnt);
             if (rc) {
-                fprintf(stderr, "Failed to reset selectv in read committed\n");
+                logmsg(LOGMSG_ERROR,
+                       "Failed to reset selectv in read committed\n");
                 abort();
                 cheap_stack_trace();
                 return -1;
@@ -266,12 +269,16 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             osql_shadtbl_close(clnt); 
         }
 
-        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1)
+        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1) {
+            logmsg(LOGMSG_DEBUG, "%s line %d verify error after %d retries\n",
+                   __func__, __LINE__, clnt->verify_retries);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+        }
 
         if (0 /*!bdb_am_i_coherent(thedb->bdb_env)*/) {
-            fprintf(stderr, "Cannot replay, I am incoherent id=%d retries=%d\n",
-                    clnt->queryid, clnt->verify_retries);
+            logmsg(LOGMSG_ERROR,
+                   "Cannot replay, I am incoherent id=%d retries=%d\n",
+                   clnt->queryid, clnt->verify_retries);
             rc = CDB2ERR_VERIFY_ERROR;
             break;
         }
@@ -293,9 +300,10 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
          * error */
         if (rc < 0) {
             if (clnt->osql.replay != OSQL_RETRY_NONE) {
-                fprintf(stderr, "%p Replaying failed abnormally, calling "
-                                "abort, nq=%d tnq=%d\n",
-                        clnt, nq, tnq);
+                logmsg(LOGMSG_ERROR,
+                       "%p Replaying failed abnormally, calling "
+                       "abort, nq=%d tnq=%d\n",
+                       clnt, nq, tnq);
                 if (debug_switch_osql_verbose_history_replay()) {
                     if (osql->history) {
                         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
@@ -304,13 +312,9 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                         }
                     }
                 }
-                /* we should only repeat socksql and read committed */
-                assert(clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-                       clnt->dbtran.mode == TRANLEVEL_RECOM);
 
-                osql_sock_abort(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                          ? OSQL_SOCK_REQ
-                                          : OSQL_RECOM_REQ);
+                int type = tran2netreq(clnt->dbtran.mode);
+                osql_sock_abort(clnt, type);
             }
             break;
         }
@@ -319,30 +323,31 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
 
     if (clnt->verify_retries >= gbl_osql_verify_retries_max) {
         uuidstr_t us;
-        fprintf(stderr,
-                "transaction %llx %s failed %d times with verify errors\n",
-                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-                clnt->verify_retries);
+        logmsg(LOGMSG_ERROR,
+               "transaction %llx %s failed %d times with verify errors\n",
+               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+               clnt->verify_retries);
         /* Set to NONE to suppress the error from srs_tran_destroy(). */
         osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
     }
 
     /* replayed, free the session */
     if (srs_tran_destroy(clnt))
-        fprintf(stderr, "%s Fail to destroy transaction replay session\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s Fail to destroy transaction replay session\n",
+               __func__);
     if (rc) {
         if (clnt->verify_retries < gbl_osql_verify_retries_max)
-            fprintf(stderr, "Uncommitable transaction %d retried %d times, "
-                            "rc=%d [global retr=%lld] nq=%d tnq=%d\n",
-                    clnt->queryid, clnt->verify_retries, rc,
-                    gbl_verify_tran_replays, nq, tnq);
+            logmsg(LOGMSG_ERROR,
+                   "Uncommitable transaction %d retried %d times, "
+                   "rc=%d [global retr=%lld] nq=%d tnq=%d\n",
+                   clnt->queryid, clnt->verify_retries, rc,
+                   gbl_verify_tran_replays, nq, tnq);
         else
-            fprintf(stderr, "Replayed too many times, too high contention, "
-                            "failing id=%d rc=%d retries=%d [global "
-                            "retr=%lld]\n",
-                    clnt->queryid, rc, clnt->verify_retries,
-                    gbl_verify_tran_replays);
+            logmsg(LOGMSG_ERROR,
+                   "Replayed too many times, too high contention, "
+                   "failing id=%d rc=%d retries=%d [global retr=%lld]\n",
+                   clnt->queryid, rc, clnt->verify_retries,
+                   gbl_verify_tran_replays);
     }
 
     osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);

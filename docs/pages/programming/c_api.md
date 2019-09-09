@@ -504,6 +504,8 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 
 |Category|Event|Description|
 |---|---|
+|Network| `CDB2_BEFORE_DISCOVERY` | The callback is invoked before database destination discovery. |
+|Network| `CDB2_AFTER_DISCOVERY` | The callback is invoked after database destination discovery. |
 |Network| `CDB2_BEFORE_CONNECT` | The callback is invoked before the API starts connecting to a host. |
 |Network| `CDB2_AFTER_CONNECT` | The callback is invoked after the attempt to connect. |
 |Network| `CDB2_BEFORE_PMUX` | The callback is invoked before the API starts querying for the database port from `pmux`. |
@@ -557,6 +559,7 @@ Besides the user argument, one can request additional arguments by setting `argc
 | `CDB2_AT_EXIT_RUN_STATEMENT` | The server hostname | The database port | The SQL query | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_ENTER_NEXT_RECORD` | The server hostname | The database port | N/A | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_EXIT_NEXT_RECORD` | The server hostname | The database port | N/A | See [cdb2api errors](#cdb2api-errors) |
+| `CDB2_AT_DISCOVERY` | N/A | N/A | N/A | N/A |
 | `CDB2_AT_OPEN` | N/A | N/A | N/A | See [cdb2api errors](#cdb2api-errors) |
 | `CDB2_AT_CLOSE` | N/A | N/A | N/A | See [cdb2api errors](#cdb2api-errors) |
 
@@ -619,6 +622,7 @@ These return codes can be found in ```cdb2api.h```
 | 116  |```CDB2ERR_NOTSUPPORTED``` | <a id="CDB2ERR_NOTSUPPORTED"/>Operation not supported. 
 | 299  |```CDB2ERR_DUPLICATE``` | <a id="CDB2ERR_DUPLICATE"/>Transaction would have inserted a duplicate in a key that does not allow it. 
 | 401  |```CDB2ERR_TZNAME_FAIL``` | <a id="CDB2ERR_TZNAME_FAIL"/>Invalid timezone name. 
+| 403  |```CDB2ERR_CHECK_CONSTRAINT``` | <a id="CDB2ERR_CHECK_CONSTRAINT"/>CHECK constraint violation.
 | 300  |```CDB2ERR_UNKNOWN``` | <a id="CDB2ERR_UNKNOWN"/>Unknown error. 
 | Other| Any |  Any other return code should be treated as an internal error.
 

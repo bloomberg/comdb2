@@ -45,6 +45,8 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
+    Pthread_mutex_init(&sc->mtxStart, NULL);
+    Pthread_cond_init(&sc->condStart, NULL);
     return sc;
 }
 
@@ -90,8 +92,13 @@ void free_schema_change_type(struct schema_change_type *s)
     Pthread_mutex_destroy(&s->mtx);
     Pthread_mutex_destroy(&s->livesc_mtx);
 
-    if (s->sb && s->must_close_sb)
+    Pthread_cond_destroy(&s->condStart);
+    Pthread_mutex_destroy(&s->mtxStart);
+
+    if (s->sb && s->must_close_sb) {
         close_appsock(s->sb);
+        s->sb = NULL;
+    }
     if (!s->onstack) {
         free(s);
     }
@@ -139,7 +146,8 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
         sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable) + sizeof(s->usedbtablevers);
+        sizeof(s->newtable) + sizeof(s->usedbtablevers) + sizeof(s->add_view) +
+        sizeof(s->drop_view);
 
     return s->packed_len;
 }
@@ -289,6 +297,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
                     p_buf_end);
 
+    p_buf = buf_put(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
+    p_buf = buf_put(&s->drop_view, sizeof(s->drop_view), p_buf, p_buf_end);
     return p_buf;
 }
 
@@ -319,7 +329,7 @@ static const void *buf_get_dests(struct schema_change_type *s,
             char *pdest;
             if (no_pfx) {
                 d->dest = malloc(w_len + 1);
-                strncpy(d->dest, pfx, strlen(pfx));
+                strcpy(d->dest, pfx);
                 pdest = d->dest + strlen(pfx);
                 d->dest[w_len] = '\0';
             } else {
@@ -511,6 +521,11 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                                       p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
                                p_buf, p_buf_end);
+
+    p_buf =
+        (uint8_t *)buf_get(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf,
+                               p_buf_end);
 
     return p_buf;
 }
@@ -829,7 +844,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
         newdb->dbnum = db->dbnum;
-        if (add_cmacc_stmt(newdb, 1) != 0) {
+        if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
             /* can happen if new schema has no .DEFAULT tag but needs one */
             backout_schemas(table);
             return 1;

@@ -247,8 +247,9 @@ void *listc_rfl(listc_t *l, void *obj)
     if (l->top == l->bot) /* 1 entry in list */
     {
         if (l->top != obj) {
-            logmsg(LOGMSG_ERROR, "WARNING: REMOVED WRONG ITEM %p FROM LIST %p\n",
-                    obj, l);
+            logmsg(LOGMSG_ERROR,
+                   "WARNING: REMOVED WRONG ITEM %p FROM LIST %p\n", obj,
+                   l->top);
             abort();
         }
         l->top = l->bot = 0;

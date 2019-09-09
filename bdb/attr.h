@@ -299,7 +299,7 @@ DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
-DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 1,
+DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 0,
          "Scan tables in order of pages, not in order of rowids (faster for "
          "non-sparse tables).")
 DEF_ATTR_2(
@@ -535,8 +535,8 @@ DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 600,
          "Maximum time in seconds to let 'old' transactions live.")
 DEF_ATTR(PRIVATE_BLKSEQ_MAXTRAVERSE, private_blkseq_maxtraverse, QUANTITY, 4,
          NULL)
-DEF_ATTR(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
-         "Number of stripes for the blkseq table.")
+DEF_ATTR_2(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
+           "Number of stripes for the blkseq table.", 0, dtastripe_verify, 0)
 DEF_ATTR(PRIVATE_BLKSEQ_ENABLED, private_blkseq_enabled, BOOLEAN, 1,
          "Sets whether dupe detection is enabled.")
 DEF_ATTR(PRIVATE_BLKSEQ_CLOSE_WARN_TIME, private_blkseq_close_warn_time,
@@ -670,6 +670,8 @@ DEF_ATTR(
 DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
+DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
+         "Check I/O in watchdog this often")
 
 /*
   BDB_ATTR_REPTIMEOUT

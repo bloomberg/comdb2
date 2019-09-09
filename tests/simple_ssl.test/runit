@@ -83,5 +83,16 @@ if [ "$host" != "" ]; then
     fi
 fi
 
+SSL_MIN_TLS_VER=246 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"
+if [ $? = 0 ]; then
+    echo 'Should disallow invalid TLS protocols'
+    exit 1
+fi
+
+SSL_MIN_TLS_VER=1.2 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"
+if [ $? != 0 ]; then
+    echo 'Should sallow valid TLS protocols'
+    exit 1
+fi
 
 echo "Passed."

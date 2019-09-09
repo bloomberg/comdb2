@@ -94,6 +94,7 @@ set(src
   machclass.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
+  ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/comdb2_dbprintlog.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
@@ -113,7 +114,7 @@ if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
 endif()
 
-IF(EXISTS ${PROJECT_SOURCE_DIR}/.git)
+IF (NOT DEFINED COMDB2_GIT_VERSION_SHA AND EXISTS ${PROJECT_SOURCE_DIR}/.git)
   FIND_PACKAGE(Git)
   IF(GIT_FOUND)
     EXECUTE_PROCESS(
@@ -131,7 +132,6 @@ IF(EXISTS ${PROJECT_SOURCE_DIR}/.git)
     IF(NOT ${COMDB2_GIT_LOCAL_CHANGES} STREQUAL "")
       SET(COMDB2_GIT_VERSION_SHA_NEW "${COMDB2_GIT_VERSION_SHA_NEW} with local changes")
     ENDIF()
-
   ELSE()
     SET(COMDB2_GIT_VERSION_SHA_NEW 0)
   ENDIF()
@@ -146,6 +146,7 @@ set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
   COMDB2_BUILD_VERSION=${COMDB2_BUILD_VERSION}
   COMDB2_CODENAME=${COMDB2_CODENAME}
   COMDB2_SEMVER=${COMDB2_SEMVER}
+  COMDB2_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 )
 
 add_executable(comdb2 ${src})
@@ -189,7 +190,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
@@ -204,8 +205,8 @@ target_link_libraries(comdb2
   bdb
   util
   cdb2api
-  comdb2rle
   crc32c
+  comdb2rle
   csc2
   cson
   db
@@ -221,17 +222,20 @@ target_link_libraries(comdb2
   m
   ${CMAKE_DL_LIBS}
   ${LZ4_LIBRARY}
+  ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
-  ${PROTOBUF_C_LIBRARY}
+  ${PROTOBUF-C_LIBRARY}
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
 )
+
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(
   TARGET comdb2 POST_BUILD
   COMMAND ln -f comdb2 cdb2_dump
+  COMMAND ln -f comdb2 cdb2_load
   COMMAND ln -f comdb2 cdb2_printlog
   COMMAND ln -f comdb2 cdb2_stat
   COMMAND ln -f comdb2 cdb2_verify
@@ -239,6 +243,7 @@ add_custom_command(
 install(TARGETS comdb2 RUNTIME DESTINATION bin)
 install(PROGRAMS
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_dump
+  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_load
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_printlog
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_stat
   ${CMAKE_CURRENT_BINARY_DIR}/cdb2_verify

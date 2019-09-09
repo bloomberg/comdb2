@@ -373,13 +373,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
             (*pclnt)->dbtran.shadow_tran = NULL;
         }
 
-        reset_clnt(*pclnt, NULL, 0);
-
-        Pthread_mutex_destroy(&(*pclnt)->wait_mutex);
-        Pthread_cond_destroy(&(*pclnt)->wait_cond);
-        Pthread_mutex_destroy(&(*pclnt)->write_lock);
-        Pthread_cond_destroy(&(*pclnt)->write_cond);
-        Pthread_mutex_destroy(&(*pclnt)->dtran_mtx);
+        cleanup_clnt(*pclnt);
 
         free(*pclnt);
 

@@ -80,9 +80,13 @@ static void free_activelocks(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblActiveLocksModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblActivelocksInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_locks", get_activelocks,
-            free_activelocks, sizeof(systable_activelocks_t),
+    return create_system_table(db, "comdb2_locks", &systblActiveLocksModule,
+            get_activelocks, free_activelocks, sizeof(systable_activelocks_t),
             CDB2_INTEGER, "thread", -1, offsetof(systable_activelocks_t, threadid),
             CDB2_INTEGER, "lockerid", -1, offsetof(systable_activelocks_t, lockerid),
             CDB2_CSTRING, "mode", -1, offsetof(systable_activelocks_t, mode),

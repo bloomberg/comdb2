@@ -96,6 +96,8 @@ extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 extern int gbl_reorder_idx_writes;
 
+int gbl_osql_snap_info_hashcheck = 1;
+
 #if 0
 #define GOTOBACKOUT                                                            \
     do {                                                                       \
@@ -788,9 +790,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (!replay_data) {
 
-        if (!iq->have_snap_info)
+        if (!iq->have_snap_info) {
             assert( (seqlen == (sizeof(fstblkseq_t))) || 
                     (seqlen == (sizeof(uuid_t))));
+        }
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
@@ -1092,8 +1095,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         logmsg(LOGMSG_USER,
-               "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
-               "rcout=%d\n",
+               "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
@@ -2559,7 +2561,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int have_blkseq = 0;
     bool have_keyless_requests = 0;
     int numerrs = 0;
-    int constraint_violation = 0;
+    int check_serializability = 0;
+    int force_serial_error = 0;
     struct block_err err;
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
@@ -2718,9 +2721,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && iq->have_snap_info) {
+            if (gbl_osql_snap_info_hashcheck) {
+                // the goal here is to stall until the original transaction
+                // has finished that way we can retrieve the outcome from blkseq
+                osql_blkseq_register_cnonce(iq);
+            }
+
             void *replay_data = NULL;
             int replay_len = 0;
-            int findout;
             bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
                              __LINE__);
             if (thedb->master != gbl_mynode) {
@@ -2729,11 +2737,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 fromline = __LINE__;
                 goto cleanup;
             }
-            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                      iq->snap_info.key, iq->snap_info.keylen,
-                                      &replay_data, &replay_len);
-            if (findout == 0) {
-                logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
+            int found;
+            found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                    iq->snap_info.key, iq->snap_info.keylen,
+                                    &replay_data, &replay_len);
+            if (!found) {
+                logmsg(LOGMSG_WARN,
+                       "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
@@ -4715,6 +4725,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (gbl_prefault_udp)
             send_prefault_udp = 1;
         rc = osql_bplog_commit(iq, trans, &tmpnops, &err);
+        if (rc == ERR_VERIFY) {
+            check_serializability = 1;
+            force_serial_error = 1;
+        }
         send_prefault_udp = 0;
 
         if (iq->osql_step_ix) {
@@ -4768,7 +4782,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 reqpopprefixes(iq, 1);
 
             if (rc != 0) {
-                constraint_violation = 1;
                 opnum = blkpos; /* so we report the failed blockop accurately */
                 err.blockop_num = blkpos;
                 err.errcode = errout;
@@ -4790,7 +4803,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */
             err.blockop_num = blkpos;
             err.errcode = errout;
@@ -4810,7 +4823,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
@@ -4827,7 +4840,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
@@ -4879,6 +4892,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         Pthread_rwlock_wrlock(&commit_lock);
         hascommitlock = 1;
 
+        /* This is looking for a commit record - one dive is fine */
         while ((iq->arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
                                       &(iq->arr->offset), 1)) ||
@@ -4888,19 +4902,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                       &(iq->selectv_arr->offset), 1))) {
             Pthread_rwlock_unlock(&commit_lock);
             hascommitlock = 0;
-            if (iq->arr &&
-                bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                                      &(iq->arr->offset), 0)) {
-                currangearr_free(iq->arr);
-                iq->arr = NULL;
-                numerrs = 1;
-                rc = ERR_NOTSERIAL;
-                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
-                GOTOBACKOUT;
-            } else if (iq->selectv_arr &&
-                       bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
-                                             &(iq->selectv_arr->file),
-                                             &(iq->selectv_arr->offset), 0)) {
+
+            if (iq->selectv_arr &&
+                bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                      &(iq->selectv_arr->file),
+                                      &(iq->selectv_arr->offset), 0)) {
                 currangearr_free(iq->selectv_arr);
                 iq->selectv_arr = NULL;
                 numerrs = 1;
@@ -4911,6 +4917,19 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                 rc = ERR_CONSTR;
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
+                GOTOBACKOUT;
+            } else if (iq->arr && bdb_osql_serial_check(
+                                      thedb->bdb_env, iq->arr, &(iq->arr->file),
+                                      &(iq->arr->offset), 0)) {
+                currangearr_free(iq->arr);
+                iq->arr = NULL;
+                numerrs = 1;
+                rc = ERR_NOTSERIAL;
+
+                /* Check selectv_arr in backout code */
+                if (iq->selectv_arr)
+                    check_serializability = 1;
+                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
                 GOTOBACKOUT;
             } else {
                 Pthread_rwlock_wrlock(&commit_lock);
@@ -5075,14 +5094,35 @@ backout:
      * serializable error and a dup-key constraint we should return the 
      * serializable error as the dup-key may have been caused by the 
      * conflicting write. */
-    if (constraint_violation && iq->arr &&
-        bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                &(iq->arr->offset), 0)) {
-        currangearr_free(iq->arr);
-        iq->arr = NULL;
-        numerrs = 1;
-        rc = ERR_NOTSERIAL;
-        reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+    if (check_serializability) {
+        /* Check serial and selectv readsets independently, serial first to
+         * eliminate the race: selectv-error should override serial error */
+        if (iq->arr && (force_serial_error ||
+                               bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+                                                     &(iq->arr->file),
+                                                     &(iq->arr->offset), 0))) {
+            numerrs = 1;
+            currangearr_free(iq->arr);
+            iq->arr = NULL;
+            rc = ERR_NOTSERIAL;
+            reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+        }
+
+        if (iq->selectv_arr &&
+            bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                  &(iq->selectv_arr->file),
+                                  &(iq->selectv_arr->offset), 0)) {
+            numerrs = 1;
+            currangearr_free(iq->selectv_arr);
+            iq->selectv_arr = NULL;
+
+            /* verify error */
+            err.ixnum = -1; /* data */
+            err.errcode = ERR_CONSTR;
+
+            rc = ERR_CONSTR;
+            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
+        } 
     }
 
     /* starting writes, no more reads */
@@ -5111,13 +5151,15 @@ backout:
             int priority = 0;
 
             if (iq->tranddl) {
-                irc = trans_abort(iq, iq->sc_tran);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
-                           __func__, __LINE__, irc);
-                    comdb2_die(1);
+                if (iq->sc_tran) {
+                    irc = trans_abort(iq, iq->sc_tran);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(1);
+                    }
+                    iq->sc_tran = NULL;
                 }
-                iq->sc_tran = NULL;
 
                 /* Backout Schema Change */
                 if (!parent_trans)
@@ -5475,9 +5517,11 @@ add_blkseq:
         memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
-            // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
-                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
+            // if VERIFY-ERROR && replicant_is_able_to_retry don't add to blkseq
+            if ((outrc == ERR_NOTSERIAL ||
+                 (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                (iq->have_snap_info &&
+                 iq->snap_info.replicant_is_able_to_retry)) {
                 /* do nothing */
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,

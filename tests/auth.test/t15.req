@@ -1,0 +1,22 @@
+# OP user
+set user 'user1'
+set password 'password1'
+select '---------- OP user ----------' as user;
+create table t1(i int)$$
+insert into t1 values(1);
+select * from t1;
+select count(*) from t1;
+
+# non-OP user
+set user 'user2'
+set password 'new_password'
+select '---------- non-OP user ----------' as user;
+# Both the following requests must be denied
+select * from 't1@user1';
+select count(*) from 't1@user1';
+
+# Cleanup (OP user)
+set user 'user1'
+set password 'password1'
+select '---------- OP user ----------' as user;
+drop table t1;

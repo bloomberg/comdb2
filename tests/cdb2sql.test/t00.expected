@@ -24,6 +24,7 @@ unknown @ls sub-command foo
 (name='comdb2_cluster')
 (name='comdb2_columns')
 (name='comdb2_completion')
+(name='comdb2_connections')
 (name='comdb2_constraints')
 (name='comdb2_cron_events')
 (name='comdb2_cron_schedulers')
@@ -43,6 +44,7 @@ unknown @ls sub-command foo
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
 (name='comdb2_sc_status')
+(name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
 (name='comdb2_systables')
 (name='comdb2_tablepermissions')
@@ -58,6 +60,7 @@ unknown @ls sub-command foo
 (name='comdb2_tunables')
 (name='comdb2_type_samples')
 (name='comdb2_users')
+(name='comdb2_views')
 (name='generate_series')
 (name='json_each')
 (name='json_tree')
@@ -70,7 +73,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema
@@ -89,7 +92,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema
@@ -112,7 +115,7 @@ Keys:
 (keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 
 Constraints:
-(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 
 CSC2:
 (csc2='schema

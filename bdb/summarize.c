@@ -120,8 +120,157 @@ static DB *dbp_from_meta(DB *dbp, DBMETA *meta)
     return dbp;
 }
 
+typedef struct sampler {
+    DB db;                      /* our DB handle */
+    bdb_state_type *bdb_state;  /* our bdb_state */
+    struct temp_table *tmptbl;  /* temptable to store sampled pages */
+    struct temp_cursor *tmpcur; /* cursor on the temptable */
+    int pos;                    /* to keep track of the index in the page */
+    void *data;                 /* payload of the entry at `pos' */
+    int len;                    /* length of the payload */
+} sampler_t;
+
+int sampler_first(sampler_t *sampler)
+{
+    struct temp_cursor *tmpcur = sampler->tmpcur;
+    int unused;
+
+    if (bdb_temp_table_first(sampler->bdb_state, tmpcur, &unused) != 0)
+        return IX_EMPTY;
+
+    sampler->pos = 0;
+    return (sampler_next(sampler) == IX_FND) ? IX_FND : IX_EMPTY;
+}
+
+int sampler_last(sampler_t *sampler)
+{
+    logmsg(LOGMSG_FATAL, "%s is not implemented.\n", __func__);
+    abort();
+    return 0;
+}
+
+int sampler_prev(sampler_t *sampler)
+{
+    logmsg(LOGMSG_FATAL, "%s is not implemented.\n", __func__);
+    abort();
+    return 0;
+}
+
+int sampler_next(sampler_t *sampler)
+{
+    int rc = IX_PASTEOF;
+    uint8_t pfxbuf[KEYBUF];
+    DB *dbp = &sampler->db;
+    PAGE *page;
+    db_indx_t *inp;
+    int unused;
+    struct temp_cursor *tmpcur = sampler->tmpcur;
+    int ii, n, minlen, memcmprc;
+
+next_leaf:
+    page = (PAGE *)bdb_temp_table_data(tmpcur);
+    inp = P_INP(dbp, page);
+    ii = sampler->pos;
+    n = NUM_ENT(page);
+#ifndef NDEBUG
+    uint8_t *max = (uint8_t *)page + 4096;
+#endif
+
+    for (; ii < n; ii += 2) {
+        if (F_ISSET(dbp, DB_AM_SWAP))
+            inp[ii] = flibc_shortflip(inp[ii]);
+        BKEYDATA *data = GET_BKEYDATA(dbp, page, ii);
+        assert((uint8_t *)data < max);
+        if (F_ISSET(dbp, DB_AM_SWAP))
+            data->len = flibc_shortflip(data->len);
+        db_indx_t len;
+        ASSIGN_ALIGN(db_indx_t, len, data->len);
+        assert(((uint8_t *)data + len) < max);
+        if (bk_decompress(dbp, page, &data, pfxbuf, sizeof(pfxbuf)) != 0) {
+            logmsg(LOGMSG_ERROR, "\ndecompress failed page:%d ii:%d total:%d\n",
+                   page->pgno, ii, n);
+            continue;
+        }
+        ASSIGN_ALIGN(db_indx_t, len, data->len);
+
+        /* Even though we sort pages by their 1st key, out-of-order pages
+           can still occurr if a leaf we have read splits.
+           We ensure that strictly sorted samples are returned by keeping
+           reading from the temptable till the 1st entry on current page
+           is greater than or equal the last entry on previous page. */
+        if (ii == 0 && sampler->data != NULL) {
+            minlen = len > sampler->len ? sampler->len : len;
+            memcmprc = memcmp(sampler->data, data->data, minlen);
+            if (memcmprc > 0 || (memcmprc == 0 && sampler->len > len))
+                break;
+        }
+
+        free(sampler->data);
+        sampler->data = malloc(len);
+        memcpy(sampler->data, data->data, len);
+        sampler->len = len;
+        sampler->pos = ii + 2;
+        rc = IX_FND;
+        break;
+    }
+
+    if (rc != IX_FND) {
+        if (bdb_temp_table_next(sampler->bdb_state, tmpcur, &unused) != 0)
+            return IX_PASTEOF;
+        sampler->pos = 0;
+        goto next_leaf;
+    }
+
+    return rc;
+}
+
+void *sampler_key(sampler_t *sampler)
+{
+    return sampler->data;
+}
+
+sampler_t *sampler_init(bdb_state_type *bdb_state, int *bdberr)
+{
+    sampler_t *sampler;
+    sampler = calloc(1, sizeof(sampler_t));
+    if (sampler == NULL)
+        goto err;
+
+    sampler->tmptbl = bdb_temp_table_create(bdb_state->parent, bdberr);
+    if (sampler->tmptbl == NULL)
+        goto err;
+
+    sampler->tmpcur =
+        bdb_temp_table_cursor(bdb_state->parent, sampler->tmptbl, NULL, bdberr);
+    if (sampler->tmpcur == NULL)
+        goto err;
+
+    sampler->bdb_state = bdb_state;
+    return sampler;
+err:
+    if (sampler != NULL) {
+        if (sampler->tmptbl)
+            bdb_temp_table_close(bdb_state->parent, sampler->tmptbl, bdberr);
+        free(sampler);
+    }
+    return NULL;
+}
+
+int sampler_close(sampler_t *sampler)
+{
+    int unused;
+
+    if (sampler == NULL)
+        return 0;
+
+    (void)bdb_temp_table_close(sampler->bdb_state, sampler->tmptbl, &unused);
+    free(sampler->data);
+    free(sampler);
+    return 0;
+}
+
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
-                        struct temp_table **outtbl, unsigned long long *outrecs,
+                        sampler_t **samplerp, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
@@ -133,11 +282,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     DB dbp_ = {0}, *dbp;
     PAGE *page = NULL;
     unsigned char metabuf[512];
-    int pgsz;
-    int created_temp_table = 0;
+    int pgsz = 0;
+    sampler_t *sampler = *samplerp;
     unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
-    unsigned int pgno = 0;
     int fd = -1;
     int last, now;
 
@@ -160,13 +308,11 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         goto done;
     }
 
-    if (*outtbl == NULL) {
-        *outtbl = bdb_temp_table_create(bdb_state->parent, bdberr);
-        if (*outtbl == NULL) {
-            rc = -1;
-            goto done;
-        }
-        created_temp_table = 1;
+    sampler = sampler_init(bdb_state, bdberr);
+
+    if (sampler == NULL) {
+        rc = -1;
+        goto done;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -199,7 +345,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         logmsg(LOGMSG_ERROR, "can't read meta page\n");
         goto done;
     }
-    // dbp = bdb_state->dbp_ix[ixnum];
     if ((dbp = dbp_from_meta(&dbp_, (DBMETA *)metabuf)) == NULL) {
         rc = -1;
         goto done;
@@ -222,112 +367,90 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED | POSIX_FADV_SEQUENTIAL);
 #endif
 
-    rc = read(fd, page, pgsz);
     last = comdb2_time_epoch();
-    while (rc == pgsz) {
-        if (ISLEAF(page)) {
-            int i, ret;
-            uint8_t *chksum = NULL;
-            /* If we have checksums, use them to verify we don't have a partial
-               page.
-               If the checksum doesn't match, just skip the page. This should be
-               rare
-               (only happen for pagesizes larger than default). */
-            size_t sumlen = 0;
-            if (F_ISSET(dbp, DB_AM_CHKSUM)) {
-                chksum_t algo = IS_CRC32C(page) ? algo_crc32c : algo_hash4;
-                switch (TYPE(page)) {
-                case P_HASHMETA:
-                case P_BTREEMETA:
-                case P_QAMMETA:
-                    chksum = ((BTMETA *)page)->chksum;
-                    sumlen = DBMETASIZE;
-                    break;
-                default:
-                    chksum = P_CHKSUM(dbp, page);
-                    sumlen = pgsz;
-                    break;
-                }
-                if (F_ISSET(dbp, DB_AM_SWAP))
-                    P_32_SWAP(chksum);
-                if ((ret = __db_check_chksum_algo(dbenv, dbenv->crypto_handle,
-                                                  (void *)chksum, page, sumlen,
-                                                  is_hmac, algo)) != 0) {
-                    logmsg(LOGMSG_ERROR, "pgno %u invalid checksum\n",
-                           F_ISSET(dbp, DB_AM_SWAP) ? flibc_intflip(page->pgno)
-                                                    : page->pgno);
-                    continue;
-                }
+    for (rc = read(fd, page, pgsz); rc == pgsz; rc = read(fd, page, pgsz)) {
+        /* If it is not a leaf page, continue reading the file. */
+        if (!ISLEAF(page))
+            continue;
+
+        int ret;
+        uint8_t *chksum = NULL;
+        /* If we have checksums, use them to verify we don't have
+           a partial page. If the checksum doesn't match,
+           just skip the page. This should be rare
+           (only happen for pagesizes larger than default). */
+        size_t sumlen = 0;
+        if (F_ISSET(dbp, DB_AM_CHKSUM)) {
+            chksum_t algo = IS_CRC32C(page) ? algo_crc32c : algo_hash4;
+            switch (TYPE(page)) {
+            case P_HASHMETA:
+            case P_BTREEMETA:
+            case P_QAMMETA:
+                chksum = ((BTMETA *)page)->chksum;
+                sumlen = DBMETASIZE;
+                break;
+            default:
+                chksum = P_CHKSUM(dbp, page);
+                sumlen = pgsz;
+                break;
             }
-
-            if (is_hmac) {
-                DB_CIPHER *db_cipher = dbenv->crypto_handle;
-                void *iv = P_IV(dbp, page);
-                size_t skip = P_OVERHEAD(dbp);
-                uint8_t *ciphertext = (uint8_t *)page + skip;
-                if ((ret = db_cipher->decrypt(dbenv, db_cipher->data, iv,
-                                              ciphertext, sumlen - skip)) !=
-                    0) {
-                    logmsg(LOGMSG_ERROR, "pgno %u decryption failed\n", page->pgno);
-                    continue;
-                }
-            }
-
-            if (IS_PREFIX(page) && F_ISSET(dbp, DB_AM_SWAP))
-                prefix_tocpu(dbp, page);
-
-            db_indx_t n = NUM_ENT(page);
             if (F_ISSET(dbp, DB_AM_SWAP))
-                n = flibc_shortflip(n);
+                P_32_SWAP(chksum);
+            if ((ret = __db_check_chksum_algo(dbenv, dbenv->crypto_handle,
+                                              (void *)chksum, page, sumlen,
+                                              is_hmac, algo)) != 0) {
+                logmsg(LOGMSG_ERROR, "pgno %u invalid checksum\n",
+                       F_ISSET(dbp, DB_AM_SWAP) ? flibc_intflip(page->pgno)
+                                                : page->pgno);
+                continue;
+            }
+        }
 
-            db_indx_t *inp = P_INP(dbp, page);
-            /* entries on the page are paired as (key, data).  we only want
-             * keys) */
-            for (i = 0; i < n; i += 2) {
-                /* we have a candidate */
-                unsigned long long c = 0;
-                if (F_ISSET(dbp, DB_AM_SWAP))
-                    inp[i] = flibc_shortflip(inp[i]);
-                BKEYDATA *data = GET_BKEYDATA(dbp, page, i);
-                assert((uint8_t *)data < max);
-                /* skip deleted */
-                if (B_DISSET(data))
-                    continue;
-                if (B_TYPE(data) != B_KEYDATA)
-                    continue;
-                /* select comp_pct / 100 records */
-                if (rand() % 100 < comp_pct) {
-                    now = comdb2_time_epoch();
-                    if (now - last >= 10) {
-                        last = now;
-                        rc = check_free_space(bdb_state->dir);
-                        if (rc != BDBERR_NOERROR) {
-                            *bdberr = rc;
-                            rc = -1;
-                            goto done;
-                        }
-                    }
-                    if (F_ISSET(dbp, DB_AM_SWAP))
-                        data->len = flibc_shortflip(data->len);
-                    db_indx_t len;
-                    ASSIGN_ALIGN(db_indx_t, len, data->len);
-                    assert(((uint8_t *)data + len) < max);
-                    if ((rc = bk_decompress(dbp, page, &data, pfxbuf,
-                                            sizeof(pfxbuf))) != 0) {
-                        logmsg(LOGMSG_ERROR, 
-                                "\ndecompress failed page:%d i:%d total:%d\n",
-                                page->pgno, i, n);
-                        goto done;
-                    }
-                    ASSIGN_ALIGN(db_indx_t, len, data->len);
-                    rc = bdb_temp_table_put(
-                        bdb_state->parent, *outtbl, data->data, len, &c,
-                        sizeof(unsigned long long), NULL, bdberr);
-                    if (rc)
-                        goto done;
-                    nrecs++;
-                }
-                recs_looked_at++;
+        if (is_hmac) {
+            DB_CIPHER *db_cipher = dbenv->crypto_handle;
+            void *iv = P_IV(dbp, page);
+            size_t skip = P_OVERHEAD(dbp);
+            uint8_t *ciphertext = (uint8_t *)page + skip;
+            if ((ret = db_cipher->decrypt(dbenv, db_cipher->data, iv,
+                                          ciphertext, sumlen - skip)) != 0) {
+                logmsg(LOGMSG_ERROR, "pgno %u decryption failed\n", page->pgno);
+                continue;
+            }
+        }
+
+        if (IS_PREFIX(page) && F_ISSET(dbp, DB_AM_SWAP))
+            prefix_tocpu(dbp, page);
+
+        db_indx_t n = NUM_ENT(page);
+        if (F_ISSET(dbp, DB_AM_SWAP))
+            n = flibc_shortflip(n);
+
+        if (n == 0)
+            continue;
+
+        /* We only care about the key so we take half entries
+           on the page. We don't check the flags of every entry
+           to get the count, so it's likely deleted entries are
+           counted here. However this is okay as we only need these
+           two counters to estimate the number of periodic stat4 samples.
+           And because entries may be deleted after we check them,
+           even if we did check every entry, the results wouldn't be
+           100% accurate anyway. */
+        recs_looked_at += (n >> 1);
+        if (rand() % 100 >= comp_pct)
+            continue;
+        NUM_ENT(page) = n;
+        nrecs += (n >> 1);
+
+        /* Check disk space, schema changes, analyze abort request etc. */
+        now = comdb2_time_epoch();
+        if (now - last >= 10) {
+            last = now;
+            rc = check_free_space(bdb_state->dir);
+            if (rc != BDBERR_NOERROR) {
+                *bdberr = rc;
+                rc = -1;
+                goto done;
             }
         }
 
@@ -341,15 +464,60 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             rc = -1;
             goto done;
         }
-        rc = read(fd, page, pgsz);
-        pgno++;
+
+        db_indx_t *inp = P_INP(dbp, page);
+        /* Remember the value before byteswap.
+           We need to reset inp[0] before
+           saving the page to the temptable. */
+        db_indx_t originp = inp[0];
+        if (F_ISSET(dbp, DB_AM_SWAP))
+            inp[0] = flibc_shortflip(inp[0]);
+        BKEYDATA *data = GET_BKEYDATA(dbp, page, 0);
+        assert((uint8_t *)data < max);
+        /* skip deleted */
+        if (B_DISSET(data))
+            continue;
+        if (B_TYPE(data) != B_KEYDATA)
+            continue;
+
+        /* Remember the values before byteswap.
+           We need to reset 1st entry before
+           saving the page to the temptable. */
+        BKEYDATA *origdta = data;
+        db_indx_t origdlen = data->len;
+        if (F_ISSET(dbp, DB_AM_SWAP))
+            data->len = flibc_shortflip(data->len);
+        db_indx_t len;
+        ASSIGN_ALIGN(db_indx_t, len, data->len);
+        assert(((uint8_t *)data + len) < max);
+        if (bk_decompress(dbp, page, &data, pfxbuf, sizeof(pfxbuf)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "\ndecompress failed page:%d indx:0 total:%d\n", page->pgno,
+                   n);
+            continue;
+        }
+        ASSIGN_ALIGN(db_indx_t, len, data->len);
+
+        /* Reset the 1st index and entry. */
+        inp[0] = originp;
+        origdta->len = origdlen;
+
+        /* Save the entire page:
+           key is the 1st key on the page;
+           data is the page itself. */
+        rc = bdb_temp_table_put(bdb_state->parent, sampler->tmptbl, data->data,
+                                len, page, pgsz, NULL, bdberr);
+        if (rc)
+            goto done;
     }
+
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "Problem reading dta file: %d %s\n", errno,
                 strerror(errno));
         rc = -1;
         goto done;
     }
+
     logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
            recs_looked_at);
 done:
@@ -357,17 +525,18 @@ done:
         close(fd);
     if (page)
         free(page);
-    if (rc && *outtbl && created_temp_table) {
-        int crc;
-        int cbdberr;
-        crc = bdb_temp_table_close(bdb_state, *outtbl, &cbdberr);
-        if (crc && *bdberr == BDBERR_DEADLOCK) {
-            rc = -1;
-            *bdberr = cbdberr;
-        }
+    if (rc || *bdberr != BDBERR_NOERROR) {
+        if (sampler && *samplerp == NULL)
+            sampler_close(sampler);
+        return rc;
     }
+
+    sampler->db = dbp_;
     *outrecs = nrecs;
     *cmprecs = recs_looked_at;
+
+    if (*samplerp == NULL)
+        *samplerp = sampler;
+
     return rc;
 }
-

@@ -103,10 +103,15 @@ static void free_blkseq(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblBlkseqModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblBlkseqInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_blkseq", get_blkseq, free_blkseq, sizeof(systable_blkseq_t),
+        db, "comdb2_blkseq", &systblBlkseqModule,
+        get_blkseq, free_blkseq, sizeof(systable_blkseq_t),
         CDB2_INTEGER, "stripe", -1, offsetof(systable_blkseq_t, stripe),
         CDB2_INTEGER, "index", -1, offsetof(systable_blkseq_t, ix),
         CDB2_CSTRING, "id", -1, offsetof(systable_blkseq_t, id),

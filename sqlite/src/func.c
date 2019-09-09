@@ -22,7 +22,9 @@
 #include <uuid/uuid.h>
 #include <memcompare.c>
 #include "comdb2.h"
+#include "sql.h"
 #include "bdb_int.h"
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -738,7 +740,10 @@ static void comdb2BlobToDoubleFunc(
 
 /*
 ** Implementation of the comdb2_sysinfo() SQL function.  The return
-** value depends on the class of system information being requested.
+** value depends on the class of system information being requested;
+** however, it is generally pieces of rarely changing (scalar) data
+** related to the overall state of the server -OR- the current SQL
+** query being processed.
 */
 static void comdb2SysinfoFunc(
   sqlite3_context *context,
@@ -753,6 +758,8 @@ static void comdb2SysinfoFunc(
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "pid")==0 ){
     sqlite3_result_int64(context, (sqlite3_int64)getpid());
+  }else if( sqlite3_stricmp(zName, "tid")==0 ){
+    sqlite3_result_int64(context, (sqlite3_int64)getarchtid());
   }else if( sqlite3_stricmp(zName, "master")==0 ){
     sqlite3_result_text(context, thedb->bdb_env->repinfo->master_host, -1,
                         SQLITE_TRANSIENT);
@@ -764,6 +771,43 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
+  }else if( sqlite3_stricmp(zName, "version")==0 ){
+    char *zVersion = sqlite3_mprintf("[%s] [%s] [%s] [%s] [%s]", gbl_db_version,
+                                     gbl_db_codename, gbl_db_semver,
+                                     gbl_db_git_version_sha, gbl_db_buildtype);
+    sqlite3_result_text(context, zVersion, -1, SQLITE_TRANSIENT);
+    sqlite3_free(zVersion);
+  }
+}
+
+/*
+** Implementation of the comdb2_ctxinfo() SQL function.  The return
+** value depends on the class of context information being requested;
+** however, it is generally pieces of (scalar) data related to the
+** state of the client connection -OR- the current SQL query being
+** processed.
+*/
+static void comdb2CtxinfoFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  const char *zName;
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ){
+    return;
+  }
+
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+
+  zName = (const char *)sqlite3_value_text(argv[0]);
+  if( sqlite3_stricmp(zName, "parallel")==0 ){
+    if (clnt) {
+      sqlite3_result_int(context, clnt->conns!=NULL);
+    }
+  } else if( sqlite3_stricmp(zName, "user")==0 ){
+    sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
   }
 }
 
@@ -915,6 +959,19 @@ static void comdb2StartTimeFunc(
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
 }
+
+static void comdb2UserFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+  sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
+}
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2534,6 +2591,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
     FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
+    FUNCTION(comdb2_ctxinfo,        1, 0, 0, comdb2CtxinfoFunc),
     FUNCTION(comdb2_version,        0, 0, 0, comdb2VersionFunc),
     FUNCTION(comdb2_semver,         0, 0, 0, comdb2SemVerFunc),
     FUNCTION(table_version,         1, 0, 0, tableVersionFunc),
@@ -2544,6 +2602,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_dbname,         0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
+    FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),

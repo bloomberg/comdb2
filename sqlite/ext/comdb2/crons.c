@@ -28,6 +28,13 @@
 static int systblCronSchedulersInit(sqlite3 *db);
 static int systblCronEventsInit(sqlite3 *db);
 
+sqlite3_module systblCronSchedulersModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+sqlite3_module systblCronEventsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblCronInit(sqlite3*db)
 {
     int rc;
@@ -41,8 +48,9 @@ int systblCronInit(sqlite3*db)
 static int systblCronSchedulersInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_cron_schedulers", cron_systable_schedulers_collect,
-        cron_systable_schedulers_free,  sizeof(systable_cron_scheds_t),
+        db, "comdb2_cron_schedulers", &systblCronSchedulersModule,
+        cron_systable_schedulers_collect, cron_systable_schedulers_free,
+        sizeof(systable_cron_scheds_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_cron_scheds_t, name),
         CDB2_CSTRING, "type", -1, offsetof(systable_cron_scheds_t, type),
         CDB2_INTEGER, "running", -1, offsetof(systable_cron_scheds_t, running),
@@ -54,8 +62,9 @@ static int systblCronSchedulersInit(sqlite3 *db)
 static int systblCronEventsInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_cron_events", cron_systable_events_collect,
-        cron_systable_events_free,  sizeof(systable_cron_events_t),
+        db, "comdb2_cron_events", &systblCronEventsModule,
+        cron_systable_events_collect, cron_systable_events_free,
+        sizeof(systable_cron_events_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_cron_events_t, name),
         CDB2_CSTRING, "type", -1, offsetof(systable_cron_events_t, type),
         CDB2_INTEGER, "epoch", -1, offsetof(systable_cron_events_t, epoch),
@@ -65,6 +74,5 @@ static int systblCronEventsInit(sqlite3 *db)
         CDB2_CSTRING, "sourceid", -1, offsetof(systable_cron_events_t, sourceid),
         SYSTABLE_END_OF_FIELDS);
 }
-
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

@@ -44,6 +44,7 @@ void ssl_set_clnt_user(struct sqlclntstate *clnt);
 
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);
+int check_active_appsock_connections(struct sqlclntstate *clnt);
 int osql_clean_sqlclntstate(struct sqlclntstate *clnt);
 int watcher_warning_function(void *arg, int timeout, int gap);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
@@ -282,11 +283,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
 {
     // Retries happen with a 'begin'.  This can't be a retry if we are already
     // in a transaction
-    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_STATE ||
-        clnt->ctrl_sqlengine == SQLENG_FNSH_RBK_STATE) {
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         return 0;
     }
 
@@ -1504,7 +1501,11 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
-                sbuf2settimeout(clnt->sb, 0, notimeout ? 0 : timeout);
+                sbuf2settimeout(
+                    clnt->sb,
+                    bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) *
+                        1000,
+                    notimeout ? 0 : timeout);
                 if (timeout == 0)
                     net_add_watch(clnt->sb, 0, 0);
                 else
@@ -1745,14 +1746,6 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 printf("setting clnt->planner_effort to %d\n",
                        clnt->planner_effort);
 #endif
-            } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
-                sqlstr += 15;
-                sqlstr = skipws(sqlstr);
-                if (strncasecmp(sqlstr, "on", 2) == 0) {
-                    clnt->ignore_coherency = 1;
-                } else {
-                    clnt->ignore_coherency = 0;
-                }
             } else if (strncasecmp(sqlstr, "intransresults", 14) == 0) {
                 sqlstr += 14;
                 sqlstr = skipws(sqlstr);
@@ -1834,7 +1827,7 @@ static int do_query_on_master_check(struct dbenv *dbenv,
 
     if (do_master_check && bdb_master_should_reject(dbenv->bdb_env) &&
         allow_master_exec == 0) {
-        ATOMIC_ADD(gbl_masterrejects, 1);
+        ATOMIC_ADD32(gbl_masterrejects, 1);
         /* Send sql response with dbinfo. */
         if (allow_master_dbinfo)
             send_dbinforesponse(dbenv, clnt->sb);
@@ -2043,6 +2036,7 @@ retry_read:
                 effects.num_updated = clnt->effects.num_updated;
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
+                set_sent_data_to_client(clnt, 1, __func__, __LINE__);
                 sql_response.effects = &effects;
                 sql_response.error_code = 0;
             } else {
@@ -2098,6 +2092,13 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
+static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
+{
+    /* If this isn't from an admin session and the node isn't coherent
+       and we disallow running queries on an incoherent node, reject */
+    return (!admin && !bdb_am_i_coherent(bdb_state) &&
+            !gbl_allow_incoherent_sql);
+}
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
@@ -2129,8 +2130,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_ERR;
     }
 
-    if (!arg->admin && !bdb_am_i_coherent(dbenv->bdb_env) &&
-        !gbl_allow_incoherent_sql) {
+    if (incoh_reject(arg->admin, dbenv->bdb_env)) {
         return APPSOCK_RETURN_OK;
     }
 
@@ -2149,6 +2149,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         return APPSOCK_RETURN_OK;
     }
 
+
     /*
       This flag cannot be set to non-zero until after all the early returns in
       this function; otherwise, we may "leak" appsock connections.
@@ -2164,20 +2165,27 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
+    clnt_register(&clnt);
+
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    Pthread_cond_init(&clnt.wait_cond, NULL);
-    Pthread_mutex_init(&clnt.write_lock, NULL);
-    Pthread_cond_init(&clnt.write_cond, NULL);
-    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    if (incoh_reject(clnt.admin, thedb->bdb_env)) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
+        goto done;
+    }
 
-    if (!clnt.admin &&
-        active_appsock_conns >
-            bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
+    query = read_newsql_query(dbenv, &clnt, sb);
+    if (query == NULL) {
+        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
+        goto done;
+    }
+
+    if (!clnt.admin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
 
@@ -2190,25 +2198,12 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                    gbl_denied_appsock_connection_count);
             pr = now;
         }
+
         newsql_error(&clnt, "Exhausted appsock connections.",
                      CDB2__ERROR_CODE__APPSOCK_LIMIT);
         goto done;
     }
 
-    extern int gbl_allow_incoherent_sql;
-    if (!clnt.admin && !gbl_allow_incoherent_sql &&
-        !bdb_am_i_coherent(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d td %u new query on incoherent node, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
-        goto done;
-    }
-
-    query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL) {
-        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
-        goto done;
-    }
 #if 0
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
@@ -2223,6 +2218,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
+    if (sql_query->client_info) {
+        clnt.conninfo.pid = sql_query->client_info->pid;
+        clnt.last_pid = sql_query->client_info->pid;
+    }
+    else {
+        clnt.conninfo.pid = 0;
+        clnt.last_pid = 0;
+    }
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     newsql_clr_high_availability(&clnt);
@@ -2268,9 +2271,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
+        clnt.added_to_hist = 0;
+
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
+            clnt.had_errors = 0;
+            clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
         }
         if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
@@ -2337,8 +2344,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (!clnt.admin && clnt.ignore_coherency == 0 &&
-            !bdb_am_i_coherent(thedb->bdb_env) &&
+        if (incoh_reject(clnt.admin, thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
@@ -2348,49 +2354,45 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
 
         clnt.heartbeat = 1;
-        ATOMIC_ADD(gbl_nnewsql, 1);
+        ATOMIC_ADD32(gbl_nnewsql, 1);
 
-        if (clnt.had_errors && strncasecmp(clnt.sql, "commit", 6) &&
-            strncasecmp(clnt.sql, "rollback", 8)) {
-            if (clnt.in_client_trans == 0) {
-                clnt.had_errors = 0;
-                /* tell blobmem that I want my priority back
-                   when the sql thread is done */
-                comdb2bma_pass_priority_back(blobmem);
-                rc = dispatch_sql_query(&clnt);
-            } else {
-                /* Do Nothing */
-                newsql_heartbeat(&clnt);
-            }
-        } else if (clnt.had_errors) {
-            /* Do Nothing */
-            if (clnt.ctrl_sqlengine == SQLENG_STRT_STATE)
-                clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
+        bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
+                                 strncasecmp(clnt.sql, "rollback", 8) == 0)
+                                    ? true
+                                    : false;
 
-            clnt.had_errors = 0;
-            clnt.in_client_trans = 0;
-            rc = -1;
-        } else {
+        if (!clnt.had_errors || isCommitRollback) {
             /* tell blobmem that I want my priority back
                when the sql thread is done */
             comdb2bma_pass_priority_back(blobmem);
             rc = dispatch_sql_query(&clnt);
+
+            if (clnt.had_errors && isCommitRollback) {
+                rc = -1;
+            }
         }
+        clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
             if (clnt.trans_has_sp) {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
             } else {
-                srs_tran_replay(&clnt, arg->thr_self);
+                rc = srs_tran_replay(&clnt, arg->thr_self);
+            }
+
+            if (clnt.osql.history == NULL) {
+                query = APPDATA->query = NULL;
             }
         } else {
             /* if this transaction is done (marked by SQLENG_NORMAL_PROCESS),
                clean transaction sql history
             */
             if (clnt.osql.history &&
-                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
+                query = APPDATA->query = NULL;
+            }
         }
 
         if (rc && !clnt.in_client_trans)
@@ -2407,6 +2409,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
 done:
     sbuf2setclnt(sb, NULL);
+    clnt_unregister(&clnt);
 
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
@@ -2443,13 +2446,8 @@ done:
 
     /* XXX free logical tran?  */
     close_appsock(sb);
+    arg->sb = NULL;
     cleanup_clnt(&clnt);
-
-    Pthread_mutex_destroy(&clnt.wait_mutex);
-    Pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_cond_destroy(&clnt.write_cond);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;
 }

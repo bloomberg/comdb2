@@ -378,6 +378,21 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
+    if (rc < 0) {
+        reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
+        *opfailcode = ERR_INTERNAL;
+        rc = retrc = ERR_INTERNAL;
+        ERR;
+    } else if (rc > 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation ");
+        reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
+                  iq->usedb->check_constraints[rc - 1].consname);
+        *opfailcode = ERR_CHECK_CONSTRAINT;
+        rc = retrc = ERR_CHECK_CONSTRAINT;
+        ERR;
+    }
+
     rc =
         validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
@@ -979,9 +994,13 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                       od_len, fndlen, rc);
         reqerrstr(iq, COMDB2_UPD_RC_UNKN_REC, "find old record failed");
         *opfailcode = OP_FAILED_VERIFY;
-        if (rc == RC_INTERNAL_RETRY)
+        if (rc == RC_INTERNAL_RETRY) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s line %d find old record failed with "
+                   "internal_retry\n",
+                   __func__, __LINE__);
             retrc = rc;
-        else
+        } else
             retrc = ERR_VERIFY;
         goto err;
     }
@@ -1146,6 +1165,21 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
+    }
+
+    rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
+    if (rc < 0) {
+        reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
+        *opfailcode = ERR_INTERNAL;
+        rc = retrc = ERR_INTERNAL;
+        ERR;
+    } else if (rc > 0) {
+        reqerrstrhdr(iq, "CHECK constraint violation ");
+        reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
+                  iq->usedb->check_constraints[rc - 1].consname);
+        *opfailcode = ERR_CHECK_CONSTRAINT;
+        rc = retrc = ERR_CHECK_CONSTRAINT;
+        ERR;
     }
 
     if (has_constraint(flags)) {
@@ -2758,7 +2792,7 @@ done:
     free(stuff);
 }
 
-int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int odhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     void *out;
     size_t len;
@@ -2793,7 +2827,7 @@ int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     return 0;
 }
 
-int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int unodhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     int rc;
     void *out;

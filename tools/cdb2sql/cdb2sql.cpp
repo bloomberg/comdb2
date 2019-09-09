@@ -152,46 +152,45 @@ static const char *usage_text =
     " * Query db by connecting to a specific server:\n"
     "     cdb2sql mydb --host node1 'select 1'\n"
     " * Query db by connecting to a known set of servers/ports:\n"
-    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n";
+    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
+    "\n"
+    "Interactive session commands:\n"
+    "@cdb2_close          Close connection (calls cdb2_close())\n"
+    "@desc      tblname   Describe a table\n"
+    "@hexblobs            Display blobs in hexadecimal format\n"
+    "@ls        tables    List tables\n"
+    "@ls        systables List system tables\n"
+    "@ls        views     List views\n"
+    "@redirect  [file]    Redirect output to a file\n"
+    "@row_sleep number    Sleep for this many secs between printing rows\n"
+    "@send      command   Send a command via 'sys.cmd.send()'\n"
+    "@strblobs            Display blobs as strings\n"
+    "@time                Toggle between time modes\n";
 
-void cdb2sql_usage(int exit_val)
+void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
 const char *level_one_words[] = {
-  "@",
-  "ALTER", "ANALYZE",
-  "BEGIN",
-  "COMMIT",
-  "CREATE",
-  "DELETE", "DROP", "DRYRUN",
-  "EXEC", "EXPLAIN",
-  "INSERT",
-  "PUT",
-  "REBUILD",
-  "ROLLBACK",
-  "SELECT", "SELECTV", "SET",
-  "TRUNCATE",
-  "UPDATE",
-  "WITH", NULL,  // must be terminated by NULL
+    "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
+    "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
+    "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
 };
 
 const char *char_atglyph_words[] = {
-    "desc", "ls", "send", NULL, // must be terminated by NULL
+    "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "row_sleep",  "send", "strblobs", "time",
 };
 
-static char *char_atglyph_generator(const char *text, int state)
+static char *char_atglyph_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { // if state is 0 get the length of text
-        list_index = 0;
         len = strlen(text);
     }
-    while ((name = char_atglyph_words[list_index]) != NULL) {
-        list_index++;
+    for (const auto &name : char_atglyph_words) {
         if (len == 0 || strncasecmp(name, text, len) == 0) {
             return strdup(name);
         }
@@ -200,24 +199,21 @@ static char *char_atglyph_generator(const char *text, int state)
 }
 
 // Generator function for word completion.
-static char *level_one_generator(const char *text, int state)
+static char *level_one_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { //if state is 0 get the length of text
-        list_index = 0;
         len = strlen (text);
     }
-    while ((name = level_one_words[list_index]) != NULL) {
-        list_index++;
-        if (len == 0 || strncasecmp (name, text, len) == 0) {
-            return strdup (name);
+    for (const auto &name : level_one_words) {
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
         }
     }
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *db_generator(int state, const char *sql)
+static char *db_generator(const int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -298,7 +294,7 @@ static char *db_generator(int state, const char *sql)
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *tunables_generator(const char *text, int state)
+static char *tunables_generator(const char *text, const int state)
 {
     char sql[256];
     if (*text)
@@ -313,7 +309,7 @@ static char *tunables_generator(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator_no_systables(const char *text, int state)
+static char *generic_generator_no_systables(const char *text, const int state)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -324,7 +320,7 @@ static char *generic_generator_no_systables(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator(const char *text, int state)
+static char *generic_generator(const char *text, const int state)
 {
     char sql[256];
     //TODO: escape text
@@ -398,6 +394,27 @@ static char **my_completion (const char *text, int start, int end)
         return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
+static bool skip_history(const char *line)
+{
+    size_t n;
+
+    while (isspace(*line))
+        ++line;
+
+    n = sizeof("set") - 1;
+    if (strncasecmp(line, "set", n)) {
+        return false;
+    }
+    line += n;
+
+    while (isspace(*line))
+        ++line;
+
+    if (strncasecmp(line, "password", sizeof("password") - 1)) {
+        return false;
+    }
+    return true;
+}
 
 static char *read_line()
 {
@@ -408,7 +425,8 @@ static char *read_line()
             free(line);
             line = NULL;
         }
-        if ((line = readline(prompt)) != NULL && line[0] != 0)
+        if ((line = readline(prompt)) != NULL && line[0] != 0 &&
+            !skip_history(line))
             add_history(line);
         return line;
     }
@@ -437,13 +455,11 @@ static char *read_line()
 
 int get_type(const char **sqlstr)
 {
-    // char * strptr = *sqlstr;
     while (isspace(**sqlstr))
         (*sqlstr)++;
-    if (strncasecmp(*sqlstr, "CDB2_", 5) != 0) {
-        printf("Type expected after @bind\n");
+    if (!*sqlstr || strncasecmp(*sqlstr, "CDB2_", 5) != 0)
         return -1;
-    }
+
     *sqlstr += 5; // skip CDB2_
     checkfortype(*sqlstr, "INTEGER", CDB2_INTEGER);
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
@@ -452,20 +468,19 @@ int get_type(const char **sqlstr)
     checkfortype(*sqlstr, "DATETIME", CDB2_DATETIME);
     checkfortype(*sqlstr, "INTERVALYM", CDB2_INTERVALYM);
     checkfortype(*sqlstr, "INTERVALDS", CDB2_INTERVALDS);
-
     return -1;
 }
 
 char *get_parameter(const char **sqlstr)
 {
-    while (isspace(**sqlstr))
+    while (isspace(**sqlstr)) {
         (*sqlstr)++;
+    }
     const char *end = *sqlstr;
-    while (!isspace(*end))
+    while (*end && !isspace(*end))
         end++;
     int len = end - (*sqlstr);
-    if (len < 1) {
-        printf("Parameter name expected after type\n");
+    if (len < 1 || !*sqlstr) {
         return NULL;
     }
     char *copy = strndup(*sqlstr, len);
@@ -473,45 +488,59 @@ char *get_parameter(const char **sqlstr)
     return copy;
 }
 
+int fromhex(uint8_t *out, const uint8_t *in, size_t len)
+{
+    const uint8_t *end = in + len;
+    while (in != end) {
+        uint8_t i0 = tolower(*(in++));
+        uint8_t i1 = tolower(*(in++));
+        if (i0 > 'f' || i1 > 'f')
+            return 1;
+        i0 -= isdigit(i0) ? '0' : ('a' - 0xa);
+        i1 -= isdigit(i1) ? '0' : ('a' - 0xa);
+        *(out++) = (i0 << 4) | i1;
+    }
+    return 0;
+}
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
         (*sqlstr)++;
-    const char *end = *sqlstr;
+    const char *str = *sqlstr;
+    const char *end = str;
     while (*end)
         end++; // till \0
-    int len = end - (*sqlstr);
-    if (len < 1) {
-        printf("Value expected after parameter\n");
+    int len = end - str;
+    if (len < 1 || !(*str)) {
         return NULL;
     }
     if (type == CDB2_INTEGER) {
-        int64_t i = atol(*sqlstr);
+        int64_t i = atol(str);
         int64_t *val = (int64_t *) malloc(sizeof(int64_t));
         *val = i;
         *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_REAL) {
-        double d = atof(*sqlstr);
+        double d = atof(str);
         double *val = (double *) malloc(sizeof(double));
         *val = d;
         *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_CSTRING) {
-        char *val = strndup(*sqlstr, end - (*sqlstr));
+        char *val = strndup(str, end - str);
         *vallen = len;
         return val;
     } else if (type == CDB2_DATETIME) {
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(*sqlstr, "%04d-%02d-%02dT%02d:%02d:%02d",
-                        &dt->tm.tm_year, &dt->tm.tm_mon, &dt->tm.tm_mday,
-                        &dt->tm.tm_hour, &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
+                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                        &dt->tm.tm_min, &dt->tm.tm_sec);
         /* timezone not supported for now */
         if (rc != 6) {
             fprintf(stderr,
-                    "invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
+                    "Invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
             return NULL;
         }
         dt->msec = 0;
@@ -521,8 +550,34 @@ void *get_val(const char **sqlstr, int type, int *vallen)
 
         *vallen = sizeof(*dt);
         return dt;
+    } else if (type == CDB2_BLOB) {
+        int slen = strlen(str);
+        if (str[0] != 'x' && str[0] != '\'' && str[slen - 1] != '\'') {
+            fprintf(stderr, "Type CDB2_BLOB should be in format: x'abcd'\n");
+            return NULL;
+        }
+
+        slen -= 3; /* without x'' */
+        int unexlen = slen / 2;
+        if (2 * unexlen != slen) {
+            fprintf(stderr, "Type CDB2_BLOB should have an even size length in "
+                            "format: x'abcd'\n");
+            return NULL;
+        }
+        uint8_t *unexpanded = (uint8_t *)malloc(unexlen + 1);
+        int rc =
+            fromhex(unexpanded, (const uint8_t *)str + 2, slen); /* no x' */
+        if (rc) {
+            fprintf(
+                stderr,
+                "Type CDB2_BLOB should have characters from 0-9a-f: x'abcd'\n");
+            return NULL;
+        }
+        unexpanded[unexlen] = '\0';
+        *vallen = unexlen;
+        return unexpanded;
     } else {
-        /* ?? */
+        fprintf(stderr, "Type %d not yet supported\n", type);
     }
     return NULL;
 }
@@ -554,6 +609,27 @@ extern void REPORT_COSTS(void);
 #endif
 static void (*enable_costs)(void) = ENABLE_COSTS;
 static void (*report_costs)(void) = REPORT_COSTS;
+
+int list_tables()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT tablename FROM comdb2_tables order by tablename";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
+
+int list_systables()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT name FROM comdb2_systables order by name";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
+
+int list_views()
+{
+    int start_time_ms, run_time_ms;
+    const char *sql = "SELECT name FROM comdb2_views order by name";
+    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+}
 
 static int process_escape(const char *cmdstr)
 {
@@ -627,14 +703,11 @@ static int process_escape(const char *cmdstr)
     } else if ((strcasecmp(tok, "ls") == 0) || (strcasecmp(tok, "list") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok || strcasecmp(tok, "tables") == 0) {
-            int start_time_ms, run_time_ms;
-            const char *sql =
-                "SELECT tablename FROM comdb2_tables order by tablename";
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            list_tables();
         } else if (strcasecmp(tok, "systables") == 0) {
-            int start_time_ms, run_time_ms;
-            const char *sql = "SELECT name FROM comdb2_systables order by name";
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            list_systables();
+        } else if (strcasecmp(tok, "views") == 0) {
+            list_views();
         } else {
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);
             return -1;
@@ -644,13 +717,15 @@ static int process_escape(const char *cmdstr)
         if (tok) {
             int start_time_ms, run_time_ms;
             char sql[1024];
-            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')", tok);
+            snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')",
+                     tok);
             run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
         } else {
             fprintf(stderr, "need command to @send\n");
             return -1;
         }
-    } else if ((strcasecmp(tok, "desc") == 0) || (strcasecmp(tok, "describe") == 0)) {
+    } else if ((strcasecmp(tok, "desc") == 0) ||
+               (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok) {
             fprintf(stderr, "table name required\n");
@@ -1057,6 +1132,57 @@ int Result_buffer::print_result() {
     return 0;
 }
 
+int process_bind(const char *sql)
+{
+    if (!strncasecmp(sql, "@bind", 5) == 0)
+        return process_escape(sql);
+
+    const char *copy_sql = sql;
+    verbose_print("setting bind parameter\n");
+    //@bind BINDTYPE parameter value
+    sql += 5;
+
+    int type = get_type(&sql);
+    if (type < 0 || !isspace(*sql)) {
+        fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
+                        "one of the following:\n"
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
+                        "INTERVALDS}\n");
+        fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
+        return type;
+    }
+
+    char *parameter = get_parameter(&sql);
+    if (parameter == NULL) {
+        fprintf(stderr, "[%s] rc -1: Parameter name expected after type\n",
+                copy_sql);
+        return -1;
+    }
+
+    int length;
+    int rc = 0;
+    void *value = get_val(&sql, type, &length);
+    if (!value) {
+        fprintf(stderr, "[%s] rc -1: Value expected after parameter\n",
+                copy_sql);
+        return -1;
+    }
+
+    if (debug_trace)
+        fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
+                parameter, (char *)value);
+    if (isdigit(parameter[0])) {
+        int index = atoi(parameter);
+        if (index <= 0)
+            return -1;
+        rc = cdb2_bind_index(cdb2h, index, type, value, length);
+    } else {
+        rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+        /* we have to leak parameter here -- freeing breaks the bind */
+    }
+    return rc;
+}
+
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time)
 {
@@ -1064,7 +1190,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int ncols;
     int col;
     FILE *out = stdout;
-    char cmd[60];
     int startms = now_ms();
 
     if (printmode & DISP_STDERR)
@@ -1074,7 +1199,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
-
         if (maxretries) {
             cdb2_set_max_retries(maxretries);
         }
@@ -1117,79 +1241,11 @@ static int run_statement(const char *sql, int ntypes, int *types,
                 return 1;
             }
         }
-
-        /*
-          Check and set user and password if they have been specified using
-          the environment variables.
-
-          Note: It is good to report the user about the use of environment
-          variables to set user/password to avoid any surprises.
-        */
-        int length;
-
-        if (getenv("COMDB2_USER")) {
-            length = snprintf(cmd, sizeof(cmd), "set user %s",
-                              getenv("COMDB2_USER"));
-
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_USER too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set user using COMDB2_USER, "
-                                "exiting\n");
-                return 1;
-            } else {
-                printf("Set user using COMDB2_USER\n");
-            }
-        }
-
-        if (getenv("COMDB2_PASSWORD")) {
-            length = snprintf(cmd, sizeof(cmd), "set password %s",
-                              getenv("COMDB2_PASSWORD"));
-
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set password using "
-                                "COMDB2_PASSWORD, exiting\n");
-                return 1;
-            } else {
-                printf("Set password using COMDB2_PASSWORD\n");
-            }
-        }
     }
 
-    /* Bind parameter ability -- useful for debugging */
+    /* Bind parameter ability */
     if (sql[0] == '@') {
-        if (strncasecmp(sql, "@bind", 5) == 0) {
-            verbose_print("setting bind parameter\n");
-            //@bind BINDTYPE parameter value
-            sql += 5;
-
-            int type = get_type(&sql);
-            if (type < 0)
-                return -1;
-
-            char *parameter = get_parameter(&sql);
-            if (parameter == NULL)
-                return -1;
-
-            int length;
-            void *value = get_val(&sql, type, &length);
-
-            if (isdigit(parameter[0])) {
-                int index = atoi(parameter);
-                if (index <= 0)
-                    return -1;
-                rc = cdb2_bind_index(cdb2h, index, type, value, length);
-            } else {
-                rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-                /* we have to leak parameter here -- freeing breaks the bind */
-            }
-        } else
-            rc = process_escape(sql);
-        return rc;
+        return process_bind(sql);
     }
 
     {

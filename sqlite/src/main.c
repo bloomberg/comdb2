@@ -1164,8 +1164,8 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     {
       sqlite3_stmt *pStmt = 0;
       while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
-        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
-               __FILE__, __LINE__, db, sqlite3_sql(pStmt));
+        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> %p {%s}\n",
+               __FILE__, __LINE__, db, pStmt, sqlite3_sql(pStmt));
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3433,13 +3433,15 @@ opendb_out:
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-  pthread_mutex_lock(&mutex);
-  /* these modify global structures */
-  register_lua_sfuncs(db, thd);
-  register_lua_afuncs(db, thd);
-  register_date_functions(db); 
-  pthread_mutex_unlock(&mutex);
+  if( thd!=NULL ){
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&mutex);
+    /* these modify global structures */
+    register_lua_sfuncs(db, thd);
+    register_lua_afuncs(db, thd);
+    register_date_functions(db); 
+    pthread_mutex_unlock(&mutex);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ) sqlite3CodecQueryParameters(db, 0, zOpen);

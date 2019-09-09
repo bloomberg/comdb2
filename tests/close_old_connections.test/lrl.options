@@ -1,0 +1,2 @@
+setattr MASTER_REJECT_REQUESTS 0
+maxappsockslimit 1

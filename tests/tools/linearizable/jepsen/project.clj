@@ -7,5 +7,5 @@
                  [jepsen "0.1.6"]
                  [org.clojure/java.jdbc "0.6.1"]
                  [slingshot "0.12.2"]
-                 [com.bloomberg.comdb2/cdb2jdbc "2.0.0"]]
+                 [com.bloomberg.comdb2/cdb2jdbc "2.0.2"]]
   :main comdb2.cli)

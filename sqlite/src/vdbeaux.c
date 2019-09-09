@@ -123,6 +123,9 @@ int sqlite3VdbeUsesDoubleQuotedString(
 ){
   DblquoteStr *pStr;
   assert( zId!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pVdbe==0 ) return 1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
     if( strcmp(zId, pStr->z)==0 ) return 1;
@@ -5720,10 +5723,11 @@ int sqlite3_value_dup_inplace(
   memset(pNew, 0, sizeof(Mem));
   memcpy(pNew, pOrig, MEMCELLSIZE);
   pNew->flags &= ~MEM_Dyn;
+  pNew->szMalloc = 0;
   pNew->db = 0;
   if( pNew->flags&(MEM_Str|MEM_Blob) ){
     int rc;
-    pNew->flags &= ~(MEM_Static|MEM_Dyn);
+    pNew->flags &= ~MEM_Static;
     pNew->flags |= MEM_Ephem;
     rc = sqlite3VdbeMemMakeWriteable(pNew);
     if( rc!=SQLITE_OK ) return rc;

@@ -135,7 +135,8 @@ struct bdb_queue_stats {
     unsigned n_physical_gets;
 };
 
-/* This is identical to bb_berkdb_thread_stats in db.h */
+/* Forward declare, this is defined in thread_stats.h */
+struct berkdb_thread_stats;
 
 /*
  * Multiplication usually takes fewer CPU cycles than division. Therefore
@@ -148,30 +149,8 @@ struct bdb_queue_stats {
 #ifndef M2U
 #define M2U(msec) ((msec)*1000ULL)
 #endif
-struct bdb_thread_stats {
-    unsigned n_lock_waits;
-    uint64_t lock_wait_time_us;
 
-    unsigned n_preads;
-    unsigned pread_bytes;
-    uint64_t pread_time_us;
 
-    unsigned n_pwrites;
-    unsigned pwrite_bytes;
-    uint64_t pwrite_time_us;
-
-    unsigned n_memp_fgets;
-    uint64_t memp_fget_time_us;
-
-    unsigned n_memp_pgs;
-    uint64_t memp_pg_time_us;
-
-    unsigned n_shallocs;
-    uint64_t shalloc_time_us;
-
-    unsigned n_shalloc_frees;
-    uint64_t shalloc_free_time_us;
-};
 
 /* these are the values that "bdberr" can be */
 enum {
@@ -1057,6 +1036,19 @@ int bdb_rebuild_done(bdb_state_type *bdb_handle);
 /* force a flush to disk of all in memory stuff */
 int bdb_flush(bdb_state_type *bdb_handle, int *bdberr);
 
+/* Serialize cache to this file */
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
+                           int max_pages);
+
+/* Load from serialized cache */
+int bdb_load_cache(bdb_state_type *bdb_state, const char *file);
+
+/* Load default cache */
+int bdb_load_cache_default(bdb_state_type *bdb_state);
+
+/* Flush default cache */
+int bdb_dump_cache_default(bdb_state_type *bdb_state);
+
 /* force a flush to disk of all in memory stuff , but don't force a checkpoint
  */
 int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);
@@ -1320,16 +1312,16 @@ extern int gbl_bb_berkdb_enable_memp_timing;
 extern int gbl_bb_berkdb_enable_memp_pg_timing;
 extern int gbl_bb_berkdb_enable_shalloc_timing;
 void bdb_reset_thread_stats(void);
-const struct bdb_thread_stats *bdb_get_thread_stats(void);
-const struct bdb_thread_stats *bdb_get_process_stats(void);
+const struct berkdb_thread_stats *bdb_get_thread_stats(void);
+const struct berkdb_thread_stats *bdb_get_process_stats(void);
 
 /* Format and print the thread stats.  printfn() is a function which accepts
  * a line to print (\n\0 terminated) and a context pointer. Its return value
  * is ignored.  bdb_fprintf_stats is a convenience wrapper which uses fputs()
  * as the printing function. */
-void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                      int (*printfn)(const char *, void *), void *context);
-void bdb_fprintf_stats(const struct bdb_thread_stats *st, const char *prefix,
+void bdb_fprintf_stats(const struct berkdb_thread_stats *st, const char *prefix,
                        FILE *out);
 
 int bdb_find_oldest_genid(bdb_state_type *bdb_state, tran_type *tran,
@@ -1376,6 +1368,11 @@ int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,
 int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
                           size_t maxnumtbls, int *fndnumtbls, int *bdberr);
 bdb_state_type *bdb_llmeta_bdb_state(void);
+
+int bdb_get_view_names(tran_type *t, char **names, int *num);
+int bdb_get_view(tran_type *t, const char *view_name, char **view_def);
+int bdb_put_view(tran_type *t, const char *view_name, char *view_def);
+int bdb_del_view(tran_type *t, const char *view_name);
 
 int bdb_append_file_version(char *str_buf, size_t buflen,
                             unsigned long long version_num, int *bdberr);
@@ -1591,8 +1588,18 @@ int bdb_get_index_filename(bdb_state_type *bdb_state, int ixnum, char *nameout,
 int bdb_get_data_filename(bdb_state_type *bdb_state, int stripe, int blob,
                           char *nameout, int namelen, int *bdberr);
 
+/* Sampler interface */
+typedef struct sampler sampler_t;
+int sampler_first(sampler_t *);
+int sampler_last(sampler_t *);
+int sampler_prev(sampler_t *);
+int sampler_next(sampler_t *);
+void *sampler_key(sampler_t *);
+sampler_t *sampler_init();
+int sampler_close(sampler_t *);
+
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
-                        struct temp_table **outtbl, unsigned long long *outrecs,
+                        sampler_t **samplerp, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr);
 
 void bdb_bdblock_debug(void);
@@ -1820,11 +1827,12 @@ bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
 int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
                                  int trak, int *bdberr);
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
-int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t *waits, 
+int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
+                          int64_t *deadlock_locks, int64_t *waits,
                           int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,

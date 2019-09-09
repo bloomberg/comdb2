@@ -147,7 +147,7 @@ keys
 (tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
-(name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_95177019', type='FOREIGN KEY', tablename='t2', keyname='IDX1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i null = yes 
@@ -197,7 +197,7 @@ constraints
 (tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
-(name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX', foreigntablename='t1', foreignkeyname='IDX', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_95177019', type='FOREIGN KEY', tablename='t2', keyname='IDX', foreigntablename='t1', foreignkeyname='IDX', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -275,7 +275,7 @@ keys
 (tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='IDX', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i 
@@ -359,18 +359,15 @@ keys
 keys
 	{
 		dup "$KEY_E8BDFAE1" = i + j 
-		dup "$KEY_2BFFFCF4" = <DESCEND> i + <DESCEND> j 
 	}
 constraints
 	{
 		"$KEY_E8BDFAE1" -> <"t1":"IDX1"> 
-		"$KEY_2BFFFCF4" -> <"t1":"IDX2"> 
 	}
 ')
 (type='index', name='$$KEY_E8BDFAE1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$$KEY_E8BDFAE1_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_2BFFFCF4_2BFFFCF4', tbl_name='t2', rootpage=9, sql='create index "$$KEY_2BFFFCF4_2BFFFCF4" on "t2" ("i" DESC, "j" DESC);', csc2=NULL)
-(name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
-(name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+[ALTER TABLE t2 DROP FOREIGN KEY '$CONSTRAINT_9C9BDEA4'] failed with rc -3 Constraint '$CONSTRAINT_9C9BDEA4' not found.
 (tablename='t1')
 (tablename='t2')
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -382,8 +379,7 @@ constraints
 (tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t2', keyname='$KEY_2BFFFCF4', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i null = yes 
@@ -407,7 +403,6 @@ keys
 keys
 	{
 		dup "$KEY_E8BDFAE1" = i + j 
-		dup "$KEY_2BFFFCF4" = <DESCEND> i + <DESCEND> j 
 	}
 constraints
 	{
@@ -415,13 +410,12 @@ constraints
 	}
 ')
 (type='index', name='$$KEY_E8BDFAE1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$$KEY_E8BDFAE1_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_2BFFFCF4_2BFFFCF4', tbl_name='t2', rootpage=9, sql='create index "$$KEY_2BFFFCF4_2BFFFCF4" on "t2" ("i" DESC, "j" DESC);', csc2=NULL)
-(name='mycons1', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
-(name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(name='mycons1', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
-(name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(name='mycons2', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
-(name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
+(name='mycons1', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='mycons1', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='mycons2', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
+(name='$CONSTRAINT_6C9CE8ED', type='FOREIGN KEY', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (csc2='
 	tag ondisk {
 		int i null = yes
