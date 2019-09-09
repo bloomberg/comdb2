@@ -96,3 +96,26 @@ The match mode `REGEXP` treats the property value as a [regular expression](http
 compatible with the [SQLite regular expression extension](https://www.sqlite.org/src/artifact?ci=trunk&filename=ext/misc/regexp.c).
 The match mode `NOCASE` may be combined with another match mode to enable
 case-insensitive matching.
+
+### Example #1
+
+```
+version 1
+
+rule 1 action REJECT
+rule 1 fingerprint X'a9c8b6ddb5b9e55ee41b7f5a46ec4e45'
+rule 1 flags STOP
+
+rule 2 action LOW_PRIO
+rule 2 adjustment 1000
+rule 2 user Robert
+
+rule 3 action HIGH_PRIO
+rule 3 adjustment 1000
+rule 3 mode GLOB
+rule 3 originTask */cdb2sql
+
+rule 4 action NONE
+rule 5 mode REGEXP, NOCASE
+rule 4 sql ^CREATE +.*$
+```
