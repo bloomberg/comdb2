@@ -17,7 +17,6 @@
 #ifndef _INCLUDED_BLOB_BUFFER_H
 #define _INCLUDED_BLOB_BUFFER_H
 
-
 /* Used for collecting blob data before a keyless add/upd/del.
  * An array of these also supplements */
 typedef struct blob_buffer {
@@ -49,6 +48,5 @@ typedef struct blob_buffer {
        or adding an expressional index on the blob column. */
     void *freeptr;
 } blob_buffer_t;
-
 
 #endif

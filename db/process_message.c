@@ -3111,7 +3111,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "verifypool") == 0) {
         if (gbl_verify_thdpool)
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
-        else 
+        else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
     } else if (tokcmp(tok, ltok, "oldestgenids") == 0) {
         int i, stripe;

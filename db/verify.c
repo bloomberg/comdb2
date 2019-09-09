@@ -36,9 +36,9 @@
 
 struct thdpool *gbl_verify_thdpool;
 static int parallel_verify_table(const char *table, SBUF2 *sb,
-                    int progress_report_seconds, int attempt_fix,
-                    int (*lua_callback)(void *, const char *),
-                    void *lua_params, verify_mode_t mode);
+                                 int progress_report_seconds, int attempt_fix,
+                                 int (*lua_callback)(void *, const char *),
+                                 void *lua_params, verify_mode_t mode);
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
@@ -52,21 +52,24 @@ static void verify_thd_start(struct thdpool *pool, void *thddata)
     state->thr_self = thrman_register(THRTYPE_VERIFY);
 }
 
-void init_verify_thdpool(void) 
+void init_verify_thdpool(void)
 {
-    assert (!gbl_verify_thdpool);
+    assert(!gbl_verify_thdpool);
 
     gbl_verify_thdpool =
         thdpool_create("verify_pool", sizeof(struct verify_thd_state));
-    assert (gbl_verify_thdpool);
+    assert(gbl_verify_thdpool);
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_verify_thdpool);
 
-    //thdpool_set_stack_size(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ));
+    // thdpool_set_stack_size(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr,
+    // BDB_ATTR_VERIFY_THREAD_STACKSZ));
     thdpool_set_init_fn(gbl_verify_thdpool, verify_thd_start);
     thdpool_set_minthds(gbl_verify_thdpool, 0);
-    thdpool_set_maxthds(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_POOL_MAXT));
+    thdpool_set_maxthds(
+        gbl_verify_thdpool,
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_POOL_MAXT));
     thdpool_set_linger(gbl_verify_thdpool, 1);
     thdpool_set_longwaitms(gbl_verify_thdpool, 1000000);
     thdpool_set_maxqueue(gbl_verify_thdpool, 100);
@@ -213,8 +216,9 @@ retry:
     }
 }
 
-static int verify_blobsizes_callback(const dbtable *tbl, void *dta, int blobsizes[16],
-                                     int offset[16], int *nblobs)
+static int verify_blobsizes_callback(const dbtable *tbl, void *dta,
+                                     int blobsizes[16], int offset[16],
+                                     int *nblobs)
 {
     int i;
     struct schema *s;
@@ -255,12 +259,13 @@ static int verify_blobsizes_callback(const dbtable *tbl, void *dta, int blobsize
         /* TODO: vutf8 */
     }
     *nblobs = blobix;
-    assert (blobix == tbl->schema->numblobs);
+    assert(blobix == tbl->schema->numblobs);
     return 0;
 }
 
-static int verify_formkey_callback(const dbtable *tbl, void *dta, void *blob_parm,
-                                   int ix, void *keyout, int *keysz)
+static int verify_formkey_callback(const dbtable *tbl, void *dta,
+                                   void *blob_parm, int ix, void *keyout,
+                                   int *keysz)
 {
     int rc;
 
@@ -354,22 +359,22 @@ static int verify_table_int(const char *table, SBUF2 *sb,
 
     assert(tran && "tran is null but should not be");
     assert(db && "db is null but should not be");
-    verify_common_t par = { 
+    verify_common_t par = {
         .sb = sb,
         .bdb_state = db->handle,
         .db_table = db,
         .formkey_callback = verify_formkey_callback,
         .get_blob_sizes_callback = verify_blobsizes_callback,
-        .vtag_callback = (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        .vtag_callback =
+            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         .add_blob_buffer_callback = verify_add_blob_buffer_callback,
         .free_blob_buffer_callback = verify_free_blob_buffer_callback,
         .verify_indexes_callback = verify_indexes_callback,
         .lua_callback = lua_callback,
         .lua_params = lua_params,
         .progress_report_seconds = progress_report_seconds,
-        .attempt_fix = attempt_fix
-    };
-    rc = bdb_verify(&par); //non-parallel version
+        .attempt_fix = attempt_fix};
+    rc = bdb_verify(&par); // non-parallel version
 
 done:
     if (tran)
@@ -412,7 +417,9 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
                  void *lua_params, verify_mode_t mode)
 {
     if (mode != VERIFY_DEFAULT)
-        return parallel_verify_table(table, sb, progress_report_seconds, attempt_fix, lua_callback, lua_params, mode);
+        return parallel_verify_table(table, sb, progress_report_seconds,
+                                     attempt_fix, lua_callback, lua_params,
+                                     mode);
 
     int rc;
     struct verify_args v;
@@ -444,11 +451,10 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     return v.rcode;
 }
 
-
 static int parallel_verify_table(const char *table, SBUF2 *sb,
-                    int progress_report_seconds, int attempt_fix,
-                    int (*lua_callback)(void *, const char *),
-                    void *lua_params, verify_mode_t mode)
+                                 int progress_report_seconds, int attempt_fix,
+                                 int (*lua_callback)(void *, const char *),
+                                 void *lua_params, verify_mode_t mode)
 {
     int rc;
     int bdberr;
@@ -469,13 +475,14 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     pthread_once(&once, init_verify_thdpool);
 
-    verify_common_t par = { 
+    verify_common_t par = {
         .sb = sb,
         .bdb_state = db->handle,
         .db_table = db,
         .formkey_callback = verify_formkey_callback,
         .get_blob_sizes_callback = verify_blobsizes_callback,
-        .vtag_callback = (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        .vtag_callback =
+            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         .add_blob_buffer_callback = verify_add_blob_buffer_callback,
         .free_blob_buffer_callback = verify_free_blob_buffer_callback,
         .verify_indexes_callback = verify_indexes_callback,
@@ -486,13 +493,13 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         .verify_mode = mode,
     };
 
-    td_processing_info_t info = { .common_params =  &par };
+    td_processing_info_t info = {.common_params = &par};
 
     // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
 
     // wait for all our enqueued work items to complete for this verify
-    while(par.threads_spawned > par.threads_completed) {
+    while (par.threads_spawned > par.threads_completed) {
         if (!par.client_dropped_connection && bdb_dropped_connection(par.sb)) {
             logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
             par.client_dropped_connection = 1;
