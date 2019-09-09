@@ -75,7 +75,7 @@ of rejection can be removed by subsequently matching a rule with an action of
 rules to process, the SQL query will be rejected and an error will be emitted
 to the client.  If the action is `LOW_PRIO`, the relative priority of the SQL
 query will be decreased by the amount specified by the associated `adjustment`
-property value.  If the action is `LOW_PRIO`, the relative priority of the SQL
+property value.  If the action is `HIGH_PRIO`, the relative priority of the SQL
 query will be increased by the amount specified by the associated `adjustment`
 property value.
 
