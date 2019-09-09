@@ -22,14 +22,15 @@ file.  Currently, it must consist of the literal string `version 1`.
 
 The syntax for rule definition lines is:
 
-    rule <ruleNo> [propName1] [propValue1] ... [propNameN] [propValueN]
+    rule <ruleNo> [propName1 propValue1] ... [propNameN propValueN]
 
 A rule definition consists of an integer rule number and its associated
 matching criteria.  The rule matching criteria consist of zero or more
 property names and values.  The rule number must be an integer with a
 value between one (1) and one thousand (1000).  All property names and
 values are optional; a line without at least one property name and value
-does nothing except verify the rule number.  Each property name may
+does nothing except verify the rule number.  When a property name is
+specified its value must be specified as well.  Each property name may
 appear more than once for a particular rule, even on the same line.
 Only the last property value encountered for each combination of rule
 number and property name will be retained.  Currently, the number of

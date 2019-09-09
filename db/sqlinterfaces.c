@@ -3358,7 +3358,7 @@ static void normalize_stmt_and_store(
       }
     } else {
       assert(clnt->sql);
-      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql, 0);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);

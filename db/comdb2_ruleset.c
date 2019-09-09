@@ -860,6 +860,7 @@ int comdb2_load_ruleset(
         }
         zField = "fingerprint";
         if( sqlite3_stricmp(zTok, zField)==0 ){
+          rules->nFingerprint++;
           zTok = strtok(NULL, RULESET_DELIM);
           if( zTok==NULL ){
             snprintf(zError, sizeof(zError),

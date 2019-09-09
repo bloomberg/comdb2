@@ -144,6 +144,8 @@ struct ruleset {
 
   size_t nRule;                   /* How many rules are in this ruleset? */
 
+  size_t nFingerprint;            /* How many rules use fingerprints? */
+
   struct ruleset_item *aRule;     /* An array of rules with a minimum size of
                                    * nRule. */
 };
