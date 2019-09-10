@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=929)
+(TUNABLES_COUNT=930)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -589,6 +589,7 @@
 (name='page_order_tablescan', description='Scan tables in order of pages, not in order of rowids (faster for non-sparse tables).', type='BOOLEAN', value='OFF', read_only='N')
 (name='pagedeadlock_maxpoll', description='If retrying on deadlock (see pagedeadlock_retries), poll up to this many ms on each retry.', type='INTEGER', value='5', read_only='N')
 (name='pagedeadlock_retries', description='On a page deadlock, retry the page operation up to this many times.', type='INTEGER', value='500', read_only='N')
+(name='pageordertablescan', description='Perform table scans in page order and not row order. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='pagesizedta', description='', type='INTEGER', value='4096', read_only='N')
 (name='pagesizeix', description='', type='INTEGER', value='4096', read_only='N')
 (name='panicfulldiag', description='Enables full diagnostic on a panic.', type='BOOLEAN', value='OFF', read_only='N')
