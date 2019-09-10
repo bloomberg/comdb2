@@ -5018,17 +5018,20 @@ static priority_t combinePriorities(
 ){
   switch( priority1 ){
     case PRIORITY_T_HEAD:
-    case PRIORITY_T_TAIL:
+    case PRIORITY_T_TAIL: {
       return priority1;
-    case PRIORITY_T_DEFAULT:
+    }
+    case PRIORITY_T_DEFAULT: {
       assert(priority2 >= PRIORITY_T_HIGHEST);
       assert(priority2 <= PRIORITY_T_LOWEST);
       return priority2;
-    default:
+    }
+    default: {
       priority_t priority3 = priority1 + priority2;
       assert(priority3 >= PRIORITY_T_HIGHEST);
       assert(priority3 <= PRIORITY_T_LOWEST);
       return priority3;
+    }
   }
 }
 
