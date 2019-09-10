@@ -529,38 +529,29 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
     struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
+    const char *str;
+    int rc;
     clnt->ready_for_heartbeats = 0;
     assert(bdb_lockref() == 0);
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
-        clnt->osql.xerr.errval = CDB2ERR_SCHEMA;
-        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-        sqlite3VdbeError(vdbe, "Database schema was changed");
-        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-        errstat_cat_str(&clnt->osql.xerr,
-                        "Database schema was changed during request");
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
+        str = "Database schema has changed";
+        rc = CDB2ERR_SCHEMA;
         break;
     case SQLITE_CLIENT_CHANGENODE:
-        clnt->osql.xerr.errval = CDB2ERR_CHANGENODE;
-        errstat_cat_str(&clnt->osql.xerr,
-                        "Client api should retry request");
-        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-        sqlite3VdbeError(vdbe, "New master under snapshot");
-        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
+        str = "Client api shoudl retry request";
+        rc = CDB2ERR_CHANGENODE;
         break;
     default:
-        clnt->osql.xerr.errval = CDB2ERR_DEADLOCK;
-        errstat_cat_str(&clnt->osql.xerr,
-                        "Failed to reaquire locks on deadlock");
-        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-        sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
-        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
-               recover_deadlock_rcode);
+        str = "Failed to reaquire locks on deadlock";
+        rc = recover_deadlock_rcode;
         break;
     }
+    sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
+    sqlite3VdbeError(vdbe, "%s", str);
+    sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+    errstat_set_rcstrf(&clnt->osql.xerr, rc, str);
+    logmsg(LOGMSG_DEBUG, "%s %s\n", __func__, str);
 }
 
 static inline int check_recover_deadlock(struct sqlclntstate *clnt)
@@ -8233,6 +8224,12 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     return rc;
 }
 
+
+#define comdb2_sqlite3VdbeError(vdbe,errstr) \
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db)); \
+        sqlite3VdbeError(vdbe, errstr); \
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+
 /*
  ** Insert a new record into the BTree.  The key is given by (pKey,nKey)
  ** and the data is given by (pData,nData).  The cursor is used only to
@@ -8406,11 +8403,8 @@ int sqlite3BtreeInsert(
                 bdberr = 0;
                 unlock_bdb_cursors(thd, NULL, &bdberr);
                 if (bdberr) {
-                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
-                    sqlite3VdbeError(pCur->vdbe,
+                    comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to disconnect berkeleydb cursors");
-                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
-
                     rc = SQLITE_ERROR;
                     goto done;
                 }
@@ -8419,11 +8413,8 @@ int sqlite3BtreeInsert(
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
                 rc = handle_sql_commitrollback(clnt->thd, clnt, SENDRESPONSE_ERR);
                 if (rc) {
-                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
-                    sqlite3VdbeError(pCur->vdbe,
+                    comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to commit chunk");
-                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
-
                     rc = SQLITE_ERROR;
                     goto done;
                 }
@@ -8441,27 +8432,22 @@ int sqlite3BtreeInsert(
                         SQLENG_PRE_STRT_STATE);
                 rc = handle_sql_begin(clnt->thd, clnt, 0);
                 if (rc) {
-                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
-                    sqlite3VdbeError(pCur->vdbe,
+                    comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to start a new chunk");
-                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
-
                     rc = SQLITE_ERROR;
                     goto done;
                 }
 
                 rc = _start_new_transaction(clnt, thd);
                 if (rc) {
-                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
-                    sqlite3VdbeError(pCur->vdbe,
+                    comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to initialize new transaction");
-                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
 
                     rc = SQLITE_ERROR;
                     goto done;
                 }
 
-                clnt->dbtran.crtchunksize = 0;
+                clnt->dbtran.crtchunksize = 1;
             } else {
                 clnt->dbtran.crtchunksize++;
             }
