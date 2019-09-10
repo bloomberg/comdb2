@@ -412,9 +412,9 @@ static void *verify_td(void *arg)
     return NULL;
 }
 
-int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
-                 int attempt_fix, int (*lua_callback)(void *, const char *),
-                 void *lua_params, verify_mode_t mode)
+int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
+                      int attempt_fix, int (*lua_callback)(void *, const char *),
+                      void *lua_params, verify_mode_t mode)
 {
     if (mode != VERIFY_DEFAULT)
         return parallel_verify_table(table, sb, progress_report_seconds,
@@ -519,4 +519,13 @@ done:
 
     sbuf2flush(sb);
     return par.verify_status;
+}
+
+inline int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+                 int attempt_fix, int (*lua_callback)(void *, const char *),
+                 void *lua_params)
+{
+    return verify_table_mode(table, sb, progress_report_seconds,
+                 attempt_fix, lua_callback,
+                 lua_params, VERIFY_DEFAULT);
 }
