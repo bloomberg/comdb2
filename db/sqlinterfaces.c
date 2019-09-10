@@ -4860,12 +4860,12 @@ static int can_execute_sql_query_now(
   if (gbl_verbose_prioritize_queries) {
     char zPriority1[100] = {0};
     char zPriority2[100] = {0};
-    comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0);
-    comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0);
     logmsg(LOGMSG_DEBUG,
-           "%s: POST seqNo=%llu, sql={%s} ==> %s (client) vs %s (pool): %s\n",
-           __func__, (long long unsigned int)clnt->seqNo, clnt->sql, zPriority1,
-           zPriority2, zResult);
+      "%s: POST seqNo=%llu, sql={%s} ==> %s (client) vs %s (pool): %s\n",
+      __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
+      comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
+      comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
+      zResult);
   }
   return rc;
 }
