@@ -9,6 +9,7 @@ maxt10=200
 runtime=180
 wpid=-1
 rpid=-1
+rrpid=-1
 apid=-1
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
@@ -45,11 +46,17 @@ local function read()
     return 0
 end
 local function write()
-    local _1, rc1 = db:exec("insert into t10(id, b1) values (ABS(RANDOM() % 200), RANDOMBLOB(16))")
-    local _2, rc2 = db:exec("delete from t10 where id = ABS(RANDOM() % 200)")
-    local _3, rc3 = db:exec("update t10 set id = ABS((RANDOM()+id) % 200), b1 = RANDOMBLOB(16) where id = ABS(RANDOM() % 200)")
-    if rc1 ~= 0 or rc2 ~= 0 or rc3 ~= 0 then
-        return -1
+    local stmts = {
+        "insert into t10(id, b1) values (ABS(RANDOM() % 200), RANDOMBLOB(16))",
+        "delete from t10 where id = ABS(RANDOM() % 200)",
+        "update t10 set id = ABS((RANDOM()+id) % 200), b1 = RANDOMBLOB(16) where id = ABS(RANDOM() % 200)"
+    }
+    for _, s in ipairs(stmts) do
+        db:begin()
+        db:exec(s)
+        if db:commit() ~= 0 then
+            return -1
+        end
     end
     return 0
 end
@@ -190,10 +197,32 @@ function writer
     return 0
 }
 
-function reader 
+function reader
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} -f t10.sql $dbname default > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' > /dev/null
+begin
+select * from t10 where id > 20 order by id
+commit
+EOF
+        if [[ $? != 0 ]]; then
+            echo "reader failed"
+            exit 1
+        fi
+    done
+
+    return 0
+}
+
+function reader_recom
+{
+    while true; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' > /dev/null
+set transaction read committed
+begin
+select * from t10 where id > 20 order by id
+commit
+EOF
         if [[ $? != 0 ]]; then
             echo "reader failed"
             exit 1
@@ -222,6 +251,9 @@ wpid=$!
 reader &
 rpid=$!
 
+reader_recom &
+rrpid=$!
+
 analyzer &
 apid=$!
 
@@ -237,6 +269,12 @@ while [[ $ii -lt $runtime ]]; do
     fi
     if [[ "-1" != "$rpid" ]]; then
         ps -p $rpid > /dev/null 2>&1
+        if [[ $? != 0 ]]; then
+            break
+        fi
+    fi
+    if [[ "-1" != "$rrpid" ]]; then
+        ps -p $rrpid > /dev/null 2>&1
         if [[ $? != 0 ]]; then
             break
         fi
@@ -265,6 +303,13 @@ if [[ "-1" != "$rpid" ]]; then
         failed=1
     fi
     { kill -9 $rpid && wait $rpid; } 2>/dev/null
+fi
+if [[ "-1" != "$rrpid" ]]; then
+    ps -p $rrpid > /dev/null 2>&1
+    if [[ $? != 0 ]]; then
+        failed=1
+    fi
+    { kill -9 $rrpid && wait $rrpid; } 2>/dev/null
 fi
 if [[ "-1" != "$apid" ]]; then
     ps -p $apid > /dev/null 2>&1
