@@ -4861,7 +4861,7 @@ static int can_execute_sql_query_now(
     char zPriority1[100] = {0};
     char zPriority2[100] = {0};
     logmsg(LOGMSG_DEBUG,
-      "%s: POST seqNo=%llu, sql={%s} ==> client priority %s VS pool priority "
+      "%s: POST seqNo=%llu, sql={%s} ==> query priority %s VS pool priority "
       "%s: %s\n", __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
       comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
       comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
@@ -5300,10 +5300,6 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     mark_clnt_as_recently_used(clnt);
 
-    /*
-    ** TODO: Should this code reset an existing client sequence number
-    **       to a higher value?  I do not think so.
-    */
     clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     assert(clnt->seqNo > 0);
     int rc = verify_dispatch_sql_query(clnt, &priority);

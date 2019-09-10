@@ -465,6 +465,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
+      result->action |= rule->action;
       comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
       break;
     }
