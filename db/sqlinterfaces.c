@@ -4774,9 +4774,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         **       normalization is
         */
         free_original_normalized_sql(clnt);
-
-        normalize_stmt_and_store(clnt, NULL,
-                is_stored_proc_sql(clnt->work.zOrigNormSql));
+        normalize_stmt_and_store(clnt, NULL, is_stored_proc_sql(clnt->sql));
 
         if (clnt->work.zOrigNormSql) {
             size_t nOrigNormSql = 0;
