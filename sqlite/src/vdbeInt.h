@@ -310,16 +310,11 @@ struct sqlite3_value {
   u8  eSubtype;       /* Subtype for this value */
   int n;              /* Number of characters in string value, excluding '\0' */
   char *z;            /* String or BLOB value */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3 *db;        /* The associated database connection */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* ShallowCopy only needs to copy the information above */
   char *zMalloc;      /* Space to hold MEM_Str or MEM_Blob if szMalloc>0 */
   int szMalloc;       /* Size of the zMalloc allocation */
   u32 uTemp;          /* Transient storage for serial_type in OP_MakeRecord */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   sqlite3 *db;        /* The associated database connection */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   void (*xDel)(void*);/* Destructor for Mem.z - only valid if MEM_Dyn */
 #ifdef SQLITE_DEBUG
   Mem *pScopyFrom;    /* This Mem is a shallow copy of pScopyFrom */
