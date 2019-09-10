@@ -1,3 +1,2 @@
 logmsg level info
 test_scindex_deadlock 1
-prioritize_queries 0

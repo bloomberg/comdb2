@@ -1,3 +1,2 @@
 maxosqltransfer 500000
 logmsg level info
-prioritize_queries 0

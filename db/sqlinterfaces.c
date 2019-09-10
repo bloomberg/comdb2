@@ -5123,7 +5123,8 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
         flags |= THDPOOL_QUEUE_ONLY;
     }
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags, clnt->priority)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags,
+                              clnt->priority)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
