@@ -4848,7 +4848,7 @@ static int can_execute_sql_query_now(
   const char *zResult = rc ? "NOW" : "LATER";
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG,
-           "%s: seqNo=%llu, sql={%s} ==> %lld (client) vs %lld (pool): %s\n",
+           "%s: seqNo=%llu, sql={%s} ==> %llx (client) vs %llx (pool): %s\n",
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
            *pPriority, thdpool_priority, zResult);
   }
