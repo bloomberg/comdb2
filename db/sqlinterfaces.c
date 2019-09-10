@@ -6894,9 +6894,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].state_int = clnt->state;
       c[connid].time_in_state_int = clnt->state_start_time;
       Pthread_mutex_lock(&clnt->state_lk);
-      if (clnt->state == CONNECTION_PREPARING ||
-          clnt->state == CONNECTION_RUNNING ||
-          clnt->state == CONNECTION_QUEUED) {
+      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          c[connid].sql = strdup(clnt->sql);
       } else {
          c[connid].sql = NULL;
