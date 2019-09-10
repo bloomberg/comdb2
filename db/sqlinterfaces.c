@@ -5050,8 +5050,7 @@ static priority_t combinePriorities(
   }
 }
 
-static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
-                             int skipSeqNo)
+static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
     char *sqlcpy;
@@ -5062,15 +5061,10 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
     /*
     ** WARNING: This code assumes that higher priority values have
     **          lower numerical values.
-    **
-    ** TODO: Should this code reset an existing client sequence number
-    **       to a higher value?  I do not think so.
     */
-    if (!skipSeqNo) clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
 
-    assert(clnt->seqNo > 0);
     assert(clnt->priority >= PRIORITY_T_HIGHEST);
     assert(clnt->priority <= PRIORITY_T_LOWEST);
     assert(clnt->priority != PRIORITY_T_INVALID);
@@ -5306,10 +5300,16 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     mark_clnt_as_recently_used(clnt);
 
+    /*
+    ** TODO: Should this code reset an existing client sequence number
+    **       to a higher value?  I do not think so.
+    */
+    clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
+    assert(clnt->seqNo > 0);
     int rc = verify_dispatch_sql_query(clnt, &priority);
     if (rc != 0) return rc;
 
-    rc = enqueue_sql_query(clnt, priority, 0);
+    rc = enqueue_sql_query(clnt, priority);
     if (rc != 0) return rc;
 
     return wait_for_sql_query(clnt);
