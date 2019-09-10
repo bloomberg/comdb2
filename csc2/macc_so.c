@@ -22,6 +22,7 @@
 #include <list.h>
 #include <stddef.h>
 #include <cdb2_constants.h>
+#include <locks_wrap.h>
 
 #include "dynschemaload.h"
 
@@ -3289,6 +3290,8 @@ char *csc2_strdup(char *s)
 
 void csc2_free_all(void)
 {
+    extern pthread_mutex_t csc2_subsystem_mtx;
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     struct csc2_mem_block *blk;
     blk = listc_rtl(&csc2_allocated_blocks);
     while (blk) {
@@ -3303,6 +3306,7 @@ void csc2_free_all(void)
         strbuf_free(syntax_errors);
         syntax_errors = NULL;
     }
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 char *csc2_get_errors(void)
