@@ -5155,8 +5155,6 @@ int wait_for_sql_query(struct sqlclntstate *clnt, priority_t priority)
     if (self)
         thrman_where(self, "waiting for query");
 
-retry:
-
     if (clnt->heartbeat) {
         if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
             send_heartbeat(clnt);
@@ -5175,14 +5173,14 @@ retry:
             Pthread_mutex_lock(&clnt->wait_mutex);
             if (clnt->done) {
                 Pthread_mutex_unlock(&clnt->wait_mutex);
-                goto check_query_rc;
+                goto done;
             }
             int rc;
             rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex,
                                         &st);
             if (clnt->done) {
                 Pthread_mutex_unlock(&clnt->wait_mutex);
-                goto check_query_rc;
+                goto done;
             }
             if (rc == ETIMEDOUT) {
                 struct timespec diff;
@@ -5227,50 +5225,16 @@ retry:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-check_query_rc: ; /* empty statement, make compiler happy */
-    int rc2 = clnt->query_rc;
-    if (rc2 == ERR_QUERY_DELAYED) {
-        if (db_is_stopped()) return rc2; /* now permanent error */
-        usleep(1000 * gbl_retry_dispatch_ms);
-        if (db_is_stopped()) return rc2; /* now permanent error */
-        clnt->work.retries = ATOMIC_ADD32(clnt->work.retries, 1);
-        rc2 = enqueue_sql_query(clnt, priority, 1);
-        if (rc2 != 0) {
-            /*
-            ** TODO: This log message should be unconditional?
-            */
-            if (gbl_verbose_prioritize_queries) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: FAILED ENQUEUE RETRYING ms=%d, seqNo=%llu, "
-                       "rc2=%d {%s}\n", __func__, gbl_retry_dispatch_ms,
-                       (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
-            }
-            return rc2; /* could not re-enqueue? */
-        }
-        if (gbl_verbose_prioritize_queries) {
-            logmsg(LOGMSG_INFO,
-                   "%s: RETRYING ms=%d, seqNo=%llu, rc2=%d {%s}\n",
-                   __func__, gbl_retry_dispatch_ms,
-                   (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
-        }
-        goto retry;
-    } else if ((rc2 == ERR_QUERY_REJECTED) && gbl_verbose_prioritize_queries) {
-        /*
-        ** TODO: This log message should be unconditional?
-        */
-        logmsg(LOGMSG_ERROR,
-               "%s: REJECTED seqNo=%llu, rc2=%d {%s}\n",
-               __func__, (long long unsigned int)clnt->seqNo, rc2, clnt->sql);
-    }
+done:
     if (self)
         thrman_where(self, "query done");
-    return rc2;
+    return clnt->query_rc;
 }
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int verify_dispatch_sql_query(
+    struct sqlclntstate *clnt,
+    priority_t *pPriority)
 {
-    mark_clnt_as_recently_used(clnt);
-
     if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
         if ((gbl_prioritize_max_retries <= 0) ||
             (clnt->work.retries < gbl_prioritize_max_retries)) {
@@ -5283,8 +5247,17 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
             int bRejected = 0;
 
             if (!can_execute_sql_query_now(
-                    clnt->thd, clnt, &bRejected, &priority)) {
+                    clnt->thd, clnt, &bRejected, pPriority)) {
                 if (bRejected) {
+                    if (gbl_verbose_prioritize_queries) {
+                        /*
+                        ** TODO: This log message should be unconditional?
+                        */
+                        logmsg(LOGMSG_ERROR,
+                               "%s: REJECTED seqNo=%llu, rc=%d {%s}\n",
+                               __func__, (long long unsigned int)clnt->seqNo,
+                               ERR_QUERY_REJECTED, clnt->sql);
+                    }
                     send_run_error(clnt, "Client api should change nodes",
                                    CDB2ERR_CHANGENODE);
                     return ERR_QUERY_REJECTED;
@@ -5293,8 +5266,17 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
         }
     }
 
-    clnt->work.retries = 0;
-    int rc = enqueue_sql_query(clnt, priority, 0);
+    return 0;
+}
+
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+{
+    mark_clnt_as_recently_used(clnt);
+
+    int rc = verify_dispatch_sql_query(clnt, &priority);
+    if (rc != 0) return rc;
+
+    rc = enqueue_sql_query(clnt, priority, 0);
     if (rc != 0) return rc;
 
     return wait_for_sql_query(clnt, priority);
@@ -5448,7 +5430,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
 
-    clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
@@ -5600,7 +5581,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
 
-    clnt->work.retries = 0;
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
