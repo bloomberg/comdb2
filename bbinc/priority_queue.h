@@ -22,6 +22,10 @@
 
 typedef long long priority_t;
 
+#ifndef PRIORITY_T_ADJUSTMENT_MAXIMUM
+#define PRIORITY_T_ADJUSTMENT_MAXIMUM ((priority_t)999997)
+#endif
+
 #ifndef PRIORITY_T_INVALID
 #define PRIORITY_T_INVALID ((priority_t)-1)
 #endif /* PRIORITY_T_INVALID */
@@ -31,15 +35,15 @@ typedef long long priority_t;
 #endif /* PRIORITY_T_HIGHEST */
 
 #ifndef PRIORITY_T_LOWEST
-#define PRIORITY_T_LOWEST ((priority_t)LLONG_MAX-3)
+#define PRIORITY_T_LOWEST ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+2))
 #endif /* PRIORITY_T_LOWEST */
 
 #ifndef PRIORITY_T_HEAD
-#define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-2)
+#define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+1))
 #endif /* PRIORITY_T_HEAD */
 
 #ifndef PRIORITY_T_TAIL
-#define PRIORITY_T_TAIL ((priority_t)LLONG_MAX-1)
+#define PRIORITY_T_TAIL ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+0))
 #endif /* PRIORITY_T_TAIL */
 
 #ifndef PRIORITY_T_DEFAULT

@@ -5021,9 +5021,14 @@ static priority_t combinePriorities(
     case PRIORITY_T_TAIL:
       return priority1;
     case PRIORITY_T_DEFAULT:
+      assert(priority2 >= PRIORITY_T_HIGHEST);
+      assert(priority2 <= PRIORITY_T_LOWEST);
       return priority2;
     default:
-      return priority1 + priority2;
+      priority_t priority3 = priority1 + priority2;
+      assert(priority3 >= PRIORITY_T_HIGHEST);
+      assert(priority3 <= PRIORITY_T_LOWEST);
+      return priority3;
   }
 }
 
@@ -5254,6 +5259,8 @@ static int verify_dispatch_sql_query(
         }
 
         int bRejected = 0;
+
+        *pPriority = PRIORITY_T_HIGHEST;
 
         if (!can_execute_sql_query_now(
                 clnt->thd, clnt, &bRejected, pPriority)) {

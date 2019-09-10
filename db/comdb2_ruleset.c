@@ -24,7 +24,6 @@
 #include "sbuf2.h"
 #include "tohex.h"
 
-#define RULESET_MAX_ADJUSTMENT (1000000)
 #define RULESET_MAX_COUNT (1000)
 
 #define RULESET_DELIM "\t\n\r\v\f "
@@ -746,11 +745,11 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zTok);
             goto failure;
           }
-          if( rule->adjustment>RULESET_MAX_ADJUSTMENT ){
+          if( rule->adjustment>PRIORITY_T_ADJUSTMENT_MAXIMUM ){
             snprintf(zError, sizeof(zError),
-                     "%s:%d, bad %s value '%s', cannot exceed %d",
+                     "%s:%d, bad %s value '%s', cannot exceed %lld",
                      zFileName, lineNo, zField, zTok,
-                     RULESET_MAX_ADJUSTMENT);
+                     PRIORITY_T_ADJUSTMENT_MAXIMUM);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
