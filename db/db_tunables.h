@@ -1797,4 +1797,11 @@ REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("strict_double_quotes",
+                 "In SQL queries, forbid the use of double-quotes to denote "
+                 "a string literal.  Any attempts to do so will result in a "
+                 "syntax error (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
