@@ -6,7 +6,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1;" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 1"
@@ -16,7 +16,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1;" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/rulesets/t01_saved.ruleset')" | sed 's/file ".*"/file "t01_saved.ruleset"/g'
@@ -35,7 +35,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 3;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('retries'), x FROM t1;" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('evaluate_ruleset')"

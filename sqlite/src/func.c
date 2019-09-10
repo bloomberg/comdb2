@@ -805,10 +805,6 @@ static void comdb2CtxinfoFunc(
     if( clnt ){
       sqlite3_result_int(context, clnt->conns!=NULL);
     }
-  }else if( sqlite3_stricmp(zName, "retries")==0 ){
-    if( clnt ){
-      sqlite3_result_int64(context, clnt->work.retries);
-    }
   }else if( sqlite3_stricmp(zName, "ruleset_result")==0 ){
     if( clnt ){
       sqlite3_result_text(context, clnt->work.zRuleRes, -1, SQLITE_STATIC);
