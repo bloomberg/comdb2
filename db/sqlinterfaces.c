@@ -1252,6 +1252,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
+    if (have_fingerprint &&
+        (memcmp(fingerprint, clnt->work.aFingerprint, FINGERPRINTSZ) != 0)) {
+        char zFingerprint1[FINGERPRINTSZ*2+1] = {0};
+        char zFingerprint2[FINGERPRINTSZ*2+1] = {0};
+        util_tohex(zFingerprint1, (char *)fingerprint, FINGERPRINTSZ);
+        util_tohex(zFingerprint2, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
+        logmsg(LOGMSG_ERROR, "%s: mismatch between fingerprint #1 {%s} (log) "
+               "and #2 {%s} (work)\n", __func__, zFingerprint1, zFingerprint2);
+    }
+
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += get_sql_steps(thd);
         time_metric_add(rawnodestats->svc_time, h->cost.time);
