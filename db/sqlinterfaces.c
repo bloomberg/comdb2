@@ -107,6 +107,7 @@
 #include <str0.h>
 #include <eventlog.h>
 #include "perf.h"
+#include "tohex.h"
 
 #include "dohsql.h"
 
