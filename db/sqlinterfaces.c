@@ -1833,52 +1833,9 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
         abort_dbtran(clnt);
 }
 
-/* In a transaction, whenever a non-COMMIT/ROLLBACK command fails, we set
- * clnt->had_errors and report error to the client. Once set, we must not
- * send anything to the client (per the wire protocol?) unless intransresults
- * is set.
- */
-static int do_send_commitrollback_response(struct sqlclntstate *clnt,
-                                           int sendresponse)
+static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    if (sendresponse && (send_intrans_response(clnt) || !clnt->had_errors))
-        return 1;
-    return 0;
-}
-
-int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sendresponse)
-{
-    int bdberr = 0;
-    int rc = 0;
-    int irc = 0;
-    int outrc = 0;
-
-    reqlog_new_sql_request(thd->logger, clnt->sql);
-    log_queue_time(thd->logger, clnt);
-
-    int64_t rows = clnt->log_effects.num_updated +
-                   clnt->log_effects.num_deleted +
-                   clnt->log_effects.num_inserted;
-
-    reqlog_set_cost(thd->logger, 0);
-    reqlog_set_rows(thd->logger, rows);
-
-    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
-        abort_dbtran(clnt);
-        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_NORMAL_PROCESS);
-        outrc = CDB2ERR_VERIFY_ERROR;
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
-            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
-        }
-        goto done;
-    }
+    int irc = 0, rc = 0, bdberr = 0;
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -2164,6 +2121,58 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
     }
 
+    return rc;
+}
+
+/* In a transaction, whenever a non-COMMIT/ROLLBACK command fails, we set
+ * clnt->had_errors and report error to the client. Once set, we must not
+ * send anything to the client (per the wire protocol?) unless intransresults
+ * is set.
+ */
+static int do_send_commitrollback_response(struct sqlclntstate *clnt,
+                                           int sendresponse, int rc)
+{
+    if (((sendresponse == SENDRESPONSE_ALL) ||
+                (sendresponse == SENDRESPONSE_ERR && rc != SQLITE_OK)) &&
+            (send_intrans_response(clnt) || !clnt->had_errors))
+        return 1;
+    return 0;
+}
+
+int handle_sql_commitrollback(struct sqlthdstate *thd,
+                              struct sqlclntstate *clnt, int sendresponse)
+{
+    int rc = 0;
+    int outrc = 0;
+
+    reqlog_new_sql_request(thd->logger, clnt->sql);
+    log_queue_time(thd->logger, clnt);
+
+    int64_t rows = clnt->log_effects.num_updated +
+                   clnt->log_effects.num_deleted +
+                   clnt->log_effects.num_inserted;
+
+    reqlog_set_cost(thd->logger, 0);
+    reqlog_set_rows(thd->logger, rows);
+
+    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
+        abort_dbtran(clnt);
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_NORMAL_PROCESS);
+        outrc = CDB2ERR_VERIFY_ERROR;
+        Pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->ready_for_heartbeats = 0;
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+        if (do_send_commitrollback_response(clnt, sendresponse, outrc)) {
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
+        }
+        goto done;
+    }
+
+    rc = do_commitrollback(thd, clnt);
+
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
 
@@ -2206,7 +2215,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
 
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
+        if (do_send_commitrollback_response(clnt, sendresponse, rc)) {
             /* This is a commit, so we'll have something to send here even on a
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
@@ -2282,10 +2291,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = rc;
 
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
-            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
+        if (do_send_commitrollback_response(clnt, sendresponse, outrc)) {
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
         }
     }
+
+    if (sendresponse == SENDRESPONSE_ERR)
+        return outrc;
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
@@ -2295,7 +2307,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     }
 
 done:
-
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
@@ -3785,7 +3796,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
-        *outrc = handle_sql_commitrollback(thd, clnt, 1);
+        *outrc = handle_sql_commitrollback(thd, clnt, SENDRESPONSE_ALL);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:

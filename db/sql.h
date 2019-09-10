@@ -219,6 +219,12 @@ enum ctrl_sqleng {
     SQLENG_WRONG_STATE,
 };
 
+enum {
+    SENDRESPONSE_NO = 0,
+    SENDRESPONSE_ALL = 1,
+    SENDRESPONSE_ERR = 2
+};
+
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate);
 

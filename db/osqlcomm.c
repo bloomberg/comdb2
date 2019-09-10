@@ -3183,9 +3183,6 @@ int osql_comm_blkout_node(const char *host)
     for (i = 0; i < len; i++) {
         if (host == blk->nds[i]) {
             blk->times[i] = time(NULL); /* refresh blackout */
-#ifdef OFFLOAD_TEST
-            fprintf(stderr, "BO %d %u\n", node, blk->times[i]);
-#endif
             break;
         }
     }

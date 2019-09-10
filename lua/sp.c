@@ -2612,7 +2612,7 @@ static const char *db_commit_int(Lua L, int *rc)
     }
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
-    if ((*rc = handle_sql_commitrollback(sp->thd, sp->clnt, 0)) == 0) {
+    if ((*rc = handle_sql_commitrollback(sp->thd, sp->clnt, SENDRESPONSE_NO)) == 0) {
         free(sp->error);
         sp->error = NULL;
     } else {
@@ -2640,7 +2640,7 @@ static const char *db_rollback_int(Lua L, int *rc)
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_RBK_STATE);
     reqlog_set_event(sp->thd->logger, "sp");
-    *rc = handle_sql_commitrollback(sp->thd, sp->clnt, 0);
+    *rc = handle_sql_commitrollback(sp->thd, sp->clnt, SENDRESPONSE_NO);
     sp->clnt->ready_for_heartbeats = 1;
     if ((sp->in_parent_trans == 0) && sp->make_parent_trans) {
         int tmp;

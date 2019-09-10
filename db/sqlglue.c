@@ -103,6 +103,8 @@
 #include "comdb2_atomic.h"
 
 unsigned long long get_id(bdb_state_type *);
+static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
+        int *bdberr);
 
 struct temp_cursor;
 struct temp_table;
@@ -4465,6 +4467,68 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     return rc;
 }
 
+
+static int _start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
+{
+    int rc;
+
+    clnt->ins_keys = 0ULL;
+    clnt->del_keys = 0ULL;
+
+    if (gbl_expressions_indexes) {
+        free_cached_idx(clnt->idxInsert);
+        free_cached_idx(clnt->idxDelete);
+    }
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+        clnt->arr = malloc(sizeof(CurRangeArr));
+        currangearr_init(clnt->arr);
+    }
+    if (gbl_selectv_rangechk) {
+        clnt->selectv_arr = malloc(sizeof(CurRangeArr));
+        currangearr_init(clnt->selectv_arr);
+    }
+
+    get_current_lsn(clnt);
+
+    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE)
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+
+    clnt->intrans = 1;
+    bzero(clnt->dirty, sizeof(clnt->dirty));
+
+
+#ifdef DEBUG_TRAN
+    if (gbl_debug_sql_opcodes) {
+        logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
+                clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
+    }
+#endif
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "initialize_shadow_tran returns %d\n", rc);
+        return rc;
+    }
+
+    uuidstr_t us;
+    char rqidinfo[40];
+    snprintf(rqidinfo, sizeof(rqidinfo), "rqid=%016llx %s appsock %u",
+             clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+             clnt->appsock_id);
+    thrman_setid(thrman_self(), rqidinfo);
+
+    return 0;
+}
+
 /*
  ** Attempt to start a new transaction. A write-transaction
  ** is started if the second argument is nonzero, otherwise a read-
@@ -4548,40 +4612,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         }
     }
 
-    clnt->ins_keys = 0ULL;
-    clnt->del_keys = 0ULL;
-
-    if (gbl_expressions_indexes) {
-        free_cached_idx(clnt->idxInsert);
-        free_cached_idx(clnt->idxDelete);
-    }
-
-    if (clnt->arr) {
-        currangearr_free(clnt->arr);
-        clnt->arr = NULL;
-    }
-    if (clnt->selectv_arr) {
-        currangearr_free(clnt->selectv_arr);
-        clnt->selectv_arr = NULL;
-    }
-
-    if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-        clnt->arr = malloc(sizeof(CurRangeArr));
-        currangearr_init(clnt->arr);
-    }
-    if (gbl_selectv_rangechk) {
-        clnt->selectv_arr = malloc(sizeof(CurRangeArr));
-        currangearr_init(clnt->selectv_arr);
-    }
-
-    get_current_lsn(clnt);
-
-    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE)
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
-
-    clnt->intrans = 1;
-    bzero(clnt->dirty, sizeof(clnt->dirty));
-
     /* UPSERT: If we were asked to perform some action on conflict
      * (ON CONFLICT DO UPDATE/REPLACE and not DO NOTHING), then its a good
      * idea to switch at least to READ COMMITTED if we are running in some
@@ -4597,24 +4627,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         clnt->dbtran.mode = TRANLEVEL_RECOM;
     }
 
-#ifdef DEBUG_TRAN
-    if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
-                clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
-    }
-#endif
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
-        sql_debug_logf(clnt, __func__, __LINE__,
-                       "initialize_shadow_tran returns %d\n", rc);
-        goto done;
-    }
-
-    uuidstr_t us;
-    char rqidinfo[40];
-    snprintf(rqidinfo, sizeof(rqidinfo), "rqid=%016llx %s appsock %u",
-             clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-             clnt->appsock_id);
-    thrman_setid(thrman_self(), rqidinfo);
+    rc = _start_new_transaction(clnt, thd);
 
 done:
     if (rc == SQLITE_OK && pSchemaVersion) {
@@ -7939,9 +7952,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         rowlocks ? pause_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
         rowlocks ? count_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
         clnt->bdb_osql_trak, &bdberr);
-#ifdef OFFLOAD_TEST
-    fprintf(stderr, "OPEN %p\n", cur->bdbcur);
-#endif
     if (cur->bdbcur == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
         if (bdberr == BDBERR_DEADLOCK)
@@ -8387,14 +8397,15 @@ int sqlite3BtreeInsert(
         }
 
 
-        if (clnt->dbtran.maxchunksize > 0) {
+        if (clnt->dbtran.maxchunksize > 0 && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
             if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
 
                 /* commit current transaction and reopen another one */
 
                 /* disconnect berkeley db cursors */
-                rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
-                if (rc) {
+                bdberr = 0;
+                unlock_bdb_cursors(thd, NULL, &bdberr);
+                if (bdberr) {
                     sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
                     sqlite3VdbeError(pCur->vdbe,
                             "Failed to disconnect berkeleydb cursors");
@@ -8406,7 +8417,7 @@ int sqlite3BtreeInsert(
 
                 /* commit current transaction */
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
-                rc = handle_sql_commitrollback(clnt->thd, clnt, 0);
+                rc = handle_sql_commitrollback(clnt->thd, clnt, SENDRESPONSE_ERR);
                 if (rc) {
                     sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
                     sqlite3VdbeError(pCur->vdbe,
@@ -8433,6 +8444,17 @@ int sqlite3BtreeInsert(
                     sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
                     sqlite3VdbeError(pCur->vdbe,
                             "Failed to start a new chunk");
+                    sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+
+                    rc = SQLITE_ERROR;
+                    goto done;
+                }
+
+                rc = _start_new_transaction(clnt, thd);
+                if (rc) {
+                    sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+                    sqlite3VdbeError(pCur->vdbe,
+                            "Failed to initialize new transaction");
                     sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
 
                     rc = SQLITE_ERROR;
@@ -9252,6 +9274,35 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
     Pthread_mutex_unlock(&thd->lk);
 }
 
+
+static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
+        int *bdberr)
+{
+    BtCursor *cur = NULL;
+
+    /* unlock cursors */
+    Pthread_mutex_lock(&thd->lk);
+
+    if (thd->bt) {
+        LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+        {
+            if (cur->bdbcur) {
+                if (cur->bdbcur->unlock(cur->bdbcur, bdberr))
+                    ctrace("%s: cur ixnum=%d bdberr = %d [1]\n", __func__,
+                           cur->ixnum, *bdberr);
+            }
+        }
+    }
+
+    if (bdbcur) {
+        if (bdbcur->unlock(bdbcur, bdberr))
+            ctrace("%s: cur ixnum=%d bdberr = %d [2]\n", __func__, cur->ixnum,
+                   *bdberr);
+    }
+
+    Pthread_mutex_unlock(&thd->lk);
+}
+
 /**
  * This open a new curtran and walk the list of BtCursors,
  * repositioning any cursor that has a bdbcursor (by closing, reopening
@@ -9306,33 +9357,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;
 
-    /* unlock cursors */
-    Pthread_mutex_lock(&thd->lk);
-
-    if (thd->bt) {
-        LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
-        {
-            if (cur->bdbcur) {
-                if (cur->bdbcur->unlock(cur->bdbcur, &bdberr))
-                    ctrace("%s: cur ixnum=%d bdberr = %d [1]\n", __func__,
-                           cur->ixnum, bdberr);
-#ifdef OFFLOAD_TEST
-                fprintf(stderr, "UNLOCK %p\n", cur->bdbcur);
-#endif
-            }
-        }
-    }
-
-    if (bdbcur) {
-        if (bdbcur->unlock(bdbcur, &bdberr))
-            ctrace("%s: cur ixnum=%d bdberr = %d [2]\n", __func__, cur->ixnum,
-                   bdberr);
-#ifdef OFFLOAD_TEST
-        fprintf(stderr, "UNLOCK %p\n", bdbcur);
-#endif
-    }
-
-    Pthread_mutex_unlock(&thd->lk);
+    unlock_bdb_cursors(thd, bdbcur, &bdberr);
 
     curtran_flags = CURTRAN_RECOVERY;
 
