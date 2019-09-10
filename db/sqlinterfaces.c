@@ -1253,14 +1253,25 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
-    if (have_fingerprint &&
-        (memcmp(fingerprint, clnt->work.aFingerprint, FINGERPRINTSZ) != 0)) {
-        char zFingerprint1[FINGERPRINTSZ*2+1] = {0};
-        char zFingerprint2[FINGERPRINTSZ*2+1] = {0};
-        util_tohex(zFingerprint1, (char *)fingerprint, FINGERPRINTSZ);
-        util_tohex(zFingerprint2, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
-        logmsg(LOGMSG_ERROR, "%s: mismatch between fingerprint #1 {%s} (log) "
-               "and #2 {%s} (work)\n", __func__, zFingerprint1, zFingerprint2);
+    if (have_fingerprint) {
+        /*
+        ** NOTE: The intent of this code is to check if a fingerprint was
+        **       already calculated as part of SQL query prioritization;
+        **       if so, it should match the fingerprint calculated above
+        **       for use in the event log, etc.  If that is not the case,
+        **       issue an error message to the trace log file.
+        */
+        char zFingerprint1[FINGERPRINTSZ*2+1];
+        char zFingerprint2[FINGERPRINTSZ*2+1];
+        memset(zFingerprint1, 0, sizeof(zFingerprint1));
+        memset(zFingerprint2, 0, sizeof(zFingerprint2));
+        if ((memcmp(clnt->work.aFingerprint, zFingerprint1, FINGERPRINTSZ) != 0) &&
+            (memcmp(fingerprint, clnt->work.aFingerprint, FINGERPRINTSZ) != 0)) {
+            util_tohex(zFingerprint1, (char *)fingerprint, FINGERPRINTSZ);
+            util_tohex(zFingerprint2, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
+            logmsg(LOGMSG_ERROR, "%s: mismatch between fingerprint #1 {%s} (log) "
+                   "and #2 {%s} (work)\n", __func__, zFingerprint1, zFingerprint2);
+        }
     }
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
@@ -4791,7 +4802,7 @@ static int can_execute_sql_query_now(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );
   if (gbl_verbose_prioritize_queries) {
-    logmsg(LOGMSG_DEBUG, "%s: seqNo=%llu, sql={%s}, count=%d, %s\n",
+    logmsg(LOGMSG_DEBUG, "%s: PRE seqNo=%llu, sql={%s}, count=%d, %s\n",
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
            (int)count, clnt->work.zRuleRes);
   }
@@ -4801,14 +4812,14 @@ static int can_execute_sql_query_now(
     if (gbl_random_sql_work_rejected &&
         !(rand() % gbl_random_sql_work_rejected)) {
       logmsg(LOGMSG_WARN,
-             "%s: seqNo=%llu, forcing random SQL work item {%s} reject\n",
+             "%s: POST seqNo=%llu, forcing random SQL work item {%s} reject\n",
              __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
       *pbRejected = 1;
       return 0;
     } else if (gbl_random_sql_work_delayed &&
         !(rand() % gbl_random_sql_work_delayed)) {
       logmsg(LOGMSG_WARN,
-             "%s: seqNo=%llu, forcing random SQL work item {%s} delay\n",
+             "%s: POST seqNo=%llu, forcing random SQL work item {%s} delay\n",
              __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
       return 0;
     }
@@ -4848,9 +4859,9 @@ static int can_execute_sql_query_now(
   const char *zResult = rc ? "NOW" : "LATER";
   if (gbl_verbose_prioritize_queries) {
     logmsg(LOGMSG_DEBUG,
-           "%s: seqNo=%llu, sql={%s} ==> %llx (client) vs %llx (pool): %s\n",
-           __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
-           *pPriority, thdpool_priority, zResult);
+           "%s: POST seqNo=%llu, sql={%s} ==> 0x%llx (client) vs 0x%llx "
+           "(pool): %s\n", __func__, (long long unsigned int)clnt->seqNo,
+           clnt->sql, *pPriority, thdpool_priority, zResult);
   }
   return rc;
 }
