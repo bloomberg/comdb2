@@ -5279,6 +5279,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
                 preview_and_calc_fingerprint(clnt);
             }
 
+            struct sql_thread *thd = pthread_getspecific(query_info_key);
             int bRejected = 0;
 
             if (!can_execute_sql_query_now(thd, clnt, &bRejected, &priority)) {
