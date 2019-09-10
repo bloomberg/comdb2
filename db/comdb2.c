@@ -146,6 +146,7 @@ int gbl_sqlite_sortermult = 1;
 
 int gbl_sqlite_sorter_mem = 300 * 1024 * 1024; /* 300 meg */
 
+int gbl_strict_dbl_quotes = 0;
 int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
@@ -350,16 +351,16 @@ int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;
 
-unsigned int gbl_nsql;
+uint32_t gbl_nsql;
 long long gbl_nsql_steps;
 
-unsigned int gbl_nnewsql;
+uint32_t gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
-unsigned int gbl_masterrejects = 0;
+uint32_t gbl_masterrejects = 0;
 
 volatile int gbl_dbopen_gen = 0;
-volatile int gbl_analyze_gen = 0;
+volatile uint32_t gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 
 int gbl_sqlhistsz = 25;
@@ -731,7 +732,7 @@ int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
-int gbl_allow_incoherent_sql = 1;
+int gbl_allow_incoherent_sql = 0;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;

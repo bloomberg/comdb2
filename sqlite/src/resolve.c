@@ -17,6 +17,7 @@
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int gbl_strict_dbl_quotes;
 int sqlite3IsComdb2Rowid(Table *pTab, const char *);
 int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *);
 int is_comdb2_index_blob(const char *dbname, int icol);
@@ -533,6 +534,12 @@ static int lookupName(
     if( ExprHasProperty(pExpr,EP_DblQuoted)
      && areDoubleQuotedStringsEnabled(db, pTopNC)
     ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( gbl_strict_dbl_quotes ){
+        sqlite3ErrorMsg(pParse, "double-quoted string literal: \"%w\"", zCol);
+        return WRC_Abort;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       /* If a double-quoted identifier does not match any known column name,
       ** then treat it as a string.
       **

@@ -769,7 +769,6 @@ struct sqlclntstate {
     hash_t *dml_tables;
     hash_t *ddl_contexts;
 
-    int ignore_coherency;
     int statement_query_effects;
 
     int verify_remote_schemas;
@@ -1029,7 +1028,7 @@ struct sql_thread {
     int nfind;
     int nwrite;
     int bufsz;
-    int id;
+    uint32_t id;
     char *buf;
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;

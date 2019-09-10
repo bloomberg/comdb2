@@ -803,12 +803,9 @@ static bool portmux_client_side_validation(int fd, const char *app,
     }
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
+    socklen_t len = sizeof(client_addr);
     char dotted_quad[16]; // nnn.nnn.nnn.nnn0
-    // The third argument of getpeername() is in reality an int *.
-    // Some POSIX confusion resulted in the present socklen_t,
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         snprintf(dotted_quad, sizeof(dotted_quad), "%u.%u.%u.%u", cptr[0],
                  cptr[1], cptr[2], cptr[3]);
@@ -1867,9 +1864,8 @@ static void client_thr(int fd)
     char line[128];
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    socklen_t len = sizeof(client_addr);
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         printf("server: accepted connection on fd# %d from %u.%u.%u.%u\n", fd,
                cptr[0], cptr[1], cptr[2], cptr[3]);

@@ -167,45 +167,30 @@ static const char *usage_text =
     "@strblobs            Display blobs as strings\n"
     "@time                Toggle between time modes\n";
 
-void cdb2sql_usage(int exit_val)
+void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
 const char *level_one_words[] = {
-  "@",
-  "ALTER", "ANALYZE",
-  "BEGIN",
-  "COMMIT",
-  "CREATE",
-  "DELETE", "DROP", "DRYRUN",
-  "EXEC", "EXPLAIN",
-  "INSERT",
-  "PUT",
-  "REBUILD",
-  "ROLLBACK",
-  "SELECT", "SELECTV", "SET",
-  "TRUNCATE",
-  "UPDATE",
-  "WITH", NULL,  // must be terminated by NULL
+    "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
+    "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
+    "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
 };
 
 const char *char_atglyph_words[] = {
-    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
-    "send",       "strblobs", "time",     NULL, // must be terminated by NULL
+    "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "row_sleep",  "send", "strblobs", "time",
 };
 
-static char *char_atglyph_generator(const char *text, int state)
+static char *char_atglyph_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { // if state is 0 get the length of text
-        list_index = 0;
         len = strlen(text);
     }
-    while ((name = char_atglyph_words[list_index]) != NULL) {
-        list_index++;
+    for (const auto &name : char_atglyph_words) {
         if (len == 0 || strncasecmp(name, text, len) == 0) {
             return strdup(name);
         }
@@ -214,24 +199,21 @@ static char *char_atglyph_generator(const char *text, int state)
 }
 
 // Generator function for word completion.
-static char *level_one_generator(const char *text, int state)
+static char *level_one_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { //if state is 0 get the length of text
-        list_index = 0;
         len = strlen (text);
     }
-    while ((name = level_one_words[list_index]) != NULL) {
-        list_index++;
-        if (len == 0 || strncasecmp (name, text, len) == 0) {
-            return strdup (name);
+    for (const auto &name : level_one_words) {
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
         }
     }
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *db_generator(int state, const char *sql)
+static char *db_generator(const int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -312,7 +294,7 @@ static char *db_generator(int state, const char *sql)
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *tunables_generator(const char *text, int state)
+static char *tunables_generator(const char *text, const int state)
 {
     char sql[256];
     if (*text)
@@ -327,7 +309,7 @@ static char *tunables_generator(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator_no_systables(const char *text, int state)
+static char *generic_generator_no_systables(const char *text, const int state)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -338,7 +320,7 @@ static char *generic_generator_no_systables(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator(const char *text, int state)
+static char *generic_generator(const char *text, const int state)
 {
     char sql[256];
     //TODO: escape text
