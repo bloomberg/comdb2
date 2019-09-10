@@ -1118,7 +1118,7 @@ unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
-int wait_for_sql_query(struct sqlclntstate *clnt, priority_t priority);
+int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
