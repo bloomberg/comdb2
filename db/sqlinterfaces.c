@@ -5038,6 +5038,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority,
 
     assert(clnt->seqNo > 0);
     assert(clnt->priority >= PRIORITY_T_HIGHEST);
+    assert(clnt->priority <= PRIORITY_T_LOWEST);
     assert(clnt->priority != PRIORITY_T_INVALID);
     assert(clnt->priority != PRIORITY_T_HEAD);
     assert(clnt->priority != PRIORITY_T_TAIL);

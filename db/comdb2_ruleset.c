@@ -286,8 +286,6 @@ static const char *comdb2_priority_to_str(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  assert( priority>=PRIORITY_T_HIGHEST );
-  assert( priority<=PRIORITY_T_LOWEST );
   switch( priority ){
     case PRIORITY_T_INVALID: return "INVALID";
     case PRIORITY_T_HIGHEST: return "HIGHEST";
