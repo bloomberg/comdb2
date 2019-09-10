@@ -275,7 +275,7 @@ static void comdb2_ruleset_match_mode_to_str(
   }
 }
 
-static const char *comdb2_priority_to_str(
+const char *comdb2_priority_to_str(
   priority_t priority,
   char *zBuf,
   size_t nBuf,

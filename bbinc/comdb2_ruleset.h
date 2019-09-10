@@ -169,6 +169,13 @@ typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
 
+const char *comdb2_priority_to_str(
+  priority_t priority,
+  char *zBuf,
+  size_t nBuf,
+  int bStrict
+);
+
 int comdb2_ruleset_fingerprints_allowed(void);
 
 size_t comdb2_evaluate_ruleset(

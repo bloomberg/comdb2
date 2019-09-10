@@ -4841,27 +4841,31 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  priority_t thdpool_priority = PRIORITY_T_INVALID;
+  priority_t pool_priority = PRIORITY_T_INVALID;
   if (count > 0) {
-    thdpool_priority = (priority_t)gbl_debug_force_thdpool_priority;
-    if (thdpool_priority == PRIORITY_T_HIGHEST) {
-      thdpool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+    pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
+    if (pool_priority == PRIORITY_T_HIGHEST) {
+      pool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
     }
   }
   int rc;
-  if (thdpool_priority == PRIORITY_T_INVALID) {
+  if (pool_priority == PRIORITY_T_INVALID) {
     rc = 1; /* empty pool -OR- no ruleset loaded */
-  } else if (*pPriority <= thdpool_priority) {
+  } else if (*pPriority <= pool_priority) {
     rc = 1; /* query has priority */
   } else {
     rc = 0; /* query should wait */
   }
   const char *zResult = rc ? "NOW" : "LATER";
   if (gbl_verbose_prioritize_queries) {
+    char zPriority1[100] = {0};
+    char zPriority2[100] = {0};
+    comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0);
+    comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0);
     logmsg(LOGMSG_DEBUG,
-           "%s: POST seqNo=%llu, sql={%s} ==> 0x%llx (client) vs 0x%llx "
-           "(pool): %s\n", __func__, (long long unsigned int)clnt->seqNo,
-           clnt->sql, *pPriority, thdpool_priority, zResult);
+           "%s: POST seqNo=%llu, sql={%s} ==> %s (client) vs %s (pool): %s\n",
+           __func__, (long long unsigned int)clnt->seqNo, clnt->sql, zPriority1,
+           zPriority2, zResult);
   }
   return rc;
 }
