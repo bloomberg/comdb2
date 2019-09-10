@@ -916,11 +916,6 @@ REGISTER_TUNABLE("prioritize_queries",
                  "Prioritize SQL queries based on loaded rulesets. "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("prioritize_max_retries",
-                 "The maximum number of retries, if any, before a SQL query "
-                 "is allowed to execute without having its priority checked. "
-                 "(Default: 1)", TUNABLE_INTEGER, &gbl_prioritize_max_retries,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.force_thdpool_priority",
                  "Force highest thread pool priority to the specified value "
                  "instead of actually reading it from the thread pool queue. "
@@ -1526,12 +1521,6 @@ REGISTER_TUNABLE("queuedb_timeout_sec",
 REGISTER_TUNABLE("osql_send_startgen",
                  "Send start-generation in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("retry_dispatch_ms",
-                 "Number of milliseconds between retries of low-priority "
-                 "SQL queries.  (Default: 100)",
-                 TUNABLE_INTEGER, &gbl_retry_dispatch_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("client_heartbeat_ms",

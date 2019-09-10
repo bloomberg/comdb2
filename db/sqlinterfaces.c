@@ -296,7 +296,6 @@ const char *WriteRespString[] = { RESPONSE_TYPES };
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 
 int gbl_client_heartbeat_ms = 100;
-int gbl_retry_dispatch_ms = 50;
 int gbl_fail_client_write_lock = 0;
 
 struct sqlclntstate *get_sql_clnt(void){
@@ -3180,14 +3179,14 @@ cleanup:
 static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
                                           struct sqlclntstate *clnt,
                                           struct sql_state *rec,
-                                          int noCache, int outrc,
+                                          int outrc,
                                           int distributed)
 {
     int rc;
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    rc = put_prepared_stmt_int(thd, clnt, rec, noCache, outrc, distributed);
+    rc = put_prepared_stmt_int(thd, clnt, rec, 0, outrc, distributed);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
@@ -3208,9 +3207,9 @@ static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
  *
  */
 void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                       struct sql_state *rec, int noCache, int outrc)
+                       struct sql_state *rec, int outrc)
 {
-    put_prepared_stmt_distributed(thd, clnt, rec, noCache, outrc, 0);
+    put_prepared_stmt_distributed(thd, clnt, rec, outrc, 0);
 }
 
 static void update_schema_remotes(struct sqlclntstate *clnt,
@@ -4090,7 +4089,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         compare_estimate_cost(stmt);
     }
 
-    put_prepared_stmt_distributed(thd, clnt, rec, 0, outrc, distributed);
+    put_prepared_stmt_distributed(thd, clnt, rec, outrc, distributed);
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
@@ -6375,9 +6374,6 @@ static const char* connstate_str(enum connection_state s) {
 
         case CONNECTION_QUEUED:
             return "CONNECTION_QUEUED";
-
-        case CONNECTION_PREPARING:
-            return "CONNECTION_PREPARING";
 
         case CONNECTION_RUNNING:
             return "CONNECTION_RUNNING";

@@ -308,7 +308,6 @@ enum connection_state
     CONNECTION_IDLE,
     CONNECTION_RESET,
     CONNECTION_QUEUED,
-    CONNECTION_PREPARING,
     CONNECTION_RUNNING
 };
 
@@ -1190,7 +1189,7 @@ int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
                                struct sql_state *, struct errstat *, int);
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                       struct sql_state *, int noCache, int outrc);
+                       struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
 
