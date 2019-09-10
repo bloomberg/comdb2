@@ -1642,10 +1642,6 @@ clipper_usage:
                 char *m = tokdup(tok, ltok);
                 char *host = intern(m);
                 free(m);
-                if (host == intern("dump")) {
-                    dump_remote_policy();
-                    return 0;
-                }
                 logmsg(LOGMSG_USER, "Machine %s is a %s machine\n", host,
                        get_mach_class_str(host));
                 logmsg(LOGMSG_USER, "Allow writes from %s        ? %s\n", host,
@@ -1655,6 +1651,8 @@ clipper_usage:
                 logmsg(LOGMSG_USER, "Allow queue broadcast to %s ? %s\n", host,
                        allow_broadcast_to_remote(host) ? "YES" : "NO");
             }
+            else
+                dump_remote_policy();
         } else if (tokcmp(tok, ltok, "size") == 0) {
             dump_table_sizes(thedb);
         } else if (tokcmp(tok, ltok, "reql") == 0) {
