@@ -3351,7 +3351,8 @@ static void free_original_normalized_sql(
 
 static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
-  struct sql_state *rec
+  struct sql_state *rec,
+  int iDefDqId
 ){
   if (gbl_fingerprint_queries) {
     /*
@@ -3380,7 +3381,7 @@ static void normalize_stmt_and_store(
       }
     } else {
       assert(clnt->sql);
-      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql, 0);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql, iDefDqId);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);
@@ -3458,7 +3459,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         free_normalized_sql(clnt);
         if (!(flags & PREPARE_NO_NORMALIZE)) {
-            normalize_stmt_and_store(clnt, rec);
+            normalize_stmt_and_store(clnt, rec, 0);
         }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
@@ -4124,7 +4125,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     **       can be normalized.
     */
     free_original_normalized_sql(clnt);
-    normalize_stmt_and_store(clnt, NULL);
+    normalize_stmt_and_store(clnt, NULL, 1);
 
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
@@ -4773,7 +4774,9 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         **       normalization is
         */
         free_original_normalized_sql(clnt);
-        normalize_stmt_and_store(clnt, NULL);
+
+        normalize_stmt_and_store(clnt, NULL,
+                is_stored_proc_sql(clnt->work.zOrigNormSql));
 
         if (clnt->work.zOrigNormSql) {
             size_t nOrigNormSql = 0;
