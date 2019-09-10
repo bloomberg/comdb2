@@ -5236,32 +5236,29 @@ static int verify_dispatch_sql_query(
     priority_t *pPriority)
 {
     if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
-        if ((gbl_prioritize_max_retries <= 0) ||
-            (clnt->work.retries < gbl_prioritize_max_retries)) {
-            if (gbl_fingerprint_queries &&
-                comdb2_ruleset_fingerprints_allowed()) {
-                /* IGNORED */
-                preview_and_calc_fingerprint(clnt);
-            }
+        if (gbl_fingerprint_queries &&
+            comdb2_ruleset_fingerprints_allowed()) {
+            /* IGNORED */
+            preview_and_calc_fingerprint(clnt);
+        }
 
-            int bRejected = 0;
+        int bRejected = 0;
 
-            if (!can_execute_sql_query_now(
-                    clnt->thd, clnt, &bRejected, pPriority)) {
-                if (bRejected) {
-                    if (gbl_verbose_prioritize_queries) {
-                        /*
-                        ** TODO: This log message should be unconditional?
-                        */
-                        logmsg(LOGMSG_ERROR,
-                               "%s: REJECTED seqNo=%llu, rc=%d {%s}\n",
-                               __func__, (long long unsigned int)clnt->seqNo,
-                               ERR_QUERY_REJECTED, clnt->sql);
-                    }
-                    send_run_error(clnt, "Client api should change nodes",
-                                   CDB2ERR_CHANGENODE);
-                    return ERR_QUERY_REJECTED;
+        if (!can_execute_sql_query_now(
+                clnt->thd, clnt, &bRejected, pPriority)) {
+            if (bRejected) {
+                if (gbl_verbose_prioritize_queries) {
+                    /*
+                    ** TODO: This log message should be unconditional?
+                    */
+                    logmsg(LOGMSG_ERROR,
+                           "%s: REJECTED seqNo=%llu, rc=%d {%s}\n",
+                           __func__, (long long unsigned int)clnt->seqNo,
+                           ERR_QUERY_REJECTED, clnt->sql);
                 }
+                send_run_error(clnt, "Client api should change nodes",
+                               CDB2ERR_CHANGENODE);
+                return ERR_QUERY_REJECTED;
             }
         }
     }
