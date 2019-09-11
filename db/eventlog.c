@@ -330,12 +330,13 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(perfobj, "tottime", cson_new_int(logger->durationus));
     cson_object_set(perfobj, "processingtime", cson_new_int(logger->durationus - logger->queuetimeus));
     if (logger->queuetimeus)
-        cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
+        cson_object_set(perfobj, "qtime", cson_new_int(logger->queuetimeus));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
         thread_stats->n_pwrites || thread_stats->pread_time_us ||
         thread_stats->pwrite_time_us || thread_stats->lock_wait_time_us) {
         if (thread_stats->n_lock_waits) {
+            // NB: lockwaits/lockwaittime accumulate over deadlock/retries
             cson_object_set(perfobj, "lockwaits",
                             cson_new_int(thread_stats->n_lock_waits));
             cson_object_set(perfobj, "lockwaittime",
