@@ -2445,7 +2445,7 @@ static int sqlite3InRhsIsConstant(Expr *pIn){
 #ifndef SQLITE_OMIT_SUBQUERY
 int sqlite3FindInIndex(
   Parse *pParse,             /* Parsing context */
-  Expr *pX,                  /* The right-hand side (RHS) of the IN operator */
+  Expr *pX,                  /* The IN expression */
   u32 inFlags,               /* IN_INDEX_LOOP, _MEMBERSHIP, and/or _NOOP_OK */
   int *prRhsHasNull,         /* Register holding NULL status.  See notes */
   int *aiMap,                /* Mapping from Index fields to RHS fields */
@@ -3178,13 +3178,21 @@ static void sqlite3ExprCodeIN(
     int r2, regToFree;
     int regCkNull = 0;
     int ii;
+    int bLhsReal;  /* True if the LHS of the IN has REAL affinity */
     assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
     if( destIfNull!=destIfFalse ){
       regCkNull = sqlite3GetTempReg(pParse);
       sqlite3VdbeAddOp3(v, OP_BitAnd, rLhs, rLhs, regCkNull);
     }
+    bLhsReal = sqlite3ExprAffinity(pExpr->pLeft)==SQLITE_AFF_REAL;
     for(ii=0; ii<pList->nExpr; ii++){
-      r2 = sqlite3ExprCodeTemp(pParse, pList->a[ii].pExpr, &regToFree);
+      if( bLhsReal ){
+        r2 = regToFree = sqlite3GetTempReg(pParse);
+        sqlite3ExprCode(pParse, pList->a[ii].pExpr, r2);
+        sqlite3VdbeAddOp4(v, OP_Affinity, r2, 1, 0, "E", P4_STATIC);
+      }else{
+        r2 = sqlite3ExprCodeTemp(pParse, pList->a[ii].pExpr, &regToFree);
+      }
       if( regCkNull && sqlite3ExprCanBeNull(pList->a[ii].pExpr) ){
         sqlite3VdbeAddOp3(v, OP_BitAnd, regCkNull, r2, regCkNull);
       }
@@ -3626,7 +3634,19 @@ expr_code_doover:
       if( iTab<0 ){
         if( pParse->iSelfTab<0 ){
           /* Generating CHECK constraints or inserting into partial index */
-          return pExpr->iColumn - pParse->iSelfTab;
+          assert( pExpr->y.pTab!=0 );
+          assert( pExpr->iColumn>=XN_ROWID );
+          assert( pExpr->iColumn<pExpr->y.pTab->nCol );
+          if( pExpr->iColumn>=0
+            && pExpr->y.pTab->aCol[pExpr->iColumn].affinity==SQLITE_AFF_REAL
+          ){
+            sqlite3VdbeAddOp2(v, OP_SCopy, pExpr->iColumn - pParse->iSelfTab,
+                              target);
+            sqlite3VdbeAddOp1(v, OP_RealAffinity, target);
+            return target;
+          }else{
+            return pExpr->iColumn - pParse->iSelfTab;
+          }
         }else{
           /* Coding an expression that is part of an index where column names
           ** in the index refer to the table to which the index belongs */
@@ -5395,7 +5415,10 @@ static int exprSrcCount(Walker *pWalker, Expr *pExpr){
     }
     if( i<nSrc ){
       p->nThis++;
-    }else{
+    }else if( nSrc==0 || pExpr->iTable<pSrc->a[0].iCursor ){
+      /* In a well-formed parse tree (no name resolution errors),
+      ** TK_COLUMN nodes with smaller Expr.iTable values are in an
+      ** outer context.  Those are the only ones to count as "other" */
       p->nOther++;
     }
   }
@@ -5412,8 +5435,9 @@ int sqlite3FunctionUsesThisSrc(Expr *pExpr, SrcList *pSrcList){
   Walker w;
   struct SrcCount cnt;
   assert( pExpr->op==TK_AGG_FUNCTION );
+  memset(&w, 0, sizeof(w));
   w.xExprCallback = exprSrcCount;
-  w.xSelectCallback = 0;
+  w.xSelectCallback = sqlite3SelectWalkNoop;
   w.u.pSrcCount = &cnt;
   cnt.pSrc = pSrcList;
   cnt.nThis = 0;

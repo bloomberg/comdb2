@@ -782,6 +782,7 @@ void sqlite3Update(
       }else{
         sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue,regOldRowid);
       }
+      VdbeCoverageNeverTaken(v);
     }
 
     /* Do FK constraint checks. */
