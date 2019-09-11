@@ -7,7 +7,7 @@ permalink: ruleset.html
 
 ## Ruleset files
 
-Comdb2 ruleset files have a .ruleset extension.  Ruleset files are optional.
+Comdb2 ruleset files have a `.ruleset` extension.  Ruleset files are optional.
 If no ruleset files are loaded, the database will assume all SQL queries have
 equal priority.  A ruleset file consists of optional blank lines, optional
 comment lines, a required file header, and optional rule definition lines.
