@@ -262,7 +262,7 @@ void dbg_pthread_term(void){
   hash_free(dbg_locks);
   DBG_LESS_MEMORY(sizeof(hash_t*));
   dbg_locks = NULL;
-  XCHANGE(gbl_debug_pthread_locks, 0);
+  XCHANGE32(gbl_debug_pthread_locks, 0);
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
   dbg_pthread_dump(stdout, "after cleanup", 1);
