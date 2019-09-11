@@ -5273,7 +5273,7 @@ static int verify_dispatch_sql_query(
 
         int bRejected = 0;
 
-        *pPriority = PRIORITY_T_HIGHEST;
+        *pPriority = PRIORITY_T_HIGHEST; /* TODO: Tunable default priority? */
 
         if (!can_execute_sql_query_now(
                 clnt->thd, clnt, &bRejected, pPriority)) {
