@@ -59,6 +59,13 @@ The supported set of property names and their required formats is:
 |sql            | Any Pattern string suitable for match mode.  May contain whitespace. |
 |fingerprint    | SQLite compatible BLOB as string literal, e.g. `x'0123ABCD'`. |
 
+### SQL query fingerprints
+
+In order to successfully make use of the `fingerprint` property in rule
+definitions, the `strict_double_quotes` tunable must be enabled.  This is
+necessary to ensure internal consistency with the fingerprints calculated
+by threads that do not have access to the SQL query preparation subsystem.
+
 ### Flags syntax
 
 For property values that represent a set of flags, e.g. for the `flags` and
