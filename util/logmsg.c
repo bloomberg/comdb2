@@ -307,7 +307,7 @@ int logmsg_level_update(void *unused, void *value)
     } else if (tokcmp(tok, ltok, "fatal") == 0) {
         logmsg_set_level(LOGMSG_FATAL);
     } else {
-        logmsg(LOGMSG_DEBUG, "Unknown logging level requested\n");
+        logmsg(LOGMSG_USER, "Unknown logging level requested\n");
         return 1;
     }
     logmsg(LOGMSG_USER, "Set default log level to %s\n",
