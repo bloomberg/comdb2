@@ -383,12 +383,8 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
         sc = iq->sc;
     }
-    if (rc) {
-        extern pthread_mutex_t csc2_subsystem_mtx;
-        Pthread_mutex_lock(&csc2_subsystem_mtx);
+    if (rc)
         csc2_free_all();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-    }
     if (rc == ERR_NOMASTER) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */

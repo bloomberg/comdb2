@@ -154,6 +154,7 @@ extern void bdb_dumptrans(bdb_state_type *bdb_state);
 void bdb_locker_summary(void *_bdb_state);
 extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
                     int endfile, int endoff);
+extern void dump_remote_policy();
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -1634,13 +1635,12 @@ clipper_usage:
             }
             free(dbname);
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
-            char *host;
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
                    get_mach_class_str(gbl_mynode));
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
-                host = intern(m);
+                char *host = intern(m);
                 free(m);
                 logmsg(LOGMSG_USER, "Machine %s is a %s machine\n", host,
                        get_mach_class_str(host));
@@ -1651,6 +1651,8 @@ clipper_usage:
                 logmsg(LOGMSG_USER, "Allow queue broadcast to %s ? %s\n", host,
                        allow_broadcast_to_remote(host) ? "YES" : "NO");
             }
+            else
+                dump_remote_policy();
         } else if (tokcmp(tok, ltok, "size") == 0) {
             dump_table_sizes(thedb);
         } else if (tokcmp(tok, ltok, "reql") == 0) {
@@ -3744,19 +3746,6 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "iopool") == 0) {
         berkdb_iopool_process_message(line, lline, st);
-    } else if (tokcmp(tok, ltok, "pageordertablescan") == 0) {
-        int state;
-        tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "on") == 0) {
-            state = 1;
-        } else if (tokcmp(tok, ltok, "off") == 0) {
-            state = 0;
-        } else {
-            logmsg(LOGMSG_ERROR, "Expected on/off\n");
-            return 0;
-        }
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, state);
-        logmsg(LOGMSG_USER, "Page order table scan set to %s.\n", state ? "on" : "off");
     }
 
     /* page_order_scan per-table message trap */
