@@ -42,7 +42,8 @@ based on the match mode configured for the rule.
 Property names are always delimited by whitespace.  All property values
 except `flags`, `mode`, and `sql` are also delimited by whitespace.  The
 special `flags`, `mode`, and `sql` property values are delimited by
-semicolon because their values may contain whitespace.
+semicolon because their values may contain whitespace.  The end-of-line
+character (e.g. `\n`) always terminates a property value.
 
 The supported set of property names and their required formats is:
 
