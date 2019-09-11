@@ -1048,7 +1048,9 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
-int dispatch_sql_query(struct sqlclntstate *clnt);
+typedef unsigned long long priority_t;
+#define PRIORITY_T_DEFAULT ((priority_t)0)
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse);
