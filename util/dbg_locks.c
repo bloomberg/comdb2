@@ -80,15 +80,15 @@ static hash_t *dbg_locks = NULL;
   (a).type = (d);                       \
 } while(0)
 
-#define DBG_MORE_MEMORY(a) do {                                         \
-  ATOMIC_ADD(dbg_locks_bytes, (a));                                     \
-  if( ATOMIC_LOAD(dbg_locks_bytes)>ATOMIC_LOAD(dbg_locks_peak_bytes) ){ \
-    XCHANGE(dbg_locks_peak_bytes, dbg_locks_bytes);                     \
-  }                                                                     \
+#define DBG_MORE_MEMORY(a) do {                                           \
+  ATOMIC_ADD64(dbg_locks_bytes, (a));                                     \
+  if( ATOMIC_LOAD64(dbg_locks_bytes)>ATOMIC_LOAD(dbg_locks_peak_bytes) ){ \
+    XCHANGE(dbg_locks_peak_bytes, dbg_locks_bytes);                       \
+  }                                                                       \
 } while(0)
 
-#define DBG_LESS_MEMORY(a) do {      \
-  ATOMIC_ADD(dbg_locks_bytes, -(a)); \
+#define DBG_LESS_MEMORY(a) do {        \
+  ATOMIC_ADD64(dbg_locks_bytes, -(a)); \
 } while(0)
 
 #define DBG_SWAP_OUTER_PAIR(a, b) do {           \
@@ -434,7 +434,7 @@ int dbg_pthread_mutex_lock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_mutex_lock, mutex);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -454,7 +454,7 @@ int dbg_pthread_mutex_trylock(
 ){
   int rc;
   rc = wrap_pthread_mutex_trylock(mutex, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -475,7 +475,7 @@ int dbg_pthread_mutex_timedlock(
 ){
   int rc;
   rc = wrap_pthread_mutex_timedlock(mutex, abs_timeout, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, DBG_LOCK_PTHREAD_FLAG_LOCKED,
@@ -495,7 +495,7 @@ int dbg_pthread_mutex_unlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_mutex_unlock, mutex);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_remove_self(
       mutex, DBG_LOCK_PTHREAD_TYPE_MUTEX, file, func, line
     );
@@ -513,7 +513,7 @@ int dbg_pthread_rwlock_rdlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_rdlock, rwlock);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -533,7 +533,7 @@ int dbg_pthread_rwlock_wrlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_wrlock, rwlock);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -553,7 +553,7 @@ int dbg_pthread_rwlock_tryrdlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_tryrdlock(rwlock, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -573,7 +573,7 @@ int dbg_pthread_rwlock_trywrlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_trywrlock(rwlock, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -594,7 +594,7 @@ int dbg_pthread_rwlock_timedrdlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_timedrdlock(rwlock, abs_timeout, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_READ_LOCKED,
@@ -615,7 +615,7 @@ int dbg_pthread_rwlock_timedwrlock(
 ){
   int rc;
   rc = wrap_pthread_rwlock_timedwrlock(rwlock, abs_timeout, file, func, line);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_check_init();
     dbg_pthread_add_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, DBG_LOCK_PTHREAD_FLAG_WRITE_LOCKED,
@@ -635,7 +635,7 @@ int dbg_pthread_rwlock_unlock(
 ){
   int rc;
   WRAP_PTHREAD_WITH_RC(rc, pthread_rwlock_unlock, rwlock);
-  if( rc==0 && ATOMIC_LOAD(gbl_debug_pthread_locks)>0 ){
+  if( rc==0 && ATOMIC_LOAD32(gbl_debug_pthread_locks)>0 ){
     dbg_pthread_remove_self(
       rwlock, DBG_LOCK_PTHREAD_TYPE_RWLOCK, file, func, line
     );
