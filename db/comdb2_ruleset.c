@@ -497,7 +497,7 @@ int comdb2_ruleset_fingerprints_allowed(void){
   **       part, because preparing SQL queries on non-SQL engine threads is
   **       seen as too expensive.
   */
-  return 1; /* TODO: Modify to use new tunable from the other PR. */
+  return gbl_strict_dbl_quotes;
 }
 
 size_t comdb2_evaluate_ruleset(
