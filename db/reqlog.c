@@ -1465,6 +1465,11 @@ void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
     if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
 }
 
+void reqlog_set_start(struct reqlogger *logger, uint64_t start)
+{
+    logger->startus = start;
+}
+
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
 {
     if (!logger) {
