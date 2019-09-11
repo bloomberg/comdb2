@@ -50,7 +50,7 @@ The supported set of property names and their required formats is:
 | Property Name | Property Value Format |
 |---------------|------------------------|
 |action         | One of `NONE`, `REJECT`, `UNREJECT`, `LOW_PRIO`, or `HIGH_PRIO`. |
-|adjustment     | An integer between zero (0) and one million (1000000). |
+|adjustment     | An integer between zero (0) and nine hundred ninety-nine thousand nine hundred ninety-seven (999997). |
 |flags          | One or more of `NONE` and `STOP`, see [flags syntax](#flags-syntax). |
 |mode           | One or more of `NONE`, `EXACT`, `GLOB`, `REGEXP`, and `NOCASE`, see [flags syntax](#flags-syntax). |
 |originHost     | Any pattern string suitable for match mode.  May not contain whitespace. |
