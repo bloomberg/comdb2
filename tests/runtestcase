@@ -18,7 +18,7 @@ elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]
     TEST_TIMEOUT=$(($t * 10 + 2))m
 elif is_release_build == 0; then
     t=${TEST_TIMEOUT%%m}
-    TEST_TIMEOUT=$(($t * 3 + 2))m
+    TEST_TIMEOUT=$(($t * 7 + 2))m
 fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
