@@ -193,7 +193,7 @@ function writer
 function reader 
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} -f t10.sql $dbname default > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -f t10.sql $dbname default &> reader.out
         if [[ $? != 0 ]]; then
             echo "reader failed"
             exit 1
@@ -206,7 +206,7 @@ function reader
 function analyzer 
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "analyze t10 100" > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "analyze t10 100" &> analyzer.out
         if [[ $? != 0 ]]; then
             echo "analyzer failed"
             exit 1
