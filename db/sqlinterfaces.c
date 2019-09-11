@@ -1504,11 +1504,13 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
-inline int replicant_can_retry(struct sqlclntstate *clnt)
+int replicant_can_retry(struct sqlclntstate *clnt)
 {
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
            clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           clnt->verifyretry_off == 0;
+           !clnt->verifyretry_off &&
+           !clnt->has_recording &&
+           !clnt->trans_has_sp;
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -1983,7 +1985,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
            snapshot/serializable mode, repeat this request ad nauseam
            (Alex and Sam made me do it) */
         if (rc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
-            !clnt->has_recording && clnt->osql.replay != OSQL_RETRY_LAST) {
+            clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER,
                        "Fail to add commit to transaction replay session\n");
@@ -3588,7 +3590,7 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
             if (irc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
-                !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
+                clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
         }
