@@ -37,11 +37,6 @@ void logmsg_set_level(loglvl lvl) {
     level = lvl;
 }
 
-loglvl logmsg_get_level() {
-    return level;
-}
-
-
 void logmsg_set_thd(int onoff)
 {
     do_thread = onoff;
