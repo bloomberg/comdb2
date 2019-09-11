@@ -69,6 +69,10 @@ function myarch
     return 0
 }
 
+function fix_genid {
+    sed 's/genid =.* rc/genid =dum rc/' < $1
+}
+
 # Iterate through input files
 for testcase in $files ; do
 
@@ -134,11 +138,7 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    if [[ "$(uname)" = "Linux" && -f $testcase.linux.out ]]; then
-        expected_output=$(cat $testcase.linux.out)
-    else
-        expected_output=$(cat $testcase.out)
-    fi
+    expected_output=$(cat $testcase.out)
 
     if [[ -f $testcase.out.1 ]]; then
         expected_output_alt=$(cat $testcase.out.1)
