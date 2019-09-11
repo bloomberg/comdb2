@@ -32,7 +32,8 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
                  int attempt_fix, int (*lua_callback)(void *, const char *),
                  void *lua_params);
 int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
-                 int attempt_fix, int (*lua_callback)(void *, const char *),
-                 void *lua_params, verify_mode_t mode);
+                      int attempt_fix,
+                      int (*lua_callback)(void *, const char *),
+                      void *lua_params, verify_mode_t mode);
 
 #endif
