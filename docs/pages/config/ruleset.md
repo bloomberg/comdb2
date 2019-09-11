@@ -8,11 +8,11 @@ permalink: ruleset.html
 ## Ruleset files
 
 Comdb2 ruleset files have a `.ruleset` extension.  Ruleset files are optional.
-By convention, they should be placed in the `rulesets` subdirectory within the
-database directory.  If no ruleset files are loaded, the database will assume
-all SQL queries have equal priority.  A ruleset file consists of optional blank
-lines, optional comment lines, a required file header, and optional rule
-definition lines.
+By convention, ruleset files should be placed in the `rulesets` subdirectory
+within the database directory.  If no ruleset files are loaded, the database
+will assume all SQL queries have equal priority.  A ruleset file consists of
+optional blank lines, optional comment lines, a required file header, and
+optional rule definition lines.
 
 Blank lines are skipped.  Lines beginning with `#` are treated as comments and
 skipped.
