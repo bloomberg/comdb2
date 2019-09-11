@@ -147,6 +147,7 @@ int gbl_sqlite_sortermult = 1;
 
 int gbl_sqlite_sorter_mem = 300 * 1024 * 1024; /* 300 meg */
 
+int gbl_strict_dbl_quotes = 0;
 int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
@@ -250,7 +251,7 @@ int gbl_nice = 0;
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
 
-int gbl_nullfkey = 0;
+int gbl_nullfkey = 1;
 
 /* Default fast sql timeouts */
 int gbl_sqlwrtimeoutms = 10000;
@@ -351,16 +352,16 @@ int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;
 
-unsigned int gbl_nsql;
+uint32_t gbl_nsql;
 long long gbl_nsql_steps;
 
-unsigned int gbl_nnewsql;
+uint32_t gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
-unsigned int gbl_masterrejects = 0;
+uint32_t gbl_masterrejects = 0;
 
 volatile int gbl_dbopen_gen = 0;
-volatile int gbl_analyze_gen = 0;
+volatile uint32_t gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 
 int gbl_sqlhistsz = 25;
@@ -732,7 +733,7 @@ int gbl_verbose_normalized_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
-int gbl_allow_incoherent_sql = 1;
+int gbl_allow_incoherent_sql = 0;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;
@@ -4499,7 +4500,7 @@ void *statthd(void *p)
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count == thresh)) { /* every thresh-seconds */
+            if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
@@ -4751,25 +4752,8 @@ void *statthd(void *p)
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
-            }
 
-            if (count % 60 == 0) {
-                /* dump here */
-                quantize_ctrace(q_min, "Tagged requests this minute");
-                quantize_clear(q_min);
-                quantize_ctrace(q_sql_min, "SQL requests this minute");
-                quantize_clear(q_sql_min);
-                quantize_ctrace(q_sql_steps_min, "SQL steps this minute");
-                quantize_clear(q_sql_steps_min);
-            }
-            if (count % 3600 == 0) {
-                /* dump here */
-                quantize_ctrace(q_hour, "Tagged requests this hour");
-                quantize_clear(q_hour);
-                quantize_ctrace(q_sql_hour, "SQL requests this hour");
-                quantize_clear(q_sql_hour);
-                quantize_ctrace(q_sql_steps_hour, "SQL steps this hour");
-                quantize_clear(q_sql_steps_hour);
+                dump_client_sql_data(statlogger, 1);
             }
         }
 
@@ -6057,9 +6041,14 @@ const char *comdb2_get_dbname(void)
     return thedb->envname;
 }
 
-int sc_ready(void)
+int backend_opened(void)
 {
     return gbl_backend_opened;
+}
+
+int sc_ready(void)
+{
+    return backend_opened();
 }
 
 static void create_service_file(const char *lrlname)

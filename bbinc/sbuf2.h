@@ -179,6 +179,10 @@ void SBUF2_FUNC(sbuf2setuserptr)(SBUF2 *sb, void *userptr);
 void *SBUF2_FUNC(sbuf2getuserptr)(SBUF2 *sb);
 #define sbuf2getuserptr SBUF2_FUNC(sbuf2getuserptr)
 
+/* advance the sbuf2 to the next newline */
+void SBUF2_FUNC(sbuf2nextline)(SBUF2 *sb);
+#define sbuf2nextline SBUF2_FUNC(sbuf2nextline)
+
 #if SBUF2_UNGETC
 int SBUF2_FUNC(sbuf2ungetc)(char c, SBUF2 *sb);
 #  define sbuf2ungetc SBUF2_FUNC(sbuf2ungetc)

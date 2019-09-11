@@ -1,5 +1,8 @@
+select comdb2_user();
 put password 'password1' for 'user1'
 put password 'password2' for 'user2'
 grant op to user1
+select comdb2_user();
 #only op can turn on authentication
 put authentication on
+select comdb2_user();

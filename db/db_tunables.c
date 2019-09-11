@@ -221,11 +221,18 @@ extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
+extern int gbl_osql_snap_info_hashcheck;
 extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_cache_flush_interval;
+extern int gbl_load_cache_threads;
+extern int gbl_load_cache_max_pages;
+extern int gbl_dump_cache_max_pages;
+extern int gbl_max_pages_per_cache_thread;
+extern int gbl_memp_dump_cache_threshold;
 
 extern long long sampling_threshold;
 
@@ -308,6 +315,8 @@ extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_pthread_locks;
+
+int gbl_page_order_table_scan = 0;
 
 /*
   =========================================================
@@ -697,7 +706,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
-
 static int netconndumptime_update(void *context, void *value)
 {
     int val = *(int *)value;
@@ -841,6 +849,20 @@ static int pbkdf2_iterations_update(void *context, void *value)
 {
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
+}
+
+static int page_order_table_scan_update(void *context, void *value)
+{
+    if ((*(int *)value) == 0) {
+        gbl_page_order_table_scan = 0;
+    } else {
+        gbl_page_order_table_scan = 1;
+    }
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN,
+                 gbl_page_order_table_scan);
+    logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
+           (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
 }
 
 /* Routines for the tunable system itself - tunable-specific

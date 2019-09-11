@@ -26,7 +26,6 @@
 
 #include "pool.h"
 #include "plhash.h"
-#include "sysutil_membar.h"
 #include "compile_time_assert.h"
 #ifndef BUILDING_TOOLS
 #include "mem_util.h"
@@ -77,7 +76,6 @@ struct hash {
     hashent *delayed; /* to list of stale hashents */
     unsigned int nents;
     hashtable *htab;
-    int is_lockfree_query;
     unsigned int nsteps;
     unsigned int maxsteps;
     unsigned int nhits;
@@ -996,15 +994,7 @@ static unsigned int hash_default_i4(const unsigned int *a,
     return a[0];
 }
 
-/* enable lock-free hash query (no need for mutex in threaded applications)
- * Caller promises to use only hash_findobj_readonly() and hash_find_readonly()
- * for hash queries and acknowledges that both hash buckets and hash table will
- * be copied in full upon table resize, and not free()d until hash is destroyed.
- * (Cost: memory usage for hash buckets and hash table will almost double)
- * At application synchronization points, hash_free_resized_tables() can be
- * called by the application to release deleted/resized internal hash structures
- */
-void hash_config_lockfree_query(hash_t *const h) { h->is_lockfree_query = 1; }
+#define is_lockfree_query(h) 0
 
 /* enable stats for query steps and flipping found entry to head of chain.
  * or, disable stats and set query function to *_nofrills, which skips stats
@@ -1365,7 +1355,7 @@ static hashtable *hash_inctbl(hash_t *const h)
      * (separate loop for each case to avoid extra conditionals inside loop)
      * (about to walk every bucket in a potentially large table) */
     if (h->nents) {
-        if (!h->is_lockfree_query) {
+        if (!is_lockfree_query(h)) {
             if (h->scheme == HASH_BY_PRIMES) /*HASH_BY_PRIMES*/
                 hash_inctbl_rehash_primes(newhtab, htab);
             else /*HASH_BY_POWER2*/
@@ -1386,7 +1376,6 @@ static hashtable *hash_inctbl(hash_t *const h)
         }
     }
 
-    SYSUTIL_MEMBAR_RELEASE();
     h->htab = newhtab; /* assignment of new table is atomic; thread-safe */
 
     /* If lockfree_query is set, skip free() for thread safety.
@@ -1395,7 +1384,7 @@ static hashtable *hash_inctbl(hash_t *const h)
      */
     if (htab == STARTER_HTAB)
         newhtab->freed = 0;
-    else if (!h->is_lockfree_query) {
+    else if (!is_lockfree_query(h)) {
         newhtab->freed = 0;
         h->free_fn(htab);
     }
@@ -1421,7 +1410,6 @@ int hash_add(hash_t *h, void *vobj)
     he->hash = HASH(h, &obj[h->keyoff]);
     tbl = &htab->tbl[BUCKET(he->hash, htab->ntbl)];
     he->next = *tbl;
-    SYSUTIL_MEMBAR_RELEASE();
     *tbl = he;
     h->nadds++;
     h->nents++;
@@ -1448,7 +1436,7 @@ int hash_delk(hash_t *const h, const void *const key)
     h->nsteps += nsteps;
     if (he == 0)
         return -1;
-    if (!h->is_lockfree_query) {
+    if (!is_lockfree_query(h)) {
         /* SNIP & RETURN */
         (*phe) = he->next;
         pool_relablk(h->ents, he);
@@ -1465,9 +1453,7 @@ int hash_delk(hash_t *const h, const void *const key)
             while (he->next)
                 he = he->next; /*find chain end*/
             he->next = *chead; /*create loop*/
-            SYSUTIL_MEMBAR_RELEASE();
             he = *chead = *phe; /*change head*/
-            SYSUTIL_MEMBAR_RELEASE();
             *phe = NULL; /*break loop*/
         }
 

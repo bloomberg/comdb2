@@ -182,8 +182,10 @@ static int machine_class_default(const char *host)
         }
     done:
         /* Error if can't find class? */
-        if (my_class == CLASS_UNKNOWN)
+        if (my_class == CLASS_UNKNOWN) {
+            logmsg(LOGMSG_DEBUG, "Can't find class -- assigning PROD\n");
             my_class = CLASS_PROD;
+        }
         if (db)
             cdb2_close(db);
     }

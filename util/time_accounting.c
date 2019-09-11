@@ -22,30 +22,32 @@
 #ifndef NDEBUG
 const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
 
-unsigned long long gbl_chron_times[CHR_MAX];
+uint64_t gbl_chron_times[CHR_MAX];
 
 // add time accounting to appropriate slot
 void accumulate_time(int el, int us)
 {
-    ATOMIC_ADD(gbl_chron_times[el], us);
+    ATOMIC_ADD64(gbl_chron_times[el], us);
 }
 
 void reset_time_accounting(int el)
 {
-    XCHANGE(gbl_chron_times[el], 0);
+    XCHANGE64(gbl_chron_times[el], 0);
 }
 
 void print_time_accounting(int el)
 {
-    logmsg(LOGMSG_USER, "Timing information for %s: %lluus\n", CHR_NAMES[el],
+    logmsg(LOGMSG_USER, "Timing information for %s: %"PRIu64"us\n", CHR_NAMES[el],
            gbl_chron_times[el]);
 }
 
 void print_all_time_accounting()
 {
+    extern int gbl_create_mode;
+    if (gbl_create_mode) return;
     logmsg(LOGMSG_USER, "Timing information:\n");
     for (int i = 0; i < CHR_MAX; i++) {
-        logmsg(LOGMSG_USER, "%s: %lluus\n", CHR_NAMES[i], gbl_chron_times[i]);
+        logmsg(LOGMSG_USER, "%s: %"PRIu64"us\n", CHR_NAMES[i], ATOMIC_LOAD64(gbl_chron_times[i]));
     }
 }
 

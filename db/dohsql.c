@@ -150,7 +150,7 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     case THD_FREE:
         /* error, we are done */
         clnt->query_rc = -1;
-        clnt->done = 1;
+        signal_clnt_as_done(clnt);
         break;
     }
 }
@@ -1746,6 +1746,11 @@ int order_init(dohsql_t *conns, dohsql_node_t *node)
 int dohsql_is_parallel_shard(void)
 {
     GET_CLNT;
+    /* exclude statements that do not arrive
+       by a supported plugin */
+    if (!clnt->plugin.write_response)
+        return 1;
+
     return (clnt->conns || DOHSQL_CLIENT);
 }
 

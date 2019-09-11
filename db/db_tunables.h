@@ -71,7 +71,7 @@ REGISTER_TUNABLE("analyze_tbl_threads",
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,
-                 DEPRECATED | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("blob_mem_mb", "Blob allocator: Sets the max "
                                 "memory limit to allow for blob "
                                 "values (in MB). (Default: 0)",
@@ -151,7 +151,7 @@ REGISTER_TUNABLE("ctrace_dbdir",
                  TUNABLE_BOOLEAN, &gbl_ctrace_dbdir, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_gzip", NULL, TUNABLE_INTEGER, &ctrace_gzip,
-                 DEPRECATED | READONLY, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "ddl_cascade_drop",
     "On DROP, also drop the dependent keys/constraints. (Default: 1)",
@@ -674,7 +674,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED_TUNABLE | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
@@ -798,7 +798,7 @@ REGISTER_TUNABLE("null_blob_fix", NULL, TUNABLE_BOOLEAN,
                  NULL);
 REGISTER_TUNABLE(
     "nullfkey",
-    "Do not enforce foreign key constraints for null keys. (Default: off)",
+    "Do not enforce foreign key constraints for null keys. (Default: on)",
     TUNABLE_BOOLEAN, &gbl_nullfkey, READONLY | NOARG | READEARLY, NULL, NULL,
     NULL, NULL);
 /*
@@ -876,9 +876,14 @@ REGISTER_TUNABLE("page_latches",
                  "instead of full locks. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_page_latches, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "pageordertablescan",
+    "Perform table scans in page order and not row order. (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_page_order_table_scan, NOARG, NULL, NULL,
+    page_order_table_scan_update, NULL);
 /*
 REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
-                 &placeholder, DEPRECATED|READONLY, NULL, NULL, NULL,
+                 &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,
                  NULL);
 */
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,
@@ -1571,6 +1576,12 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("osql_snap_info_hashcheck",
+                 "Enable snapinfo to be stored and checked in a hash in "
+                 "toblock on master. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_snap_info_hashcheck,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
                  "changes",
@@ -1747,10 +1758,53 @@ REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
                  TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("cache_flush_interval",
+                 "Save bufferpool once every this many seconds.  "
+                 "(Default: 30)",
+                 TUNABLE_INTEGER, &gbl_cache_flush_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("load_cache_threads",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8)",
+                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("load_cache_max_pages",
+                 "Maximum number of pages that will load into cache.  Setting "
+                 "to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_load_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("dump_cache_max_pages",
+                 "Maximum number of pages that will dump into a pagelist.  "
+                 "Setting to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_dump_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("max_pages_per_cache_thread",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8192)",
+                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("memp_dump_cache_threshold",
+                 "Don't flush the cache until this percentage of pages have "
+                 "changed.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  "Automatic retries on verify errors for clients that haven't "
                  "read results.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("strict_double_quotes",
+                 "In SQL queries, forbid the use of double-quotes to denote "
+                 "a string literal.  Any attempts to do so will result in a "
+                 "syntax error (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

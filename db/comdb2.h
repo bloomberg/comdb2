@@ -34,7 +34,7 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-typedef struct dbtable dbtable;
+struct dbtable;
 struct consumer;
 struct thr_handle;
 struct reqlogger;
@@ -540,6 +540,9 @@ struct rawnodestats {
     unsigned sql_rows;
 
     struct time_metric *svc_time; /* <-- offsetof */
+
+    pthread_mutex_t lk;
+    hash_t *fingerprints;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
@@ -794,9 +797,9 @@ typedef struct dbtable {
      * when behind the cursor.  This helps us know how many
      * records we've really done (since every update behind the cursor
      * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
+    uint32_t sc_adds;
+    uint32_t sc_deletes;
+    uint32_t sc_updates;
 
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
@@ -1216,7 +1219,9 @@ typedef struct snap_uid {
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
+enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5) + 4 + 64 };
+
+BB_COMPILE_TIME_ASSERT(snap_uid_size, sizeof(snap_uid_t) == SNAP_UID_LENGTH);
 
 /*
    lrl tunables that control this:
@@ -1680,7 +1685,7 @@ extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
 extern volatile int gbl_dbopen_gen;
-extern volatile int gbl_analyze_gen;
+extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 extern volatile int gbl_schema_change_in_progress;
 extern int gbl_sc_report_freq;
@@ -1728,6 +1733,7 @@ extern int gbl_pushlogs_after_sc;
 extern int gbl_prefault_verbose;
 extern int gbl_ftables;
 extern int gbl_check_client_tags;
+extern int gbl_strict_dbl_quotes;
 
 extern int gbl_max_tables_info;
 
@@ -2431,6 +2437,10 @@ int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
 int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
 
 void flush_db(void);
+void dump_cache(const char *file, int max_pages);
+void load_cache(const char *file);
+void load_cache_default(void);
+void dump_cache_default(void);
 int compare_all_tags(const char *table, FILE *out);
 int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
@@ -3645,4 +3655,6 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 #endif /* !INCLUDED_COMDB2_H */

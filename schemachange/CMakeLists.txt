@@ -48,6 +48,6 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(schemachange mem protobuf bdb)

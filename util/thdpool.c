@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <strings.h>
 #include "ctrace.h"
 #include <epochlib.h>
 #include <segstring.h>
@@ -761,7 +762,7 @@ static void *thdpool_thd(void *voidarg)
         }
 
         work.work_fn(pool, work.work, thddata, THD_RUN);
-        ATOMIC_ADD(pool->num_completed, 1);
+        ATOMIC_ADD32(pool->num_completed, 1);
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();

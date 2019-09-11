@@ -31,6 +31,7 @@
 #include <thdpool.h>
 #include <mem_berkdb.h>
 #include <sys/time.h>
+#include <sbuf2.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -876,7 +877,7 @@ struct __db_mpool_stat {
 	u_int64_t st_page_trickle;	/* Pages written by memp_trickle. */
 	u_int64_t st_pages;		/* Total number of pages. */
 	u_int64_t st_page_clean;	/* Clean pages. */
-	int32_t   st_page_dirty;	/* Dirty pages. */
+	uint32_t  st_page_dirty;	/* Dirty pages. */
 	u_int64_t st_hash_buckets;	/* Number of hash buckets. */
 	u_int64_t st_hash_searches;	/* Total hash chain searches. */
 	u_int64_t st_hash_longest;	/* Longest hash chain searched. */
@@ -1381,6 +1382,7 @@ struct __db {
 	DB_MPOOLFILE *mpf;		/* Backing buffer pool. */
 
 	DB_MUTEX *mutexp;		/* Synchronization for free threading */
+	DB_MUTEX *free_mutexp;		/* Synchronization for free threading */
 
 	char *fname, *dname;		/* File/database passed to DB->open. */
 	u_int32_t open_flags;		/* Flags passed to DB->open. */
@@ -2341,6 +2343,10 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
+	int  (*memp_dump) __P((DB_ENV *, SBUF2 *, u_int64_t maxpages));
+	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_dump_default) __P((DB_ENV *, u_int32_t));
+	int  (*memp_load_default) __P((DB_ENV *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
@@ -2878,6 +2884,7 @@ struct __ltrans_descriptor {
 };
 
 int __checkpoint_open(DB_ENV *dbenv, const char *db_home);
+int __page_cache_set_path(DB_ENV *dbenv, const char *db_home);
 int __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery);

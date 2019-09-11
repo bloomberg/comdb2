@@ -207,6 +207,7 @@ __memp_falloc_len(mfp, offset, len)
 	}
 }
 
+u_int64_t gbl_memp_pgreads = 0;
 
 /*
  * __memp_fget_internal --
@@ -661,8 +662,8 @@ alloc:		/*
 
 		/* If we extended the file, make sure the page is never lost. */
 		if (extending) {
-			ATOMIC_ADD(hp->hash_page_dirty, 1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+			ATOMIC_ADD32(hp->hash_page_dirty, 1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
 			if (dbenv->tx_perfect_ckp) {
 				/* Set page first-dirty-LSN to not logged */
@@ -726,6 +727,7 @@ alloc:		/*
 				F_CLR(bhp, BH_PREFAULT);
 			}
 
+			gbl_memp_pgreads++;
 			if (did_io != NULL)
 				*did_io = 1;
 		}
@@ -794,7 +796,7 @@ alloc:		/*
 
 	if (F_ISSET(bhp, BH_TRASH)) {
 		if ((ret = __memp_pgread(dbmfp,
-			    hp, bhp,
+				hp, bhp,
 			    LF_ISSET(DB_MPOOL_CREATE) ? 1 : 0,
 			    is_recovery_page)) != 0)
 			 goto err;
@@ -835,6 +837,8 @@ alloc:		/*
 #endif
 
 	*(void **)addrp = bhp->buf;
+	if (bhp->fget_count < UINT_MAX)
+			bhp->fget_count++;
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);

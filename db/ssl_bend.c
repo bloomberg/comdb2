@@ -23,6 +23,7 @@
  ******************/
 /* myself */
 #include "ssl_bend.h"
+#include "ssl_support.h"
 
 /* sys */
 #include <errno.h>
@@ -63,6 +64,9 @@ int gbl_nid_dbname = NID_host;
 #else
 int gbl_nid_dbname = NID_commonName;
 #endif
+/* Minimum acceptable TLS version */
+double gbl_min_tls_ver = 0;
+
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
 SSL_CTX *gbl_ssl_ctx = NULL;
@@ -265,6 +269,14 @@ int ssl_process_lrl(char *line, size_t len)
         }
         gbl_nid_dbname = OBJ_txt2nid(nidtext);
         free(nidtext);
+    } else if (tokcmp(line, ltok, SSL_MIN_TLS_VER_OPT) == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok <= 0) {
+            my_ssl_eprintln("Missing TLS version for '" SSL_MIN_TLS_VER_OPT
+                            "'.\n");
+            return EINVAL;
+        }
+        gbl_min_tls_ver = atof(tok);
     }
     return 0;
 }
@@ -287,7 +299,8 @@ int ssl_bend_init(const char *default_certdir)
             gbl_client_ssl_mode > gbl_rep_ssl_mode ? gbl_client_ssl_mode
                                                    : gbl_rep_ssl_mode,
             ks, &gbl_cert_file, &gbl_key_file, &gbl_ca_file, &gbl_crl_file,
-            gbl_sess_cache_sz, gbl_ciphers, errmsg, sizeof(errmsg));
+            gbl_sess_cache_sz, gbl_ciphers, gbl_min_tls_ver,
+            errmsg, sizeof(errmsg));
         if (rc == 0) {
             if (gbl_client_ssl_mode == SSL_UNKNOWN)
                 gbl_client_ssl_mode = SSL_ALLOW;
@@ -380,4 +393,12 @@ void ssl_stats(void)
         logmsg(LOGMSG_INFO,
                "Mapping client certificates to database users: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_user));
+
+    logmsg(LOGMSG_INFO, "SSL/TLS protocols:\n");
+    for (int ii = 0;
+         ii != sizeof(SSL_NO_PROTOCOLS) / sizeof(SSL_NO_PROTOCOLS[0]); ++ii) {
+        int enabled = (SSL_NO_PROTOCOLS[ii].tlsver >= gbl_min_tls_ver);
+        logmsg(LOGMSG_INFO, "%s: %s\n", SSL_NO_PROTOCOLS[ii].name,
+               enabled ? "ENABLED" : "disabled");
+    }
 }

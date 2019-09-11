@@ -179,8 +179,8 @@ static unsigned char sid_ctx[8];
 
 int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
                             char **pcert, char **pkey, char **pca, char **pcrl,
-                            long sess_sz, const char *ciphers, char *err,
-                            size_t n)
+                            long sess_sz, const char *ciphers, double mintlsver,
+                            char *err, size_t n)
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca, *crl;
@@ -188,6 +188,8 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     int servermode;
     struct stat buf;
     STACK_OF(X509_NAME) *cert_names;
+    long protocols = 0;
+    int ii;
 
 #if SBUF2_SERVER
     servermode = 1;
@@ -378,8 +380,18 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
         goto error;
     }
 
+    /* Make sure the obselete SSL v2 & v3 protocols are always disallowed. */
+    if (mintlsver < 0)
+        mintlsver = 0;
+    for (ii = 0; ii != sizeof(SSL_NO_PROTOCOLS) / sizeof(SSL_NO_PROTOCOLS[0]);
+         ++ii) {
+        if (SSL_NO_PROTOCOLS[ii].tlsver < mintlsver)
+            protocols |= SSL_NO_PROTOCOLS[ii].opensslver;
+    }
+
     /* Disable SSL protocols to prevent POODLE attack (CVE-2014-3566). */
-    SSL_CTX_set_options(myctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    if (protocols != 0)
+        SSL_CTX_set_options(myctx, protocols);
 
     /* We need the flag to be able to write as fast as possible.
        We let sbuf2/comdb2buf take care of uncomplete writes. */

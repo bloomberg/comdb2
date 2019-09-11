@@ -136,6 +136,9 @@ int cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
 #define CDB2_CACHE_SSL_SESS_DEFAULT 0
 static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 
+#define CDB2_MIN_TLS_VER_DEFAULT 0
+static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
+
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
@@ -303,6 +306,7 @@ static void reset_the_configuration(void)
 
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
 #endif
 
     reset_sockpool();
@@ -1011,6 +1015,7 @@ struct cdb2_hndl {
     char *ca;
     char *crl;
     int cache_ssl_sess;
+    double min_tls_ver;
     cdb2_ssl_sess_list *sess_list;
     int nid_dbname;
 #endif
@@ -1369,6 +1374,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_cache_ssl_sess = !!atoi(tok);
+            } else if (strcasecmp(SSL_MIN_TLS_VER_OPT, tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    cdb2_min_tls_ver = atof(tok);
 #endif /* WITH_SSL */
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -1379,10 +1388,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
-            } else if (strcasecmp("install_static_libs", tok) == 0) {
+            } else if (strcasecmp("install_static_libs_v2", tok) == 0 ||
+                       strcasecmp("enable_static_libs", tok) == 0) {
                 if (cdb2_install != NULL)
                     (*cdb2_install)();
-            } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
+            } else if (strcasecmp("uninstall_static_libs_v2", tok) == 0 ||
+                       strcasecmp("disable_static_libs", tok) == 0) {
                 /* Provide a way to disable statically installed (via
                  * CDB2_INSTALL_LIBS) libraries. */
                 if (cdb2_uninstall != NULL)
@@ -2109,7 +2120,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 
     rc = ssl_new_ctx(&ctx, hndl->c_sslmode, hndl->sslpath, &hndl->cert,
                      &hndl->key, &hndl->ca, &hndl->crl, hndl->num_hosts, NULL,
-                     hndl->errstr, sizeof(hndl->errstr));
+                     hndl->min_tls_ver, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
         return -1;
@@ -3942,6 +3953,11 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
         if (hndl->cache_ssl_sess)
             cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+    } else if (strncasecmp(p, SSL_MIN_TLS_VER_OPT,
+                           sizeof(SSL_MIN_TLS_VER_OPT) - 1) == 0) {
+        p += sizeof(SSL_MIN_TLS_VER_OPT);
+        p = cdb2_skipws(p);
+        hndl->min_tls_ver = atof(p);
     } else {
         rc = -1;
     }
@@ -5454,8 +5470,19 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                             comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
                             hndl->dbname, hndl->cluster, hndl->hosts,
                             &(hndl->num_hosts), &hndl->dbnum, 1, 0);
+
+    /* Before database destination discovery */
+    cdb2_event *e = NULL;
+    void *callbackrc;
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
+    }
+
     if (rc != 0)
-        return rc;
+        goto after_callback;
 
     if ((cdb2_default_cluster[0] != '\0') && (cdb2_comdb2dbname[0] != '\0')) {
         strcpy(comdb2db_name, cdb2_comdb2dbname);
@@ -5465,7 +5492,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (cdb2_default_cluster[0] == '\0') {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no default_type "
                                   "entry in comdb2db config.");
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
         strncpy(hndl->cluster, cdb2_default_cluster, sizeof(hndl->cluster) - 1);
         if (cdb2cfg_override) {
@@ -5487,7 +5515,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
     }
 
@@ -5497,10 +5526,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
             1000;
     if (max_time < 0)
         max_time = 0;
+
 retry:
     if (rc) {
         if (num_retry >= MAX_RETRIES || time(NULL) > max_time)
-            return rc;
+            goto after_callback;
 
         num_retry++;
         poll(NULL, 0, CDB2_POLL_TIMEOUT); // Sleep for 250ms everytime and total
@@ -5556,7 +5586,8 @@ retry:
         sprintf(hndl->errstr, "cdb2_get_dbhosts: comdb2db has no entry of "
                               "db %s of cluster type %s.",
                 hndl->dbname, hndl->cluster);
-        return -1;
+        rc = -1;
+        goto after_callback;
     }
 
     rc = -1;
@@ -5576,7 +5607,7 @@ retry:
                                    hndl->ports, &hndl->master, &hndl->num_hosts,
                                    &hndl->num_hosts_sameroom);
             if (rc == 0) {
-                goto done;
+                goto after_callback;
             }
         }
     }
@@ -5593,12 +5624,18 @@ retry:
         }
     }
 
-done:
     if (rc != 0) {
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
         if (hndl->num_hosts > 1) goto retry;
+    }
+after_callback: /* We are going to exit the function in this label. */
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DISCOVERY, e)) != NULL) {
+        int unused;
+        (void)unused;
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
     }
     return rc;
 }
@@ -5843,6 +5880,13 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     if (hndl->cache_ssl_sess)
         cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
 
+    if ((sslenv = getenv("SSL_MIN_TLS_VER")) != NULL)
+        hndl->min_tls_ver = atof(sslenv);
+    else
+        hndl->min_tls_ver = cdb2_min_tls_ver;
+    if (hndl->cache_ssl_sess)
+        cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
+
     /* Reset for next cdb2_open() */
     cdb2_c_ssl_mode = SSL_ALLOW;
     cdb2_sslcertpath[0] = '\0';
@@ -5853,6 +5897,7 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
+    cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
     return 0;
 }
 
@@ -6012,7 +6057,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
-    hndl->send_stack = 1;
+    hndl->send_stack = 0;
     hndl->read_intrans_results = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
@@ -6082,13 +6127,54 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (rc)
             debugprint("cdb2_get_dbhosts returns %d\n", rc);
     }
-#if WITH_SSL
+
     if (rc == 0) {
+#if WITH_SSL
         rc = set_up_ssl_params(hndl);
         if (rc)
             debugprint("set_up_ssl_params returns %d\n", rc);
-    }
 #endif
+        /*
+         * Check and set user and password if they have been specified using
+         * the environment variables.
+         */
+        char cmd[60];
+        int length;
+
+        if (getenv("COMDB2_USER")) {
+            length = snprintf(cmd, sizeof(cmd), "set user %s",
+                              getenv("COMDB2_USER"));
+            if (length > sizeof(cmd)) {
+                fprintf(stderr, "COMDB2_USER too long\n");
+                rc = -1;
+            } else if (length < 0) {
+                fprintf(stderr, "Failed to set user using COMDB2_USER "
+                                "environment variable\n");
+                rc = -1;
+            } else {
+                debugprint(
+                    "Setting user via COMDB2_USER environment variable\n");
+                rc = process_set_command(hndl, cmd);
+            }
+        }
+
+        if (getenv("COMDB2_PASSWORD")) {
+            length = snprintf(cmd, sizeof(cmd), "set password %s",
+                              getenv("COMDB2_PASSWORD"));
+            if (length > sizeof(cmd)) {
+                fprintf(stderr, "COMDB2_PASSWORD too long\n");
+                rc = -1;
+            } else if (length < 0) {
+                fprintf(stderr, "Failed to set password using COMDB2_PASSWORD "
+                                "environment variable\n");
+                rc = -1;
+            } else {
+                debugprint("Setting password via COMDB2_PASSWORD environment "
+                           "variable\n");
+                rc = process_set_command(hndl, cmd);
+            }
+        }
+    }
 
     if (hndl->send_stack)
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);

@@ -22,7 +22,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/util
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )
 
@@ -52,7 +52,7 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
     target_link_libraries(cdb2api_shared
       ${OPENSSL_LIBRARIES}
       ${ZLIB_LIBRARIES}
-      ${PROTOBUF_C_LIBRARY}
+      ${PROTOBUF-C_LIBRARY}
       ${UNWIND_LIBRARY}
     )
   endif()

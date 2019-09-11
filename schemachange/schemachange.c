@@ -300,7 +300,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, 1);
+        ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
     /*
     ** if s->partialuprecs, we're going radio silent from this point forward

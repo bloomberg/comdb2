@@ -46,6 +46,7 @@ add_library(sqlite
   ext/comdb2/scstatus.c
   ext/comdb2/connections.c 
   ext/comdb2/views.c
+  ext/comdb2/sqlclientstats.c
   ext/misc/completion.c
   ext/misc/regexp.c
   ext/misc/json1.c
@@ -203,7 +204,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(sqlite mem protobuf bdb)
 

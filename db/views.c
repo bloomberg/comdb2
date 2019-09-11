@@ -983,6 +983,7 @@ done:
     if (run) {
         Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
+        csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
@@ -1161,6 +1162,7 @@ done:
     if (run) {
         Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
+        csc2_free_all();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
         /*  schedule next */
@@ -1220,6 +1222,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
 
         Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
+        csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     }

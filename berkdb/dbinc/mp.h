@@ -188,7 +188,7 @@ typedef SH_TAILQ_HEAD(HashTab, __bh) HashTab;
 struct __db_mpool_hash {
 	DB_MUTEX	hash_mutex;	/* Per-bucket mutex. */
 	HashTab 	hash_bucket;	/* Head of bucket. */
-	int32_t 	hash_page_dirty;/* Count of dirty pages. */
+	uint32_t 	hash_page_dirty;/* Count of dirty pages. */
 	u_int32_t	hash_priority;	/* Minimum priority of bucket buffer. */
 };
 
@@ -332,6 +332,7 @@ struct __bh {
 	u_int16_t	flags;
 	u_int16_t	generation;	/* This changes before page changes */
 	u_int32_t	priority;	/* LRU priority. */
+	u_int32_t	fget_count;	/* Number memp_fgets. */
 	SH_TAILQ_ENTRY(__bh) hq;	/* MPOOL hash bucket queue. */
 
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */

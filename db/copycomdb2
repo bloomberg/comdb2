@@ -403,16 +403,16 @@ if [[ $partial = yes ]]; then
         fi
         $comdb2ar p $destlrldir/$partiallrl > $partials
         rcp -q $partials $srcmach:$partials
-        $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc"
-        $rsh $srcmach "tar xvf $partials -C $partialsdir"
+        $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc" </dev/null
+        $rsh $srcmach "tar xvf $partials -C $partialsdir" </dev/null
     else
         if [ "$cluster_info" = strip ]; then
             orig=$destlrldir/$partiallrl.orig.$(date +"%Y%m%dT%H%MZ%3N")
-            $rsh $destmach "mv $destlrldir/$partiallrl $orig"
-            $rsh $destmach "egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl"
+            $rsh $destmach "mv $destlrldir/$partiallrl $orig" </dev/null
+            $rsh $destmach "egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl" </dev/null
             cluster_info=default
         fi
-        $rsh $destmach $comdb2ar p $destlrldir/$partiallrl > $partials
+        $rsh $destmach $comdb2ar p $destlrldir/$partiallrl > $partials </dev/null
         rcp -q $destmach:$partials $partials
         mkdir  $TMPDIR/$dbname.$$.inc
         tar xvf $partials -C $partialsdir
@@ -498,10 +498,10 @@ else
 
 
     if [[ -n "$rmt" ]]; then
-        rmtarch=$($rsh $rmt uname)
+        rmtarch=$($rsh $rmt uname </dev/null)
 
         if [[ "$rmtarch" = "Linux" ]]; then 
-            if [[ $($rsh $rmt 'ionice -c 3 echo 2>&1 |grep Operation >/dev/null; echo $?') == 1 ]]; then 
+            if [[ $($rsh $rmt 'ionice -c 3 echo 2>&1 |grep Operation >/dev/null; echo $?' </dev/null) == 1 ]]; then 
                 echo "using remote ionice"
                 IONICE_RMT="ionice -c 3 "
             else
@@ -515,11 +515,11 @@ else
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
         if [[ $partial = yes ]] ; then
-            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4_rmt stdin stdout " </dev/null | \ 
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
             rc=$?
         else
-            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4_rmt stdin stdout " </dev/null | \
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
             rc=$?
         fi

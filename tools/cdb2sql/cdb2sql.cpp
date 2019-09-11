@@ -167,45 +167,30 @@ static const char *usage_text =
     "@strblobs            Display blobs as strings\n"
     "@time                Toggle between time modes\n";
 
-void cdb2sql_usage(int exit_val)
+void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
 const char *level_one_words[] = {
-  "@",
-  "ALTER", "ANALYZE",
-  "BEGIN",
-  "COMMIT",
-  "CREATE",
-  "DELETE", "DROP", "DRYRUN",
-  "EXEC", "EXPLAIN",
-  "INSERT",
-  "PUT",
-  "REBUILD",
-  "ROLLBACK",
-  "SELECT", "SELECTV", "SET",
-  "TRUNCATE",
-  "UPDATE",
-  "WITH", NULL,  // must be terminated by NULL
+    "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
+    "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
+    "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
 };
 
 const char *char_atglyph_words[] = {
-    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
-    "send",       "strblobs", "time",     NULL, // must be terminated by NULL
+    "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "row_sleep",  "send", "strblobs", "time",
 };
 
-static char *char_atglyph_generator(const char *text, int state)
+static char *char_atglyph_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { // if state is 0 get the length of text
-        list_index = 0;
         len = strlen(text);
     }
-    while ((name = char_atglyph_words[list_index]) != NULL) {
-        list_index++;
+    for (const auto &name : char_atglyph_words) {
         if (len == 0 || strncasecmp(name, text, len) == 0) {
             return strdup(name);
         }
@@ -214,24 +199,21 @@ static char *char_atglyph_generator(const char *text, int state)
 }
 
 // Generator function for word completion.
-static char *level_one_generator(const char *text, int state)
+static char *level_one_generator(const char *text, const int state)
 {
-    static int list_index, len;
-    const char *name;
+    static int len;
     if (!state) { //if state is 0 get the length of text
-        list_index = 0;
         len = strlen (text);
     }
-    while ((name = level_one_words[list_index]) != NULL) {
-        list_index++;
-        if (len == 0 || strncasecmp (name, text, len) == 0) {
-            return strdup (name);
+    for (const auto &name : level_one_words) {
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
         }
     }
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *db_generator(int state, const char *sql)
+static char *db_generator(const int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -312,7 +294,7 @@ static char *db_generator(int state, const char *sql)
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *tunables_generator(const char *text, int state)
+static char *tunables_generator(const char *text, const int state)
 {
     char sql[256];
     if (*text)
@@ -327,7 +309,7 @@ static char *tunables_generator(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator_no_systables(const char *text, int state)
+static char *generic_generator_no_systables(const char *text, const int state)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -338,7 +320,7 @@ static char *generic_generator_no_systables(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator(const char *text, int state)
+static char *generic_generator(const char *text, const int state)
 {
     char sql[256];
     //TODO: escape text
@@ -1188,7 +1170,7 @@ int process_bind(const char *sql)
 
     if (debug_trace)
         fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
-                parameter, value);
+                parameter, (char *)value);
     if (isdigit(parameter[0])) {
         int index = atoi(parameter);
         if (index <= 0)
@@ -1208,7 +1190,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int ncols;
     int col;
     FILE *out = stdout;
-    char cmd[60];
     int startms = now_ms();
 
     if (printmode & DISP_STDERR)
@@ -1258,43 +1239,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
             if (rc) {
                 fprintf(stderr, "failed to run set getcost 1\n");
                 return 1;
-            }
-        }
-
-        /*
-          Check and set user and password if they have been specified using
-          the environment variables.
-
-          Note: It is good to report the user about the use of environment
-          variables to set user/password to avoid any surprises.
-        */
-        if (getenv("COMDB2_USER")) {
-            int length = snprintf(cmd, sizeof(cmd), "set user %s",
-                                  getenv("COMDB2_USER"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_USER too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set user using COMDB2_USER, "
-                                "exiting\n");
-                return 1;
-            } else {
-                printf("Set user using COMDB2_USER\n");
-            }
-        }
-
-        if (getenv("COMDB2_PASSWORD")) {
-            int length = snprintf(cmd, sizeof(cmd), "set password %s",
-                                  getenv("COMDB2_PASSWORD"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set password using "
-                                "COMDB2_PASSWORD, exiting\n");
-                return 1;
-            } else {
-                printf("Set password using COMDB2_PASSWORD\n");
             }
         }
     }

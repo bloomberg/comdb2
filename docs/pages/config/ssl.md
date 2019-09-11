@@ -184,6 +184,7 @@ are refused to join the cluster.
 | `ssl_ca file` | Path to the trusted CA certificates | `<ssl_cert_path>/root.crt` |
 | `ssl_crl file` | Path to the CRL | `<ssl_cert_path>/root.crl` |
 | `ssl_cipher_suites string` | list of accepted ciphers | `HIGH:!aNULL:!eNULL` |
+| `ssl_min_tls_ver version_number` | Minimum client TLS version | 1.0 |
 
 
 ## Client SSL Configuration Summary
@@ -197,6 +198,7 @@ are refused to join the cluster.
 | `ssl_ca file` | Path to the trusted CA certificates. | `<ssl_cert_path>/root.crt` |
 | `ssl_crl file` | Path to the CRL | `<ssl_cert_path>/root.crl` |
 | `ssl_session_cache 1/0` | Enable SSL client-side session cache. | `0` |
+| `ssl_min_tls_ver version_number` | Minimum server TLS version | 1.0 |
 
 
 ## SSL Mode Summary

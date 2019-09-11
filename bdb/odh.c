@@ -591,9 +591,9 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_LZ4) {
-                rc = LZ4_decompress_fast((char *)from + ODH_SIZE, to,
-                                         odh->length);
-                if (rc != fromlen - ODH_SIZE) {
+                rc = LZ4_decompress_safe((char *)from + ODH_SIZE, to,
+                                         (fromlen - ODH_SIZE), odh->length);
+                if (rc != odh->length) {
                     goto err;
                 }
             }
