@@ -82,19 +82,19 @@ action is `NONE`, nothing is done.  This can be useful if the server has been
 configured to emit a log message when a ruleset is matched, e.g. this allows
 rulesets to effectively monitor activity without otherwise impacting it.  If
 the action is `REJECT`, the SQL query will be marked as rejected.  This mark
-of rejection can be removed by subsequently matching a rule with an action of
-`UNREJECT`.  If the SQL query is marked as rejected and there are no further
-rules to process, the SQL query will be rejected and an error will be emitted
-to the client.  If the action is `LOW_PRIO`, the relative priority of the SQL
-query will be decreased by the amount specified by the associated `adjustment`
-property value.  If the action is `HIGH_PRIO`, the relative priority of the SQL
-query will be increased by the amount specified by the associated `adjustment`
-property value.
+of rejection can be removed by matching a subsequent rule with an action of
+`UNREJECT`.  If the SQL query is marked as rejected and the `STOP` rule flag
+is specified for the rule (**or** there are no further rules to process), the
+SQL query will be rejected and an error will be emitted to the client.  If the
+action is `LOW_PRIO`, the relative priority of the SQL query will be decreased
+by the amount specified by the associated `adjustment` property value.  If the
+action is `HIGH_PRIO`, the relative priority of the SQL query will be increased
+by the amount specified by the associated `adjustment` property value.
 
 ### Rule flags
 
-The rule flag `NONE` has no effect.  If all criteria specified for a rule are
-matched and the rule flag `STOP` is present, further rule matching is skipped
+The `NONE` rule flag has no effect.  If all criteria specified for a rule are
+matched and the `STOP` rule flag is present, further rule matching is skipped
 and the current ruleset result is returned.
 
 ### Match modes
