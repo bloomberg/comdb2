@@ -751,9 +751,9 @@ int comdb2_load_ruleset(
         rules->aRule = aNewRule;
         rules->nRule = ruleNo;
       }
-      ruleNo--;
       assert( ruleNo>0 );
-      struct ruleset_item *rule = &rules->aRule[ruleNo];
+      assert( ruleNo<=rules->nRule );
+      struct ruleset_item *rule = &rules->aRule[ruleNo-1];
       rule->ruleNo = ruleNo; /* NOTE: Rule now present. */
       rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default match mode. */
       zTok = strtok(NULL, RULESET_DELIM);
