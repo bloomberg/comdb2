@@ -2612,7 +2612,7 @@ static const char *db_commit_int(Lua L, int *rc)
     }
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
-    if ((*rc = handle_sql_commitrollback(sp->thd, sp->clnt, SENDRESPONSE_NO)) == 0) {
+    if ((*rc = handle_sql_commitrollback(sp->thd, sp->clnt, TRANS_COMMITROLLBK_NOREPLY)) == 0) {
         free(sp->error);
         sp->error = NULL;
     } else {
@@ -2640,7 +2640,7 @@ static const char *db_rollback_int(Lua L, int *rc)
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_RBK_STATE);
     reqlog_set_event(sp->thd->logger, "sp");
-    *rc = handle_sql_commitrollback(sp->thd, sp->clnt, SENDRESPONSE_NO);
+    *rc = handle_sql_commitrollback(sp->thd, sp->clnt, TRANS_COMMITROLLBK_NOREPLY);
     sp->clnt->ready_for_heartbeats = 1;
     if ((sp->in_parent_trans == 0) && sp->make_parent_trans) {
         int tmp;
@@ -2698,7 +2698,7 @@ static void *dispatch_lua_thread(void *arg)
     clnt.sql = thd->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
-    clnt.trans_has_sp = 1;
+    clnt.dbtran.trans_has_sp = 1;
     clnt.queue_me = 1;
     strcpy(clnt.tzname, parent_clnt->tzname);
     int rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT); // --> exec_thread()
@@ -3117,7 +3117,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         goto bad;
     }
     Lua newlua = newsp->lua;
-    update_tran_funcs(newlua, sp->clnt->in_client_trans);
+    update_tran_funcs(newlua, in_client_trans(sp->clnt));
     remove_create_thread(newlua);
 
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
@@ -4059,7 +4059,7 @@ static int db_reset(lua_State *lua)
 static int db_get_trans(Lua L)
 {
     struct sqlclntstate *clnt = getsp(L)->clnt;
-    lua_pushboolean(L, clnt->in_client_trans);
+    lua_pushboolean(L, in_client_trans(clnt));
     lua_pushstring(L, tranlevel_tostr(clnt->dbtran.mode));
     return 2;
 }
@@ -6105,7 +6105,7 @@ static void clone_temp_tables(SP sp)
 
 static int begin_sp(struct sqlclntstate *clnt, char **err)
 {
-    if (clnt->in_client_trans) return 0;
+    if (in_client_trans(clnt)) return 0;
 
     const char *tmp;
     if ((tmp = begin_parent(clnt->sp->lua)) == NULL) return 0;
@@ -6431,7 +6431,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = get_func_by_name(L, "main", err)) != 0) return rc;
 
-    update_tran_funcs(L, clnt->in_client_trans);
+    update_tran_funcs(L, in_client_trans(clnt));
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
@@ -6622,7 +6622,7 @@ void *exec_trigger(trigger_reg_t *reg)
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
-    clnt.trans_has_sp = 1;
+    clnt.dbtran.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd;

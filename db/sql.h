@@ -220,9 +220,9 @@ enum ctrl_sqleng {
 };
 
 enum {
-    SENDRESPONSE_NO = 0,
-    SENDRESPONSE_ALL = 1,
-    SENDRESPONSE_ERR = 2
+    TRANS_COMMITROLLBK_NOREPLY = 0,
+    TRANS_COMMITROLLBK_NORMAL = 1,
+    TRANS_COMMITROLLBK_CHUNK = 2
 };
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -244,6 +244,7 @@ typedef struct {
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
+    int trans_has_sp; /* running a stored procedure */
     int maxchunksize; /* multi-transaction bulk mode */
     int crtchunksize; /* how many rows are processed already */
 } dbtran_type;
@@ -570,6 +571,11 @@ struct sql_hist_cost {
     int64_t rows;
 };
 
+#define in_client_trans(clnt) \
+    ((clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE || \
+    (clnt)->ctrl_sqlengine == SQLENG_PRE_STRT_STATE || \
+    (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE)
+
 /* Client specific sql state */
 struct sqlclntstate {
     uint64_t seqNo;            /* Monotonically increasing sequence number
@@ -660,7 +666,6 @@ struct sqlclntstate {
     int deadlock_recovered;
 
     /* lua stored procedure */
-    int trans_has_sp;
     struct stored_proc *sp;
     int exec_lua_thread;
     int want_stored_procedure_trace;
@@ -708,8 +713,6 @@ struct sqlclntstate {
                        need to pend the first error until a commit is issued.
                        any statements
                        past the first error are ignored. */
-    int in_client_trans; /* clnt is in a client transaction (ie: client ran
-                            "begin" but not yet commit or abort) */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 

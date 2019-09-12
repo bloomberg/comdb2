@@ -4694,6 +4694,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         return SQLITE_ABORT;
     }
     clnt->intrans = 0;
+    clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
 
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
@@ -8227,7 +8228,7 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
 
 #define comdb2_sqlite3VdbeError(vdbe,errstr) \
         sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db)); \
-        sqlite3VdbeError(vdbe, errstr); \
+        sqlite3VdbeError(vdbe, "%s", errstr); \
         sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
 /*
@@ -8260,6 +8261,7 @@ int sqlite3BtreeInsert(
     blob_buffer_t blobs[MAXBLOBS];
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    int commit_rc = 0;
 
     if (thd && pCur->db == NULL) {
         thd->nwrite++;
@@ -8411,12 +8413,14 @@ int sqlite3BtreeInsert(
 
                 /* commit current transaction */
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
-                rc = handle_sql_commitrollback(clnt->thd, clnt, SENDRESPONSE_ERR);
+                rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_COMMITROLLBK_CHUNK);
                 if (rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                            "Failed to commit chunk");
-                    rc = SQLITE_ERROR;
+                    comdb2_sqlite3VdbeError(pCur->vdbe, errstat_get_str(&clnt->osql.xerr));
+                    logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
+                    commit_rc = SQLITE_ABORT;
+                    /* we need to recreate the transaction in any case 
                     goto done;
+                    */
                 }
 
                 /* need to reset shadow table fast point in cursors */
@@ -8431,7 +8435,7 @@ int sqlite3BtreeInsert(
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                         SQLENG_PRE_STRT_STATE);
                 rc = handle_sql_begin(clnt->thd, clnt, 0);
-                if (rc) {
+                if (rc && !commit_rc) {
                     comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to start a new chunk");
                     rc = SQLITE_ERROR;
@@ -8439,15 +8443,19 @@ int sqlite3BtreeInsert(
                 }
 
                 rc = _start_new_transaction(clnt, thd);
-                if (rc) {
+                if (rc && !commit_rc) {
                     comdb2_sqlite3VdbeError(pCur->vdbe,
                             "Failed to initialize new transaction");
 
                     rc = SQLITE_ERROR;
                     goto done;
                 }
+                rc = commit_rc;
 
                 clnt->dbtran.crtchunksize = 1;
+                if (rc != SQLITE_OK)
+                    goto done;
+
             } else {
                 clnt->dbtran.crtchunksize++;
             }

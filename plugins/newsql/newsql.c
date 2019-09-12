@@ -148,7 +148,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     }
 
     if (*file == 0 && sql_query &&
-        (clnt->in_client_trans || clnt->is_hasql_retry) &&
+        (in_client_trans(clnt) || clnt->is_hasql_retry) &&
         clnt->snapshot_file) {
         sql_debug_logf(
             clnt, __func__, __LINE__,
@@ -1482,6 +1482,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     }
                     else {
                         clnt->dbtran.maxchunksize = tmp;
+                        /* in chunked mode, we disable verify retries */
+                        clnt->verifyretry_off = 1;
                     }
                 } else {
                     clnt->dbtran.mode = TRANLEVEL_INVALID;
@@ -2285,7 +2287,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
-        if (!clnt.in_client_trans) {
+        if (!in_client_trans(&clnt)) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
             clnt.had_errors = 0;
@@ -2386,7 +2388,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
-            if (clnt.trans_has_sp) {
+            if (clnt.dbtran.trans_has_sp) {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
             } else {
@@ -2407,7 +2409,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             }
         }
 
-        if (rc && !clnt.in_client_trans)
+        if (rc && !in_client_trans(&clnt))
             goto done;
 
         if (clnt.added_to_hist) {
