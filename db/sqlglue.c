@@ -104,7 +104,7 @@
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
-        int *bdberr);
+                               int *bdberr);
 
 struct temp_cursor;
 struct temp_table;
@@ -4458,8 +4458,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     return rc;
 }
 
-
-static int _start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
+static int _start_new_transaction(struct sqlclntstate *clnt,
+                                  struct sql_thread *thd)
 {
     int rc;
 
@@ -4497,11 +4497,11 @@ static int _start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *
     clnt->intrans = 1;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
-
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
-                clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
+        logmsg(LOGMSG_ERROR,
+               "%p starts transaction tid=%d mode=%d intrans=%d\n", clnt,
+               pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
@@ -4874,7 +4874,8 @@ int rollback_tran(struct sql_thread *thd, struct sqlclntstate *clnt)
 
     switch (clnt->dbtran.mode) {
     default:
-        logmsg(LOGMSG_ERROR, "%s: unknown mode %d\n", __func__, clnt->dbtran.mode);
+        logmsg(LOGMSG_ERROR, "%s: unknown mode %d\n", __func__,
+               clnt->dbtran.mode);
         rc = SQLITE_INTERNAL;
         break;
 
@@ -4905,7 +4906,6 @@ int rollback_tran(struct sql_thread *thd, struct sqlclntstate *clnt)
     case TRANLEVEL_SOSQL:
         rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
         break;
-
     }
 
     return rc;
@@ -4957,7 +4957,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
         clnt->dbtran.mode = TRANLEVEL_SOSQL;
         clnt->translevel_changed = 0;
         logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
-                tranlevel_tostr(clnt->dbtran.mode));
+               tranlevel_tostr(clnt->dbtran.mode));
     }
 
     rc = rollback_tran(thd, clnt);
@@ -8225,11 +8225,10 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     return rc;
 }
 
-
-#define comdb2_sqlite3VdbeError(vdbe,errstr) \
-        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db)); \
-        sqlite3VdbeError(vdbe, "%s", errstr); \
-        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+#define comdb2_sqlite3VdbeError(vdbe, errstr)                                  \
+    sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));                           \
+    sqlite3VdbeError(vdbe, "%s", errstr);                                      \
+    sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
 /*
  ** Insert a new record into the BTree.  The key is given by (pKey,nKey)
@@ -8395,8 +8394,8 @@ int sqlite3BtreeInsert(
             goto done;
         }
 
-
-        if (clnt->dbtran.maxchunksize > 0 && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+        if (clnt->dbtran.maxchunksize > 0 &&
+            clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
             if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
 
                 /* commit current transaction and reopen another one */
@@ -8405,20 +8404,23 @@ int sqlite3BtreeInsert(
                 bdberr = 0;
                 unlock_bdb_cursors(thd, NULL, &bdberr);
                 if (bdberr) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                            "Failed to disconnect berkeleydb cursors");
+                    comdb2_sqlite3VdbeError(
+                        pCur->vdbe, "Failed to disconnect berkeleydb cursors");
                     rc = SQLITE_ERROR;
                     goto done;
                 }
 
                 /* commit current transaction */
-                sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
-                rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_COMMITROLLBK_CHUNK);
+                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                        SQLENG_FNSH_STATE);
+                rc = handle_sql_commitrollback(clnt->thd, clnt,
+                                               TRANS_COMMITROLLBK_CHUNK);
                 if (rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe, errstat_get_str(&clnt->osql.xerr));
+                    comdb2_sqlite3VdbeError(pCur->vdbe,
+                                            errstat_get_str(&clnt->osql.xerr));
                     logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
                     commit_rc = SQLITE_ABORT;
-                    /* we need to recreate the transaction in any case 
+                    /* we need to recreate the transaction in any case
                     goto done;
                     */
                 }
@@ -8426,26 +8428,27 @@ int sqlite3BtreeInsert(
                 /* need to reset shadow table fast point in cursors */
                 if (thd->bt) {
                     BtCursor *cur = NULL;
-                    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk) {
+                    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+                    {
                         cur->shadtbl = NULL;
                     }
                 }
 
                 /* restart a new transaction */
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                        SQLENG_PRE_STRT_STATE);
+                                        SQLENG_PRE_STRT_STATE);
                 rc = handle_sql_begin(clnt->thd, clnt, 0);
                 if (rc && !commit_rc) {
                     comdb2_sqlite3VdbeError(pCur->vdbe,
-                            "Failed to start a new chunk");
+                                            "Failed to start a new chunk");
                     rc = SQLITE_ERROR;
                     goto done;
                 }
 
                 rc = _start_new_transaction(clnt, thd);
                 if (rc && !commit_rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                            "Failed to initialize new transaction");
+                    comdb2_sqlite3VdbeError(
+                        pCur->vdbe, "Failed to initialize new transaction");
 
                     rc = SQLITE_ERROR;
                     goto done;
@@ -8459,7 +8462,7 @@ int sqlite3BtreeInsert(
             } else {
                 clnt->dbtran.crtchunksize++;
             }
-        } 
+        }
 
         /* We ignore keys on insert but save dirty keys.
          * Keys are added if keys were set dirty when a record
@@ -9268,9 +9271,8 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
     Pthread_mutex_unlock(&thd->lk);
 }
 
-
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
-        int *bdberr)
+                               int *bdberr)
 {
     BtCursor *cur = NULL;
 

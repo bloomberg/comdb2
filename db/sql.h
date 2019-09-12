@@ -244,9 +244,9 @@ typedef struct {
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
-    int trans_has_sp; /* running a stored procedure */
-    int maxchunksize; /* multi-transaction bulk mode */
-    int crtchunksize; /* how many rows are processed already */
+    int trans_has_sp;     /* running a stored procedure */
+    int maxchunksize;     /* multi-transaction bulk mode */
+    int crtchunksize;     /* how many rows are processed already */
 } dbtran_type;
 typedef dbtran_type trans_t;
 
@@ -571,10 +571,10 @@ struct sql_hist_cost {
     int64_t rows;
 };
 
-#define in_client_trans(clnt) \
-    ((clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE || \
-    (clnt)->ctrl_sqlengine == SQLENG_PRE_STRT_STATE || \
-    (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE)
+#define in_client_trans(clnt)                                                  \
+    ((clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE ||                         \
+     (clnt)->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||                        \
+     (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE)
 
 /* Client specific sql state */
 struct sqlclntstate {

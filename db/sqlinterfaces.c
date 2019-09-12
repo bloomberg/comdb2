@@ -2131,7 +2131,7 @@ static int do_send_commitrollback_response(struct sqlclntstate *clnt,
                                            int sideeffects)
 {
     if (sideeffects == TRANS_COMMITROLLBK_NORMAL &&
-            (send_intrans_response(clnt) || !clnt->had_errors))
+        (send_intrans_response(clnt) || !clnt->had_errors))
         return 1;
     return 0;
 }
@@ -2261,9 +2261,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
         /* if this is still an error, but not verify, pass it back to client */
         else if (!can_retry) {
-            reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
-                                                 "(non verify error rc=%d) "
-                                                 "sendresp=%d\n",
+            reqlog_logf(thd->logger, REQL_QUERY,
+                        "\"%s\" SOCKSL retried done "
+                        "(non verify error rc=%d) "
+                        "sendresp=%d\n",
                         (clnt->sql) ? clnt->sql : "(???.)", rc, sideeffects);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         } else {
@@ -3270,8 +3271,9 @@ static void _prepare_error(struct sqlthdstate *thd,
     if (rc == SQLITE_SCHEMA_DOHSQL)
         return;
 
-    if (in_client_trans(clnt) && (rec->status & CACHE_HAS_HINT ||
-                                  has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
+    if (in_client_trans(clnt) &&
+        (rec->status & CACHE_HAS_HINT ||
+         has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
         !(rec->status & CACHE_FOUND_STR) &&
         (clnt->osql.replay == OSQL_RETRY_NONE)) {
 
@@ -3793,7 +3795,8 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
-        *outrc = handle_sql_commitrollback(thd, clnt, TRANS_COMMITROLLBK_NORMAL);
+        *outrc =
+            handle_sql_commitrollback(thd, clnt, TRANS_COMMITROLLBK_NORMAL);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:

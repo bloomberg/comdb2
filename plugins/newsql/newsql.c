@@ -1468,19 +1468,19 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
                 sqlstr = skipws(sqlstr);
- 
+
                 if (strncasecmp(sqlstr, "chunk", 5) == 0) {
                     int tmp;
                     sqlstr += 5;
                     sqlstr = skipws(sqlstr);
 
-                    if (!sqlstr || ( (tmp = atoi(sqlstr)) <= 0)) {
+                    if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
                         snprintf(err, sizeof(err),
-                                "set transaction chunk N: missing chunk size N \"%s\"",
-                                sqlstr);
+                                 "set transaction chunk N: missing chunk size "
+                                 "N \"%s\"",
+                                 sqlstr);
                         rc = ii + 1;
-                    }
-                    else {
+                    } else {
                         clnt->dbtran.maxchunksize = tmp;
                         /* in chunked mode, we disable verify retries */
                         clnt->verifyretry_off = 1;
@@ -1507,9 +1507,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         clnt->verify_retries = 0;
                         if (clnt->hasql_on == 1) {
                             newsql_set_high_availability(clnt);
-                            logmsg(
-                                    LOGMSG_ERROR,
-                                    "Enabling snapshot isolation high availability\n");
+                            logmsg(LOGMSG_ERROR, "Enabling snapshot isolation "
+                                                 "high availability\n");
                         }
                     }
                     if (clnt->dbtran.mode == TRANLEVEL_INVALID)
