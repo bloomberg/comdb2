@@ -115,13 +115,6 @@ static xStrCmp comdb2_get_xstrcmp_for_mode(
   return NULL;
 }
 
-static xMemCmp comdb2_get_xmemcmp_for_mode(
-  ruleset_match_mode_t mode
-){
-  if( mode==RULESET_MM_EXACT ) return memcmp;
-  return NULL;
-}
-
 static void comdb2_ruleset_str_to_action(
   enum ruleset_action *pAction,
   char *zBuf,

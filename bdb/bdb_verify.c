@@ -1168,7 +1168,8 @@ static inline void enqueue_work(td_processing_info_t *work,
 
     if (verify_thdpool) {
         int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp,
-                                 work, 0, NULL, THDPOOL_FORCE_QUEUE);
+                                 work, 0, NULL, THDPOOL_FORCE_QUEUE,
+                                 PRIORITY_T_DEFAULT);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:thdpool_enqueue error, proceeding sequentially\n",
