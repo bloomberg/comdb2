@@ -5332,7 +5332,7 @@ static int verify_dispatch_sql_query(
                 char zRuleRes[100];
                 memset(zRuleRes, 0, sizeof(zRuleRes));
                 snprintf0(zRuleRes, sizeof(zRuleRes),
-                          "Rejected due to rule #%d", ruleNo, rc);
+                          "Rejected due to rule #%d", ruleNo);
                 if (gbl_verbose_prioritize_queries) {
                     logmsg(LOGMSG_ERROR,
                            "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
