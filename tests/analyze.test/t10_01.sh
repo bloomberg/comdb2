@@ -200,7 +200,7 @@ function writer
 function reader
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' &> reader.out
 begin
 select * from t10 where id > 20 order by id
 commit
@@ -217,7 +217,7 @@ EOF
 function reader_recom
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<'EOF' &> reader_rcm.out
 set transaction read committed
 begin
 select * from t10 where id > 20 order by id
@@ -235,7 +235,7 @@ EOF
 function analyzer 
 {
     while true; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "analyze t10 100" > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "analyze t10 100" &> analyzer.out
         if [[ $? != 0 ]]; then
             echo "analyzer failed"
             exit 1
