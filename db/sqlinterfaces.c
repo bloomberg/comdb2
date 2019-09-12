@@ -809,7 +809,7 @@ static int comdb2_authorizer_for_sqlite(
       if (denyDdl || denyPragma) {
         return SQLITE_DENY;
       } else if (pAuthState->clnt != NULL) {
-        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
+        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
                __LINE__, __func__, pAuthState->clnt->sql);
         return SQLITE_OK;
       } else {
