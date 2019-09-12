@@ -1350,10 +1350,6 @@ static int process_this_session(
     uuid_t uuid;
 
     iq->queryid = osql_sess_queryid(sess);
-    uint64_t startprocessingus = comdb2_time_epochus();
-    reqlog_set_queue_time(iq->reqlogger, startprocessingus - iq->startus);
-    reqlog_set_start(iq->reqlogger, startprocessingus);
-
     osql_sess_getuuid(sess, uuid);
 
     if (rqid != OSQL_RQID_USE_UUID)

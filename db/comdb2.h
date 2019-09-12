@@ -2882,7 +2882,7 @@ int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
 void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt);
-void reqlog_set_start(struct reqlogger *logger, uint64_t start);
+void reqlog_set_startprcs(struct reqlogger *logger, uint64_t start);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
