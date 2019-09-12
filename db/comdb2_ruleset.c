@@ -410,7 +410,6 @@ static void comdb2_dump_ruleset_item(
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
-  xMemCmp memoryComparer,
   struct ruleset *rules,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
@@ -450,9 +449,6 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
   }
-  if( memoryComparer==NULL ){
-    memoryComparer = comdb2_get_xmemcmp_for_mode(rule->mode);
-  }
   if( rule->pFingerprint!=NULL && !comdb2_ruleset_fingerprints_allowed() ){
     char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
 
@@ -465,15 +461,9 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
 
     return RULESET_M_ERROR; /* have forbidden criteria */
   }
-  if( memoryComparer!=NULL ){
-    if( rule->pFingerprint!=NULL && memoryComparer(
-            clnt->work.aFingerprint, rule->pFingerprint, FPSZ)!=0 ){
-      return RULESET_M_FALSE; /* have criteria, not matched */
-    }
-  }else{
-    if( rule->pFingerprint!=NULL ){
-      return RULESET_M_NONE; /* no comparer ==> no matching */
-    }
+  if( rule->pFingerprint!=NULL && memcmp(
+          clnt->work.aFingerprint, rule->pFingerprint, FPSZ)!=0 ){
+    return RULESET_M_FALSE; /* have criteria, not matched */
   }
   switch( rule->action ){
     case RULESET_A_NONE: {
@@ -547,7 +537,6 @@ int comdb2_ruleset_fingerprints_allowed(void){
 
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,
-  xMemCmp memoryComparer,
   struct ruleset *rules,
   struct sqlclntstate *clnt,
   struct ruleset_result *result
@@ -558,7 +547,7 @@ size_t comdb2_evaluate_ruleset(
       struct ruleset_item *rule = &rules->aRule[i];
       if( rule->ruleNo==0 ){ continue; }
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
-        stringComparer, memoryComparer, rules, rule, clnt, result
+        stringComparer, rules, rule, clnt, result
       );
       if( match==RULESET_M_ERROR ){
         /* HACK: Invalidate current ruleset result if error. */

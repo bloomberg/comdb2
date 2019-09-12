@@ -201,7 +201,6 @@ int comdb2_ruleset_fingerprints_allowed(void);
 
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,
-  xMemCmp memoryComparer,
   struct ruleset *rules,
   struct sqlclntstate *clnt,
   struct ruleset_result *result
