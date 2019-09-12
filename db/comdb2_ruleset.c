@@ -121,7 +121,8 @@ static xMemCmp comdb2_get_xmemcmp_for_mode(
 
 static void comdb2_ruleset_str_to_action(
   enum ruleset_action *pAction,
-  char *zBuf
+  char *zBuf,
+  char **pzBad
 ){
   *pAction = RULESET_A_INVALID; /* assume the worst */
   if( !zBuf ) return;
@@ -138,6 +139,8 @@ static void comdb2_ruleset_str_to_action(
     *pAction = RULESET_A_LOW_PRIO;
   }else if( sqlite3_stricmp(zBuf, "HIGH_PRIO")==0 ){
     *pAction = RULESET_A_HIGH_PRIO;
+  }else if( pzBad!=NULL ){
+    *pzBad = zBuf;
   }
 }
 
@@ -167,7 +170,8 @@ static const char *comdb2_ruleset_action_to_str(
 
 static void comdb2_ruleset_str_to_flags(
   enum ruleset_flags *pFlags,
-  char *zBuf
+  char *zBuf,
+  char **pzBad
 ){
   enum ruleset_flags flags = RULESET_F_NONE;
   int count = 0;
@@ -179,11 +183,15 @@ static void comdb2_ruleset_str_to_flags(
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       flags |= RULESET_F_NONE;
       count++;
+    }else if( sqlite3_stricmp(zTok, "PRINT")==0 ){
+      flags |= RULESET_F_PRINT;
+      count++;
     }else if( sqlite3_stricmp(zTok, "STOP")==0 ){
       flags |= RULESET_F_STOP;
       count++;
     }else{
-      return; /* TODO: Bad flag, fail? */
+      if( pzBad!=NULL ) *pzBad = zTok;
+      return;
     }
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
@@ -201,6 +209,10 @@ static void comdb2_ruleset_flags_to_str(
   }
   char *zOrig = zBuf;
   int nRet;
+  if( nBuf>0 && flags&RULESET_F_PRINT ){
+    nRet = snprintf(zBuf, nBuf, "PRINT ");
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
   if( nBuf>0 && flags&RULESET_F_STOP ){
     nRet = snprintf(zBuf, nBuf, "STOP ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
@@ -213,7 +225,8 @@ static void comdb2_ruleset_flags_to_str(
 
 static void comdb2_ruleset_str_to_match_mode(
   enum ruleset_match_mode *pMode,
-  char *zBuf
+  char *zBuf,
+  char **pzBad
 ){
   enum ruleset_match_mode mode = RULESET_MM_NONE;
   int count = 0;
@@ -238,7 +251,8 @@ static void comdb2_ruleset_str_to_match_mode(
       mode |= RULESET_MM_NOCASE;
       count++;
     }else{
-      return; /* TODO: Bad flag, fail? */
+      if( pzBad!=NULL ) *pzBad = zTok;
+      return;
     }
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
@@ -669,6 +683,7 @@ int comdb2_load_ruleset(
     lineNo++;
     if( !zLine[0] ) continue; /* blank line */
     char *zBuf = zLine;
+    char *zBad = NULL;
     char *zTok = NULL;
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
     if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
@@ -736,11 +751,11 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_action(&rule->action, zTok);
+          comdb2_ruleset_str_to_action(&rule->action, zTok, &zBad);
           if( rule->action==RULESET_A_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s field value '%s'",
-                     zFileName, lineNo, zField, zTok);
+                     zFileName, lineNo, zField, zBad);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
@@ -787,11 +802,11 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_flags(&rule->flags, zTok);
+          comdb2_ruleset_str_to_flags(&rule->flags, zTok, &zBad);
           if( rule->flags==RULESET_F_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
-                     zFileName, lineNo, zField, zTok);
+                     zFileName, lineNo, zField, zBad);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
@@ -806,11 +821,11 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok);
+          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok, &zBad);
           if( rule->mode==RULESET_MM_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
-                     zFileName, lineNo, zField, zTok);
+                     zFileName, lineNo, zField, zBad);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
