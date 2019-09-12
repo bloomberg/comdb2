@@ -1076,7 +1076,7 @@ int comdb2_save_ruleset(
         sbuf2printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
       }
     }
-    if( rule->mode!=RULESET_MM_NONE ){
+    if( rule->mode!=RULESET_MM_NONE && rule->mode!=RULESET_MM_DEFAULT ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_match_mode_to_str(rule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){

@@ -86,7 +86,7 @@ enum ruleset_match_mode {
                             * manner.  This flag may be combined with EXACT,
                             * GLOB, and REGEXP. */
 
-  RULESET_MM_DEFAULT = RULESET_MM_EXACT | RULESET_MM_NOCASE
+  RULESET_MM_DEFAULT = RULESET_MM_EXACT
 };
 
 enum ruleset_string_match {
