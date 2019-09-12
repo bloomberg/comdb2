@@ -515,14 +515,11 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
-  loglvl level = (rule->flags & RULESET_F_PRINT) ? LOGMSG_INFO : LOGMSG_DEBUG;
+  loglvl level = (rule->flags & RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
   if( logmsg_level_ok(level) ){
-    comdb2_dump_ruleset_item(
-      (rule->flags & RULESET_F_PRINT) ? LOGMSG_INFO : LOGMSG_DEBUG, "MATCHED",
-      rules, rule, clnt
-    );
+    comdb2_dump_ruleset_item(level, "MATCHED", rules, rule, clnt);
   }
-  return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
+  return (rule->flags&RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
 int comdb2_ruleset_fingerprints_allowed(void){
