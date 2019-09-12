@@ -372,10 +372,10 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 60,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
          "On replicants, check this often for transaction status.")
 DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
          100, "On replicants, maximum deadlock recovered count allowed.")
