@@ -607,7 +607,9 @@ void comdb2_dump_ruleset(struct ruleset *rules){
     return;
   }
   for(int i=0; i<rules->nRule; i++){
-    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, &rules->aRule[i], NULL);
+    struct ruleset_item *rule = &rules->aRule[i];
+    if( rule->ruleNo==0 ){ continue; }
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, rule, NULL);
   }
 }
 
