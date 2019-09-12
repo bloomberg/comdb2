@@ -25,7 +25,7 @@
 (x=1)
 (x=2)
 (x=3)
-[CREATE TABLE txx(bad TEXT)] failed with rc -1 Rejected due to rule #6
+[CREATE TABLE txx(bad TEXT)] failed with rc 451 Rejected due to rule #6
 (out='Ruleset saved to file "t01_saved.ruleset"')
 (out='Ruleset saved to file "t02_saved.ruleset"')
 (out='ruleset 0x00000000 matched 0, ruleNo=0, action=NONE, priority=HIGHEST')
