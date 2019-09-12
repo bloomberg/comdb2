@@ -749,7 +749,9 @@ int comdb2_load_ruleset(
       assert( ruleNo<=rules->nRule );
       struct ruleset_item *rule = &rules->aRule[ruleNo-1];
       rule->ruleNo = ruleNo; /* NOTE: Rule now present. */
-      rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default match mode. */
+      if( rule->mode==RULESET_MM_NONE ){
+        rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default match mode. */
+      }
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         zField = "action";
@@ -1081,7 +1083,7 @@ int comdb2_save_ruleset(
         sbuf2printf(sb, "rule %d flags {%s}\n", ruleNo, zBuf);
       }
     }
-    if( rule->mode!=RULESET_MM_NONE && rule->mode!=RULESET_MM_DEFAULT ){
+    if( rule->mode!=RULESET_MM_NONE ){
       memset(zBuf, 0, sizeof(zBuf));
       comdb2_ruleset_match_mode_to_str(rule->mode, zBuf, sizeof(zBuf));
       if( zBuf[0]!='\0' ){
