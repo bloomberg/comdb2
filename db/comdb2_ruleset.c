@@ -19,6 +19,7 @@
 #include "sqliteInt.h"
 #include "priority_queue.h"
 #include "sql.h"
+#include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 #include "logmsg.h"
 #include "sbuf2.h"
@@ -389,15 +390,22 @@ static void comdb2_dump_ruleset_item(
   logmsg(level, "%s: ruleset %p rule #%d %s seqNo %llu, action "
          "{%s} (0x%llX), adjustment %lld, flags {%s} (0x%llX), mode "
          "{%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
-         "sql {%s}, fingerprint {%s}\n", __func__, rules, rule->ruleNo,
-         zMessage ? zMessage : "<null>", (unsigned long long int)(clnt ?
-         clnt->seqNo : 0), zAction ? zAction : "<null>", (unsigned long
-         long int)rule->action, rule->adjustment, zFlags, (unsigned long
-         long int)rule->flags, zMode, (unsigned long long int)rule->mode,
+         "sql {%s}, fingerprint {%s}\n",
+         __func__, rules, rule->ruleNo,
+         zMessage ? zMessage : "<null>",
+         (unsigned long long int)(clnt ? clnt->seqNo : 0),
+         zAction ? zAction : "<null>",
+         (unsigned long long int)rule->action,
+         rule->adjustment,
+         zFlags,
+         (unsigned long long int)rule->flags,
+         zMode,
+         (unsigned long long int)rule->mode,
          rule->zOriginHost ? rule->zOriginHost : "<null>",
          rule->zOriginTask ? rule->zOriginTask : "<null>",
          rule->zUser ? rule->zUser : "<null>",
-         rule->zSql ? rule->zSql : "<null>", zFingerprint);
+         rule->zSql ? rule->zSql : "<null>",
+         zFingerprint);
 }
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
@@ -597,8 +605,10 @@ static int blob_string_to_fingerprint(
 void comdb2_dump_ruleset(struct ruleset *rules){
   if( rules==NULL ) return;
   logmsg(LOGMSG_USER,
-         "%s: ruleset %p, generation %d, count %zu\n",
-         __func__, rules, rules->generation, rules->nRule);
+         "%s: ruleset %p, generation %llu, rule count %zu, "
+         "rule fingerprint count %zu\n", __func__, rules,
+         (unsigned long long int)rules->generation, rules->nRule,
+         rules->nFingerprint);
   if( rules->aRule==NULL ){
     logmsg(LOGMSG_USER,
            "%s: rules for ruleset %p are missing!\n", __func__, rules);
