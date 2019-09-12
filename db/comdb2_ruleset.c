@@ -130,6 +130,8 @@ static void comdb2_ruleset_str_to_action(
     *pAction = RULESET_A_NONE;
   }else if( sqlite3_stricmp(zBuf, "REJECT")==0 ){
     *pAction = RULESET_A_REJECT;
+  }else if( sqlite3_stricmp(zBuf, "REJECT_ALL")==0 ){
+    *pAction = RULESET_A_REJECT_ALL;
   }else if( sqlite3_stricmp(zBuf, "UNREJECT")==0 ){
     *pAction = RULESET_A_UNREJECT;
   }else if( sqlite3_stricmp(zBuf, "LOW_PRIO")==0 ){
@@ -146,11 +148,12 @@ static const char *comdb2_ruleset_action_to_str(
   int bStrict
 ){
   switch( action ){
-    case RULESET_A_NONE:      return "NONE";
-    case RULESET_A_REJECT:    return "REJECT";
-    case RULESET_A_UNREJECT:  return "UNREJECT";
-    case RULESET_A_LOW_PRIO:  return "LOW_PRIO";
-    case RULESET_A_HIGH_PRIO: return "HIGH_PRIO";
+    case RULESET_A_NONE:       return "NONE";
+    case RULESET_A_REJECT:     return "REJECT";
+    case RULESET_A_REJECT_ALL: return "REJECT_ALL";
+    case RULESET_A_UNREJECT:   return "UNREJECT";
+    case RULESET_A_LOW_PRIO:   return "LOW_PRIO";
+    case RULESET_A_HIGH_PRIO:  return "HIGH_PRIO";
     default: {
       if( bStrict ){
         return NULL;
@@ -453,18 +456,34 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   switch( rule->action ){
     case RULESET_A_NONE: {
       /* do nothing (i.e. caller wants to test for match only) */
+      if( (result->action&RULESET_A_REJECT_MASK)==0 ){
+        result->ruleNo = ruleNo;
+      }
       break;
     }
     case RULESET_A_REJECT: {
-      result->action |= RULESET_A_REJECT;
+      if( (result->action&RULESET_A_REJECT_MASK)==0 ){
+        result->ruleNo = ruleNo;
+        result->action |= RULESET_A_REJECT;
+      }
+      break;
+    }
+    case RULESET_A_REJECT_ALL: {
+      result->ruleNo = ruleNo;
+      result->action &= ~RULESET_A_REJECT;
+      result->action |= RULESET_A_REJECT_ALL;
       break;
     }
     case RULESET_A_UNREJECT: {
-      result->action &= ~RULESET_A_REJECT;
+      result->ruleNo = ruleNo;
+      result->action &= ~RULESET_A_REJECT_MASK;
       break;
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
+      if( (result->action&RULESET_A_REJECT_MASK)==0 ){
+        result->ruleNo = ruleNo;
+      }
       result->action |= rule->action;
       comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
       break;
@@ -483,7 +502,10 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
-  comdb2_dump_ruleset_item(LOGMSG_DEBUG,"MATCHED",ruleNo,rules,rule,clnt);
+  comdb2_dump_ruleset_item(
+    (rule->flags & RULESET_F_PRINT) ? LOGMSG_INFO : LOGMSG_DEBUG, "MATCHED",
+    ruleNo, rules, rule, clnt
+  );
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
 
@@ -532,8 +554,8 @@ size_t comdb2_ruleset_result_to_str(
   size_t nBuf
 ){
   char zBuf2[100] = {0};
-  return (size_t)snprintf(zBuf, nBuf, "action=%s, priority=%s",
-      comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
+  return (size_t)snprintf(zBuf, nBuf, "ruleNo=%d, action=%s, priority=%s",
+      result->ruleNo, comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
       comdb2_priority_to_str(result->priority, zBuf2, sizeof(zBuf2), 0)
   );
 }

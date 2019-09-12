@@ -24,21 +24,30 @@
 #endif
 
 enum ruleset_action {
-  RULESET_A_INVALID = -1, /* Invalid action, this probably means parsing a
-                           * string failed to result in a valid action. */
+  RULESET_A_INVALID = -1,   /* Invalid action, this probably means parsing a
+                             * string failed to result in a valid action. */
 
-  RULESET_A_NONE = 0,     /* Take no action. */
+  RULESET_A_NONE = 0,       /* Take no action. */
 
-  RULESET_A_REJECT = 1,   /* Reject the request.  May be combined with the
-                           * 'STOP' flag to make permanent. */
+  RULESET_A_REJECT = 1,     /* Reject the request.  May be combined with the
+                             * 'STOP' flag to make permanent. */
 
-  RULESET_A_UNREJECT = 2, /* Unreject the request. */
+  RULESET_A_REJECT_ALL = 2, /* Reject the request with an error indicating
+                             * that it may not be retried on another node.
+                             * May be combined with the 'STOP' flag to make
+                             * permanent. */
 
-  RULESET_A_LOW_PRIO = 4, /* Lower the priority of the request by the value
-                           * associated with this rule. */
+  RULESET_A_UNREJECT = 4,   /* Unreject the request.  This will undo both
+                             * the 'REJECT' action and the 'REJECT_ALL'
+                             * action. */
 
-  RULESET_A_HIGH_PRIO = 8 /* Raise the priority of the request by the value
-                           * associated with this rule. */
+  RULESET_A_LOW_PRIO = 8,   /* Lower the priority of the request by the value
+                             * associated with this rule. */
+
+  RULESET_A_HIGH_PRIO = 16,  /* Raise the priority of the request by the value
+                              * associated with this rule. */
+
+  RULESET_A_REJECT_MASK = RULESET_A_REJECT | RULESET_A_REJECT_ALL
 };
 
 enum ruleset_flags {
@@ -47,7 +56,9 @@ enum ruleset_flags {
 
   RULESET_F_NONE = 0,     /* No special behavior. */
 
-  RULESET_F_STOP = 1      /* Stop if the associated rule is matched.  No more
+  RULESET_F_PRINT = 1,    /* Emit a trace message if the rule is matched. */
+
+  RULESET_F_STOP = 2      /* Stop if the associated rule is matched.  No more
                            * rules will be processed for this request -AND-
                            * the request will NOT be retried. TODO: ? */
 };
@@ -160,6 +171,9 @@ struct ruleset_result {
   priority_t priority;            /* What will the final priority be for this
                                    * ruleset?  Depending on the action, this
                                    * value may be ignored. */
+
+  int ruleNo;                     /* Which rule, if any, was the primary one
+                                   * responsible for the result action? */
 };
 
 typedef int (*xStrCmp)(const char *, const char *);

@@ -111,6 +111,14 @@
 
 #include "dohsql.h"
 
+/*
+** WARNING: These enumeration values are not arbitrary.  They represent
+**          indexes into the array of meta-command names contained in
+**          the is_transaction_meta_sql() function.  New values should
+**          generally be added at the end and all of these values must
+**          be kept in sync with the azMeta string array contained in
+**          the is_transaction_meta_sql() function.
+*/
 enum tsql_meta_command {
   TSMC_NONE = 0,
   TSMC_BEGIN = 1,
@@ -1125,6 +1133,9 @@ static int is_meta_sql(const char *zSql, const char *azMeta[])
 
 static int is_stored_proc_sql(const char *zSql)
 {
+    /*
+    ** WARNING: The last element of this array must be NULL.
+    */
     static const char *azMeta[] = { "EXEC", "EXECUTE", NULL };
     return is_meta_sql(zSql, azMeta);
 }
@@ -1136,6 +1147,13 @@ static int is_stored_proc(struct sqlclntstate *clnt)
 
 static tsql_meta_command_t is_transaction_meta_sql(const char *zSql)
 {
+    /*
+    ** WARNING: The last element of this array must be NULL.  If this
+    **          array is changed, the tsql_meta_command enumeration must
+    **          be changed as well.  The values in the tsql_meta_command
+    **          enumeration represent the indexes of the associated
+    **          meta-command names string in this array.
+    */
     static const char *azMeta[] = { "BEGIN", "COMMIT", "ROLLBACK", NULL };
     return is_meta_sql(zSql, azMeta);
 }
@@ -3351,7 +3369,25 @@ static void free_original_normalized_sql(
 static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
   struct sql_state *rec,
-  int iDefDqId
+  int iDefDqId /* Default return value for double-quote identifiers:
+                *
+                * A value of zero means that double-quoted strings should
+                * always be treated as identifiers when there is no Vdbe
+                * available.
+                *
+                * A value of non-zero means that double-quoted strings
+                * should always be treated as string literals when there
+                * is no Vdbe available.
+                *
+                * In general, this function is called from two primary
+                * places: 1) prior to executing a SQL query, in order to
+                * help calculate the fingerprint for use by the ruleset
+                * engine. 2) after executing a SQL query, in order to
+                * calculate the fingerprint (again) based on the prepared
+                * statement.  For case 1), there will be no Vdbe, because
+                * that work is performed on the AppSock thread, not a SQL
+                * engine thread.
+                */
 ){
   if (gbl_fingerprint_queries) {
     /*
@@ -4789,7 +4825,9 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
 static int can_execute_sql_query_now(
   struct sqlthdstate *thd,
   struct sqlclntstate *clnt,
+  int *pRuleNo,
   int *pbRejected,
+  int *pbTryAgain,
   priority_t *pPriority
 ){
   struct ruleset_result result = {0};
@@ -4802,7 +4840,7 @@ static int can_execute_sql_query_now(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );
   if (gbl_verbose_prioritize_queries) {
-    logmsg(LOGMSG_DEBUG, "%s: PRE seqNo=%llu, sql={%s}, count=%d, %s\n",
+    logmsg(LOGMSG_INFO, "%s: PRE seqNo=%llu, sql={%s}, count=%d, %s\n",
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
            (int)count, clnt->work.zRuleRes);
   }
@@ -4814,7 +4852,9 @@ static int can_execute_sql_query_now(
       logmsg(LOGMSG_WARN,
              "%s: POST seqNo=%llu, forcing random SQL work item {%s} reject\n",
              __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
+      *pRuleNo = -1; /* no rule was specifically responsible */
       *pbRejected = 1;
+      *pbTryAgain = 0;
       return 0;
     } else if (gbl_random_sql_work_delayed &&
         !(rand() % gbl_random_sql_work_delayed)) {
@@ -4828,7 +4868,15 @@ static int can_execute_sql_query_now(
   *pbRejected = 0;
   switch (result.action) {
     case RULESET_A_REJECT: {
+      *pRuleNo = result.ruleNo;
       *pbRejected = 1;
+      *pbTryAgain = 1;
+      return 0;
+    }
+    case RULESET_A_REJECT_ALL: {
+      *pRuleNo = result.ruleNo;
+      *pbRejected = 1;
+      *pbTryAgain = 0;
       return 0;
     }
     case RULESET_A_LOW_PRIO:
@@ -4860,7 +4908,7 @@ static int can_execute_sql_query_now(
   if (gbl_verbose_prioritize_queries) {
     char zPriority1[100] = {0};
     char zPriority2[100] = {0};
-    logmsg(LOGMSG_DEBUG,
+    logmsg(LOGMSG_INFO,
       "%s: POST seqNo=%llu, sql={%s} ==> query priority %s VS pool priority "
       "%s: %s\n", __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
       comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
@@ -5271,25 +5319,28 @@ static int verify_dispatch_sql_query(
             preview_and_calc_fingerprint(clnt);
         }
 
+        int ruleNo = 0;
         int bRejected = 0;
+        int bTryAgain = 0;
 
         *pPriority = PRIORITY_T_HIGHEST; /* TODO: Tunable default priority? */
 
         if (!can_execute_sql_query_now(
-                clnt->thd, clnt, &bRejected, pPriority)) {
+                clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority)) {
             if (bRejected) {
+                int rc = bTryAgain ? CDB2ERR_REJECTED: ERR_QUERY_REJECTED;
+                char zRuleRes[100];
+                memset(zRuleRes, 0, sizeof(zRuleRes));
+                snprintf0(zRuleRes, sizeof(zRuleRes),
+                          "Rejected due to rule #%d", ruleNo, rc);
                 if (gbl_verbose_prioritize_queries) {
-                    /*
-                    ** TODO: This log message should be unconditional?
-                    */
                     logmsg(LOGMSG_ERROR,
-                           "%s: REJECTED seqNo=%llu, rc=%d {%s}\n",
+                           "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
                            __func__, (long long unsigned int)clnt->seqNo,
-                           ERR_QUERY_REJECTED, clnt->sql);
+                           rc, clnt->sql, zRuleRes);
                 }
-                send_run_error(clnt, "Client api should change nodes",
-                               CDB2ERR_CHANGENODE);
-                return ERR_QUERY_REJECTED;
+                send_run_error(clnt, zRuleRes, rc);
+                return rc;
             }
         }
     }
