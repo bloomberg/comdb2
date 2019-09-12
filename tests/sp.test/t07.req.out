@@ -1,0 +1,5 @@
+(rows inserted=1)
+(version='sptest')
+(count(*)=1)
+[exec procedure implicit_txn()] failed with rc -8 Table 't' find old record failed unable to delete genid =dum rc=4
+(count(*)=1)
