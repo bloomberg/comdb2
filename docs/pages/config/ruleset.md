@@ -109,25 +109,67 @@ compatible with the [SQLite regular expression extension](https://www.sqlite.org
 The match mode `NOCASE` may be combined with another match mode to enable
 case-insensitive matching.
 
-### Example #1
+### Annotated Example #1
 
 ```
+#######################################################
+# The 'version' line is required and must be the first
+# line that is not blank and not a command.  Currently,
+# the only valid version is '1'.
+#######################################################
+
 version 1
 
+#######################################################
+# Each rule definition may occupy multiple lines, with
+# each line containing one or more property name/value
+# pairs, delimited by whitespace.  For property values
+# that may contain whitepace, e.g. 'sql', semicolon is
+# used to indicate the end of that property value.
+#######################################################
+
+# The first rule is designed to reject all SQL queries
+# matching the specified fingerprint, which corresponds
+# to the SQL query 'SELECT * FROM t1'.  There are no
+# other criteria for the rule.
 rule 1 action REJECT
 rule 1 fingerprint X'a9c8b6ddb5b9e55ee41b7f5a46ec4e45'
 rule 1 flags STOP
 
+# The second rule is designed to lower the priority of
+# SQL queries that originate from a database user with
+# the name 'Robert'.  The SQL query will be allowed to
+# run; however, other higher priority SQL queries may
+# run first even if they were submitted later.
 rule 2 action LOW_PRIO
 rule 2 adjustment 1000
 rule 2 user Robert
 
+# The third rule is designed to raise the priority of
+# SQL queries that originate from tasks with a name
+# matching the specified GLOB pattern.  In this case,
+# it refers to the command line SQL query tool.
 rule 3 action HIGH_PRIO
 rule 3 adjustment 1000
 rule 3 mode GLOB
 rule 3 originTask */cdb2sql
 
+# The fourth rule is designed to emit a trace when a
+# SQL query matching the specified regular expression
+# is seen.  In theory, subsequent rules could alter
+# the priority of this SQL query or prevent if from
+# executing.
 rule 4 action NONE
+rule 4 flags PRINT
 rule 4 mode REGEXP, NOCASE
 rule 4 sql ^CREATE +.*$
+
+# The fifth rule is designed to allow SQL queries
+# that may have been previously marked as rejected to
+# run if they originate from a database user with the
+# name 'david'.  For this rule, the user name will be
+# compared in a case-insensitive manner.
+rule 5 action UNREJECT
+rule 5 mode EXACT NOCASE
+rule 5 user david
 ```
