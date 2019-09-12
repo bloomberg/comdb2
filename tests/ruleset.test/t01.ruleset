@@ -13,3 +13,8 @@ rule 3 fingerprint X'fb34995274c6a68a94ae4b9fcfd2d535'
 
 rule 4 action NONE
 rule 4 fingerprint X'4f16a8ec9db90f803e406659938b2602'
+
+rule 6 action REJECT_ALL
+rule 6 flags STOP PRINT
+rule 6 mode GLOB NOCASE
+rule 6 sql CREATE *
