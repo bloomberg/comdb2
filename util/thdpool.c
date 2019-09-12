@@ -1052,7 +1052,15 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             pool->num_enqueued++;
             int queue_rc = priority_queue_add(&pool->queue, priority, item);
 
-            if (queue_rc == 0 && pool->queued_callback)
+            if (queue_rc != 0) {
+                pool->num_failed_dispatches++;
+                errUNLOCK(&pool->mutex);
+                logmsg(LOGMSG_ERROR, "%s(%s):priority_queue_add failed, rc=%d\n",
+                        __func__, pool->name, queue_rc);
+                return -1;
+            }
+
+            if (pool->queued_callback)
                 pool->queued_callback(work);
 
             if (priority_queue_count(&pool->queue) > pool->peakqueue) {
