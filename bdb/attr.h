@@ -224,6 +224,8 @@ DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "maximum database thrashing)")
 DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
          "Size of the verify thread stack.")
+DEF_ATTR(VERIFY_POOL_MAXT, verify_pool_maxt, QUANTITY, 8,
+         "Max Number of verify threads in the thrd pool.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
