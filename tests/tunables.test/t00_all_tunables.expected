@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=930)
+(TUNABLES_COUNT=931)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -915,6 +915,7 @@
 (name='verify_dbreg', description='Periodically check if dbreg entries are correct', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_directio', description='Run expensive checks on directio calls', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_master_lease_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='verify_pool_maxt', description='Max Number of verify threads in the thrd pool.', type='INTEGER', value='8', read_only='N')
 (name='verify_thread_stacksz', description='Size of the verify thread stack.', type='INTEGER', value='2097152', read_only='N')
 (name='verifycheckpoints', description='Highly paranoid checkpoint validity checks', type='BOOLEAN', value='OFF', read_only='N')
 (name='verifylsn', description='Verify if LSN written before writing page', type='BOOLEAN', value='OFF', read_only='N')
