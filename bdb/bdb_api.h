@@ -1689,23 +1689,6 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
 
-int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
-    int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
-                            void *keyout, int *keysz),
-    int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
-                                   int bloboffs[16], int *nblobs),
-    int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver),
-    int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,
-                                    int blobno),
-    void (*free_blob_buffer_callback)(void *parm),
-    unsigned long long (*verify_indexes_callback)(void *parm, void *dta,
-                                                  void *blob_parm),
-    void *callback_parm, 
-    int (*lua_callback)(void *, const char *), void *lua_params, 
-    void *callback_blob_buf, int progress_report_seconds,
-    int attempt_fix);
-
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
 void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version);

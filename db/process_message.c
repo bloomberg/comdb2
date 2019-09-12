@@ -105,6 +105,7 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
+extern struct thdpool *gbl_verify_thdpool;
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -3109,6 +3110,11 @@ clipper_usage:
         thdpool_process_message(gbl_udppfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "pgcompactpool") == 0) {
         thdpool_process_message(gbl_pgcompact_thdpool, line, lline, st);
+    } else if (tokcmp(tok, ltok, "verifypool") == 0) {
+        if (gbl_verify_thdpool)
+            thdpool_process_message(gbl_verify_thdpool, line, lline, st);
+        else
+            logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
     } else if (tokcmp(tok, ltok, "oldestgenids") == 0) {
         int i, stripe;
         void *buf = malloc(64 * 1024);
