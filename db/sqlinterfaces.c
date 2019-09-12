@@ -4844,6 +4844,7 @@ static int can_execute_sql_query_now(
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
            (int)count, clnt->work.zRuleRes);
   }
+  *pbRejected = 0;
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
       (result.action != RULESET_A_LOW_PRIO)) {
@@ -4865,7 +4866,6 @@ static int can_execute_sql_query_now(
     }
   }
   /* END FAULT INJECTION TEST CODE */
-  *pbRejected = 0;
   switch (result.action) {
     case RULESET_A_REJECT: {
       *pRuleNo = result.ruleNo;
