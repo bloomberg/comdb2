@@ -39,6 +39,8 @@ extern const char *re_compile(void**,const char*,int);
 extern int re_match(void*,const unsigned char*,int);
 extern void re_free(void*);
 
+static uint64_t gbl_ruleset_generation = 0;
+
 static int glob_match(
   const char *zStr1,
   const char *zStr2
@@ -361,7 +363,6 @@ static void comdb2_adjust_result_priority(
 static void comdb2_dump_ruleset_item(
   loglvl level,
   char *zMessage,
-  int ruleNo,
   struct ruleset *rules,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt
@@ -388,11 +389,11 @@ static void comdb2_dump_ruleset_item(
   logmsg(level, "%s: ruleset %p rule #%d %s seqNo %llu, action "
          "{%s} (0x%llX), adjustment %lld, flags {%s} (0x%llX), mode "
          "{%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
-         "sql {%s}, fingerprint {%s}\n", __func__, rules, ruleNo, zMessage ?
-         zMessage : "<null>", (unsigned long long int)(clnt ? clnt->seqNo : 0),
-         zAction ? zAction : "<null>", (unsigned long long int)rule->action,
-         rule->adjustment, zFlags, (unsigned long long int)rule->flags,
-         zMode, (unsigned long long int)rule->mode,
+         "sql {%s}, fingerprint {%s}\n", __func__, rules, rule->ruleNo,
+         zMessage ? zMessage : "<null>", (unsigned long long int)(clnt ?
+         clnt->seqNo : 0), zAction ? zAction : "<null>", (unsigned long
+         long int)rule->action, rule->adjustment, zFlags, (unsigned long
+         long int)rule->flags, zMode, (unsigned long long int)rule->mode,
          rule->zOriginHost ? rule->zOriginHost : "<null>",
          rule->zOriginTask ? rule->zOriginTask : "<null>",
          rule->zUser ? rule->zUser : "<null>",
@@ -402,7 +403,6 @@ static void comdb2_dump_ruleset_item(
 static ruleset_match_t comdb2_evaluate_ruleset_item(
   xStrCmp stringComparer,
   xMemCmp memoryComparer,
-  int ruleNo,
   struct ruleset *rules,
   struct ruleset_item *rule,
   struct sqlclntstate *clnt,
@@ -453,7 +453,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
 
     logmsg(LOGMSG_ERROR,
            "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
-           "disabled\n", __func__, ruleNo, zFingerprint);
+           "disabled\n", __func__, rule->ruleNo, zFingerprint);
 
     return RULESET_M_ERROR; /* have forbidden criteria */
   }
@@ -471,32 +471,32 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     case RULESET_A_NONE: {
       /* do nothing (i.e. caller wants to test for match only) */
       if( (result->action&RULESET_A_REJECT_MASK)==0 ){
-        result->ruleNo = ruleNo;
+        result->ruleNo = rule->ruleNo;
       }
       break;
     }
     case RULESET_A_REJECT: {
       if( (result->action&RULESET_A_REJECT_MASK)==0 ){
-        result->ruleNo = ruleNo;
+        result->ruleNo = rule->ruleNo;
         result->action |= RULESET_A_REJECT;
       }
       break;
     }
     case RULESET_A_REJECT_ALL: {
-      result->ruleNo = ruleNo;
+      result->ruleNo = rule->ruleNo;
       result->action &= ~RULESET_A_REJECT;
       result->action |= RULESET_A_REJECT_ALL;
       break;
     }
     case RULESET_A_UNREJECT: {
-      result->ruleNo = ruleNo;
+      result->ruleNo = rule->ruleNo;
       result->action &= ~RULESET_A_REJECT_MASK;
       break;
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
       if( (result->action&RULESET_A_REJECT_MASK)==0 ){
-        result->ruleNo = ruleNo;
+        result->ruleNo = rule->ruleNo;
       }
       result->action |= rule->action;
       comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
@@ -504,7 +504,8 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     }
     default: {
       logmsg(LOGMSG_ERROR,
-             "%s: unsupported rule action %d\n", __func__, rule->action);
+             "%s: unsupported action 0x%x for rule #%d\n", __func__,
+             rule->action, rule->ruleNo);
       break;
     }
   }
@@ -518,7 +519,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   */
   comdb2_dump_ruleset_item(
     (rule->flags & RULESET_F_PRINT) ? LOGMSG_INFO : LOGMSG_DEBUG, "MATCHED",
-    ruleNo, rules, rule, clnt
+    rules, rule, clnt
   );
   return (rule->flags & RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
@@ -546,9 +547,10 @@ size_t comdb2_evaluate_ruleset(
   size_t count = 0;
   if( rules!=NULL ){
     for(int i=0; i<rules->nRule; i++){
+      struct ruleset_item *rule = &rules->aRule[i];
+      if( rule->ruleNo==0 ){ continue; }
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
-        stringComparer, memoryComparer, i+1, rules, &rules->aRule[i],
-        clnt, result
+        stringComparer, memoryComparer, rules, rule, clnt, result
       );
       if( match==RULESET_M_ERROR ){
         /* HACK: Invalidate current ruleset result if error. */
@@ -603,11 +605,12 @@ void comdb2_dump_ruleset(struct ruleset *rules){
     return;
   }
   for(int i=0; i<rules->nRule; i++){
-    comdb2_dump_ruleset_item(LOGMSG_USER,NULL,i+1,rules,&rules->aRule[i],NULL);
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, &rules->aRule[i], NULL);
   }
 }
 
 void comdb2_free_ruleset(struct ruleset *rules){
+  ATOMIC_ADD64(gbl_ruleset_generation, 1);
   if( rules!=NULL ){
     if( rules->aRule!=NULL ){
       for(int i=0; i<rules->nRule; i++){
@@ -739,7 +742,10 @@ int comdb2_load_ruleset(
         rules->nRule = ruleNo;
       }
       ruleNo--;
+      assert( ruleNo>0 );
       struct ruleset_item *rule = &rules->aRule[ruleNo];
+      rule->ruleNo = ruleNo; /* NOTE: Rule now present. */
+      rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default match mode. */
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         zField = "action";
@@ -1001,6 +1007,7 @@ int comdb2_load_ruleset(
   }
 
   comdb2_free_ruleset(*pRules);
+  rules->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
   *pRules = rules;
 
   rc = 0;
@@ -1048,7 +1055,8 @@ int comdb2_save_ruleset(
   sbuf2printf(sb, "version %d\n\n", 1);
   for(int i=0; i<rules->nRule; i++){
     struct ruleset_item *rule = &rules->aRule[i];
-    int ruleNo = i+1;
+    int ruleNo = rule->ruleNo;
+    if( ruleNo==0 ){ continue; }
     int mayNeedLf = 1;
     if( rule->action!=RULESET_A_INVALID ){
       zStr = comdb2_ruleset_action_to_str(rule->action, NULL, 0, 1);

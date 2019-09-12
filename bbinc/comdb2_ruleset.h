@@ -82,9 +82,11 @@ enum ruleset_match_mode {
   RULESET_MM_REGEXP = 4,   /* The string criteria for the rule are actually
                             * regular expression patterns. */
 
-  RULESET_MM_NOCASE = 8    /* Matches should be performed in case-insensitive
+  RULESET_MM_NOCASE = 8,   /* Matches should be performed in case-insensitive
                             * manner.  This flag may be combined with EXACT,
                             * GLOB, and REGEXP. */
+
+  RULESET_MM_DEFAULT = RULESET_MM_EXACT | RULESET_MM_NOCASE
 };
 
 enum ruleset_string_match {
@@ -115,6 +117,11 @@ enum ruleset_match {
 };
 
 struct ruleset_item {
+  int ruleNo;                     /* The number assigned to this rule.  If
+                                   * this is zero, the rule has not been
+                                   * loaded and should not be evaluated or
+                                   * saved (i.e. it is an empty slot). */
+
   enum ruleset_action action;     /* If this rule is matched, what should be
                                    * done in respone? */
 
@@ -153,7 +160,7 @@ struct ruleset_item {
 };
 
 struct ruleset {
-  int generation;                 /* When was this set of rules read into
+  uint64_t generation;            /* When was this set of rules read into
                                    * memory?*/
 
   size_t nRule;                   /* How many rules are in this ruleset? */
