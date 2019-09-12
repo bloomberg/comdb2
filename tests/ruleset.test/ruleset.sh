@@ -18,15 +18,23 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1 | sed 's/=[0-9][0-9][0-9][0-9]/=yyyy/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "CREATE TABLE txx(bad TEXT);" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/rulesets/t01_saved.ruleset')" | sed 's/file ".*"/file "t01_saved.ruleset"/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/rulesets/t02_saved.ruleset')" | sed 's/file ".*"/file "t02_saved.ruleset"/g'
 
 if [ $SP_HOST != `hostname` ]; then
     scp $SP_HOST:$DBDIR/rulesets/t01_saved.ruleset $DBDIR/rulesets/t01_saved.ruleset
+    scp $SP_HOST:$DBDIR/rulesets/t02_saved.ruleset $DBDIR/rulesets/t02_saved.ruleset
 fi
 
 if ! diff $DBDIR/rulesets/t01.ruleset $DBDIR/rulesets/t01_saved.ruleset ; then
-  echo output is different from expected
+  echo output for t01_saved.ruleset is different from expected
+  exit 1
+fi
+
+if ! diff $DBDIR/rulesets/t01.ruleset $DBDIR/rulesets/t02_saved.ruleset ; then
+  echo output for t02_saved.ruleset is different from expected
   exit 1
 fi
 
