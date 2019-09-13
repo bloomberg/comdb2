@@ -17,10 +17,23 @@
 #ifndef INCLUDED_VERIFY_H
 #define INCLUDED_VERIFY_H
 
+typedef struct dbtable dbtable;
+
+typedef enum {
+    VERIFY_DEFAULT,
+    VERIFY_PARALLEL,
+    VERIFY_DATA,
+    VERIFY_INDICES,
+    VERIFY_BLOBS
+} verify_mode_t;
 void purge_by_genid(struct dbtable *db, unsigned long long *genid);
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid);
 int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
-             int attempt_fix, 
-             int (*lua_callback)(void *, const char *), void *lua_params);
+                 int attempt_fix, int (*lua_callback)(void *, const char *),
+                 void *lua_params);
+int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
+                      int attempt_fix,
+                      int (*lua_callback)(void *, const char *),
+                      void *lua_params, verify_mode_t mode);
 
 #endif

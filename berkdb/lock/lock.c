@@ -5699,7 +5699,6 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
             if (size == sizeof(DB_LOCK_ILOCK) && 
                     IS_WRITELOCK(lock_mode) &&
                     ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
-                logmsg(LOGMSG_INFO, "Skipped write handle lock on replicant\n");
                 continue;
             }
 			do {
