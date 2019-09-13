@@ -29,15 +29,30 @@ The syntax for rule definition lines is:
 A rule definition consists of an integer rule number and its associated
 matching criteria.  The rule matching criteria consist of zero or more
 property names and values.  The rule number must be an integer with a
-value between one (1) and one thousand (1000).  All property names and
-values are optional; a line without at least one property name and value
-does nothing except verify the rule number.  When a property name is
-specified its value must be specified as well.  Each property name may
-appear more than once for a particular rule, even on the same line.
-Only the last property value encountered for each combination of rule
-number and property name will be retained.  Currently, the number of
-rules is limited to one thousand (1000).  Property values are interpreted
-based on the match mode configured for the rule.
+value between one (1) and one thousand (1000).  Rules do not need to be
+presented in numerical order within a ruleset file.  There may be rule
+number gaps within a ruleset file (e.g. it is possible to define rules
+1, 2, and 4 while skipping 3).  This can be useful if rulesets need to
+be split into multiple files, e.g. to ease maintenance and reuse.  All
+property names and values are optional; a line without at least one
+property name and value does nothing except verify the rule number.
+When a property name is specified its value must be specified as well.
+Each property name may appear more than once for a particular rule, even
+on the same line.  Only the last property value encountered for each
+unique combination of rule number and property name will be retained.
+Multiple ruleset files may be loaded.  As with a single ruleset file, in
+the event duplicate rule numbers are encountered, only the last property
+value encountered for each unique combination of rule number and property
+name will be retained.  In general, the usage model for multiple ruleset
+files would probably have each ruleset file within a set restrict itself
+to a particular range of rule numbers (e.g. `t1.ruleset` with rules 1 to
+10, `t2.ruleset` with rules 11 to 20, etc).  Currently, the total number
+of rules is limited to one thousand (1000).  All property values except
+`fingerprint` are always interpreted based on the match mode configured
+for the rule.  The `fingerprint` property value is always interpreted as
+a sixteen (16) bytes to be compared exactly with the cryptographic hashes
+calculated based on the [normalized](https://www.sqlite.org/c3ref/expanded_sql.html)
+variants of submitted SQL queries.
 
 ### Property names and values
 
