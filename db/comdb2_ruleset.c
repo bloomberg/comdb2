@@ -1004,7 +1004,6 @@ int comdb2_load_ruleset(
     }
   }
 
-  comdb2_free_ruleset(*pRules);
   rules->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
   *pRules = rules;
 
