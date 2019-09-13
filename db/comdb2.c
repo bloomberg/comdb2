@@ -146,6 +146,7 @@ int gbl_sqlite_sortermult = 1;
 
 int gbl_sqlite_sorter_mem = 300 * 1024 * 1024; /* 300 meg */
 
+int gbl_strict_dbl_quotes = 0;
 int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;

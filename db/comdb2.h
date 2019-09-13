@@ -1733,6 +1733,7 @@ extern int gbl_pushlogs_after_sc;
 extern int gbl_prefault_verbose;
 extern int gbl_ftables;
 extern int gbl_check_client_tags;
+extern int gbl_strict_dbl_quotes;
 
 extern int gbl_max_tables_info;
 

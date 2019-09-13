@@ -1,0 +1,28 @@
+('------- PHASE 1 -------'='------- PHASE 1 -------')
+("1"='1')
+("x"='x')
+(x='1')
+("y"='y')
+("x"='x')
+[SELECT "y" FROM t2 WHERE "t2"."x" = 1] failed with rc -3 no such column: t2.x
+('------- PHASE 2 -------'='------- PHASE 2 -------')
+[SELECT "1"] failed with rc -3 double-quoted string literal: "1"
+[SELECT "x"] failed with rc -3 double-quoted string literal: "x"
+(x='1')
+(x='1')
+(y='1')
+(y='1')
+[SELECT "y" FROM t1 WHERE x = 1] failed with rc -3 double-quoted string literal: "y"
+[SELECT "x" FROM t2 WHERE "t2.y" = 1] failed with rc -3 double-quoted string literal: "x"
+[SELECT "y" FROM t2 WHERE "t2.x" = 1] failed with rc -3 double-quoted string literal: "t2.x"
+[SELECT "x" FROM t2 WHERE "t2"."y" = 1] failed with rc -3 double-quoted string literal: "x"
+[SELECT "y" FROM t2 WHERE "t2"."x" = 1] failed with rc -3 no such column: t2.x
+[INSERT INTO t1(x) VALUES("9")] failed with rc -3 double-quoted string literal: "9"
+[UPDATE t1 SET x = "8" WHERE x = '1'] failed with rc -3 double-quoted string literal: "8"
+[DELETE FROM t1 WHERE x = "9"] failed with rc -3 double-quoted string literal: "9"
+('------- PHASE 3 -------'='------- PHASE 3 -------')
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows updated=1)
+(rows deleted=1)
