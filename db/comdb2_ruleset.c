@@ -440,21 +440,22 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
   }
-  if( rule->pFingerprint!=NULL && !comdb2_ruleset_fingerprints_allowed() ){
-    char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
+  if( rule->pFingerprint!=NULL ){
+    if( !comdb2_ruleset_fingerprints_allowed() ){
+      char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
 
-    memset(zFingerprint, 0, sizeof(zFingerprint));
-    util_tohex(zFingerprint, (char *)rule->pFingerprint, FPSZ);
+      memset(zFingerprint, 0, sizeof(zFingerprint));
+      util_tohex(zFingerprint, (char *)rule->pFingerprint, FPSZ);
 
-    logmsg(LOGMSG_ERROR,
-           "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
-           "disabled\n", __func__, rule->ruleNo, zFingerprint);
+      logmsg(LOGMSG_ERROR,
+             "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
+             "disabled\n", __func__, rule->ruleNo, zFingerprint);
 
-    return RULESET_M_ERROR; /* have forbidden criteria */
-  }
-  if( rule->pFingerprint!=NULL && memcmp(
-          clnt->work.aFingerprint, rule->pFingerprint, FPSZ)!=0 ){
-    return RULESET_M_FALSE; /* have criteria, not matched */
+      return RULESET_M_ERROR; /* have forbidden criteria */
+    }
+    if( memcmp(clnt->work.aFingerprint, rule->pFingerprint, FPSZ)!=0 ){
+      return RULESET_M_FALSE; /* have criteria, not matched */
+    }
   }
   switch( rule->action ){
     case RULESET_A_NONE: {
