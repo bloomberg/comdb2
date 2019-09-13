@@ -388,12 +388,9 @@ static void comdb2_dump_ruleset_item(
          zMessage ? zMessage : "<null>",
          (unsigned long long int)(clnt ? clnt->seqNo : 0),
          zAction ? zAction : "<null>",
-         (unsigned long long int)rule->action,
-         rule->adjustment,
-         zFlags,
-         (unsigned long long int)rule->flags,
-         zMode,
-         (unsigned long long int)rule->mode,
+         (unsigned long long int)rule->action, rule->adjustment,
+         zFlags, (unsigned long long int)rule->flags,
+         zMode, (unsigned long long int)rule->mode,
          rule->zOriginHost ? rule->zOriginHost : "<null>",
          rule->zOriginTask ? rule->zOriginTask : "<null>",
          rule->zUser ? rule->zUser : "<null>",
@@ -652,13 +649,16 @@ int comdb2_load_ruleset(
   int fd = -1;
   SBUF2 *sb = NULL;
   i64 version = 0;
-  struct ruleset *rules = calloc(1, sizeof(struct ruleset));
+  struct ruleset *rules = *pRules;
 
   if( rules==NULL ){
-    snprintf(zError, sizeof(zError),
-             "%s:%d, cannot allocate ruleset",
-             zFileName, lineNo);
-    goto failure;
+    rules = calloc(1, sizeof(struct ruleset));
+    if( rules==NULL ){
+      snprintf(zError, sizeof(zError),
+               "%s:%d, cannot allocate ruleset",
+               zFileName, lineNo);
+      goto failure;
+    }
   }
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
