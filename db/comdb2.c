@@ -5199,6 +5199,7 @@ struct tool tool_callbacks[] = {
 
 int main(int argc, char **argv)
 {
+    printf("I AM LEDDY\n");
     int rc;
 
     char *exe = NULL;
