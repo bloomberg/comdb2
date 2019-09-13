@@ -44,7 +44,7 @@ Multiple ruleset files may be loaded.  As with a single ruleset file, in
 the event duplicate rule numbers are encountered, only the last property
 value encountered for each unique combination of rule number and property
 name will be retained.  In general, the usage model for multiple ruleset
-files would probably have each ruleset file within a set restrict itself
+files is designed to have each ruleset file within a set restrict itself
 to a particular range of rule numbers (e.g. `t1.ruleset` with rules 1 to
 10, `t2.ruleset` with rules 11 to 20, etc).  Currently, the total number
 of rules is limited to one thousand (1000).  All property values except
