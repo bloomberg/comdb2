@@ -114,7 +114,7 @@ case-insensitive matching.
 ```
 #######################################################
 # The 'version' line is required and must be the first
-# line that is not blank and not a command.  Currently,
+# line that is not blank and not a comment.  Currently,
 # the only valid version is '1'.
 #######################################################
 

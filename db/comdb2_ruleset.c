@@ -105,7 +105,7 @@ static int regexp_nocase_match(
 static xStrCmp comdb2_get_xstrcmp_for_mode(
   ruleset_match_mode_t mode
 ){
-  int noCase = mode & RULESET_MM_NOCASE;
+  int noCase = mode&RULESET_MM_NOCASE;
   mode &= ~RULESET_MM_NOCASE;
   switch( mode ){
     case RULESET_MM_EXACT:  return noCase ? strcasecmp : strcmp;
@@ -508,7 +508,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
-  loglvl level = (rule->flags & RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
+  loglvl level = (rule->flags&RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
   if( logmsg_level_ok(level) ){
     comdb2_dump_ruleset_item(level, "MATCHED", rules, rule, clnt);
   }
