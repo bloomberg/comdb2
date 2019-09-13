@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include "sqliteInt.h"
@@ -61,31 +62,11 @@ static ruleset_string_match_t do_regexp_match(
   const char *zStr,
   int noCase
 ){
-  int rc;
-  void *pRe = 0;
-  const char *zErr;
-
-  zErr = re_compile(&pRe, zPattern, noCase);
-  if( zErr ){
-    logmsg(LOGMSG_ERROR,
-           "%s: cannot compile regular expression \"%s\": %s\n",
-           __func__, zPattern, zErr);
-    re_free(pRe);
-    return RULESET_S_ERROR;
-  }
-  if( pRe==0 ){
-    logmsg(LOGMSG_ERROR,
-           "%s: out of memory for regular expression \"%s\"\n",
-           __func__, zPattern);
-    return RULESET_S_ERROR;
-  }
-  if( re_match(pRe, (const unsigned char *)zStr, -1) ){
-    rc = RULESET_S_TRUE;
+  if( re_match((void *)zPattern, (const unsigned char *)zStr, -1) ){
+    return RULESET_S_TRUE;
   }else{
-    rc = RULESET_S_FALSE;
+    return RULESET_S_FALSE;
   }
-  re_free(pRe);
-  return rc;
 }
 
 static int regexp_match(
@@ -409,34 +390,49 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   if( stringComparer==NULL ){
     stringComparer = comdb2_get_xstrcmp_for_mode(rule->mode);
   }
+  const char *zOriginHost;
+  const char *zOriginTask;
+  const char *zUser;
+  const char *zSql;
+  if( rule->mode&RULESET_MM_REGEXP ){
+    zOriginHost = (const char *)rule->pOriginHostRe;
+    zOriginTask = (const char *)rule->pOriginTaskRe;
+    zUser = (const char *)rule->pUserRe;
+    zSql = (const char *)rule->pSqlRe;
+  }else{
+    zOriginHost = rule->zOriginHost;
+    zOriginTask = rule->zOriginTask;
+    zUser = rule->zUser;
+    zSql = rule->zSql;
+  }
   if( stringComparer!=NULL ){
-    if( rule->zOriginHost!=NULL && ((clnt->origin_host==NULL) ||
-        stringComparer(clnt->origin_host, rule->zOriginHost)!=0) ){
+    if( zOriginHost!=NULL && ((clnt->origin_host==NULL) ||
+        stringComparer(clnt->origin_host, zOriginHost)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
-    if( rule->zOriginTask!=NULL && ((clnt->conninfo.pename==NULL) ||
-        stringComparer(clnt->conninfo.pename, rule->zOriginTask)!=0) ){
+    if( zOriginTask!=NULL && ((clnt->conninfo.pename==NULL) ||
+        stringComparer(clnt->conninfo.pename, zOriginTask)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
-    if( rule->zUser!=NULL && (!clnt->have_user ||
-        stringComparer(clnt->user, rule->zUser)!=0) ){
+    if( zUser!=NULL && (!clnt->have_user ||
+        stringComparer(clnt->user, zUser)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
-    if( rule->zSql!=NULL && ((clnt->sql==NULL) ||
-        stringComparer(clnt->sql, rule->zSql)!=0) ){
+    if( zSql!=NULL && ((clnt->sql==NULL) ||
+        stringComparer(clnt->sql, zSql)!=0) ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
   }else{
-    if( rule->zOriginHost!=NULL ){
+    if( zOriginHost!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
-    if( rule->zOriginTask!=NULL ){
+    if( zOriginTask!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
-    if( rule->zUser!=NULL ){
+    if( zUser!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
-    if( rule->zSql!=NULL ){
+    if( zSql!=NULL ){
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
   }
@@ -613,17 +609,33 @@ void comdb2_free_ruleset(struct ruleset *rules){
           free(rule->zOriginHost);
           rule->zOriginHost = NULL;
         }
+        if( rule->pOriginHostRe!=NULL ){
+          re_free(rule->pOriginHostRe);
+          rule->pOriginHostRe = NULL;
+        }
         if( rule->zOriginTask!=NULL ){
           free(rule->zOriginTask);
           rule->zOriginTask = NULL;
+        }
+        if( rule->pOriginTaskRe!=NULL ){
+          re_free(rule->pOriginTaskRe);
+          rule->pOriginTaskRe = NULL;
         }
         if( rule->zUser!=NULL ){
           free(rule->zUser);
           rule->zUser = NULL;
         }
+        if( rule->pUserRe!=NULL ){
+          re_free(rule->pUserRe);
+          rule->pUserRe = NULL;
+        }
         if( rule->zSql!=NULL ){
           free(rule->zSql);
           rule->zSql = NULL;
+        }
+        if( rule->pSqlRe!=NULL ){
+          re_free(rule->pSqlRe);
+          rule->pSqlRe = NULL;
         }
         if( rule->pFingerprint!=NULL ){
           free(rule->pFingerprint);
@@ -635,6 +647,33 @@ void comdb2_free_ruleset(struct ruleset *rules){
     }
     free(rules);
   }
+}
+
+static int recompile_regexp(
+  const char *zPattern,
+  void **ppRe
+){
+  const char *zErr;
+
+  if( *ppRe!=NULL ){
+    re_free(*ppRe);
+    *ppRe = NULL;
+  }
+  zErr = re_compile(ppRe, zPattern, noCase);
+  if( zErr ){
+    logmsg(LOGMSG_ERROR,
+           "%s: cannot compile regular expression \"%s\": %s\n",
+           __func__, zPattern, zErr);
+    re_free(*ppRe);
+    return EINVAL;
+  }
+  if( *ppRe==NULL ){
+    logmsg(LOGMSG_ERROR,
+           "%s: out of memory for regular expression \"%s\"\n",
+           __func__, zPattern);
+    return ENOMEM;
+  }
+  return 0;
 }
 
 int comdb2_load_ruleset(
@@ -835,6 +874,38 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
+          if( rule->mode&RULESET_MM_REGEXP ){
+            if( rule->zOriginHost!=NULL && recompile_regexp(
+                    rule->zOriginHost, &rule->pOriginHostRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, "originHost",
+                       rule->zOriginHost);
+              goto failure;
+            }
+            if( rule->zOriginTask!=NULL && recompile_regexp(
+                    rule->zOriginTask, &rule->pOriginTaskRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, "originTask",
+                       rule->zOriginTask);
+              goto failure;
+            }
+            if( rule->zUser!=NULL && recompile_regexp(
+                    rule->zUser, &rule->pUserRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, "user", rule->zUser);
+              goto failure;
+            }
+            if( rule->zSql!=NULL && recompile_regexp(
+                    rule->zSql, &rule->pSqlRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, "sql", rule->zSql);
+              goto failure;
+            }
+          }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -856,6 +927,13 @@ int comdb2_load_ruleset(
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
+            goto failure;
+          }
+          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
+                  zTok, &rule->pOriginHostRe)!=0 ){
+            snprintf(zError, sizeof(zError),
+                     "%s:%d, bad %s regular expression '%s'",
+                     zFileName, lineNo, zField, zTok);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
@@ -881,6 +959,13 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
+          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
+                  zTok, &rule->pOriginTaskRe)!=0 ){
+            snprintf(zError, sizeof(zError),
+                     "%s:%d, bad %s regular expression '%s'",
+                     zFileName, lineNo, zField, zTok);
+            goto failure;
+          }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -904,6 +989,13 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
+          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
+                  zTok, &rule->pUserRe)!=0 ){
+            snprintf(zError, sizeof(zError),
+                     "%s:%d, bad %s regular expression '%s'",
+                     zFileName, lineNo, zField, zTok);
+            goto failure;
+          }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -925,6 +1017,13 @@ int comdb2_load_ruleset(
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
+            goto failure;
+          }
+          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
+                  zTok, &rule->pSqlRe)!=0 ){
+            snprintf(zError, sizeof(zError),
+                     "%s:%d, bad %s regular expression '%s'",
+                     zFileName, lineNo, zField, zTok);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);

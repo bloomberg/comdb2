@@ -141,18 +141,30 @@ struct ruleset_item {
                                    * NULL this will be matched using exact
                                    * case-insensitive string comparisons. */
 
+  void *pOriginHostRe;            /* This is the cached regular expression for
+                                   * the origin host pattern, if needed. */
+
   char *zOriginTask;              /* Obtained via "clnt->conninfo.pename".  If
                                    * not NULL this be matched using exact
                                    * case-insensitive string comparisons. */
+
+  void *pOriginTaskRe;            /* This is the cached regular expression for
+                                   * the origin task pattern, if needed. */
 
   char *zUser;                    /* Obtained via "clnt->have_user" /
                                    * "clnt->user".  If not NULL this be
                                    * matched using exact case-insensitive
                                    * string comparisons. */
 
+  void *pUserRe;                  /* This is the cached regular expression for
+                                   * the user pattern, if needed. */
+
   char *zSql;                     /* Obtained via "clnt->sql".  If not NULL
                                    * this be matched using exact
                                    * case-insensitive string comparisons. */
+
+  void *pSqlRe;                   /* This is the cached regular expression for
+                                   * the SQL pattern, if needed. */
 
   unsigned char *pFingerprint;    /* Obtained via "reqlogger->fingerprint".
                                    * If not all zeros, this will be matched
