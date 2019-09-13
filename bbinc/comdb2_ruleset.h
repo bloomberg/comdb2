@@ -157,6 +157,12 @@ struct ruleset_item {
   unsigned char *pFingerprint;    /* Obtained via "reqlogger->fingerprint".
                                    * If not all zeros, this will be matched
                                    * using memcmp(). */
+
+  int evalCount;                  /* How many times have this rule been
+                                   * evaluated? */
+
+  int matchCount;                 /* How many times has this rule been
+                                   * matched? */
 };
 
 struct ruleset {

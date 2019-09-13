@@ -383,7 +383,7 @@ static void comdb2_dump_ruleset_item(
   logmsg(level, "%s: ruleset %p rule #%d %s seqNo %llu, action "
          "{%s} (0x%llX), adjustment %lld, flags {%s} (0x%llX), mode "
          "{%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
-         "sql {%s}, fingerprint {%s}\n",
+         "sql {%s}, fingerprint {%s}, evalCount %d, matchCount %d\n",
          __func__, rules, rule->ruleNo,
          zMessage ? zMessage : "<null>",
          (unsigned long long int)(clnt ? clnt->seqNo : 0),
@@ -398,7 +398,7 @@ static void comdb2_dump_ruleset_item(
          rule->zOriginTask ? rule->zOriginTask : "<null>",
          rule->zUser ? rule->zUser : "<null>",
          rule->zSql ? rule->zSql : "<null>",
-         zFingerprint);
+         zFingerprint, rule->evalCount, rule->matchCount);
 }
 
 static ruleset_match_t comdb2_evaluate_ruleset_item(
@@ -408,6 +408,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   struct sqlclntstate *clnt,
   struct ruleset_result *result
 ){
+  rule->evalCount++;
   if( stringComparer==NULL ){
     stringComparer = comdb2_get_xstrcmp_for_mode(rule->mode);
   }
@@ -508,6 +509,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   **
   **       2. This rule matched using the specified mode and all criteria.
   */
+  rule->matchCount++;
   loglvl level = (rule->flags&RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
   if( logmsg_level_ok(level) ){
     comdb2_dump_ruleset_item(level, "MATCHED", rules, rule, clnt);
