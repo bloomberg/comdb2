@@ -95,7 +95,9 @@ by the amount specified by the associated `adjustment` property value.
 
 The `NONE` rule flag has no effect.  If all criteria specified for a rule are
 matched and the `STOP` rule flag is present, further rule matching is skipped
-and the current ruleset result is returned.
+and the current ruleset result is returned.  If all criteria specified for a
+rule are matched and the `PRINT` rule flag is present, a detailed diagnostic
+message will be emitted into the log file.
 
 ### Match modes
 
