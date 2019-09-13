@@ -934,7 +934,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             int datalen = 0;
             delditk.ixnum = ixnum;
             delditk.ixlen = keysize;
-            if (od_dta_tail)
+            if (iq->usedb->ix_dupes[ixnum] != 0)
                 append_genid_to_key(&delditk, keysize);
             int err = 0;
 #if DEBUG_REORDER
@@ -1446,9 +1446,11 @@ logmsg(LOGMSG_DEBUG, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_ord
         }
         else if (ditk->type == DIT_DEL) {
             int delrrn = 0;
+#ifndef NDEBUG
             char *tblname = iq->usedb->tablename;
             struct dbtable *tbl = get_dbtable_by_name(tblname);
             assert (tbl == iq->usedb);
+#endif
             rc = ix_delk(iq, trans, ditk->ixkey, ditk->ixnum, delrrn, ditk->genid, ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ditk->ixnum, delrrn, bdb_genid_to_host_order(ditk->genid), rc);
