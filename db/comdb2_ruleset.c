@@ -740,9 +740,11 @@ int comdb2_load_ruleset(
       assert( ruleNo>0 );
       assert( ruleNo<=rules->nRule );
       struct ruleset_item *rule = &rules->aRule[ruleNo-1];
-      rule->ruleNo = ruleNo; /* NOTE: Rule now present. */
-      if( rule->mode==RULESET_MM_NONE ){
-        rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default match mode. */
+      if( rule->ruleNo!=ruleNo ){
+        if( rule->mode==RULESET_MM_NONE ){
+          rule->mode = RULESET_MM_DEFAULT; /* NOTE: System default mode. */
+        }
+        rule->ruleNo = ruleNo; /* NOTE: Rule is now present. */
       }
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){

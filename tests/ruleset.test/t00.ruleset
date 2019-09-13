@@ -6,3 +6,4 @@ rule 9 mode {REGEXP NOCASE}
 rule 9 sql ^DROP .*$
 
 rule 8 action NONE
+rule 8 mode {NONE}
