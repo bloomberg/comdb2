@@ -404,7 +404,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             }
             ditk.ixnum = ixnum;
             ditk.ixlen = ixkeylen;
-            if (iq->usedb->ix_dupes[ixnum] != 0)
+            if (od_dta_tail)
                 append_genid_to_key(&ditk, ixkeylen);
             int err = 0;
 #if DEBUG_REORDER
@@ -701,7 +701,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 ditk.ixnum = ixnum;
                 ditk.ixlen = keysize;
 
-                if (iq->usedb->ix_dupes[ixnum] != 0)
+                if (od_dta_tail)
                     append_genid_to_key(&ditk, keysize);
                 int err = 0;
 #if DEBUG_REORDER
@@ -751,7 +751,7 @@ logmsg(LOGMSG_DEBUG, "AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", 
                     delditk.genid = vgenid;
                     delditk.ixnum = ixnum;
                     delditk.ixlen = keysize;
-                    if (iq->usedb->ix_dupes[ixnum] != 0)
+                    if (od_dta_tail)
                         append_genid_to_key(&delditk, keysize);
                     int err = 0;
 #if DEBUG_REORDER
@@ -812,7 +812,7 @@ logmsg(LOGMSG_DEBUG, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n",
                     ditk.genid = *newgenid;
                     ditk.ixnum = ixnum;
                     ditk.ixlen = keysize;
-                    if (iq->usedb->ix_dupes[ixnum] != 0)
+                    if (od_dta_tail)
                         append_genid_to_key(&ditk, keysize);
                     int err = 0;
 #if DEBUG_REORDER
@@ -934,7 +934,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             int datalen = 0;
             delditk.ixnum = ixnum;
             delditk.ixlen = keysize;
-            if (iq->usedb->ix_dupes[ixnum] != 0)
+            if (od_dta_tail)
                 append_genid_to_key(&delditk, keysize);
             int err = 0;
 #if DEBUG_REORDER
@@ -1448,7 +1448,7 @@ logmsg(LOGMSG_DEBUG, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_ord
             int delrrn = 0;
             char *tblname = iq->usedb->tablename;
             struct dbtable *tbl = get_dbtable_by_name(tblname);
-            if (tbl != iq->usedb) abort();
+            assert (tbl == iq->usedb);
             rc = ix_delk(iq, trans, ditk->ixkey, ditk->ixnum, delrrn, ditk->genid, ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ditk->ixnum, delrrn, bdb_genid_to_host_order(ditk->genid), rc);
