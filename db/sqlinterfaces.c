@@ -4835,7 +4835,6 @@ static int can_execute_sql_query_now(
   size_t count = comdb2_evaluate_ruleset(
     NULL, gbl_ruleset, clnt, &result
   );
-  memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
   comdb2_ruleset_result_to_str(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );
@@ -5312,6 +5311,8 @@ static int verify_dispatch_sql_query(
     struct sqlclntstate *clnt,
     priority_t *pPriority)
 {
+    memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
+
     if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
         if (gbl_fingerprint_queries &&
             comdb2_ruleset_fingerprints_allowed()) {
