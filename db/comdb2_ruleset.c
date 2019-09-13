@@ -651,6 +651,7 @@ void comdb2_free_ruleset(struct ruleset *rules){
 
 static int recompile_regexp(
   const char *zPattern,
+  int noCase,
   void **ppRe
 ){
   const char *zErr;
@@ -684,6 +685,7 @@ int comdb2_load_ruleset(
   char zError[8192];
   char zLine[8192];
   const char *zField = NULL;
+  int noCase;
   size_t nLine;
   int lineNo = 0;
   int fd = -1;
@@ -874,9 +876,10 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
+          noCase = (rule->mode&RULESET_MM_NOCASE);
           if( rule->mode&RULESET_MM_REGEXP ){
             if( rule->zOriginHost!=NULL && recompile_regexp(
-                    rule->zOriginHost, &rule->pOriginHostRe)!=0 ){
+                    rule->zOriginHost, noCase, &rule->pOriginHostRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "originHost",
@@ -884,7 +887,7 @@ int comdb2_load_ruleset(
               goto failure;
             }
             if( rule->zOriginTask!=NULL && recompile_regexp(
-                    rule->zOriginTask, &rule->pOriginTaskRe)!=0 ){
+                    rule->zOriginTask, noCase, &rule->pOriginTaskRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "originTask",
@@ -892,14 +895,14 @@ int comdb2_load_ruleset(
               goto failure;
             }
             if( rule->zUser!=NULL && recompile_regexp(
-                    rule->zUser, &rule->pUserRe)!=0 ){
+                    rule->zUser, noCase, &rule->pUserRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "user", rule->zUser);
               goto failure;
             }
             if( rule->zSql!=NULL && recompile_regexp(
-                    rule->zSql, &rule->pSqlRe)!=0 ){
+                    rule->zSql, noCase, &rule->pSqlRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "sql", rule->zSql);
@@ -909,6 +912,7 @@ int comdb2_load_ruleset(
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
+        noCase = (rule->mode&RULESET_MM_NOCASE);
         zField = "originHost";
         if( sqlite3_stricmp(zTok, zField)==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
@@ -930,7 +934,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, &rule->pOriginHostRe)!=0 ){
+                  zTok, noCase, &rule->pOriginHostRe)!=0 ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s regular expression '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -960,7 +964,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, &rule->pOriginTaskRe)!=0 ){
+                  zTok, noCase, &rule->pOriginTaskRe)!=0 ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s regular expression '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -990,7 +994,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, &rule->pUserRe)!=0 ){
+                  zTok, noCase, &rule->pUserRe)!=0 ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s regular expression '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -1020,7 +1024,7 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, &rule->pSqlRe)!=0 ){
+                  zTok, noCase, &rule->pSqlRe)!=0 ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s regular expression '%s'",
                      zFileName, lineNo, zField, zTok);
