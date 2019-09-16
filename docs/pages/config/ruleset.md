@@ -66,7 +66,7 @@ The supported set of property names and their required formats is:
 
 | Property Name | Property Value Format |
 |---------------|------------------------|
-|action         | One of `NONE`, `REJECT`, `UNREJECT`, `LOW_PRIO`, or `HIGH_PRIO`. |
+|action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, `LOW_PRIO`, or `HIGH_PRIO`. |
 |adjustment     | An integer between zero (0) and nine hundred ninety-nine thousand nine hundred ninety-seven (999997). |
 |flags          | One or more of `NONE`, `PRINT`, and `STOP`, see [flags syntax](#flags-syntax). |
 |mode           | One or more of `NONE`, `EXACT`, `GLOB`, `REGEXP`, and `NOCASE`, see [flags syntax](#flags-syntax). |
@@ -97,16 +97,19 @@ its readability.
 If all criteria specified for a rule are matched an action is taken.  If the
 action is `NONE`, nothing is done.  This can be useful if the server has been
 configured to emit a log message when a ruleset is matched, e.g. this allows
-rulesets to effectively monitor activity without otherwise impacting it.  If
-the action is `REJECT`, the SQL query will be marked as rejected.  This mark
-of rejection can be removed by matching a subsequent rule with an action of
-`UNREJECT`.  If the SQL query is marked as rejected and the `STOP` rule flag
-is specified for the rule (**or** there are no further rules to process), the
-SQL query will be rejected and an error will be emitted to the client.  If the
-action is `LOW_PRIO`, the relative priority of the SQL query will be decreased
-by the amount specified by the associated `adjustment` property value.  If the
-action is `HIGH_PRIO`, the relative priority of the SQL query will be increased
-by the amount specified by the associated `adjustment` property value.
+rulesets to effectively monitor activity without otherwise impacting it.  
+If the action is `REJECT` or `REJECT_ALL`, the SQL query will be marked as
+rejected.  The difference between these two actions is that a `REJECT_ALL`
+action will prevent a SQL query from being retried on another node whereas an
+action of `REJECT` will not.  These marks of rejection can be removed by
+matching a subsequent rule with an action of `UNREJECT`.  If the SQL query is
+marked as rejected and the `STOP` rule flag is specified for the rule (**or**
+there are no further rules to process), the SQL query will be rejected and an
+error will be emitted to the client.  If the action is `LOW_PRIO`, the relative
+priority of the SQL query will be decreased by the amount specified by the
+associated `adjustment` property value.  If the action is `HIGH_PRIO`, the
+relative priority of the SQL query will be increased by the amount specified by
+the associated `adjustment` property value.
 
 ### Rule flags
 
