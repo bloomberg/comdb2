@@ -88,8 +88,9 @@ by threads that do not have access to the SQL query preparation subsystem.
 For property values that represent a set of flags, e.g. for the `flags` and
 `mode` properties, multiple choices from the set of possible values may be
 specified, delimited by whitespace or commas.  The semicolon may be used to
-delimit the end of these property values.  Alternatively, a set of flags may
-begin with an opening curly brace `{` and end with a closing curly brace `}`.
+delimit the end of these property values.  A set of flags may begin with an
+opening curly brace `{` and end with a closing curly brace `}`, to enhance
+its readability.
 
 ### Rule actions and adjustments
 
