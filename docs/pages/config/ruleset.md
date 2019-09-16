@@ -151,6 +151,7 @@ version 1
 # matching the specified fingerprint, which corresponds
 # to the SQL query 'SELECT * FROM t1'.  There are no
 # other criteria for the rule.
+
 rule 1 action REJECT
 rule 1 fingerprint X'a9c8b6ddb5b9e55ee41b7f5a46ec4e45'
 rule 1 flags STOP
@@ -160,6 +161,7 @@ rule 1 flags STOP
 # the name 'Robert'.  The SQL query will be allowed to
 # run; however, other higher priority SQL queries may
 # run first even if they were submitted later.
+
 rule 2 action LOW_PRIO
 rule 2 adjustment 1000
 rule 2 user Robert
@@ -168,6 +170,7 @@ rule 2 user Robert
 # SQL queries that originate from tasks with a name
 # matching the specified GLOB pattern.  In this case,
 # it refers to the command line SQL query tool.
+
 rule 3 action HIGH_PRIO
 rule 3 adjustment 1000
 rule 3 mode GLOB
@@ -178,6 +181,7 @@ rule 3 originTask */cdb2sql
 # is seen.  In theory, subsequent rules could alter
 # the priority of this SQL query or prevent if from
 # executing.
+
 rule 4 action NONE
 rule 4 flags PRINT
 rule 4 mode REGEXP, NOCASE
@@ -188,6 +192,7 @@ rule 4 sql ^CREATE +.*$
 # run if they originate from a database user with the
 # name 'david'.  For this rule, the user name will be
 # compared in a case-insensitive manner.
+
 rule 5 action UNREJECT
 rule 5 mode EXACT NOCASE
 rule 5 user david
