@@ -97,8 +97,8 @@ its readability.
 If all criteria specified for a rule are matched an action is taken.  If the
 action is `NONE`, nothing is done.  This can be useful if the server has been
 configured to emit a log message when a ruleset is matched, e.g. this allows
-rulesets to effectively monitor activity without otherwise impacting it.  
-If the action is `REJECT` or `REJECT_ALL`, the SQL query will be marked as
+rulesets to effectively monitor activity without otherwise impacting it.  If
+the action is `REJECT` or `REJECT_ALL`, the SQL query will be marked as
 rejected.  The difference between these two actions is that a `REJECT_ALL`
 action will prevent a SQL query from being retried on another node whereas an
 action of `REJECT` will not.  These marks of rejection can be removed by
