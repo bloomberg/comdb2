@@ -44,7 +44,7 @@ Multiple ruleset files may be loaded.  As with a single ruleset file, in
 the event duplicate rule numbers are encountered, only the last property
 value encountered for each unique combination of rule number and property
 name will be retained.  In general, the usage model for multiple ruleset
-files is designed to have each ruleset file within a set restrict itself
+files is intended to have each ruleset file within a set restrict itself
 to a particular range of rule numbers (e.g. `t1.ruleset` with rules 1 to
 10, `t2.ruleset` with rules 11 to 20, etc).  Currently, the total number
 of rules is limited to one thousand (1000).  All property values except
@@ -87,8 +87,9 @@ by threads that do not have access to the SQL query preparation subsystem.
 
 For property values that represent a set of flags, e.g. for the `flags` and
 `mode` properties, multiple choices from the set of possible values may be
-specified, delimited by whitespace or commas.  The semicolon must be used to
-delimit the end of these property values.
+specified, delimited by whitespace or commas.  The semicolon may be used to
+delimit the end of these property values.  Alternatively, a set of flags may
+begin with an opening curly brace `{` and end with a closing curly brace `}`.
 
 ### Rule actions and adjustments
 

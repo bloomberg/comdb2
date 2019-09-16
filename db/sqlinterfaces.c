@@ -4846,6 +4846,7 @@ static int can_execute_sql_query_now(
   *pbRejected = 0;
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
+      (result.action != RULESET_A_REJECT_ALL) &&
       (result.action != RULESET_A_LOW_PRIO)) {
     if (gbl_random_sql_work_rejected &&
         !(rand() % gbl_random_sql_work_rejected)) {
