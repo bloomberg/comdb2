@@ -26,6 +26,10 @@
 #include "sbuf2.h"
 #include "tohex.h"
 
+#ifndef MAX
+# define MAX(A,B) ((A)>(B)?(A):(B))
+#endif
+
 #define RULESET_MAX_COUNT (1000)
 
 #define RULESET_DELIM "\t\n\r\v\f "
@@ -762,6 +766,7 @@ static int comdb2_merge_ruleset_items(
     memcpy(dstRule, srcRule, sizeof(struct ruleset_item));
     memset(srcRule, 0, sizeof(struct ruleset_item));
   }
+  dst->nRule = MAX(dst->nRule, src->nRule);
   return 0;
 }
 
