@@ -16,7 +16,7 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1 | sed 's/=[0-9][0-9][0-9][0-9]/=yyyy/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1;" 2>&1 | sed 's/=[0-9][0-9][0-9][0-9][0-9][0-9]/=yyyy/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "CREATE TABLE txx(bad TEXT);" 2>&1
 
