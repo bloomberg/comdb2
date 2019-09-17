@@ -1180,9 +1180,13 @@ int comdb2_load_ruleset(
     }
   }
 
-  if( comdb2_merge_ruleset_items(*pRules,
-          rules, zError, sizeof(zError), zFileName, lineNo) ){
-    goto failure;
+  if( *pRules!=NULL ){
+    if( comdb2_merge_ruleset_items(
+            *pRules, rules, zError, sizeof(zError), zFileName, lineNo) ){
+      goto failure;
+    }
+  }else{
+    *pRules = rules;
   }
 
   (*pRules)->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
