@@ -606,7 +606,7 @@ int comdb2_enable_ruleset_item(
   if( bEnable ){
     rule->flags &= ~RULESET_F_DISABLE;
   }else{
-    rule->flags |= ~RULESET_F_DISABLE;
+    rule->flags |= RULESET_F_DISABLE;
   }
   return 0;
 }
