@@ -756,6 +756,7 @@ static int comdb2_merge_ruleset_items(
     memcpy(dstRule, srcRule, sizeof(struct ruleset_item));
     memset(srcRule, 0, sizeof(struct ruleset_item));
   }
+  return 0;
 }
 
 int comdb2_load_ruleset(
