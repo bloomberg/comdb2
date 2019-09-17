@@ -5314,7 +5314,7 @@ static int verify_dispatch_sql_query(
 {
     memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
 
-    if (gbl_prioritize_queries && (gbl_ruleset != NULL)) {
+    if (!clnt->admin && gbl_prioritize_queries && (gbl_ruleset != NULL)) {
         if (gbl_fingerprint_queries &&
             comdb2_ruleset_fingerprints_allowed()) {
             /* IGNORED */
