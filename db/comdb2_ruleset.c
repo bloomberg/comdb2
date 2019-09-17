@@ -1031,12 +1031,16 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, noCase, &rule->pOriginHostRe)!=0 ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, bad %s regular expression '%s'",
-                     zFileName, lineNo, zField, zTok);
-            goto failure;
+          if( rule->mode&RULESET_MM_REGEXP ){
+            if( recompile_regexp(zTok, noCase, &rule->pOriginHostRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, zField, zTok);
+              goto failure;
+            }
+          }else if( rule->pOriginHostRe!=NULL ){
+            re_free(rule->pOriginHostRe);
+            rule->pOriginHostRe = NULL;
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
@@ -1061,12 +1065,16 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, noCase, &rule->pOriginTaskRe)!=0 ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, bad %s regular expression '%s'",
-                     zFileName, lineNo, zField, zTok);
-            goto failure;
+          if( rule->mode&RULESET_MM_REGEXP ){
+            if( recompile_regexp(zTok, noCase, &rule->pOriginTaskRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, zField, zTok);
+              goto failure;
+            }
+          }else if( rule->pOriginTaskRe!=NULL ){
+            re_free(rule->pOriginTaskRe);
+            rule->pOriginTaskRe = NULL;
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
@@ -1091,12 +1099,16 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, noCase, &rule->pUserRe)!=0 ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, bad %s regular expression '%s'",
-                     zFileName, lineNo, zField, zTok);
-            goto failure;
+          if( rule->mode&RULESET_MM_REGEXP ){
+            if( recompile_regexp(zTok, noCase, &rule->pUserRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, zField, zTok);
+              goto failure;
+            }
+          }else if( rule->pUserRe!=NULL ){
+            re_free(rule->pUserRe);
+            rule->pUserRe = NULL;
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
@@ -1121,12 +1133,16 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( rule->mode&RULESET_MM_REGEXP && recompile_regexp(
-                  zTok, noCase, &rule->pSqlRe)!=0 ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, bad %s regular expression '%s'",
-                     zFileName, lineNo, zField, zTok);
-            goto failure;
+          if( rule->mode&RULESET_MM_REGEXP ){
+            if( recompile_regexp(zTok, noCase, &rule->pSqlRe)!=0 ){
+              snprintf(zError, sizeof(zError),
+                       "%s:%d, bad %s regular expression '%s'",
+                       zFileName, lineNo, zField, zTok);
+              goto failure;
+            }
+          }else if( rule->pSqlRe!=NULL ){
+            re_free(rule->pSqlRe);
+            rule->pSqlRe = NULL;
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
@@ -1210,7 +1226,7 @@ int comdb2_load_ruleset(
 
   if( *pRules!=NULL ){
     if( comdb2_merge_ruleset_items(
-            *pRules, rules, zError, sizeof(zError), zFileName, lineNo) ){
+            *pRules, rules, zError, sizeof(zError), zFileName, lineNo)!=0 ){
       goto failure;
     }
     comdb2_free_ruleset_int(rules);
