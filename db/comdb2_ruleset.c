@@ -159,7 +159,10 @@ static void comdb2_ruleset_str_to_flags(
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
-    if( sqlite3_stricmp(zTok, "DISABLE")==0 ){
+    if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      flags |= RULESET_F_NONE;
+      count++;
+    }else if( sqlite3_stricmp(zTok, "DISABLE")==0 ){
       flags |= RULESET_F_DISABLE;
       count++;
     }else if( sqlite3_stricmp(zTok, "PRINT")==0 ){
@@ -218,7 +221,10 @@ static void comdb2_ruleset_str_to_match_mode(
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
-    if( sqlite3_stricmp(zTok, "EXACT")==0 ){
+    if( sqlite3_stricmp(zTok, "NONE")==0 ){
+      mode |= RULESET_MM_NONE;
+      count++;
+    }else if( sqlite3_stricmp(zTok, "EXACT")==0 ){
       mode |= RULESET_MM_EXACT;
       count++;
     }else if( sqlite3_stricmp(zTok, "GLOB")==0 ){
@@ -603,6 +609,28 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   }
 }
 
+static void comdb2_free_rule_regexps(
+  struct ruleset_item *rule
+){
+  if( rule==NULL ) return;
+  if( rule->pOriginHostRe!=NULL ){
+    re_free(rule->pOriginHostRe);
+    rule->pOriginHostRe = NULL;
+  }
+  if( rule->pOriginTaskRe!=NULL ){
+    re_free(rule->pOriginTaskRe);
+    rule->pOriginTaskRe = NULL;
+  }
+  if( rule->pUserRe!=NULL ){
+    re_free(rule->pUserRe);
+    rule->pUserRe = NULL;
+  }
+  if( rule->pSqlRe!=NULL ){
+    re_free(rule->pSqlRe);
+    rule->pSqlRe = NULL;
+  }
+}
+
 static void comdb2_free_rule_fields(
   struct ruleset_item *rule
 ){
@@ -629,42 +657,19 @@ static void comdb2_free_rule_fields(
   }
 }
 
-static void comdb2_free_rule_regexps(
-  struct ruleset_item *rule
-){
-  if( rule==NULL ) return;
-  if( rule->pOriginHostRe!=NULL ){
-    re_free(rule->pOriginHostRe);
-    rule->pOriginHostRe = NULL;
-  }
-  if( rule->pOriginTaskRe!=NULL ){
-    re_free(rule->pOriginTaskRe);
-    rule->pOriginTaskRe = NULL;
-  }
-  if( rule->pUserRe!=NULL ){
-    re_free(rule->pUserRe);
-    rule->pUserRe = NULL;
-  }
-  if( rule->pSqlRe!=NULL ){
-    re_free(rule->pSqlRe);
-    rule->pSqlRe = NULL;
-  }
-}
-
 void comdb2_free_ruleset(struct ruleset *rules){
   ATOMIC_ADD64(gbl_ruleset_generation, 1);
-  if( rules!=NULL ){
-    if( rules->aRule!=NULL ){
-      for(int i=0; i<rules->nRule; i++){
-        struct ruleset_item *rule = &rules->aRule[i];
-        comdb2_free_rule_regexps(rule);
-        comdb2_free_rule_fields(rule);
-      }
-      free(rules->aRule);
-      rules->aRule = NULL;
+  if( rules==NULL ) return;
+  if( rules->aRule!=NULL ){
+    for(int i=0; i<rules->nRule; i++){
+      struct ruleset_item *rule = &rules->aRule[i];
+      comdb2_free_rule_regexps(rule);
+      comdb2_free_rule_fields(rule);
     }
-    free(rules);
+    free(rules->aRule);
+    rules->aRule = NULL;
   }
+  free(rules);
 }
 
 static int recompile_regexp(
