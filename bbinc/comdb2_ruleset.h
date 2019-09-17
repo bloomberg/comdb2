@@ -56,9 +56,12 @@ enum ruleset_flags {
 
   RULESET_F_NONE = 0,     /* No special behavior. */
 
-  RULESET_F_PRINT = 1,    /* Emit a trace message if the rule is matched. */
+  RULESET_F_DISABLE = 1,  /* Rule is currently disabled for use during the
+                           * evaluation of rulesets. */
 
-  RULESET_F_STOP = 2      /* Stop if the associated rule is matched.  No more
+  RULESET_F_PRINT = 2,    /* Emit a trace message if the rule is matched. */
+
+  RULESET_F_STOP = 4      /* Stop if the associated rule is matched.  No more
                            * rules will be processed for this request -AND-
                            * the request will NOT be retried. TODO: ? */
 };

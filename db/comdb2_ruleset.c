@@ -47,22 +47,20 @@ static int glob_match(
   const char *zStr1,
   const char *zStr2
 ){
-  return patternCompare((u8*)zStr2, (u8*)zStr1, &globCaseInfo, '[');
+  if( patternCompare(
+          (u8*)zStr2, (u8*)zStr1, &globCaseInfo, '[')==SQLITE_MATCH ){
+    return RULESET_S_TRUE;
+  }else{
+    return RULESET_S_FALSE;
+  }
 }
 
 static int glob_nocase_match(
   const char *zStr1,
   const char *zStr2
 ){
-  return patternCompare((u8*)zStr2, (u8*)zStr1, &globNoCaseInfo, '[');
-}
-
-static ruleset_string_match_t do_regexp_match(
-  const char *zPattern,
-  const char *zStr,
-  int noCase
-){
-  if( re_match((void *)zPattern, (const unsigned char *)zStr, -1) ){
+  if( patternCompare(
+          (u8*)zStr2, (u8*)zStr1, &globNoCaseInfo, '[')==SQLITE_MATCH ){
     return RULESET_S_TRUE;
   }else{
     return RULESET_S_FALSE;
@@ -73,14 +71,11 @@ static int regexp_match(
   const char *zStr1,
   const char *zStr2
 ){
-  return do_regexp_match(zStr2, zStr1, 0);
-}
-
-static int regexp_nocase_match(
-  const char *zStr1,
-  const char *zStr2
-){
-  return do_regexp_match(zStr2, zStr1, 1);
+  if( re_match((void *)zPattern, (const unsigned char *)zStr, -1) ){
+    return RULESET_S_TRUE;
+  }else{
+    return RULESET_S_FALSE;
+  }
 }
 
 static xStrCmp comdb2_get_xstrcmp_for_mode(
@@ -91,7 +86,9 @@ static xStrCmp comdb2_get_xstrcmp_for_mode(
   switch( mode ){
     case RULESET_MM_EXACT:  return noCase ? strcasecmp : strcmp;
     case RULESET_MM_GLOB:   return noCase ? glob_nocase_match : glob_match;
-    case RULESET_MM_REGEXP: return noCase ? regexp_nocase_match : regexp_match;
+    case RULESET_MM_REGEXP: return regexp_match; /* NOTE: noCase option was
+                                                  *       already handled at
+                                                  *       compile-time. */
   }
   return NULL;
 }
@@ -157,8 +154,8 @@ static void comdb2_ruleset_str_to_flags(
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
-    if( sqlite3_stricmp(zTok, "NONE")==0 ){
-      flags |= RULESET_F_NONE;
+    if( sqlite3_stricmp(zTok, "DISABLE")==0 ){
+      flags |= RULESET_F_DISABLE;
       count++;
     }else if( sqlite3_stricmp(zTok, "PRINT")==0 ){
       flags |= RULESET_F_PRINT;
@@ -186,6 +183,10 @@ static void comdb2_ruleset_flags_to_str(
   }
   char *zOrig = zBuf;
   int nRet;
+  if( nBuf>0 && flags&RULESET_F_DISABLE ){
+    nRet = snprintf(zBuf, nBuf, "DISABLE ");
+    if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
+  }
   if( nBuf>0 && flags&RULESET_F_PRINT ){
     nRet = snprintf(zBuf, nBuf, "PRINT ");
     if( nRet>0 ){ zBuf += nRet; nBuf -= nRet; }
@@ -212,10 +213,7 @@ static void comdb2_ruleset_str_to_match_mode(
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
   char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
-    if( sqlite3_stricmp(zTok, "NONE")==0 ){
-      mode |= RULESET_MM_NONE;
-      count++;
-    }else if( sqlite3_stricmp(zTok, "EXACT")==0 ){
+    if( sqlite3_stricmp(zTok, "EXACT")==0 ){
       mode |= RULESET_MM_EXACT;
       count++;
     }else if( sqlite3_stricmp(zTok, "GLOB")==0 ){
@@ -394,7 +392,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   const char *zOriginTask;
   const char *zUser;
   const char *zSql;
-  if( rule->mode&RULESET_MM_REGEXP ){
+  if( stringComparer==regexp_match ){
     zOriginHost = (const char *)rule->pOriginHostRe;
     zOriginTask = (const char *)rule->pOriginTaskRe;
     zUser = (const char *)rule->pUserRe;
@@ -535,6 +533,7 @@ size_t comdb2_evaluate_ruleset(
     for(int i=0; i<rules->nRule; i++){
       struct ruleset_item *rule = &rules->aRule[i];
       if( rule->ruleNo==0 ){ continue; }
+      if( rule->flags&RULESET_F_DISABLE ){ continue; }
       ruleset_match_t match = comdb2_evaluate_ruleset_item(
         stringComparer, rules, rule, clnt, result
       );
@@ -599,48 +598,62 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   }
 }
 
+static void comdb2_free_rule_fields(
+  struct ruleset_item *rule
+){
+  if( rule==NULL ) return;
+  if( rule->zOriginHost!=NULL ){
+    free(rule->zOriginHost);
+    rule->zOriginHost = NULL;
+  }
+  if( rule->zOriginTask!=NULL ){
+    free(rule->zOriginTask);
+    rule->zOriginTask = NULL;
+  }
+  if( rule->zUser!=NULL ){
+    free(rule->zUser);
+    rule->zUser = NULL;
+  }
+  if( rule->zSql!=NULL ){
+    free(rule->zSql);
+    rule->zSql = NULL;
+  }
+  if( rule->pFingerprint!=NULL ){
+    free(rule->pFingerprint);
+    rule->pFingerprint = NULL;
+  }
+}
+
+static void comdb2_free_rule_regexps(
+  struct ruleset_item *rule
+){
+  if( rule==NULL ) return;
+  if( rule->pOriginHostRe!=NULL ){
+    re_free(rule->pOriginHostRe);
+    rule->pOriginHostRe = NULL;
+  }
+  if( rule->pOriginTaskRe!=NULL ){
+    re_free(rule->pOriginTaskRe);
+    rule->pOriginTaskRe = NULL;
+  }
+  if( rule->pUserRe!=NULL ){
+    re_free(rule->pUserRe);
+    rule->pUserRe = NULL;
+  }
+  if( rule->pSqlRe!=NULL ){
+    re_free(rule->pSqlRe);
+    rule->pSqlRe = NULL;
+  }
+}
+
 void comdb2_free_ruleset(struct ruleset *rules){
   ATOMIC_ADD64(gbl_ruleset_generation, 1);
   if( rules!=NULL ){
     if( rules->aRule!=NULL ){
       for(int i=0; i<rules->nRule; i++){
         struct ruleset_item *rule = &rules->aRule[i];
-        if( rule->zOriginHost!=NULL ){
-          free(rule->zOriginHost);
-          rule->zOriginHost = NULL;
-        }
-        if( rule->pOriginHostRe!=NULL ){
-          re_free(rule->pOriginHostRe);
-          rule->pOriginHostRe = NULL;
-        }
-        if( rule->zOriginTask!=NULL ){
-          free(rule->zOriginTask);
-          rule->zOriginTask = NULL;
-        }
-        if( rule->pOriginTaskRe!=NULL ){
-          re_free(rule->pOriginTaskRe);
-          rule->pOriginTaskRe = NULL;
-        }
-        if( rule->zUser!=NULL ){
-          free(rule->zUser);
-          rule->zUser = NULL;
-        }
-        if( rule->pUserRe!=NULL ){
-          re_free(rule->pUserRe);
-          rule->pUserRe = NULL;
-        }
-        if( rule->zSql!=NULL ){
-          free(rule->zSql);
-          rule->zSql = NULL;
-        }
-        if( rule->pSqlRe!=NULL ){
-          re_free(rule->pSqlRe);
-          rule->pSqlRe = NULL;
-        }
-        if( rule->pFingerprint!=NULL ){
-          free(rule->pFingerprint);
-          rule->pFingerprint = NULL;
-        }
+        comdb2_free_rule_regexps(rule);
+        comdb2_free_rule_fields(rule);
       }
       free(rules->aRule);
       rules->aRule = NULL;
@@ -908,6 +921,8 @@ int comdb2_load_ruleset(
                        zFileName, lineNo, "sql", rule->zSql);
               goto failure;
             }
+          }else{
+            comdb2_free_rule_regexps(rule);
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
