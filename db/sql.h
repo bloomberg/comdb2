@@ -219,10 +219,10 @@ enum ctrl_sqleng {
     SQLENG_WRONG_STATE,
 };
 
-enum {
-    TRANS_COMMITROLLBK_NOREPLY = 0,
-    TRANS_COMMITROLLBK_NORMAL = 1,
-    TRANS_COMMITROLLBK_CHUNK = 2
+enum trans_clntcomm {
+    TRANS_CLNTCOMM_NOREPLY = 0,
+    TRANS_CLNTCOMM_NORMAL = 1,
+    TRANS_CLNTCOMM_CHUNK = 2
 };
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -1135,9 +1135,10 @@ int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                     int sendresponse);
+                     enum trans_clntcomm sideeffects);
 int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sendresponse);
+                              struct sqlclntstate *clnt,
+                              enum trans_clntcomm sideeffects);
 
 int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);

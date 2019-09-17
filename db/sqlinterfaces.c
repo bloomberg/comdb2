@@ -1628,10 +1628,12 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                     int sendresponse)
+                     enum trans_clntcomm sideeffects)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->ready_for_heartbeats = 0;
+    /* if this is a new chunk, do not stop the hearbeats */
+    if (sideeffects != TRANS_CLNTCOMM_CHUNK)
+        clnt->ready_for_heartbeats = 0;
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
@@ -1646,7 +1648,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (clnt->osql.replay)
         goto done;
 
-    if (sendresponse) {
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
         write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
 
@@ -2130,14 +2132,15 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 static int do_send_commitrollback_response(struct sqlclntstate *clnt,
                                            int sideeffects)
 {
-    if (sideeffects == TRANS_COMMITROLLBK_NORMAL &&
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL &&
         (send_intrans_response(clnt) || !clnt->had_errors))
         return 1;
     return 0;
 }
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sideeffects)
+                              struct sqlclntstate *clnt,
+                              enum trans_clntcomm sideeffects)
 {
     int rc = 0;
     int outrc = 0;
@@ -2210,7 +2213,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
         Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
+        /* do not turn heartbeats if this is a chunked transaction */
+        if (sideeffects != TRANS_CLNTCOMM_CHUNK)
+            clnt->ready_for_heartbeats = 0;
 
         if (do_send_commitrollback_response(clnt, sideeffects)) {
             /* This is a commit, so we'll have something to send here even on a
@@ -2294,7 +2299,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
     }
 
-    if (sideeffects == TRANS_COMMITROLLBK_CHUNK)
+    if (sideeffects == TRANS_CLNTCOMM_CHUNK)
         return outrc;
 
     /* if this is a retry, let the upper layer free the structure */
@@ -3786,7 +3791,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     switch (clnt->ctrl_sqlengine) {
 
     case SQLENG_PRE_STRT_STATE:
-        *outrc = handle_sql_begin(thd, clnt, 1);
+        *outrc = handle_sql_begin(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
     case SQLENG_WRONG_STATE:
@@ -3796,7 +3801,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
         *outrc =
-            handle_sql_commitrollback(thd, clnt, TRANS_COMMITROLLBK_NORMAL);
+            handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:

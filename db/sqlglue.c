@@ -8414,7 +8414,7 @@ int sqlite3BtreeInsert(
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                         SQLENG_FNSH_STATE);
                 rc = handle_sql_commitrollback(clnt->thd, clnt,
-                                               TRANS_COMMITROLLBK_CHUNK);
+                                               TRANS_CLNTCOMM_CHUNK);
                 if (rc) {
                     comdb2_sqlite3VdbeError(pCur->vdbe,
                                             errstat_get_str(&clnt->osql.xerr));
@@ -8437,7 +8437,7 @@ int sqlite3BtreeInsert(
                 /* restart a new transaction */
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                         SQLENG_PRE_STRT_STATE);
-                rc = handle_sql_begin(clnt->thd, clnt, 0);
+                rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
                 if (rc && !commit_rc) {
                     comdb2_sqlite3VdbeError(pCur->vdbe,
                                             "Failed to start a new chunk");
