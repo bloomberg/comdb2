@@ -5801,7 +5801,7 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
 
         db_rollback_int(lua, &tmp);
 
-        if (clnt->in_client_trans) {
+        if (in_client_trans(clnt)) {
             /* We have rolled back the transaction before having seen a commit
              * or rollback from the client. Let's fix the transaction state.
              */
