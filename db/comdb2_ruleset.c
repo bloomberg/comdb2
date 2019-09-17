@@ -32,14 +32,19 @@
 #define RULESET_FLAG_DELIM "\t\n\r\v\f ,{}"
 #define RULESET_TEXT_DELIM ";"
 
+/* =============== BEGIN CODE STOLEN FROM "sqlite/src/func.c" =============== */
 static const struct compareInfo globCaseInfo = { '*', '?', '[', 0 };
 static const struct compareInfo globNoCaseInfo = { '*', '?', '[', 1 };
 
+#define SQLITE_MATCH             0
 extern int patternCompare(const u8*,const u8*,const struct compareInfo*,u32);
+/* ================ END CODE STOLEN FROM "sqlite/src/func.c" ================ */
 
+/* =========== BEGIN CODE STOLEN FROM "sqlite/ext/misc/regexp.c" ============ */
 extern const char *re_compile(void**,const char*,int);
 extern int re_match(void*,const unsigned char*,int);
 extern void re_free(void*);
+/* ============ END CODE STOLEN FROM "sqlite/ext/misc/regexp.c" ============= */
 
 static uint64_t gbl_ruleset_generation = 0;
 
@@ -71,7 +76,7 @@ static int regexp_match(
   const char *zStr1,
   const char *zStr2
 ){
-  if( re_match((void *)zPattern, (const unsigned char *)zStr, -1) ){
+  if( re_match((void *)zStr2, (const unsigned char *)zStr1, -1) ){
     return RULESET_S_TRUE;
   }else{
     return RULESET_S_FALSE;
