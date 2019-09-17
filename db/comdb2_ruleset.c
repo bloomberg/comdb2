@@ -657,14 +657,22 @@ static void comdb2_free_rule_fields(
   }
 }
 
+static void comdb2_free_ruleset_item(
+  struct ruleset_item *rule
+){
+  if( rule==NULL ) return;
+  comdb2_free_rule_regexps(rule);
+  comdb2_free_rule_fields(rule);
+  memset(rule, 0, sizeof(struct ruleset_item));
+}
+
 void comdb2_free_ruleset(struct ruleset *rules){
   ATOMIC_ADD64(gbl_ruleset_generation, 1);
   if( rules==NULL ) return;
   if( rules->aRule!=NULL ){
     for(int i=0; i<rules->nRule; i++){
       struct ruleset_item *rule = &rules->aRule[i];
-      comdb2_free_rule_regexps(rule);
-      comdb2_free_rule_fields(rule);
+      comdb2_free_ruleset_item(rule);
     }
     free(rules->aRule);
     rules->aRule = NULL;
@@ -700,6 +708,56 @@ static int recompile_regexp(
   return 0;
 }
 
+static int comdb2_more_ruleset_items(
+  struct ruleset *rules,
+  size_t nRule,
+  char *zError,
+  size_t nError,
+  const char *zFileName,
+  int lineNo
+){
+  if( nRule>rules->nRule ){
+    size_t nNewRule = nRule - rules->nRule;
+    struct ruleset_item *aNewRule = realloc(
+      rules->aRule, nRule * sizeof(struct ruleset_item)
+    );
+    if( aNewRule==NULL ){
+      snprintf(zError, nError,
+               "%s:%d, could not reallocate %zu rules for %zu new rules",
+               zFileName, lineNo, nRule, nNewRule);
+      return ENOMEM;
+    }
+    memset(&aNewRule[rules->nRule], 0, nNewRule * sizeof(struct ruleset_item));
+    rules->aRule = aNewRule;
+    rules->nRule = nRule;
+  }
+  return 0;
+}
+
+static int comdb2_merge_ruleset_items(
+  struct ruleset *dst,
+  struct ruleset *src,
+  char *zError,
+  size_t nError,
+  const char *zFileName,
+  int lineNo
+){
+  int rc;
+  assert( dst!=src );
+  rc = comdb2_more_ruleset_items(
+    dst, src->nRule, zError, nError, zFileName, lineNo
+  );
+  if( rc!=0 ) return rc;
+  for(int i=0; i<src->nRule; i++){
+    struct ruleset_item *srcRule = &src->aRule[i];
+    if( srcRule->ruleNo==0 ){ continue; }
+    struct ruleset_item *dstRule = &dst->aRule[i];
+    comdb2_free_ruleset_item(dstRule);
+    memcpy(dstRule, srcRule, sizeof(struct ruleset_item));
+    memset(srcRule, 0, sizeof(struct ruleset_item));
+  }
+}
+
 int comdb2_load_ruleset(
   const char *zFileName,
   struct ruleset **pRules
@@ -714,16 +772,13 @@ int comdb2_load_ruleset(
   int fd = -1;
   SBUF2 *sb = NULL;
   i64 version = 0;
-  struct ruleset *rules = *pRules;
+  struct ruleset *rules = calloc(1, sizeof(struct ruleset));
 
   if( rules==NULL ){
-    rules = calloc(1, sizeof(struct ruleset));
-    if( rules==NULL ){
-      snprintf(zError, sizeof(zError),
-               "%s:%d, cannot allocate ruleset",
-               zFileName, lineNo);
-      goto failure;
-    }
+    snprintf(zError, sizeof(zError),
+             "%s:%d, cannot allocate ruleset",
+             zFileName, lineNo);
+    goto failure;
   }
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
@@ -787,20 +842,9 @@ int comdb2_load_ruleset(
                  zFileName, lineNo, ruleNo, RULESET_MAX_COUNT);
         goto failure;
       }
-      if( ruleNo>rules->nRule ){
-        size_t nNewRule = ruleNo - rules->nRule;
-        struct ruleset_item *aNewRule = realloc(
-          rules->aRule, (size_t)ruleNo*sizeof(struct ruleset_item)
-        );
-        if( aNewRule==NULL ){
-          snprintf(zError, sizeof(zError),
-                   "%s:%d, could not reallocate %lld rules",
-                   zFileName, lineNo, ruleNo);
-          goto failure;
-        }
-        memset(&aNewRule[rules->nRule],0,nNewRule*sizeof(struct ruleset_item));
-        rules->aRule = aNewRule;
-        rules->nRule = ruleNo;
+      if( comdb2_more_ruleset_items(rules,
+              (size_t)ruleNo, zError, sizeof(zError), zFileName, lineNo) ){
+        goto failure;
       }
       assert( ruleNo>0 );
       assert( ruleNo<=rules->nRule );
@@ -1135,18 +1179,21 @@ int comdb2_load_ruleset(
     }
   }
 
-  rules->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
-  *pRules = rules;
+  if( comdb2_merge_ruleset_items(*pRules,
+          rules, zError, sizeof(zError), zFileName, lineNo) ){
+    goto failure;
+  }
 
+  (*pRules)->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
   rc = 0;
   goto done;
 
 failure:
   logmsg(LOGMSG_ERROR, "%s", zError);
-  comdb2_free_ruleset(rules);
   rc = 1;
 
 done:
+  comdb2_free_ruleset(rules);
   if( sb!=NULL ) sbuf2close(sb);
   if( fd!=-1 ) close(fd);
   return rc;
