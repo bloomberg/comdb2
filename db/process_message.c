@@ -1388,6 +1388,31 @@ clipper_usage:
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
                gbl_ruleset, matchCount, zRuleRes);
     }
+    else if (tokcmp(tok, ltok, "enable_ruleset_item") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
+            int ruleNo = toknum(tok, ltok);
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok != 0) {
+                int bEnable = toknum(tok, ltok);
+                rc = comdb2_enable_ruleset_item(gbl_ruleset, ruleNo, bEnable);
+                if (rc == 0) {
+                    logmsg(LOGMSG_USER, "Ruleset item #%d is now %s\n",
+                           ruleNo, bEnable ? "ENABLED" : "DISABLED");
+                } else {
+                    logmsg(LOGMSG_USER, "Failed %s ruleset item #%d: rc=%d\n",
+                           bEnable ? "ENABLE" : "DISABLE", ruleNo, rc);
+                }
+                return rc;
+            } else {
+                logmsg(LOGMSG_ERROR, "Expected enable/disable boolean\n");
+                return -1;
+            }
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected ruleset item number\n");
+            return -1;
+        }
+    }
     else if (tokcmp(tok, ltok, "reload_ruleset") == 0) {
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);

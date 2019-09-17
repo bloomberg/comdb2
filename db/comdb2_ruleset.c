@@ -594,6 +594,23 @@ static int blob_string_to_fingerprint(
   return 0;
 }
 
+int comdb2_enable_ruleset_item(
+  struct ruleset *rules,
+  int ruleNo,
+  int bEnable
+){
+  if( rules==NULL ) return EINVAL;
+  if( ruleNo<1 || ruleNo>rules->nRule ) return ERANGE;
+  struct ruleset_item *rule = &rules->aRule[ruleNo-1];
+  if( rule->ruleNo==0 ) return ENOENT;
+  if( bEnable ){
+    rule->flags &= ~RULESET_F_DISABLE;
+  }else{
+    rule->flags |= ~RULESET_F_DISABLE;
+  }
+  return 0;
+}
+
 void comdb2_dump_ruleset(struct ruleset *rules){
   if( rules==NULL ) return;
   logmsg(LOGMSG_USER,

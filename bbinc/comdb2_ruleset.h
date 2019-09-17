@@ -232,6 +232,7 @@ size_t comdb2_ruleset_result_to_str(
   size_t nBuf
 );
 
+int comdb2_enable_ruleset_item(struct ruleset *rules, int ruleNo, int bEnable);
 void comdb2_dump_ruleset(struct ruleset *rules);
 void comdb2_free_ruleset(struct ruleset *rules);
 int comdb2_load_ruleset(const char *zFileName, struct ruleset **pRules);
