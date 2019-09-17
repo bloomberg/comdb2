@@ -1185,6 +1185,7 @@ int comdb2_load_ruleset(
             *pRules, rules, zError, sizeof(zError), zFileName, lineNo) ){
       goto failure;
     }
+    comdb2_free_ruleset(rules);
   }else{
     *pRules = rules;
   }
@@ -1195,10 +1196,10 @@ int comdb2_load_ruleset(
 
 failure:
   logmsg(LOGMSG_ERROR, "%s", zError);
+  comdb2_free_ruleset(rules);
   rc = 1;
 
 done:
-  comdb2_free_ruleset(rules);
   if( sb!=NULL ) sbuf2close(sb);
   if( fd!=-1 ) close(fd);
   return rc;
