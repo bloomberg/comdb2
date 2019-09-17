@@ -3800,8 +3800,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
-        *outrc =
-            handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
+        *outrc = handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:
