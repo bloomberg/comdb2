@@ -50,3 +50,5 @@
 (x=2)
 (x=3)
 (out='ruleset (nil) matched 0, ruleNo=0, action=NONE, priority=HIGHEST')
+(out='[ERROR] bad.ruleset:28, bad flags value 'BAD'')
+(out='ruleset (nil) matched 0, ruleNo=0, action=NONE, priority=HIGHEST')
