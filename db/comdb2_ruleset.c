@@ -630,7 +630,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   }
 }
 
-static void comdb2_free_rule_regexps(
+static void comdb2_free_ruleset_item_regexps(
   struct ruleset_item *rule
 ){
   if( rule==NULL ) return;
@@ -652,7 +652,7 @@ static void comdb2_free_rule_regexps(
   }
 }
 
-static void comdb2_free_rule_fields(
+static void comdb2_free_ruleset_item_fields(
   struct ruleset_item *rule
 ){
   if( rule==NULL ) return;
@@ -682,8 +682,8 @@ static void comdb2_free_ruleset_item(
   struct ruleset_item *rule
 ){
   if( rule==NULL ) return;
-  comdb2_free_rule_regexps(rule);
-  comdb2_free_rule_fields(rule);
+  comdb2_free_ruleset_item_regexps(rule);
+  comdb2_free_ruleset_item_fields(rule);
   memset(rule, 0, sizeof(struct ruleset_item));
 }
 
@@ -1005,7 +1005,7 @@ int comdb2_load_ruleset(
               goto failure;
             }
           }else{
-            comdb2_free_rule_regexps(rule);
+            comdb2_free_ruleset_item_regexps(rule);
           }
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
