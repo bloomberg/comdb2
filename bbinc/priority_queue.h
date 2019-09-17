@@ -38,6 +38,10 @@ typedef long long priority_t;
 #define PRIORITY_T_LOWEST ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+2))
 #endif /* PRIORITY_T_LOWEST */
 
+#ifndef PRIORITY_T_INITIAL
+#define PRIORITY_T_INITIAL ((priority_t)((PRIORITY_T_LOWEST-1)/2))
+#endif /* PRIORITY_T_INITIAL */
+
 #ifndef PRIORITY_T_HEAD
 #define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+1))
 #endif /* PRIORITY_T_HEAD */
