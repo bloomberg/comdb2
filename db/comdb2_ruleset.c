@@ -666,8 +666,9 @@ static void comdb2_free_ruleset_item(
   memset(rule, 0, sizeof(struct ruleset_item));
 }
 
-void comdb2_free_ruleset(struct ruleset *rules){
-  ATOMIC_ADD64(gbl_ruleset_generation, 1);
+static void comdb2_free_ruleset_int(
+  struct ruleset *rules
+){
   if( rules==NULL ) return;
   if( rules->aRule!=NULL ){
     for(int i=0; i<rules->nRule; i++){
@@ -678,6 +679,11 @@ void comdb2_free_ruleset(struct ruleset *rules){
     rules->aRule = NULL;
   }
   free(rules);
+}
+
+void comdb2_free_ruleset(struct ruleset *rules){
+  ATOMIC_ADD64(gbl_ruleset_generation, 1);
+  comdb2_free_ruleset_int(rules);
 }
 
 static int recompile_regexp(
@@ -1185,7 +1191,7 @@ int comdb2_load_ruleset(
             *pRules, rules, zError, sizeof(zError), zFileName, lineNo) ){
       goto failure;
     }
-    comdb2_free_ruleset(rules);
+    comdb2_free_ruleset_int(rules);
   }else{
     *pRules = rules;
   }
@@ -1196,7 +1202,7 @@ int comdb2_load_ruleset(
 
 failure:
   logmsg(LOGMSG_ERROR, "%s", zError);
-  comdb2_free_ruleset(rules);
+  comdb2_free_ruleset_int(rules);
   rc = 1;
 
 done:

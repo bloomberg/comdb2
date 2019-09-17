@@ -24,8 +24,8 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('save_ruleset $DBDIR/rulesets/t02_saved.ruleset')" | sed 's/file ".*"/file "t02_saved.ruleset"/g'
 
 if [ $SP_HOST != `hostname` ]; then
-    scp $SP_HOST:$DBDIR/rulesets/t01_saved.ruleset $DBDIR/rulesets/t01_saved.ruleset
-    scp $SP_HOST:$DBDIR/rulesets/t02_saved.ruleset $DBDIR/rulesets/t02_saved.ruleset
+  scp $SP_HOST:$DBDIR/rulesets/t01_saved.ruleset $DBDIR/rulesets/t01_saved.ruleset
+  scp $SP_HOST:$DBDIR/rulesets/t02_saved.ruleset $DBDIR/rulesets/t02_saved.ruleset
 fi
 
 if ! diff $DBDIR/rulesets/t01.ruleset $DBDIR/rulesets/t01_saved.ruleset ; then
