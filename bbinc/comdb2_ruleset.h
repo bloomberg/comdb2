@@ -93,12 +93,8 @@ enum ruleset_string_match {
   RULESET_S_TRUE = 0,     /* The string comparison function was able to match
                            * the string value against the specified pattern. */
 
-  RULESET_S_FALSE = 1,    /* The string comparison function was did not match
+  RULESET_S_FALSE = 1     /* The string comparison function was did not match
                            * the string value against the specified pattern. */
-
-  RULESET_S_ERROR = 2     /* The string comparison function encountered some
-                           * kind of error that prevented it from completing
-                           * its matching. */
 };
 
 enum ruleset_match {
@@ -138,37 +134,41 @@ struct ruleset_item {
                                    * etc. */
 
   char *zOriginHost;              /* Obtained via "clnt->origin_host".  If not
-                                   * NULL this will be matched using exact
-                                   * case-insensitive string comparisons. */
+                                   * NULL this pattern will be matched against
+                                   * the actual value using the semantics of
+                                   * the specified match mode. */
 
   void *pOriginHostRe;            /* This is the cached regular expression for
                                    * the origin host pattern, if needed. */
 
   char *zOriginTask;              /* Obtained via "clnt->conninfo.pename".  If
-                                   * not NULL this be matched using exact
-                                   * case-insensitive string comparisons. */
+                                   * not NULL this pattern will be matched
+                                   * against the actual value using the
+                                   * semantics of the specified match mode. */
 
   void *pOriginTaskRe;            /* This is the cached regular expression for
                                    * the origin task pattern, if needed. */
 
   char *zUser;                    /* Obtained via "clnt->have_user" /
-                                   * "clnt->user".  If not NULL this be
-                                   * matched using exact case-insensitive
-                                   * string comparisons. */
+                                   * "clnt->user".  If not NULL this pattern
+                                   * will be matched against the actual value
+                                   * using the semantics of the specified match
+                                   * mode. */
 
   void *pUserRe;                  /* This is the cached regular expression for
                                    * the user pattern, if needed. */
 
   char *zSql;                     /* Obtained via "clnt->sql".  If not NULL
-                                   * this be matched using exact
-                                   * case-insensitive string comparisons. */
+                                   * this pattern will be matched against the
+                                   * actual value using the semantics of the
+                                   * specified match mode. */
 
   void *pSqlRe;                   /* This is the cached regular expression for
                                    * the SQL pattern, if needed. */
 
-  unsigned char *pFingerprint;    /* Obtained via "reqlogger->fingerprint".
-                                   * If not all zeros, this will be matched
-                                   * using memcmp(). */
+  unsigned char *pFingerprint;    /* Obtained via "clnt->work.aFingerprint".
+                                   * If not NULL this will be matched using
+                                   * memcmp(). */
 
   int evalCount;                  /* How many times have this rule been
                                    * evaluated? */
