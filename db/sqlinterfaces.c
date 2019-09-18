@@ -4903,7 +4903,7 @@ static int can_execute_sql_query_now(
     default: {
       logmsg(LOGMSG_ERROR,
              "%s: unsupported action 0x%x for ruleset 0x%p\n",
-             __func__, result.action, ruleset);
+             __func__, result.action, gbl_ruleset);
       break;
     }
   }
