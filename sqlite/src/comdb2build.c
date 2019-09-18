@@ -6129,14 +6129,12 @@ cleanup:
 
 void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 {
-    char t_name[160];
-
     if (comdb2IsPrepareOnly(pParse))
         return;
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if (sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0)) {
+        if ( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ) {
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -6146,6 +6144,7 @@ void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
+    char t_name[160];
     char *t_name1;
     char *t_name2 = NULL;
     char *t_value = NULL;
