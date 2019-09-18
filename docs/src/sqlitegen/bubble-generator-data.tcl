@@ -472,7 +472,7 @@ stack
       {line SCHEMACHANGE {or COMMITSLEEP CONVERTSLEEP} /numeric-literal}
       {line SKIPSCAN {or ENABLE DISABLE}}
       {line TIME PARTITION /partition-name RETENTION /numeric-literal}
-      {line TUNABLE /string-literal {or /string-literal /numeric-literal}}
+      {line TUNABLE /string-literal {opt = } {or /string-literal /numeric-literal}}
       {line COUNTER /counter-name SET /numeric-literal}
       {line COUNTER /counter-name INCREMENT}
     }

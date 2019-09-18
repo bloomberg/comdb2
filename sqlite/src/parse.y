@@ -2136,8 +2136,10 @@ putcmd ::= SCHEMACHANGE CONVERTSLEEP INTEGER(F). {
     comdb2schemachangeConvertsleep(pParse, tmp);
 }
 
-putcmd ::= TUNABLE nm(N) INTEGER|FLOAT|STRING(M). {
-    comdb2putTunable(pParse, &N, &M);
+opteq ::= .
+opteq ::= EQ .
+putcmd ::= TUNABLE nm(N) dbnm(M) opteq INTEGER|FLOAT|STRING(V). {
+    comdb2putTunable(pParse, &N, &M, &V);
 }
 
 /////////////////////////////////// REBUILD ///////////////////////////////////

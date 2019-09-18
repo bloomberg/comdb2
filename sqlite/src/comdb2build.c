@@ -6127,7 +6127,7 @@ cleanup:
     return;
 }
 
-void comdb2putTunable(Parse *pParse, Token *name, Token *value)
+void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -6144,14 +6144,24 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
-    char *t_name;
+    char t_name[160];
+    char *t_name1;
+    char *t_name2 = NULL;
     char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
 
-    rc = create_string_from_token(NULL, pParse, &t_name, name);
+    rc = create_string_from_token(NULL, pParse, &t_name1, name1);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
+    if (name2 && name2->n > 0) {
+        rc = create_string_from_token(NULL, pParse, &t_name2, name2);
+        if (rc != SQLITE_OK)
+            goto cleanup; /* Error has been set. */
+        snprintf(t_name, sizeof(t_name) - 1, "%s.%s", t_name1, t_name2);
+    } else {
+        snprintf(t_name, sizeof(t_name) - 1, "%s", t_name1);
+    }
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
@@ -6161,7 +6171,8 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     }
 
 cleanup:
-    free(t_name);
+    free(t_name1);
+    free(t_name2);
     free(t_value);
     return;
 }
