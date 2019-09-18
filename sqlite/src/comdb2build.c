@@ -6134,7 +6134,7 @@ void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if ( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ) {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
