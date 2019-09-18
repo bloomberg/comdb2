@@ -68,7 +68,7 @@ The supported set of property names and their required formats is:
 |---------------|------------------------|
 |action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, `LOW_PRIO`, or `HIGH_PRIO`. |
 |adjustment     | An integer between zero (0) and nine hundred ninety-nine thousand nine hundred ninety-seven (999997). |
-|flags          | One or more of `NONE`, `PRINT`, and `STOP`, see [flags syntax](#flags-syntax). |
+|flags          | One or more of `NONE`, `DISABLE`, `PRINT`, and `STOP`, see [flags syntax](#flags-syntax). |
 |mode           | One or more of `NONE`, `EXACT`, `GLOB`, `REGEXP`, and `NOCASE`, see [flags syntax](#flags-syntax). |
 |originHost     | Any pattern string suitable for match mode.  May not contain whitespace. |
 |originTask     | Any Pattern string suitable for match mode.  May not contain whitespace. |
@@ -117,15 +117,17 @@ The `NONE` rule flag has no effect.  If all criteria specified for a rule are
 matched and the `STOP` rule flag is present, further rule matching is skipped
 and the current ruleset result is returned.  If all criteria specified for a
 rule are matched and the `PRINT` rule flag is present, a detailed diagnostic
-message will be emitted into the log file.
+message will be emitted into the log file.  Rules with the `DISABLE` flag set
+will not be evaluated.
 
 ### Match modes
 
-The match mode `NONE` has no effect.  If a match mode of `NONE` is specified
-and any rule criteria are present, the results are undefined.  The match mode
-`EXACT`, as the name suggests, treats the property value as a string literal
-to be matched exactly.  The match mode `GLOB` treats the property value as a
-pattern compatible with the [SQLite GLOB operator syntax](https://www.sqlite.org/lang_expr.html#glob).
+The match mode `NONE` performs no matching.  If a match mode of `NONE` is
+specified and any rule criteria are present, the results are undefined.  If
+no criteria are present for a rule then rule is always treated as a match.
+The match mode `EXACT`, as the name suggests, treats the property value as
+a string literal to be matched exactly.  The match mode `GLOB` treats the
+property value as a pattern compatible with the [SQLite GLOB operator syntax](https://www.sqlite.org/lang_expr.html#glob).
 The match mode `REGEXP` treats the property value as a [regular expression](https://en.wikipedia.org/wiki/Regular_expression)
 compatible with the [SQLite regular expression extension](https://www.sqlite.org/src/artifact?ci=trunk&filename=ext/misc/regexp.c).
 The match mode `NOCASE` may be combined with another match mode to enable
