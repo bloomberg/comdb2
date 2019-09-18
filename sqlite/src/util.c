@@ -307,6 +307,7 @@ int sqlite3IsCorrectlyQuoted(char *z){
 int sqlite3IsCorrectlyBraced(char *z){
   int i = 1;
   int q = 0;
+  if( z[0]=='\0' ) return 0; /* empty string? */
   while( z[i]!='\0' ){
     if( z[i]=='{' || (z[i]=='}' && z[i+1]!='\0') ){ q++; }
     i++;
