@@ -5113,7 +5113,7 @@ static priority_t combinePriorities(
       return priority1;
     }
     case PRIORITY_T_DEFAULT: {
-      assert(priority_is_valid(priority2, 1));
+      assert(priority_is_valid(priority2, 0));
       return priority2;
     }
     default: {

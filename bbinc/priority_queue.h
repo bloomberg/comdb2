@@ -40,7 +40,7 @@ typedef long long priority_t;
 #endif /* PRIORITY_T_HIGHEST */
 
 #ifndef PRIORITY_T_LOWEST
-#define PRIORITY_T_LOWEST ((priority_t)(LLONG_MAX>>32LL))
+#define PRIORITY_T_LOWEST ((priority_t)(LLONG_MAX>>1LL))
 #endif /* PRIORITY_T_LOWEST */
 
 #ifndef PRIORITY_T_INITIAL
