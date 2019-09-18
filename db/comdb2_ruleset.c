@@ -161,9 +161,7 @@ static void comdb2_ruleset_str_to_flags(
   *pFlags = RULESET_F_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zDup = strdup(zBuf);
-  if( zDup==NULL ) return;
-  char *zTok = strtok(zDup, RULESET_FLAG_DELIM);
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       flags |= RULESET_F_NONE;
@@ -179,13 +177,11 @@ static void comdb2_ruleset_str_to_flags(
       count++;
     }else{
       if( pzBad!=NULL ) *pzBad = zTok;
-      free(zDup);
       return;
     }
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pFlags = flags;
-  free(zDup);
 }
 
 static void comdb2_ruleset_flags_to_str(
@@ -227,9 +223,7 @@ static void comdb2_ruleset_str_to_match_mode(
   *pMode = RULESET_MM_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zDup = strdup(zBuf);
-  if( zDup==NULL ) return;
-  char *zTok = strtok(zDup, RULESET_FLAG_DELIM);
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       mode |= RULESET_MM_NONE;
@@ -248,13 +242,11 @@ static void comdb2_ruleset_str_to_match_mode(
       count++;
     }else{
       if( pzBad!=NULL ) *pzBad = zTok;
-      free(zDup);
       return;
     }
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pMode = mode;
-  free(zDup);
 }
 
 static void comdb2_ruleset_match_mode_to_str(
