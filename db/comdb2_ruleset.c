@@ -52,6 +52,16 @@ extern void re_free(void*);
 
 static uint64_t gbl_ruleset_generation = 0;
 
+static void strtok_reset(
+  char *zBuf,
+  size_t nBuf
+){
+  if( !zBuf ) return;
+  for(int i=0; i<nBuf; i++){
+    if( zBuf[i]=='\0' ) zBuf[i] = (char)0x1C; /* Field Separator */
+  }
+}
+
 static int glob_match(
   const char *zStr1,
   const char *zStr2
@@ -953,6 +963,7 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
+          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -1007,6 +1018,7 @@ int comdb2_load_ruleset(
           }else{
             comdb2_free_ruleset_item_regexps(rule);
           }
+          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -1144,6 +1156,7 @@ int comdb2_load_ruleset(
             re_free(rule->pSqlRe);
             rule->pSqlRe = NULL;
           }
+          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
