@@ -52,16 +52,6 @@ extern void re_free(void*);
 
 static uint64_t gbl_ruleset_generation = 0;
 
-static void strtok_reset(
-  char *zBuf,
-  size_t nBuf
-){
-  if( !zBuf ) return;
-  for(int i=0; i<nBuf; i++){
-    if( zBuf[i]=='\0' ) zBuf[i] = (char)0x1C; /* Field Separator */
-  }
-}
-
 static int glob_match(
   const char *zStr1,
   const char *zStr2
@@ -164,14 +154,15 @@ static const char *comdb2_ruleset_action_to_str(
 static void comdb2_ruleset_str_to_flags(
   enum ruleset_flags *pFlags,
   char *zBuf,
-  char **pzBad
+  char **pzBad,
+  int bNew
 ){
   enum ruleset_flags flags = RULESET_F_NONE;
   int count = 0;
   *pFlags = RULESET_F_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
+  char *zTok = strtok(bNew ? zBuf : NULL, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       flags |= RULESET_F_NONE;
@@ -226,14 +217,15 @@ static void comdb2_ruleset_flags_to_str(
 static void comdb2_ruleset_str_to_match_mode(
   enum ruleset_match_mode *pMode,
   char *zBuf,
-  char **pzBad
+  char **pzBad,
+  int bNew
 ){
   enum ruleset_match_mode mode = RULESET_MM_NONE;
   int count = 0;
   *pMode = RULESET_MM_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
+  char *zTok = strtok(bNew ? zBuf : NULL, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       mode |= RULESET_MM_NONE;
@@ -956,14 +948,13 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_flags(&rule->flags, zTok, &zBad);
+          comdb2_ruleset_str_to_flags(&rule->flags, zTok, &zBad, 0);
           if( rule->flags==RULESET_F_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
-          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -976,7 +967,7 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok, &zBad);
+          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok, &zBad, 0);
           if( rule->mode==RULESET_MM_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
@@ -1018,7 +1009,6 @@ int comdb2_load_ruleset(
           }else{
             comdb2_free_ruleset_item_regexps(rule);
           }
-          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
@@ -1156,7 +1146,6 @@ int comdb2_load_ruleset(
             re_free(rule->pSqlRe);
             rule->pSqlRe = NULL;
           }
-          strtok_reset(zLine, nLine);
           zTok = strtok(NULL, RULESET_DELIM);
           continue;
         }
