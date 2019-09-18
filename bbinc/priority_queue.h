@@ -22,36 +22,41 @@
 
 typedef long long priority_t;
 
+/* TODO: Maybe consider changing this value in the future? */
 #ifndef PRIORITY_T_ADJUSTMENT_MAXIMUM
-#define PRIORITY_T_ADJUSTMENT_MAXIMUM ((priority_t)999997)
+#define PRIORITY_T_ADJUSTMENT_MAXIMUM ((priority_t)1000000LL)
+#endif
+
+#ifndef PRIORITY_T_ADJUSTMENT_INITIAL
+#define PRIORITY_T_ADJUSTMENT_INITIAL ((priority_t)(PRIORITY_T_ADJUSTMENT_MAXIMUM>>1LL))
 #endif
 
 #ifndef PRIORITY_T_INVALID
-#define PRIORITY_T_INVALID ((priority_t)-1)
+#define PRIORITY_T_INVALID ((priority_t)-1LL)
 #endif /* PRIORITY_T_INVALID */
 
 #ifndef PRIORITY_T_HIGHEST
-#define PRIORITY_T_HIGHEST ((priority_t)0)
+#define PRIORITY_T_HIGHEST ((priority_t)0LL)
 #endif /* PRIORITY_T_HIGHEST */
 
 #ifndef PRIORITY_T_LOWEST
-#define PRIORITY_T_LOWEST ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+2))
+#define PRIORITY_T_LOWEST ((priority_t)(LLONG_MAX>>32LL))
 #endif /* PRIORITY_T_LOWEST */
 
 #ifndef PRIORITY_T_INITIAL
-#define PRIORITY_T_INITIAL ((priority_t)(PRIORITY_T_HIGHEST+((PRIORITY_T_ADJUSTMENT_MAXIMUM-1)/2)))
+#define PRIORITY_T_INITIAL ((priority_t)(PRIORITY_T_HIGHEST+PRIORITY_T_ADJUSTMENT_INITIAL))
 #endif /* PRIORITY_T_INITIAL */
 
 #ifndef PRIORITY_T_HEAD
-#define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+1))
+#define PRIORITY_T_HEAD ((priority_t)LLONG_MAX-3LL)
 #endif /* PRIORITY_T_HEAD */
 
 #ifndef PRIORITY_T_TAIL
-#define PRIORITY_T_TAIL ((priority_t)LLONG_MAX-(PRIORITY_T_ADJUSTMENT_MAXIMUM+0))
+#define PRIORITY_T_TAIL ((priority_t)LLONG_MAX-2LL)
 #endif /* PRIORITY_T_TAIL */
 
 #ifndef PRIORITY_T_DEFAULT
-#define PRIORITY_T_DEFAULT ((priority_t)LLONG_MAX)
+#define PRIORITY_T_DEFAULT ((priority_t)LLONG_MAX-1LL)
 #endif /* PRIORITY_T_DEFAULT */
 
 struct priority_queue_item_tag {
@@ -67,6 +72,9 @@ struct priority_queue_tag {
 typedef struct priority_queue_item_tag priority_queue_item_t;
 typedef struct priority_queue_tag priority_queue_t;
 typedef void (*priority_queue_foreach_fn)(void *p1, void *pData, void *p2);
+
+/* check if a value is valid for the priority_t type */
+int priority_is_valid(priority_t priority, int bSpecial);
 
 /* create a queue */
 priority_queue_t *priority_queue_new();

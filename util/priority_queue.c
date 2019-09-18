@@ -19,6 +19,26 @@
 #include <errno.h>
 #include "priority_queue.h"
 
+int priority_is_valid(priority_t priority, int bSpecial)
+{
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  if ((priority >= PRIORITY_T_HIGHEST) && (priority >= PRIORITY_T_LOWEST)) {
+    return 1; /* within basic range, always valid. */
+  }
+  if (bSpecial) { /* allow special values? */
+    switch (priority) {
+      case PRIORITY_T_HEAD:
+      case PRIORITY_T_TAIL:
+      case PRIORITY_T_DEFAULT:
+        return 1;
+    }
+  }
+  return 0;
+}
+
 priority_queue_t *priority_queue_new()
 {
   priority_queue_t *q = calloc(1, sizeof(priority_queue_t));
@@ -62,8 +82,11 @@ int priority_queue_add(
   priority_t p,
   void *o
 ){
-  assert(p >= PRIORITY_T_HIGHEST);
-  assert(p != PRIORITY_T_INVALID);
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  assert(priority_is_valid(p, 1));
 
   if ((q == NULL) || (o == NULL)) return EINVAL;
 
@@ -90,15 +113,13 @@ int priority_queue_add(
   if (p == PRIORITY_T_DEFAULT)
     p = PRIORITY_T_LOWEST;
 
-  assert(p >= PRIORITY_T_HIGHEST);
-  assert(p <= PRIORITY_T_LOWEST);
+  assert(priority_is_valid(p, 0));
 
   priority_queue_item_t *tmp, *iter;
 
   LISTC_FOR_EACH_SAFE(&q->list, iter, tmp, link)
   {
-    assert(iter->priority >= PRIORITY_T_HIGHEST);
-    assert(iter->priority <= PRIORITY_T_LOWEST);
+    assert(priority_is_valid(iter->priority, 0));
     if ((iter != NULL) && (iter->priority >= p)) {
       i->priority = p;
       listc_add_before(&q->list, i, iter);

@@ -5095,14 +5095,12 @@ static priority_t combinePriorities(
       return priority1;
     }
     case PRIORITY_T_DEFAULT: {
-      assert(priority2 >= PRIORITY_T_HIGHEST);
-      assert(priority2 <= PRIORITY_T_LOWEST);
+      assert(priority_is_valid(priority2, 1));
       return priority2;
     }
     default: {
       priority_t priority3 = priority1 + priority2;
-      assert(priority3 >= PRIORITY_T_HIGHEST);
-      assert(priority3 <= PRIORITY_T_LOWEST);
+      assert(priority_is_valid(priority3, 0));
       return priority3;
     }
   }
@@ -5122,13 +5120,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     */
     priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
     clnt->priority = combinePriorities(priority, localPriority);
-
-    assert(clnt->priority >= PRIORITY_T_HIGHEST);
-    assert(clnt->priority <= PRIORITY_T_LOWEST);
-    assert(clnt->priority != PRIORITY_T_INVALID);
-    assert(clnt->priority != PRIORITY_T_HEAD || priority == PRIORITY_T_HEAD);
-    assert(clnt->priority != PRIORITY_T_TAIL || priority == PRIORITY_T_TAIL);
-    assert(clnt->priority != PRIORITY_T_DEFAULT);
+    assert(priority_is_valid(clnt->priority, 1));
 
     struct thr_handle *self = thrman_self();
     if (self) {
