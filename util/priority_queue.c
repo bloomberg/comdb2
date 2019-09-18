@@ -25,7 +25,7 @@ int priority_is_valid(priority_t priority, int bSpecial)
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  if ((priority >= PRIORITY_T_HIGHEST) && (priority >= PRIORITY_T_LOWEST)) {
+  if ((priority >= PRIORITY_T_HIGHEST) && (priority <= PRIORITY_T_LOWEST)) {
     return 1; /* within basic range, always valid. */
   }
   if (bSpecial) { /* allow special values? */
