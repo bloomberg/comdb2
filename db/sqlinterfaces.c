@@ -4911,15 +4911,15 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  const char *zPoolPriority = "invalid";
+  const char *zPoolPriority = "invalid ";
   priority_t pool_priority = PRIORITY_T_INVALID;
   if (count > 0) {
     pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
     if (pool_priority == PRIORITY_T_HIGHEST) {
-      zPoolPriority = "fake";
+      zPoolPriority = "fake ";
       pool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
     } else {
-      zPoolPriority = "actual";
+      zPoolPriority = "actual ";
     }
   }
   int rc;
