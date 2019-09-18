@@ -4843,6 +4843,7 @@ static int can_execute_sql_query_now(
            __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
            (int)count, clnt->work.zRuleRes);
   }
+  *pRuleNo = -1; /* no rule was specifically responsible */
   *pbRejected = 0;
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
@@ -4853,7 +4854,6 @@ static int can_execute_sql_query_now(
       logmsg(LOGMSG_WARN,
              "%s: POST seqNo=%llu, forcing random SQL work item {%s} reject\n",
              __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
-      *pRuleNo = -1; /* no rule was specifically responsible */
       *pbRejected = 1;
       *pbTryAgain = 0;
       return 0;
@@ -4881,6 +4881,7 @@ static int can_execute_sql_query_now(
     }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
+      *pRuleNo = result.ruleNo;
       *pPriority = result.priority;
       break;
     }
