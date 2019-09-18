@@ -477,14 +477,13 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     case RULESET_A_REJECT: {
       if( (result->action&RULESET_A_REJECT_MASK)==0 ){
         result->ruleNo = rule->ruleNo;
-        result->action |= RULESET_A_REJECT;
+        result->action = RULESET_A_REJECT;
       }
       break;
     }
     case RULESET_A_REJECT_ALL: {
       result->ruleNo = rule->ruleNo;
-      result->action &= ~RULESET_A_REJECT;
-      result->action |= RULESET_A_REJECT_ALL;
+      result->action = RULESET_A_REJECT_ALL;
       break;
     }
     case RULESET_A_UNREJECT: {
@@ -497,7 +496,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       if( (result->action&RULESET_A_REJECT_MASK)==0 ){
         result->ruleNo = rule->ruleNo;
       }
-      result->action |= rule->action;
+      result->action = rule->action;
       comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
       break;
     }
@@ -774,6 +773,7 @@ static int comdb2_merge_ruleset_items(
   rc = comdb2_more_ruleset_items(
     dst, src->nRule, zError, nError, zFileName, lineNo
   );
+  assert( dst->nRule>=src->nRule );
   if( rc!=0 ) return rc;
   for(int i=0; i<src->nRule; i++){
     struct ruleset_item *srcRule = &src->aRule[i];

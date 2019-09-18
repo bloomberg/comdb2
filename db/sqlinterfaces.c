@@ -4841,19 +4841,17 @@ static int can_execute_sql_query_now(
 ){
   struct ruleset_result result = {0};
   result.priority = *pPriority;
-  size_t count = comdb2_evaluate_ruleset(
-    NULL, gbl_ruleset, clnt, &result
-  );
+  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, clnt, &result);
   comdb2_ruleset_result_to_str(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );
   if (gbl_verbose_prioritize_queries) {
-    logmsg(LOGMSG_INFO, "%s: PRE seqNo=%llu, sql={%s}, count=%d, %s\n",
-           __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
-           (int)count, clnt->work.zRuleRes);
+    logmsg(LOGMSG_INFO, "%s: PRE seqNo=%llu, count=%d, sql={%s}, %s\n",
+           __func__, (long long unsigned int)clnt->seqNo, (int)count,
+           clnt->sql, clnt->work.zRuleRes);
   }
   *pRuleNo = -1; /* no rule was specifically responsible */
-  *pbRejected = 0;
+  *pbRejected = 0; /* initially, SQL work item is always allowed */
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
       (result.action != RULESET_A_REJECT_ALL) &&
@@ -4876,6 +4874,10 @@ static int can_execute_sql_query_now(
   }
   /* END FAULT INJECTION TEST CODE */
   switch (result.action) {
+    case RULESET_A_NONE: {
+      /* do nothing */
+      break;
+    }
     case RULESET_A_REJECT: {
       *pRuleNo = result.ruleNo;
       *pbRejected = 1;
@@ -4888,10 +4890,20 @@ static int can_execute_sql_query_now(
       *pbTryAgain = 0;
       return 0;
     }
+    case RULESET_A_UNREJECT: {
+      *pRuleNo = result.ruleNo;
+      break;
+    }
     case RULESET_A_LOW_PRIO:
     case RULESET_A_HIGH_PRIO: {
       *pRuleNo = result.ruleNo;
       *pPriority = result.priority;
+      break;
+    }
+    default: {
+      logmsg(LOGMSG_ERROR,
+             "%s: unsupported action 0x%x for ruleset 0x%p\n",
+             __func__, result.action, ruleset);
       break;
     }
   }
@@ -4899,16 +4911,20 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
+  const char *zPoolPriority = "invalid";
   priority_t pool_priority = PRIORITY_T_INVALID;
   if (count > 0) {
     pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
     if (pool_priority == PRIORITY_T_HIGHEST) {
+      zPoolPriority = "fake";
       pool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+    } else {
+      zPoolPriority = "actual";
     }
   }
   int rc;
   if (pool_priority == PRIORITY_T_INVALID) {
-    rc = 1; /* empty pool -OR- no ruleset loaded */
+    rc = 1; /* empty pool -OR- no rules matched */
   } else if (*pPriority <= pool_priority) {
     rc = 1; /* query has priority */
   } else {
@@ -4919,9 +4935,11 @@ static int can_execute_sql_query_now(
     char zPriority1[100] = {0};
     char zPriority2[100] = {0};
     logmsg(LOGMSG_INFO,
-      "%s: POST seqNo=%llu, sql={%s} ==> query priority %s VS pool priority "
-      "%s: %s\n", __func__, (long long unsigned int)clnt->seqNo, clnt->sql,
+      "%s: POST seqNo=%llu, count=%d, sql={%s} ==> ruleset work item priority "
+      "%s VS %spool work item priority %s: %s\n",
+      __func__, (long long unsigned int)clnt->seqNo, (int)count, clnt->sql,
       comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
+      zPoolPriority,
       comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
       zResult);
   }

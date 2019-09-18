@@ -36,7 +36,7 @@ int priority_is_valid(priority_t priority, int bSpecial)
         return 1;
     }
   }
-  return 0;
+  return 0; /* any other value is invalid, e.g. PRIORITY_T_INVALID */
 }
 
 priority_queue_t *priority_queue_new()
