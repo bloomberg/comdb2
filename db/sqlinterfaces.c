@@ -4805,8 +4805,17 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
         **       because its execution bypasses the SQL engine;
         **       however, the parser now recognizes it and so it
-        **       can be normalized.  Other than that, all other
-        **       normalization is
+        **       can be normalized.  Since the "EXEC PROCEDURE"
+        **       commands are never prepared, any double-quoted
+        **       strings they may contain are always treated as
+        **       literals, not quoted identifiers.  All other
+        **       SQL commands will treat their double-quoted
+        **       strings as quoted identifiers here, by design.
+        **       This is safe because the caller(s) will enforce
+        **       that the "strict_double_quotes" tunable is on
+        **       prior to calling into this function on any SQL
+        **       query that is not an "EXEC", "BEGIN", "COMMIT",
+        **       or "ROLLBACK".
         */
         free_original_normalized_sql(clnt);
         normalize_stmt_and_store(clnt, NULL, is_stored_proc_sql(clnt->sql));
