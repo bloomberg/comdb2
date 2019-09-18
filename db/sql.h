@@ -574,7 +574,8 @@ struct sql_hist_cost {
 #define in_client_trans(clnt)                                                  \
     ((clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE ||                         \
      (clnt)->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||                        \
-     (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE)
+     (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE ||                            \
+     (clnt)->ctrl_sqlengine == SQLENG_FNSH_ABORTED_STATE)
 
 /* Client specific sql state */
 struct sqlclntstate {
