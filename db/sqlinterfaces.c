@@ -4855,7 +4855,7 @@ static int can_execute_sql_query_now(
   struct ruleset_result result = {0};
   result.priority = *pPriority;
   clnt_to_ruleset_item_criteria(clnt, &context);
-  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, context, &result);
+  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, &context, &result);
   comdb2_ruleset_result_to_str(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );

@@ -1386,7 +1386,7 @@ clipper_usage:
         struct ruleset_result ruleRes = {0};
 
         size_t matchCount = comdb2_evaluate_ruleset(
-            NULL, gbl_ruleset, context, &ruleRes
+            NULL, gbl_ruleset, &context, &ruleRes
         );
         comdb2_ruleset_result_to_str(&ruleRes, zRuleRes, sizeof(zRuleRes));
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
