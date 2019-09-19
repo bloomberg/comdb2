@@ -589,19 +589,19 @@ static int blob_string_to_fingerprint(
   int bStrict /* format must be (?): X'0123456789ABCDEF0123456789ABCDEF' */
 ){
   size_t nIn = strlen(zIn);
-  int i;
+  int k;
   if( bStrict ){
     if( nIn!=35 ) return 1;
     if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
     if( zIn[1]!='\'' ) return 3;
     if( zIn[nIn-1]!='\'' ) return 4;
-    i = 2;
+    k = 2;
   }else{
     if( nIn!=32 ) return 1;
-    i = 0;
+    k = 0;
   }
-  for(; i<nIn-1; i+=2){
-    int j = i - 2;
+  for(int i=k; i<nIn-1; i+=2){
+    int j = i - k;
     if( !sqlite3Isxdigit(zIn[i]) ) return 5;
     zOut[j/2] = (sqlite3HexToInt(zIn[i])<<4) | sqlite3HexToInt(zIn[i+1]);
   }
