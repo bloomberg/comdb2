@@ -211,8 +211,6 @@ struct ruleset_result {
 
 typedef int (*xStrCmp)(const char *, const char *);
 
-void strtok_reset(char *zBuf, size_t nBuf, char ch);
-
 typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;

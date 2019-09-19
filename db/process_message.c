@@ -1386,20 +1386,17 @@ clipper_usage:
             return -1;
         }
 
-        size_t nCtx = strlen(zCtx) + 1;
         char zBuf[8192] = {0};
         struct ruleset_item_criteria uCtx = {0};
         int bFreeCtx = 1;
 
-        char *zTok = strtok(zCtx, " "); /* evaluate_ruleset */
-        if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
+        char *zTok = strtok(zCtx, " "); /* "evaluate_ruleset" */
+        if (zTok != NULL) zTok = strtok(NULL, " "); /* next arg, if any. */
 
         if (zTok != NULL) { /* was context manually specified? */
-            strtok_reset(zCtx, nCtx, ' '); /* undo strtok changes */
-            size_t nTok = strlen(zTok) + 1;
-
+            strcpy(zCtx, tok); /* re-copy from original to fix strtok() */
             rc = comdb2_load_ruleset_item_criteria(
-                zTok, nTok, &uCtx, zBuf, sizeof(zBuf)
+                zTok, strlen(zTok) + 1, &uCtx, zBuf, sizeof(zBuf)
             );
             free(zCtx);
 
@@ -1410,9 +1407,9 @@ clipper_usage:
                 return -1;
             }
         } else {
-            clnt_to_ruleset_item_criteria(get_sql_clnt(), &uCtx);
             bFreeCtx = 0;
             free(zCtx);
+            clnt_to_ruleset_item_criteria(get_sql_clnt(), &uCtx);
         }
 
         struct ruleset_result ruleRes = {0};
