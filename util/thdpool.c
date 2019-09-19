@@ -968,7 +968,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             }
 #endif
             /* queue work */
-            if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
+            if (!queue_only && priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
                      (enqueue_front || !pool->maxqueueoverride ||
