@@ -59,7 +59,6 @@ copy_files_to_node() {
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
-        scp $SSH_OPT $SSH_MSTR $CDB2SQL_EXE $node:$CDB2SQL_EXE
         if [ -n "$RESTARTPMUX" ] ; then
             echo stop pmux on $node first before copying and starting it
             ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null

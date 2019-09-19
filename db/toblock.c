@@ -82,7 +82,6 @@
 int (*comdb2_ipc_swapnpasdb_sinfo)(struct ireq *) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
-
 extern pthread_t gbl_invalid_tid;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_osql_verify_retries_max;
@@ -94,6 +93,11 @@ extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
+extern int gbl_print_blockp_stats;
+extern int gbl_dump_blkseq;
+extern __thread int send_prefault_udp;
+extern void delay_if_sc_resuming(struct ireq *iq);
+extern unsigned int gbl_delayed_skip;
 
 int gbl_osql_snap_info_hashcheck = 1;
 
@@ -759,8 +763,6 @@ static void block_state_free(block_state_t *p_blkstate)
     free(p_blkstate->p_buf_saved_start);
     p_blkstate->p_buf_saved_start = NULL;
 }
-
-extern int gbl_dump_blkseq;
 
 unsigned long long blkseq_replay_count = 0;
 unsigned long long blkseq_replay_error_count = 0;
@@ -2346,8 +2348,6 @@ static int extract_blkseq2(struct ireq *iq, block_state_t *p_blkstate,
 
 static pthread_rwlock_t commit_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-extern __thread int send_prefault_udp;
-extern void delay_if_sc_resuming(struct ireq *iq);
 
 void handle_postcommit_bpfunc(struct ireq *iq)
 {
@@ -4836,7 +4836,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     } /* end delayed */
     else {
-        extern unsigned int gbl_delayed_skip;
         ++gbl_delayed_skip;
     }
 
@@ -5890,18 +5889,18 @@ static uint64_t block_processor_ms = 0;
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *p_blkstate)
 {
-    int now, rc, prcnt = 0, prmax = 0;
-    uint64_t start, end;
-    extern int gbl_print_blockp_stats;
+    int rc, prcnt = 0, prmax = 0;
     static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
-    static int blkcnt = 0, lastpr = 0;
+    static int blkcnt = 0;
+    static uint64_t lastpr = 0;
+
+    uint64_t start = gettimeofday_ms();
 
     Pthread_mutex_lock(&blklk);
     blkcnt++;
-
-    if (((now = comdb2_time_epoch()) - lastpr) > 1) {
+    if (start - lastpr > 1000) {
         prcnt = blkcnt;
-        lastpr = now;
+        lastpr = start;
     }
 
     if (blkcnt > blkmax)
@@ -5912,13 +5911,13 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%d threads are in the block processor, max is %d\n",
-                prcnt, prmax);
+        logmsg(LOGMSG_USER,
+               "%d threads are in the block processor, max is %d\n", prcnt,
+               prmax);
     }
 
-    start = gettimeofday_ms();
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
-    end = gettimeofday_ms();
+    uint64_t end = gettimeofday_ms();
 
     if (rc == 0) {
         osql_postcommit_handle(iq);

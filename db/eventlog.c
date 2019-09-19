@@ -328,7 +328,8 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object *perfobj = cson_value_get_object(perfval);
 
     cson_object_set(perfobj, "tottime", cson_new_int(logger->durationus));
-    cson_object_set(perfobj, "processingtime", cson_new_int(logger->durationus - logger->queuetimeus));
+    cson_object_set(perfobj, "processingtime",
+                    cson_new_int(logger->durationus - logger->queuetimeus));
     if (logger->queuetimeus)
         cson_object_set(perfobj, "qtime", cson_new_int(logger->queuetimeus));
 

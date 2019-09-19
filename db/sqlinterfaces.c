@@ -6566,32 +6566,33 @@ void clnt_unregister(struct sqlclntstate *clnt) {
 
 int gather_connection_info(struct connection_info **info, int *num_connections) {
    struct connection_info *c;
-   int connid = 0;
+   int cid = 0;
 
    Pthread_mutex_lock(&clnt_lk);
    *num_connections = listc_size(&clntlist);
    c = malloc(*num_connections * sizeof(struct connection_info));
    struct sqlclntstate *clnt;
    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
-      c[connid].connection_id = clnt->connid;
-      c[connid].pid = clnt->last_pid;
-      c[connid].total_sql = clnt->total_sql;
-      c[connid].sql_since_reset = clnt->sql_since_reset;
-      c[connid].num_resets = clnt->num_resets;
-      c[connid].connect_time_int = clnt->connect_time;
-      c[connid].last_reset_time_int = clnt->last_reset_time;
-      c[connid].num_resets = clnt->num_resets;
-      c[connid].host = clnt->origin;
-      c[connid].state_int = clnt->state;
-      c[connid].time_in_state_int = clnt->state_start_time;
-      Pthread_mutex_lock(&clnt->state_lk);
-      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
-         c[connid].sql = strdup(clnt->sql);
+       c[cid].connection_id = clnt->connid;
+       c[cid].pid = clnt->last_pid;
+       c[cid].total_sql = clnt->total_sql;
+       c[cid].sql_since_reset = clnt->sql_since_reset;
+       c[cid].num_resets = clnt->num_resets;
+       c[cid].connect_time_int = clnt->connect_time;
+       c[cid].last_reset_time_int = clnt->last_reset_time;
+       c[cid].num_resets = clnt->num_resets;
+       c[cid].host = clnt->origin;
+       c[cid].state_int = clnt->state;
+       c[cid].time_in_state_int = clnt->state_start_time;
+       Pthread_mutex_lock(&clnt->state_lk);
+       if (clnt->state == CONNECTION_RUNNING ||
+           clnt->state == CONNECTION_QUEUED) {
+           c[cid].sql = strdup(clnt->sql);
       } else {
-         c[connid].sql = NULL;
+          c[cid].sql = NULL;
       }
       Pthread_mutex_unlock(&clnt->state_lk);
-      connid++;
+      cid++;
    }
    Pthread_mutex_unlock(&clnt_lk);
    *info = c;
