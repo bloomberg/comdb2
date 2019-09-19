@@ -1394,10 +1394,10 @@ clipper_usage:
         if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
 
         if (zTok != NULL) { /* was context manually specified? */
-            size_t nCtx = strlen(zCtx) + 1;
+            size_t nTok = strlen(zTok) + 1;
 
             rc = comdb2_load_ruleset_item_criteria(
-                zCtx, nCtx, &uCtx, zBuf, sizeof(zBuf)
+                zTok, nTok, &uCtx, zBuf, sizeof(zBuf)
             );
             free(zCtx);
 
