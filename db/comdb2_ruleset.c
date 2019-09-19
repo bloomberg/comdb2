@@ -648,7 +648,8 @@ void comdb2_dump_ruleset(struct ruleset *rules){
 static int recompile_regexp(
   const char *zPattern,
   int noCase,
-  void **ppRe
+  void **ppRe,
+  char **pzErr
 ){
   const char *zErr;
 
@@ -657,17 +658,12 @@ static int recompile_regexp(
     *ppRe = NULL;
   }
   zErr = re_compile(ppRe, zPattern, noCase);
-  if( zErr ){
-    logmsg(LOGMSG_ERROR,
-           "%s: cannot compile regular expression \"%s\": %s\n",
-           __func__, zPattern, zErr);
-    re_free(*ppRe);
+  if( zErr!=NULL ){
+    if( pzErr!=NULL ) *pzErr = zErr;
     return EINVAL;
   }
   if( *ppRe==NULL ){
-    logmsg(LOGMSG_ERROR,
-           "%s: out of memory for regular expression \"%s\"\n",
-           __func__, zPattern);
+    if( pzErr!=NULL ) *pzErr = "out of memory";
     return ENOMEM;
   }
   return 0;
@@ -708,6 +704,7 @@ int comdb2_load_ruleset_item_criteria(
   size_t nError
 ){
   if( zBuf==NULL || criteria==NULL || zError==NULL ) return EINVAL;
+  char *zReErr;
   char *zTok = strtok(zBuf, RULESET_DELIM);
   while( zTok!=NULL ){
     const char *zField = "originHost";
@@ -731,10 +728,13 @@ int comdb2_load_ruleset_item_criteria(
         return ENOMEM;
       }
       if( cache!=NULL ){
-        if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe)!=0 ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe, &zReErr)!=0 ){
           snprintf(zError, nError,
-                   "%s:%d, bad %s regular expression '%s'",
-                   zFileName, lineNo, zField, zTok);
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pOriginHostRe);
+          cache->pOriginHostRe = NULL;
           return EINVAL;
         }
       }
@@ -762,10 +762,13 @@ int comdb2_load_ruleset_item_criteria(
         return ENOMEM;
       }
       if( cache!=NULL ){
-        if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe)!=0 ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe, &zReErr)!=0 ){
           snprintf(zError, nError,
-                   "%s:%d, bad %s regular expression '%s'",
-                   zFileName, lineNo, zField, zTok);
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pOriginTaskRe);
+          cache->pOriginTaskRe = NULL;
           return EINVAL;
         }
       }
@@ -793,10 +796,13 @@ int comdb2_load_ruleset_item_criteria(
         return ENOMEM;
       }
       if( cache!=NULL ){
-        if( recompile_regexp(zTok, noCase, &cache->pUserRe)!=0 ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pUserRe, &zReErr)!=0 ){
           snprintf(zError, nError,
-                   "%s:%d, bad %s regular expression '%s'",
-                   zFileName, lineNo, zField, zTok);
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pUserRe);
+          cache->pUserRe = NULL;
           return EINVAL;
         }
       }
@@ -824,10 +830,13 @@ int comdb2_load_ruleset_item_criteria(
         return ENOMEM;
       }
       if( cache!=NULL ){
-        if( recompile_regexp(zTok, noCase, &cache->pSqlRe)!=0 ){
+        zReErr = NULL;
+        if( recompile_regexp(zTok, noCase, &cache->pSqlRe, &zReErr)!=0 ){
           snprintf(zError, nError,
-                   "%s:%d, bad %s regular expression '%s'",
-                   zFileName, lineNo, zField, zTok);
+                   "%s:%d, bad %s regular expression '%s': %s",
+                   zFileName, lineNo, zField, zTok, zReErr);
+          re_free(cache->pSqlRe);
+          cache->pSqlRe = NULL;
           return EINVAL;
         }
       }
@@ -1029,6 +1038,7 @@ int comdb2_load_ruleset(
     char *zEnd = NULL;
     char *zBad = NULL;
     char *zTok = NULL;
+    char *zReErr;
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
     if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
     if( zBuf[0]=='#' ) continue; /* comment line */
@@ -1174,32 +1184,46 @@ int comdb2_load_ruleset(
           }
           noCase = (rule->mode&RULESET_MM_NOCASE);
           if( rule->mode&RULESET_MM_REGEXP ){
+            zReErr = NULL;
             if( criteria->zOriginHost!=NULL && recompile_regexp(
-                    criteria->zOriginHost, noCase, &cache->pOriginHostRe)!=0 ){
+                    criteria->zOriginHost, noCase, &cache->pOriginHostRe,
+                    &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "originHost", criteria->zOriginHost);
+              re_free(cache->pOriginHostRe);
+              cache->pOriginHostRe = NULL;
               goto failure;
             }
+            zReErr = NULL;
             if( criteria->zOriginTask!=NULL && recompile_regexp(
-                    criteria->zOriginTask, noCase, &cache->pOriginTaskRe)!=0 ){
+                    criteria->zOriginTask, noCase, &cache->pOriginTaskRe,
+                    &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "originTask", criteria->zOriginTask);
+              re_free(cache->pOriginTaskRe);
+              cache->pOriginTaskRe = NULL;
               goto failure;
             }
+            zReErr = NULL;
             if( criteria->zUser!=NULL && recompile_regexp(
-                    criteria->zUser, noCase, &cache->pUserRe)!=0 ){
+                    criteria->zUser, noCase, &cache->pUserRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "user", criteria->zUser);
+              re_free(cache->pUserRe);
+              cache->pUserRe = NULL;
               goto failure;
             }
+            zReErr = NULL;
             if( criteria->zSql!=NULL && recompile_regexp(
-                    criteria->zSql, noCase, &cache->pSqlRe)!=0 ){
+                    criteria->zSql, noCase, &cache->pSqlRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
                        zFileName, lineNo, "sql", criteria->zSql);
+              re_free(cache->pSqlRe);
+              cache->pSqlRe = NULL;
               goto failure;
             }
           }else{
@@ -1232,10 +1256,14 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP ){
-            if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe)!=0 ){
+            zReErr = NULL;
+            if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe,
+                    &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, zField, zTok);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, zField, zTok, zReErr);
+              re_free(cache->pOriginHostRe);
+              cache->pOriginHostRe = NULL;
               goto failure;
             }
           }else if( cache->pOriginHostRe!=NULL ){
@@ -1266,10 +1294,14 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP ){
-            if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe)!=0 ){
+            zReErr = NULL;
+            if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe,
+                    &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, zField, zTok);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, zField, zTok, zReErr);
+              re_free(cache->pOriginTaskRe);
+              cache->pOriginTaskRe = NULL;
               goto failure;
             }
           }else if( cache->pOriginTaskRe!=NULL ){
@@ -1300,10 +1332,13 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP ){
-            if( recompile_regexp(zTok, noCase, &cache->pUserRe)!=0 ){
+            zReErr = NULL;
+            if( recompile_regexp(zTok, noCase, &cache->pUserRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, zField, zTok);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, zField, zTok, zReErr);
+              re_free(cache->pUserRe);
+              cache->pUserRe = NULL;
               goto failure;
             }
           }else if( cache->pUserRe!=NULL ){
@@ -1334,10 +1369,13 @@ int comdb2_load_ruleset(
             goto failure;
           }
           if( rule->mode&RULESET_MM_REGEXP ){
-            if( recompile_regexp(zTok, noCase, &cache->pSqlRe)!=0 ){
+            zReErr = NULL;
+            if( recompile_regexp(zTok, noCase, &cache->pSqlRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, zField, zTok);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, zField, zTok, zReErr);
+              re_free(cache->pSqlRe);
+              cache->pSqlRe = NULL;
               goto failure;
             }
           }else if( cache->pSqlRe!=NULL ){
