@@ -1398,7 +1398,7 @@ clipper_usage:
         if (rc != 0) {
             comdb2_free_ruleset_item_criteria(&context);
             logmsg(LOGMSG_ERROR, "comdb2_load_ruleset_item_criteria: %s\n",
-                   zError);
+                   zBuf);
             return -1;
         }
 
