@@ -1379,18 +1379,40 @@ clipper_usage:
         comdb2_dump_ruleset(gbl_ruleset);
     }
     else if (tokcmp(tok, ltok, "evaluate_ruleset") == 0) {
-        struct ruleset_item_criteria context = {0};
-        clnt_to_ruleset_item_criteria(get_sql_clnt(), &context);
+        char *zContext = strdup(tok);
 
-        char zRuleRes[100] = {0};
+        if (zContext == NULL) {
+            logmsg(LOGMSG_ERROR, "Out of memory for context string\n");
+            return -1;
+        }
+
+        size_t nContext = strlen(zContext) + 1;
+        struct ruleset_item_criteria context = {0};
+        char zBuf[8192] = {0};
+
+        rc = comdb2_load_ruleset_item_criteria(
+            zContext, nContext, &context, zBuf, sizeof(zBuf)
+        );
+        free(zContext);
+
+        if (rc != 0) {
+            comdb2_free_ruleset_item_criteria(&context);
+            logmsg(LOGMSG_ERROR, "comdb2_load_ruleset_item_criteria: %s\n",
+                   zError);
+            return -1;
+        }
+
         struct ruleset_result ruleRes = {0};
 
         size_t matchCount = comdb2_evaluate_ruleset(
             NULL, gbl_ruleset, &context, &ruleRes
         );
-        comdb2_ruleset_result_to_str(&ruleRes, zRuleRes, sizeof(zRuleRes));
+
+        comdb2_free_ruleset_item_criteria(&context);
+        comdb2_ruleset_result_to_str(&ruleRes, zBuf, sizeof(zBuf));
+
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
-               gbl_ruleset, matchCount, zRuleRes);
+               gbl_ruleset, matchCount, zBuf);
     }
     else if (tokcmp(tok, ltok, "enable_ruleset_item") == 0) {
         tok = segtok(line, lline, &st, &ltok);

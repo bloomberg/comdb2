@@ -224,6 +224,18 @@ const char *comdb2_priority_to_str(
 
 int comdb2_ruleset_fingerprints_allowed(void);
 
+int comdb2_load_ruleset_item_criteria(
+  char *zBuf,
+  size_t nBuf,
+  struct ruleset_item_criteria *criteria,
+  char *zError,
+  size_t nError
+);
+
+void comdb2_free_ruleset_item_criteria(
+  struct ruleset_item_criteria *criteria
+);
+
 size_t comdb2_evaluate_ruleset(
   xStrCmp stringComparer,
   struct ruleset *rules,
