@@ -663,8 +663,7 @@ int comdb2_load_ruleset_item_criteria(
   size_t nBuf,
   struct ruleset_item_criteria *criteria,
   char *zError,
-  size_t nError,
-  int bNew
+  size_t nError
 ){
   if( zBuf==NULL || criteria==NULL || zError==NULL ) return EINVAL;
   char *zTok = strtok(zBuf, RULESET_DELIM);
