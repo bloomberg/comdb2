@@ -372,10 +372,10 @@ static void comdb2_dump_ruleset_item(
   comdb2_ruleset_flags_to_str(rule->flags, zFlags, sizeof(zFlags));
   comdb2_ruleset_match_mode_to_str(rule->mode, zMode, sizeof(zMode));
 
-  struct ruleset_item_criteria *criteria = rule->criteria;
+  struct ruleset_item_criteria *criteria = &rule->criteria;
 
-  if( criteria.pFingerprint!=NULL ){
-    util_tohex(zFingerprint, (char *)criteria.pFingerprint, FPSZ);
+  if( criteria->pFingerprint!=NULL ){
+    util_tohex(zFingerprint, (char *)criteria->pFingerprint, FPSZ);
   }else{
     snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
   }
@@ -391,10 +391,10 @@ static void comdb2_dump_ruleset_item(
          (unsigned long long int)rule->action, rule->adjustment,
          zFlags, (unsigned long long int)rule->flags,
          zMode, (unsigned long long int)rule->mode,
-         criteria.zOriginHost ? criteria.zOriginHost : "<null>",
-         criteria.zOriginTask ? criteria.zOriginTask : "<null>",
-         criteria.zUser ? criteria.zUser : "<null>",
-         criteria.zSql ? criteria.zSql : "<null>",
+         criteria->zOriginHost ? criteria->zOriginHost : "<null>",
+         criteria->zOriginTask ? criteria->zOriginTask : "<null>",
+         criteria->zUser ? criteria->zUser : "<null>",
+         criteria->zSql ? criteria->zSql : "<null>",
          zFingerprint, rule->evalCount, rule->matchCount);
 }
 
@@ -409,7 +409,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   if( stringComparer==NULL ){
     stringComparer = comdb2_get_xstrcmp_for_mode(rule->mode);
   }
-  struct ruleset_item_criteria *criteria = rule->criteria;
+  struct ruleset_item_criteria *criteria = &rule->criteria;
   const char *zOriginHost;
   const char *zOriginTask;
   const char *zUser;
@@ -420,10 +420,10 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
     zUser = (const char *)rule->pUserRe;
     zSql = (const char *)rule->pSqlRe;
   }else{
-    zOriginHost = criteria.zOriginHost;
-    zOriginTask = criteria.zOriginTask;
-    zUser = criteria.zUser;
-    zSql = criteria.zSql;
+    zOriginHost = criteria->zOriginHost;
+    zOriginTask = criteria->zOriginTask;
+    zUser = criteria->zUser;
+    zSql = criteria->zSql;
   }
   if( stringComparer!=NULL ){
     if( zOriginHost!=NULL && ((context->zOriginHost==NULL) ||
@@ -456,12 +456,12 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       return RULESET_M_NONE; /* no comparer ==> no matching */
     }
   }
-  if( criteria.pFingerprint!=NULL ){
+  if( criteria->pFingerprint!=NULL ){
     if( !comdb2_ruleset_fingerprints_allowed() ){
       char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
 
       memset(zFingerprint, 0, sizeof(zFingerprint));
-      util_tohex(zFingerprint, (char *)criteria.pFingerprint, FPSZ);
+      util_tohex(zFingerprint, (char *)criteria->pFingerprint, FPSZ);
 
       logmsg(LOGMSG_ERROR,
              "%s: rule #%d has fingerprint \"%s\" when fingerprints are "
@@ -469,7 +469,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
 
       return RULESET_M_ERROR; /* have forbidden criteria */
     }
-    if( memcmp(context->pFingerprint, criteria.pFingerprint, FPSZ)!=0 ){
+    if( memcmp(context->pFingerprint, criteria->pFingerprint, FPSZ)!=0 ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
   }
@@ -1020,7 +1020,7 @@ int comdb2_load_ruleset(
         }
         rule->ruleNo = ruleNo; /* NOTE: Rule is now present. */
       }
-      struct ruleset_item_criteria *criteria = rule->criteria;
+      struct ruleset_item_criteria *criteria = &rule->criteria;
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
         zField = "action";
@@ -1113,32 +1113,32 @@ int comdb2_load_ruleset(
           }
           noCase = (rule->mode&RULESET_MM_NOCASE);
           if( rule->mode&RULESET_MM_REGEXP ){
-            if( criteria.zOriginHost!=NULL && recompile_regexp(
-                    criteria.zOriginHost, noCase, &rule->pOriginHostRe)!=0 ){
+            if( criteria->zOriginHost!=NULL && recompile_regexp(
+                    criteria->zOriginHost, noCase, &rule->pOriginHostRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "originHost", criteria.zOriginHost);
+                       zFileName, lineNo, "originHost", criteria->zOriginHost);
               goto failure;
             }
-            if( criteria.zOriginTask!=NULL && recompile_regexp(
-                    criteria.zOriginTask, noCase, &rule->pOriginTaskRe)!=0 ){
+            if( criteria->zOriginTask!=NULL && recompile_regexp(
+                    criteria->zOriginTask, noCase, &rule->pOriginTaskRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "originTask", criteria.zOriginTask);
+                       zFileName, lineNo, "originTask", criteria->zOriginTask);
               goto failure;
             }
-            if( criteria.zUser!=NULL && recompile_regexp(
-                    criteria.zUser, noCase, &rule->pUserRe)!=0 ){
+            if( criteria->zUser!=NULL && recompile_regexp(
+                    criteria->zUser, noCase, &rule->pUserRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "user", criteria.zUser);
+                       zFileName, lineNo, "user", criteria->zUser);
               goto failure;
             }
-            if( criteria.zSql!=NULL && recompile_regexp(
-                    criteria.zSql, noCase, &rule->pSqlRe)!=0 ){
+            if( criteria->zSql!=NULL && recompile_regexp(
+                    criteria->zSql, noCase, &rule->pSqlRe)!=0 ){
               snprintf(zError, sizeof(zError),
                        "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "sql", criteria.zSql);
+                       zFileName, lineNo, "sql", criteria->zSql);
               goto failure;
             }
           }else{
@@ -1159,12 +1159,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( criteria.zOriginHost ){
-            free(criteria.zOriginHost);
-            criteria.zOriginHost = NULL;
+          if( criteria->zOriginHost ){
+            free(criteria->zOriginHost);
+            criteria->zOriginHost = NULL;
           }
-          criteria.zOriginHost = strdup(zTok);
-          if( criteria.zOriginHost==NULL ){
+          criteria->zOriginHost = strdup(zTok);
+          if( criteria->zOriginHost==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -1193,12 +1193,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( criteria.zOriginTask ){
-            free(criteria.zOriginTask);
-            criteria.zOriginTask = NULL;
+          if( criteria->zOriginTask ){
+            free(criteria->zOriginTask);
+            criteria->zOriginTask = NULL;
           }
-          criteria.zOriginTask = strdup(zTok);
-          if( criteria.zOriginTask==NULL ){
+          criteria->zOriginTask = strdup(zTok);
+          if( criteria->zOriginTask==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -1227,12 +1227,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( criteria.zUser ){
-            free(criteria.zUser);
-            criteria.zUser = NULL;
+          if( criteria->zUser ){
+            free(criteria->zUser);
+            criteria->zUser = NULL;
           }
-          criteria.zUser = strdup(zTok);
-          if( criteria.zUser==NULL ){
+          criteria->zUser = strdup(zTok);
+          if( criteria->zUser==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -1261,12 +1261,12 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( criteria.zSql ){
-            free(criteria.zSql);
-            criteria.zUser = NULL;
+          if( criteria->zSql ){
+            free(criteria->zSql);
+            criteria->zUser = NULL;
           }
-          criteria.zSql = strdup(zTok);
-          if( criteria.zSql==NULL ){
+          criteria->zSql = strdup(zTok);
+          if( criteria->zSql==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not duplicate %s value",
                      zFileName, lineNo, zField);
@@ -1302,18 +1302,18 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          if( criteria.pFingerprint ){
-            free(criteria.pFingerprint);
-            criteria.pFingerprint = NULL;
+          if( criteria->pFingerprint ){
+            free(criteria->pFingerprint);
+            criteria->pFingerprint = NULL;
           }
-          criteria.pFingerprint = calloc(FPSZ, sizeof(unsigned char));
-          if( criteria.pFingerprint==NULL ){
+          criteria->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
+          if( criteria->pFingerprint==NULL ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not allocate %s value",
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( blob_string_to_fingerprint(zTok, criteria.pFingerprint) ){
+          if( blob_string_to_fingerprint(zTok, criteria->pFingerprint) ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, could not parse %s value from '%s'",
                      zFileName, lineNo, zField, zTok);
@@ -1449,30 +1449,30 @@ int comdb2_save_ruleset(
         sbuf2printf(sb, "rule %d mode {%s}\n", ruleNo, zBuf);
       }
     }
-    struct ruleset_item_criteria *criteria = rule->criteria;
-    if( criteria.zOriginHost!=NULL ){
+    struct ruleset_item_criteria *criteria = &rule->criteria;
+    if( criteria->zOriginHost!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(
-        sb, "rule %d originHost %s\n", ruleNo, criteria.zOriginHost
+        sb, "rule %d originHost %s\n", ruleNo, criteria->zOriginHost
       );
     }
-    if( criteria.zOriginTask!=NULL ){
+    if( criteria->zOriginTask!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(
-        sb, "rule %d originTask %s\n", ruleNo, criteria.zOriginTask
+        sb, "rule %d originTask %s\n", ruleNo, criteria->zOriginTask
       );
     }
-    if( criteria.zUser!=NULL ){
+    if( criteria->zUser!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d user %s\n", ruleNo, criteria.zUser);
+      sbuf2printf(sb, "rule %d user %s\n", ruleNo, criteria->zUser);
     }
-    if( criteria.zSql!=NULL ){
+    if( criteria->zSql!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d sql %s\n", ruleNo, criteria.zSql);
+      sbuf2printf(sb, "rule %d sql %s\n", ruleNo, criteria->zSql);
     }
-    if( criteria.pFingerprint!=NULL ){
+    if( criteria->pFingerprint!=NULL ){
       memset(zBuf, 0, sizeof(zBuf));
-      util_tohex(zBuf, (char *)criteria.pFingerprint, FPSZ);
+      util_tohex(zBuf, (char *)criteria->pFingerprint, FPSZ);
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
       sbuf2printf(sb, "rule %d fingerprint X'%s'\n", ruleNo, zBuf);
     }
