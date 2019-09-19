@@ -1188,6 +1188,10 @@ REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.toblock_random_deadlock_trans",
+                 "return deadlock for a fraction of txns", TUNABLE_BOOLEAN,
+                 &gbl_toblock_random_deadlock_trans, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
                  "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
                  &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
@@ -1803,5 +1807,8 @@ REGISTER_TUNABLE("strict_double_quotes",
                  "syntax error (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
+                 TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

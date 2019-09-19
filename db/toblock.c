@@ -2644,6 +2644,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (lrc)
         return lrc;
 
+    uint64_t strt = comdb2_time_epochus();
+    reqlog_set_queue_time(iq->reqlogger, strt - iq->startus);
+    reqlog_set_startprcs(iq->reqlogger, strt);
+
     /* adding this back temporarily so I can get blockop counts again. this
        really just belongs in the main loop (should get its own logger event
        flag and logger events for this flag should be reset in the case of a
