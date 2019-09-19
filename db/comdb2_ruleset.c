@@ -878,7 +878,7 @@ int comdb2_load_ruleset_item_criteria(
     snprintf(zError, nError,
              "%s:%d, unknown criteria field '%s'",
              zFileName, lineNo, zTok);
-    return EINVAL;
+    return ENOENT;
   }
   return 0;
 }
