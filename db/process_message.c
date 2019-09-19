@@ -1386,6 +1386,7 @@ clipper_usage:
             return -1;
         }
 
+        size_t nCtx = strlen(zCtx) + 1;
         char zBuf[8192] = {0};
         struct ruleset_item_criteria uCtx = {0};
         int bFreeCtx = 1;
@@ -1394,6 +1395,7 @@ clipper_usage:
         if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
 
         if (zTok != NULL) { /* was context manually specified? */
+            for (int i = 0; i < nCtx; i++) if (zCtx[i] == '\0') zCtx[i] = ' ';
             size_t nTok = strlen(zTok) + 1;
 
             rc = comdb2_load_ruleset_item_criteria(
