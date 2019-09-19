@@ -732,7 +732,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( cache!=NULL ){
         if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe)!=0 ){
-          snprintf(zError, sizeof(zError),
+          snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s'",
                    zFileName, lineNo, zField, zTok);
           return EINVAL;
@@ -763,7 +763,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( cache!=NULL ){
         if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe)!=0 ){
-          snprintf(zError, sizeof(zError),
+          snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s'",
                    zFileName, lineNo, zField, zTok);
           return EINVAL;
@@ -794,7 +794,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( cache!=NULL ){
         if( recompile_regexp(zTok, noCase, &cache->pUserRe)!=0 ){
-          snprintf(zError, sizeof(zError),
+          snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s'",
                    zFileName, lineNo, zField, zTok);
           return EINVAL;
@@ -825,7 +825,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       if( cache!=NULL ){
         if( recompile_regexp(zTok, noCase, &cache->pSqlRe)!=0 ){
-          snprintf(zError, sizeof(zError),
+          snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s'",
                    zFileName, lineNo, zField, zTok);
           goto failure;
