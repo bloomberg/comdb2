@@ -231,6 +231,7 @@ int comdb2_load_ruleset_item_criteria(
   int lineNo,
   char *zBuf,
   size_t nBuf,
+  int noCase,
   int bStrictFp,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria *cache,

@@ -672,6 +672,7 @@ int comdb2_load_ruleset_item_criteria(
   int lineNo,
   char *zBuf,
   size_t nBuf, /* NOT USED */
+  int noCase,
   int bStrictFp,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria *cache,
@@ -701,6 +702,14 @@ int comdb2_load_ruleset_item_criteria(
                  zFileName, lineNo, zField);
         return ENOMEM;
       }
+      if( cache!=NULL ){
+        if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe)!=0 ){
+          snprintf(zError, sizeof(zError),
+                   "%s:%d, bad %s regular expression '%s'",
+                   zFileName, lineNo, zField, zTok);
+          return EINVAL;
+        }
+      }
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
     }
@@ -723,6 +732,14 @@ int comdb2_load_ruleset_item_criteria(
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
         return ENOMEM;
+      }
+      if( cache!=NULL ){
+        if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe)!=0 ){
+          snprintf(zError, sizeof(zError),
+                   "%s:%d, bad %s regular expression '%s'",
+                   zFileName, lineNo, zField, zTok);
+          return EINVAL;
+        }
       }
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
@@ -747,6 +764,14 @@ int comdb2_load_ruleset_item_criteria(
                  zFileName, lineNo, zField);
         return ENOMEM;
       }
+      if( cache!=NULL ){
+        if( recompile_regexp(zTok, noCase, &cache->pUserRe)!=0 ){
+          snprintf(zError, sizeof(zError),
+                   "%s:%d, bad %s regular expression '%s'",
+                   zFileName, lineNo, zField, zTok);
+          return EINVAL;
+        }
+      }
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
     }
@@ -769,6 +794,14 @@ int comdb2_load_ruleset_item_criteria(
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
         return ENOMEM;
+      }
+      if( cache!=NULL ){
+        if( recompile_regexp(zTok, noCase, &cache->pSqlRe)!=0 ){
+          snprintf(zError, sizeof(zError),
+                   "%s:%d, bad %s regular expression '%s'",
+                   zFileName, lineNo, zField, zTok);
+          goto failure;
+        }
       }
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
