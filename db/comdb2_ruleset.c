@@ -154,15 +154,15 @@ static const char *comdb2_ruleset_action_to_str(
 static void comdb2_ruleset_str_to_flags(
   enum ruleset_flags *pFlags,
   char *zBuf,
-  char **pzBad,
-  int bNew
+  char **pzEnd,
+  char **pzBad
 ){
   enum ruleset_flags flags = RULESET_F_NONE;
   int count = 0;
   *pFlags = RULESET_F_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zTok = strtok(bNew ? zBuf : NULL, RULESET_FLAG_DELIM);
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       flags |= RULESET_F_NONE;
@@ -180,6 +180,7 @@ static void comdb2_ruleset_str_to_flags(
       if( pzBad!=NULL ) *pzBad = zTok;
       return;
     }
+    if( pzEnd!=NULL ) *pzEnd = zTok+strlen(zTok);
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pFlags = flags;
@@ -217,15 +218,15 @@ static void comdb2_ruleset_flags_to_str(
 static void comdb2_ruleset_str_to_match_mode(
   enum ruleset_match_mode *pMode,
   char *zBuf,
-  char **pzBad,
-  int bNew
+  char **pzEnd,
+  char **pzBad
 ){
   enum ruleset_match_mode mode = RULESET_MM_NONE;
   int count = 0;
   *pMode = RULESET_MM_INVALID; /* assume the worst */
   if( !zBuf ) return;
   if( !sqlite3IsCorrectlyBraced(zBuf) ) return;
-  char *zTok = strtok(bNew ? zBuf : NULL, RULESET_FLAG_DELIM);
+  char *zTok = strtok(zBuf, RULESET_FLAG_DELIM);
   while( zTok!=NULL ){
     if( sqlite3_stricmp(zTok, "NONE")==0 ){
       mode |= RULESET_MM_NONE;
@@ -246,6 +247,7 @@ static void comdb2_ruleset_str_to_match_mode(
       if( pzBad!=NULL ) *pzBad = zTok;
       return;
     }
+    if( pzEnd!=NULL ) *pzEnd = zTok+strlen(zTok);
     zTok = strtok(NULL, RULESET_FLAG_DELIM);
   }
   if( count>0 ) *pMode = mode;
@@ -833,6 +835,7 @@ int comdb2_load_ruleset(
     lineNo++;
     if( !zLine[0] ) continue; /* blank line */
     char *zBuf = zLine;
+    char *zEnd = NULL;
     char *zBad = NULL;
     char *zTok = NULL;
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
@@ -948,14 +951,16 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_flags(&rule->flags, zTok, &zBad, 0);
+          comdb2_ruleset_str_to_flags(&rule->flags, zTok, &zEnd, &zBad);
           if( rule->flags==RULESET_F_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
-          zTok = strtok(NULL, RULESET_DELIM);
+          assert( zEnd!=NULL );
+          while( zEnd && zEnd[0]=='\0' && zEnd-zLine<nLine ){ zEnd++; }
+          zTok = strtok(zEnd, RULESET_DELIM);
           continue;
         }
         zField = "mode";
@@ -967,7 +972,7 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zField);
             goto failure;
           }
-          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok, &zBad, 0);
+          comdb2_ruleset_str_to_match_mode(&rule->mode, zTok, &zEnd, &zBad);
           if( rule->mode==RULESET_MM_INVALID ){
             snprintf(zError, sizeof(zError),
                      "%s:%d, bad %s value '%s'",
@@ -1009,7 +1014,9 @@ int comdb2_load_ruleset(
           }else{
             comdb2_free_ruleset_item_regexps(rule);
           }
-          zTok = strtok(NULL, RULESET_DELIM);
+          assert( zEnd!=NULL );
+          while( zEnd && zEnd[0]=='\0' && zEnd-zLine<nLine ){ zEnd++; }
+          zTok = strtok(zEnd, RULESET_DELIM);
           continue;
         }
         noCase = (rule->mode&RULESET_MM_NOCASE);
