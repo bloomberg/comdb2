@@ -589,14 +589,15 @@ static int blob_string_to_fingerprint(
   int bStrict /* format must be (?): X'0123456789ABCDEF0123456789ABCDEF' */
 ){
   size_t nIn = strlen(zIn);
-  if( nIn!=35 ) return 1;
   int i;
   if( bStrict ){
+    if( nIn!=35 ) return 1;
     if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
     if( zIn[1]!='\'' ) return 3;
     if( zIn[nIn-1]!='\'' ) return 4;
     i = 2;
   }else{
+    if( nIn!=32 ) return 1;
     i = 0;
   }
   for(; i<nIn-1; i+=2){
