@@ -1395,7 +1395,7 @@ clipper_usage:
         if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
 
         if (zTok != NULL) { /* was context manually specified? */
-            for (int i = 0; i < nCtx; i++) if (zCtx[i] == '\0') zCtx[i] = ' ';
+            strtok_reset(zCtx, nCtx, ' '); /* undo strtok changes */
             size_t nTok = strlen(zTok) + 1;
 
             rc = comdb2_load_ruleset_item_criteria(
@@ -1421,7 +1421,7 @@ clipper_usage:
             NULL, gbl_ruleset, &uCtx, &ruleRes
         );
 
-        if (bFreeCtx) comdb2_free_ruleset_item_criteria(&uCtx);
+        if (bFreeCtx) { comdb2_free_ruleset_item_criteria(&uCtx); }
         comdb2_ruleset_result_to_str(&ruleRes, zBuf, sizeof(zBuf));
 
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
