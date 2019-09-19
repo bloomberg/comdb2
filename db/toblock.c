@@ -99,7 +99,6 @@ extern __thread int send_prefault_udp;
 extern void delay_if_sc_resuming(struct ireq *iq);
 extern unsigned int gbl_delayed_skip;
 
-
 int gbl_osql_snap_info_hashcheck = 1;
 
 #if 0
@@ -5912,8 +5911,9 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%d threads are in the block processor, max is %d\n",
-               prcnt, prmax);
+        logmsg(LOGMSG_USER,
+               "%d threads are in the block processor, max is %d\n", prcnt,
+               prmax);
     }
 
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);

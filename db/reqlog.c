@@ -2763,12 +2763,14 @@ inline int reqlog_get_error_code(const struct reqlogger *logger)
     return logger->error_code;
 }
 
-inline void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)
+inline void reqlog_set_path(struct reqlogger *logger,
+                            struct client_query_stats *path)
 {
     logger->path = path;
 }
 
-inline void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
+inline void reqlog_set_context(struct reqlogger *logger, int ncontext,
+                               char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;

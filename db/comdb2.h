@@ -1325,7 +1325,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
-    uint64_t startus;           /* thread handling; start time stamp */
+    uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
     char *tag;

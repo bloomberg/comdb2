@@ -6573,22 +6573,23 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    c = malloc(*num_connections * sizeof(struct connection_info));
    struct sqlclntstate *clnt;
    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
-      c[cid].connection_id = clnt->connid;
-      c[cid].pid = clnt->last_pid;
-      c[cid].total_sql = clnt->total_sql;
-      c[cid].sql_since_reset = clnt->sql_since_reset;
-      c[cid].num_resets = clnt->num_resets;
-      c[cid].connect_time_int = clnt->connect_time;
-      c[cid].last_reset_time_int = clnt->last_reset_time;
-      c[cid].num_resets = clnt->num_resets;
-      c[cid].host = clnt->origin;
-      c[cid].state_int = clnt->state;
-      c[cid].time_in_state_int = clnt->state_start_time;
-      Pthread_mutex_lock(&clnt->state_lk);
-      if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
-         c[cid].sql = strdup(clnt->sql);
+       c[cid].connection_id = clnt->connid;
+       c[cid].pid = clnt->last_pid;
+       c[cid].total_sql = clnt->total_sql;
+       c[cid].sql_since_reset = clnt->sql_since_reset;
+       c[cid].num_resets = clnt->num_resets;
+       c[cid].connect_time_int = clnt->connect_time;
+       c[cid].last_reset_time_int = clnt->last_reset_time;
+       c[cid].num_resets = clnt->num_resets;
+       c[cid].host = clnt->origin;
+       c[cid].state_int = clnt->state;
+       c[cid].time_in_state_int = clnt->state_start_time;
+       Pthread_mutex_lock(&clnt->state_lk);
+       if (clnt->state == CONNECTION_RUNNING ||
+           clnt->state == CONNECTION_QUEUED) {
+           c[cid].sql = strdup(clnt->sql);
       } else {
-         c[cid].sql = NULL;
+          c[cid].sql = NULL;
       }
       Pthread_mutex_unlock(&clnt->state_lk);
       cid++;

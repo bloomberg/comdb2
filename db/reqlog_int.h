@@ -103,7 +103,7 @@ struct reqlogger {
     int sqlrows;
     double sqlcost;
 
-    uint64_t startus; /* logger start timestamp */
+    uint64_t startus;     /* logger start timestamp */
     uint64_t startprcsus; /* processing start timestamp */
     uint64_t durationus;
     uint64_t queuetimeus;
