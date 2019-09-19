@@ -142,6 +142,20 @@ struct ruleset_item_criteria {
                                    * memcmp(). */
 };
 
+struct ruleset_item_criteria_cache {
+  void *pOriginHostRe;            /* This is the cached regular expression for
+                                   * the origin host pattern, if needed. */
+
+  void *pOriginTaskRe;            /* This is the cached regular expression for
+                                   * the origin task pattern, if needed. */
+
+  void *pUserRe;                  /* This is the cached regular expression for
+                                   * the user pattern, if needed. */
+
+  void *pSqlRe;                   /* This is the cached regular expression for
+                                   * the SQL pattern, if needed. */
+};
+
 struct ruleset_item {
   int ruleNo;                     /* The number assigned to this rule.  If
                                    * this is zero, the rule has not been
@@ -164,19 +178,7 @@ struct ruleset_item {
                                    * etc. */
 
   struct ruleset_item_criteria criteria; /* See above for field notes. */
-
-  void *pOriginHostRe;            /* This is the cached regular expression for
-                                   * the origin host pattern, if needed. */
-
-  void *pOriginTaskRe;            /* This is the cached regular expression for
-                                   * the origin task pattern, if needed. */
-
-
-  void *pUserRe;                  /* This is the cached regular expression for
-                                   * the user pattern, if needed. */
-
-  void *pSqlRe;                   /* This is the cached regular expression for
-                                   * the SQL pattern, if needed. */
+  struct ruleset_item_criteria_cache cache; /* See above for field notes. */
 
   int evalCount;                  /* How many times have this rule been
                                    * evaluated? */
@@ -225,9 +227,13 @@ const char *comdb2_priority_to_str(
 int comdb2_ruleset_fingerprints_allowed(void);
 
 int comdb2_load_ruleset_item_criteria(
+  const char *zFileName,
+  int lineNo,
   char *zBuf,
   size_t nBuf,
+  int bStrictFp,
   struct ruleset_item_criteria *criteria,
+  struct ruleset_item_criteria *cache,
   char *zError,
   size_t nError
 );
