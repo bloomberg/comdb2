@@ -1379,10 +1379,14 @@ clipper_usage:
         comdb2_dump_ruleset(gbl_ruleset);
     }
     else if (tokcmp(tok, ltok, "evaluate_ruleset") == 0) {
+        struct ruleset_item_criteria context = {0};
+        clnt_to_ruleset_item_criteria(get_sql_clnt(), &context);
+
         char zRuleRes[100] = {0};
         struct ruleset_result ruleRes = {0};
+
         size_t matchCount = comdb2_evaluate_ruleset(
-            NULL, gbl_ruleset, get_sql_clnt(), &ruleRes
+            NULL, gbl_ruleset, context, &ruleRes
         );
         comdb2_ruleset_result_to_str(&ruleRes, zRuleRes, sizeof(zRuleRes));
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",

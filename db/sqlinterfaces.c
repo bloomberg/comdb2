@@ -4831,6 +4831,18 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
     }
 }
 
+void clnt_to_ruleset_item_criteria(
+  struct sqlclntstate *clnt,            /* in */
+  struct ruleset_item_criteria *context /* out */
+){
+  if ((clnt == NULL) || (context == NULL)) return;
+  context->zOriginHost = clnt->origin_host;
+  context->zOriginTask = clnt->conninfo.pename;
+  context->zUser = clnt->have_user ? clnt->user : NULL;
+  context->zSql = clnt->sql;
+  context->pFingerprint = clnt->work.aFingerprint;
+}
+
 static int can_execute_sql_query_now(
   struct sqlthdstate *thd,
   struct sqlclntstate *clnt,
@@ -4839,9 +4851,11 @@ static int can_execute_sql_query_now(
   int *pbTryAgain,
   priority_t *pPriority
 ){
+  struct ruleset_item_criteria context = {0};
   struct ruleset_result result = {0};
   result.priority = *pPriority;
-  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, clnt, &result);
+  clnt_to_ruleset_item_criteria(clnt, &context);
+  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, context, &result);
   comdb2_ruleset_result_to_str(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );

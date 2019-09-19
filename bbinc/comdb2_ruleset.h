@@ -115,6 +115,33 @@ enum ruleset_match {
                            * to one or more errors. */
 };
 
+struct ruleset_item_criteria {
+  char *zOriginHost;              /* Obtained via "clnt->origin_host".  If not
+                                   * NULL this pattern will be matched against
+                                   * the actual value using the semantics of
+                                   * the specified match mode. */
+
+  char *zOriginTask;              /* Obtained via "clnt->conninfo.pename".  If
+                                   * not NULL this pattern will be matched
+                                   * against the actual value using the
+                                   * semantics of the specified match mode. */
+
+  char *zUser;                    /* Obtained via "clnt->have_user" /
+                                   * "clnt->user".  If not NULL this pattern
+                                   * will be matched against the actual value
+                                   * using the semantics of the specified match
+                                   * mode. */
+
+  char *zSql;                     /* Obtained via "clnt->sql".  If not NULL
+                                   * this pattern will be matched against the
+                                   * actual value using the semantics of the
+                                   * specified match mode. */
+
+  unsigned char *pFingerprint;    /* Obtained via "clnt->work.aFingerprint".
+                                   * If not NULL this will be matched using
+                                   * memcmp(). */
+};
+
 struct ruleset_item {
   int ruleNo;                     /* The number assigned to this rule.  If
                                    * this is zero, the rule has not been
@@ -136,42 +163,20 @@ struct ruleset_item {
                                    * comparisons, e.g. exact, glob, regexp,
                                    * etc. */
 
-  char *zOriginHost;              /* Obtained via "clnt->origin_host".  If not
-                                   * NULL this pattern will be matched against
-                                   * the actual value using the semantics of
-                                   * the specified match mode. */
+  struct ruleset_item_criteria criteria; /* See above for field notes. */
 
   void *pOriginHostRe;            /* This is the cached regular expression for
                                    * the origin host pattern, if needed. */
 
-  char *zOriginTask;              /* Obtained via "clnt->conninfo.pename".  If
-                                   * not NULL this pattern will be matched
-                                   * against the actual value using the
-                                   * semantics of the specified match mode. */
-
   void *pOriginTaskRe;            /* This is the cached regular expression for
                                    * the origin task pattern, if needed. */
 
-  char *zUser;                    /* Obtained via "clnt->have_user" /
-                                   * "clnt->user".  If not NULL this pattern
-                                   * will be matched against the actual value
-                                   * using the semantics of the specified match
-                                   * mode. */
 
   void *pUserRe;                  /* This is the cached regular expression for
                                    * the user pattern, if needed. */
 
-  char *zSql;                     /* Obtained via "clnt->sql".  If not NULL
-                                   * this pattern will be matched against the
-                                   * actual value using the semantics of the
-                                   * specified match mode. */
-
   void *pSqlRe;                   /* This is the cached regular expression for
                                    * the SQL pattern, if needed. */
-
-  unsigned char *pFingerprint;    /* Obtained via "clnt->work.aFingerprint".
-                                   * If not NULL this will be matched using
-                                   * memcmp(). */
 
   int evalCount;                  /* How many times have this rule been
                                    * evaluated? */

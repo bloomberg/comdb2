@@ -1116,6 +1116,9 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
+void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
+                                   struct ruleset_item_criteria *context);
+
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
 int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
