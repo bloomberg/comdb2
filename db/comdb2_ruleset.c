@@ -649,7 +649,7 @@ static int recompile_regexp(
   const char *zPattern,
   int noCase,
   void **ppRe,
-  char **pzErr
+  const char **pzErr
 ){
   const char *zErr;
 
@@ -704,7 +704,7 @@ int comdb2_load_ruleset_item_criteria(
   size_t nError
 ){
   if( zBuf==NULL || criteria==NULL || zError==NULL ) return EINVAL;
-  char *zReErr;
+  const char *zReErr;
   char *zTok = strtok(zBuf, RULESET_DELIM);
   while( zTok!=NULL ){
     const char *zField = "originHost";
@@ -1038,7 +1038,7 @@ int comdb2_load_ruleset(
     char *zEnd = NULL;
     char *zBad = NULL;
     char *zTok = NULL;
-    char *zReErr;
+    const char *zReErr;
     while( isspace(zBuf[0]) ) zBuf++; /* skip leading spaces */
     if( zBuf[0]=='\0' ) continue; /* blank or space-only line */
     if( zBuf[0]=='#' ) continue; /* comment line */
