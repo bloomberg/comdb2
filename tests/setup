@@ -147,6 +147,7 @@ setup_db() {
     fi
 
     echo "logmsg level debug" >> ${LRL}
+    echo "eventlog_nkeep 0" >> ${LRL}
 
     if [[ -f lrl ]]; then
         cat lrl >> ${LRL}

@@ -76,8 +76,6 @@ struct reqlogger {
     unsigned dump_mask;
     unsigned mask; /* bitwise or of the above two masks */
 
-    uint64_t startus;
-
     struct prefix_type prefix;
     char dumpline[1024];
     int dumplinepos;
@@ -105,10 +103,12 @@ struct reqlogger {
     int sqlrows;
     double sqlcost;
 
-    int rc;
+    uint64_t startus; /* logger start timestamp */
+    uint64_t startprcsus; /* processing start timestamp */
     uint64_t durationus;
-    int vreplays;
     uint64_t queuetimeus;
+    int rc;
+    int vreplays;
     char fingerprint[FINGERPRINTSZ];
     int have_fingerprint;
     char id[41];
