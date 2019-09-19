@@ -968,8 +968,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             }
 #endif
             /* queue work */
-            if ((pool->maxqueue > 0) &&
-                priority_queue_count(&pool->queue) >= pool->maxqueue) {
+            if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
                      (enqueue_front || !pool->maxqueueoverride ||
@@ -1050,6 +1049,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             int queue_rc = priority_queue_add(&pool->queue, priority, item);
 
             if (queue_rc != 0) {
+                pool_relablk(pool->pool, item);
                 pool->num_failed_dispatches++;
                 errUNLOCK(&pool->mutex);
                 logmsg(LOGMSG_ERROR, "%s(%s):priority_queue_add failed, rc=%d\n",
