@@ -469,7 +469,8 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
 
       return RULESET_M_ERROR; /* have forbidden criteria */
     }
-    if( memcmp(context->pFingerprint, criteria->pFingerprint, FPSZ)!=0 ){
+    if( (context->pFingerprint==NULL) ||
+        memcmp(context->pFingerprint, criteria->pFingerprint, FPSZ)!=0 ){
       return RULESET_M_FALSE; /* have criteria, not matched */
     }
   }
