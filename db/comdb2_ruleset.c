@@ -584,16 +584,22 @@ size_t comdb2_ruleset_result_to_str(
 }
 
 static int blob_string_to_fingerprint(
-  char *zIn, /* format must be: X'0123456789ABCDEF0123456789ABCDEF' */
-  unsigned char *zOut /* must be a block of at least FPSZ */
+  char *zIn, /* BLOB as hexadecimal string, maybe with decorations */
+  unsigned char *zOut, /* must be a block of at least FPSZ */
+  int bStrict /* format must be (?): X'0123456789ABCDEF0123456789ABCDEF' */
 ){
   size_t nIn = strlen(zIn);
   if( nIn!=35 ) return 1;
-  if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
-  if( zIn[1]!='\'' ) return 3;
-  if( zIn[nIn-1]!='\'' ) return 4;
-  int i = 0;
-  for(i=2; i<nIn-1; i+=2){
+  int i;
+  if( bStrict ){
+    if( zIn[0]!='X' && zIn[0]!='x' ) return 2;
+    if( zIn[1]!='\'' ) return 3;
+    if( zIn[nIn-1]!='\'' ) return 4;
+    i = 2;
+  }else{
+    i = 0;
+  }
+  for(; i<nIn-1; i+=2){
     int j = i - 2;
     if( !sqlite3Isxdigit(zIn[i]) ) return 5;
     zOut[j/2] = (sqlite3HexToInt(zIn[i])<<4) | sqlite3HexToInt(zIn[i+1]);
@@ -771,9 +777,10 @@ int comdb2_load_ruleset_item_criteria(
                  "could not allocate %s value", zField);
         return ENOMEM;
       }
-      if( blob_string_to_fingerprint(zTok, criteria->pFingerprint) ){
+      int rc2 = blob_string_to_fingerprint(zTok, criteria->pFingerprint, 0);
+      if( rc2!=0 ){
         snprintf(zError, nError,
-                 "could not parse %s value from '%s'", zField, zTok);
+                 "could not parse %s value from '%s': %d", zField, zTok, rc2);
         return EINVAL;
       }
       zTok = strtok(NULL, RULESET_DELIM);
@@ -1313,10 +1320,11 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField);
             goto failure;
           }
-          if( blob_string_to_fingerprint(zTok, criteria->pFingerprint) ){
+          int rc2 = blob_string_to_fingerprint(zTok, criteria->pFingerprint, 1);
+          if( rc2!=0 ){
             snprintf(zError, sizeof(zError),
-                     "%s:%d, could not parse %s value from '%s'",
-                     zFileName, lineNo, zField, zTok);
+                     "%s:%d, could not parse %s value from '%s': %d",
+                     zFileName, lineNo, zField, zTok, rc2);
             goto failure;
           }
           zTok = strtok(NULL, RULESET_DELIM);
