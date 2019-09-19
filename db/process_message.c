@@ -1386,9 +1386,11 @@ clipper_usage:
             return -1;
         }
 
-        struct ruleset_item_criteria context = {0};
         char zBuf[8192] = {0};
-        char *zTok = strtok(zCtx, " ");
+        struct ruleset_item_criteria context = {0};
+
+        char *zTok = strtok(zCtx, " "); /* evaluate_ruleset */
+        if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
 
         if (zTok != NULL) {
             size_t nContext = strlen(zContext) + 1;
