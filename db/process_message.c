@@ -717,19 +717,19 @@ clipper_usage:
         }
         if (tokcmp(tok, ltok, "disable")==0)
         {
-            flag = 1;   
+            flag = 1;
         }
         else if (tokcmp(tok, ltok, "enable")==0)
         {
             flag = 0;
         }
-        else 
+        else
             goto clipper_usage;
 
         tok=segtok(line, lline, &st, &ltok);
-        if (ltok == 0) 
+        if (ltok == 0)
             goto clipper_usage;
-        subnet = tokdup(tok, ltok);  
+        subnet = tokdup(tok, ltok);
         net_clipper(subnet, flag);
         free(subnet);
     }
@@ -1365,7 +1365,7 @@ clipper_usage:
 
     else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
         int blkmax = get_blkmax();
-        logmsg(LOGMSG_USER, 
+        logmsg(LOGMSG_USER,
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
                 blkmax, gbl_maxwthreads);
     }
@@ -1379,27 +1379,34 @@ clipper_usage:
         comdb2_dump_ruleset(gbl_ruleset);
     }
     else if (tokcmp(tok, ltok, "evaluate_ruleset") == 0) {
-        char *zContext = strdup(tok);
+        char *zCtx = strdup(tok);
 
-        if (zContext == NULL) {
-            logmsg(LOGMSG_ERROR, "Out of memory for context string\n");
+        if (zCtx == NULL) {
+            logmsg(LOGMSG_ERROR, "Out of memory for ruleset context\n");
             return -1;
         }
 
-        size_t nContext = strlen(zContext) + 1;
         struct ruleset_item_criteria context = {0};
         char zBuf[8192] = {0};
+        char *zTok = strtok(zCtx, " ");
 
-        rc = comdb2_load_ruleset_item_criteria(
-            zContext, nContext, &context, zBuf, sizeof(zBuf)
-        );
-        free(zContext);
+        if (zTok != NULL) {
+            size_t nContext = strlen(zContext) + 1;
 
-        if (rc != 0) {
-            comdb2_free_ruleset_item_criteria(&context);
-            logmsg(LOGMSG_ERROR, "comdb2_load_ruleset_item_criteria: %s\n",
-                   zBuf);
-            return -1;
+            rc = comdb2_load_ruleset_item_criteria(
+                zContext, nContext, &context, zBuf, sizeof(zBuf)
+            );
+            free(zCtx);
+
+            if (rc != 0) {
+                comdb2_free_ruleset_item_criteria(&context);
+                logmsg(LOGMSG_ERROR, "comdb2_load_ruleset_item_criteria: %s\n",
+                       zBuf);
+                return -1;
+            }
+        } else {
+            clnt_to_ruleset_item_criteria(get_sql_clnt(), &context);
+            free(zCtx);
         }
 
         struct ruleset_result ruleRes = {0};
@@ -2166,7 +2173,7 @@ clipper_usage:
             }
         }
         if ((compress != 0 || compress_blobs != 0) && odh == 0) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "Error - compression requires ODHs to be present\n");
             return -1;
         }
@@ -2175,7 +2182,7 @@ clipper_usage:
         rc = change_schema(table, fname, odh, compress, compress_blobs);
         if (rc != 0) {
             if (rc == -99)
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                         "schema change already in progress, will not do\n");
             else
                 logmsg(LOGMSG_ERROR, "error with schema change thread\n");
@@ -2468,7 +2475,7 @@ clipper_usage:
                 if (!rc) {
                     logmsg(LOGMSG_USER, "set password for %s\n", user);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                             "FAILED set password for %s rc=%d\n",
                             user, rc);
                 }
@@ -2518,7 +2525,7 @@ clipper_usage:
                 if (rc == 0) {
                     logmsg(LOGMSG_USER, "enabled access control tableXnode\n");
                 } else {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                             "FAILED enable tableXnode rc=%d bdberr=%d\n", rc,
                             bdberr);
                 }
@@ -2580,7 +2587,7 @@ clipper_usage:
                     logmsg(LOGMSG_ERROR, "deleted read for %s and table %s\n", user,
                             table);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                             "FAILED delete read for %s rc=%d bdberr=%d\n", user,
                             rc, bdberr);
                 }
@@ -2597,7 +2604,7 @@ clipper_usage:
                     logmsg(LOGMSG_ERROR, "deleted write for %s and table %s\n", user,
                             table);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                             "FAILED delete write for %s rc=%d bdberr=%d\n",
                             user, rc, bdberr);
                 }
@@ -2617,7 +2624,7 @@ clipper_usage:
         if (tokcmp(tok, ltok, "list") == 0) {
             rc = bdb_llmeta_list_records(thedb->bdb_env, &bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, 
+                logmsg(LOGMSG_ERROR,
                         "%s:%d: failed to list all options rc=%d bdberr=%d\n",
                         __FILE__, __LINE__, rc, bdberr);
             }
@@ -2856,7 +2863,7 @@ clipper_usage:
 
         rc = offload_comm_send_upgrade_record(tbl, genid);
         if (rc != 0)
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "Error in offload_comm_send_upgrade_record. rc = %d\n", rc);
         free(tbl);
     } else if (tokcmp(tok, ltok, "upgradetable") == 0) {
@@ -3041,7 +3048,7 @@ clipper_usage:
         } else if (tokcmp(tok, ltok, "backout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             char * table = NULL;
-            if (ltok > 0) 
+            if (ltok > 0)
                 table = tokdup(tok, ltok);
             SBUF2 *sb = sbuf2open(fileno(stdout), 0);
             handle_backout(sb, table);
@@ -3420,7 +3427,7 @@ clipper_usage:
         int num_nodes;
         rc = net_get_network_usage(thedb->handle_sibling, &written, &read,
                                    &waits, &reorders);
-        logmsg(LOGMSG_USER, 
+        logmsg(LOGMSG_USER,
             "Read: %llu    Written: %llu    Throttles: %llu   Reorders: %llu\n",
             read, written, waits, reorders);
         num_nodes = net_get_all_nodes(thedb->handle_sibling, hosts);
@@ -3625,7 +3632,7 @@ clipper_usage:
             logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry, max_retries,
                    retry_limit);
         } else if (tokcmp(tok, ltok, "help") == 0) {
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                 "off      : disable DEADLOCK_WRITERS_WITH_LEAST_WRITES mode\n"
                 "on       : enable DEADLOCK_WRITERS_WITH_LEAST_WRITES mode\n"
                 "limit n  : set max retries before auto-disable (current %d)\n",
@@ -4289,7 +4296,7 @@ clipper_usage:
             SBUF2 *sb = sbuf2open(fileno((f?f:stdout)), 0);
             handle_testcompr(sb, table);
         } else {
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                    "testcompr table <tbl> - Test compression for table tbl\n"
                    "testcompr percent <number> - Default 10%%\n"
                    "testcompr max <number> - Set to 0 to process all records; "
@@ -4309,7 +4316,7 @@ clipper_usage:
            logmsg(LOGMSG_USER, "Default decimal rounding is %s\n",
                    dec_print_mode(gbl_decimal_rounding));
         } else {
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                     "Missing option for decimal rounding, current is %s\n",
                     dec_print_mode(gbl_decimal_rounding));
         }
@@ -4412,7 +4419,7 @@ clipper_usage:
 
     else if (tokcmp(tok, ltok, "dispatch_bench") == 0) {
         gbl_dispatch_rowlocks_bench = 1;
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
                "I will dispatch rowlocks_bench record (10019) to db_dispatch\n");
     } else if (tokcmp(tok, ltok, "dont_dispatch_bench") == 0) {
         gbl_dispatch_rowlocks_bench = 0;
@@ -4440,7 +4447,7 @@ clipper_usage:
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (tcnt <= 0 || cnt <= 0) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "commit_bench requires txn-count & iters-per-txn count\n");
         } else {
             Pthread_mutex_lock(&testguard);
@@ -4510,7 +4517,7 @@ clipper_usage:
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
         } else if (lcnt <= 0 || pcnt <= 0) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "rowlocks_lock2_bench requires ltxn-count & ptxn-count\n");
         } else {
             Pthread_mutex_lock(&testguard);
