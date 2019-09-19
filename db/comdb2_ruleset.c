@@ -745,7 +745,7 @@ int comdb2_load_ruleset_item_criteria(
       }
       criteria->zSql = strdup(zTok);
       if( criteria->zSql==NULL ){
-        snprintf(zError, sizeof(zError),
+        snprintf(zError, nError,
                  "could not duplicate %s value", zField);
         return ENOMEM;
       }
@@ -756,7 +756,7 @@ int comdb2_load_ruleset_item_criteria(
     if( sqlite3_stricmp(zTok, zField)==0 ){
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
-        snprintf(zError, sizeof(zError),
+        snprintf(zError, nError,
                  "expected %s value after '%s'", zField, zField);
         return EINVAL;
       }
@@ -816,7 +816,7 @@ static void comdb2_free_ruleset_item(
 ){
   if( rule==NULL ) return;
   comdb2_free_ruleset_item_regexps(rule);
-  comdb2_free_ruleset_item_criteria(rule->criteria);
+  comdb2_free_ruleset_item_criteria(&rule->criteria);
   memset(rule, 0, sizeof(struct ruleset_item));
 }
 
