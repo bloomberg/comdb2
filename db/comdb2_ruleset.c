@@ -828,7 +828,7 @@ int comdb2_load_ruleset_item_criteria(
           snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s'",
                    zFileName, lineNo, zField, zTok);
-          goto failure;
+          return EINVAL;
         }
       }
       zTok = strtok(NULL, RULESET_DELIM);
