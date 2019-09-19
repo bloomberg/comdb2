@@ -703,7 +703,7 @@ int comdb2_load_ruleset_item_criteria(
   int noCase,
   int bStrictFp,
   struct ruleset_item_criteria *criteria,
-  struct ruleset_item_criteria *cache,
+  struct ruleset_item_criteria_cache *cache,
   char *zError,
   size_t nError
 ){
