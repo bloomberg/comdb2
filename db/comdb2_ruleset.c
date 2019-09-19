@@ -645,6 +645,34 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   }
 }
 
+static int recompile_regexp(
+  const char *zPattern,
+  int noCase,
+  void **ppRe
+){
+  const char *zErr;
+
+  if( *ppRe!=NULL ){
+    re_free(*ppRe);
+    *ppRe = NULL;
+  }
+  zErr = re_compile(ppRe, zPattern, noCase);
+  if( zErr ){
+    logmsg(LOGMSG_ERROR,
+           "%s: cannot compile regular expression \"%s\": %s\n",
+           __func__, zPattern, zErr);
+    re_free(*ppRe);
+    return EINVAL;
+  }
+  if( *ppRe==NULL ){
+    logmsg(LOGMSG_ERROR,
+           "%s: out of memory for regular expression \"%s\"\n",
+           __func__, zPattern);
+    return ENOMEM;
+  }
+  return 0;
+}
+
 static void comdb2_free_ruleset_item_criteria_cache(
   struct ruleset_item_criteria_cache *cache
 ){
@@ -899,34 +927,6 @@ static void comdb2_free_ruleset_int(
 void comdb2_free_ruleset(struct ruleset *rules){
   ATOMIC_ADD64(gbl_ruleset_generation, 1);
   comdb2_free_ruleset_int(rules);
-}
-
-static int recompile_regexp(
-  const char *zPattern,
-  int noCase,
-  void **ppRe
-){
-  const char *zErr;
-
-  if( *ppRe!=NULL ){
-    re_free(*ppRe);
-    *ppRe = NULL;
-  }
-  zErr = re_compile(ppRe, zPattern, noCase);
-  if( zErr ){
-    logmsg(LOGMSG_ERROR,
-           "%s: cannot compile regular expression \"%s\": %s\n",
-           __func__, zPattern, zErr);
-    re_free(*ppRe);
-    return EINVAL;
-  }
-  if( *ppRe==NULL ){
-    logmsg(LOGMSG_ERROR,
-           "%s: out of memory for regular expression \"%s\"\n",
-           __func__, zPattern);
-    return ENOMEM;
-  }
-  return 0;
 }
 
 static int comdb2_more_ruleset_items(
