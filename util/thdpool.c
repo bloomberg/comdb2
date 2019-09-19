@@ -960,8 +960,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 #ifndef NDEBUG
             /* TODO: Carefully evaluate this code for non-debug builds. */
             /* if there are no active threads (i.e. we did not start one?),
-             * there is not much point in queueing an event that may never
-             * be processed? */
+             * there may not be much point in queueing an event that may
+             * never be processed? */
             if (ATOMIC_LOAD32(pool->nactthd) == 0) {
                 logmsg(LOGMSG_WARN, "%s(%s): no threads active\n",
                        __func__, pool->name);
