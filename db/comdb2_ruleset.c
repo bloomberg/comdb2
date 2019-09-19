@@ -660,7 +660,7 @@ static void comdb2_free_ruleset_item_regexps(
 
 int comdb2_load_ruleset_item_criteria(
   char *zBuf,
-  size_t nBuf,
+  size_t nBuf, /* NOT USED */
   struct ruleset_item_criteria *criteria,
   char *zError,
   size_t nError

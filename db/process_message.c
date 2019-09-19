@@ -1387,37 +1387,39 @@ clipper_usage:
         }
 
         char zBuf[8192] = {0};
-        struct ruleset_item_criteria context = {0};
+        struct ruleset_item_criteria uCtx = {0};
+        int bFreeCtx = 1;
 
         char *zTok = strtok(zCtx, " "); /* evaluate_ruleset */
         if (zTok != NULL) zTok = strtok(NULL, " "); /* next... */
 
-        if (zTok != NULL) {
-            size_t nContext = strlen(zContext) + 1;
+        if (zTok != NULL) { /* was context manually specified? */
+            size_t nCtx = strlen(zCtx) + 1;
 
             rc = comdb2_load_ruleset_item_criteria(
-                zContext, nContext, &context, zBuf, sizeof(zBuf)
+                zCtx, nCtx, &uCtx, zBuf, sizeof(zBuf)
             );
             free(zCtx);
 
             if (rc != 0) {
-                comdb2_free_ruleset_item_criteria(&context);
+                comdb2_free_ruleset_item_criteria(&uCtx);
                 logmsg(LOGMSG_ERROR, "comdb2_load_ruleset_item_criteria: %s\n",
                        zBuf);
                 return -1;
             }
         } else {
-            clnt_to_ruleset_item_criteria(get_sql_clnt(), &context);
+            clnt_to_ruleset_item_criteria(get_sql_clnt(), &uCtx);
+            bFreeCtx = 0;
             free(zCtx);
         }
 
         struct ruleset_result ruleRes = {0};
 
         size_t matchCount = comdb2_evaluate_ruleset(
-            NULL, gbl_ruleset, &context, &ruleRes
+            NULL, gbl_ruleset, &uCtx, &ruleRes
         );
 
-        comdb2_free_ruleset_item_criteria(&context);
+        if (bFreeCtx) comdb2_free_ruleset_item_criteria(&uCtx);
         comdb2_ruleset_result_to_str(&ruleRes, zBuf, sizeof(zBuf));
 
         logmsg(LOGMSG_USER, "ruleset %p matched %zu, %s\n",
