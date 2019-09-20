@@ -232,9 +232,11 @@ int comdb2_load_ruleset_item_criteria(
   char *zBuf,
   size_t nBuf,
   int noCase,
-  int bStrictFp,
+  int bAllowFingerprint,
+  int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
+  size_t *pnFingerprint,
   char *zError,
   size_t nError
 );

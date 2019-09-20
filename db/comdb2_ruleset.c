@@ -697,9 +697,11 @@ int comdb2_load_ruleset_item_criteria(
   char *zBuf,
   size_t nBuf, /* NOT USED */
   int noCase,
-  int bStrictFp,
+  int bAllowFingerprint,
+  int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
+  size_t *pnFingerprint,
   char *zError,
   size_t nError
 ){
@@ -864,7 +866,7 @@ int comdb2_load_ruleset_item_criteria(
         return ENOMEM;
       }
       int rc2 = blob_string_to_fingerprint(
-        zTok, criteria->pFingerprint, bStrictFp
+        zTok, criteria->pFingerprint, bStrictFingerprint
       );
       if( rc2!=0 ){
         snprintf(zError, nError,
@@ -1235,6 +1237,12 @@ int comdb2_load_ruleset(
           continue;
         }
         noCase = (rule->mode&RULESET_MM_NOCASE);
+
+
+
+
+
+
         zField = "originHost";
         if( sqlite3_stricmp(zTok, zField)==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
