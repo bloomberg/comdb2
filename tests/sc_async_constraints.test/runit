@@ -68,16 +68,20 @@ function updater_thread
 {
     [[ $debug == "1" ]] && set -x
     typeset func="updater_thread"
-    write_prompt $func "Running $func"
-    typeset recs=${1}
-    typeset slot=${2}
+    typeset slot=${1}
+    write_prompt $func "Running $func $slot"
+    typeset recs=${2}
     typeset target=$(( recs + slot ))
-    typeset table=${3:-t1}
+    typeset sleepbetween=${3:-.20}
+    typeset sleepafter=${4:-.20}
+    typeset table=${5:-t1}
 
     while [[ ! -f $stop_touch ]]; do
         typeset record=$(random $recs)
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "update $table set a = $target where a = $record" >/dev/null
+        [[ "$sleepbetween" != 0 ]] && sleep $sleepbetween
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "update $table set a = $record where a = $target" >/dev/null
+        [[ "$sleepafter" != 0 ]] && sleep $sleepafter
     done
 }
 
@@ -87,7 +91,7 @@ function run_test
     typeset func="run_test"
     write_prompt $func "Running $func"
     typeset recs=1000000
-    typeset updaters=1
+    typeset updaters=5
     typeset iterations=1000
     typeset i=0
     bulk_insert_unique_records t1 $recs
@@ -95,7 +99,7 @@ function run_test
 
     i=0
     while [[ $i -lt $updaters ]]; do
-        updater_thread $recs $(( i + 1 )) &
+        updater_thread $(( i + 1 )) $recs &
         let i=i+1
     done
 
