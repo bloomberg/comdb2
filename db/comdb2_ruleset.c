@@ -1109,7 +1109,10 @@ int comdb2_load_ruleset(
           comdb2_ruleset_fingerprints_allowed(), 1, criteria, cache,
           &zTok, &rules->nFingerprint, zError, sizeof(zError)
         );
-        if( rc==0 ) continue;
+        if( rc==0 ){
+          if( zTok==NULL ) break;
+          continue;
+        }
         if( rc!=ENOENT ) goto failure;
         memset(zError, 0, sizeof(zError));
         zField = "action";
