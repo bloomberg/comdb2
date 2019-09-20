@@ -1327,7 +1327,6 @@ int comdb2_load_ruleset(
   }
 
   (*pRules)->generation = ATOMIC_ADD64(gbl_ruleset_generation, 1);
-  rc = 0;
   goto done;
 
 failure:
