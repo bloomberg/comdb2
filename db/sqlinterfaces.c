@@ -312,6 +312,12 @@ struct sqlclntstate *get_sql_clnt(void){
   return thd->clnt;
 }
 
+uint64_t get_sql_clnt_seqno(void){
+  struct sqlclntstate *clnt = get_sql_clnt();
+  if (clnt == NULL) return 0;
+  return clnt->seqNo;
+}
+
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);

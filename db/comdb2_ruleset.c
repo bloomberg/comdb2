@@ -357,7 +357,7 @@ static void comdb2_dump_ruleset_item(
   char *zMessage,
   struct ruleset *rules,
   struct ruleset_item *rule,
-  struct sqlclntstate *clnt
+  uint64_t seqNo
 ){
   const char *zAction;
   char zFlags[100]; /* TODO: When there are more flags, increase this. */
@@ -386,7 +386,7 @@ static void comdb2_dump_ruleset_item(
          "sql {%s}, fingerprint {%s}, evalCount %d, matchCount %d\n",
          __func__, rules, rule->ruleNo,
          zMessage ? zMessage : "<null>",
-         (unsigned long long int)(clnt ? clnt->seqNo : 0),
+         (unsigned long long int)seqNo,
          zAction ? zAction : "<null>",
          (unsigned long long int)rule->action, rule->adjustment,
          zFlags, (unsigned long long int)rule->flags,
@@ -527,7 +527,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   rule->matchCount++;
   loglvl level = (rule->flags&RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
   if( logmsg_level_ok(level) ){
-    comdb2_dump_ruleset_item(level, "MATCHED", rules, rule, get_sql_clnt());
+    comdb2_dump_ruleset_item(level,"MATCHED",rules,rule,get_sql_clnt_seqno());
   }
   return (rule->flags&RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
 }
@@ -641,7 +641,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   for(int i=0; i<rules->nRule; i++){
     struct ruleset_item *rule = &rules->aRule[i];
     if( rule->ruleNo==0 ){ continue; }
-    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, rule, NULL);
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, rule, 0);
   }
 }
 

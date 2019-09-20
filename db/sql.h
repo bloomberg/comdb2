@@ -1261,6 +1261,7 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
+uint64_t get_sql_clnt_seqno(void);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
