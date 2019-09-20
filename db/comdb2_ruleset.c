@@ -1110,6 +1110,7 @@ int comdb2_load_ruleset(
         );
         if( rc==0 ) continue;
         if( rc!=ENOENT ) goto failure;
+        memset(zError, 0, sizeof(zError));
         zField = "action";
         if( sqlite3_stricmp(zTok, zField)==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
@@ -1250,6 +1251,10 @@ int comdb2_load_ruleset(
           zTok = strtok(zEnd, RULESET_DELIM);
           continue;
         }
+        snprintf(zError, sizeof(zError),
+                 "%s:%d, unknown criteria field '%s'",
+                 zFileName, lineNo, zTok);
+        goto failure;
       }
     }else{
       zTok = strtok(zBuf, RULESET_DELIM);
