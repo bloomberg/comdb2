@@ -601,8 +601,8 @@ void thdpool_resume(struct thdpool *pool)
 static int get_work_ll(struct thd *thd, struct workitem *work)
 {
     if (thd->work.available) {
-        memcpy(work, &thd->work, sizeof(*work));
-        thd->work.available = 0;
+        memcpy(work, &thd->work, sizeof(struct workitem));
+        memset(&thd->work, 0, sizeof(struct workitem));
         return 1;
     } else {
         struct workitem *next;
@@ -625,7 +625,7 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
                     free(next->persistent_info);
                     next->persistent_info = NULL;
                 }
-                thd->work.work_fn(thd->pool, next->work, NULL, THD_FREE);
+                next->work_fn(thd->pool, next->work, NULL, THD_FREE);
                 pool_relablk(thd->pool->pool, next);
                 thd->pool->num_timeout++;
                 continue;
