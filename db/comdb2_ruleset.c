@@ -854,7 +854,7 @@ int comdb2_load_ruleset_item_criteria(
                  zFileName, lineNo, zField);
         return EACCES;
       }
-      if( pnFingerprint!=NULL ) *pnFingerprint++;
+      if( pnFingerprint!=NULL ) (*pnFingerprint)++;
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zError, nError,
