@@ -701,7 +701,7 @@ int comdb2_load_ruleset_item_criteria(
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
-  const char **pzField,
+  char **pzField,
   size_t *pnFingerprint,
   char *zError,
   size_t nError
@@ -1198,7 +1198,7 @@ int comdb2_load_ruleset(
                      zFileName, lineNo, zField, zBad);
             goto failure;
           }
-          noCase = (rule->mode&RULESET_MM_NOCASE);
+          int noCase = (rule->mode&RULESET_MM_NOCASE);
           if( rule->mode&RULESET_MM_REGEXP ){
             zReErr = NULL;
             if( criteria->zOriginHost!=NULL && recompile_regexp(

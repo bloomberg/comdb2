@@ -236,7 +236,7 @@ int comdb2_load_ruleset_item_criteria(
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
-  const char **pzField,
+  char **pzField,
   size_t *pnFingerprint,
   char *zError,
   size_t nError
