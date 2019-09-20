@@ -10,12 +10,25 @@ permalink: ruleset.html
 Comdb2 ruleset files have a `.ruleset` extension.  Ruleset files are optional.
 By convention, ruleset files should be placed in the `rulesets` subdirectory
 within the database directory.  If no ruleset files are loaded, the database
-will assume all SQL queries have equal priority.  A ruleset file consists of
-optional blank lines, optional comment lines, a required file header, and
-optional rule definition lines.
+will assume all SQL queries have equal priority.  By default, no ruleset files
+are loaded when the database starts up.  If desired, one (or more) ruleset
+files may be automatically loaded on startup by using `do` directives in the
+[LRL file](config_files.md#lrl-files), e.g.:
 
-Blank lines are skipped.  Lines beginning with `#` are treated as comments and
-skipped.
+```
+strict_double_quotes 1
+do reload_ruleset /full/path/to/the/file.ruleset
+```
+
+In the above example, use of the `strict_double_quotes` tunable is optional;
+however, it will permit loaded ruleset files to make use of the `fingerprint`
+property.
+
+A ruleset file consists of optional blank lines, optional comment lines, a
+required file header, and optional rule definition lines.
+
+Blank lines are skipped.  Lines beginning with `#` are treated as comments
+and skipped.
 
 The file header line must be the first non-blank, non-comment line in the
 file.  Currently, it must consist of the literal string `version 1`.
