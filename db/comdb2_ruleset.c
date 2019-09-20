@@ -706,6 +706,7 @@ int comdb2_load_ruleset_item_criteria(
   char *zError,
   size_t nError
 ){
+  int rc = 0;
   if( zBuf==NULL || criteria==NULL || zError==NULL ) return EINVAL;
   const char *zReErr;
   char *zTok = pzField ? *pzField : strtok(zBuf, RULESET_DELIM);
@@ -717,7 +718,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, expected %s value after '%s'",
                  zFileName, lineNo, zField, zField);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       if( criteria->zOriginHost ){
         free(criteria->zOriginHost);
@@ -728,7 +730,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
-        return ENOMEM;
+        rc = ENOMEM;
+        goto done;
       }
       if( cache!=NULL ){
         zReErr = NULL;
@@ -738,7 +741,8 @@ int comdb2_load_ruleset_item_criteria(
                    zFileName, lineNo, zField, zTok, zReErr);
           re_free(cache->pOriginHostRe);
           cache->pOriginHostRe = NULL;
-          return EINVAL;
+          rc = EINVAL;
+          goto done;
         }
       }
       zTok = strtok(NULL, RULESET_DELIM);
@@ -751,7 +755,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, expected %s value after '%s'",
                  zFileName, lineNo, zField, zField);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       if( criteria->zOriginTask ){
         free(criteria->zOriginTask);
@@ -762,7 +767,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
-        return ENOMEM;
+        rc = ENOMEM;
+        goto done;
       }
       if( cache!=NULL ){
         zReErr = NULL;
@@ -772,7 +778,8 @@ int comdb2_load_ruleset_item_criteria(
                    zFileName, lineNo, zField, zTok, zReErr);
           re_free(cache->pOriginTaskRe);
           cache->pOriginTaskRe = NULL;
-          return EINVAL;
+          rc = EINVAL;
+          goto done;
         }
       }
       zTok = strtok(NULL, RULESET_DELIM);
@@ -785,7 +792,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, expected %s value after '%s'",
                  zFileName, lineNo, zField, zField);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       if( criteria->zUser ){
         free(criteria->zUser);
@@ -796,7 +804,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
-        return ENOMEM;
+        rc = ENOMEM;
+        goto done;
       }
       if( cache!=NULL ){
         zReErr = NULL;
@@ -806,7 +815,8 @@ int comdb2_load_ruleset_item_criteria(
                    zFileName, lineNo, zField, zTok, zReErr);
           re_free(cache->pUserRe);
           cache->pUserRe = NULL;
-          return EINVAL;
+          rc = EINVAL;
+          goto done;
         }
       }
       zTok = strtok(NULL, RULESET_DELIM);
@@ -819,7 +829,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, expected %s value after '%s'",
                  zFileName, lineNo, zField, zField);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       if( criteria->zSql ){
         free(criteria->zSql);
@@ -830,7 +841,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not duplicate %s value",
                  zFileName, lineNo, zField);
-        return ENOMEM;
+        rc = ENOMEM;
+        goto done;
       }
       if( cache!=NULL ){
         zReErr = NULL;
@@ -840,7 +852,8 @@ int comdb2_load_ruleset_item_criteria(
                    zFileName, lineNo, zField, zTok, zReErr);
           re_free(cache->pSqlRe);
           cache->pSqlRe = NULL;
-          return EINVAL;
+          rc = EINVAL;
+          goto done;
         }
       }
       zTok = strtok(NULL, RULESET_DELIM);
@@ -852,7 +865,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, field '%s' forbidden by configuration",
                  zFileName, lineNo, zField);
-        return EACCES;
+        rc = EACCES;
+        goto done;
       }
       if( pnFingerprint!=NULL ) (*pnFingerprint)++;
       zTok = strtok(NULL, RULESET_DELIM);
@@ -860,7 +874,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, expected %s value after '%s'",
                  zFileName, lineNo, zField, zField);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       if( criteria->pFingerprint ){
         free(criteria->pFingerprint);
@@ -871,7 +886,8 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not allocate %s value",
                  zFileName, lineNo, zField);
-        return ENOMEM;
+        rc = ENOMEM;
+        goto done;
       }
       int rc2 = blob_string_to_fingerprint(
         zTok, criteria->pFingerprint, bStrictFingerprint
@@ -880,18 +896,22 @@ int comdb2_load_ruleset_item_criteria(
         snprintf(zError, nError,
                  "%s:%d, could not parse %s value from '%s': %d",
                  zFileName, lineNo, zField, zTok, rc2);
-        return EINVAL;
+        rc = EINVAL;
+        goto done;
       }
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
     }
-    if( pzField ) *pzField = zTok;
     snprintf(zError, nError,
              "%s:%d, unknown criteria field '%s'",
              zFileName, lineNo, zTok);
-    return ENOENT;
+    rc = ENOENT;
+    goto done;
   }
-  return 0;
+
+done:
+  if( pzField ) *pzField = zTok;
+  return rc;
 }
 
 void comdb2_free_ruleset_item_criteria(
