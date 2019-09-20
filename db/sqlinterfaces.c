@@ -4931,7 +4931,7 @@ static int can_execute_sql_query_now(
   ** WARNING: This code assumes that higher priority values have
   **          lower numerical values.
   */
-  const char *zPoolPriority = "invalid ";
+  const char *zPoolPriority = "unknown ";
   priority_t pool_priority = PRIORITY_T_INVALID;
   if (count > 0) {
     pool_priority = (priority_t)gbl_debug_force_thdpool_priority;

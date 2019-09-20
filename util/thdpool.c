@@ -935,12 +935,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 Pthread_cond_destroy(&thd->cond);
                 free(thd);
                 return -1;
-            } else {
-                did_create = 1;
             }
             if (listc_size(&pool->thdlist) > pool->peaknthd) {
                 pool->peaknthd = listc_size(&pool->thdlist);
             }
+            did_create = 1;
             pool->num_creates++;
         }
 
@@ -1047,7 +1046,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         pool->name);
                 return -1;
             }
-            pool->num_enqueued++;
             int queue_rc = priority_queue_add(&pool->queue, priority, item);
 
             if (queue_rc != 0) {
@@ -1058,6 +1056,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         __func__, pool->name, queue_rc);
                 return -1;
             }
+
+            pool->num_enqueued++;
 
             if (pool->queued_callback)
                 pool->queued_callback(work);
