@@ -968,25 +968,27 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             }
 #endif
             /* queue work */
-            if (priority_queue_count(&pool->queue) >= pool->maxqueue) {
+            int queue_count = priority_queue_count(&pool->queue);
+
+            if (queue_count >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
                      (enqueue_front || !pool->maxqueueoverride ||
-                      priority_queue_count(&pool->queue) <
+                      queue_count <
                           (pool->maxqueue + pool->maxqueueoverride)))) {
-                    if (thdpool_alarm_on_queing(priority_queue_count(&pool->queue))) {
+                    if (thdpool_alarm_on_queing(queue_count)) {
                         int now = comdb2_time_epoch();
 
                         if (now > pool->last_queue_alarm ||
-                            priority_queue_count(&pool->queue) > pool->last_alarm_max) {
+                            queue_count > pool->last_alarm_max) {
                             logmsg(LOGMSG_USER, "%d Queing sql, queue size=%d. "
                                             "max_queue=%d "
                                             "max_queue_override=%d\n",
-                                    __LINE__, listc_size(&pool->queue),
+                                    __LINE__, queue_count,
                                     pool->maxqueue, pool->maxqueueoverride);
 
                             pool->last_queue_alarm = now;
-                            pool->last_alarm_max = priority_queue_count(&pool->queue);
+                            pool->last_alarm_max = queue_count;
                         }
                     }
                 } else {
@@ -994,7 +996,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         logmsg(LOGMSG_USER, "%d FAILED to queue sql, queue "
                                         "size=%d. max_queue=%d "
                                         "max_queue_override=%d\n",
-                                __LINE__, priority_queue_count(&pool->queue),
+                                __LINE__, queue_count,
                                 pool->maxqueue, pool->maxqueueoverride);
                     }
 
@@ -1060,8 +1062,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             if (pool->queued_callback)
                 pool->queued_callback(work);
 
-            if (priority_queue_count(&pool->queue) > pool->peakqueue) {
-                pool->peakqueue = priority_queue_count(&pool->queue);
+            if (queue_count > pool->peakqueue) {
+                pool->peakqueue = queue_count;
             }
         }
 
