@@ -20,8 +20,8 @@ In a table defined using the [Schema definition](table_schema.html) language, ke
 
 In standard data definition language (DDL), `UNIQUE` keyword must be used to create unique keys via [CREATE TABLE](#create-table-ddl) or [CREATE INDEX](#create-index) commands. `NULL` values are always considered unique.
 
-#### NULL constraint
-NULL constraints check the use of NULL values.
+#### Not-NULL constraint
+Not-NULL constraint on a column ensures no `NULL` values get added to the column.
 
 A column defined in [Schema definition](table_schema.html) language, by default, may not contain `NULL` values unless explicitly allowed to by the `null=yes` directive.
 
