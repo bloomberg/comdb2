@@ -885,6 +885,7 @@ int comdb2_load_ruleset_item_criteria(
       zTok = strtok(NULL, RULESET_DELIM);
       continue;
     }
+    if( pzField ) *pzField = zTok;
     snprintf(zError, nError,
              "%s:%d, unknown criteria field '%s'",
              zFileName, lineNo, zTok);
