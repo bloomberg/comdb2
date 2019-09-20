@@ -701,13 +701,14 @@ int comdb2_load_ruleset_item_criteria(
   int bStrictFingerprint,
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
+  const char **pzField,
   size_t *pnFingerprint,
   char *zError,
   size_t nError
 ){
   if( zBuf==NULL || criteria==NULL || zError==NULL ) return EINVAL;
   const char *zReErr;
-  char *zTok = strtok(zBuf, RULESET_DELIM);
+  char *zTok = pzField ? *pzField : strtok(zBuf, RULESET_DELIM);
   while( zTok!=NULL ){
     const char *zField = "originHost";
     if( sqlite3_stricmp(zTok, zField)==0 ){
@@ -847,6 +848,13 @@ int comdb2_load_ruleset_item_criteria(
     }
     zField = "fingerprint";
     if( sqlite3_stricmp(zTok, zField)==0 ){
+      if( !bAllowFingerprint ){
+        snprintf(zError, nError,
+                 "%s:%d, field '%s' forbidden by configuration",
+                 zFileName, lineNo, zField);
+        return EACCES;
+      }
+      if( pnFingerprint!=NULL ) *pnFingerprint++;
       zTok = strtok(NULL, RULESET_DELIM);
       if( zTok==NULL ){
         snprintf(zError, nError,
@@ -997,11 +1005,10 @@ int comdb2_load_ruleset(
   const char *zFileName,
   struct ruleset **pRules
 ){
-  int rc;
+  int rc = 0;
   char zError[8192];
   char zLine[8192];
   const char *zField = NULL;
-  int noCase;
   size_t nLine;
   int lineNo = 0;
   int fd = -1;
@@ -1096,6 +1103,13 @@ int comdb2_load_ruleset(
       struct ruleset_item_criteria_cache *cache = &rule->cache;
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
+        rc = comdb2_load_ruleset_item_criteria(
+          zFileName, lineNo, zTok, -1, rule->mode&RULESET_MM_NOCASE,
+          comdb2_ruleset_fingerprints_allowed(), 1, criteria, cache,
+          &zTok, &rules->nFingerprint, zError, sizeof(zError)
+        );
+        if( rc==0 ) continue;
+        if( rc!=ENOENT ) goto failure;
         zField = "action";
         if( sqlite3_stricmp(zTok, zField)==0 ){
           zTok = strtok(NULL, RULESET_DELIM);
@@ -1229,211 +1243,13 @@ int comdb2_load_ruleset(
               goto failure;
             }
           }else{
-            comdb2_free_ruleset_item_criteria_cache(&rule->cache);
+            comdb2_free_ruleset_item_criteria_cache(cache);
           }
           assert( zEnd!=NULL );
           while( zEnd && zEnd[0]=='\0' && zEnd-zLine<nLine ){ zEnd++; }
           zTok = strtok(zEnd, RULESET_DELIM);
           continue;
         }
-        noCase = (rule->mode&RULESET_MM_NOCASE);
-
-
-
-
-
-
-        zField = "originHost";
-        if( sqlite3_stricmp(zTok, zField)==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
-          if( zTok==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, expected %s value after '%s'",
-                     zFileName, lineNo, zField, zField);
-            goto failure;
-          }
-          if( criteria->zOriginHost ){
-            free(criteria->zOriginHost);
-            criteria->zOriginHost = NULL;
-          }
-          criteria->zOriginHost = strdup(zTok);
-          if( criteria->zOriginHost==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not duplicate %s value",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          if( rule->mode&RULESET_MM_REGEXP ){
-            zReErr = NULL;
-            if( recompile_regexp(zTok, noCase, &cache->pOriginHostRe,
-                    &zReErr)!=0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s': %s",
-                       zFileName, lineNo, zField, zTok, zReErr);
-              re_free(cache->pOriginHostRe);
-              cache->pOriginHostRe = NULL;
-              goto failure;
-            }
-          }else if( cache->pOriginHostRe!=NULL ){
-            re_free(cache->pOriginHostRe);
-            cache->pOriginHostRe = NULL;
-          }
-          zTok = strtok(NULL, RULESET_DELIM);
-          continue;
-        }
-        zField = "originTask";
-        if( sqlite3_stricmp(zTok, zField)==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
-          if( zTok==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, expected %s value after '%s'",
-                     zFileName, lineNo, zField, zField);
-            goto failure;
-          }
-          if( criteria->zOriginTask ){
-            free(criteria->zOriginTask);
-            criteria->zOriginTask = NULL;
-          }
-          criteria->zOriginTask = strdup(zTok);
-          if( criteria->zOriginTask==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not duplicate %s value",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          if( rule->mode&RULESET_MM_REGEXP ){
-            zReErr = NULL;
-            if( recompile_regexp(zTok, noCase, &cache->pOriginTaskRe,
-                    &zReErr)!=0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s': %s",
-                       zFileName, lineNo, zField, zTok, zReErr);
-              re_free(cache->pOriginTaskRe);
-              cache->pOriginTaskRe = NULL;
-              goto failure;
-            }
-          }else if( cache->pOriginTaskRe!=NULL ){
-            re_free(cache->pOriginTaskRe);
-            cache->pOriginTaskRe = NULL;
-          }
-          zTok = strtok(NULL, RULESET_DELIM);
-          continue;
-        }
-        zField = "user";
-        if( sqlite3_stricmp(zTok, zField)==0 ){
-          zTok = strtok(NULL, RULESET_DELIM);
-          if( zTok==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, expected %s value after '%s'",
-                     zFileName, lineNo, zField, zField);
-            goto failure;
-          }
-          if( criteria->zUser ){
-            free(criteria->zUser);
-            criteria->zUser = NULL;
-          }
-          criteria->zUser = strdup(zTok);
-          if( criteria->zUser==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not duplicate %s value",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          if( rule->mode&RULESET_MM_REGEXP ){
-            zReErr = NULL;
-            if( recompile_regexp(zTok, noCase, &cache->pUserRe, &zReErr)!=0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s': %s",
-                       zFileName, lineNo, zField, zTok, zReErr);
-              re_free(cache->pUserRe);
-              cache->pUserRe = NULL;
-              goto failure;
-            }
-          }else if( cache->pUserRe!=NULL ){
-            re_free(cache->pUserRe);
-            cache->pUserRe = NULL;
-          }
-          zTok = strtok(NULL, RULESET_DELIM);
-          continue;
-        }
-        zField = "sql";
-        if( sqlite3_stricmp(zTok, zField)==0 ){
-          zTok = strtok(NULL, RULESET_TEXT_DELIM);
-          if( zTok==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, expected %s value after '%s'",
-                     zFileName, lineNo, zField, zField);
-            goto failure;
-          }
-          if( criteria->zSql ){
-            free(criteria->zSql);
-            criteria->zUser = NULL;
-          }
-          criteria->zSql = strdup(zTok);
-          if( criteria->zSql==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not duplicate %s value",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          if( rule->mode&RULESET_MM_REGEXP ){
-            zReErr = NULL;
-            if( recompile_regexp(zTok, noCase, &cache->pSqlRe, &zReErr)!=0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s': %s",
-                       zFileName, lineNo, zField, zTok, zReErr);
-              re_free(cache->pSqlRe);
-              cache->pSqlRe = NULL;
-              goto failure;
-            }
-          }else if( cache->pSqlRe!=NULL ){
-            re_free(cache->pSqlRe);
-            cache->pSqlRe = NULL;
-          }
-          zTok = strtok(NULL, RULESET_DELIM);
-          continue;
-        }
-        zField = "fingerprint";
-        if( sqlite3_stricmp(zTok, zField)==0 ){
-          if( !comdb2_ruleset_fingerprints_allowed() ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, field '%s' forbidden by configuration",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          rules->nFingerprint++;
-          zTok = strtok(NULL, RULESET_DELIM);
-          if( zTok==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, expected %s value after '%s'",
-                     zFileName, lineNo, zField, zField);
-            goto failure;
-          }
-          if( criteria->pFingerprint ){
-            free(criteria->pFingerprint);
-            criteria->pFingerprint = NULL;
-          }
-          criteria->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
-          if( criteria->pFingerprint==NULL ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not allocate %s value",
-                     zFileName, lineNo, zField);
-            goto failure;
-          }
-          int rc2 = blob_string_to_fingerprint(zTok, criteria->pFingerprint, 1);
-          if( rc2!=0 ){
-            snprintf(zError, sizeof(zError),
-                     "%s:%d, could not parse %s value from '%s': %d",
-                     zFileName, lineNo, zField, zTok, rc2);
-            goto failure;
-          }
-          zTok = strtok(NULL, RULESET_DELIM);
-          continue;
-        }
-        snprintf(zError, sizeof(zError),
-                 "%s:%d, unknown field '%s' for rule #%lld",
-                 zFileName, lineNo, zTok, ruleNo);
-        goto failure;
       }
     }else{
       zTok = strtok(zBuf, RULESET_DELIM);
@@ -1488,7 +1304,7 @@ int comdb2_load_ruleset(
 failure:
   logmsg(LOGMSG_ERROR, "%s", zError);
   comdb2_free_ruleset_int(rules);
-  rc = 1;
+  if( rc==0 ) rc = EINVAL;
 
 done:
   if( sb!=NULL ) sbuf2close(sb);
