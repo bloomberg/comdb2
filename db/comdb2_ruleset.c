@@ -1230,8 +1230,9 @@ int comdb2_load_ruleset(
                     criteria->zOriginHost, noCase, &cache->pOriginHostRe,
                     &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "originHost", criteria->zOriginHost);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, "originHost", criteria->zOriginHost,
+                       zReErr);
               re_free(cache->pOriginHostRe);
               cache->pOriginHostRe = NULL;
               goto failure;
@@ -1241,8 +1242,9 @@ int comdb2_load_ruleset(
                     criteria->zOriginTask, noCase, &cache->pOriginTaskRe,
                     &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "originTask", criteria->zOriginTask);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, "originTask", criteria->zOriginTask,
+                       zReErr);
               re_free(cache->pOriginTaskRe);
               cache->pOriginTaskRe = NULL;
               goto failure;
@@ -1251,8 +1253,8 @@ int comdb2_load_ruleset(
             if( criteria->zUser!=NULL && recompile_regexp(
                     criteria->zUser, noCase, &cache->pUserRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "user", criteria->zUser);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, "user", criteria->zUser, zReErr);
               re_free(cache->pUserRe);
               cache->pUserRe = NULL;
               goto failure;
@@ -1261,8 +1263,8 @@ int comdb2_load_ruleset(
             if( criteria->zSql!=NULL && recompile_regexp(
                     criteria->zSql, noCase, &cache->pSqlRe, &zReErr)!=0 ){
               snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s regular expression '%s'",
-                       zFileName, lineNo, "sql", criteria->zSql);
+                       "%s:%d, bad %s regular expression '%s': %s",
+                       zFileName, lineNo, "sql", criteria->zSql, zReErr);
               re_free(cache->pSqlRe);
               cache->pSqlRe = NULL;
               goto failure;

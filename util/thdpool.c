@@ -962,7 +962,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
              * there may not be much point in queueing an event that may
              * never be processed? */
             if (ATOMIC_LOAD32(pool->nactthd) == 0) {
-                logmsg(LOGMSG_WARN, "%s(%s): no threads active\n",
+                logmsg(LOGMSG_WARN, "%s(%s): queue with no threads active?\n",
                        __func__, pool->name);
             }
 #endif
