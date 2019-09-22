@@ -91,7 +91,7 @@ function run_test
     typeset func="run_test"
     write_prompt $func "Running $func"
     typeset recs=1000000
-    typeset updaters=5
+    typeset updaters=0
     typeset iterations=1000
     typeset i=0
     bulk_insert_unique_records t1 $recs

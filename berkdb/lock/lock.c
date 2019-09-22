@@ -3150,7 +3150,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 {
 	DB_LOCKOBJ *sh_obj;
 	DB_LOCKREGION *region;
-	int ret, state_changed;
+	int ret, state_changed, i;
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
@@ -3177,6 +3177,19 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		lockp->refcount--;
 		return (0);
 	}
+	DB_LOCKER *sh_locker = lockp->holderp;
+
+    if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
+            F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+        for (i = 0; i < sh_locker->ntrackedlocks; i++) {
+            if (sh_locker->tracked_locklist[i] == lockp) {
+                sh_locker->tracked_locklist[i] = sh_locker->tracked_locklist[
+                    sh_locker->ntrackedlocks - 1];
+                sh_locker->ntrackedlocks--;
+                i--;
+            }
+        }
+    }
 
 	/* Increment generation number. */
 	lockp->gen++;
@@ -3189,7 +3202,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 
 #ifdef DEBUG_LOCKS
-	DB_LOCKER *sh_locker = lockp->holderp;
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
 			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
