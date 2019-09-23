@@ -237,6 +237,7 @@ int comdb2_load_ruleset_item_criteria(
   struct ruleset_item_criteria *criteria,
   struct ruleset_item_criteria_cache *cache,
   char **pzField,
+  char **pzSav,
   size_t *pnFingerprint,
   char *zError,
   size_t nError

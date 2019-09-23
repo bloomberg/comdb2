@@ -1386,18 +1386,19 @@ clipper_usage:
             return -1;
         }
 
+        char *zSav = NULL;
         char zBuf[8192] = {0};
         struct ruleset_item_criteria uCtx = {0};
         int bFreeCtx = 1;
 
-        char *zTok = strtok(zCtx, " "); /* "evaluate_ruleset" */
-        if (zTok != NULL) zTok = strtok(NULL, " "); /* next arg, if any. */
+        char *zTok = strtok_r(zCtx, " ", &zSav); /* "evaluate_ruleset" */
+        if (zTok != NULL) zTok = strtok_r(NULL, " ", &zSav); /* next arg? */
 
         if (zTok != NULL) { /* was context manually specified? */
-            strcpy(zCtx, tok); /* re-copy from original to fix strtok() */
+            strcpy(zCtx, tok); /* re-copy from original to fix strtok_r() */
             rc = comdb2_load_ruleset_item_criteria(
                 "<evaluate_ruleset>", 0, zTok, -1, 0, 1, 0, &uCtx, NULL,
-                NULL, NULL, zBuf, sizeof(zBuf)
+                NULL, &zSav, NULL, zBuf, sizeof(zBuf)
             );
             free(zCtx);
 
