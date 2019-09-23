@@ -767,7 +767,13 @@ static void *thdpool_thd(void *voidarg)
          * else.  this should make it as accurate as possible
          * from the perspective of other threads that may need
          * to examine it. */
-        LOCK(&pool->mutex) { thd->persistent_info = NULL; }
+        LOCK(&pool->mutex) {
+            thd->persistent_info = NULL;
+            if (work.persistent_info != NULL) {
+                free(work.persistent_info);
+                work.persistent_info = NULL;
+            }
+        }
         UNLOCK(&pool->mutex);
 
         /* might this is set at a certain point by work_fn */
