@@ -64,6 +64,11 @@ struct thd {
     /* Work item that we need to do. */
     struct workitem work;
 
+    /* This is the description of work item in progress.
+     * It is not owned by the thread (thd) structure, do
+     * not free this. */
+    const char *persistent_info;
+
     /* To signal thread if there is work for it. */
     pthread_cond_t cond;
 
@@ -628,21 +633,10 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             memcpy(work, next, sizeof(*work));
             pool_relablk(thd->pool->pool, next);
             thd->pool->num_dequeued++;
-            thd->work.persistent_info = next->persistent_info;
             return 1;
         }
         return 0;
     }
-}
-
-// call after obtaining pool lock
-static inline void free_work_persistent_info(struct thd *thd,
-                                             struct workitem *work)
-{
-    free(work->persistent_info);
-    if (thd->work.persistent_info == work->persistent_info)
-        thd->work.persistent_info = NULL;
-    work->persistent_info = NULL;
 }
 
 static void *thdpool_thd(void *voidarg)
@@ -677,9 +671,6 @@ static void *thdpool_thd(void *voidarg)
 
         LOCK(&pool->mutex)
         {
-            if (work.persistent_info) {
-                free_work_persistent_info(thd, &work);
-            }
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
@@ -752,6 +743,13 @@ static void *thdpool_thd(void *voidarg)
             /* We have work.  We will already have been removed from the
              * free list by the enqueue function so just take our work
              * parameters, release lock and do it. */
+
+            /* Since there is (now) no escape from this code path without
+             * actually performing the work, set the thread state for the
+             * current work in progress, obtained from get_work_ll, while
+             * still holding the pool lock. */
+
+            thd->persistent_info = work.persistent_info;
         }
         UNLOCK(&pool->mutex);
 
@@ -763,6 +761,20 @@ static void *thdpool_thd(void *voidarg)
 
         work.work_fn(pool, work.work, thddata, THD_RUN);
         ATOMIC_ADD32(pool->num_completed, 1);
+
+        /* work is no longer pending, reset thread state for
+         * the current work in progress before doing anything
+         * else.  this should make it as accurate as possible
+         * from the perspective of other threads that may need
+         * to examine it. */
+        LOCK(&pool->mutex) {
+            thd->persistent_info = NULL;
+            if (work.persistent_info != NULL) {
+                free(work.persistent_info);
+                work.persistent_info = NULL;
+            }
+        }
+        UNLOCK(&pool->mutex);
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
@@ -786,11 +798,6 @@ static void *thdpool_thd(void *voidarg)
         comdb2bma_yield_all();
     }
 thread_exit:
-
-    if (work.persistent_info) {
-        LOCK(&pool->mutex) { free_work_persistent_info(thd, &work); }
-        UNLOCK(&pool->mutex);
-    }
 
     delt_fn = pool->delt_fn;
     if (delt_fn)
@@ -979,8 +986,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                             {
                                 crt++;
                                 ctrace("%d. %s\n", crt,
-                                       (thd->work.persistent_info)
-                                           ? thd->work.persistent_info
+                                       (thd->persistent_info)
+                                           ? thd->persistent_info
                                            : "NULL");
                             }
                             ctrace(" === Done (%d sql queries)\n", crt);

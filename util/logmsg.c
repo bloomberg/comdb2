@@ -89,13 +89,12 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     FILE *f;
     int ret = 0;
 
-    FILE *override = io_override_get_std();
-    if (!override) {
-        if (lvl < level)
-            return 0;
+    if (lvl < level)
+        return 0;
 
+    FILE *override = io_override_get_std();
+    if (!override)
         f = stderr;
-    }
     else
         f = override;
 
@@ -245,7 +244,11 @@ int logmsg_process_message(char *line, int llen) {
         return 1;
     } else if (tokcmp(tok, ltok, "level") == 0) {
         tok = segtok(line, llen, &st, &ltok);
-        logmsg_level_update(0, tok);
+        if (!ltok)
+            logmsg(LOGMSG_USER, "Current log level is %s\n",
+                   logmsg_level_str(level));
+        else
+            logmsg_level_update(0, tok);
     } else if (tokcmp(tok, ltok, "thread") == 0) {
         logmsg_set_thd(1);
         logmsg(LOGMSG_USER, "threadids on\n");
@@ -304,7 +307,7 @@ int logmsg_level_update(void *unused, void *value)
     } else if (tokcmp(tok, ltok, "fatal") == 0) {
         logmsg_set_level(LOGMSG_FATAL);
     } else {
-        logmsg(LOGMSG_DEBUG, "Unknown logging level requested\n");
+        logmsg(LOGMSG_USER, "Unknown logging level requested\n");
         return 1;
     }
     logmsg(LOGMSG_USER, "Set default log level to %s\n",

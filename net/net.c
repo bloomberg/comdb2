@@ -1389,7 +1389,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        int node = 0;
+        int node = machine_num(tmp_host_ptr->host);
         p_buf = buf_put(&node, sizeof(int), p_buf, p_buf_end);
     }
     /* write long hostnames */
@@ -1478,7 +1478,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     /* fill in node numbers */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        int node = 0;
+        int node = machine_num(tmp_host_ptr->host);
         p_buf = buf_put(&node, sizeof(int), p_buf, p_buf_end);
     }
 

@@ -5991,6 +5991,11 @@ int get_schema_blob_count(const char *table, const char *ctag)
     return sc->numblobs;
 }
 
+int get_numblobs(const dbtable *tbl)
+{
+    return tbl->schema->numblobs;
+}
+
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
 {
     int ii;
