@@ -1124,16 +1124,19 @@ int comdb2_load_ruleset(
       struct ruleset_item_criteria_cache *cache = &rule->cache;
       zTok = strtok(NULL, RULESET_DELIM);
       while( zTok!=NULL ){
-        rc = comdb2_load_ruleset_item_criteria(
+        int rc2 = comdb2_load_ruleset_item_criteria(
           zFileName, lineNo, zTok, -1, rule->mode&RULESET_MM_NOCASE,
           comdb2_ruleset_fingerprints_allowed(), 1, criteria, cache,
           &zTok, &rules->nFingerprint, zError, sizeof(zError)
         );
-        if( rc==0 ){
+        if( rc2==0 ){
           if( zTok==NULL ) break;
           continue;
         }
-        if( rc!=ENOENT ) goto failure;
+        if( rc2!=ENOENT ){
+          rc = rc2;
+          goto failure; 
+        }
         memset(zError, 0, sizeof(zError));
         zField = "action";
         if( sqlite3_stricmp(zTok, zField)==0 ){
