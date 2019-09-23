@@ -572,10 +572,7 @@ struct sql_hist_cost {
 };
 
 #define in_client_trans(clnt)                                                  \
-    ((clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE ||                         \
-     (clnt)->ctrl_sqlengine == SQLENG_PRE_STRT_STATE ||                        \
-     (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE ||                            \
-     (clnt)->ctrl_sqlengine == SQLENG_FNSH_ABORTED_STATE)
+    ((clnt)->in_client_trans)
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -714,6 +711,8 @@ struct sqlclntstate {
                        need to pend the first error until a commit is issued.
                        any statements
                        past the first error are ignored. */
+    int in_client_trans; /* clnt is in a client transaction (ie. client ran
+                            "begin" but not yet commit or rollback */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 

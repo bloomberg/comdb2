@@ -3007,10 +3007,10 @@ static void remove_emit(Lua L)
     lua_setfield(L, -2, "emit");
 }
 
-static void update_tran_funcs(Lua L, int in_tran)
+static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
 {
     int have = have_tran_funcs(L);
-    if (in_tran) {
+    if (in_client_trans(clnt)) {
         if (have) remove_tran_funcs(L);
         return;
     }
@@ -3117,7 +3117,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         goto bad;
     }
     Lua newlua = newsp->lua;
-    update_tran_funcs(newlua, in_client_trans(sp->clnt));
+    update_tran_funcs(newlua, sp->clnt);
     remove_create_thread(newlua);
 
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
@@ -6431,7 +6431,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = get_func_by_name(L, "main", err)) != 0) return rc;
 
-    update_tran_funcs(L, in_client_trans(clnt));
+    update_tran_funcs(L, clnt);
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 

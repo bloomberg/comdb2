@@ -1561,6 +1561,8 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             if (snapshot_as_of(clnt))
                 return;
 
+            clnt->in_client_trans = 1;
+
             assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL &&
                    clnt->ddl_contexts == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
@@ -1590,6 +1592,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             }
             clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
             clnt->dbtran.trans_has_sp = 0;
+            clnt->in_client_trans = 0;
         }
     } else if (meta == TSMC_ROLLBACK) {
         clnt->snapshot = 0;
@@ -1607,6 +1610,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                                     SQLENG_FNSH_RBK_STATE);
             clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
             clnt->dbtran.trans_has_sp = 0;
+            clnt->in_client_trans = 0;
         }
     }
 }
@@ -5676,6 +5680,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         clnt->origin = intern(get_origin_mach_by_buf(sb));
 
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
+    logmsg(LOGMSG_ERROR, "%s:%d %lu clnt %p resetting in_trans\n",
+            __func__, __LINE__, pthread_self(), clnt);
     clnt->had_errors = 0;
     clnt->statement_timedout = 0;
     clnt->query_timeout = 0;
