@@ -730,8 +730,8 @@ int comdb2_load_ruleset_item_criteria(
       criteria->zOriginHost = strdup(zTok);
       if( criteria->zOriginHost==NULL ){
         snprintf(zError, nError,
-                 "%s:%d, could not duplicate %s value",
-                 zFileName, lineNo, zField);
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
         rc = ENOMEM;
         goto done;
       }
@@ -767,8 +767,8 @@ int comdb2_load_ruleset_item_criteria(
       criteria->zOriginTask = strdup(zTok);
       if( criteria->zOriginTask==NULL ){
         snprintf(zError, nError,
-                 "%s:%d, could not duplicate %s value",
-                 zFileName, lineNo, zField);
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
         rc = ENOMEM;
         goto done;
       }
@@ -804,8 +804,8 @@ int comdb2_load_ruleset_item_criteria(
       criteria->zUser = strdup(zTok);
       if( criteria->zUser==NULL ){
         snprintf(zError, nError,
-                 "%s:%d, could not duplicate %s value",
-                 zFileName, lineNo, zField);
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
         rc = ENOMEM;
         goto done;
       }
@@ -841,8 +841,8 @@ int comdb2_load_ruleset_item_criteria(
       criteria->zSql = strdup(zTok);
       if( criteria->zSql==NULL ){
         snprintf(zError, nError,
-                 "%s:%d, could not duplicate %s value",
-                 zFileName, lineNo, zField);
+                 "%s:%d, could not duplicate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, strlen(zTok)+1);
         rc = ENOMEM;
         goto done;
       }
@@ -886,8 +886,8 @@ int comdb2_load_ruleset_item_criteria(
       criteria->pFingerprint = calloc(FPSZ, sizeof(unsigned char));
       if( criteria->pFingerprint==NULL ){
         snprintf(zError, nError,
-                 "%s:%d, could not allocate %s value",
-                 zFileName, lineNo, zField);
+                 "%s:%d, could not allocate %s value (%zu bytes)",
+                 zFileName, lineNo, zField, (size_t)FPSZ);
         rc = ENOMEM;
         goto done;
       }
@@ -980,14 +980,13 @@ static int comdb2_more_ruleset_items(
   int lineNo
 ){
   if( nRule>rules->nRule ){
+    size_t nSize = nRule * sizeof(struct ruleset_item);
     size_t nNewRule = nRule - rules->nRule;
-    struct ruleset_item *aNewRule = realloc(
-      rules->aRule, nRule * sizeof(struct ruleset_item)
-    );
+    struct ruleset_item *aNewRule = realloc(rules->aRule, nSize);
     if( aNewRule==NULL ){
       snprintf(zError, nError,
-               "%s:%d, could not reallocate %zu rules for %zu new rules",
-               zFileName, lineNo, nRule, nNewRule);
+               "%s:%d, could not reallocate %zu rules for %zu new rules "
+               "(%zu bytes)", zFileName, lineNo, nRule, nNewRule, nSize);
       return ENOMEM;
     }
     memset(&aNewRule[rules->nRule], 0, nNewRule * sizeof(struct ruleset_item));
@@ -1041,13 +1040,13 @@ int comdb2_load_ruleset(
 
   if( rules==NULL ){
     snprintf(zError, sizeof(zError),
-             "%s:%d, cannot allocate ruleset",
-             zFileName, lineNo);
+             "%s:%d, cannot allocate ruleset (%zu bytes)",
+             zFileName, lineNo, sizeof(struct ruleset));
     goto failure;
   }
   fd = open(zFileName, O_RDONLY);
   if( fd==-1 ){
-    snprintf(zError, sizeof(zError), "%s:%d, open failed errno=%d",
+    snprintf(zError, sizeof(zError), "%s:%d, open (read) failed errno=%d",
              zFileName, lineNo, errno);
     goto failure;
   }
@@ -1360,13 +1359,13 @@ int comdb2_save_ruleset(
   SBUF2 *sb = NULL;
 
   if( rules==NULL ){
-    snprintf(zError, sizeof(zError), "%s, cannot save invalid ruleset",
+    snprintf(zError, sizeof(zError), "%s, cannot save an invalid ruleset",
              zFileName);
     goto failure;
   }
   fd = open(zFileName, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if( fd==-1 ){
-    snprintf(zError, sizeof(zError), "%s, open failed errno=%d",
+    snprintf(zError, sizeof(zError), "%s, open (write) failed errno=%d",
              zFileName, errno);
     goto failure;
   }
