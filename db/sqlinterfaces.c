@@ -5680,8 +5680,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         clnt->origin = intern(get_origin_mach_by_buf(sb));
 
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
-    logmsg(LOGMSG_ERROR, "%s:%d %lu clnt %p resetting in_trans\n",
-            __func__, __LINE__, pthread_self(), clnt);
+    clnt->in_client_trans = 0;
     clnt->had_errors = 0;
     clnt->statement_timedout = 0;
     clnt->query_timeout = 0;
