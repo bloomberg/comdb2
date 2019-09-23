@@ -605,8 +605,9 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
         memset(&thd->work, 0, sizeof(struct workitem));
         return 1;
     } else {
+        struct thdpool *pool = thd->pool;
         struct workitem *next;
-        while ((next = priority_queue_next(&thd->pool->queue)) != NULL) {
+        while ((next = priority_queue_next(&pool->queue)) != NULL) {
             int force_timeout = 0;
             if ((thd->pool->maxqueueagems > 0) &&
                 gbl_random_thdpool_work_timeout &&
@@ -618,24 +619,24 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             }
             if (force_timeout || (thd->pool->maxqueueagems > 0 &&
                 comdb2_time_epochms() - next->queue_time_ms >
-                    thd->pool->maxqueueagems)) {
-                if (thd->pool->dque_fn)
-                    thd->pool->dque_fn(thd->pool, next, 1);
+                    pool->maxqueueagems)) {
+                if (pool->dque_fn)
+                    pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {
                     free(next->persistent_info);
                     next->persistent_info = NULL;
                 }
-                next->work_fn(thd->pool, next->work, NULL, THD_FREE);
-                pool_relablk(thd->pool->pool, next);
+                next->work_fn(pool, next->work, NULL, THD_FREE);
+                pool_relablk(pool->pool, next);
                 thd->pool->num_timeout++;
                 continue;
             }
 
-            if (thd->pool->dque_fn)
-                thd->pool->dque_fn(thd->pool, next, 0);
+            if (pool->dque_fn)
+                pool->dque_fn(pool, next, 0);
             memcpy(work, next, sizeof(*work));
-            pool_relablk(thd->pool->pool, next);
-            thd->pool->num_dequeued++;
+            pool_relablk(pool->pool, next);
+            pool->num_dequeued++;
             thd->work.persistent_info = next->persistent_info;
             return 1;
         }
