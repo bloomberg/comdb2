@@ -151,7 +151,7 @@ cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 //
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3ErrorMsg(pParse, TRAN_ERROR);}
+cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3ErrorMsg(pParse, TRAN_ERROR, Y);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3BeginTransaction(pParse, Y);}
@@ -165,8 +165,8 @@ transtype(A) ::= DEFERRED(X).  {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= IMMEDIATE(X). {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= EXCLUSIVE(X). {A = @X; /*A-overwrites-X*/}
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= COMMIT|END(X) trans_opt.   {sqlite3ErrorMsg(pParse, TRAN_ERROR);}
-cmd ::= ROLLBACK(X) trans_opt.     {sqlite3ErrorMsg(pParse, TRAN_ERROR);}
+cmd ::= COMMIT|END(X) trans_opt.   {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
+cmd ::= ROLLBACK(X) trans_opt.     {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= COMMIT|END(X) trans_opt.   {sqlite3EndTransaction(pParse,@X);}
@@ -177,21 +177,21 @@ savepoint_opt ::= SAVEPOINT.
 savepoint_opt ::= .
 cmd ::= SAVEPOINT nm(X). {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3ErrorMsg(pParse, TRAN_ERROR);
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_BEGIN, &X);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= RELEASE savepoint_opt nm(X). {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3ErrorMsg(pParse, TRAN_ERROR);
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_RELEASE, &X);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= ROLLBACK trans_opt TO savepoint_opt nm(X). {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3ErrorMsg(pParse, TRAN_ERROR);
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_ROLLBACK, &X);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
