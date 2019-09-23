@@ -92,7 +92,7 @@ function run_test
     write_prompt $func "Running $func"
     typeset recs=1000000
     typeset updaters=0
-    typeset iterations=1000
+    typeset iterations=15
     typeset i=0
     bulk_insert_unique_records t1 $recs
     rm -Rf $stop_touch
