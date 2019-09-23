@@ -73,6 +73,23 @@ for testcase in $files ; do
         # copy post-processed output to original
         mv $output.postprocess $output
     fi
+
+    # get testcase output
+    testcase_output=$(cat $output)
+
+    # get expected output
+    expected_output=$(cat $testcase.out)
+
+    # verify
+    if [[ "$testcase_output" != "$expected_output" ]]; then
+        echo "  ^^^^^^^^^^^^"
+        echo "The above testcase (${testcase}) has failed!!!"
+        echo "diff ${PWD}/$testcase.out $output"
+        echo " "
+        diff $testcase.out $output
+        echo " "
+        exit 1
+    fi
 done
 
 echo "Testcase passed."
