@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+[[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure try_to_use_tran_statements version '1' {
 local function main()
