@@ -54,6 +54,15 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "comdb2Int.h"  /* ALL CUSTOM HEADERS ARE INCLUDED FROM HERE) */
+
+#define TRAN_ERROR      "BEGIN, COMMIT, and ROLLBACK statements cannot be "   \
+                        "prepared or executed directly against SQL engine "   \
+                        "instances (e.g. via Lua stored procedures, etc). "   \
+                        "Instead, a custom set of Lua commands must be used," \
+                        "e.g. db:begin.  Other than Lua, these statements "   \
+                        "are normally handled directly by code within the "   \
+                        "subsystem used to prepare SQL queries for worker "   \
+                        "threads."
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -141,7 +150,12 @@ cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 ///////////////////// Begin and end transactions. ////////////////////////////
 //
 
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3ErrorMsg(pParse, TRAN_ERROR, Y);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3BeginTransaction(pParse, Y);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 trans_opt ::= .
 trans_opt ::= TRANSACTION.
 trans_opt ::= TRANSACTION nm.
@@ -150,19 +164,37 @@ transtype(A) ::= .             {A = TK_DEFERRED;}
 transtype(A) ::= DEFERRED(X).  {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= IMMEDIATE(X). {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= EXCLUSIVE(X). {A = @X; /*A-overwrites-X*/}
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= COMMIT|END(X) trans_opt.   {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
+cmd ::= ROLLBACK(X) trans_opt.     {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= COMMIT|END(X) trans_opt.   {sqlite3EndTransaction(pParse,@X);}
 cmd ::= ROLLBACK(X) trans_opt.     {sqlite3EndTransaction(pParse,@X);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 
 savepoint_opt ::= SAVEPOINT.
 savepoint_opt ::= .
 cmd ::= SAVEPOINT nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_BEGIN, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= RELEASE savepoint_opt nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_RELEASE, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= ROLLBACK trans_opt TO savepoint_opt nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_ROLLBACK, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 ///////////////////// The CREATE TABLE statement ////////////////////////////
