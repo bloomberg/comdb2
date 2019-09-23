@@ -30,6 +30,8 @@
 # define MAX(A,B) ((A)>(B)?(A):(B))
 #endif
 
+#define RULESET_MIN_BUF   (100)
+#define RULESET_MAX_BUF   (8192)
 #define RULESET_MAX_COUNT (1000)
 
 #define RULESET_DELIM "\t\n\r\v\f "
@@ -360,8 +362,8 @@ static void comdb2_dump_ruleset_item(
   uint64_t seqNo
 ){
   const char *zAction;
-  char zFlags[100]; /* TODO: When there are more flags, increase this. */
-  char zMode[100];  /* TODO: When there are more modes, increase this. */
+  char zFlags[RULESET_MIN_BUF]; /* TODO: When more flags, increase this. */
+  char zMode[RULESET_MIN_BUF];  /* TODO: When more modes, increase this. */
   char zFingerprint[FPSZ*2+1]; /* 0123456789ABCDEF0123456789ABCDEF\0 */
 
   memset(zFlags, 0, sizeof(zFlags));
@@ -577,7 +579,7 @@ size_t comdb2_ruleset_result_to_str(
   char *zBuf,
   size_t nBuf
 ){
-  char zBuf2[100] = {0};
+  char zBuf2[RULESET_MIN_BUF] = {0};
   return (size_t)snprintf(zBuf, nBuf, "ruleNo=%d, action=%s, priority=%s",
       result->ruleNo, comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
       comdb2_priority_to_str(result->priority, zBuf2, sizeof(zBuf2), 0)
@@ -1027,8 +1029,8 @@ int comdb2_load_ruleset(
   struct ruleset **pRules
 ){
   int rc = 0;
-  char zError[8192];
-  char zLine[8192];
+  char zError[RULESET_MAX_BUF];
+  char zLine[RULESET_MAX_BUF];
   const char *zField = NULL;
   size_t nLine;
   int lineNo = 0;
@@ -1351,8 +1353,8 @@ int comdb2_save_ruleset(
   struct ruleset *rules
 ){
   int rc;
-  char zError[8192];
-  char zBuf[100];
+  char zError[RULESET_MAX_BUF];
+  char zBuf[RULESET_MIN_BUF];
   const char *zStr;
   int fd = -1;
   SBUF2 *sb = NULL;
