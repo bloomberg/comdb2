@@ -571,8 +571,7 @@ struct sql_hist_cost {
     int64_t rows;
 };
 
-#define in_client_trans(clnt)                                                  \
-    ((clnt)->in_client_trans)
+#define in_client_trans(clnt) ((clnt)->in_client_trans)
 
 /* Client specific sql state */
 struct sqlclntstate {
