@@ -23,10 +23,13 @@
 #ifdef _GNU_SOURCE
 #undef _GNU_SOURCE
 #endif
+
+#ifndef __APPLE__
 #ifdef _POSIX_C_SOURCE
 #error "_POSIX_C_SOURCE is already defined!"
 #endif
 #define _POSIX_C_SOURCE 200112L
+#endif
 #endif
 
 #include <errno.h>
