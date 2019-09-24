@@ -934,6 +934,12 @@ void serialise_database(
         listdir(dbtxndir_files, dbtxndir);
     }
 
+    std::string rulesetdir = dbdir + "/rulesets";
+    std::list<std::string> ruleset_files;
+    if(file_exists(rulesetdir)) {
+        listdir(ruleset_files, rulesetdir);
+    }
+
     // List of incremental comparison files to determine new/updated/deleted files
     std::list<std::string> incr_files_list;
     std::set<std::string> incr_files;
@@ -1323,6 +1329,18 @@ void serialise_database(
                 serialise_file(fi, iom);
             }
             islrl = false;
+        }
+
+        // Now do ruleset files (if any).
+        // These are special because the relative "rulesets/" prefix must be
+        // preserved, unlike support files, where only the base file name is
+        // considered.
+        for(std::list<std::string>::const_iterator it = ruleset_files.begin();
+                it != ruleset_files.end();
+                ++it) {
+            abspath = dbdir + "/rulesets/" + *it;
+            FileInfo fi(FileInfo::RULESET_FILE, abspath, dbdir);
+            serialise_file(fi, iom);
         }
 
         // Now do optional files (if any)

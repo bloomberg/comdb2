@@ -798,15 +798,26 @@ static void comdb2CtxinfoFunc(
     return;
   }
 
-  struct sql_thread *thd = pthread_getspecific(query_info_key);
-  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+  struct sqlclntstate *clnt = get_sql_clnt();
 
   zName = (const char *)sqlite3_value_text(argv[0]);
   if( sqlite3_stricmp(zName, "parallel")==0 ){
-    if (clnt) {
+    if( clnt ){
       sqlite3_result_int(context, clnt->conns!=NULL);
     }
-  } else if( sqlite3_stricmp(zName, "user")==0 ){
+  }else if( sqlite3_stricmp(zName, "ruleset_result")==0 ){
+    if( clnt ){
+      sqlite3_result_text(context, clnt->work.zRuleRes, -1, SQLITE_STATIC);
+    }
+  }else if( sqlite3_stricmp(zName, "sequence")==0 ){
+    if( clnt ){
+      sqlite3_result_int64(context, clnt->seqNo);
+    }
+  }else if( sqlite3_stricmp(zName, "priority")==0 ){
+    if( clnt ){
+      sqlite3_result_int64(context, clnt->priority);
+    }
+  }else if( sqlite3_stricmp(zName, "user")==0 ){
     sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
   }
 }
@@ -967,9 +978,8 @@ static void comdb2UserFunc(
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
 
-  struct sql_thread *thd = pthread_getspecific(query_info_key);
-  struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
-  sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
+  sqlite3_result_text(context, get_current_user(get_sql_clnt()), -1,
+                      SQLITE_STATIC);
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1024,6 +1034,11 @@ static void total_changes(
   sqlite3_result_int(context, sqlite3_total_changes(db));
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Moved to "sqliteInt.h" for use by Comdb2.
+*/
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** A structure defining how to do GLOB-style comparisons.
 */
@@ -1033,6 +1048,7 @@ struct compareInfo {
   u8 matchSet;          /* "[" or 0 */
   u8 noCase;            /* true to ignore case differences */
 };
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** For LIKE and GLOB matching on EBCDIC machines, assume that every
@@ -1100,7 +1116,11 @@ static const struct compareInfo likeInfoAlt = { '%', '_',   0, 0 };
 **
 ** This routine is usually quick, but can be N**2 in the worst case.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int patternCompare(
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static int patternCompare(
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   const u8 *zPattern,              /* The glob pattern */
   const u8 *zString,               /* The string to compare against the glob */
   const struct compareInfo *pInfo, /* Information about how to do the compare */

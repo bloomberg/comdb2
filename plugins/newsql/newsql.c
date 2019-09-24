@@ -2360,7 +2360,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             /* tell blobmem that I want my priority back
                when the sql thread is done */
             comdb2bma_pass_priority_back(blobmem);
-            rc = dispatch_sql_query(&clnt);
+            rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
 
             if (clnt.had_errors && isCommitRollback) {
                 rc = -1;

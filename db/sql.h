@@ -29,6 +29,8 @@
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
+#include "priority_queue.h"
+#include "comdb2_ruleset.h"
 
 #include "fdb_fend.h"
 #include <sp.h>
@@ -62,7 +64,7 @@ enum transaction_level {
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
-    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    unsigned char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
     int64_t count;    /* Cumulative number of times executed */
     int64_t cost;     /* Cumulative cost */
     int64_t time;     /* Cumulative preparation and execution time */
@@ -531,7 +533,8 @@ enum prepare_flags {
     PREPARE_DENY_PRAGMA = 4,
     PREPARE_DENY_DDL = 8,
     PREPARE_IGNORE_ERR = 16,
-    PREPARE_NO_NORMALIZE = 32
+    PREPARE_NO_NORMALIZE = 32,
+    PREPARE_ONLY = 64
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
@@ -549,6 +552,7 @@ struct sqlworkstate {
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+    char zRuleRes[100];   /* Ruleset match result, if any. */
 };
 
 struct sql_hist_cost {
@@ -560,6 +564,25 @@ struct sql_hist_cost {
 
 /* Client specific sql state */
 struct sqlclntstate {
+    uint64_t seqNo;            /* Monotonically increasing sequence number
+                                * assigned during dispatch.  This value is
+                                * not allowed to be zero.  Further, it must
+                                * be based on a value that is never reset
+                                * while the server is running.  This value
+                                * will be used as a proxy for the original
+                                * time of the client request, which impacts
+                                * the relative priority of queued SQL work
+                                * items.  This value should only be changed
+                                * by the dispatch_sql_query() function. */
+
+    priority_t priority;       /* This is the (relative) priority assigned
+                                * to the SQL work item currently in progress.
+                                * Lower values indicate higher priority.  In
+                                * theory, higher priority SQL work items will
+                                * be processed before lower priority SQL work
+                                * items.  This value should only be changed
+                                * by the dispatch_sql_query() function. */
+
     struct sqlworkstate work;  /* This is the primary data related to the SQL
                                 * client request in progress.  This includes
                                 * the original SQL query and its normalized
@@ -1093,7 +1116,10 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
-int dispatch_sql_query(struct sqlclntstate *clnt);
+void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
+                                   struct ruleset_item_criteria *context);
+
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
 int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
@@ -1233,6 +1259,9 @@ int gather_connection_info(struct connection_info **info, int *num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
+
+struct sqlclntstate *get_sql_clnt(void);
+uint64_t get_sql_clnt_seqno(void);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);

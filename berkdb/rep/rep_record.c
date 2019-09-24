@@ -4189,7 +4189,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			}
 			rq->used = 0;
 			thdpool_enqueue(dbenv->recovery_workers, worker_thd, rq,
-				0, NULL, 0);
+				0, NULL, 0, PRIORITY_T_DEFAULT);
 			rq = listc_rtl(&queues);
 		}
 	}
@@ -5592,7 +5592,7 @@ bad_resize:	;
 	listc_abl(&dbenv->inflight_transactions, rp);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
-	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
+	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0, PRIORITY_T_DEFAULT);
 
 	if (txn_args)
 		__os_free(dbenv, txn_args);
