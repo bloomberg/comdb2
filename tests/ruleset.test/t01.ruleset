@@ -1,0 +1,24 @@
+version 1
+
+rule 1 action REJECT
+rule 1 mode {EXACT}
+rule 1 fingerprint X'4dbd3f5448e1ad53fd4e558cafee6578'
+
+rule 2 action LOW_PRIO
+rule 2 adjustment 1000
+rule 2 mode {EXACT}
+rule 2 fingerprint X'551da1c0b2f88cc4d04608b232266c29'
+
+rule 3 action HIGH_PRIO
+rule 3 adjustment 1000
+rule 3 mode {EXACT}
+rule 3 fingerprint X'fb34995274c6a68a94ae4b9fcfd2d535'
+
+rule 4 action NONE
+rule 4 mode {EXACT}
+rule 4 fingerprint X'4f16a8ec9db90f803e406659938b2602'
+
+rule 6 action REJECT_ALL
+rule 6 flags {PRINT STOP}
+rule 6 mode {GLOB NOCASE}
+rule 6 sql CREATE *

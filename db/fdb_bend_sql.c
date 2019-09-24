@@ -61,7 +61,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
        dispatch the sql
        NOTE: this waits for statement termination
     */
-    rc = dispatch_sql_query(clnt);
+    rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
 
     return rc;
 }

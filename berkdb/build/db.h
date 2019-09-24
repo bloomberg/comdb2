@@ -25,6 +25,7 @@
 #include <pthread.h>
 
 #include <list.h>
+#include <priority_queue.h>
 #include <pool.h>
 #include <plhash.h>
 #include <dlmalloc.h>
@@ -2916,7 +2917,8 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-	void *work, int queue_override, char *persistent_info, uint32_t flags);
+	void *work, int queue_override, char *persistent_info, uint32_t flags,
+        priority_t priority);
 
 
 typedef struct {

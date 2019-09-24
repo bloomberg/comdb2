@@ -5,6 +5,7 @@ set(src
   bpfunc.c
   comdb2.c
   comdb2uuid.c
+  comdb2_ruleset.c
   config.c
   constraints.c
   db_fingerprint.c

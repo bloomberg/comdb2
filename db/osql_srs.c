@@ -287,7 +287,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
             restore_stmt(clnt, item);
-            if ((rc = dispatch_sql_query(clnt)) != 0)
+            if ((rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT)) != 0)
                 break;
             if (!osql->history)
                 break;
