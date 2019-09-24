@@ -107,8 +107,26 @@
 #include <str0.h>
 #include <eventlog.h>
 #include "perf.h"
+#include "tohex.h"
 
 #include "dohsql.h"
+
+/*
+** WARNING: These enumeration values are not arbitrary.  They represent
+**          indexes into the array of meta-command names contained in
+**          the is_transaction_meta_sql() function.  New values should
+**          generally be added at the end and all of these values must
+**          be kept in sync with the azMeta string array contained in
+**          the is_transaction_meta_sql() function.
+*/
+enum tsql_meta_command {
+  TSMC_NONE = 0,
+  TSMC_BEGIN = 1,
+  TSMC_COMMIT = 2,
+  TSMC_ROLLBACK = 3
+};
+
+typedef enum tsql_meta_command tsql_meta_command_t;
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -158,13 +176,20 @@ extern int gbl_print_syntax_err;
 extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
 extern int gbl_disable_sql_dlmalloc;
+extern struct ruleset *gbl_ruleset;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
+uint64_t gbl_clnt_seq_no = 0;
 struct thdpool *gbl_sqlengine_thdpool = NULL;
+
+int gbl_thdpool_queue_only = 0;
+int gbl_debug_force_thdpool_priority = (int)PRIORITY_T_HIGHEST;
+int gbl_random_sql_work_delayed = 0;
+int gbl_random_sql_work_rejected = 0;
 
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
@@ -280,6 +305,18 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 
 int gbl_client_heartbeat_ms = 100;
 int gbl_fail_client_write_lock = 0;
+
+struct sqlclntstate *get_sql_clnt(void){
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  if (thd == NULL) return NULL;
+  return thd->clnt;
+}
+
+uint64_t get_sql_clnt_seqno(void){
+  struct sqlclntstate *clnt = get_sql_clnt();
+  if (clnt == NULL) return 0;
+  return clnt->seqNo;
+}
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
@@ -1074,22 +1111,62 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
     clnt->plugin.add_steps(clnt, steps);
 }
 
-static int is_stored_proc_sql(const char *sql)
+/*
+** NOTE: This function checks if zSql starts with one of the SQL (meta)
+**       command names from the azMeta array.  The azMeta array must have
+**       a final element with a NULL value.  The return value will either
+**       be zero upon failing to find a match -OR- one plus the matching
+**       index upon finding a match.
+*/
+static int is_meta_sql(const char *zSql, const char *azMeta[])
 {
-    size_t len = sizeof("EXEC") - 1;
-    if ((strncasecmp(sql, "EXEC", len) == 0) && isspace(sql[len])) {
-        return 1;
-    }
-    len = sizeof("EXECUTE") - 1;
-    if ((strncasecmp(sql, "EXECUTE", len) == 0) && isspace(sql[len])) {
-        return 1;
+    size_t len = strlen(zSql);
+    for (int i = 0; azMeta[i]; i++) {
+        size_t metaLen = strlen(azMeta[i]);
+        if (strncasecmp(zSql, azMeta[i], metaLen) == 0) {
+            if (len == metaLen) {
+                return i + 1; /* end-of-string */
+            } else {
+                char nextCh = zSql[metaLen];
+                if ((nextCh == ';') || isspace(nextCh)) {
+                    return i + 1; /* command delimiter */
+                }
+            }
+        }
     }
     return 0;
+}
+
+static int is_stored_proc_sql(const char *zSql)
+{
+    /*
+    ** WARNING: The last element of this array must be NULL.
+    */
+    static const char *azMeta[] = { "EXEC", "EXECUTE", NULL };
+    return is_meta_sql(zSql, azMeta);
 }
 
 static int is_stored_proc(struct sqlclntstate *clnt)
 {
     return is_stored_proc_sql(clnt->sql);
+}
+
+static tsql_meta_command_t is_transaction_meta_sql(const char *zSql)
+{
+    /*
+    ** WARNING: The last element of this array must be NULL.  If this
+    **          array is changed, the tsql_meta_command enumeration must
+    **          be changed as well.  The values in the tsql_meta_command
+    **          enumeration represent the indexes of the associated
+    **          meta-command names string in this array.
+    */
+    static const char *azMeta[] = { "BEGIN", "COMMIT", "ROLLBACK", NULL };
+    return is_meta_sql(zSql, azMeta);
+}
+
+static tsql_meta_command_t is_transaction_meta(struct sqlclntstate *clnt)
+{
+    return is_transaction_meta_sql(clnt->sql);
 }
 
 /* Save copy of sql statement and performance data.  If any other code
@@ -1198,6 +1275,27 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
+
+    if (have_fingerprint) {
+        /*
+        ** NOTE: The intent of this code is to check if a fingerprint was
+        **       already calculated as part of SQL query prioritization;
+        **       if so, it should match the fingerprint calculated above
+        **       for use in the event log, etc.  If that is not the case,
+        **       issue an error message to the trace log file.
+        */
+        char zFingerprint1[FINGERPRINTSZ*2+1];
+        char zFingerprint2[FINGERPRINTSZ*2+1];
+        memset(zFingerprint1, 0, sizeof(zFingerprint1));
+        memset(zFingerprint2, 0, sizeof(zFingerprint2));
+        if ((memcmp(clnt->work.aFingerprint, zFingerprint1, FINGERPRINTSZ) != 0) &&
+            (memcmp(fingerprint, clnt->work.aFingerprint, FINGERPRINTSZ) != 0)) {
+            util_tohex(zFingerprint1, (char *)fingerprint, FINGERPRINTSZ);
+            util_tohex(zFingerprint2, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);
+            logmsg(LOGMSG_ERROR, "%s: mismatch between fingerprint #1 {%s} (log) "
+                   "and #2 {%s} (work)\n", __func__, zFingerprint1, zFingerprint2);
+        }
+    }
 
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += get_sql_steps(thd);
@@ -1438,7 +1536,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     /* begin, commit, rollback should arrive over the socket only
        for socksql, recom, snapisol and serial */
-    if (!strncasecmp(clnt->sql, "begin", 5)) {
+    tsql_meta_command_t meta = is_transaction_meta_sql(clnt->sql);
+
+    if (meta == TSMC_BEGIN) {
         clnt->snapshot = 0;
 
         /*fprintf(stderr, "got begin\n");*/
@@ -1471,7 +1571,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                 (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                 offsetof(struct clnt_ddl_context, name), 0);
         }
-    } else if (!strncasecmp(clnt->sql, "commit", 6)) {
+    } else if (meta == TSMC_COMMIT) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -1493,7 +1593,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->in_client_trans = 0;
             clnt->trans_has_sp = 0;
         }
-    } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
+    } else if (meta == TSMC_ROLLBACK) {
         clnt->snapshot = 0;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
@@ -2272,14 +2372,19 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     return 0;
 }
 
-static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+static void cleanup_stmt_entry_only(stmt_hash_entry_type *entry)
 {
-    if (entry->query && gbl_debug_temptables) {
+    if (entry->query) {
         free(entry->query);
         entry->query = NULL;
     }
-    sqlite3_finalize(entry->stmt);
     sqlite3_free(entry);
+}
+
+static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+{
+    sqlite3_finalize(entry->stmt);
+    cleanup_stmt_entry_only(entry);
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
@@ -2300,7 +2405,8 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
  * used by two sql at the same time).
  */
 static void remove_stmt_entry(struct sqlthdstate *thd,
-                              stmt_hash_entry_type *entry)
+                              stmt_hash_entry_type *entry,
+                              int noComplain)
 {
     assert(entry);
 
@@ -2310,12 +2416,12 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     } else {
         list = &thd->noparam_stmt_list;
     }
-    listc_rfl(list, entry);
+    listc_maybe_rfl(list, entry);
     int rc = hash_del(thd->stmt_caching_table, entry->sql);
-    if (rc)
+    if (!noComplain && rc)
         logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
                rc);
-    assert(rc == 0);
+    assert(noComplain || rc == 0);
 }
 
 /* This will call requeue_stmt_entry() after it has allocated memory
@@ -2376,7 +2482,7 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
     if (*entry == NULL)
         return -1;
 
-    remove_stmt_entry(thd, *entry); // will add again when done
+    remove_stmt_entry(thd, *entry, 0); // will add again when done
 
     return 0;
 }
@@ -2977,7 +3083,7 @@ int override_type(struct sqlclntstate *clnt, int i)
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                            struct sql_state *rec)
+                            struct sql_state *rec, int prepFlags)
 {
     rec->status = CACHE_DISABLED;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
@@ -3005,10 +3111,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
     if (rec->stmt) {
         rec->sql = sqlite3_sql(rec->stmt); // save expanded query
-        int rc = sqlite3LockStmtTables(rec->stmt);
-        if (rc) {
-            cleanup_stmt_entry(rec->stmt_entry);
-            rec->stmt = NULL;
+        if ((prepFlags & PREPARE_ONLY) == 0) {
+            int rc = sqlite3LockStmtTables(rec->stmt);
+            if (rc) {
+                cleanup_stmt_entry(rec->stmt_entry);
+                rec->stmt = NULL;
+            }
         }
     }
 }
@@ -3032,32 +3140,36 @@ static inline int dont_cache_this_sql(struct sql_state *rec)
  * needs to cleanup this rec->stmt */
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
-                                 struct sql_state *rec, int outrc,
+                                 struct sql_state *rec,
+                                 int noCache, int outrc,
                                  int distributed)
 {
+    if (noCache) {
+        goto cleanup;
+    }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
-        return 1;
+        goto cleanup;
     }
     if (distributed || clnt->conns || clnt->plugin.state) {
-        return 1;
+        goto cleanup;
     }
     if (thd && thd->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
-        return 1;
+        goto cleanup;
     }
     if (dont_cache_this_sql(rec)) {
-        return 1;
+        goto cleanup;
     }
     sqlite3_stmt *stmt = rec->stmt;
     if (stmt == NULL) {
-        return 1;
+        goto cleanup;
     }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0) {
-        return 1;
+        goto cleanup;
     }
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
         sqlite3_stmt_has_remotes(stmt)) {
-        return 1;
+        goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
         if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
@@ -3079,18 +3191,26 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     }
     return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
                           stmt);
+cleanup:
+    if (rec->stmt_entry != NULL) {
+        remove_stmt_entry(thd, rec->stmt_entry, 1);
+        cleanup_stmt_entry_only(rec->stmt_entry);
+        rec->stmt_entry = NULL;
+    }
+    return 1;
 }
 
-void put_prepared_stmt_distributed(struct sqlthdstate *thd,
-                                   struct sqlclntstate *clnt,
-                                   struct sql_state *rec, int outrc,
-                                   int distributed)
+static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
+                                          struct sqlclntstate *clnt,
+                                          struct sql_state *rec,
+                                          int outrc,
+                                          int distributed)
 {
     int rc;
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
+    rc = put_prepared_stmt_int(thd, clnt, rec, 0, outrc, distributed);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
@@ -3254,7 +3374,26 @@ static void free_original_normalized_sql(
 
 static void normalize_stmt_and_store(
   struct sqlclntstate *clnt,
-  struct sql_state *rec
+  struct sql_state *rec,
+  int iDefDqId /* Default return value for double-quote identifiers:
+                *
+                * A value of zero means that double-quoted strings should
+                * always be treated as identifiers when there is no Vdbe
+                * available.
+                *
+                * A value of non-zero means that double-quoted strings
+                * should always be treated as string literals when there
+                * is no Vdbe available.
+                *
+                * In general, this function is called from two primary
+                * places: 1) prior to executing a SQL query, in order to
+                * help calculate the fingerprint for use by the ruleset
+                * engine. 2) after executing a SQL query, in order to
+                * calculate the fingerprint (again) based on the prepared
+                * statement.  For case 1), there will be no Vdbe, because
+                * that work is performed on the AppSock thread, not a SQL
+                * engine thread.
+                */
 ){
   if (gbl_fingerprint_queries) {
     /*
@@ -3283,7 +3422,7 @@ static void normalize_stmt_and_store(
       }
     } else {
       assert(clnt->sql);
-      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql);
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql, iDefDqId);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);
@@ -3306,6 +3445,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
+    int prepareOnly = (flags & PREPARE_ONLY);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -3316,13 +3456,13 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec);
+    get_cached_stmt(thd, clnt, rec, flags);
     int sqlPrepFlags = 0;
 
     if (gbl_fingerprint_queries)
         sqlPrepFlags |= SQLITE_PREPARE_NORMALIZE;
 
-    if (sqlite3_is_prepare_only(clnt))
+    if (prepareOnly || sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
 
     if (!gbl_allow_pragma)
@@ -3345,7 +3485,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
-            rc = sqlite3LockStmtTables(rec->stmt);
+            if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
             return SQLITE_SCHEMA_REMOTE;
@@ -3360,7 +3500,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         free_normalized_sql(clnt);
         if (!(flags & PREPARE_NO_NORMALIZE)) {
-            normalize_stmt_and_store(clnt, rec);
+            normalize_stmt_and_store(clnt, rec, 0);
         }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
@@ -3375,7 +3515,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
-               "TRAILING CHARACTERS AFTER QUERY TERMINATION: \"%s\"\n", tail);
+               "TRAILING CHARACTERS AFTER QUERY TERMINATION (%d): \"%s\"\n",
+               rc, tail);
     }
     return rc;
 }
@@ -4025,7 +4166,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     **       can be normalized.
     */
     free_original_normalized_sql(clnt);
-    normalize_stmt_and_store(clnt, NULL);
+    normalize_stmt_and_store(clnt, NULL, 1);
 
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
@@ -4070,6 +4211,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         clear_cost(thd->sqlthd);
 
         /* get an sqlite engine */
+        assert(rec.stmt == NULL);
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
@@ -4654,6 +4796,176 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     return rc;
 }
 
+static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
+{
+    if (is_transaction_meta(clnt)) {
+        /*
+        ** NOTE: The BEGIN, COMMIT, and ROLLBACK SQL (meta-)commands
+        **       do not go through the SQLite parser (i.e. they are
+        **       processed out-of-band).  Therefore, they are exempt
+        **       from fingerprinting.
+        */
+        return 0; /* success */
+    } else {
+        /*
+        ** NOTE: The "EXEC PROCEDURE" command cannot be prepared
+        **       because its execution bypasses the SQL engine;
+        **       however, the parser now recognizes it and so it
+        **       can be normalized.  Since the "EXEC PROCEDURE"
+        **       commands are never prepared, any double-quoted
+        **       strings they may contain are always treated as
+        **       literals, not quoted identifiers.  All other
+        **       SQL commands will treat their double-quoted
+        **       strings as quoted identifiers here, by design.
+        **       This is safe because the caller(s) will enforce
+        **       that the "strict_double_quotes" tunable is on
+        **       prior to calling into this function on any SQL
+        **       query that is not an "EXEC", "BEGIN", "COMMIT",
+        **       or "ROLLBACK".
+        */
+        free_original_normalized_sql(clnt);
+        normalize_stmt_and_store(clnt, NULL, is_stored_proc_sql(clnt->sql));
+
+        if (clnt->work.zOrigNormSql) {
+            size_t nOrigNormSql = 0;
+
+            calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
+                             clnt->work.aFingerprint);
+        }
+
+        return 0; /* success */
+    }
+}
+
+void clnt_to_ruleset_item_criteria(
+  struct sqlclntstate *clnt,            /* in */
+  struct ruleset_item_criteria *context /* out */
+){
+  if ((clnt == NULL) || (context == NULL)) return;
+  context->zOriginHost = clnt->origin_host;
+  context->zOriginTask = clnt->conninfo.pename;
+  context->zUser = clnt->have_user ? clnt->user : NULL;
+  context->zSql = clnt->sql;
+  context->pFingerprint = clnt->work.aFingerprint;
+}
+
+static int can_execute_sql_query_now(
+  struct sqlthdstate *thd,
+  struct sqlclntstate *clnt,
+  int *pRuleNo,
+  int *pbRejected,
+  int *pbTryAgain,
+  priority_t *pPriority
+){
+  struct ruleset_item_criteria context = {0};
+  struct ruleset_result result = {0};
+  result.priority = *pPriority;
+  clnt_to_ruleset_item_criteria(clnt, &context);
+  size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, &context, &result);
+  comdb2_ruleset_result_to_str(
+    &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
+  );
+  if (gbl_verbose_prioritize_queries) {
+    logmsg(LOGMSG_INFO, "%s: PRE seqNo=%llu, count=%d, sql={%s}, %s\n",
+           __func__, (long long unsigned int)clnt->seqNo, (int)count,
+           clnt->sql, clnt->work.zRuleRes);
+  }
+  *pRuleNo = -1; /* no rule was specifically responsible */
+  *pbRejected = 0; /* initially, SQL work item is always allowed */
+  /* BEGIN FAULT INJECTION TEST CODE */
+  if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
+      (result.action != RULESET_A_REJECT_ALL) &&
+      (result.action != RULESET_A_LOW_PRIO)) {
+    if (gbl_random_sql_work_rejected &&
+        !(rand() % gbl_random_sql_work_rejected)) {
+      logmsg(LOGMSG_WARN,
+             "%s: POST seqNo=%llu, forcing random SQL work item {%s} reject\n",
+             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
+      *pbRejected = 1;
+      *pbTryAgain = 0;
+      return 0;
+    } else if (gbl_random_sql_work_delayed &&
+        !(rand() % gbl_random_sql_work_delayed)) {
+      logmsg(LOGMSG_WARN,
+             "%s: POST seqNo=%llu, forcing random SQL work item {%s} delay\n",
+             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
+      return 0;
+    }
+  }
+  /* END FAULT INJECTION TEST CODE */
+  switch (result.action) {
+    case RULESET_A_NONE: {
+      /* do nothing */
+      break;
+    }
+    case RULESET_A_REJECT: {
+      *pRuleNo = result.ruleNo;
+      *pbRejected = 1;
+      *pbTryAgain = 1;
+      return 0;
+    }
+    case RULESET_A_REJECT_ALL: {
+      *pRuleNo = result.ruleNo;
+      *pbRejected = 1;
+      *pbTryAgain = 0;
+      return 0;
+    }
+    case RULESET_A_UNREJECT: {
+      *pRuleNo = result.ruleNo;
+      break;
+    }
+    case RULESET_A_LOW_PRIO:
+    case RULESET_A_HIGH_PRIO: {
+      *pRuleNo = result.ruleNo;
+      *pPriority = result.priority;
+      break;
+    }
+    default: {
+      logmsg(LOGMSG_ERROR,
+             "%s: unsupported action 0x%x for ruleset 0x%p\n",
+             __func__, result.action, gbl_ruleset);
+      break;
+    }
+  }
+  /*
+  ** WARNING: This code assumes that higher priority values have
+  **          lower numerical values.
+  */
+  const char *zPoolPriority = "unknown ";
+  priority_t pool_priority = PRIORITY_T_INVALID;
+  if (count > 0) {
+    pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
+    if (pool_priority == PRIORITY_T_HIGHEST) {
+      zPoolPriority = "fake ";
+      pool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+    } else {
+      zPoolPriority = "actual ";
+    }
+  }
+  int rc;
+  if (pool_priority == PRIORITY_T_INVALID) {
+    rc = 1; /* empty pool -OR- no rules matched */
+  } else if (*pPriority <= pool_priority) {
+    rc = 1; /* query has priority */
+  } else {
+    rc = 0; /* query should wait */
+  }
+  const char *zResult = rc ? "NOW" : "LATER";
+  if (gbl_verbose_prioritize_queries) {
+    char zPriority1[100] = {0};
+    char zPriority2[100] = {0};
+    logmsg(LOGMSG_INFO,
+      "%s: POST seqNo=%llu, count=%d, sql={%s} ==> ruleset work item priority "
+      "%s VS %spool work item priority %s: %s\n",
+      __func__, (long long unsigned int)clnt->seqNo, (int)count, clnt->sql,
+      comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
+      zPoolPriority,
+      comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
+      zResult);
+  }
+  return rc;
+}
+
 void sqlengine_work_appsock(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
@@ -4811,13 +5123,42 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
-static int enqueue_sql_query(struct sqlclntstate *clnt)
+static priority_t combinePriorities(
+  priority_t priority1, /* base, second arg to dispatch_sql_query(). */
+  priority_t priority2  /* offset, calculated based on sequence number. */
+){
+  switch( priority1 ){
+    case PRIORITY_T_HEAD:
+    case PRIORITY_T_TAIL: {
+      return priority1;
+    }
+    case PRIORITY_T_DEFAULT: {
+      assert(priority_is_valid(priority2, 0));
+      return priority2;
+    }
+    default: {
+      priority_t priority3 = priority1 + priority2;
+      assert(priority_is_valid(priority3, 0));
+      return priority3;
+    }
+  }
+}
+
+static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
     char *sqlcpy;
     int rc;
     int fail_dispatch = 0;
     int q_depth_tag_and_sql;
+
+    /*
+    ** WARNING: This code assumes that higher priority values have
+    **          lower numerical values.
+    */
+    priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
+    clnt->priority = combinePriorities(priority, localPriority);
+    assert(priority_is_valid(clnt->priority, 1));
 
     struct thr_handle *self = thrman_self();
     if (self) {
@@ -4866,14 +5207,19 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
+    if (gbl_thdpool_queue_only) {
+        flags |= THDPOOL_QUEUE_ONLY;
+    }
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags)) != 0) {
+                              clnt, clnt->queue_me, sqlcpy, flags,
+                              clnt->priority)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
-                                 flags | THDPOOL_FORCE_QUEUE);
+                                 flags | THDPOOL_FORCE_QUEUE,
+                                 clnt->priority);
         }
 
         if (rc) {
@@ -5002,11 +5348,58 @@ done:
     return clnt->query_rc;
 }
 
-int dispatch_sql_query(struct sqlclntstate *clnt)
+static int verify_dispatch_sql_query(
+    struct sqlclntstate *clnt,
+    priority_t *pPriority)
+{
+    memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
+
+    if (!clnt->admin && gbl_prioritize_queries && (gbl_ruleset != NULL)) {
+        if (gbl_fingerprint_queries &&
+            comdb2_ruleset_fingerprints_allowed()) {
+            /* IGNORED */
+            preview_and_calc_fingerprint(clnt);
+        }
+
+        int ruleNo = 0;
+        int bRejected = 0;
+        int bTryAgain = 0;
+
+        *pPriority = PRIORITY_T_INITIAL; /* TODO: Tunable default priority? */
+
+        if (!can_execute_sql_query_now(
+                clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority)) {
+            if (bRejected) {
+                int rc = bTryAgain ? CDB2ERR_REJECTED: ERR_QUERY_REJECTED;
+                char zRuleRes[100];
+                memset(zRuleRes, 0, sizeof(zRuleRes));
+                snprintf0(zRuleRes, sizeof(zRuleRes),
+                          "Rejected due to rule #%d", ruleNo);
+                if (gbl_verbose_prioritize_queries) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
+                           __func__, (long long unsigned int)clnt->seqNo,
+                           rc, clnt->sql, zRuleRes);
+                }
+                send_run_error(clnt, zRuleRes, rc);
+                return rc;
+            }
+        }
+    }
+
+    return 0;
+}
+
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     mark_clnt_as_recently_used(clnt);
 
-    int rc = enqueue_sql_query(clnt);
+    clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
+    assert(clnt->seqNo > 0);
+    int rc = verify_dispatch_sql_query(clnt, &priority);
+    if (rc != 0) return rc;
+
+    rc = enqueue_sql_query(clnt, priority);
     if (rc != 0) return rc;
 
     return wait_for_sql_query(clnt);
@@ -5162,6 +5555,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
 
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    memset(&clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5196,6 +5591,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
        clnt->last_reset_time = comdb2_time_epoch();
        clnt_change_state(clnt, CONNECTION_RESET);
     }
+
+    clnt->seqNo = 0;
+    clnt->priority = PRIORITY_T_INVALID;
 
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
@@ -5308,6 +5706,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    memset(&clnt->work.rec, 0, sizeof(struct sql_state));
+    memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
     clnt->arr = NULL;
     clnt->selectv_arr = NULL;
@@ -6316,6 +6716,9 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case ERR_CHECK_CONSTRAINT + ERR_BLOCK_FAILED:
         return CDB2ERR_CHECK_CONSTRAINT;
 
+    case ERR_QUERY_REJECTED:
+        return CDB2ERR_QUERY_REJECTED;
+
     default:
         return DB_ERR_INTR_GENERIC;
     }
@@ -6531,7 +6934,7 @@ void run_internal_sql(char *sql)
     start_internal_sql_clnt(&clnt);
     clnt.sql = skipws(sql);
 
-    dispatch_sql_query(&clnt);
+    dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
     if (clnt.query_rc || clnt.saved_errstr) {
         logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
                clnt.query_rc);
@@ -6733,7 +7136,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
     clnt->sql = skipws(sql);
-    dispatch_sql_query(clnt);
+    dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
     int rc = 0;
 
     if (clnt->query_rc || clnt->saved_errstr) {

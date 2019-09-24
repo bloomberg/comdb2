@@ -1969,7 +1969,11 @@ const char *sqlite3_normalized_sql(sqlite3_stmt *pStmt){
   if( p==0 ) return 0;
   if( p->zNormSql==0 && ALWAYS(p->zSql!=0) ){
     sqlite3_mutex_enter(p->db->mutex);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    p->zNormSql = sqlite3Normalize(p, p->zSql, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->zNormSql = sqlite3Normalize(p, p->zSql);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3_mutex_leave(p->db->mutex);
   }
   return p->zNormSql;

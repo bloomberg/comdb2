@@ -69,7 +69,7 @@ static int fingerprints_callback(void **data, int *npoints)
                 pEntry = hash_first(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
                 while (pEntry != NULL) {
                     assert( copied<count );
-                    util_tohex(pFp[copied].fp, pEntry->fingerprint, FINGERPRINTSZ);
+                    util_tohex(pFp[copied].fp, (char *)pEntry->fingerprint, FINGERPRINTSZ);
                     pFp[copied].fingerprint = pFp[copied].fp;
                     pFp[copied].count = pEntry->count;
                     pFp[copied].cost = pEntry->cost;

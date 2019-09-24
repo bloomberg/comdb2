@@ -33,6 +33,10 @@ FILE *io_override_get_std(void) {
     return ptr;
 }
 
+inline int logmsg_level_ok(loglvl lvl) {
+    return (lvl >= level);
+}
+
 void logmsg_set_level(loglvl lvl) {
     level = lvl;
 }
@@ -89,7 +93,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     FILE *f;
     int ret = 0;
 
-    if (lvl < level)
+    if (!logmsg_level_ok(lvl))
         return 0;
 
     FILE *override = io_override_get_std();

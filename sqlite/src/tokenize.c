@@ -786,6 +786,11 @@ static void addSpaceSeparator(sqlite3_str *pStr){
 char *sqlite3Normalize(
   Vdbe *pVdbe,       /* VM being reprepared */
   const char *zSql   /* The original SQL string */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId      /* Zero if double quoted strings should always be
+                      * treated as identifiers when there is no Vdbe
+                      * available */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   sqlite3 *db;       /* The database connection */
   int i;             /* Next unread byte of zSql[] */
@@ -865,7 +870,11 @@ char *sqlite3Normalize(
           int eType = 0;
           if( zId==0 ) break;
           sqlite3Dequote(zId);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId) ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;

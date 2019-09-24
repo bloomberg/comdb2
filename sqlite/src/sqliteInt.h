@@ -4047,6 +4047,7 @@ int sqlite3ErrorToParser(sqlite3*,int);
 void sqlite3Dequote(char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3IsCorrectlyQuoted(char *);
+int sqlite3IsCorrectlyBraced(char *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3DequoteExpr(Expr*);
 void sqlite3TokenInit(Token*,char*);
@@ -4713,7 +4714,11 @@ int sqlite3VdbeParameterIndex(Vdbe*, const char*, int);
 int sqlite3TransferBindings(sqlite3_stmt *, sqlite3_stmt *);
 void sqlite3ParserReset(Parse*);
 #ifdef SQLITE_ENABLE_NORMALIZE
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+char *sqlite3Normalize(Vdbe*, const char*,int);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 char *sqlite3Normalize(Vdbe*, const char*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 int sqlite3Reprepare(Vdbe*);
 void sqlite3ExprListCheckLength(Parse*, ExprList*, const char*);
@@ -4928,6 +4933,16 @@ int sqlite3DbstatRegister(sqlite3*);
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Moved from "func.c" for use by Comdb2.
+*/
+struct compareInfo {
+  u8 matchAll;          /* "*" or "%" */
+  u8 matchOne;          /* "?" or "_" */
+  u8 matchSet;          /* "[" or 0 */
+  u8 noCase;            /* true to ignore case differences */
+};
+
 enum {
     SQLITE_ATTR_QUANTITY   = 1,
     SQLITE_ATTR_BOOLEAN    = 2

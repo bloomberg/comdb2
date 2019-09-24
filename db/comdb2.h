@@ -407,6 +407,7 @@ enum RCODES {
     ERR_CHECK_CONSTRAINT = 320,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
+    ERR_QUERY_REJECTED = 451,
     ERR_INCOHERENT =
         996, /* prox2 understands it should retry another node for 996 */
     ERR_SQL_PREPARE = 1003,
@@ -3611,6 +3612,9 @@ extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
+extern int gbl_prioritize_queries;
+extern int gbl_debug_force_thdpool_priority;
+extern int gbl_verbose_prioritize_queries;
 
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;

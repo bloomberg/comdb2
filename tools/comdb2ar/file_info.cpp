@@ -107,6 +107,7 @@ const char *FileInfo::get_type_string() const
         case BERKDB_FILE:           return "Berkdb_file";
         case OPTIONAL_FILE:         return "Optional_file";
         case LOG_FILE:              return "Log_file";
+        case RULESET_FILE:          return "Ruleset_file";
     }
 }
 
@@ -123,6 +124,8 @@ void FileInfo::set_type(const std::string& tok)
         m_type = LOG_FILE;
     } else if (tok.compare("Optional_file") == 0) {
         m_type = OPTIONAL_FILE;
+    } else if (tok.compare("Ruleset_file") == 0) {
+        m_type = RULESET_FILE;
     } else {
         m_type = UNKNOWN_FILE_TYPE;
     }

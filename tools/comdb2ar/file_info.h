@@ -32,7 +32,8 @@ public:
         SUPPORT_FILE,
         BERKDB_FILE,
         LOG_FILE,
-        OPTIONAL_FILE
+        OPTIONAL_FILE,
+        RULESET_FILE
     };
 
 

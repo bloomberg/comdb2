@@ -8,7 +8,6 @@ add_executable(cdb2sockpool
   ${PROJECT_SOURCE_DIR}/util/plhash.c
   ${PROJECT_SOURCE_DIR}/util/pool.c
   ${PROJECT_SOURCE_DIR}/util/pthread_wrap.c
-  ${PROJECT_SOURCE_DIR}/util/safestrerror.c
   ${PROJECT_SOURCE_DIR}/util/segstring.c
   ${PROJECT_SOURCE_DIR}/util/strbuf.c
   ${PROJECT_SOURCE_DIR}/util/tohex.c
