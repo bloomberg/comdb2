@@ -37,7 +37,6 @@
 #include <unistd.h>
 
 #include <passfd.h>
-#include <safestrerror.h>
 #include <sbuf2.h>
 #include <tcputil.h>
 #include <xstring.h>

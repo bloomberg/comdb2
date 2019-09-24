@@ -35,7 +35,6 @@ set(src
   queuetest.c
   roll_file.c
   rtcpu.c
-  safestrerror.c
   schema_lk.c
   sbuf2.c
   segstring.c
