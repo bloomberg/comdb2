@@ -1764,6 +1764,7 @@ struct FuncDestructor {
 #define SQLITE_FUNC_WINDOW   0x00010000 /* Built-in window-only function */
 #define SQLITE_FUNC_INTERNAL 0x00040000 /* For use by NestedParse() only */
 #define SQLITE_FUNC_DIRECT   0x00080000 /* Not for use in TRIGGERs or VIEWs */
+#define SQLITE_FUNC_SUBTYPE  0x00100000 /* Result likely to have sub-type */
 
 /*
 ** The following three macros, FUNCTION(), LIKEFUNC() and AGGREGATE() are
@@ -3800,8 +3801,8 @@ struct Window {
   Expr *pFilter;          /* The FILTER expression */
   FuncDef *pFunc;         /* The function */
   int iEphCsr;            /* Partition buffer or Peer buffer */
-  int regAccum;
-  int regResult;
+  int regAccum;           /* Accumulator */
+  int regResult;          /* Interim result */
   int csrApp;             /* Function cursor (used by min/max) */
   int regApp;             /* Function register (also used by min/max) */
   int regPart;            /* Array of registers for PARTITION BY values */
@@ -3811,6 +3812,8 @@ struct Window {
   int regOne;             /* Register containing constant value 1 */
   int regStartRowid;
   int regEndRowid;
+  u8 bExprArgs;           /* Defer evaluation of window function arguments
+                          ** due to the SQLITE_SUBTYPE flag */
 };
 
 #ifndef SQLITE_OMIT_WINDOWFUNC
@@ -4565,7 +4568,6 @@ extern const unsigned char sqlite3OpcodeProperty[];
 extern const char sqlite3StrBINARY[];
 extern const unsigned char sqlite3UpperToLower[];
 extern const unsigned char sqlite3CtypeMap[];
-extern const Token sqlite3IntTokens[];
 extern SQLITE_WSD struct Sqlite3Config sqlite3Config;
 extern FuncDefHash sqlite3BuiltinFunctions;
 #ifndef SQLITE_OMIT_WSD

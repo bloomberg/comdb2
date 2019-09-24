@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.30.0"
 #define SQLITE_VERSION_NUMBER 3030000
-#define SQLITE_SOURCE_ID      "2019-09-11 15:27:40 43aea1d19b9058a114aa43f3785e5b7ee671bdafb1d022233ea32b77a499515a"
+#define SQLITE_SOURCE_ID      "2019-09-24 19:25:35 cb63e0ed7a9a60a163d974cad925b4c248e9a5f6e7b9a4ed5c5a5d29a3de476a"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -4950,9 +4950,12 @@ void stmt_set_dtprec(sqlite3_stmt *, int);
 ** function that is not deterministic.  The SQLite query planner is able to
 ** perform additional optimizations on deterministic functions, so use
 ** of the [SQLITE_DETERMINISTIC] flag is recommended where possible.
+**
 ** ^The fourth parameter may also optionally include the [SQLITE_DIRECTONLY]
 ** flag, which if present prevents the function from being invoked from
-** within VIEWs or TRIGGERs.
+** within VIEWs or TRIGGERs.  For security reasons, the [SQLITE_DIRECTONLY]
+** flag is recommended for any application-defined SQL function that has
+** side-effects.
 **
 ** ^(The fifth parameter is an arbitrary pointer.  The implementation of the
 ** function can gain access to this pointer using [sqlite3_user_data()].)^
@@ -5076,10 +5079,24 @@ SQLITE_API int sqlite3_create_window_function(
 ** deterministic, for example, but randomblob() is not.
 **
 ** The SQLITE_DIRECTONLY flag means that the function may only be invoked
-** from top-level SQL, and cannot be used in VIEWs or TRIGGERs.
+** from top-level SQL, and cannot be used in VIEWs or TRIGGERs.  This is
+** a security feature which is recommended for all 
+** [application-defined SQL functions] that have side-effects.  This flag 
+** prevents an attacker from adding triggers and views to a schema then 
+** tricking a high-privilege application into causing unintended side-effects
+** while performing ordinary queries.
+**
+** The SQLITE_SUBTYPE flag indicates to SQLite that a function may call
+** [sqlite3_value_subtype()] to inspect the sub-types of its arguments.
+** Specifying this flag makes no difference for scalar or aggregate user
+** functions. However, if it is not specified for a user-defined window
+** function, then any sub-types belonging to arguments passed to the window
+** function may be discarded before the window function is called (i.e.
+** sqlite3_value_subtype() will always return 0).
 */
 #define SQLITE_DETERMINISTIC    0x000000800
 #define SQLITE_DIRECTONLY       0x000080000
+#define SQLITE_SUBTYPE          0x000100000
 
 /*
 ** CAPI3REF: Deprecated Functions
