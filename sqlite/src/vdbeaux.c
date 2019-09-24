@@ -120,11 +120,14 @@ void sqlite3VdbeAddDblquoteStr(sqlite3 *db, Vdbe *p, const char *z){
 int sqlite3VdbeUsesDoubleQuotedString(
   Vdbe *pVdbe,            /* The prepared statement */
   const char *zId         /* The double-quoted identifier, already dequoted */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId           /* Return value when there is no Vdbe. */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   DblquoteStr *pStr;
   assert( zId!=0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pVdbe==0 ) return 1;
+  if( pVdbe==0 ) return iDefDqId;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){

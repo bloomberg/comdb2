@@ -50,6 +50,15 @@ exec procedure sys.cmd.send('logmsg level xxx');
 exec procedure sys.cmd.send('logmsg level info');
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 
+PUT TUNABLE logmsg.level 'info';
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+
+PUT TUNABLE logmsg.level='debug';
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+
+PUT TUNABLE 'logmsg.level'='error';
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+
 SELECT name AS 'appsockpool tunables' FROM comdb2_tunables WHERE name LIKE 'appsockpool%' order by name;
 SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
 PUT TUNABLE 'appsockpool.maxt' 'xxx';

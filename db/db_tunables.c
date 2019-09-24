@@ -117,6 +117,7 @@ extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
+extern int gbl_toblock_random_deadlock_trans;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
@@ -206,6 +207,9 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_random_thdpool_work_timeout;
+extern int gbl_thdpool_queue_only;
+extern int gbl_random_sql_work_delayed;
+extern int gbl_random_sql_work_rejected;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
@@ -314,6 +318,7 @@ extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int eventlog_nkeep;
 
 int gbl_page_order_table_scan = 0;
 

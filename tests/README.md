@@ -263,7 +263,7 @@ of comdb2 servers in those containers.
             bridge_maxwait 5
             bridge_fd 0
             pre-up /sbin/modprobe dummy
-            iptables -t nat -A POSTROUTING -o wlp1s0 -j MASQUERADE
+            iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     ```
 
     and then bring `br0` up:
@@ -276,10 +276,12 @@ of comdb2 servers in those containers.
       /etc/init.d/apparmor start
     ```
 
-2.  Create a container with a recent distribution release for instance debian stretch:
+2.  Create a container with a recent distribution release, for instance debian stretch:
     ```sh
       lxc-create -n node1 -t debian -- -r stretch
     ```
+
+    Note that if you are going to compile and link on the host machine, then you should install the same distribution that you have in the host machine otherwise glibc version and other libraries might not be available.
 
 3.  Change the config for `node1` to have `br0` (or `lxcbr0`) as interface for networking. In debian the config file resides for node1 we just created resides in `/var/lib/lxc/node1/config` and you should have it contain the following
     ```
@@ -343,6 +345,11 @@ of comdb2 servers in those containers.
     hostname node1
     ```
 
+    You will also want to install inside the containers the required packages for comdb2 to run:
+    ```sh
+      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0
+    ```
+
 4.  At this time you will want to make copies of this container:
     ```sh
       lxc-copy -n node1 -N node2
@@ -371,14 +378,16 @@ of comdb2 servers in those containers.
       done
     ```
 
+    You should be able to login without typing password given that you created ssh keys above.
+
 6.  To run tests in clusters residing in the above containers, launch the tests from the host machine: 
     ```sh
-      export CLUSTER="node1 node2 node"
+      export CLUSTER="node1 node2 node3"
       make test1
     ```
     or
     ```sh
-      make -k -j 16 CLUSTER="node1 node2 node"
+      make -k -j 16 CLUSTER="node1 node2 node3"
     ```
 
 ## Running tests on AWS EC2 clusters

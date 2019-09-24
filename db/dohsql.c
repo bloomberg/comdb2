@@ -1193,7 +1193,8 @@ int dohsql_distribute(dohsql_node_t *node)
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
-                                 sqlcpy = strdup(node->nodes[i]->sql), 0);
+                                 sqlcpy = strdup(node->nodes[i]->sql), 0,
+                                 PRIORITY_T_DEFAULT);
             if (rc) {
                 free(sqlcpy);
                 return SHARD_ERR_GENERIC;
