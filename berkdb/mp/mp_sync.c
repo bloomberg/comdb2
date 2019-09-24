@@ -24,6 +24,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <string.h>
 #include <assert.h>
 #include <poll.h>
+#include <limits.h>
 
 #include "thdpool.h"
 #include <ctrace.h>
