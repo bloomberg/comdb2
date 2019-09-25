@@ -3179,17 +3179,17 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	}
 	DB_LOCKER *sh_locker = lockp->holderp;
 
-    if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
-            F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
-        for (i = 0; i < sh_locker->ntrackedlocks; i++) {
-            if (sh_locker->tracked_locklist[i] == lockp) {
-                sh_locker->tracked_locklist[i] = sh_locker->tracked_locklist[
-                    sh_locker->ntrackedlocks - 1];
-                sh_locker->ntrackedlocks--;
-                i--;
-            }
-        }
-    }
+	if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
+			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		for (i = 0; i < sh_locker->ntrackedlocks; i++) {
+			if (sh_locker->tracked_locklist[i] == lockp) {
+				sh_locker->tracked_locklist[i] = sh_locker->tracked_locklist[
+					sh_locker->ntrackedlocks - 1];
+				sh_locker->ntrackedlocks--;
+				i--;
+			}
+		}
+	}
 
 	/* Increment generation number. */
 	lockp->gen++;
