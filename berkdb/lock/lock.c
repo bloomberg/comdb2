@@ -4869,6 +4869,8 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 extern int gbl_new_snapisol_logging;
 #define MAX_LOCK_COUNT	0xffffffff
 
+#define NEWSI_DEBUG
+
 static int
 __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	DB_ENV *dbenv;
@@ -6258,6 +6260,18 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+
+#ifdef NEWSI_DEBUG
+	for (i = 0; i < locker->ntrackedlocks; i++) {
+		lp = SH_LIST_FIRST(&locker->heldby, __db_lock);
+		for ( ; lp != NULL; lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+			if (lp == locker->tracked_locklist[i])
+				break;
+		}
+		assert(lp != NULL);
+	}
+#endif
+
 	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];
