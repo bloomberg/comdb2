@@ -4869,8 +4869,6 @@ typedef struct __db_lock_idxlock DB_LOCK_IDXLOCK;
 extern int gbl_new_snapisol_logging;
 #define MAX_LOCK_COUNT	0xffffffff
 
-#define NEWSI_DEBUG
-
 static int
 __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	DB_ENV *dbenv;
