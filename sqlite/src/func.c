@@ -821,6 +821,8 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
+  }else if( sqlite3_stricmp(zName, "class")==0 ){
+    sqlite3_result_text(context, get_my_mach_class_str(), -1, SQLITE_TRANSIENT);
   }else if( sqlite3_stricmp(zName, "version")==0 ){
     char *zVersion = sqlite3_mprintf("[%s] [%s] [%s] [%s] [%s]", gbl_db_version,
                                      gbl_db_codename, gbl_db_semver,
