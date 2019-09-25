@@ -486,7 +486,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
         p = &snap;
     if (p) {
-        char cnonce[MAX_SNAP_KEY_LEN + 1];
+        char cnonce[2 * MAX_SNAP_KEY_LEN + 1];
         /* util_tohex() takes care of null-terminating the resulting string. */
         util_tohex(cnonce, p->key, p->keylen);
         cson_object_set(obj, "cnonce",
