@@ -659,12 +659,9 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
 
 /* commit the transaction referenced by the tran handle.  return a
    seqnum that is guaranteed to be greater or equal to the seqnum
-   needed to have this commit reflected in your database */
-int bdb_tran_commit_with_seqnum(bdb_state_type *bdb_state, tran_type *tran,
-                                seqnum_type *seqnum, int *bdberr);
-
-/* same, but also return an estimate of the transaction size in unspecified
- * units */
+   needed to have this commit reflected in your database
+   also return an estimate of the transaction size in unspecified
+   units */
 int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
                                      seqnum_type *seqnum, uint64_t *out_txnsize,
                                      int *bdberr);
