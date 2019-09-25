@@ -3150,7 +3150,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 {
 	DB_LOCKOBJ *sh_obj;
 	DB_LOCKREGION *region;
-	int ret, state_changed, i;
+	int ret, state_changed;
 	u_int32_t partition;
 	DB_ENV *dbenv = lt->dbenv;
 
@@ -3181,7 +3181,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 	if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
 			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
-		for (i = 0; i < sh_locker->ntrackedlocks; i++) {
+		for (int i = 0; i < sh_locker->ntrackedlocks; i++) {
 			if (sh_locker->tracked_locklist[i] == lockp) {
 				sh_locker->tracked_locklist[i] = sh_locker->tracked_locklist[
 					sh_locker->ntrackedlocks - 1];
