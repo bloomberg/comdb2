@@ -1,0 +1,8 @@
+schema
+	{
+		int a
+	}
+keys
+    {
+        "a" = a
+    }

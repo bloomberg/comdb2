@@ -1502,10 +1502,11 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
-static int bdb_tran_commit_with_seqnum_int_int(
-    bdb_state_type *bdb_state, tran_type *tran, seqnum_type *seqnum,
-    int *bdberr, int getseqnum, uint64_t *out_txnsize, void *blkseq, int blklen,
-    void *blkkey, int blkkeylen)
+int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
+                                    seqnum_type *seqnum, int *bdberr,
+                                    int getseqnum, uint64_t *out_txnsize,
+                                    void *blkseq, int blklen, void *blkkey,
+                                    int blkkeylen)
 {
     int rc = 0, outrc = 0;
     unsigned int flags;
@@ -2102,18 +2103,6 @@ cleanup:
     return outrc;
 }
 
-int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
-                                    seqnum_type *seqnum, int *bdberr,
-                                    int getseqnum, uint64_t *out_txnsize,
-                                    void *blkseq, int blklen, void *blkkey,
-                                    int blkkeylen)
-{
-    int rc = bdb_tran_commit_with_seqnum_int_int(
-        bdb_state, tran, seqnum, bdberr, getseqnum, out_txnsize, blkseq, blklen,
-        blkkey, blkkeylen);
-    return rc;
-}
-
 int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state)
 {
     tran_type *tran;
@@ -2210,25 +2199,6 @@ int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
 
     if (!is_rowlocks_trans)
         BDB_RELLOCK();
-
-    return rc;
-}
-
-int bdb_tran_commit_with_seqnum(bdb_state_type *bdb_state, tran_type *tran,
-                                seqnum_type *seqnum, int *bdberr)
-{
-    int rc;
-
-    /* lock was acquired in bdb_tran_begin */
-    /* BDB_READLOCK(); */
-
-    /* if we were passed a child, find his parent */
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    rc = bdb_tran_commit_with_seqnum_int(bdb_state, tran, seqnum, bdberr, 1,
-                                         NULL, NULL, 0, NULL, 0);
-    BDB_RELLOCK();
 
     return rc;
 }

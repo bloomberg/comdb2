@@ -183,7 +183,8 @@ done:
     if (t) {
         if (rc == 0) {
             seqnum_type seqnum;
-            rc = bdb_tran_commit_with_seqnum(bdb_state, t, &seqnum, &bdberr);
+            rc = bdb_tran_commit_with_seqnum_size(bdb_state, t, &seqnum, NULL,
+                                                  &bdberr);
             if (rc)
                 goto ret;
             rc = bdb_wait_for_seqnum_from_all(bdb_state, &seqnum);

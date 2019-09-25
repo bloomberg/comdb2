@@ -168,7 +168,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL;
 
-    if (clnt->verifyretry_off || clnt->isselect || clnt->trans_has_sp ||
+    if (clnt->verifyretry_off || clnt->isselect || clnt->dbtran.trans_has_sp ||
         clnt->has_recording) {
         return 0;
     }
