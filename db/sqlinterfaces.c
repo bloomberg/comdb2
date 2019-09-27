@@ -2286,9 +2286,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
 
         if (rc == SQLITE_TOOBIG) {
-            strncpy(clnt->osql.xerr.errstr,
-                    "transaction too big, try increasing the limit using 'SET "
-                    "maxtransize N'",
+            strncpy(clnt->osql.xerr.errstr, "transaction too big",
                     sizeof(clnt->osql.xerr.errstr));
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
         }
@@ -6552,8 +6550,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
             *errstr = clnt->sqlite_errstr;
             clnt->saved_errstr = 0;
         } else {
-            *errstr = "transaction too big, try increasing the limit using "
-                      "'SET maxtransize N'";
+            *errstr = "transaction too big";
         }
         rc = ERR_TRAN_TOO_BIG;
         break;
