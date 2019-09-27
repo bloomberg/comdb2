@@ -881,7 +881,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
-	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -903,7 +903,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -928,7 +928,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -972,7 +972,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
-	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -1000,7 +1000,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
