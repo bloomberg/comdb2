@@ -147,9 +147,11 @@ if {[llength [info commands normalizeResult]] == 0} then {
       return <cnonce>
     }
 
+    set percentX1 {(?:0x)?[0-9A-F]{1,16}}; # optional hex prefix
+    set percentX2 {[0-9A-F]{1,16}}; # no hex prefix
+
     set pattern2 [appendArgs \
-        ^ $percentD - $percentD - {(?:0x)?[0-9A-F]{1,16}} - \
-        {[0-9A-F]{1,16}} \$]
+        ^ $percentD - $percentD - $percentX1 - $percentX2 \$]
 
     if {[regexp -nocase -- $pattern2 $result]} then {
       return <cnonce>
