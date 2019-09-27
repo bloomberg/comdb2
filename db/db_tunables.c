@@ -313,6 +313,7 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit = MAXBLOBLENGTH; // = 255 MiB
 
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;

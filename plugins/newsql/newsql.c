@@ -1765,6 +1765,20 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 printf("setting clnt->osql_max_trans to %d\n",
                        clnt->osql_max_trans);
 #endif
+            } else if (strncasecmp(sqlstr, "groupconcatmemlimit",
+                                   sizeof("groupconcatmemlimit") - 1) == 0) {
+                sqlstr += sizeof("groupconcatmemlimit");
+                int sz = strtol(sqlstr, &endp, 10);
+                if (endp != sqlstr && sz >= 0)
+                    clnt->group_concat_mem_limit = sz;
+                else
+                    logmsg(LOGMSG_ERROR,
+                           "Error: bad value for groupconcatmemlimit %s\n",
+                           sqlstr);
+#ifdef DEBUG
+                printf("setting clnt->group_concat_mem_limit to %d\n",
+                       clnt->group_concat_mem_limit);
+#endif
             } else if (strncasecmp(sqlstr, "plannereffort", 13) == 0) {
                 sqlstr += 13;
                 int effort = strtol(sqlstr, &endp, 10);

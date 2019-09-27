@@ -714,6 +714,7 @@ struct sqlclntstate {
                             "begin" but not yet commit or rollback */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
+    char *sqlite_errstr; /* sqlite error string, static, never allocated */
 
     int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
     int step_rc;    /* last value returned from sqlite3_step() */
@@ -748,6 +749,7 @@ struct sqlclntstate {
 
     int planner_effort;
     int osql_max_trans;
+    int group_concat_mem_limit;
     /* read-set validation */
     CurRangeArr *arr;
     CurRangeArr *selectv_arr;

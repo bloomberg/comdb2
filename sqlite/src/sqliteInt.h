@@ -3558,6 +3558,10 @@ struct sqlite3_str {
   u32  nChar;          /* Length of the string so far */
   u8   accError;       /* SQLITE_NOMEM or SQLITE_TOOBIG */
   u8   printfFlags;    /* SQLITE_PRINTF flags below */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  u8   noExtraAlloc;   /* Make no attempts to allocate exponential amount of
+                          memory */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 #define SQLITE_PRINTF_INTERNAL 0x01  /* Internal-use-only converters allowed */
 #define SQLITE_PRINTF_SQLFUNC  0x02  /* SQL function arguments to VXPrintf */
