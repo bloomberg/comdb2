@@ -5443,6 +5443,11 @@ static inline void only_read_config(cdb2_hndl_tp *hndl)
     set_cdb2_timeouts(hndl);
 }
 
+void cdb2_read_comdb2db_configs(void)
+{
+    only_read_config(NULL);
+}
+
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
     char comdb2db_hosts[MAX_NODES][64];

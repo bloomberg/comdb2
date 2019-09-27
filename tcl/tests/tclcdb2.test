@@ -2210,6 +2210,16 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
 
 ###############################################################################
 
+catch {resetConfig false}; # Reset configuration and disable sockpool.
+
+###############################################################################
+
+test cdb2-89.4 {configure sub-command w/defaults} -body {
+  cdb2 configure "" false false; # Load all configuration files.
+} -result {}
+
+###############################################################################
+
 catch {resetConfig true}; # Reset configuration and enable sockpool.
 
 ###############################################################################
