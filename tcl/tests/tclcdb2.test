@@ -140,10 +140,18 @@ if {[llength [info commands normalizeResult]] == 0} then {
 
     set percentD {(?:-)?[0-9]{1,10}}
 
-    set pattern [appendArgs \
-        ^ $percentD - $percentD - $percentD - $percentD \$]
+    set pattern1 [appendArgs \
+        ^ $percentD - $percentD - $percentD - $percentD \$]; # TODO: When?
 
-    if {[regexp -- $pattern $result]} then {
+    if {[regexp -- $pattern1 $result]} then {
+      return <cnonce>
+    }
+
+    set pattern2 [appendArgs \
+        ^ $percentD - $percentD - {(?:0x)?[0-9A-F]{1,16}} - \
+        {[0-9A-F]{1,16}} \$]
+
+    if {[regexp -nocase -- $pattern2 $result]} then {
       return <cnonce>
     }
 
