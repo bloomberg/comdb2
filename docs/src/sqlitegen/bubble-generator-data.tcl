@@ -716,7 +716,7 @@ stack
       {stack
           {line {opt CONSTRAINT constraint-name } }
           {or
-              {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+              {line FOREIGN KEY ( {loop /column-name ,} ) foreign-key-def}
               {line CHECK ( expr ) }
           }
       }
@@ -724,7 +724,7 @@ stack
 
   foreign-key-def {
       stack
-      {line REFERENCES table-name ( index-column-list ) }
+      {line REFERENCES table-name ( {loop /column-name ,} ) }
       {opt
           {loop
               {line ON
@@ -767,7 +767,7 @@ stack
                               }
                               {stack
                                   {line {opt CONSTRAINT constraint-name } }
-                                  {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                                  {line FOREIGN KEY ( {loop /column-name ,} ) foreign-key-def }
                               }
                           }
                       }
