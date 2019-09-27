@@ -5369,9 +5369,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortOrder == SQLITE_SO_DESC) {
-                idx_part->flags |= INDEX_ORDER_DESC;
-            }
+            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5393,9 +5391,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortOrder == SQLITE_SO_DESC) {
-            idx_part->flags |= INDEX_ORDER_DESC;
-        }
+        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -5436,14 +5432,9 @@ void comdb2CreateForeignKey(
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
         {
-            int sort_order =
-                (parent_table->schema->ix[i]->member[j].flags & INDEX_DESCEND)
-                    ? INDEX_ORDER_DESC
-                    : 0;
-            if ((strcasecmp(idx_part->name,
-                            parent_table->schema->ix[i]->member[j].name) !=
-                 0) ||
-                idx_part->flags != sort_order) {
+            if (strcasecmp(idx_part->name,
+                           parent_table->schema->ix[i]->member[j].name) !=
+                0) {
                 key_found = 0;
                 break;
             }
