@@ -2289,14 +2289,14 @@ static int tclcdb2ObjCmd(
 		    cdb2_set_comdb2db_info(NULL);
 		}
 	    } else if ((config == NULL) || (config[0] == '\0')) {
+		assert(config[0] == '\0');
 		if (useFile) {
-		    assert(config != NULL);
-		    assert(config[0] == '\0');
 		    cdb2_set_comdb2db_config(config);
 		} else {
 		    cdb2_read_comdb2db_configs();
 		}
 	    } else {
+		assert(config[0] != '\0');
 		if (useFile) {
 		    cdb2_set_comdb2db_config(config);
 		} else {
