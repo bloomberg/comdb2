@@ -893,7 +893,11 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
     char *zOld = isMalloced(p) ? p->zText : 0;
     i64 szNew = p->nChar;
     szNew += N + 1;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( (p->noExtraAlloc==0) && (szNew+p->nChar<=p->mxAlloc) ){
+#else
+    if( szNew+p->nChar<=p->mxAlloc ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       /* Force exponential buffer size growth as long as it does not overflow,
       ** to avoid having to call this routine too often */
       szNew += p->nChar;
