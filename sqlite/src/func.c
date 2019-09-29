@@ -2255,8 +2255,7 @@ static void groupConcatStep(
     sqlite3 *db = sqlite3_context_db_handle(context);
     int firstTerm = pAccum->mxAlloc==0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd!=NULL ? thd->clnt : NULL;
+    struct sqlclntstate *clnt = get_sql_clnt();
 
     pAccum->mxAlloc = (clnt && clnt->group_concat_mem_limit != 0) ?
       clnt->group_concat_mem_limit : db->aLimit[SQLITE_LIMIT_LENGTH];
