@@ -3183,8 +3183,9 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
 		for (int i = 0; i < sh_locker->ntrackedlocks; i++) {
 			if (sh_locker->tracked_locklist[i] == lockp) {
-				sh_locker->tracked_locklist[i] = sh_locker->tracked_locklist[
+				struct __db_lock *last = sh_locker->tracked_locklist[
 					sh_locker->ntrackedlocks - 1];
+				sh_locker->tracked_locklist[i] = last;
 				sh_locker->ntrackedlocks--;
 				i--;
 			}
