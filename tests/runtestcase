@@ -231,10 +231,12 @@ verify_db_at_finish() {
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select * from comdb2_tables')
+    node=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
+    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
     for t in $tables ; do 
-        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
-        if ! grep "Verify succeeded." verify.out > /dev/null ; then
+        outfl=${t}_verify.out
+        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+        if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
             echo "Table $t"
             return
         fi
@@ -287,12 +289,15 @@ fi
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     dbdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
 
+    # if no crashes, check secondary
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
         dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
 
+    # if no crashes, run verify
     if [[ -z "$dbdown" ]] ; then
         verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
+        # if no issues with verify, run verify on secondary
         if [[ -z "$verify_ret" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
         fi
