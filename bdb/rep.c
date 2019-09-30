@@ -2359,6 +2359,43 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
 int gbl_catchup_window_trace = 0;
 extern int gbl_set_seqnum_trace;
 
+static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations, 
+        seqnum_type *seqnum, int node_ix)
+{
+    int trace = bdb_state->attr->wait_for_seqnum_trace, now;
+    static int lastpr = 0;
+    if (!seqnum_generations) {
+        return 1;
+    }
+
+    int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
+    if (seqnum->generation > last_generation) {
+        return 1;
+    }
+
+    if (seqnum->generation < last_generation) {
+        if (trace && (now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_USER, "seqnum-generation %d < last_generation %d, not"
+                    "copying\n", seqnum->generation, last_generation);
+            lastpr = now;
+        }
+        return 0;
+    }
+
+    DB_LSN last_lsn = bdb_state->seqnum_info->seqnums[node_ix].lsn;
+    if (log_compare(&last_lsn, &seqnum->lsn) > 0) {
+        if (trace && (now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_USER, "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not"
+                    "copying\n", seqnum->lsn.file, seqnum->lsn.offset,
+                    last_lsn.file, last_lsn.offset);
+            lastpr = now;
+        }
+        return 0;
+    }
+
+    return 1;
+}
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
                                      uint8_t is_tcp)
@@ -2376,6 +2413,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int now;
     int track_times;
     int node_ix = nodeix(host);
+    int seqnum_generations;
 
     track_times = bdb_state->attr->track_replication_times;
 
@@ -2387,7 +2425,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
     /* if the generation number here is not equal to ours, ignore it .. if we
      * are master, we should downgrade ..*/
-    if (bdb_state->attr->enable_seqnum_generations) {
+    if ((seqnum_generations = bdb_state->attr->enable_seqnum_generations)) {
         uint64_t issue_time, base_ts, lease_time;
 
         // maybe we're getting alot of these?
@@ -2504,8 +2542,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
                seqnum->commit_generation, mygen, change_coherency);
     }
-    memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
-           sizeof(seqnum_type));
+
+    if (copy_seqnum(bdb_state, seqnum_generations, seqnum, node_ix)) {
+        memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
+                sizeof(seqnum_type));
+    }
 
     if (gbl_set_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d\n", __func__,
