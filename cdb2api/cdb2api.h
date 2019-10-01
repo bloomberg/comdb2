@@ -191,7 +191,6 @@ typedef struct cdb2_effects_type cdb2_effects_tp;
 typedef struct cdb2_effects_type effects_tp;
 #endif
 
-void cdb2_read_comdb2db_configs(void);
 void cdb2_set_comdb2db_config(const char *cfg_file);
 void cdb2_set_comdb2db_info(const char *cfg_info);
 

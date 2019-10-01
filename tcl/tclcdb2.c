@@ -2282,26 +2282,10 @@ static int tclcdb2ObjCmd(
 	    config = Tcl_GetString(objv[2]);
 	    assert(config != NULL);
 
-	    if (reset) {
-		if (useFile) {
-		    cdb2_set_comdb2db_config(NULL);
-		} else {
-		    cdb2_set_comdb2db_info(NULL);
-		}
-	    } else if ((config == NULL) || (config[0] == '\0')) {
-		assert(config[0] == '\0');
-		if (useFile) {
-		    cdb2_set_comdb2db_config(config);
-		} else {
-		    cdb2_read_comdb2db_configs();
-		}
+	    if (useFile) {
+		cdb2_set_comdb2db_config(reset ? NULL : config);
 	    } else {
-		assert(config[0] != '\0');
-		if (useFile) {
-		    cdb2_set_comdb2db_config(config);
-		} else {
-		    cdb2_set_comdb2db_info(config);
-		}
+		cdb2_set_comdb2db_info(reset ? NULL : config);
 	    }
 
 	    Tcl_ResetResult(interp);

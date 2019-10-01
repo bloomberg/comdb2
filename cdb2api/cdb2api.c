@@ -1422,6 +1422,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                     }
                 }
 #endif
+            } else if (strcasecmp("include_defaults", tok) == 0) {
+                only_read_config(NULL);
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -5441,11 +5443,6 @@ static inline void only_read_config(cdb2_hndl_tp *hndl)
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                                     NULL, NULL);
     set_cdb2_timeouts(hndl);
-}
-
-void cdb2_read_comdb2db_configs(void)
-{
-    only_read_config(NULL);
 }
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
