@@ -89,8 +89,8 @@ int main(int argc, char *argv[])
     extern char *optarg;
     extern int optind, optopt;
 
-    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_CREATE_MODE, PARTIAL_RESTORE_MODE, NO_MODE};
-    modes_enum mode = NO_MODE;
+    enum class Mode {create, extract, partial_create, partial_restore, none};
+    Mode mode = Mode::none;
 
     int c;
 
@@ -254,19 +254,19 @@ int main(int argc, char *argv[])
     for(const char *cp = argv[0]; *cp; ++cp) {
         switch(*cp) {
             case 'c':
-                mode = CREATE_MODE;
+              mode = Mode::create;
                 break;
 
             case 'p':
-                mode = PARTIAL_CREATE_MODE;
+              mode = Mode::partial_create;
                 break;
 
             case 'P':
-                mode = PARTIAL_RESTORE_MODE;
+              mode = Mode::partial_restore;
                 break;
 
             case 'x':
-                mode = EXTRACT_MODE;
+              mode = Mode::extract;
                 break;
 
             default:
@@ -279,11 +279,11 @@ int main(int argc, char *argv[])
     // known to set an odd umask
     umask(02);
 
-    if(mode == NO_MODE) {
+    if(mode == Mode::none) {
         std::cerr << "Must specify a valid mode" << std::endl;
         std::exit(2);
 
-    } else if(mode == CREATE_MODE) {
+    } else if(mode == Mode::create) {
         // In create mode we expect one more parameter, the path to the lrl
         // file that we must back up.
         if(argc != 2) {
@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
             errexit();
         }
 
-    } else if(mode == EXTRACT_MODE) {
+    } else if(mode == Mode::extract) {
 
         // In extract mode we expect two parameters or none
         std::string lrldest, datadest;
@@ -358,7 +358,7 @@ int main(int argc, char *argv[])
               errexit();
             }
         }
-    } else if (mode == PARTIAL_CREATE_MODE) {
+    } else if (mode == Mode::partial_create) {
         // A lot like create, we create a tarball, but we don't do
         // lots of other things that create does, so it's a great
         // deal easier to skip that code
@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
             std::cerr << e.what() << std::endl;
             errexit();
         }
-    } else if (mode == PARTIAL_RESTORE_MODE) {
+    } else if (mode == Mode::partial_restore) {
         // Also a lot like restore, with enough differences
         // that it's incredibly ... unclean ... to make the
         // restore code do what we need

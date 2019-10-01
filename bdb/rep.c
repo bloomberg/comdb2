@@ -4466,7 +4466,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
         memcpy(rcv->data, data, size);
 
         rc = thdpool_enqueue(gbl_pgcompact_thdpool, pg_compact_do_work_pp, rcv,
-                             0, NULL, 0);
+                             0, NULL, 0, PRIORITY_T_DEFAULT);
 
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s %d: failed to thdpool_enqueue rc = %d.\n",
@@ -4884,7 +4884,8 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     work->mpf = mpf;
     work->pgno = pgno;
     rc =
-        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
+        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0,
+                        PRIORITY_T_DEFAULT);
     return rc;
 }
 
@@ -4918,7 +4919,7 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     qdata->pgno = pgno;
 
     rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0,
-                         NULL, 0);
+                         NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);

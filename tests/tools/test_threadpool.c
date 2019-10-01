@@ -64,7 +64,7 @@ int main()
         work->c = &c;
         c.spawned_count++;
         int rc = thdpool_enqueue(my_thdpool, handler_work_pp, work, 0, NULL, 
-                THDPOOL_FORCE_QUEUE);
+                THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
         if (rc) {
             fprintf(stderr, "Error from thdpool_enqueue, rc=%d\n", rc);
             exit(1);

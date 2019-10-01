@@ -80,6 +80,7 @@ extern int gbl_partial_indexes;
 
 extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
+int gbl_toblock_random_deadlock_trans;
 
 typedef struct osql_blknds {
     char *nds[MAX_CLUSTER];        /* list of nodes to blackout in offloading */
@@ -3183,9 +3184,6 @@ int osql_comm_blkout_node(const char *host)
     for (i = 0; i < len; i++) {
         if (host == blk->nds[i]) {
             blk->times[i] = time(NULL); /* refresh blackout */
-#ifdef OFFLOAD_TEST
-            fprintf(stderr, "BO %d %u\n", node, blk->times[i]);
-#endif
             break;
         }
     }
@@ -6909,6 +6907,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
 
+        if (gbl_toblock_random_deadlock_trans && (rand() % 100) == 0) {
+            rc = RC_INTERNAL_RETRY;
+        }
+
         return rc ? rc : OSQL_RC_DONE; /* signal caller done processing this
                                           request */
     }
@@ -8619,7 +8621,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8654,7 +8656,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8689,7 +8691,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long geni
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8727,7 +8729,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int recle
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata->record);
@@ -8771,7 +8773,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata->record);

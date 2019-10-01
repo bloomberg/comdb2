@@ -86,3 +86,32 @@ constraints
 [INSERT INTO t1 VALUES('aaaa')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_A48D84B' unable to add record rc = 320
 (rows inserted=1)
 (order='aaa')
+(test='10. Check during FK cascade')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_877B2989" = i 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_1E994F88" = i 
+	}
+constraints
+	{
+		"$KEY_1E994F88" -> <"t1":"$KEY_877B2989"> on update cascade 
+		check "valid_pct" = {where i BETWEEN 0 AND 100}
+	}
+')
+(rows inserted=1)
+(rows inserted=1)
+[UPDATE t1 SET i=110 WHERE i=1] failed with rc 3 CHECK constraint violation verify key constraint cannot cascade update table 't2' rc 320
+(i=1)
+(i=1)

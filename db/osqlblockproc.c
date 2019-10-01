@@ -1354,7 +1354,6 @@ static int process_this_session(
     uuid_t uuid;
 
     iq->queryid = osql_sess_queryid(sess);
-
     osql_sess_getuuid(sess, uuid);
 
     if (rqid != OSQL_RQID_USE_UUID)

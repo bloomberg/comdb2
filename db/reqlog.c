@@ -123,7 +123,7 @@ int sqldbgflag = 0;
 
 static void log_all_events(struct reqlogger *logger, struct output *out);
 
-void sltdbt_get_stats(int *n_reqs, int *l_reqs)
+inline void sltdbt_get_stats(int *n_reqs, int *l_reqs)
 {
     *n_reqs = norm_reqs;
     *l_reqs = long_reqs;
@@ -1446,6 +1446,7 @@ void reqlog_new_request(struct ireq *iq)
     }
 
     logger->startus = iq->nowus;
+    logger->startprcsus = logger->startus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
     if (iq->is_fromsocket) {
@@ -1456,13 +1457,18 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
+inline void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
 {
     if (sqlstmt) {
         if (logger->stmt) free(logger->stmt);
         logger->stmt = strdup(sqlstmt);
     }
     if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
+}
+
+inline void reqlog_set_startprcs(struct reqlogger *logger, uint64_t val)
+{
+    logger->startprcsus = val;
 }
 
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
@@ -1473,6 +1479,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = comdb2_time_epochus();
+    logger->startprcsus = logger->startus;
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD32(gbl_nnewsql);
@@ -1559,7 +1566,8 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                     expanded_fp);
     }
 
-    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
+    dumpf(logger, out, " rqid %s from %s rc %d\n", logger->id,
+          reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1703,12 +1711,12 @@ static int indblrange(const struct dblrange *range, double value)
     }
 }
 
-void reqlog_set_cost(struct reqlogger *logger, double cost)
+inline void reqlog_set_cost(struct reqlogger *logger, double cost)
 {
     if (logger) logger->sqlcost = cost;
 }
 
-void reqlog_set_rows(struct reqlogger *logger, int rows)
+inline void reqlog_set_rows(struct reqlogger *logger, int rows)
 {
     if (logger) logger->sqlrows = rows;
 }
@@ -1718,7 +1726,7 @@ uint64_t reqlog_current_us(struct reqlogger *logger)
     return (comdb2_time_epochus() - logger->startus);
 }
 
-void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
+inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
 {
     if (idlen == sizeof(uuid_t))
         comdb2uuidstr(id, logger->id);
@@ -1767,7 +1775,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->rc = rc;
 
     logger->durationus =
-        (comdb2_time_epochus() - logger->startus) + logger->queuetimeus;
+        (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1998,7 +2006,7 @@ int reqlog_truncate()
     return reqltruncate;
 }
 
-void reqlog_set_truncate(int val)
+inline void reqlog_set_truncate(int val)
 {
     reqltruncate = val;
     logmsg(LOGMSG_USER, "truncate %s\n", reqltruncate ? "enabled" : "disabled");
@@ -2689,22 +2697,27 @@ void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...)
     logger->origin[sizeof(logger->origin) - 1] = 0;
 }
 
-const char *reqlog_get_origin(struct reqlogger *logger)
+inline const char *reqlog_get_origin(const struct reqlogger *logger)
 {
     return logger->origin;
 }
 
-void reqlog_set_vreplays(struct reqlogger *logger, int replays)
+inline void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 {
     if (logger) logger->vreplays = replays;
 }
 
-void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
+inline void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
+inline uint64_t reqlog_get_queue_time(const struct reqlogger *logger)
+{
+    return logger->queuetimeus;
+}
+
+inline void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
 {
     if (logger == NULL)
         return;
@@ -2723,7 +2736,7 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
 {
     logger->event_type = evtype;
 }
@@ -2738,32 +2751,39 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
     logger->sqltables[logger->ntables++] = strdup(table);
 }
 
-void reqlog_set_error(struct reqlogger *logger, const char *error,
-                      int error_code)
+inline void reqlog_set_error(struct reqlogger *logger, const char *error,
+                             int error_code)
 {
     logger->error = strdup(error);
     logger->error_code = error_code;
 }
 
-int reqlog_get_error_code(struct reqlogger *logger)
+inline int reqlog_get_error_code(const struct reqlogger *logger)
 {
     return logger->error_code;
 }
 
-void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)
+inline void reqlog_set_path(struct reqlogger *logger,
+                            struct client_query_stats *path)
 {
     logger->path = path;
 }
 
-void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
+inline void reqlog_set_context(struct reqlogger *logger, int ncontext,
+                               char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;
 }
 
-void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
+inline void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     logger->clnt = clnt;
+}
+
+inline int reqlog_get_retries(const struct reqlogger *logger)
+{
+    return logger->iq ? logger->iq->retries : 0;
 }
 
 struct dump_client_sql_options  {

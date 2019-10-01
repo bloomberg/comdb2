@@ -912,6 +912,21 @@ REGISTER_TUNABLE("print_syntax_err",
                  "Trace all SQL with syntax errors. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("prioritize_queries",
+                 "Prioritize SQL queries based on loaded rulesets. "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.force_thdpool_priority",
+                 "Force highest thread pool priority to the specified value "
+                 "instead of actually reading it from the thread pool queue. "
+                 "(Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_force_thdpool_priority, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_prioritize_queries",
+                 "Show prioritized SQL queries based on origin and "
+                 "fingerprint.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_verbose_prioritize_queries, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -1186,8 +1201,25 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.thdpool_queue_only",
+                 "Force SQL query work items to be queued by the thread pool "
+                 "even when a thread may be available.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_thdpool_queue_only,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_delayed",
+                 "Force a random SQL query to be delayed 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_delayed,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_rejected",
+                 "Force a random SQL query to be rejected 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_rejected,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.toblock_random_deadlock_trans",
+                 "return deadlock for a fraction of txns", TUNABLE_BOOLEAN,
+                 &gbl_toblock_random_deadlock_trans, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
                  "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
                  &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
@@ -1808,5 +1840,8 @@ REGISTER_TUNABLE("strict_double_quotes",
                  "syntax error (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
+                 TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

@@ -1,0 +1,28 @@
+version 1
+
+rule 1 action REJECT
+rule 1 mode EXACT
+rule 1 fingerprint X'ffffffffffffffffffffffffffffffff'
+
+rule 2 action NONE
+rule 2 mode REGEXP
+rule 2 mode EXACT
+rule 2 mode REGEXP
+rule 2 sql .*
+rule 2 mode EXACT
+rule 2 mode REGEXP
+rule 2 mode EXACT
+
+rule 3 action NONE
+rule 3 mode EXACT
+rule 3 mode REGEXP
+rule 3 mode EXACT
+rule 3 sql .*
+rule 3 mode REGEXP
+rule 3 mode EXACT
+rule 3 mode REGEXP
+
+rule 4 action NONE
+rule 4 mode EXACT
+rule 4 fingerprint X'00000000000000000000000000000000'
+rule 4 flags {BAD}

@@ -407,6 +407,7 @@ enum RCODES {
     ERR_CHECK_CONSTRAINT = 320,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
+    ERR_QUERY_REJECTED = 451,
     ERR_INCOHERENT =
         996, /* prox2 understands it should retry another node for 996 */
     ERR_SQL_PREPARE = 1003,
@@ -1325,7 +1326,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
-    uint64_t startus; /*thread handling*/
+    uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
@@ -2883,6 +2884,7 @@ int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
 void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt);
+void reqlog_set_startprcs(struct reqlogger *logger, uint64_t start);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
@@ -2895,6 +2897,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
+uint64_t reqlog_get_queue_time(const struct reqlogger *logger);
 void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
@@ -2902,7 +2905,10 @@ void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
-int reqlog_get_error_code(struct reqlogger *logger);
+void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
+const char *reqlog_get_origin(const struct reqlogger *logger);
+int reqlog_get_retries(const struct reqlogger *logger);
+int reqlog_get_error_code(const struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
@@ -3389,8 +3395,6 @@ extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
-void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
-const char *reqlog_get_origin(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
@@ -3609,6 +3613,9 @@ extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
+extern int gbl_prioritize_queries;
+extern int gbl_debug_force_thdpool_priority;
+extern int gbl_verbose_prioritize_queries;
 
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;
