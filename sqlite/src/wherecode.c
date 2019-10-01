@@ -1441,7 +1441,8 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     addrNxt = pLevel->addrNxt;
     sqlite3VdbeAddOp3(v, OP_SeekRowid, iCur, addrNxt, iRowidReg);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3VdbeChangeP5(v, 1);
+    if( (pLoop->wsFlags & WHERE_ONEROW) == 0 )
+        sqlite3VdbeChangeP5(v, 1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     VdbeCoverage(v);
     pLevel->op = OP_Noop;
