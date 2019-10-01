@@ -109,7 +109,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key, db->tablename, trans, &ri);
         if (rc == RC_INTERNAL_RETRY) {
             break;
-        } else if (rc != ERR_CONSTR) {
+        } else if (rc && rc != ERR_CONSTR) {
             logmsg(LOGMSG_ERROR,
                    "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
                    ct->lclkeyname, db->tablename, ct->keynm[ri],

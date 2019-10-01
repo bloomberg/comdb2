@@ -2170,7 +2170,6 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
                 *remote_ri = ri;
             return rc;
         }
-
     }
     return 0;
 }
