@@ -5373,7 +5373,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
     /* verification error if not found */
-    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound || bias == OP_IfNoHope) &&
+    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_SeekRowid || bias == OP_NotFound || bias == OP_IfNoHope) &&
         *pRes != 0) {
         verify = 1;
         *pRes = 0;
