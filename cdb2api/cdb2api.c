@@ -1425,7 +1425,15 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 }
 #endif
             } else if (strcasecmp("include_defaults", tok) == 0) {
-                only_read_config(NULL);
+                static int includeDefaultsPending = 0;
+                if (includeDefaultsPending++ == 0) {
+                    int rc1 = pthread_mutex_unlock(&cdb2_sockpool_mutex);
+                    int rc2 = pthread_mutex_unlock(&cdb2_cfg_lock);
+                    only_read_config(NULL);
+                    if (rc2 == 0) pthread_mutex_unlock(&cdb2_cfg_lock);
+                    if (rc1 == 0) pthread_mutex_unlock(&cdb2_sockpool_mutex);
+                }
+                includeDefaultsPending--;
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }

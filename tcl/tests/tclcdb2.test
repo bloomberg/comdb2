@@ -2273,6 +2273,11 @@ catch {resetConfig false}; # Reset configuration and disable sockpool.
 ###############################################################################
 
 test cdb2-91.1 {configure sub-command without included defaults} -body {
+  tcltest::Warn [appendArgs \
+      "test \"cdb2-91.1\" MAY take up to TWO FULL " \
+      "MINUTES to complete because it must wait for " \
+      "an API call timeout"]
+
   cdb2 configure [string trim [appendArgs \
     comdb2_config:connect_timeout=3000\n \
     comdb2_config:comdb2db_timeout=5000\n \
@@ -2293,6 +2298,11 @@ catch {resetConfig false}; # Reset configuration and disable sockpool.
 ###############################################################################
 
 test cdb2-91.2 {configure sub-command with included defaults} -body {
+  tcltest::Warn [appendArgs \
+      "test \"cdb2-91.2\" MAY take up to TWO FULL " \
+      "MINUTES to complete because it must wait for " \
+      "an API call timeout"]
+
   cdb2 configure [string trim [appendArgs \
     comdb2_config:include_defaults\n \
     comdb2_config:connect_timeout=2000\n \
