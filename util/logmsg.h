@@ -45,9 +45,11 @@ int logmsg_process_message(char *line, int llen);
 int logmsg_level_update(void *unused, void *value);
 int logmsg_syslog_update(void *unused, void *value);
 int logmsg_timestamp_update(void *unused, void *value);
+int logmsg_prefix_level_update(void *unused, void *value);
 void *logmsg_level_value(void *unused);
 void *logmsg_syslog_value(void *unused);
 void *logmsg_timestamp_value(void *unused);
+void *logmsg_prefix_level_value(void *unused);
 
 int io_override_set_std(FILE *);
 FILE *io_override_get_std(void);
