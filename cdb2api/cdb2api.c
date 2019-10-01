@@ -66,6 +66,7 @@ static char CDB2DBCONFIG_TEMP_BB_BIN[512] = "/bb/bin/comdb2db.cfg";
 
 static char *CDB2DBCONFIG_BUF = NULL;
 
+static int cdb2_include_pending = 0;
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
 
@@ -276,6 +277,7 @@ static void reset_the_configuration(void)
         CDB2DBCONFIG_BUF = NULL;
     }
 
+    cdb2_include_pending = 0;
     memset(cdb2_default_cluster, 0, sizeof(cdb2_default_cluster));
     memset(cdb2_comdb2dbname, 0, sizeof(cdb2_comdb2dbname));
     memset(cdb2_dnssuffix, 0, sizeof(cdb2_dnssuffix));
@@ -1425,15 +1427,14 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 }
 #endif
             } else if (strcasecmp("include_defaults", tok) == 0) {
-                static int includeDefaultsPending = 0;
-                if (includeDefaultsPending++ == 0) {
+                if (cdb2_include_pending++ == 0) {
                     int rc1 = pthread_mutex_unlock(&cdb2_sockpool_mutex);
                     int rc2 = pthread_mutex_unlock(&cdb2_cfg_lock);
                     only_read_config(NULL);
                     if (rc2 == 0) pthread_mutex_unlock(&cdb2_cfg_lock);
                     if (rc1 == 0) pthread_mutex_unlock(&cdb2_sockpool_mutex);
                 }
-                includeDefaultsPending--;
+                cdb2_include_pending--;
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -1501,7 +1502,7 @@ static int read_available_comdb2db_configs(
         *num_db_hosts = 0;
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
-    if (CDB2DBCONFIG_BUF != NULL) {
+    if (cdb2_include_pending == 0 && CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                           db_hosts, num_db_hosts, dbnum, send_stack);
