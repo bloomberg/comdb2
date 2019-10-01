@@ -17,6 +17,7 @@
 #ifndef INCLUDED_CONSTRAINTS_H
 #define INCLUDED_CONSTRAINTS_H
 
+#include "cdb2_constants.h"
 #define MAXREF 64
 
 typedef struct {
