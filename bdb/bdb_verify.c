@@ -39,6 +39,7 @@
 #include "tohex.h"
 #include "blob_buffer.h"
 #include "comdb2_atomic.h"
+#include "constraints.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -48,6 +49,8 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
+struct ireq;
+extern struct ireq *get_fake_ireq();
 
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
@@ -580,11 +583,11 @@ err:
     return rc;
 }
 
+
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
-    DB *db;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
@@ -632,6 +635,15 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                  "!ix %d cursor rc %d\n", ix, rc);
         return 0;
     }
+
+    struct ireq *ruleiq = NULL;
+    char ix_tag[MAXTAGLEN];
+    constraint_t *ix_constraint = get_ix_constraint(par->db_table, ix);
+    if (ix_constraint) {
+        snprintf(ix_tag, MAXTAGLEN, ".ONDISK_IX_%d", ix);
+        ruleiq = get_fake_ireq();
+    }
+
     rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_FIRST);
     if (rc && rc != DB_NOTFOUND) {
         par->verify_status = 1;
@@ -665,7 +677,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 #endif
 
         /* make sure the data entry exists: */
-        db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
+        DB *db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
         rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
         if (rc) {
             par->verify_status = 1;
@@ -792,7 +804,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                 blob_buf, dbt_blob_data.data,
                                 dbt_blob_data.size, blobno);
                             if (rc)
-                                return rc;
+                                goto done;
                         }
 
                         free(dbt_blob_data.data);
@@ -920,6 +932,15 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                      genid_right, ix, genid);
         }
 
+
+        if (ix_constraint) {
+            if (check_single_key_constraint(ruleiq, ix_constraint, ix_tag, dbt_key.data, bdb_state->name, NULL, NULL)) {
+                par->verify_status = 1;
+                locprint(par->sb, par->lua_callback, par->lua_params,
+                         "!%016llx ix %d foreign key does not exist\n", genid, ix);
+            }
+        }
+
     next_key:
         rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_NEXT);
     }
@@ -937,7 +958,11 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, ix, now - atstart);
-    return 0;
+done:
+    if (ruleiq)
+        free(ruleiq);
+
+    return rc;
 }
 
 static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,

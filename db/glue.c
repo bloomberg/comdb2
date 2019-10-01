@@ -247,6 +247,13 @@ void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
     iq->use_handle = get_bdb_handle_ireq(iq, auxdb);
 }
 
+struct ireq *get_fake_ireq()
+{
+    struct ireq *iq = malloc(sizeof(struct ireq));
+    init_fake_ireq(thedb, iq);
+    return iq;
+}
+
 void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 {
     /* region 1 */
@@ -6098,3 +6105,5 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     }
     return SQLITE_OK;
 }
+
+

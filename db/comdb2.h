@@ -98,6 +98,7 @@ typedef long long tranid_t;
 #include <cdb2_constants.h>
 #include <schema_lk.h>
 #include "perf.h"
+#include "constraints.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -583,33 +584,6 @@ struct sqlmdbrectype {
     int rootpage;
     char sql[876];
 };
-
-#define MAXREF 64
-
-typedef struct {
-    short dbnum;
-    short ixnum;
-} fk_ref_type;
-
-typedef struct {
-    short num;
-    fk_ref_type ref[MAXREF];
-} fk_ref_array_type;
-
-typedef struct {
-    struct dbtable *lcltable;
-    char *consname;
-    char *lclkeyname;
-    int nrules;
-    int flags;
-    char *table[MAXCONSTRAINTS];
-    char *keynm[MAXCONSTRAINTS];
-} constraint_t;
-
-typedef struct {
-    char *consname;
-    char *expr;
-} check_constraint_t;
 
 struct managed_component {
     int dbnum;
