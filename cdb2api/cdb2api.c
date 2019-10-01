@@ -1431,8 +1431,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                     int rc1 = pthread_mutex_unlock(&cdb2_sockpool_mutex);
                     int rc2 = pthread_mutex_unlock(&cdb2_cfg_lock);
                     only_read_config(NULL);
-                    if (rc2 == 0) pthread_mutex_unlock(&cdb2_cfg_lock);
-                    if (rc1 == 0) pthread_mutex_unlock(&cdb2_sockpool_mutex);
+                    if (rc2 == 0) pthread_mutex_lock(&cdb2_cfg_lock);
+                    if (rc1 == 0) pthread_mutex_lock(&cdb2_sockpool_mutex);
                 }
                 cdb2_include_pending--;
             }
