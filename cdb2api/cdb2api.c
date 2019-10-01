@@ -1209,6 +1209,8 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 }
 #endif
 
+static void only_read_config(cdb2_hndl_tp *hndl); /* FORWARD */
+
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                               const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][64], int *num_hosts,

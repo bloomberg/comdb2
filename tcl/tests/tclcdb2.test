@@ -274,6 +274,10 @@ if {[llength [info commands getDbName]] == 0} then {
       set name [getEnvVar TCLCDB2_DB_NAME]
     }
 
+    if {[string length $name] == 0} then {
+      error "no database name specified, please set TCLCDB2_DB_NAME"
+    }
+
     return $name
   }
 }
