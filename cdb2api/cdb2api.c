@@ -1425,13 +1425,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 }
 #endif
             } else if (strcasecmp("include_defaults", tok) == 0) {
-                static int include_defaults_pending = 0;
-                if (include_defaults_pending++ == 0) {
-                    pthread_mutex_unlock(&cdb2_sockpool_mutex);
-                    only_read_config(NULL, 1, 1);
-                    pthread_mutex_lock(&cdb2_sockpool_mutex);
-                }
-                include_defaults_pending--;
+                pthread_mutex_unlock(&cdb2_sockpool_mutex);
+                only_read_config(NULL, 1, 1);
+                pthread_mutex_lock(&cdb2_sockpool_mutex);
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
