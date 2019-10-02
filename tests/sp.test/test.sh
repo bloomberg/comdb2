@@ -89,7 +89,7 @@ for testcase in $files ; do
     output=$testcase.res
 
     # full path 
-    [[ "$output" == "${output#\/}" ]] && output=$(pwd)/$output
+    [[ "$output" == "${output#\/}" ]] && output=${PWD}/$output
     
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
