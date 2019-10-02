@@ -33,8 +33,6 @@
 #include "indices.h"
 #include "osqlsqlthr.h"
 
-#define DEBUG_REORDER 0
-
 
 static char *get_temp_ct_dbname(long long *);
 static int is_update_op(int op);
@@ -273,9 +271,6 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
 
-#if DEBUG_REORDER
-logmsg(LOGMSG_DEBUG, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
-#endif
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -1038,10 +1033,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             return ERR_INTERNAL;
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
-#if DEBUG_REORDER
-logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
-#endif
-
         int flags = curop->flags;
         /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
          * already been added to the indexes in add_record() to ensure

@@ -68,8 +68,6 @@
 #include <ctrace.h>
 #include "intern_strings.h"
 
-#define DEBUG_REORDER 0
-
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
