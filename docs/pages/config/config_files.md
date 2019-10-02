@@ -694,6 +694,7 @@ lease if a node is either not responding or is significantly slower than the oth
 |REP_VERIFY_MIN_PROGRESS | 10485760 | Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.
 |REP_VERIFY_LIMIT_ENABLED | 1 | Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.
 |TIMEPART_CHECK_SHARD_EXISTENCE | 0 | Check at startup/time partition creation that all shard files exist.
+|FILE_PERMS| 0664 | Default file permission for database-owned files.
 
 ### Init time options
 
