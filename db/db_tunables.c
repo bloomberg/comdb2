@@ -254,7 +254,6 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
-extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
 
 extern char *gbl_kafka_topic;
@@ -875,6 +874,16 @@ static int page_order_table_scan_update(void *context, void *value)
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
     return 0;
+}
+
+static void *portmux_bind_path_get(void *dum)
+{
+    return get_portmux_bind_path();
+}
+
+static int portmux_bind_path_set(void *dum, void *path)
+{
+    return set_portmux_bind_path(path);
 }
 
 /* Routines for the tunable system itself - tunable-specific

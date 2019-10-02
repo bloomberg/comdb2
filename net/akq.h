@@ -15,23 +15,11 @@
  */
 
 #pragma once
+#include <stddef.h>
 #include <dbinc/queue.h>
 struct akq;
 typedef void (*akq_callback)(void *);
-struct akq_work {
-    TAILQ_ENTRY(akq_work) entry;
-};
 void *akq_work_new(struct akq *);
 void akq_enqueue(struct akq *, void *);
-#define akq_init(name, func, start, stop)                                      \
-    ({                                                                         \
-        struct akq_init_##name {                                               \
-            struct name data;                                                  \
-            struct akq_work work;                                              \
-        };                                                                     \
-        size_t s = sizeof(struct akq_init_##name);                             \
-        size_t o = offsetof(struct akq_init_##name, work);                     \
-        akq_new(s, o, func, start, stop);                                      \
-    })
 void akq_stop(struct akq *);
-struct akq *akq_new(size_t, size_t, akq_callback, akq_callback, akq_callback);
+struct akq *akq_new(size_t, akq_callback, akq_callback, akq_callback);

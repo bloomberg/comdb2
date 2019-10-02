@@ -56,7 +56,6 @@ typedef long long tranid_t;
 
 #include <flibc.h>
 #include <endian_core.h>
-#include <portmuxapi.h>
 #include <epochlib.h>
 #include <fsnapf.h>
 #include <plhash.h>
@@ -120,7 +119,6 @@ enum AUXDB_TYPES {
     AUXDB_FSTBLK = 3
 };
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL };
 /* This is thenumber of bytes taken up by the null bitmap in the wire protocol,
  * which traditionally is fixed at 32 bytes (enough for 256 columns). */
 enum { NULLBMPWIRELENGTH = 32 };
@@ -868,10 +866,8 @@ struct dbenv {
 
     /*sibling info*/
     int nsiblings;
-    char *sibling_hostname[MAXSIBLINGS];
-    int sibling_node[MAXSIBLINGS];  /* currently not used */
-    int sibling_flags[MAXSIBLINGS]; /* currently not used */
-    int sibling_port[MAXSIBLINGS][MAXNETS];
+    char *sibling_hostname[REPMAX];
+    short sibling_port[REPMAX][MAXNETS];
     int listen_fds[MAXNETS];
     /* banckend db engine handle for replication */
     void *handle_sibling;

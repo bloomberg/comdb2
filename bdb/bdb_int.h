@@ -1031,8 +1031,6 @@ struct bdb_state_tag {
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
 
-    int hellofd;
-
     int logical_live_sc;
     pthread_mutex_t sc_redo_lk;
     pthread_cond_t sc_redo_wait;

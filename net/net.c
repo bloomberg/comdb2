@@ -20,8 +20,6 @@
 #define TCPBUFSZ
 #endif
 
-/*#define PTHREAD_USERFUNC*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -81,7 +79,7 @@
 #include <endian_core.h>
 #include <compile_time_assert.h>
 
-#include <portmuxusr.h>
+#include <portmuxapi.h>
 
 #include <epochlib.h>
 #include <str0.h>
@@ -101,6 +99,8 @@
 #include "perf.h"
 
 #include <crc32c.h>
+
+BB_COMPILE_TIME_ASSERT(NUMNETS, MAXNETS == NET_MAX);
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -4552,7 +4552,7 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
 }
 
 
-void net_cleanup_subnets()
+void net_cleanup()
 {
     Pthread_mutex_lock(&subnet_mtx);
     for (uint8_t i = 0; i < num_dedicated_subnets; i++) {
@@ -4562,6 +4562,7 @@ void net_cleanup_subnets()
         }
     }
     Pthread_mutex_unlock(&subnet_mtx);
+    clear_portmux_bind_path();
 }
 
 /* Dedicated subnets are specified in the lrl file:
@@ -6196,6 +6197,11 @@ int net_init(netinfo_type *netinfo_ptr)
 
     /* block SIGPIPE */
     sighold(SIGPIPE);
+
+    extern int gbl_create_mode;
+    if (gbl_create_mode) {
+        add_host(NULL);
+    }
 
     /* do nothing if we have a fake netinfo */
     if (netinfo_ptr->fake)

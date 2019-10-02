@@ -13,12 +13,14 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/sockpool
   ${PROJECT_SOURCE_DIR}/berkdb
   ${SQLITE3_INCLUDE_DIR}
+  ${LIBEVENT_INCLUDE_DIR}
 )
 set(libs
   cdb2api
   sockpool
   ${PROTOBUF-C_LIBRARY}
   ${SQLITE3_LIBRARY}
+  ${LIBEVENT_LIBRARIES}
   ${CMAKE_DL_LIBS}
 )
 

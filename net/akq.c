@@ -21,6 +21,10 @@
 #include <locks_wrap.h>
 #include <akq.h>
 
+struct akq_work {
+    TAILQ_ENTRY(akq_work) entry;
+};
+
 TAILQ_HEAD(akq_work_list, akq_work);
 
 struct akq {
@@ -90,12 +94,14 @@ void akq_stop(struct akq *q)
     Pthread_join(q->thd, &ret);
 }
 
-struct akq *akq_new(size_t s, size_t o, akq_callback func, akq_callback start,
-                    akq_callback stop)
+struct akq *akq_new(size_t s, akq_callback func, akq_callback start, akq_callback stop)
 {
-    struct akq *q = calloc(1, sizeof(struct akq));
-    q->size = s;
-    q->offset = o;
+    const size_t qsz = sizeof(struct akq);
+    const size_t bound = sizeof(int) - 1;
+    s = (s + bound) & (~bound);
+    struct akq *q = calloc(1, qsz);
+    q->size = s + qsz;
+    q->offset = s;
     q->start = start;
     q->stop = stop;
     q->func = func;
@@ -108,5 +114,5 @@ struct akq *akq_new(size_t s, size_t o, akq_callback func, akq_callback start,
 
 void *akq_work_new(struct akq *q)
 {
-    return malloc((q)->size);
+    return malloc(q->size);
 }

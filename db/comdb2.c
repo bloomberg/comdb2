@@ -1527,7 +1527,7 @@ void clean_exit(void)
     ctrace_closelog();
 
     backend_cleanup(thedb);
-    net_cleanup_subnets();
+    net_cleanup();
     cleanup_sqlite_master();
 
     free_sqlite_table(thedb);
@@ -1549,7 +1549,6 @@ void clean_exit(void)
     free(gbl_myhostname);
 
     cleanresources(); // list of lrls
-    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
@@ -5457,8 +5456,6 @@ int main(int argc, char **argv)
 
     register_all_int_switches();
     repl_list_init();
-
-    set_portmux_bind_path(NULL);
 
     gbl_argc = argc;
     gbl_argv = argv;

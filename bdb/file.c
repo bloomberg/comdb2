@@ -90,7 +90,6 @@
 #include "util.h"
 #include <bb_oscompat.h>
 #include <logmsg.h>
-#include <portmuxapi.h>
 
 #include <build/db_int.h>
 #include "dbinc/db_swap.h"

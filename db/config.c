@@ -732,10 +732,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 tokcpy(tok, ltok, nodename);
                 errno = 0;
 
-                if (dbenv->nsiblings >= MAXSIBLINGS) {
+                if (dbenv->nsiblings >= REPMAX) {
                     logmsg(LOGMSG_ERROR,
                            "too many sibling nodes (max=%d) in lrl %s\n",
-                           MAXSIBLINGS, options->lrlname);
+                           REPMAX, options->lrlname);
                     return -1;
                 }
 
@@ -752,7 +752,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
-                    gbl_rep_node_pri = MAXSIBLINGS - dbenv->nsiblings;
+                    gbl_rep_node_pri = REPMAX - dbenv->nsiblings;
                     continue;
                 }
                 /* lets ignore duplicate for now and make a list out of what is

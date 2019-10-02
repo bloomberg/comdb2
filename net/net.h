@@ -37,6 +37,8 @@
 #   endif
 #endif
 
+enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_MAX };
+
 /* Public structures and typedefs */
 struct netinfo_struct;
 struct host_node_tag;
@@ -408,7 +410,7 @@ void net_disable_test(netinfo_type *netinfo_ptr);
 /* used by comdb2 to add subnet suffices for replication */
 int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
-void net_cleanup_subnets();
+void net_cleanup();
 void net_cleanup_netinfo(netinfo_type *netinfo_ptr);
 
 /* Maximum time accept will wait for a identifying byte from a socket.

@@ -15,95 +15,76 @@
  */
 
 // This program provides a simple port assigner service.  Databases request a
-// port to listen on, which is persistent for multiple database runs.
-// Clients ask which port to connect to for a specific database.
-// Can use a central Comdb2 as a backing store, or SQLite for smaller setups.
+// port to listen on, which is persistent for multiple database runs. Clients
+// ask which port to connect to for a specific database. Can use a central
+// Comdb2 as a backing store, or SQLite for smaller setups.
 
-#include <cstdarg>
-#include <cstdio>
-#include <cstdlib>
-#include <stdlib.h>
-#include <cstring>
-#include <cstdarg>
-#include <assert.h>
-#include <strings.h>
-
-#include <algorithm>
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <vector>
+#include <cassert>
 #include <map>
-#include <set>
-#include <list>
-#include <map>
-#include <algorithm>
 #include <memory>
-#include <thread>
-#include <mutex>
+#include <set>
+#include <string>
+#include <vector>
 
-#include <netdb.h>
-#include <unistd.h>
-#include <limits.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <arpa/inet.h>
-#include <poll.h>
-#include <signal.h>
-#include <syslog.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <netdb.h>
-#ifdef VERBOSE
-#include <fsnapf.h>
-#endif
-#include <passfd.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <syslog.h>
+#include <unistd.h>
 
-#include "pmux_store.h"
-#include "comdb2_store.h"
-#include "sqlite_store.h"
-#include "no_store.h"
+#include <event2/buffer.h>
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <event2/listener.h>
+#include <event2/util.h>
+
 #include <bb_daemon.h>
 
+#include "comdb2_store.h"
+#include "no_store.h"
+#include "pmux_store.h"
+#include "sqlite_store.h"
+
+#ifdef VVERBOSE
+#   define VERBOSE
+#   define reply_log(...) syslog(LOG_DEBUG, __VA_ARGS__)
+#else
+#   define reply_log(...)
+#endif
+
+#ifdef VERBOSE
+#   define verbose_log(...) syslog(LOG_DEBUG, __VA_ARGS__)
+#else
+#   define verbose_log(...)
+#endif
+
+static event_base *base;
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
-static std::mutex fdmap_mutex;
-static std::mutex active_services_mutex;
 static std::set<int> free_ports;
-static long open_max;
 static bool foreground_mode = false;
 static std::unique_ptr<pmux_store> pmux_store;
-static std::vector<struct in_addr> local_addresses(5);
+static std::vector<in_addr> local_addresses;
 static std::vector<std::pair<int, int>> port_ranges;
+static std::string unix_bind_path("/tmp/portmux.socket");
 
-struct connection {
-    int fd;
-    std::list<std::string> out;
-    char inbuf[256];
-    int inoff;
-    bool writable;
-    bool is_hello;
-    std::string service;
-    struct in_addr addr;
-    connection(void)
-        : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out(),
-          is_hello(false)
-    {
-    }
-};
-
-static std::set<std::string> active_services;
-
-std::vector<connection> connections;
-
-static char unix_bind_path[108] = "/tmp/portmux.socket";
+bool operator==(const in_addr&a, const in_addr &b)
+{
+    return a.s_addr == b.s_addr;
+}
 
 static int get_fd(const char *svc)
 {
     int fd_ret = -1;
     std::string key(svc);
-    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &fd = fd_map.find(key);
     if (fd != fd_map.end()) {
         fd_ret = fd->second;
@@ -111,25 +92,22 @@ static int get_fd(const char *svc)
     return fd_ret;
 }
 
+static int alloc_fd(const char *svc, int fd)
+{
+    verbose_log("%s svc:%s fd:%d\n", __func__, svc, fd);
+    fd_map.insert(std::make_pair(svc, fd));
+    return 0;
+}
+
 static int dealloc_fd(const char *svc)
 {
     std::string key(svc);
-    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &i = fd_map.find(key);
     if (i == fd_map.end()) {
         return 0;
     }
-    if (i->second > 0)
-        close(i->second);
+    verbose_log("%s svc:%s fd:%d\n", __func__, svc, i->second);
     fd_map.erase(i);
-    return 0;
-}
-
-static int alloc_fd(const char *svc, int fd)
-{
-    std::lock_guard<std::mutex> l(fdmap_mutex);
-    std::pair<std::string, int> kv(svc, fd);
-    fd_map.insert(kv);
     return 0;
 }
 
@@ -151,256 +129,6 @@ static bool is_port_in_range(int port)
     return false;
 }
 
-static void dealloc_port_int(const std::map<std::string, int>::iterator &it)
-{
-}
-
-static int connect_instance(int servicefd, char *name)
-{
-#ifdef VERBOSE
-    fprintf(stderr, "Adding fd %d service %s\n", servicefd, name);
-#endif
-    int port = get_svc_port(name);
-    std::string s;
-    std::stringstream out;
-    out << port;
-    s = out.str();
-    int rc = write(servicefd, s.c_str(), strlen(s.c_str()));
-    if (rc == -1)
-        std::cerr << "write() returns rc = " << rc << std::endl;
-    int oldfd = get_fd(name);
-    if (oldfd > 0) {
-        dealloc_fd(name);
-    }
-    rc = alloc_fd(name, servicefd);
-#ifdef VERBOSE
-    std::cout << "connect " << name << " " << servicefd << std::endl;
-#endif
-    return rc;
-}
-
-int client_func(int fd)
-{
-    char service[256] = {0};
-    int listenfd = fd;
-#ifdef VERBOSE
-    fprintf(stderr, "Starting client thread \n");
-#endif
-    ssize_t n = read(listenfd, service, sizeof(service) - 1);
-#ifdef VERBOSE
-    fprintf(stderr, "%s\n", service);
-#endif
-    char *sav;
-    char *cmd = strtok_r(service + 4, " \n", &sav);
-    if (strncasecmp(service, "reg", 3) == 0) {
-        {
-            std::lock_guard<std::mutex> l(active_services_mutex);
-            if (active_services.find(cmd) == active_services.end()) {
-                syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
-                        cmd);
-                close(fd);
-                return -1;
-            }
-        }
-        connect_instance(listenfd, cmd);
-    } else {
-        close(fd);
-    }
-    return 0;
-}
-
-static void unwatchfd(struct pollfd &fd)
-{
-    connections[fd.fd].inoff = 0;
-    if (connections[fd.fd].is_hello) {
-        {
-            std::lock_guard<std::mutex> l(active_services_mutex);
-            active_services.erase(connections[fd.fd].service);
-        }
-        std::string svc(connections[fd.fd].service);
-
-#ifdef VERBOSE
-        std::cout << "bye from " << svc << std::endl;
-#endif
-
-        {
-            std::lock_guard<std::mutex> l(fdmap_mutex);
-            auto ufd = fd_map.find(svc);
-            if (ufd != fd_map.end()) {
-                fd_map.erase(svc);
-                int rc = close(ufd->second);
-                if (rc) {
-                    syslog(LOG_WARNING, "%s close fd %d rc %d\n", svc.c_str(),
-                            ufd->second, rc);
-                }
-            }
-        }
-    }
-
-    // Throw away any buffers we may have
-    while (connections[fd.fd].out.size())
-        connections[fd.fd].out.pop_front();
-// Note that we dont shrink connections.
-#ifdef VERBOSE
-    syslog(LOG_INFO, "close conn %d\n", fd.fd);
-#endif
-    int rc = close(fd.fd);
-    fd = {.fd = -1, .events = 0, .revents = 0};
-}
-
-static void accept_thd(int listenfd)
-{
-#ifdef VERBOSE
-    printf("Unix domain socket accept thread starting for fd %d\n", listenfd);
-#endif
-
-    int lcl_exiting;
-    while (1) {
-        struct sockaddr_un client_addr;
-        socklen_t clilen;
-        int fd;
-
-        clilen = sizeof(client_addr);
-
-        fd = accept(listenfd, (struct sockaddr *)&client_addr, &clilen);
-        if (fd == -1) {
-            if (errno == EINTR)
-                continue;
-            syslog(LOG_ERR, "%s:accept %d %s\n", __func__, errno,
-                    strerror(errno));
-            exit(1);
-        }
-
-        std::thread t1(client_func, fd);
-        t1.detach();
-    }
-}
-
-static void init_router_mode()
-{
-    int listenfd;
-    struct sockaddr_un serv_addr;
-
-#ifdef VERBOSE
-    printf("Will listen on local domain socket %s\n", unix_bind_path);
-#endif
-
-    listenfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (listenfd == -1) {
-        syslog(LOG_ERR, "Error socket: %d %s\n", errno, strerror(errno));
-        exit(1);
-    }
-
-    if (unlink(unix_bind_path) == -1 && errno != ENOENT) {
-        syslog(LOG_ERR, "Error unlinking '%s': %d %s\n", unix_bind_path, errno,
-                strerror(errno));
-    }
-
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path) - 1);
-
-    if (bind(listenfd, (const struct sockaddr *)&serv_addr,
-             sizeof(serv_addr)) == -1) {
-        syslog(LOG_ERR, "Error bind: %d %s\n", errno, strerror(errno));
-        exit(1);
-    }
-
-    if (listen(listenfd, 128) == -1) {
-        syslog(LOG_ERR, "Error listen: %d %s\n", errno, strerror(errno));
-        exit(1);
-    }
-
-    static struct stat save_st;
-
-    if (-1 == stat(unix_bind_path, &save_st)) {
-        syslog(LOG_ERR, "Unable to stat '%s': %d %s\n", unix_bind_path, errno,
-                strerror(errno));
-        exit(1);
-    }
-    chmod(unix_bind_path, 0777);
-
-    std::thread t1(accept_thd, listenfd);
-    t1.detach();
-}
-
-#if 0
-#define VERBOSE
-#define DEBUG_PARTIAL_IO
-#endif
-
-#ifdef DEBUG_PARTIAL_IO
-int maybe_write(int fd, const void *buf, size_t count)
-{
-    if (count == 0)
-        return 0;
-    count = 1 + rand() % count;
-    return write(fd, buf, count);
-}
-
-int maybe_read(int fd, void *buf, size_t count)
-{
-    if (count == 0)
-        return 0;
-    count = 1 + rand() % ((count > 5) ? 5 : count);
-    printf("read %d\n", count);
-    return read(fd, buf, count);
-}
-#define write maybe_write
-#define read maybe_read
-#endif
-
-static void conn_printf(connection &c, const char *fmt, ...);
-static int dealloc_port(const char *svc);
-
-static int tcp_listen(uint16_t port)
-{
-    int rc;
-    int fd;
-    fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1) {
-        syslog(LOG_ERR, "socket: %d %s", errno, strerror(errno));
-        return -1;
-    }
-
-    int reuse = 1;
-    rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
-    if (rc == -1) {
-        syslog(LOG_ERR, "setsockopt: %d %s", errno, strerror(errno));
-        return rc;
-    }
-
-    struct sockaddr_in bindaddr = {0};
-    bindaddr.sin_family = AF_INET;
-    bindaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    bindaddr.sin_port = htons(port);
-    rc = bind(fd, (struct sockaddr *)&bindaddr, sizeof(bindaddr));
-    if (rc == -1) {
-        syslog(LOG_ERR, "bind: %d %s", errno, strerror(errno));
-        return rc;
-    }
-    rc = listen(fd, SOMAXCONN);
-    if (rc == -1) {
-        syslog(LOG_ERR, "listen: %d %s", errno, strerror(errno));
-        return rc;
-    }
-    if (port == 0) { // get allocated port
-        struct sockaddr_in portaddr = {0};
-        socklen_t len = sizeof(portaddr);
-        rc = getsockname(fd, (struct sockaddr *)&portaddr, &len);
-        if (rc == -1) {
-            syslog(LOG_ERR, "getsockname: %d %s", errno, strerror(errno));
-            return rc;
-        }
-        port = htons(portaddr.sin_port);
-    }
-#ifdef VERBOSE
-    syslog(LOG_INFO, "pmux port:%d\n", port);
-#endif
-    pmux_store->sav_port("pmux", port);
-    return fd;
-}
-
 static void dealloc_svc_running_on_port(int port)
 {
     for (std::map<std::string, int>::iterator it = port_map.begin();
@@ -413,6 +141,23 @@ static void dealloc_svc_running_on_port(int port)
             break;
         }
     }
+}
+
+static int dealloc_port(const char *svc)
+{
+    std::string key(svc);
+    const auto &it = port_map.find(key);
+    if (it == port_map.end()) {
+        return -1;
+    }
+
+    int port = it->second;
+    pmux_store->del_port(it->first.c_str());
+    port_map.erase(it);
+    if (is_port_in_range(port))
+        free_ports.insert(port);
+
+    return 0;
 }
 
 /* Service svc is informing us that it is using a certain port.
@@ -464,156 +209,177 @@ static int alloc_port(const char *svc)
 
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
+
     pmux_store->sav_port(svc, port);
     return port;
 }
 
-static int dealloc_port(const char *svc)
+static void writecb(int fd, short what, void *arg)
 {
-    std::string key(svc);
-    const auto &it = port_map.find(key);
-    if (it == port_map.end()) {
-        return -1;
-    }
-
-    int port = it->second;
-    pmux_store->del_port(it->first.c_str());
-    port_map.erase(it);
-    if (is_port_in_range(port))
-        free_ports.insert(port);
-
-    return 0;
-}
-
-#if 0
-static char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
-static void hprintf(FILE *f, char *b, size_t s)
-{
-    fprintf(f, "0x");
-    for (int i = 0; i < s; ++i) {
-        if (i % 4 == 0)
-            fprintf(f, " ");
-        fprintf(f, "%c%c", hexmap[(b[i] & 0xf0) >> 4],
-            hexmap[b[i] & 0x0f]);
-    }
-    fprintf(f, "\n");
-}
-#endif
-
-static bool invalid_fd(const struct pollfd &fd) { return fd.fd == -1; }
-
-static bool is_local(struct in_addr addr)
-{
-    for (auto local_addr : local_addresses) {
-        if (local_addr.s_addr == addr.s_addr)
-            return true;
-    }
-
-    return false;
-}
-
-static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
-{
-    auto freefd = std::find_if(fds.begin(), fds.end(), invalid_fd);
-    if (freefd != fds.end()) {
-        *freefd = {.fd = fd, .events = POLLIN, .revents = 0};
-    } else {
-        if (fds.size() >= open_max) {
-            return 1;
+    evbuffer *out = (evbuffer *)arg;
+    int rc = evbuffer_write(out, fd);
+    if (rc <= 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            evbuffer_free(out);
+            return;
         }
-        fds.push_back({.fd = fd, .events = POLLIN, .revents = 0});
     }
-    if (fd >= connections.size()) {
-        int oldsize = connections.size();
-        connections.resize(fd + 1);
+    if (evbuffer_get_length(out) == 0) {
+        evbuffer_free(out);
+    } else {
+        event_base_once(base, fd, EV_WRITE, writecb, out, NULL);
+    }
+}
+
+#define reply(...)                                                             \
+    do {                                                                       \
+        reply_log("reply:" __VA_ARGS__);                                       \
+        evbuffer *out = evbuffer_new();                                        \
+        evbuffer_add_printf(out, __VA_ARGS__);                                 \
+        int rc = evbuffer_write(out, fd);                                      \
+        if (rc <= 0) {                                                         \
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {                     \
+                evbuffer_free(out);                                            \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        if (evbuffer_get_length(out) == 0) {                                   \
+            evbuffer_free(out);                                                \
+        } else {                                                               \
+            event_base_once(base, fd, EV_WRITE, writecb, out, NULL);           \
+        }                                                                      \
+    } while (0)
+
+#define used()                                                                 \
+    for (auto &kv : port_map) {                                                \
+        reply("port %-7d name %s\n", kv.second, kv.first.c_str());             \
     }
 
-#ifdef VERBOSE
-    syslog(LOG_INFO, "got conn %d\n", fd);
+#define active()                                                               \
+    for (auto &kv : fd_map) {                                                  \
+        const auto &svc = kv.first;                                            \
+        const auto &port = port_map.find(svc);                                 \
+        if (port != port_map.end()) {                                          \
+            reply("port %-7d name %s\n", port->second, svc.c_str());           \
+        }                                                                      \
+    }
+
+#define disallowed_write()                                                     \
+    reply("-1 write requests not permitted from this host\n");
+
+struct connection {
+    evbuffer *buf;
+    event ev;
+    int fd;
+    int is_unix;
+    int routed;
+    in_addr addr;
+    std::string svc;
+    connection(int f, int u, in_addr a)
+        : fd(f), is_unix(u), addr(a), routed(0), buf(evbuffer_new()) {}
+    ~connection()
+    {
+        event_del(&ev);
+        evbuffer_free(buf);
+        dealloc_fd(svc.c_str());
+        verbose_log("%s close fd:%d\n", __func__, fd);
+        close(fd);
+    }
+    int is_remote()
+    {
+        if (is_unix) return 0;
+        for (auto& l : local_addresses) {
+            if (l == addr) return 0;
+        }
+        return 1;
+    }
+};
+
+static void make_socket_blocking(int fd)
+{
+    int flags;
+    if ((flags = fcntl(fd, F_GETFL, NULL)) < 0) {
+        perror("fcntl:F_GETFL");
+        exit(1);
+    }
+    if (!(flags & O_NONBLOCK)) {
+        return;
+    }
+    flags &= ~O_NONBLOCK;
+    if (fcntl(fd, F_SETFL, flags) == -1) {
+        perror("fcntl:F_SETFL");
+        exit(1);
+    }
+}
+
+static void route(int fd, short what, void *arg)
+{
+    connection *c = (connection *)arg;
+    int newfd = c->fd;
+    make_socket_blocking(newfd);
+    verbose_log("%s send fd:%d to fd:%d\n", __func__, newfd, fd);
+    char buf[] = {'p', 'm', 'u', 'x'};
+    iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
+    msghdr msg = {0};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+#ifdef __sun
+    msg.msg_accrights = (caddr_t)&newfd;
+    msg.msg_accrightslen = sizeof(newfd);
+#else
+    void *fd_buf = alloca(CMSG_SPACE(sizeof(int)));
+    msg.msg_control = fd_buf;
+    msg.msg_controllen = CMSG_SPACE(sizeof(int));
+    cmsghdr *cmsgptr = CMSG_FIRSTHDR(&msg);
+    cmsgptr->cmsg_len = CMSG_LEN(sizeof(int));
+    cmsgptr->cmsg_level = SOL_SOCKET;
+    cmsgptr->cmsg_type = SCM_RIGHTS;
+    *((int *)CMSG_DATA(cmsgptr)) = newfd;
 #endif
-    connections[fd].fd = fd;
-    connections[fd].writable = is_local(addr);
-    connections[fd].addr = addr;
-    connections[fd].is_hello = false;
-    return 0;
-}
-
-static void used(connection &c)
-{
-    for (auto &kv : port_map) {
-        conn_printf(c, "port %-7d name %s\n", kv.second, kv.first.c_str());
+    ssize_t rc = sendmsg(fd, &msg, 0);
+    if (rc != sizeof(buf)) {
+        /* TODO: reply -1 to client? */
+        syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__,
+               fd, rc, sizeof(buf), strerror(errno));
     }
+    delete (c);
 }
 
-static void conn_printf(connection &c, const char *fmt, ...)
+static void run_cmd(char *in, connection *c)
 {
-    va_list args;
-    char *out;
-    va_start(args, fmt);
-    out = sqlite3_vmprintf(fmt, args);
-    va_end(args);
-#ifdef VERBOSE
-    syslog(LOG_INFO, "sending: %s\n", out);
-#endif
-    c.out.push_back(out);
-    sqlite3_free(out);
-}
-
-static int route_to_instance(char *svc, int fd)
-{
-    int routefd = get_fd(svc);
-    if (routefd > 0) {
-        const char *msg = "pmux";
-        return send_fd(routefd, msg, size_t(strlen(msg)), fd);
-    }
-
-    return -1;
-}
-
-void disallowed_write(connection &c, char *cmd)
-{
-    char *ip = inet_ntoa(c.addr);
-#ifdef VERBOSE
-    syslog(LOG_INFO, "attempt to write (%s) from remote connection %s\n", cmd,
-           ip);
-#endif
-    conn_printf(c, "-1 write requests not permitted from this host\n");
-}
-
-static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
-                   connection &c)
-{
-    int bad = 0;
+    int fd = c->fd;
+    int is_unix = c->is_unix;
     char *cmd = nullptr, *svc = nullptr, *sav;
-
-#ifdef VERBOSE
-    syslog(LOG_INFO, "%d: cmd: %s\n", fd.fd, in);
-//  fsnapf(stdout, in, strlen(in));
-#endif
-
+    verbose_log("cmd:%s unix:%d remote:%d fd:%d\n", in, is_unix,
+                c->is_remote(), fd);
     cmd = strtok_r(in, " ", &sav);
     if (cmd == nullptr)
-        goto done;
-
+        return;
     if (strcmp(cmd, "reg") == 0) {
-        if (c.writable) {
-            svc = strtok_r(nullptr, " ", &sav);
-            if (svc == nullptr) {
-                conn_printf(c, "-1 missing service name\n");
-            } else {
-                int port = get_svc_port(svc);
-                if (port == -1) {
-                    port = alloc_port(svc);
-                }
-                conn_printf(c, "%d\n", port);
-            }
-        } else {
-            disallowed_write(c, cmd);
+        if (c->is_remote()) {
+            disallowed_write();
+            return;
         }
+        svc = strtok_r(nullptr, " ", &sav);
+        if (svc == nullptr) {
+            reply("-1 missing service name\n");
+            return;
+        }
+        int port = get_svc_port(svc);
+        if (port == -1) {
+            port = alloc_port(svc);
+        }
+        if (port > 0 && is_unix) {
+            c->svc = svc;
+            alloc_fd(svc, fd);
+        }
+        reply("%d\n", port);
+    } else if (strcmp(cmd, "hello") == 0) {
+        reply("ok\n");
     } else if (strcmp(cmd, "get") == 0) {
         char *echo = strtok_r(nullptr, " ", &sav);
         if (echo == nullptr) {
-            conn_printf(c, "-1 missing service name\n");
+            reply("-1 missing service name\n");
         } else {
             if (strcmp(echo, "/echo") == 0) {
                 svc = strtok_r(nullptr, " ", &sav);
@@ -622,234 +388,230 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
                 echo = nullptr;
             }
             if (svc == nullptr) {
-                conn_printf(c, "-1\n");
+                reply("-1\n");
             } else {
                 int port = get_svc_port(svc);
                 if (echo)
-                    conn_printf(c, "%d %s\n", port, svc);
+                    reply("%d %s\n", port, svc);
                 else
-                    conn_printf(c, "%d\n", port);
+                    reply("%d\n", port);
             }
         }
     } else if (strcmp(cmd, "rte") == 0) {
         char *svc = strtok_r(nullptr, " ", &sav);
         if (svc == nullptr) {
-            conn_printf(c, "-1\n");
-        } else {
-            int rc = route_to_instance(svc, fd.fd);
-            if (rc == 0) {
-                unwatchfd(fd);
-            } else {
-                dealloc_fd(svc);
-                conn_printf(c, "-1\n");
-            }
+            reply("-1\n");
+            return;
         }
+        int dest = get_fd(svc);
+        if (dest <= 0) {
+            reply("-1\n");
+            return;
+        }
+        c->routed = 1;
+        event_del(&c->ev);
+        event_assign(&c->ev, base, dest, EV_WRITE, route, c);
+        event_add(&c->ev, NULL);
+        return;
     } else if (strcmp(cmd, "del") == 0) {
-        if (c.writable) {
-            svc = strtok_r(nullptr, " ", &sav);
-            if (svc == nullptr) {
-                conn_printf(c, "-1 missing service name\n");
-            } else {
-                int rc = dealloc_port(svc);
-                conn_printf(c, "%d\n", rc);
-            }
+        if (c->is_remote()) {
+            disallowed_write();
+            return;
+        }
+        svc = strtok_r(nullptr, " ", &sav);
+        if (svc == nullptr) {
+            reply("-1 missing service name\n");
         } else {
-            disallowed_write(c, cmd);
+            int rc = dealloc_port(svc);
+            reply("%d\n", rc);
         }
     } else if (strcmp(cmd, "use") == 0) {
-        if (c.writable) {
-            svc = strtok_r(nullptr, " ", &sav);
-            if (svc == nullptr) {
-                conn_printf(c, "-1 missing service name\n");
-            } else {
-                char *p = strtok_r(nullptr, " ", &sav);
-                int use = p ? atoi(p) : 0;
-                if (use == 0) {
-                    conn_printf(c, "-1 missing/invalid port\n");
-                } else {
-                    int rc = use_port(svc, use);
-                    conn_printf(c, "%d\n", rc);
-                }
-            }
+        if (c->is_remote()) {
+            disallowed_write();
+            return;
+        }
+        svc = strtok_r(nullptr, " ", &sav);
+        if (svc == nullptr) {
+            reply("-1 missing service name\n");
         } else {
-            disallowed_write(c, cmd);
+            char *p = strtok_r(nullptr, " ", &sav);
+            int use = p ? atoi(p) : 0;
+            if (use == 0) {
+                reply("-1 missing/invalid port\n");
+            } else {
+                int rc = use_port(svc, use);
+                reply("%d\n", rc);
+            }
         }
     } else if (strcmp(cmd, "stat") == 0) {
-        conn_printf(c, "free ports: %lu\n", free_ports.size());
+        reply("free ports: %lu\n", free_ports.size());
         for (const auto &i : port_map) {
-            conn_printf(c, "%s -> %d\n", i.first.c_str(), i.second);
+            reply("%s -> %d\n", i.first.c_str(), i.second);
         }
     } else if (strcmp(cmd, "used") == 0 || strcmp(cmd, "list") == 0) {
-        used(c);
-    } else if (strcmp(cmd, "hello") == 0) {
-        svc = strtok_r(nullptr, " ", &sav);
-        if (c.writable && svc != nullptr) {
-            c.is_hello = true;
-            {
-                std::lock_guard<std::mutex> l(active_services_mutex);
-                active_services.insert(std::string(svc));
-            }
-            c.service = std::string(svc);
-            conn_printf(c, "ok\n");
-#ifdef VERBOSE
-            std::cout << "hello from " << svc << std::endl;
-#endif
-        } else if (svc == nullptr) {
-            conn_printf(c, "-1 missing service name\n");
-        } else {
-            disallowed_write(c, cmd);
-        }
+        used();
     } else if (strcmp(cmd, "active") == 0) {
-        std::lock_guard<std::mutex> l(active_services_mutex);
-        conn_printf(c, "%d\n", active_services.size());
-        for (auto it : active_services) {
-            conn_printf(c, "%s\n", it.c_str());
-        }
+        active();
     } else if (strcmp(cmd, "exit") == 0) {
-        if (c.writable)
-            return 1;
-        else {
-            disallowed_write(c, cmd);
+        if (c->is_remote()) {
+            disallowed_write();
+            return;
         }
+        event_base_loopbreak(base);
     } else if (strcmp(cmd, "range") == 0) {
         for (auto &range : port_ranges) {
-            conn_printf(c, "%d:%d\n", range.first, range.second);
+            reply("%d:%d\n", range.first, range.second);
         }
     } else if (strcmp(cmd, "help") == 0) {
-        conn_printf(
-            c,
-            "active                  : list active connections\n"
-            "del service             : forget port assignment for service\n"
-            "exit                    : shutdown pmux (may be restarted by "
-            "system)\n"
-            "get [/echo] service     : discover port for service\n"
-            "hello service           : keep active connection\n"
-            "help                    : this help message\n"
-            "range                   : print port range which this pmux can "
-            "assign\n"
-            "reg service             : obtain/discover port for new service\n"
-            "rte                     : get route to instance service/port\n"
-            "stat                    : dump some stats\n"
-            "use service port        : set specific port registration for "
-            "service\n"
-            "used (or list)          : dump active port assignments\n");
+        reply("active                  : list active connections\n"
+              "del service             : forget port assignment for service\n"
+              "exit                    : shutdown pmux (may be restarted by system)\n"
+              "get [/echo] service     : discover port for service\n"
+              "help                    : this help message\n"
+              "range                   : print port range which this pmux can assign\n"
+              "reg service             : obtain/discover port for new service\n"
+              "rte                     : get route to instance service/port\n"
+              "stat                    : dump some stats\n"
+              "use service port        : set specific port registration for service\n"
+              "used (or list)          : dump active port assignments\n");
     } else {
-        conn_printf(c, "-1 unknown command, type 'help' for a brief usage description\n");
+        reply("-1 unknown command, type 'help' for a brief usage description\n");
     }
-done:
-    // schedule to write later when it won't block (ok to do even if we didn't
-    // write anything)
-    if (!c.out.empty())
-        fd.events |= POLLOUT;
-    fd.revents = 0;
+}
 
+static void readcb(int fd, short what, void *arg)
+{
+    connection *c = (connection *)arg;
+    int rc;
+    size_t len;
+    while ((rc = evbuffer_read(c->buf, fd, 128)) > 0) {
+        char *res = evbuffer_readln(c->buf, &len, EVBUFFER_EOL_ANY);
+        if (res == NULL)
+            continue;
+        run_cmd(res, c);
+        free(res);
+        if (c->routed)
+            return;
+    }
+    if (rc == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return;
+    }
+    delete (c);
+    return;
+}
+
+static void tcp_cb(evconnlistener *listener, evutil_socket_t fd, sockaddr *addr,
+                   int len, void *is_unix)
+{
+    sockaddr_in *in = (sockaddr_in *)addr;
+    connection *c = new connection(fd, 0, in->sin_addr);
+    event_assign(&c->ev, base, fd, EV_READ | EV_PERSIST, readcb, c);
+    event_add(&c->ev, NULL);
+}
+
+static void unix_cb(evconnlistener *listener, evutil_socket_t fd,
+                    sockaddr *addr, int len, void *is_unix)
+{
+    in_addr in = {0};
+    connection *c = new connection(fd, 1, in);
+    event_assign(&c->ev, base, fd, EV_READ | EV_PERSIST, readcb, c);
+    event_add(&c->ev, NULL);
+}
+
+static void accept_errorcb(evconnlistener *listener, void *data)
+{
+    int err = EVUTIL_SOCKET_ERROR();
+    syslog(LOG_CRIT, "%s fd:%d err:%d-%s\n", __func__,
+           evconnlistener_get_fd(listener), err,
+           evutil_socket_error_to_string(err));
+    event_base_loopexit(base, NULL);
+}
+
+static int make_port_range(char *s, std::pair<int, int> &range)
+{
+    std::string orig(s);
+    char *sav;
+    char *first = strtok_r(s, ":", &sav);
+    char *second = strtok_r(nullptr, ":", &sav);
+    if (first == nullptr || second == nullptr) {
+        syslog(LOG_CRIT, "bad port range -> %s\n", orig.c_str());
+        return 1;
+    }
+    range = std::make_pair(atoi(first), atoi(second));
     return 0;
 }
 
-/* Poll tells us there's data to be read - read it, find commands, and run them.
- */
-static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
+static int usage(FILE *out, int rc)
 {
-    connection &c = connections[fd.fd];
-    ssize_t n = read(fd.fd, c.inbuf + c.inoff, (sizeof(c.inbuf) - 1) - c.inoff);
-    if (n <= 0) {
-        unwatchfd(fd);
-        return 0;
-    }
-#ifdef VERBOSE
-    syslog(LOG_INFO, "read %d:\n", n);
-//  fsnapf(stdout, c.inbuf + c.inoff, n);
-#endif
-
-    int rc = 0;
-    c.inoff += n;
-    int off = 0;
-    std::string s(c.inbuf, c.inoff);
-    while (off < s.length() && rc == 0 && fd.fd >= 0) {
-        int pos;
-        pos = s.find('\n', off);
-        if (pos != std::string::npos) {
-            /* found something - run it */
-            int len = pos - off;
-            c.inbuf[pos] = 0;
-            if (pos > 1 && c.inbuf[pos - 1] == '\r')
-                c.inbuf[pos - 1] = 0;
-            rc = run_cmd(fd, fds, c.inbuf + off, c);
-            off = pos + 1;
-        }
-        if (pos == std::string::npos || off >= s.length()) {
-            if (off == 0) {
-                /* full buffer and no newline */
-                unwatchfd(fd);
-                return 0;
-            }
-            std::string left(s.substr(off));
-            memcpy(c.inbuf, left.data(), left.length());
-            c.inoff = left.length();
-            break;
-        }
-    }
+    fprintf(
+        out,
+        "Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]\n"
+        "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
+        "\n"
+        "Options:\n"
+        " -h            This help message\n"
+        " -c            Cluster information for pmuxdb\n"
+        " -d            Use Comdb2 to save port allocations\n"
+        " -b            Unix bind path\n"
+        " -p            Port pmux will listen on\n"
+        " -r            Range of ports to allocate for databases\n"
+        " -l            Use file to persist port allocation\n"
+        " -n            Do not persist port allocation (default)\n"
+        " -f            Run in foreground rather than put to background\n");
     return rc;
 }
 
-static int do_accept(struct pollfd &fd, std::vector<struct pollfd> &fds)
+static bool init_router_mode()
 {
-    struct sockaddr_in req = {0};
-    socklen_t len = sizeof(req);
-    int rfd = accept(fd.fd, (struct sockaddr *)&req, &len);
-    if (rfd == -1) {
-        syslog(LOG_WARNING, "accept: %d %s", errno, strerror(errno));
-        return 0;
-    }
-#ifdef VERBOSE
-    char *ip;
-    ip = inet_ntoa(req.sin_addr);
-    syslog(LOG_DEBUG, "accept from %s writable %d", ip,
-           (int)is_local(req.sin_addr));
-#endif
-    return watchfd(rfd, fds, req.sin_addr);
-}
-
-#if defined(_SUN_SOURCE) || defined(_IBM_SOURCE)
-#include <netdb.h>
-#endif
-
-static bool init_local_names()
-{
-    struct hostent *me;
-    me = gethostbyname("localhost");
-
-    if (me == nullptr) {
-        syslog(LOG_ERR, "gethostbyname(\"localhost\") %d\n", h_errno);
+    if (unlink(unix_bind_path.c_str()) == -1 && errno != ENOENT) {
+        syslog(LOG_CRIT, "error unlinking path:%s rc:%d [%s]\n", unix_bind_path.c_str(),
+               errno, strerror(errno));
         return false;
     }
-
-    int i;
-    char *p;
-    for (i = 0, p = me->h_addr_list[0]; p; i++, p = me->h_addr_list[i]) {
-        struct in_addr addr = *(struct in_addr *)p;
-        char *ip;
-        ip = inet_ntoa(addr);
-#ifdef VERBOSE
-        syslog(LOG_DEBUG, "accepting writes from %s\n", ip);
-#endif
-        local_addresses.push_back(addr);
-    }
-
     return true;
+}
+
+static int init_local_names()
+{
+    std::vector<std::string> names = {"localhost"};
+    char name[HOST_NAME_MAX];
+    if (gethostname(name, sizeof(name)) == 0 && strcmp(name, "localhost") != 0)
+        names.push_back(name);
+    for (const auto &n : names) {
+        verbose_log("local name: %s\n", n.c_str());
+        addrinfo *r, *res, hints = {0};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(n.c_str(), NULL, &hints, &res) == 0) {
+           for (r = res; r != NULL; r = r->ai_next) {
+               in_addr in = ((sockaddr_in*)r->ai_addr)->sin_addr;
+               if (local_addresses.size()) {
+                   /* cheap dedup prev addr */
+                   if (in == local_addresses[local_addresses.size() - 1]) {
+                       continue;
+                   }
+               }
+               local_addresses.emplace_back(in);
+           }
+           freeaddrinfo(res);
+        }
+    }
+    for (const auto& l : local_addresses) {
+        verbose_log("local addr: %s\n", inet_ntoa(l));
+    }
+   return local_addresses.size() > 0;
 }
 
 static bool init(const std::vector<std::pair<int, int>> &pranges)
 {
 
-    if (!init_local_names())
+    if (!init_local_names()) {
+        syslog(LOG_CRIT, "failed to get host names\n");
         return false;
-
+    }
     for (auto &range : pranges) {
-#ifdef VERBOSE
-        syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
-               range.second);
-#endif
+        verbose_log("%s free port range %d - %d\n", __func__, range.first,
+                    range.second);
         for (int s = range.first; s <= range.second; ++s) {
             free_ports.insert(s);
         }
@@ -861,108 +623,27 @@ static bool init(const std::vector<std::pair<int, int>> &pranges)
     return true;
 }
 
-static int poll_loop(const std::vector<int> &ports,
-                     std::vector<struct pollfd> &fds)
-{
-    int rc = 0;
-    for (size_t i = 0, n = fds.size(); i < n; ++i) {
-        auto &fd = fds[i];
-        if (fd.revents & POLLIN) {
-            // ready for input
-            if (std::find(ports.begin(), ports.end(), fd.fd) != ports.end()) {
-                rc |= do_accept(fd, fds);
-            } else {
-                rc |= do_cmd(fd, fds);
-            }
-        } else if (fd.revents & POLLOUT) {
-            // ready for output
-            int bytes_written;
-            std::string out;
-            auto &wl = connections[fd.fd].out;
-
-            out = wl.front();
-            wl.pop_front();
-            bytes_written = write(fd.fd, out.data(), out.size());
-#ifdef VERBOSE
-            syslog(LOG_INFO, "wrote %d/%d bytes\n", bytes_written, out.size());
-#endif
-            if (bytes_written == -1)
-                unwatchfd(fd);
-            else if (bytes_written < out.size()) {
-                // wrote partial - put the unwritten piece back
-                out = std::string(
-                    out.substr(bytes_written, out.size() - bytes_written));
-                wl.push_front(out);
-            }
-            if (wl.size() == 0)
-                fd.events &= ~POLLOUT;
-            // else we've consumed one output string, and we're done with it
-        } else if (fd.revents & POLLERR || fd.revents & POLLHUP ||
-                   fd.revents & POLLNVAL) {
-            if (std::find(ports.begin(), ports.end(), fd.fd) != ports.end()) {
-                // accept() fd error
-                // should restart server
-                abort();
-            }
-            unwatchfd(fd);
-        } else {
-            fd.revents = 0;
-        }
-    }
-    return rc;
-}
-
-static int make_range(char *s, std::pair<int, int> &range)
-{
-    std::string orig(s);
-    char *sav;
-    char *first = strtok_r(s, ":", &sav);
-    char *second = strtok_r(nullptr, ":", &sav);
-    if (first == nullptr || second == nullptr) {
-        syslog(LOG_ERR, "bad port range -> %s\n", orig.c_str());
-        return 1;
-    }
-    range = std::make_pair(atoi(first), atoi(second));
-    return 0;
-}
-
-static int usage(int rc)
-{
-    printf(
-        "Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]\n"
-        "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
-        "\n"
-        "Options:\n"
-        " -h            This help message\n"
-        " -c            Cluster information for pmuxdb\n"
-        " -d            Db information for pmuxdb\n"
-        " -b            Unix bind path\n"
-        " -p            Port pmux will listen on\n"
-        " -r            Range of ports to allocate for databases\n"
-        " -l            Use file to persist port allocation\n"
-        " -n            Use only store in memory, will not persist port "
-        "allocation\n"
-        " -f            Run in foreground rather than put to background\n");
-    return rc;
-}
-
 int main(int argc, char **argv)
 {
-    sigignore(SIGPIPE);
-#   ifndef LOG_PERROR
-#       define LOG_PERROR 0
-#   endif
     openlog("pmux", LOG_NDELAY | LOG_PERROR, LOG_USER);
 
-    open_max = sysconf(_SC_OPEN_MAX);
+    if (sizeof(event) != event_get_struct_event_size()) {
+        syslog(LOG_CRIT, "incorrect sizeof(event):%zu expected:%zu\n",
+               sizeof(event), event_get_struct_event_size());
+        return EXIT_FAILURE;
+    }
+
+    long open_max = sysconf(_SC_OPEN_MAX);
     if (open_max == -1) {
         syslog(LOG_WARNING, "sysconf(_SC_OPEN_MAX): %d %s ", errno,
                strerror(errno));
         open_max = 20;
         syslog(LOG_WARNING, "setting open_max to:%ld\n", open_max);
     }
-    char *host = getenv("HOSTNAME");
-    if (host == nullptr) {
+
+    std::string host;
+    char *hostptr = getenv("HOSTNAME");
+    if (hostptr == nullptr) {
         long hostname_max = sysconf(_SC_HOST_NAME_MAX);
         if (hostname_max == -1) {
             syslog(LOG_WARNING, "sysconf(_SC_HOST_NAME_MAX): %d %s ", errno,
@@ -972,45 +653,43 @@ int main(int argc, char **argv)
         }
         char myhost[hostname_max + 1];
         int rc = gethostname(myhost, hostname_max);
-        myhost[hostname_max] = '\0';
-        if (rc == 0)
-            host = strdup(myhost);
+        if (rc == 0) {
+            myhost[hostname_max] = '\0';
+            host = hostptr = myhost;
+        } else {
+            syslog(LOG_CRIT,
+                   "Can't figure out hostname: please export HOSTNAME.\n");
+            return EXIT_FAILURE;
+        }
+    } else {
+        host = hostptr;
     }
-    if (host == nullptr) {
-        syslog(LOG_CRIT,
-               "Can't figure out hostname: please export HOSTNAME.\n");
-        return EXIT_FAILURE;
-    }
-    const char *cluster = "prod";
-    const char *dbname = "pmuxdb";
+
+    std::string cluster("prod");
+    std::string dbname("pmuxdb");
     std::vector<int> listen_ports = {5105};
     bool default_ports = true;
     bool default_range = true;
-    enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
+    enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2 };
     store_mode store_mode = MODE_NONE;
     std::pair<int, int> custom_range;
-    int c;
-    struct sockaddr_un serv_addr;
     port_ranges = {{19000, 19999}}; // default range
 
+    int c;
     while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
         switch (c) {
         case 'h':
-            return usage(EXIT_SUCCESS);
+            return usage(stdout, EXIT_SUCCESS);
             break;
         case 'c':
-            cluster = strdup(optarg);
+            store_mode = MODE_COMDB2;
+            cluster = optarg;
             break;
         case 'd':
-            dbname = strdup(optarg);
+            dbname = optarg;
             break;
         case 'b':
-            if (strlen(optarg) >= sizeof(serv_addr.sun_path) ||
-                strlen(optarg) >= sizeof(unix_bind_path)) {
-                fprintf(stderr, "Filename too long: %s\n", optarg);
-                exit(2);
-            }
-            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path) - 1);
+            unix_bind_path = optarg;
             break;
         case 'p':
             if (default_ports) {
@@ -1024,13 +703,13 @@ int main(int argc, char **argv)
                 port_ranges.resize(0);
                 default_range = false;
             }
-            if (make_range(optarg, custom_range) != 0) {
-                return usage(EXIT_FAILURE);
+            if (make_port_range(optarg, custom_range) != 0) {
+                return usage(stderr, EXIT_FAILURE);
             }
             port_ranges.push_back(custom_range);
             break;
         case '?':
-            return usage(EXIT_FAILURE);
+            return usage(stderr, EXIT_FAILURE);
             break;
         case 'l':
             store_mode = MODE_LOCAL;
@@ -1039,7 +718,7 @@ int main(int argc, char **argv)
             store_mode = MODE_NONE;
             break;
         case 'f':
-            foreground_mode=true;
+            foreground_mode = true;
             break;
         }
     }
@@ -1050,60 +729,74 @@ int main(int argc, char **argv)
         else if (store_mode == MODE_NONE)
             pmux_store.reset(new no_store());
         else
-            pmux_store.reset(new comdb2_store(host, dbname, cluster));
+            pmux_store.reset(new comdb2_store(host.c_str(), dbname.c_str(),
+                                              cluster.c_str()));
     } catch (std::exception &e) {
-        syslog(LOG_ERR, "%s\n", e.what());
+        syslog(LOG_CRIT, "%s\n", e.what());
         return EXIT_FAILURE;
     }
 
     if (!init(port_ranges)) {
-        /* init will falure readon syslog if needed */
         return EXIT_FAILURE;
     }
 
-    std::vector<int> afds;
-    std::vector<struct pollfd> pfds; // fds to poll
-    pfds.reserve(open_max);
-    for (auto port : listen_ports) {
-        int fd = tcp_listen(port);
-        if (fd == -1) {
-            syslog(LOG_CRIT, "tcplisten rc:%d for port:%d\n", fd, port);
-            return EXIT_FAILURE;
-        }
-        afds.push_back(fd);
-        struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-        pfds.push_back(pfd);
+    if (unix_bind_path.length() + 1 >= sizeof(((sockaddr_un *)0)->sun_path)) {
+        syslog(LOG_CRIT, "bad unix domain socket path:%s\n",
+               unix_bind_path.c_str());
+        return EXIT_FAILURE;
     }
-
-    if (store_mode == MODE_LOCAL)
-        pmux_store.reset(new sqlite_store());
-    else if (store_mode == MODE_NONE)
-        pmux_store.reset(new no_store());
-    else
-        pmux_store.reset(new comdb2_store(host, dbname, cluster));
-
-    init(port_ranges);
-
-    for (auto port : listen_ports)
-        pmux_store->sav_port("pmux", port);
 
     if (!foreground_mode) {
         bb_daemon();
     }
 
+    sighold(SIGPIPE);
+    base = event_base_new();
+    verbose_log("Using Libevent %s with backend method %s\n",
+                event_get_version(), event_base_get_method(base));
+    std::vector<evconnlistener *> listeners;
+    evconnlistener *listener;
+    for (auto port : listen_ports) {
+        sockaddr_in addr = {0};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        socklen_t len = sizeof(addr);
+        listener = evconnlistener_new_bind(
+            base, tcp_cb, NULL, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
+            SOMAXCONN, (sockaddr *)&addr, len);
+        if (listener) {
+            evconnlistener_set_error_cb(listener, accept_errorcb);
+            listeners.push_back(listener);
+            verbose_log("accept on port:%d fd:%d\n", port,
+                   evconnlistener_get_fd(listener));
+            pmux_store->sav_port("pmux", port);
+        } else {
+            syslog(LOG_CRIT, "failed to listen on port:%d\n", port);
+            return EXIT_FAILURE;
+        }
+    }
     init_router_mode();
+    sockaddr_un addr = {0};
+    addr.sun_family = AF_UNIX;
+    strcpy(addr.sun_path, unix_bind_path.c_str());
+    socklen_t len = sizeof(addr);
+    listener =
+        evconnlistener_new_bind(base, unix_cb, NULL, LEV_OPT_CLOSE_ON_FREE,
+                                SOMAXCONN, (sockaddr *)&addr, len);
+    if (listener) {
+        evconnlistener_set_error_cb(listener, accept_errorcb);
+        listeners.push_back(listener);
+        verbose_log("accept on path:%s fd:%d\n", unix_bind_path.c_str(),
+               evconnlistener_get_fd(listener));
+    } else {
+        syslog(LOG_CRIT, "failed to listen on unix path:%s\n", unix_bind_path.c_str());
+        return EXIT_FAILURE;
+    }
     syslog(LOG_INFO, "READY\n");
-
-    int rc;
-    while (poll(pfds.data(), pfds.size(), -1) >= 0) {
-        if (poll_loop(afds, pfds) != 0)
-            break;
+    event_base_dispatch(base);
+    for (auto l : listeners) {
+        evconnlistener_free(l);
     }
-
-    for (auto fd : afds) {
-        shutdown(fd, SHUT_RDWR);
-        close(fd);
-    }
-
+    event_base_free(base);
     return EXIT_SUCCESS;
 }
