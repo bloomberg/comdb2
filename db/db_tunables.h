@@ -1839,4 +1839,8 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("file_perms", "Default filesystem permissions for database files",
+                 TUNABLE_STRING, NULL, 0, file_permissions_value,
+                 NULL, file_permissions_update, NULL);
+
 #endif /* _DB_TUNABLES_H */

@@ -322,6 +322,8 @@ extern int eventlog_nkeep;
 
 int gbl_page_order_table_scan = 0;
 
+int gbl_file_permissions = 0660;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -866,6 +868,19 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
+}
+
+static void* file_permissions_value(void *context) {
+    static char val[15];
+    snprintf(val, sizeof(val), "0%o", gbl_file_permissions);
+    return val;
+}
+
+static int file_permissions_update(void *context, void *value) {
+    (void)context;
+    char *in = (char*) value;
+    gbl_file_permissions = strtol(in, NULL, 8);
     return 0;
 }
 

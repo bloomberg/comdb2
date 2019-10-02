@@ -26,6 +26,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <assert.h>
 #include <poll.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 #include "thdpool.h"
 #include <ctrace.h>
@@ -54,6 +55,8 @@ void bdb_rellock(void *bdb_state, const char *funcname, int line);
 void bdb_get_readlock(void *bdb_state,
     const char *idstr, const char *funcname, int line);
 int bdb_the_lock_desired(void);
+
+extern int gbl_file_permissions;
 
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(gbl_bdb_state, (idstr), __func__, __LINE__)
 #define BDB_READLOCK(idstr)     bdb_get_readlock(gbl_bdb_state, (idstr), __func__, __LINE__)
@@ -2332,7 +2335,7 @@ __memp_load_default(dbenv)
 	logmsg(LOGMSG_USER, "%s line %d opening %s\n", __func__, __LINE__,
 			rpath);
 #endif
-	if ((fd = open(rpath, O_RDONLY, 0666)) < 0 ||
+	if ((fd = open(rpath, O_RDONLY, gbl_file_permissions)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
@@ -2343,6 +2346,7 @@ __memp_load_default(dbenv)
 		ret = -1;
 		goto done;
 	}
+    fchmod(fd, gbl_file_permissions);
 
 	if ((ret = __memp_load(dbenv, s, &cnt, &lines)) != 0) {
 #if PAGELIST_DEBUG
@@ -2409,7 +2413,7 @@ __memp_dump_default(dbenv, force)
 	snprintf(tmppath, sizeof(tmppath), "%s/%s", dbenv->db_home,
 			PAGELISTTEMP);
 	rtmppath = bdb_trans(tmppath, tmppathbuf);
-	if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
+	if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, gbl_file_permissions)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,

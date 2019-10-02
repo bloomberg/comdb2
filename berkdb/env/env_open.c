@@ -1302,6 +1302,8 @@ extern int ___os_openhandle(DB_ENV *dbenv, const char *name, int flags,
     int mode, DB_FH ** fhpp);
 extern int __os_closehandle(DB_ENV *dbenv, DB_FH * fhp);
 
+extern int gbl_file_permissions;
+
 int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
@@ -1317,7 +1319,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	pbuf = bdb_trans(fname, buf);
 
 	ret =
-	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, 0666,
+	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, gbl_file_permissions,
 	    &dbenv->checkpoint);
 	if (ret == ENOENT) {
 		DB_TXNMGR *mgr;
@@ -1330,7 +1332,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 			__os_closehandle(dbenv, dbenv->checkpoint);
 		ret =
 		    ___os_openhandle(dbenv, pbuf,
-		    O_SYNC | O_RDWR | O_CREAT | O_EXCL, 0666,
+		    O_SYNC | O_RDWR | O_CREAT | O_EXCL, gbl_file_permissions,
 		    &dbenv->checkpoint);
 		if (ret) {
 			__db_err(dbenv, "__checkpoint_open create new rc %d\n",
