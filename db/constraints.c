@@ -66,7 +66,6 @@ int has_cascading_reverse_constraints(struct dbtable *db)
     return 0;
 }
 
-
 /* this is for index on expressions */
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
@@ -795,7 +794,8 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
             /* TODO verify we have proper schema change locks */
 
             rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx,
-                            BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
+                            BLOCK2_DELKL,
+                            RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -855,7 +855,8 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 NULL, /*blobs*/
                 0,    /*maxblobs*/
                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
+                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL |
+                    RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -1043,7 +1044,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
             goto next_record;
         }
-
 
         /* only do once per genid *after* processing all idxs from tmptbl 
          * (which are in sequence for the same genid): 
@@ -1249,7 +1249,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
                         __func__);
                 *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur); //AZ: this is wrong!?
+                close_constraint_table_cursor(cur); // AZ: this is wrong!?
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
@@ -1267,7 +1267,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     return ERR_INTERNAL;
 }
 
-/* go through all entries in ct_add_table and verify that 
+/* go through all entries in ct_add_table and verify that
  * the key exists in the parent table if there are constraints */
 int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
@@ -1821,8 +1821,8 @@ inline void *get_constraint_table_cursor(void *table)
     if (table == NULL)
         abort();
     int err = 0;
-    struct temp_cursor *cur = bdb_temp_table_cursor(thedb->bdb_env, table,
-                                                    NULL, &err);
+    struct temp_cursor *cur =
+        bdb_temp_table_cursor(thedb->bdb_env, table, NULL, &err);
     if (!cur) {
         logmsg(LOGMSG_ERROR, "Can't create cursor err=%d\n", err);
     }
@@ -2117,5 +2117,3 @@ int populate_reverse_constraints(struct dbtable *db)
 
     return n_errors;
 }
-
-

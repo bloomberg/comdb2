@@ -1600,8 +1600,7 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock",
                  &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_idx_writes",
-                 "reorder_idx_writes (Default on)",
+REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
                  NULL, NULL);
 

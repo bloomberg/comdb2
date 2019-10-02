@@ -1368,7 +1368,8 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
     rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &dbcur, 0);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "bdb_temp_table_truncate_temp_db couldnt get cursor\n");
+        logmsg(LOGMSG_FATAL,
+               "bdb_temp_table_truncate_temp_db couldnt get cursor\n");
         exit(1);
     }
 
@@ -2186,7 +2187,8 @@ inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cu
     return -1;
 }
 
-void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur, int level)
+void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur,
+                               int level)
 {
     int rc = 0;
     int bdberr = 0;

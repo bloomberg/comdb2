@@ -2286,7 +2286,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         sql_query = query->sqlquery;
 #ifndef NDEBUG
 #define MAXTOPRINT 200
-        int num = logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT, sql_query->sql_query);
+        int num = logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT,
+                         sql_query->sql_query);
         if (num >= MAXTOPRINT)
             logmsg(LOGMSG_DEBUG, "...'\n");
         else

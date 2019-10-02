@@ -4781,7 +4781,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (gbl_reorder_idx_writes) {
             if (iq->debug)
                 reqpushprefixf(iq, "process_defered_table:");
-            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,
+                                       &errout);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
 
@@ -4795,7 +4796,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 GOTOBACKOUT;
             }
         }
-
 
         if (iq->debug)
             reqpushprefixf(iq, "delayed_key_adds: %p", trans);
@@ -4816,7 +4816,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
             GOTOBACKOUT;
         }
-
 
         /* check foreign key constraints */
 

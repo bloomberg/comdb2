@@ -6919,7 +6919,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         const char *tablename;
 
         /* IDEA: don't store the usedb in the defered_table, rather right before
-         * loading a new usedb, process the curret one, 
+         * loading a new usedb, process the curret one,
          * this way tmptbl key is 8 bytes smaller
          *
         if (gbl_reorder_on) {
@@ -7260,27 +7260,28 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 #endif
 
-        int locflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
-                RECFLAGS_DONT_SKIP_BLOBS; /* because we only receive info about
-                                            blobs that should exist in the new
-                                            record, override the update
-                                            function's default behaviour and
-                                            have
-                                            it erase any blobs that haven't been
-                                            collected. */
+        int locflags =
+            RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
+            RECFLAGS_DONT_SKIP_BLOBS; /* because we only receive info about
+                                        blobs that should exist in the new
+                                        record, override the update
+                                        function's default behaviour and
+                                        have
+                                        it erase any blobs that haven't been
+                                        collected. */
 
         if (*flags & OSQL_DONT_REORDER_IDX)
             locflags |= RECFLAGS_DONT_REORDER_IDX;
 
-        rc = upd_record(
-            iq, trans, NULL, rrn, genid, tag_name_ondisk,
-            tag_name_ondisk + tag_name_ondisk_len, /*tag*/
-            pData, pData + dt.nData,               /* rec */
-            NULL, NULL,                            /* vrec */
-            NULL,                                  /*nulls, no need as no
-                                                     ctag2stag is called */
-            *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
-            &err->errcode, &err->ixnum, BLOCK2_UPDKL, step, locflags);
+        rc = upd_record(iq, trans, NULL, rrn, genid, tag_name_ondisk,
+                        tag_name_ondisk + tag_name_ondisk_len, /*tag*/
+                        pData, pData + dt.nData,               /* rec */
+                        NULL, NULL,                            /* vrec */
+                        NULL, /*nulls, no need as no
+                                ctag2stag is called */
+                        *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys,
+                        dt.del_keys, &err->errcode, &err->ixnum, BLOCK2_UPDKL,
+                        step, locflags);
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
