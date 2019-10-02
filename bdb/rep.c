@@ -2383,6 +2383,10 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations,
     }
 
     DB_LSN last_lsn = bdb_state->seqnum_info->seqnums[node_ix].lsn;
+    if (last_lsn.file == INT_MAX) {
+        return 1;
+    }
+
     if (log_compare(&last_lsn, &seqnum->lsn) > 0) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER, "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not"
