@@ -210,10 +210,10 @@ insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
 
-tables=$(timeout 1m cdb2sql_exe --tabs $dbnm $master 'select * from comdb2_tables')
+tables=$(timeout 1m cdb2sql --tabs $dbnm --host $master 'select * from comdb2_tables')
 for t in $tables ; do
     outfl=${t}_verify.out
-    timeout 3m cdb2sql_exe --verbose --tabs dbnm $master "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+    timeout 3m cdb2sql --verbose --tabs $dbnm --host $master "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
     if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
         failexit "Failed verify: Table $t"
     fi
