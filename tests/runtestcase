@@ -12,6 +12,10 @@ elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
 fi
+if [[ "${DEBUGGER}" == "valgrind" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 10 + 2))m
+fi
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 if [[ -n "$NUMNODESTOUSE" ]] ; then

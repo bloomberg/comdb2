@@ -1647,6 +1647,7 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     return rc;
 }
 
+/* Think of this function as if it were called process_local_shadtbl_del */
 static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops)
 {

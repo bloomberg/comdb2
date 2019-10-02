@@ -93,6 +93,7 @@ extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
+extern int gbl_reorder_idx_writes;
 extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
 extern __thread int send_prefault_udp;
@@ -4775,7 +4776,26 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     ixout = -1;
     errout = 0;
 
-    if (delayed || gbl_goslow) {
+    if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
+
+        if (gbl_reorder_idx_writes) {
+            if (iq->debug)
+                reqpushprefixf(iq, "process_defered_table:");
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,
+                                       &errout);
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+
+            if (rc != 0) {
+                opnum = blkpos; /* so we report the failed blockop accurately */
+                err.blockop_num = blkpos;
+                err.errcode = errout;
+                err.ixnum = ixout;
+                numerrs = 1;
+                reqlog_set_error(iq->reqlogger, "Process Defered Table", rc);
+                GOTOBACKOUT;
+            }
+        }
 
         if (iq->debug)
             reqpushprefixf(iq, "delayed_key_adds: %p", trans);
@@ -4801,8 +4821,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (iq->debug)
             reqpushprefixf(iq, "verify_del_constraints: %p", trans);
-        rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    blobs, &verror);
+        rc = verify_del_constraints(iq, p_blkstate, trans, blobs, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -4819,8 +4838,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->debug)
             reqpushprefixf(iq, "verify_add_constraints: %p", trans);
 
-        rc = verify_add_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    &verror);
+        rc = verify_add_constraints(iq, p_blkstate, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -5846,6 +5864,7 @@ add_blkseq:
         }
     }
 
+    fromline = __LINE__;
 cleanup:
     logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
            did_replay, fromline);

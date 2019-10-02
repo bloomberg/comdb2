@@ -87,6 +87,8 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "select i as value from t1 order by i" > c
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(1,499)' > content2.out
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(502,1000)' >> content2.out
 
+set +e
+
 if ! diff $PWD/{content1.out,content2.out} ; then 
     failexit "content not what it is supposed to be"
 fi

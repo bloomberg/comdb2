@@ -315,6 +315,9 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
+#ifdef DEBUG
+    logmsg(LOGMSG_INFO, "live_sc_off()\n");
+#endif
     Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_to = NULL;
     db->sc_from = NULL;

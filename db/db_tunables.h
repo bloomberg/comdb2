@@ -1600,6 +1600,10 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock",
                  &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
+                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("osql_check_replicant_numops",
                  "Check replicant nops sent in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,

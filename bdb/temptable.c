@@ -1368,7 +1368,8 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
     rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &dbcur, 0);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "bdb_temp_table_init_temp_db couldnt get cursor\n");
+        logmsg(LOGMSG_FATAL,
+               "bdb_temp_table_truncate_temp_db couldnt get cursor\n");
         exit(1);
     }
 
@@ -2186,7 +2187,8 @@ inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cu
     return -1;
 }
 
-void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
+void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur,
+                               int level)
 {
     int rc = 0;
     int bdberr = 0;
@@ -2196,7 +2198,7 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
     int dtasize_sd;
     char *dta_sd;
 
-    logmsg(LOGMSG_USER, "TMPTABLE:\n");
+    logmsg(level, "TMPTABLE:\n");
     rc = bdb_temp_table_first(bdb_state, cur, &bdberr);
     while (!rc) {
 
@@ -2205,11 +2207,11 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
         dta_sd = bdb_temp_table_data(cur);
         dtasize_sd = bdb_temp_table_datasize(cur);
 
-        logmsg(LOGMSG_USER, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
-        hexdump(LOGMSG_USER, key_sd, keysize_sd);
-        logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-        hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
-        logmsg(LOGMSG_USER, "\"\n");
+        logmsg(level, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
+        hexdump(level, key_sd, keysize_sd);
+        logmsg(level, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
+        hexdump(level, dta_sd, dtasize_sd);
+        logmsg(level, "\"\n");
 
         rowid++;
 
