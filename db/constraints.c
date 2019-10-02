@@ -40,6 +40,7 @@ static int is_delete_op(int op);
 
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
+extern int gbl_debug_allow_constraint_violation;
 
 /**
  * Checks to see if there are any cascading deleletes/updates pointing to this
@@ -1273,6 +1274,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
+    if (gbl_debug_allow_constraint_violation)
+        return 0;
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
@@ -1480,13 +1483,13 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                 }
 
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
-                    struct dbtable *ftable = NULL, *currdb = NULL;
+                    struct dbtable *currdb = NULL;
                     int fixnum = 0;
                     int fixlen = 0;
                     char fkey[MAXKEYLEN];
                     char fondisk_tag[MAXTAGLEN];
 
-                    ftable = get_dbtable_by_name(ct->table[ridx]);
+                    struct dbtable *ftable = get_dbtable_by_name(ct->table[ridx]);
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
@@ -1584,8 +1587,10 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                         }
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint cannot resolve "
-                                  "constraint table '%s' index '%s'",
-                                  ftable->tablename, ct->keynm[ridx]);
+                                  "constraint table '%s' key '%s' -> "
+                                  "table '%s' index '%d' key '%s'",
+                                  ct->lcltable->tablename, ct->lclkeyname,
+                                  ftable->tablename, ridx, ct->keynm[ridx]);
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
