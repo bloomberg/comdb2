@@ -2369,11 +2369,11 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations,
     }
 
     int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
-    if (seqnum->generation > last_generation) {
+    if (seqnum->commit_generation > last_generation) {
         return 1;
     }
 
-    if (seqnum->generation < last_generation) {
+    if (seqnum->commit_generation < last_generation) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER, "seqnum-generation %d < last_generation %d, not"
                     "copying\n", seqnum->generation, last_generation);
