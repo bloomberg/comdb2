@@ -22,16 +22,6 @@ fi
 nins=0
 
 
-if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
-    lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
-    if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
-       echo "FAILURE: DB is not running in snapshot isolation mode"
-       exit 1
-    fi
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
-fi
-
-
 failexit()
 {
     echo "Failed $1"
@@ -274,12 +264,15 @@ else
 fi
 
 ddcount=`grep -c DEADLOCK $mlog`
+rr=$(cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm --host ${master} "select value from comdb2_tunables where name='reorder_idx_writes'")
 
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
+    assertres $rr "OFF"
     if [[ $ddcount -lt 100 ]] ; then
         failexit 'no reorder expected to get more than 100 deadlocks for this test'
     fi
 else
+    assertres $rr "ON"
     if [[ $ddcount -gt 10 ]] ; then
         failexit 'reorder expected to get less than 10 deadlocks for this test'
     fi

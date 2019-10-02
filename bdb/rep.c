@@ -4134,7 +4134,10 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
         return 1;
     }
 
-    return (gettimeofday_ms() <= get_coherency_timestamp());
+    int ret = (gettimeofday_ms() <= get_coherency_timestamp());
+    if (!ret)
+        logmsg(LOGMSG_DEBUG, "%s returning INCOHERENT \n", __func__);
+    return ret;
 }
 
 int bdb_valid_lease(void *in_bdb_state)
