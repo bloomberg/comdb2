@@ -3647,6 +3647,9 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
         bzero(seqnum, sizeof(seqnum_type));
     } else {
+        uint32_t commit_generation;
+        DB_LSN commit_lsn;
+        bdb_latest_commit(bdb_state, &commit_lsn, &commit_generation);
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         int myhost_ix = nodeix(bdb_state->repinfo->myhost);
@@ -3654,6 +3657,7 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
                sizeof(seqnum_type));
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        seqnum->commit_generation = commit_generation;
     }
     return (seqnum->lsn.file > 0);
 }
