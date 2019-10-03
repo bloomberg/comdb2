@@ -1354,9 +1354,7 @@ __dbenv_replicant_generation(dbenv, generation)
     DB_ENV *dbenv;
     uint32_t *generation;
 {
-	Pthread_mutex_lock(&gbl_durable_lsn_lk);
     *generation = dbenv->rep_gen;
-	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
     return 0;
 }
 

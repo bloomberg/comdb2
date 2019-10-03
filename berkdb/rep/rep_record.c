@@ -7552,10 +7552,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_CLR(rep, REP_F_READY);
 		goto errunlock;
 	}
-    extern pthread_mutex_t gbl_durable_lsn_lk;
-	Pthread_mutex_lock(&gbl_durable_lsn_lk);
+
     dbenv->rep_gen = rep->gen;
-	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 		__func__, prevlsn.file, prevlsn.offset, trunclsn.file,
