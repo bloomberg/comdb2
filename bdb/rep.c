@@ -2369,14 +2369,14 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations,
     }
 
     int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
-    if (seqnum->commit_generation > last_generation) {
+    if (seqnum->generation > last_generation) {
         return 1;
     }
 
-    if (seqnum->commit_generation < last_generation) {
+    if (seqnum->generation < last_generation) {
         if (trace && (now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_USER, "seqnum-commit_generation %d < last_generation %d, not"
-                    "copying\n", seqnum->commit_generation, last_generation);
+            logmsg(LOGMSG_USER, "seqnum-generation %d < last_generation %d, not"
+                    " copying\n", seqnum->generation, last_generation);
             lastpr = now;
         }
         return 0;
@@ -2389,7 +2389,7 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations,
 
     if (log_compare(&last_lsn, &seqnum->lsn) > 0) {
         if (trace && (now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_USER, "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not"
+            logmsg(LOGMSG_USER, "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not "
                     "copying\n", seqnum->lsn.file, seqnum->lsn.offset,
                     last_lsn.file, last_lsn.offset);
             lastpr = now;
@@ -3647,9 +3647,8 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
         bzero(seqnum, sizeof(seqnum_type));
     } else {
-        uint32_t commit_generation;
-        DB_LSN commit_lsn;
-        bdb_latest_commit(bdb_state, &commit_lsn, &commit_generation);
+        uint32_t rep_gen;
+        bdb_state->dbenv->replicant_generation(bdb_state->dbenv, &rep_gen);
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         int myhost_ix = nodeix(bdb_state->repinfo->myhost);
@@ -3657,7 +3656,7 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
                sizeof(seqnum_type));
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-        seqnum->commit_generation = commit_generation;
+        seqnum->generation = rep_gen;
     }
     return (seqnum->lsn.file > 0);
 }
