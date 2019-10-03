@@ -2375,8 +2375,8 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, int seqnum_generations,
 
     if (seqnum->commit_generation < last_generation) {
         if (trace && (now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_USER, "seqnum-generation %d < last_generation %d, not"
-                    "copying\n", seqnum->generation, last_generation);
+            logmsg(LOGMSG_USER, "seqnum-commit_generation %d < last_generation %d, not"
+                    "copying\n", seqnum->commit_generation, last_generation);
             lastpr = now;
         }
         return 0;
