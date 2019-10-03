@@ -1,0 +1,80 @@
+drop table if exists t
+create table t {schema {
+    short        alltypes_short
+    u_short      alltypes_u_short
+    int          alltypes_int
+    u_int        alltypes_u_int
+    longlong     alltypes_longlong
+    float        alltypes_float
+    double       alltypes_double
+    byte         alltypes_byte[16]
+    cstring      alltypes_cstring[16]
+    pstring      alltypes_pstring[16]
+    blob         alltypes_blob
+    blob         alltypes_blob_2[16]
+    datetime     alltypes_datetime
+    datetimeus   alltypes_datetimeus
+    vutf8        alltypes_vutf8[16]
+    intervalym   alltypes_intervalym
+    intervalds   alltypes_intervalds
+    intervaldsus alltypes_intervaldsus
+    decimal32    alltypes_decimal32
+    decimal64    alltypes_decimal64
+    decimal128   alltypes_decimal128
+}}$$
+
+drop view if exists v
+create view v as select distinct(alltypes_double) as distinct_doubles from t
+
+create procedure emit_schema version 'sptest' {
+local function main()
+    local schema = {{"col", "int"},{"name", "text"},{"origin_name", "text"},{"table_name", "text"}}
+    for i, nt in ipairs(schema) do
+        db:column_name(nt[1], i)
+        db:column_type(nt[2], i)
+    end
+end}$$
+
+create procedure emit_stmt_info version 'sptest' {
+local function main(stmt, i)
+    db:emit(i, stmt:column_name(i), stmt:column_origin_name(i), stmt:column_table_name(i))
+end}$$
+
+create procedure out_of_bound_col version 'sptest' {
+local function main()
+    local emit_schema = db:sp('emit_schema')
+    emit_schema()
+    local stmt = db:prepare("select 'hello, world!' as hi")
+    local emit = db:sp('emit_stmt_info')
+    emit(stmt, -1)
+    emit(stmt, 0)
+    emit(stmt, 1) -- GOOD
+    emit(stmt, 2)
+
+end}$$
+
+create procedure col_names version 'sptest' {
+local function main(sql)
+    local emit_schema = db:sp('emit_schema')
+    emit_schema()
+    local stmt = db:prepare(sql)
+    if stmt == nil then return db:error() end
+    local emit = db:sp('emit_stmt_info')
+    for i = 1, stmt:column_count(stmt) do
+        emit(stmt, i)
+    end
+end}$$
+
+exec procedure out_of_bound_col()
+exec procedure col_names('select * from t')
+exec procedure col_names('select alltypes_int from t')
+exec procedure col_names('select alltypes_int as aliased_name from t')
+exec procedure col_names('select distinct(alltypes_int) distinct_int from t')
+exec procedure col_names('select alltypes_int+1 as plus_one from t')
+exec procedure col_names('select min(alltypes_int) as min_int from t')
+exec procedure col_names('select max(alltypes_int) as max_int from t')
+exec procedure col_names('select upper(alltypes_cstring) as upper_text from t')
+exec procedure col_names('delete from t')
+exec procedure col_names('update t set alltypes_int = 1')
+exec procedure col_names('with foo as (select alltypes_short, alltypes_decimal128 from t) select * from foo')
+exec procedure col_names('select * from v')
