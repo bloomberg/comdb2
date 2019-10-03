@@ -862,7 +862,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t1.txt select_t1_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t1.txt,select_t1_final.txt}' to see the error."
 
     exit 1
 

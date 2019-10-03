@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-export COMDB2_PMUX_FILE=$(pwd)/pmux.sqlite
+export COMDB2_PMUX_FILE=${PWD}/pmux.sqlite
 
 set -x
 
@@ -11,7 +11,7 @@ if [[ -z "$PMUX_EXE" ]]; then
 fi
 
 if [[ -z "$TESTSROOTDIR" ]]; then
-    export TESTSROOTDIR=$(pwd)/..
+    export TESTSROOTDIR=${PWD}/..
 fi
 
 port=19500
@@ -38,7 +38,7 @@ mkdir -p ${TESTDIR}/var/log/cdb2/
 
 typeset -A createpids
 for i in $(seq 1 10); do 
-    TSTDBDIR=$(pwd)/testdb${i}
+    TSTDBDIR=${PWD}/testdb${i}
     mkdir $TSTDBDIR
     ${COMDB2_EXE} testdb${i} --create --dir $TSTDBDIR &
     createpids[$i]=$!
@@ -50,7 +50,7 @@ done
 
 typeset -A dbpids
 for i in $(seq 1 10); do 
-    DBLRL=$(pwd)/testdb${i}/testdb${i}.lrl
+    DBLRL=${PWD}/testdb${i}/testdb${i}.lrl
     echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $DBLRL
     echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
 	${COMDB2_EXE} testdb${i} --lrl $DBLRL &

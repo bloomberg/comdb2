@@ -47,7 +47,7 @@ for testreq in `ls t*.req` ; do
     else
         echo "failed $testname"
         echo "see diffs here: $HOSTNAME"
-        echo cd `pwd`
+        echo cd ${PWD}
         echo $cmd
         eval $cmd
         echo

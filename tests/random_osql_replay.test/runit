@@ -16,7 +16,7 @@ master=`getmaster`
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('test bad_osql')" &> test1.out
 echo "(out='[ERROR] discarding packet for 1 01000000-0000-0000-0000-000000000000, session not found')" > test1.exp
 if ! diff test1.exp test1.out ; then
-    echo "Testcase failed: diff `pwd`/{test1.exp,test1.out}"
+    echo "Testcase failed: diff ${PWD}/{test1.exp,test1.out}"
     exit 1
 fi
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values (1)"
