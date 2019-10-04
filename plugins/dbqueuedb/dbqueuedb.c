@@ -427,9 +427,8 @@ static void dbqueue_check_inactivity(struct consumer *consumer)
             return;
 
         if (genid == consumer->event_genid) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: event(s) has not been consumed for last "
-                   "%ld secs.\n",
+            logmsg(LOGMSG_USER,
+                   "%s: no events were consumed since last %ld secs.\n",
                    consumer->procedure_name,
                    current_time - consumer->inactive_since);
         } else {
