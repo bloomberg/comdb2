@@ -80,6 +80,7 @@
 #endif
 
 int (*comdb2_ipc_swapnpasdb_sinfo)(struct ireq *) = 0;
+void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
 extern pthread_t gbl_invalid_tid;
@@ -482,6 +483,15 @@ static int forward_longblock_to_master(struct ireq *iq,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        /* Don't change anything in request for socket-fstsnd. */
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -543,6 +553,14 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
