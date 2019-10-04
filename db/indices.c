@@ -20,6 +20,7 @@
 #include "block_internal.h"
 #include "logmsg.h"
 #include "indices.h"
+#include "sqloffload.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
@@ -541,10 +542,10 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     dtikey_t delditk = {0}; // will serve as the delete key obj
     dtikey_t ditk = {0};    // will serve as the add or upd key obj
     bool reorder =
-        gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        osql_is_index_reorder_on(iq->osql_flags) && 
+        iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
-        iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
-        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
+        iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
     if (reorder) {
         cur = get_defered_index_tbl_cursor(1);
@@ -837,10 +838,10 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk = {0};
     bool reorder =
-        gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        osql_is_index_reorder_on(iq->osql_flags) &&
+        iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
-        iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
-        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
+        iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
     if (reorder) {
         cur = get_defered_index_tbl_cursor(1);
@@ -1320,7 +1321,6 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     int err;
     int rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc != IX_OK) {
-        // free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
             if (iq->debug)
                 reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
