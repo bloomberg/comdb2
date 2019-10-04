@@ -236,7 +236,7 @@ static inline int print_verify_progress(verify_common_t *par, int now)
     }
 
     int rc;
-    if (par->verify_mode == VERIFY_DEFAULT) {
+    if (par->verify_mode == VERIFY_SERIAL) {
         rc = locprint(par->sb, par->lua_callback, par->lua_params,
                       "!%s, did %d records, %d per second%s", par->header,
                       par->nrecs_progress,
