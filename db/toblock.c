@@ -3175,7 +3175,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              *    BLOCK2_RECOM
              *    BLOCK2_SNAPISOL
              *    BLOCK2_SERIAL */
-            int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
+            int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX;
             if (delayed == 0 && opnum == num_reqs - 1 &&
                 iq->usedb->n_constraints == 0 && gbl_goslow == 0) {
                 addflags |= RECFLAGS_NO_CONSTRAINTS;
@@ -3273,7 +3273,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX, 0);
             if (rc != 0) {
                 numerrs = 1;
                 GOTOBACKOUT;
@@ -3351,7 +3351,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             rc = del_record(iq, trans, NULL, /*primkey*/
                             delkl.rrn, delkl.genid, -1ULL, &err.errcode,
-                            &err.ixnum, hdr.opcode, 0);
+                            &err.ixnum, hdr.opcode, RECFLAGS_DONT_REORDER_IDX);
             if (rc != 0) {
                 numerrs = 1;
                 GOTOBACKOUT;
@@ -3405,7 +3405,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             rc = del_record(iq, trans, saved_fndkey, saved_rrn, 0, /*genid*/
-                            -1ULL, &err.errcode, &err.ixnum, hdr.opcode, 0);
+                            -1ULL, &err.errcode, &err.ixnum, hdr.opcode,
+                            RECFLAGS_DONT_REORDER_IDX);
             if (rc != 0) {
                 numerrs = 1;
                 GOTOBACKOUT;
@@ -3549,7 +3550,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             NULL /*p_buf_vrec_end*/, nulls, NULL, /*updcols*/
                             blobs, MAXBLOBS, &genid, -1ULL, -1ULL, &err.errcode,
                             &err.ixnum, hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
@@ -3657,7 +3658,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -3750,7 +3751,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX, 0);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -3851,7 +3852,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 GOTOBACKOUT;
             }
             rc = del_record(iq, trans, key, delsc.rrn, 0, /*genid*/
-                            -1ULL, &err.errcode, &err.ixnum, hdr.opcode, 0);
+                            -1ULL, &err.errcode, &err.ixnum, hdr.opcode,
+                            RECFLAGS_DONT_REORDER_IDX);
             if (rc != 0) {
                 numerrs = 1;
                 GOTOBACKOUT;
@@ -4024,7 +4026,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -4385,7 +4387,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
 
                 rc = del_record(iq, trans, NULL, 2, genid, -1ULL, &failop,
-                                &failnum, BLOCK2_DELOLDER, 0);
+                                &failnum, BLOCK2_DELOLDER,
+                                RECFLAGS_DONT_REORDER_IDX);
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %d %s genid %016llx rc "
                                   "%d\n",
