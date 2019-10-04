@@ -260,7 +260,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\",\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
+        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
         return luaL_error(L, "Verify failed.");
     }
 
