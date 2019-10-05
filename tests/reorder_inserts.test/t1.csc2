@@ -1,0 +1,20 @@
+schema
+{
+    longlong         a
+    longlong         b
+    longlong         c
+    longlong         d
+    longlong         e
+    longlong         f
+    longlong         g
+}
+
+keys {
+    "PK"=a+b
+dup "Kba"=b+a
+dup "Kdca"=d+c+a
+dup "Kcba"=c+a+b
+dup "Ke"=e
+dup "Kf"=f
+dup "Kg"=g
+}

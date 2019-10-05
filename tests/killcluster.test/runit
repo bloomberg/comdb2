@@ -128,16 +128,16 @@ function runtestwithoptions
     dt=$(date +%Y%m%d%H%M%S)
 
     # Session output
-    dbout=$(pwd)/killcluster.$db.$dt.out
+    dbout=${PWD}/killcluster.$db.$dt.out
 
     # Normalized session output
-    dbnrm=$(pwd)/killcluster.$db.$dt.nrm
+    dbnrm=${PWD}/killcluster.$db.$dt.nrm
 
     # Session error
-    dberr=$(pwd)/killcluster.$db.$dt.err
+    dberr=${PWD}/killcluster.$db.$dt.err
 
     # Correct output
-    dbcrt=$(pwd)/killcluster.$db.$dt.crt
+    dbcrt=${PWD}/killcluster.$db.$dt.crt
 
     # The sql begins a transaction then does a large select
     cdb2sql ${CDB2_OPTIONS} -maxretries 1000000 -debugtrace $db $stage < ./sql > $dbout 2>$dberr &

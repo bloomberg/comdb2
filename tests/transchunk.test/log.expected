@@ -1,0 +1,37 @@
+Starting
+Inserting rows
+Inserting chunks of 99 rows
+(out='    OSQL_DONE            51')
+(count(*)=5000)
+Deleting the existing rows
+(out='    OSQL_DONE            52')
+Inserting chunks of 1 row
+(out='    OSQL_DONE            5052')
+(count(*)=5000)
+Deleting the existing rows
+(out='    OSQL_DONE            5053')
+Multiple inserts in a transaction chunks of 1
+(out='    OSQL_DONE            5059')
+Failure tests
+[commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+(out='    OSQL_DONE            5059')
+[commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+(out='    OSQL_DONE            5059')
+(a=1)
+(a=2)
+(a=3)
+[select * from t order by a limit 3] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+[commit] failed with rc 299 
+(out='    OSQL_DONE            5059')
+(a=1)
+(a=2)
+(a=3)
+[commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+(out='    OSQL_DONE            5059')
+[commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+(count(*)=6)
+(out='    OSQL_DONE            5059')
+[commit] failed with rc 299 add key constraint duplicate key 'A' on table 't' index 0
+(a=123456789)
+(count(*)=7)
+(out='    OSQL_DONE            5060')

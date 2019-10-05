@@ -3177,6 +3177,20 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		lockp->refcount--;
 		return (0);
 	}
+	DB_LOCKER *sh_locker = lockp->holderp;
+
+	if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
+			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		for (int i = 0; i < sh_locker->ntrackedlocks; i++) {
+			if (sh_locker->tracked_locklist[i] == lockp) {
+				struct __db_lock *last = sh_locker->tracked_locklist[
+					sh_locker->ntrackedlocks - 1];
+				sh_locker->tracked_locklist[i] = last;
+				sh_locker->ntrackedlocks--;
+				i--;
+			}
+		}
+	}
 
 	/* Increment generation number. */
 	lockp->gen++;
@@ -3189,7 +3203,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 
 #ifdef DEBUG_LOCKS
-	DB_LOCKER *sh_locker = lockp->holderp;
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
 			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
@@ -6246,6 +6259,18 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+
+#ifdef NEWSI_DEBUG
+	for (i = 0; i < locker->ntrackedlocks; i++) {
+		lp = SH_LIST_FIRST(&locker->heldby, __db_lock);
+		for ( ; lp != NULL; lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+			if (lp == locker->tracked_locklist[i])
+				break;
+		}
+		assert(lp != NULL);
+	}
+#endif
+
 	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];
