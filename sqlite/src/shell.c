@@ -16848,12 +16848,8 @@ static int do_meta_command(char *zLine, ShellState *p){
     ** Clear all bind parameters by dropping the TEMP table that holds them.
     */
     if( nArg==2 && strcmp(azArg[1],"clear")==0 ){
-      int wrSchema = 0;
-      sqlite3_db_config(p->db, SQLITE_DBCONFIG_WRITABLE_SCHEMA, -1, &wrSchema);
-      sqlite3_db_config(p->db, SQLITE_DBCONFIG_WRITABLE_SCHEMA, 1, 0);
       sqlite3_exec(p->db, "DROP TABLE IF EXISTS temp.sqlite_parameters;",
                    0, 0, 0);
-      sqlite3_db_config(p->db, SQLITE_DBCONFIG_WRITABLE_SCHEMA, wrSchema, 0);
     }else
 
     /* .parameter list
@@ -18123,7 +18119,7 @@ static int do_meta_command(char *zLine, ShellState *p){
   }else
 #endif /* !defined(SQLITE_OMIT_TRACE) */
 
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_DEBUG) && !defined(SQLITE_OMIT_VIRTUALTABLE)
   if( c=='u' && strncmp(azArg[0], "unmodule", n)==0 ){
     int ii;
     int lenOpt;

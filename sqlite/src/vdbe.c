@@ -747,9 +747,9 @@ static void memTracePrint(Mem *p){
 #ifndef SQLITE_OMIT_FLOATING_POINT
   }else if( p->flags & MEM_Real ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    logmsg(LOGMSG_USER, " r:%g", p->u.r);
+    logmsg(LOGMSG_USER, " r:%.17g", p->u.r);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    printf(" r:%g", p->u.r);
+    printf(" r:%.17g", p->u.r);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   }else if( sqlite3VdbeMemIsRowSet(p) ){

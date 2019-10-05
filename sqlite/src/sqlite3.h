@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.30.0"
 #define SQLITE_VERSION_NUMBER 3030000
-#define SQLITE_SOURCE_ID      "2019-09-24 19:25:35 cb63e0ed7a9a60a163d974cad925b4c248e9a5f6e7b9a4ed5c5a5d29a3de476a"
+#define SQLITE_SOURCE_ID      "2019-10-05 00:33:05 be9f5d8487c0477ea631858fa287ce614c015b4900fc012a06cdb147fd6fe752"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
