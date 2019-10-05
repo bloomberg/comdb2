@@ -105,12 +105,6 @@ int selectv_range_commit(struct sqlclntstate *clnt);
 void osql_postcommit_handle(struct ireq *iq);
 void osql_postabort_handle(struct ireq *iq);
 
-inline bool osql_is_index_reorder_on(int osql_flags) {
-    return osql_flags & OSQL_FLAGS_REORDER_IDX_ON;
-}
-
-inline void osql_unset_index_reorder_bit(int *osql_flags) {
-    (*osql_flags) &= (~OSQL_FLAGS_REORDER_IDX_ON);
-}
-
+bool osql_is_index_reorder_on(int osql_flags);
+void osql_unset_index_reorder_bit(int *osql_flags);
 #endif
