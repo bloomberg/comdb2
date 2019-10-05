@@ -682,7 +682,7 @@ function selectcmp_cart_t1_t2
     > $tmfl
 
     # For the check-file name
-    ckfl=$(pwd)/cartesian_t1_t2.txt
+    ckfl=${PWD}/cartesian_t1_t2.txt
 
     # Tell the co-process to redirect to the new tmpfile.
     echo "@redirect $tmfl" >&${COPROC[1]}
@@ -805,7 +805,7 @@ function selectcmp_cart_t2_t2
     > $tmfl
 
     # For the check-file name
-    ckfl=$(pwd)/cartesian_t2_t2.txt
+    ckfl=${PWD}/cartesian_t2_t2.txt
 
     # Tell the co-process to redirect to the new tmpfile.
     echo "@redirect $tmfl" >&${COPROC[1]}
@@ -928,7 +928,7 @@ function selectcmp_cart_ix1_ix1
     > $tmfl
 
     # For the check-file name
-    ckfl=$(pwd)/cartesian_ix1_ix1.txt
+    ckfl=${PWD}/cartesian_ix1_ix1.txt
 
     # Tell the co-process to redirect to the new tmpfile.
     echo "@redirect $tmfl" >&${COPROC[1]}
@@ -1053,7 +1053,7 @@ function selectcmp
     > $tmfl
 
     # For the check-file name
-    ckfl=$(pwd)/select_${tbl}.txt
+    ckfl=${PWD}/select_${tbl}.txt
 
     # Tell the co-process to redirect to the new tmpfile.
     echo "@redirect $tmfl" >&${COPROC[1]}
@@ -1410,7 +1410,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/select_t1.txt $tmp1' to see the error."
+    echo "Run 'diff ${PWD}/select_t1.txt $tmp1' to see the error."
 
     # Return a bad rcode.
     rcode=1
@@ -1430,7 +1430,7 @@ if [[ "0" != "$wr_t2" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t2 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/select_t2.txt $tmp2' to see the error."
+    echo "Run 'diff ${PWD}/select_t2.txt $tmp2' to see the error."
 
     # Return a bad rcode.
     rcode=1

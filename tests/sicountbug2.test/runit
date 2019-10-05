@@ -455,7 +455,7 @@ function selectcmp
     > $tmfl
 
     # For the check-file name
-    ckfl=$(pwd)/select_${tbl}.txt
+    ckfl=${PWD}/select_${tbl}.txt
 
     # Tell the co-process to redirect to the new tmpfile.
     echo "@redirect $tmfl" >&${COPROC[1]}

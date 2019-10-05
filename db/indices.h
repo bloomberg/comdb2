@@ -28,7 +28,8 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        int *rrn, unsigned long long *genid,
                        unsigned long long vgenid, unsigned long long ins_keys,
                        int opcode, int blkpos, void *od_dta, size_t od_len,
-                       const char *ondisktag, struct schema *ondisktagsc);
+                       const char *ondisktag, struct schema *ondisktagsc,
+                       int flags, bool reorder);
 
 int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        int *ixfailnum, int rrn, unsigned long long *newgenid,
@@ -41,7 +42,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
 int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        int *ixfailnum, int rrn, unsigned long long genid,
-                       void *od_dta, unsigned long long del_keys,
+                       void *od_dta, unsigned long long del_keys, int flags,
                        blob_buffer_t *del_idx_blobs, const char *ondisktag);
 
 int upd_new_record_indices(

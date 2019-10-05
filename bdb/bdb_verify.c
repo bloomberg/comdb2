@@ -183,7 +183,8 @@ done:
     if (t) {
         if (rc == 0) {
             seqnum_type seqnum;
-            rc = bdb_tran_commit_with_seqnum(bdb_state, t, &seqnum, &bdberr);
+            rc = bdb_tran_commit_with_seqnum_size(bdb_state, t, &seqnum, NULL,
+                                                  &bdberr);
             if (rc)
                 goto ret;
             rc = bdb_wait_for_seqnum_from_all(bdb_state, &seqnum);
@@ -1013,6 +1014,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 #ifdef _LINUX_SOURCE
         buf_put(&genid, sizeof(unsigned long long), (uint8_t *)&genid_flipped,
                 (uint8_t *)&genid_flipped + sizeof(unsigned long long));
+        genid_flipped = bdb_genid_to_host_order(genid);
 #else
         genid_flipped = genid;
 #endif

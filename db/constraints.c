@@ -30,11 +30,9 @@
 #include <assert.h>
 #include "logmsg.h"
 #include "views.h"
+#include "indices.h"
 #include "osqlsqlthr.h"
 
-static void *get_constraint_table_cursor(void *table);
-
-static int close_constraint_table_cursor(void *cursor);
 
 static char *get_temp_ct_dbname(long long *);
 static int is_update_op(int op);
@@ -68,6 +66,7 @@ int has_cascading_reverse_constraints(struct dbtable *db)
     return 0;
 }
 
+/* this is for index on expressions */
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
     char key[MAXKEYLEN];
@@ -234,7 +233,7 @@ typedef struct cttbl_entry {
 
 int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
-                  int blkpos, int flags)
+                  int blkpos, int rec_flags)
 {
     block_state_t *blkstate = iq->blkstate;
     int type = CTE_ADD, rc = 0;
@@ -265,11 +264,12 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     fwdct->ixnum = ixnum;
     fwdct->rrn = rrn;
     fwdct->optype = optype;
-    fwdct->flags = flags;
+    fwdct->flags = rec_flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
+
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -280,6 +280,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
         logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
         return -1;
     }
+
     blkstate->ct_id_key++;
     return 0;
 }
@@ -584,8 +585,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
 
 /* FOR UPDATES/DELETES, MUST VERIFY AGAINST DELETED RECORD'S TABLE TO SEE IF
  * THERE'RE ANY  KEYS WITH SAME VALUE.  IT IS OK TO DELETE IF THATS THE CASE */
-int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout)
 {
     int rc = 0, fndrrn = 0, err = 0;
@@ -794,7 +794,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             /* TODO verify we have proper schema change locks */
 
             rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx,
-                            BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
+                            BLOCK2_DELKL,
+                            RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -854,7 +855,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 NULL, /*blobs*/
                 0,    /*maxblobs*/
                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL |
+                    RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -956,6 +958,10 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     int od_tail_len = 0;
     char mangled_key[MAXKEYLEN];
 
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
+#endif
+
     od_dta = alloca(20 * 1024 + 8);
     if (od_dta == NULL) {
         if (iq->debug)
@@ -994,7 +1000,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     unsigned long long genid = 0LL;
     unsigned long long cached_index_genid = genid;
     unsigned long long ins_keys = 0ULL;
-    int flags = 0;
     rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc != 0) {
         close_constraint_table_cursor(cur);
@@ -1029,6 +1034,16 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             return ERR_INTERNAL;
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
+        int flags = curop->flags;
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         */
+        if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
+            goto next_record;
+        }
 
         /* only do once per genid *after* processing all idxs from tmptbl 
          * (which are in sequence for the same genid): 
@@ -1046,17 +1061,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         int ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
-        flags = curop->flags;
-
-        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
-         * already been added to the indexes in add_record() to ensure
-         * we don't add duplicates in the data files. We still push them
-         * to ct_add_table to be able to perform cascade updates to the
-         * child tables.
-         */
-        if ((flags & OSQL_IGNORE_FAILURE) != 0) {
-            goto next_record;
-        }
 
         if (addrrn == -1) {
             if (iq->debug)
@@ -1245,7 +1249,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
                         __func__);
                 *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur);
+                close_constraint_table_cursor(cur); // AZ: this is wrong!?
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
@@ -1263,9 +1267,9 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     return ERR_INTERNAL;
 }
 
-/* go through all entries in ct_add_table and */
-int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+/* go through all entries in ct_add_table and verify that
+ * the key exists in the parent table if there are constraints */
+int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;
@@ -1710,6 +1714,7 @@ int clear_constraints_tables(void)
     truncate_constraint_table(thdinfo->ct_add_table);
     truncate_constraint_table(thdinfo->ct_del_table);
     truncate_constraint_table(thdinfo->ct_add_index);
+    truncate_defered_index_tbl();
 
     return 0;
 }
@@ -1811,16 +1816,20 @@ void *create_constraint_index_table()
     return newtbl;
 }
 
-static inline void *get_constraint_table_cursor(void *table)
+inline void *get_constraint_table_cursor(void *table)
 {
-    struct temp_cursor *cur = NULL;
+    if (table == NULL)
+        abort();
     int err = 0;
-    cur = (struct temp_cursor *)bdb_temp_table_cursor(thedb->bdb_env, table,
-                                                      NULL, &err);
+    struct temp_cursor *cur =
+        bdb_temp_table_cursor(thedb->bdb_env, table, NULL, &err);
+    if (!cur) {
+        logmsg(LOGMSG_ERROR, "Can't create cursor err=%d\n", err);
+    }
     return cur;
 }
 
-static inline int close_constraint_table_cursor(void *cursor)
+inline int close_constraint_table_cursor(void *cursor)
 {
     int err = 0, rc = 0;
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, cursor, &err);

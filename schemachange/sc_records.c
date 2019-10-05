@@ -37,7 +37,6 @@
 int gbl_logical_live_sc = 0;
 
 extern int gbl_partial_indexes;
-
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
@@ -1244,7 +1243,6 @@ cleanup:
 
 cleanup_no_msg:
     convert_record_data_cleanup(data);
-
     if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     /* restore our  thread type to what it was before */

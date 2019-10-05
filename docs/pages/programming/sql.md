@@ -682,6 +682,13 @@ do not need to be quoted. For example, ```SET USER mike``` is correct.  ```SET U
 This sets the current connection's transaction level.  See 
 [transaction levels](transaction_model.html#isolation-levels-and-artifacts) for more details
 
+### SET TRANSACTION CHUNK
+
+This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
+the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
+as a sequence of small lock-footprint transactions.  Currently only supported for bulk inserts in a client specified 
+```BEGIN ... COMMIT``` transaction.
+
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone

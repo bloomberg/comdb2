@@ -734,10 +734,12 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     case OSQL_UPDREC:
     case OSQL_DELREC:
         sess->last_is_ins = 0;
+        sess->tran_rows++;
         break;
     case OSQL_INSERT:
     case OSQL_INSREC:
         sess->last_is_ins = 1;
+        sess->tran_rows++;
         break;
     default:
         sess->last_is_ins = 0;
@@ -1359,12 +1361,15 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
-                                   tmpcursor_t * cur);
-    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
-    if (dbc_ins)
-        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+                                   tmpcursor_t * cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc, LOGMSG_DEBUG);
+    if (dbc_ins) {
+        logmsg(LOGMSG_DEBUG, "INS ");
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins, LOGMSG_DEBUG);
+    }
 #endif
 
     /* go through each record */
@@ -1391,6 +1396,10 @@ static int process_this_session(
     if (rc)
         return rc;
 
+    /* if only one row add/upd/del then no need to reorder indices */
+    if (sess->tran_rows <= 1)
+        flags |= OSQL_DONT_REORDER_IDX;
+
     while (!rc && !rc_out) {
         char *data = NULL;
         int datalen = 0;
@@ -1412,7 +1421,8 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        /* this locks pages */
+        /* This call locks pages:
+         * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
         free(data);
