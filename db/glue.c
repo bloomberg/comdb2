@@ -249,7 +249,7 @@ void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
 
 struct ireq *get_fake_ireq()
 {
-    struct ireq *iq = malloc(sizeof(struct ireq));
+    struct ireq *iq = calloc(sizeof(struct ireq), 1);
     init_fake_ireq(thedb, iq);
     return iq;
 }

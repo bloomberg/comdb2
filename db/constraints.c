@@ -2128,6 +2128,8 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
         char *lcl_tag, char *lcl_key, char *tblname, void *trans, int *remote_ri)
 {
     int rc = 0;
+    if (remote_ri)
+        *remote_ri = 0;
     for (int ri = 0; ri < ct->nrules; ri++) {
         int ridx;
         int rixlen;
@@ -2182,7 +2184,7 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
 
 /* go through the constraint list of db_table and find if ix has any constraints
  */
-constraint_t *get_ix_constraint(struct dbtable *db_table, int ix)
+constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix)
 {
     for (int ci = 0; ci < db_table->n_constraints; ci++) {
         constraint_t *ct = &(db_table->constraints[ci]);

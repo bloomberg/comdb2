@@ -49,7 +49,7 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
-struct ireq;
+struct ireq; /* forward declare */
 extern struct ireq *get_fake_ireq();
 
 /* print to sb if available lua callback otherwise */
@@ -583,7 +583,6 @@ err:
     return rc;
 }
 
-
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
     DBC *cdata = NULL;
@@ -638,7 +637,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     struct ireq *ruleiq = NULL;
     char ix_tag[MAXTAGLEN];
-    constraint_t *ix_constraint = get_ix_constraint(par->db_table, ix);
+    constraint_t *ix_constraint = get_constraint_for_ix(par->db_table, ix);
     if (ix_constraint) {
         snprintf(ix_tag, MAXTAGLEN, ".ONDISK_IX_%d", ix);
         ruleiq = get_fake_ireq();
@@ -935,6 +934,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
         if (ix_constraint) {
             int ridx;
+            /* TODO: Clarify whether we can pass NULL as transaction here as we raise the problem of an undetectable deadlock */
             if (check_single_key_constraint(ruleiq, ix_constraint, ix_tag, dbt_key.data, bdb_state->name, NULL, &ridx)) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
