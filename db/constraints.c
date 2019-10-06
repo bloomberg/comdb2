@@ -40,7 +40,7 @@ static int is_delete_op(int op);
 
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
-extern int gbl_debug_allow_constraint_violation;
+extern int gbl_debug_skip_constraintscheck_on_insert;
 
 /**
  * Checks to see if there are any cascading deleletes/updates pointing to this
@@ -1274,7 +1274,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
-    if (gbl_debug_allow_constraint_violation)
+    if (gbl_debug_skip_constraintscheck_on_insert)
         return 0;
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;

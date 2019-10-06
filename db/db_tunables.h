@@ -1236,9 +1236,9 @@ REGISTER_TUNABLE("debug.omit_blob_write",
                  "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("debug.allow_constraint_violation",
+REGISTER_TUNABLE("debug.skip_constraintscheck_on_insert",
                  "Deliberately allow insertion without constraint check to debug db_verify", TUNABLE_BOOLEAN,
-                 &gbl_debug_allow_constraint_violation, INTERNAL, NULL, NULL, NULL,
+                 &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);

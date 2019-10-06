@@ -200,7 +200,9 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
+
 # insert into child table, violating parent constraint, verify should catch that
+
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'create table parent_t 
 {
 schema
@@ -244,12 +246,12 @@ if ! diff err_fk.out err_fk.expected ; then
 fi
 
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.allow_constraint_violation' 1"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.skip_constraintscheck_on_insert' 1"
 
 # will succeed
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (1, 1, x'aa')"
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.allow_constraint_violation' 0"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.skip_constraintscheck_on_insert' 0"
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('child_t')" 2>&1 | awk '{for (i=2; i <=NF; i++) printf("%s", (i>2 ? OFS : "") $i); print "";}' > verify_child.out
 
 
