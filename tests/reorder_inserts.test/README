@@ -1,0 +1,5 @@
+Test reordering of inserts: inserting into table t1 with 7 columns and 7 indices. 
+With reorder on there should be a very small ( < 100) number of deadlocks during
+insert stemming from conflicts when splitting pages.
+With reorder off the conflicts arise in the indices, so we expect many more 
+( > 1000) deadlocks.

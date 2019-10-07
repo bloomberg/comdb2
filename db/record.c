@@ -52,6 +52,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_idx_writes;
 
 static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                               size_t maxblobs, const char *tblname,
@@ -480,42 +481,55 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    /*
-     * Form and add all the keys.
-     * If there are constraints, do the add to indices deferred.
-     *
-     * For records from INSERT ... ON CONFLICT DO NOTHING, we need
-     * to update the indices inplace to avoid inserting duplicate
-     * data. The keys, however, are also added to the deferred
-     * temporary table to enable cascading updates, if needed.
-     */
-    if (has_constraint(flags)) /* if NOT no constraints */
-    {
-        if (!is_event_from_sc(flags)) {
-            /* enqueue the add of the key for constaint checking purposes */
-            rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys, blkpos,
-                               rec_flags);
-            if (rc != 0) {
-                if (iq->debug)
-                    reqprintf(iq, "FAILED TO PUSH KEYOP");
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                ERR;
-            }
-        } else {
-            /* if rec adding to NEW SCHEMA and this has constraints,
-             * handle idx in live_sc_*
-             */
-        }
-    }
+    if (iq->usedb->nix > 0) {
+        bool reorder =
+            gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
+            rec_flags == 0 && (flags & RECFLAGS_DONT_REORDER_IDX) == 0 &&
+            iq->usedb->sc_from != iq->usedb &&
+            strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
+            strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
+            strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
 
-    if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc =
-            add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
-                               ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
-                               blkpos, od_dta, od_len, ondisktag, ondisktagsc);
-        if (retrc)
-            ERR;
+        if (reorder)
+            rec_flags |= OSQL_ITEM_REORDERED;
+
+        /* Form and add all the keys.
+         * If there are constraints, do the add to indices deferred.
+         *
+         * For records from INSERT ... ON CONFLICT DO NOTHING, we need
+         * to update the indices inplace to avoid inserting duplicate
+         * data. The keys, however, are also added to the deferred
+         * temporary table to enable cascading updates, if needed.
+         */
+
+        if (has_constraint(flags)) { /* if NOT no constraints */
+            if (!is_event_from_sc(flags)) {
+                /* enqueue the add of the key for constraint checking purpose */
+                rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys,
+                                   blkpos, rec_flags);
+                if (rc != 0) {
+                    if (iq->debug)
+                        reqprintf(iq, "FAILED TO PUSH KEYOP");
+                    *opfailcode = OP_FAILED_INTERNAL;
+                    retrc = ERR_INTERNAL;
+                    ERR;
+                }
+            } else {
+                /* if rec adding to NEW SCHEMA and this has constraints,
+                 * handle idx in live_sc_*
+                 */
+            }
+        }
+
+        if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE) ||
+            reorder) {
+            retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                                       ixfailnum, rrn, genid, vgenid, ins_keys,
+                                       opcode, blkpos, od_dta, od_len,
+                                       ondisktag, ondisktagsc, flags, reorder);
+            if (retrc)
+                ERR;
+        }
     }
 
     /*
@@ -958,6 +972,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         // other instead of relatively expensive memcpy()
         od_dta = old_dta;
     } else {
+        // To avoid deadlock, get this read done under a write lock
         rc = ix_load_for_write_by_genid_tran(iq, rrn, vgenid, old_dta, &fndlen,
                                            od_len, trans);
         if (iq->debug)
@@ -1721,7 +1736,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     const char *tag = is_event_from_sc(flags) ? ".NEW..ONDISK" : ".ONDISK";
     /* Form and delete all keys. */
     retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid,
-                               od_dta, del_keys, del_idx_blobs, tag);
+                               od_dta, del_keys, flags, del_idx_blobs, tag);
     if (retrc)
         ERR;
 

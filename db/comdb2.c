@@ -653,6 +653,7 @@ int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
 int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 

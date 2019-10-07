@@ -177,20 +177,25 @@ const char *level_one_words[] = {
     "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
     "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
     "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
+    NULL,  // must be terminated by NULL
 };
 
 const char *char_atglyph_words[] = {
-    "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "bind", "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
     "row_sleep",  "send", "strblobs", "time",
+    NULL,  // must be terminated by NULL
 };
 
 static char *char_atglyph_generator(const char *text, const int state)
 {
-    static int len;
+    static int list_index, len;
+    const char *name;
     if (!state) { // if state is 0 get the length of text
+        list_index = 0;
         len = strlen(text);
     }
-    for (const auto &name : char_atglyph_words) {
+    while ((name = char_atglyph_words[list_index]) != NULL) {
+        list_index++;
         if (len == 0 || strncasecmp(name, text, len) == 0) {
             return strdup(name);
         }
@@ -198,14 +203,21 @@ static char *char_atglyph_generator(const char *text, const int state)
     return (NULL); // If no names matched, then return NULL.
 }
 
-// Generator function for word completion.
+/* Generator function for word completion.
+ * NB: this is called by rl_completion_matches() over and over again
+ * with state 0 or 1 depending on if it is the first time or subsequent times:
+ *   list_index is set to 0 the first time and incremented on subsequent calls
+ */
 static char *level_one_generator(const char *text, const int state)
 {
-    static int len;
+    static int list_index, len;
+    const char *name;
     if (!state) { //if state is 0 get the length of text
+        list_index = 0;
         len = strlen (text);
     }
-    for (const auto &name : level_one_words) {
+    while ((name = level_one_words[list_index]) != NULL) {
+        list_index++;
         if (len == 0 || strncasecmp(name, text, len) == 0) {
             return strdup(name);
         }
@@ -502,6 +514,7 @@ int fromhex(uint8_t *out, const uint8_t *in, size_t len)
     }
     return 0;
 }
+
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))

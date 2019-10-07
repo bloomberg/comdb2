@@ -1,0 +1,5 @@
+table t1 t1.csc2
+print_deadlock_cycles on
+round_robin_stripes
+
+reorder_idx_writes on

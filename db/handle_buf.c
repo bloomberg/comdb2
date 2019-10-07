@@ -444,9 +444,6 @@ static void *thd_req(void *vthd)
     }
     thdinfo->uniquetag = 0;
     thdinfo->ct_id_key = 0LL;
-    thdinfo->ct_add_table = NULL;
-    thdinfo->ct_del_table = NULL;
-    thdinfo->ct_add_index = NULL;
 
     thdinfo->ct_add_table = create_constraint_table();
     if (thdinfo->ct_add_table == NULL) {
@@ -636,6 +633,7 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
+                    delete_defered_index_tbl();
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
                     return 0;
                 }
@@ -648,6 +646,7 @@ static void *thd_req(void *vthd)
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
         truncate_constraint_table(thdinfo->ct_add_index);
+        truncate_defered_index_tbl();
     } while (1);
 }
 

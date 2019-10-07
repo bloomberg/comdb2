@@ -79,6 +79,7 @@ sigstopcluster.test
 cinsert_linearizable.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 phys_rep.test
+sc_async_constraints.test
 <END>
 
 # vim: set sw=4 ts=4 et:

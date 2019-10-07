@@ -1,0 +1,3 @@
+table t1 t1.csc2
+print_deadlock_cycles on
+reorder_idx_writes on

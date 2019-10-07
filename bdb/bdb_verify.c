@@ -1014,6 +1014,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 #ifdef _LINUX_SOURCE
         buf_put(&genid, sizeof(unsigned long long), (uint8_t *)&genid_flipped,
                 (uint8_t *)&genid_flipped + sizeof(unsigned long long));
+        genid_flipped = bdb_genid_to_host_order(genid);
 #else
         genid_flipped = genid;
 #endif
