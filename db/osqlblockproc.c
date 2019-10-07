@@ -1501,10 +1501,13 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     Pthread_mutex_lock(&tran->store_mtx);
 
     *nops = 0;
+    int verify_ext_chk = gbl_osql_verify_ext_chk;
+    if (tran->sess->tran_rows > 1 && !iq->is_sorese)
+        verify_ext_chk = 0; // trigger extended checking the first time
+
 
     /* if we've already had a few verify-failures, add extended checking now */
-    if (!iq->vfy_genid_track &&
-        iq->sorese.verify_retries >= gbl_osql_verify_ext_chk) {
+    if (!iq->vfy_genid_track && iq->sorese.verify_retries >= verify_ext_chk) {
         iq->vfy_genid_track = 1;
         iq->vfy_genid_hash = hash_init(sizeof(unsigned long long));
         iq->vfy_genid_pool =

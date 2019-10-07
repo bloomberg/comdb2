@@ -438,10 +438,8 @@ int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 
-int gbl_osql_verify_retries_max =
-    499; /* how many times we retry osql for verify */
-int gbl_osql_verify_ext_chk =
-    1; /* extended verify-checking after this many failures */
+int gbl_osql_verify_retries_max = 499; /* # of times we retry osql for verify */
+int gbl_osql_verify_ext_chk = 1; /* extended verify-checking after # failures */
 int gbl_test_badwrite_intvl = 0;
 int gbl_test_blob_race = 0;
 int gbl_skip_ratio_trace = 0;
