@@ -145,6 +145,7 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <logmsg.h>
 int is_comdb2_index_disableskipscan(const char *);
+void get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if defined(SQLITE_ENABLE_STAT4)
@@ -1001,14 +1002,17 @@ static void statGet(
   /* STAT3 and STAT4 have a parameter on this routine. */
   int eCall = sqlite3_value_int(argv[1]);
   assert( argc==2 );
-  assert( eCall==STAT_GET_STAT1 || eCall==STAT_GET_NEQ 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( eCall==STAT_GET_STAT1 || eCall==STAT_GET_NEQ
        || eCall==STAT_GET_ROW   || eCall==STAT_GET_NLT
+       || eCall==STAT_GET_NDLT
+  );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( eCall==STAT_GET_STAT1 || eCall==STAT_GET_NEQ 
        || eCall==STAT_GET_ROWID || eCall==STAT_GET_NLT
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
        || eCall==STAT_GET_NDLT 
   );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( eCall==STAT_GET_STAT1 )
 #else
   assert( argc==1 );
@@ -2434,7 +2438,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* AZ: put disabler loader here */
-  void get_disable_skipscan_all();
   get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Clear any prior statistics */

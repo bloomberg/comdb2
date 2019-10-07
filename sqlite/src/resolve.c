@@ -17,8 +17,10 @@
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsComdb2Rowid(const char *);
-int sqlite3IsComdb2RowTimestamp(const char *);
+extern int gbl_strict_dbl_quotes;
+int sqlite3IsComdb2Rowid(Table *pTab, const char *);
+int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *);
+int is_comdb2_index_blob(const char *dbname, int icol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -414,11 +416,11 @@ static int lookupName(
     ** the vm sniffs this out when it runs OP_Rowid and executes the comdb2
     ** backend call to get the rrn+genid.
     */
-    else if( cnt==0 && cntTab==1 && sqlite3IsComdb2Rowid(zCol) ){
+    else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2Rowid(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -2;
        pExpr->affinity = SQLITE_AFF_TEXT;
-    }else if( cnt==0 && cntTab==1 && sqlite3IsComdb2RowTimestamp(zCol) ){
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
        pExpr->affinity = SQLITE_AFF_TEXT;
@@ -429,7 +431,6 @@ static int lookupName(
      && pExpr->y.pTab
      && pExpr->iColumn>=0
     ){
-      int is_comdb2_index_blob(const char *dbname, int icol);
       is_comdb2_index_blob(pExpr->y.pTab->zName, pExpr->iColumn);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -468,6 +469,10 @@ static int lookupName(
           pOrig = pEList->a[j].pExpr;
           if( (pNC->ncFlags&NC_AllowAgg)==0 && ExprHasProperty(pOrig, EP_Agg) ){
             sqlite3ErrorMsg(pParse, "misuse of aliased aggregate %s", zAs);
+            return WRC_Abort;
+          }
+          if( (pNC->ncFlags&NC_AllowWin)==0 && ExprHasProperty(pOrig, EP_Win) ){
+            sqlite3ErrorMsg(pParse, "misuse of aliased window function %s",zAs);
             return WRC_Abort;
           }
           if( sqlite3ExprVectorSize(pOrig)!=1 ){
@@ -510,6 +515,12 @@ static int lookupName(
   if( cnt==0 && zTab==0 ){
     assert( pExpr->op==TK_ID );
     if( ExprHasProperty(pExpr,EP_DblQuoted) ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( gbl_strict_dbl_quotes ){
+        sqlite3ErrorMsg(pParse, "double-quoted string literal: \"%w\"", zCol);
+        return WRC_Abort;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       /* If a double-quoted identifier does not match any known column name,
       ** then treat it as a string.
       **
@@ -767,6 +778,7 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
       const char *zId;            /* The function name. */
       FuncDef *pDef;              /* Information about the function */
       u8 enc = ENC(pParse->db);   /* The database encoding */
+      int savedAllowFlags = (pNC->ncFlags & (NC_AllowAgg | NC_AllowWin));
 
       assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
       zId = pExpr->u.zToken;
@@ -893,8 +905,11 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
           pNC->nErr++;
         }
         if( is_agg ){
+          /* Window functions may not be arguments of aggregate functions.
+          ** Or arguments of other window functions. But aggregate functions
+          ** may be arguments for window functions.  */
 #ifndef SQLITE_OMIT_WINDOWFUNC
-          pNC->ncFlags &= ~(pExpr->y.pWin ? NC_AllowWin : NC_AllowAgg);
+          pNC->ncFlags &= ~(NC_AllowWin | (!pExpr->y.pWin ? NC_AllowAgg : 0));
 #else
           pNC->ncFlags &= ~NC_AllowAgg;
 #endif
@@ -915,7 +930,7 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
             pExpr->y.pWin->pNextWin = pSel->pWin;
             pSel->pWin = pExpr->y.pWin;
           }
-          pNC->ncFlags |= NC_AllowWin;
+          pNC->ncFlags |= NC_HasWin;
         }else
 #endif /* SQLITE_OMIT_WINDOWFUNC */
         {
@@ -933,8 +948,8 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
             pNC2->ncFlags |= NC_HasAgg | (pDef->funcFlags & SQLITE_FUNC_MINMAX);
 
           }
-          pNC->ncFlags |= NC_AllowAgg;
         }
+        pNC->ncFlags |= savedAllowFlags;
       }
       /* FIX ME:  Compute pExpr->affinity based on the expected return
       ** type of the function 
@@ -1471,7 +1486,7 @@ static int resolveSelectStep(Walker *pWalker, Select *p){
     */
     for(i=0; i<p->pSrc->nSrc; i++){
       struct SrcList_item *pItem = &p->pSrc->a[i];
-      if( pItem->pSelect ){
+      if( pItem->pSelect && (pItem->pSelect->selFlags & SF_Resolved)==0 ){
         NameContext *pNC;         /* Used to iterate name contexts */
         int nRef = 0;             /* Refcount for pOuterNC and outer contexts */
         const char *zSavedContext = pParse->zAuthContext;
@@ -1603,6 +1618,7 @@ static int resolveSelectStep(Walker *pWalker, Select *p){
       }
     }
 
+#ifndef SQLITE_OMIT_WINDOWFUNC
     if( IN_RENAME_OBJECT ){
       Window *pWin;
       for(pWin=p->pWinDefn; pWin; pWin=pWin->pNextWin){
@@ -1613,6 +1629,7 @@ static int resolveSelectStep(Walker *pWalker, Select *p){
         }
       }
     }
+#endif
 
     /* If this is part of a compound SELECT, check that it has the right
     ** number of expressions in the select list. */
@@ -1693,8 +1710,8 @@ int sqlite3ResolveExprNames(
   Walker w;
 
   if( pExpr==0 ) return SQLITE_OK;
-  savedHasAgg = pNC->ncFlags & (NC_HasAgg|NC_MinMaxAgg);
-  pNC->ncFlags &= ~(NC_HasAgg|NC_MinMaxAgg);
+  savedHasAgg = pNC->ncFlags & (NC_HasAgg|NC_MinMaxAgg|NC_HasWin);
+  pNC->ncFlags &= ~(NC_HasAgg|NC_MinMaxAgg|NC_HasWin);
   w.pParse = pNC->pParse;
   w.xExprCallback = resolveExprStep;
   w.xSelectCallback = resolveSelectStep;
@@ -1710,9 +1727,11 @@ int sqlite3ResolveExprNames(
 #if SQLITE_MAX_EXPR_DEPTH>0
   w.pParse->nHeight -= pExpr->nHeight;
 #endif
-  if( pNC->ncFlags & NC_HasAgg ){
-    ExprSetProperty(pExpr, EP_Agg);
-  }
+  assert( EP_Agg==NC_HasAgg );
+  assert( EP_Win==NC_HasWin );
+  testcase( pNC->ncFlags & NC_HasAgg );
+  testcase( pNC->ncFlags & NC_HasWin );
+  ExprSetProperty(pExpr, pNC->ncFlags & (NC_HasAgg|NC_HasWin) );
   pNC->ncFlags |= savedHasAgg;
   return pNC->nErr>0 || w.pParse->nErr>0;
 }

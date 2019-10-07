@@ -328,9 +328,10 @@ __bam_unlz4_pg_img(argp, dtabuf)
 	if (argp->data.size == argp->dtaoriglen)
 		return (0); /* Uncompressed. Not an error. */
 
-	nuncompr = LZ4_decompress_fast(
+	nuncompr = LZ4_decompress_safe(
 			(const char *)argp->data.data,
 			(char *)dtabuf,
+            (int)argp->data.size,
 			(int)argp->dtaoriglen);
 
 	return (nuncompr < 0);

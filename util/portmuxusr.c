@@ -37,7 +37,6 @@
 #include <unistd.h>
 
 #include <passfd.h>
-#include <safestrerror.h>
 #include <sbuf2.h>
 #include <tcputil.h>
 #include <xstring.h>
@@ -521,7 +520,7 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
                 unix_bind_path);
         return -1;
     }
-    strncpy(addr.sun_path, unix_bind_path, sizeof(addr.sun_path));
+    strncpy(addr.sun_path, unix_bind_path, sizeof(addr.sun_path) - 1);
     len += offsetof(struct sockaddr_un, sun_path);
 
     if (fcntl(listenfd, F_SETFD, 1 /*TRUE: close-on-exec*/) < 0) {
@@ -545,7 +544,7 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
                __func__, __LINE__);
         return -1;
     } else {
-        strncpy(addr.sun_path, gbl_portmux_unix_socket, uslen);
+        strcpy(addr.sun_path, gbl_portmux_unix_socket);
     }
 
     len = offsetof(struct sockaddr_un, sun_path) + uslen;
@@ -803,12 +802,9 @@ static bool portmux_client_side_validation(int fd, const char *app,
     }
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
+    socklen_t len = sizeof(client_addr);
     char dotted_quad[16]; // nnn.nnn.nnn.nnn0
-    // The third argument of getpeername() is in reality an int *.
-    // Some POSIX confusion resulted in the present socklen_t,
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         snprintf(dotted_quad, sizeof(dotted_quad), "%u.%u.%u.%u", cptr[0],
                  cptr[1], cptr[2], cptr[3]);
@@ -1299,7 +1295,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
         return -1;
     }
 
-    int result;
+    int result = 0;
     bool build_pollfds = true;
 
     int startms = comdb2_time_epochms();
@@ -1556,9 +1552,9 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
     fds->listenfd = listenfd;
     fds->tcplistenfd = tcplistenfd;
     fds->port = port;
-    strncpy(fds->app, app, sizeof(fds->app));
-    strncpy(fds->service, service, sizeof(fds->service));
-    strncpy(fds->instance, instance, sizeof(fds->instance));
+    strncpy(fds->app, app, sizeof(fds->app) - 1);
+    strncpy(fds->service, service, sizeof(fds->service) - 1);
+    strncpy(fds->instance, instance, sizeof(fds->instance) - 1);
     fds->options = options;
 
     /*check if we have connection on portmux unix socket*/
@@ -1867,9 +1863,8 @@ static void client_thr(int fd)
     char line[128];
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    socklen_t len = sizeof(client_addr);
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         printf("server: accepted connection on fd# %d from %u.%u.%u.%u\n", fd,
                cptr[0], cptr[1], cptr[2], cptr[3]);

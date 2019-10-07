@@ -27,6 +27,7 @@ typedef struct bdb_state_tag bdb_state_type;
 struct bdb_temp_hash;
 typedef struct bdb_temp_hash bdb_temp_hash;
 
+/* temptables */
 enum { BDB_TEMP_TABLE_DONT_USE_INMEM = 1 };
 struct temp_table;
 struct temp_cursor;
@@ -35,6 +36,8 @@ struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state,
 struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr);
 struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr);
+struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state,
+                                         int *bdberr);
 struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr);
 

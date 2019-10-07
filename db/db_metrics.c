@@ -22,6 +22,7 @@
 #include "metrics.h"
 #include "bdb_api.h"
 #include "net.h"
+#include "thread_stats.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -35,9 +36,11 @@ struct comdb2_metrics_store {
     int64_t connection_timeouts;
     double  cpu_percent;
     int64_t deadlocks;
+    int64_t locks_aborted;
     int64_t fstraps;
     int64_t lockrequests;
     int64_t lockwaits;
+    int64_t lock_wait_time_us;
     int64_t memory_ulimit;
     int64_t memory_usage;
     int64_t preads;
@@ -76,6 +79,8 @@ struct comdb2_metrics_store {
     double handle_buf_queue_time;
     int64_t denied_appsock_connections;
     int64_t locks;
+    int64_t temptable_created;
+    int64_t temptable_create_reqs;
     int64_t temptable_spills;
     int64_t net_drops;
     int64_t net_queue_size;
@@ -96,8 +101,9 @@ static struct comdb2_metrics_store stats;
 comdb2_metric gbl_metrics[] = {
     {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits, NULL},
-    {"cache_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     STATISTIC_INTEGER, &stats.cache_misses, NULL},
+    {"cache_misses", "Buffer pool misses",
+     (int64_t)STATISTIC_COLLECTION_TYPE_CUMULATIVE, (int64_t)STATISTIC_INTEGER,
+     &stats.cache_misses, NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER,
@@ -117,6 +123,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.current_connections, NULL},
     {"deadlocks", "Number of deadlocks", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.deadlocks, NULL},
+    {"locks_aborted", "Number of locks aborted", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.locks_aborted, NULL},
     {"diskspace", "Disk space used (bytes)", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.diskspace, NULL},
     {"fstraps", "Number of socket requests", STATISTIC_INTEGER,
@@ -127,6 +135,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockrequests, NULL},
     {"lockwaits", "Number of lock waits", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lockwaits, NULL},
+    {"lockwait_time", "Time spent in lock waits (us)", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.lock_wait_time_us, NULL},
     {"memory_ulimit", "Virtual address space ulimit", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size", STATISTIC_INTEGER,
@@ -202,8 +212,14 @@ comdb2_metric gbl_metrics[] = {
      &stats.denied_appsock_connections, NULL},
     {"locks", "Number of currently held locks", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.locks, NULL},
+    {"temptable_created", "Number of temporary tables created",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.temptable_created, NULL},
+    {"temptable_create_requests", "Number of create temporary table requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.temptable_create_reqs, NULL},
     {"temptable_spills",
-     "Number of temptables that had to be spilled to disk-backed tables",
+     "Number of temporary tables that had to be spilled to disk-backed tables",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.temptable_spills, NULL},
     {"net_drops",
@@ -302,7 +318,7 @@ static time_t metrics_standing_queue_time(void);
 int refresh_metrics(void)
 {
     int rc;
-    const struct bdb_thread_stats *pstats;
+    const struct berkdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
 #if 0
     int min_file, min_offset;
@@ -310,7 +326,7 @@ int refresh_metrics(void)
 #endif
 
     /* Check whether the server is exiting. */
-    if (thedb->exiting || thedb->stopped)
+    if (db_is_stopped())
         return 1;
 
     stats.commits = n_commits;
@@ -321,7 +337,8 @@ int refresh_metrics(void)
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
-                               &stats.lockwaits, &stats.lockrequests);
+                               &stats.locks_aborted, &stats.lockwaits,
+                               &stats.lockrequests);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -339,6 +356,7 @@ int refresh_metrics(void)
     pstats = bdb_get_process_stats();
     stats.preads = pstats->n_preads;
     stats.pwrites = pstats->n_pwrites;
+    stats.lock_wait_time_us = pstats->lock_wait_time_us;
 
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
@@ -395,7 +413,8 @@ int refresh_metrics(void)
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
-    int master = bdb_whoismaster((bdb_state_type*) thedb->bdb_env) == gbl_mynode ? 1 : 0; 
+    int master =
+        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0;
     stats.ismaster = master;
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
                              (unsigned long long *)&stats.num_sc_done, &bdberr);
@@ -424,6 +443,8 @@ int refresh_metrics(void)
     stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
     if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
         stats.locks = 0;
+    stats.temptable_created = gbl_temptable_created;
+    stats.temptable_create_reqs = gbl_temptable_create_reqs;
     stats.temptable_spills = gbl_temptable_spills;
 
     struct net_stats net_stats;

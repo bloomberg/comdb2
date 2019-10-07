@@ -1,7 +1,9 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
 
-set(LIBNAME "remsql")
-
+include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
+add_definitions(
+  ${SQLITE_FLAGS}
+)
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
@@ -25,12 +27,9 @@ include_directories(
   ${PROJECT_BINARY_DIR}/sqlite
   ${CMAKE_CURRENT_BINARY_DIR}
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 
 set(SOURCES remsql.c fdb_comm.c)
-
-add_plugin(${LIBNAME} "STATIC" "${SOURCES}")
-
-# Wait for parse.h
-add_dependencies(${LIBNAME} sqlite)
+add_plugin(remsql STATIC "${SOURCES}")
+add_dependencies(remsql sqlite) # Wait for parse.h

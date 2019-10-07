@@ -71,7 +71,7 @@ REGISTER_TUNABLE("analyze_tbl_threads",
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,
-                 DEPRECATED | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("blob_mem_mb", "Blob allocator: Sets the max "
                                 "memory limit to allow for blob "
                                 "values (in MB). (Default: 0)",
@@ -151,7 +151,7 @@ REGISTER_TUNABLE("ctrace_dbdir",
                  TUNABLE_BOOLEAN, &gbl_ctrace_dbdir, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_gzip", NULL, TUNABLE_INTEGER, &ctrace_gzip,
-                 DEPRECATED | READONLY, NULL, NULL, NULL, NULL);
+                 DEPRECATED_TUNABLE | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "ddl_cascade_drop",
     "On DROP, also drop the dependent keys/constraints. (Default: 1)",
@@ -300,7 +300,7 @@ REGISTER_TUNABLE("dont_sort_nulls_with_header",
                  &gbl_sort_nulls_correctly, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dtastripe", NULL, TUNABLE_INTEGER, &gbl_dtastripe,
-                 READONLY | NOZERO, NULL, NULL, NULL, NULL);
+                 READONLY | NOZERO, NULL, dtastripe_verify, NULL, NULL);
 REGISTER_TUNABLE("early",
                  "When set, replicants will ack a transaction as soon as they "
                  "acquire locks - not that replication must succeed at that "
@@ -341,6 +341,7 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+
 /*
 REGISTER_TUNABLE("enable_new_snapshot",
                  "Enable new SNAPSHOT implementation. (Default: off)",
@@ -444,8 +445,8 @@ REGISTER_TUNABLE("exitalarmsec", NULL, TUNABLE_INTEGER, &gbl_exit_alarm_sec,
 REGISTER_TUNABLE("exit_on_internal_failure", NULL, TUNABLE_BOOLEAN,
                  &gbl_exit_on_internal_error, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, READONLY,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, 0, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
@@ -673,7 +674,7 @@ REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
                  &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
+REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED_TUNABLE | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
@@ -797,7 +798,7 @@ REGISTER_TUNABLE("null_blob_fix", NULL, TUNABLE_BOOLEAN,
                  NULL);
 REGISTER_TUNABLE(
     "nullfkey",
-    "Do not enforce foreign key constraints for null keys. (Default: off)",
+    "Do not enforce foreign key constraints for null keys. (Default: on)",
     TUNABLE_BOOLEAN, &gbl_nullfkey, READONLY | NOARG | READEARLY, NULL, NULL,
     NULL, NULL);
 /*
@@ -875,9 +876,14 @@ REGISTER_TUNABLE("page_latches",
                  "instead of full locks. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_page_latches, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "pageordertablescan",
+    "Perform table scans in page order and not row order. (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_page_order_table_scan, NOARG, NULL, NULL,
+    page_order_table_scan_update, NULL);
 /*
 REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
-                 &placeholder, DEPRECATED|READONLY, NULL, NULL, NULL,
+                 &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,
                  NULL);
 */
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,
@@ -906,6 +912,21 @@ REGISTER_TUNABLE("print_syntax_err",
                  "Trace all SQL with syntax errors. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("prioritize_queries",
+                 "Prioritize SQL queries based on loaded rulesets. "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_prioritize_queries,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.force_thdpool_priority",
+                 "Force highest thread pool priority to the specified value "
+                 "instead of actually reading it from the thread pool queue. "
+                 "(Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_force_thdpool_priority, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_prioritize_queries",
+                 "Show prioritized SQL queries based on origin and "
+                 "fingerprint.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_verbose_prioritize_queries, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -1180,8 +1201,41 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.thdpool_queue_only",
+                 "Force SQL query work items to be queued by the thread pool "
+                 "even when a thread may be available.  (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_thdpool_queue_only,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_delayed",
+                 "Force a random SQL query to be delayed 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_delayed,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.random_sql_work_rejected",
+                 "Force a random SQL query to be rejected 1/this many times.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_random_sql_work_rejected,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
                  TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.toblock_random_deadlock_trans",
+                 "return deadlock for a fraction of txns", TUNABLE_BOOLEAN,
+                 &gbl_toblock_random_deadlock_trans, NOARG, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.tmptbl_corrupt_mem",
+                 "Deliberately corrupt memory before freeing", TUNABLE_BOOLEAN,
+                 &gbl_debug_tmptbl_corrupt_mem, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_dta_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_dta_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_idx_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_idx_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug.omit_blob_write",
+                 "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1497,6 +1551,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("random_thdpool_work_timeout",
+                 "Force a random thread pool work item timeout 1/this many "
+                 "times.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_thdpool_work_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dohsql_disable",
                  "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
                  &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
@@ -1540,14 +1600,19 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock",
                  &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_idx_writes",
-                 "reorder_idx_writes (Default on)",
+REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
                  NULL, NULL);
 
 REGISTER_TUNABLE("osql_check_replicant_numops",
                  "Check replicant nops sent in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_snap_info_hashcheck",
+                 "Enable snapinfo to be stored and checked in a hash in "
+                 "toblock on master. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_snap_info_hashcheck,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
@@ -1664,9 +1729,118 @@ REGISTER_TUNABLE("forbid_remote_admin",
                  TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("abort_on_dta_lookup_error",
+                 "Abort on dta lookup lost the race.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dta_lookup_error,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "pbkdf2_iterations",
     "Number of iterations of PBKDF2 algorithm for password hashing.",
     TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
     pbkdf2_iterations_update, NULL);
+
+REGISTER_TUNABLE("kafka_topic", NULL, TUNABLE_STRING, &gbl_kafka_topic,
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("kafka_brokers", NULL, TUNABLE_STRING, &gbl_kafka_brokers,
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("machine_class",
+                 "override for the machine class from this db perspective.",
+                 TUNABLE_STRING, &gbl_machine_class, READEARLY | READONLY, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("selectv_writelock_on_update",
+                 "Acquire a writelock for updated selectv records.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_selectv_writelock_on_update,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("selectv_writelock",
+                 "Acquire a writelock for selectv records.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_selectv_writelock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("clean_exit_on_sigterm",
+                 "Attempt to do orderly shutdown on SIGTERM (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
+                 NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
+
+REGISTER_TUNABLE("debug_children_lock",
+                 "Stacktrace when database acquires or releases children lock."
+                 "  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_children_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("serialize_reads_like_writes",
+                 "Send read-only multi-statement schedules to the master.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_serialize_reads_like_writes, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_warn_thresh_sec",
+                 "Warn if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_warn_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("long_log_truncation_abort_thresh_sec",
+                 "SIGABRT if log truncation takes more than this many seconds."
+                 "  (Default: 2147483647)",
+                 TUNABLE_INTEGER, &gbl_long_log_truncation_abort_thresh_sec,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("cache_flush_interval",
+                 "Save bufferpool once every this many seconds.  "
+                 "(Default: 30)",
+                 TUNABLE_INTEGER, &gbl_cache_flush_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("load_cache_threads",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8)",
+                 TUNABLE_INTEGER, &gbl_load_cache_threads, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("load_cache_max_pages",
+                 "Maximum number of pages that will load into cache.  Setting "
+                 "to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_load_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("dump_cache_max_pages",
+                 "Maximum number of pages that will dump into a pagelist.  "
+                 "Setting to 0 means that there is no limit.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_dump_cache_max_pages, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("max_pages_per_cache_thread",
+                 "Number of threads loading pages to cache.  "
+                 "(Default: 8192)",
+                 TUNABLE_INTEGER, &gbl_max_pages_per_cache_thread, INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("memp_dump_cache_threshold",
+                 "Don't flush the cache until this percentage of pages have "
+                 "changed.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_memp_dump_cache_threshold, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("snapshot_serial_verify_retry",
+                 "Automatic retries on verify errors for clients that haven't "
+                 "read results.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("strict_double_quotes",
+                 "In SQL queries, forbid the use of double-quotes to denote "
+                 "a string literal.  Any attempts to do so will result in a "
+                 "syntax error (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
+                 TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

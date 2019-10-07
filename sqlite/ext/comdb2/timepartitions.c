@@ -29,6 +29,17 @@ static int systblTimepartitionsInit(sqlite3 *db);
 static int systblTimepartitionsShardsInit(sqlite3 *db);
 static int systblTimepartitionsEventsInit(sqlite3 *db);
 
+sqlite3_module systblTimepartitionsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+sqlite3_module systblTimepartitionShardsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+sqlite3_module systblTimepartitionEventsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
+
 int systblTimepartInit(sqlite3*db)
 {
     int rc;
@@ -45,7 +56,8 @@ int systblTimepartInit(sqlite3*db)
 static int systblTimepartitionsInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_timepartitions", timepart_systable_timepartitions_collect,
+        db, "comdb2_timepartitions", &systblTimepartitionsModule,
+        timepart_systable_timepartitions_collect,
         timepart_systable_timepartitions_free,  sizeof(systable_timepartition_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_timepartition_t, name),
         CDB2_CSTRING, "period", -1, offsetof(systable_timepartition_t, period),
@@ -61,7 +73,8 @@ static int systblTimepartitionsInit(sqlite3 *db)
 static int systblTimepartitionsShardsInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_timepartshards", timepart_systable_timepartshards_collect,
+        db, "comdb2_timepartshards", &systblTimepartitionShardsModule,
+        timepart_systable_timepartshards_collect,
         timepart_systable_timepartshards_free,  sizeof(systable_timepartshard_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_timepartshard_t, name),
         CDB2_CSTRING, "shardname", -1, offsetof(systable_timepartshard_t, shardname),
@@ -73,7 +86,8 @@ static int systblTimepartitionsShardsInit(sqlite3 *db)
 static int systblTimepartitionsEventsInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_timepartevents", timepart_systable_timepartevents_collect,
+        db, "comdb2_timepartevents", &systblTimepartitionEventsModule,
+        timepart_systable_timepartevents_collect,
         timepart_systable_timepartevents_free,  sizeof(systable_cron_events_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_cron_events_t, name),
         CDB2_CSTRING, "type", -1, offsetof(systable_cron_events_t, type),

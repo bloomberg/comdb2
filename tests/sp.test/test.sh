@@ -69,6 +69,10 @@ function myarch
     return 0
 }
 
+function fix_genid {
+    sed 's/genid =.* rc/genid =dum rc/' < $1
+}
+
 # Iterate through input files
 for testcase in $files ; do
 
@@ -85,7 +89,7 @@ for testcase in $files ; do
     output=$testcase.res
 
     # full path 
-    [[ "$output" == "${output#\/}" ]] && output=$(pwd)/$output
+    [[ "$output" == "${output#\/}" ]] && output=${PWD}/$output
     
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
@@ -134,11 +138,7 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    if [[ "$(uname)" = "Linux" && -f $testcase.linux.out ]]; then
-        expected_output=$(cat $testcase.linux.out)
-    else
-        expected_output=$(cat $testcase.out)
-    fi
+    expected_output=$(cat $testcase.out)
 
     if [[ -f $testcase.out.1 ]]; then
         expected_output_alt=$(cat $testcase.out.1)
@@ -160,6 +160,12 @@ for testcase in $files ; do
     fi
 
 done
+
+egrep -i "ctrl engine has wrong state" $TESTDIR/logs/*db
+if [[ $? == 0 ]]; then
+    echo "error: corrupted transaction state detected"
+    exit 1
+fi
 
 echo "Testcase passed."
 

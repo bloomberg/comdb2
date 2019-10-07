@@ -33,7 +33,7 @@ for this file in one of these locations, in this order:
 
 Lines beginning with '#' are treated as comments and skipped.  Other lines should consist of a directive and its value.
 
-## Database tunables.
+## Database tunables
 
 ### Cache size
 
@@ -163,6 +163,17 @@ and to wait for all nodes to acknowledge a transaction before returning success.
 |log-delete-age-set  |                     |Takes epoch time in seconds, log files older than the given time are eligible for deletion when not needed
 |log-delete          |on                   |`on` enables log deletion, `off` disables it
 
+### Machine class configuration overrides
+
+By default, the risk machine class names are, from the least risky deployment to the highest risk: 'dev'/'test', 'alpha', 'uat', 'prod'. The following lrl option overrides this hierarchy to a client custom configuration that matches a different deployment stage scheme.
+
+    classes <lowest_risk_name> <higher_risk_name> ... <highest_risk_name>
+
+The machine specific, as perceived by the server using the involved lrl file, can be overridden using the following lrl option:
+
+    machine_class <name>
+
+NOTE: the overriding name should match one of the existing class names, otherwise the client access will be denied.
 
 ### Allow/Disallow commands
 
@@ -634,7 +645,7 @@ sequence).  Tunables to control it are below
 |--------------|-------------
 |PRIVATE_BLKSEQ_CACHESZ | 4194304 | Cache size of the blkseq table
 |PRIVATE_BLKSEQ_MAXAGE | 20 | Maximum time in seconds to let "old" transactions live
-|PRIVATE_BLKSEQ_STRIPES | 1 | Number of stripes for the blkseq table
+|PRIVATE_BLKSEQ_STRIPES | 8 | Number of stripes for the blkseq table
 |PRIVATE_BLKSEQ_ENABLED | 1 | Sets whether dupe detection is enabled
 |PRIVATE_BLKSEQ_CLOSE_WARN_TIME | 100 | Warn when it takes longer than this many MS to roll a blkseq table
 
@@ -704,6 +715,26 @@ pre-populated options to create the database
 |blobstripe                       |1           | Also stripe blob files (several physical files per blob field)
 |table                            |            | Multiple table options can be added to an lrl file to add tables at database init time.  Arguments are table name and path to .csc2 file.
 
+### Start time options
+These options are toggable at start time of the server.
+
+|Option                           |Default                                                | Description
+|---------------------------------|-------------------------------------------------------|------------
+|fullrecovery                     | Off, recovery runs from previous checkpoint | Attempt to run database recovery from the beginning of available logs
+|checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
+|nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
+|directio                         |On          | Bypass filesystem cache for page I/O
+|dir                              | `$COMDB2_ROOT/var/cdb2/$DBNAME` | Database directory
+|cache | 64 mb | Database cache size, see [cache size](#cache-size)
+|cachekb | | see [cache size](#cache-size)
+|cachekbmin | | see [cache size](#cache-size)
+|cachekbmax | | see [cache size](#cache-size)
+|cluster nodes | | List of nodes that comprise the cluster for this database.  See [setting up clusters](cluster.html)
+|largepages | 0 | Enables large pages.
+|dedicated_network_suffixes       |            | Suffix to append to node name when server has extra network interfaces that comdb2 is able to use to ensure resiliency when losing one network, example: if eth1 and eth2 are extra network cards on the server and the dns hostnames assigned to the ips of the respective cards are node1_eth1 and node1_eth2, then the option here should be set as: dedicated_network_suffixes _eth1 _eth2
+|remsql_whitelist databases       |            | If this option is set, when another DB makes a connection to this DB, we will only allown processing of that request if that other DB's name is in the whitelist, otherwise it will receive an error, example: `remsql_whitelist databases db1 db2 db3`.
+
+
 ### Runtime options
 
 These options are toggle-able at runtime.
@@ -711,18 +742,13 @@ These options are toggle-able at runtime.
 |Option                           |Default                                                | Description
 |---------------------------------|-------------------------------------------------------|------------
 |nullfkey                         | Constraints are enforced for all key values|Do not enforce foreign key constraints for null keys.
-|fullrecovery                     | Off, recovery runs from previous checkpoint | Attempt to run database recovery from the beginning of available logs
-|dir                              | `$COMDB2_ROOT/var/cdb2/$DBNAME` | Database directory
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
-|directio                         |On          | Bypass filesystem cache for page I/O
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
-|nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
-|checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
-|gbl_exit_on_pthread_create_fail |0            | If set, database will exit if thread pools aren't able to create threads.
+|gbl_exit_on_pthread_create_fail  |0           | If set, database will exit if thread pools aren't able to create threads.
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |max_sqlcache_per_thread | 10 | Max number of plans to cache per sql thread (statement cache is per-thread, but see hints below)
 |max_sqlcache_hints | 100 | Max number of "hinted" query plans to keep (global) - see `cdb2_use_hints()`
@@ -735,17 +761,11 @@ These options are toggle-able at runtime.
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
 |sqlsortermaxmmapsize | 2147418112 | maximum amount of file-backed mmap size in bytes to give the sqlite sorter
-|cache | 64 mb | Database cache size, see [cache size](#cache-size)
-|cachekb | | see [cache size](#cache-size)
-|cachekbmin | | see [cache size](#cache-size)
-|cachekbmax | | see [cache size](#cache-size)
-|cluster nodes | | List of nodes that comprise the cluster for this database.  See [setting up clusters](cluster.html)
 |appsockslimit | 500 | Start warning on this many connections to the database
 |maxappsockslimit | 1400 | Start dropping new connections on this many connections to the database 
 |maxsockcached | 500 | After this many connections, start requesting that further connections are no longer pooled.
 |maxlockers |256  | Initial size of the lockers table (there's no current maximum)
 |maxtxn | 128 | Maximum concurrent transactions.
-|largepages | 0 | Enables large pages.
 |maxosqltransfer | 50000 | Maximum number of records modifications allowed per transaction
 |heartbeat_send_time | 5 (seconds) | Send heartbeats this often. 
 |sc_del_unused_files_threshold |                             |
@@ -808,6 +828,11 @@ These options are toggle-able at runtime.
 |sql_time_threshold | 5000 (ms) | Sets the threshold time in ms after which queries are reported as running a long time.
 |nowatch | not set | Disable watchdog.  Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work.
 |page_latches | not set | ***Experimental*** If set, in rowlocks mode, will acquire fast latches on pages instead of full locks.
+|cache_flush_interval | 30 (s) | Flushes buffer-cache page numbers to logs/pagelist on this interval.  The database pre-heats the buffercache with these pages when it starts.  Setting to 0 disables.
+|load_cache_threads | 8 | Number of threads that will prefault a pagelist into the bufferpool cache.
+|load_cache_max_pages | 0 | Maximum number of pages that will be prefaulted into the bufferpool cache.
+|dump_cache_max_pages | 0 | Maximum number of pages that will be written into the default pagelist
+|memp_dump_cache_threshold | 20 | Don't flush the bufferpool pagelist until at least this percentage of pages has been modified.
 |disable_page_latches | | Turns off page latches
 |replicant_latches | not set | ***Experimental*** Also acquire latches on replicants
 |disable_replicant_latches | | Turns off page latches on replicants
@@ -877,6 +902,7 @@ These options are toggle-able at runtime.
 |blobmem_sz_thresh_kb | not set | Sets the threshold (in kb) above which blobs are allocated by the blob allocator.
 |logmsg   |  | Controls the database logging level - accepts [logging commands](op.html#logging-commands).
 | pbkdf2_iterations | 4096 | Number of PBKDF2 iterations. PBKDF2 is used for password hashing. The higher the value, the more secure and the more computationally expensive. The mininum number of iterations is 4096.
+|clean_exit_on_sigterm | 1 | When enabled, SIGTERM will cause database to do an orderly shutdown.  When disabled follows system SIGTERM default (terminate, no core) 
 
 <!-- TODO
 |enable_datetime_truncation | |
@@ -887,3 +913,82 @@ These options are toggle-able at runtime.
 |disable_datetime_ms_us_sc | |
 |default_datetime_precision | |
 -->
+
+### Compatibility
+In order to allow seamless migration between older and newer Comdb2 versions,
+some tunables are introduced to disable incompatible features introduced in
+newer versions.
+
+#### `legacy_tunables` (introduced in `7.0`)
+
+This tunable disables all new features/behaviours that, if used, would have
+prevented downgrading to older versions. It implicitly enables following
+configurations:
+
+```
+    allow_negative_column_size
+    berkattr elect_highest_committed_gen 0
+    clean_exit_on_sigterm off
+    create_default_user
+    ddl_cascade_drop 0
+    decoupled_logputs off
+    disable_inplace_blob_optimization
+    disable_inplace_blobs
+    disable_osql_blob_optimization
+    disable_tpsc_tblvers
+    disallow write from beta if prod
+    dont_forbid_ulonglong
+    dont_init_with_inplace_updates
+    dont_init_with_instant_schema_change
+    dont_init_with_ondisk_header
+    dont_prefix_foreign_keys
+    dont_sort_nulls_with_header
+    dont_superset_foreign_keys
+    enable_sql_stmt_caching none
+    enable_tagged_api
+    env_messages
+    init_with_time_based_genids
+    legacy_schema on
+    logmsg level info
+    logmsg notimestamp
+    logput window 1
+    noblobstripe
+    nochecksums
+    nocrc32c
+    nokeycompr
+    no_null_blob_fix
+    norcache
+    no_static_tag_blob_fix
+    nullfkey off
+    nullsort high
+    off fix_cstr
+    off osql_odh_blob
+    off return_long_column_names
+    on accept_on_child_nets
+    on disable_etc_services_lookup
+    online_recovery off
+    osql_check_replicant_numops off
+    osql_send_startgen off
+    queuedb_genid_filename off
+    reorder_socksql_no_deadlock off
+    setattr DIRECTIO 0
+    setattr ENABLE_SEQNUM_GENERATIONS 0
+    setattr MASTER_LEASE 0
+    setattr NET_SEND_GBLCONTEXT 1
+    setattr SC_DONE_SAME_TRAN 0
+    unnatural_types 1
+    usenames
+```
+
+#### `legacy_schema` (introduced in `7.0`)
+
+Turning it `off` would enable support for newer (backwards incompatible) CSC2
+constructs introduced in `7.0`. The features include: uniqnulls (UNIQUE/PRIMARY
+KEY in DDL), partial index, index on expression and non-null default value for
+datetime fields. This list could grow in future.
+
+#### `noenv_messages` (introduced in `7.0`)
+
+Turing it `on` would enable support for upsert and partial index, both
+introduced in `7.0`.
+

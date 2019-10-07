@@ -62,6 +62,8 @@
 #define TEST_RECOM
 #endif
 
+int scdone_abort_cleanup(struct ireq *iq);
+
 int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
@@ -154,18 +156,18 @@ int osql_open(struct dbenv *dbenv)
         return -2;
     }
 
+    rc = osql_blkseq_init();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failing to init blocksql blockseq module\n",
+               __func__);
+    }
+
     /* create comm endpoint and kickoff the communication */
     rc = osql_comm_init(dbenv);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to init network\n", __func__);
         osql_repository_destroy();
         return -2;
-    }
-
-    rc = osql_blkseq_init();
-    if (rc) {
-        fprintf(stderr, "%s failing to init blocksql blockseq module\n",
-                __func__);
     }
 
     g_osql_ready = 1;
@@ -270,6 +272,9 @@ extern int gbl_osql_send_startgen;
  *
  */
 
+/* Set to 1, check read-only transactions on the master. */
+int gbl_serialize_reads_like_writes = 0;
+
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                        char *tzname, int osqlreq_type, int is_distrib_tran)
 {
@@ -278,81 +283,61 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int bdberr = 0;
     int rc = 0;
     int usedb_only = 0;
+    int force_master = gbl_serialize_reads_like_writes;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
         clnt->start_gen) {
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
-
-    if (clnt->early_retry == EARLY_ERR_VERIFY) {
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
-    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
-        clnt->osql.xerr.errval = ERR_CONSTR;
-        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
-    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
-    }
-    if (clnt->early_retry) {
-        clnt->early_retry = 0;
-        rc = SQLITE_ABORT;
-        goto goback;
-    }
-
-    /* optimization (will catch all transactions with no internal updates */
-    if (osql_shadtbl_empty(clnt)) {
-        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
-        return 0;
-    }
-
-    usedb_only = osql_shadtbl_usedb_only(clnt);
-
-    if (usedb_only && (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
-        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
-        return 0;
-    }
-
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
     if (clnt->selectv_arr &&
         bdb_osql_serial_check(thedb->bdb_env, clnt->selectv_arr,
                               &(clnt->selectv_arr->file),
                               &(clnt->selectv_arr->offset), 0)) {
-        rc = SQLITE_ABORT;
-        sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
-        goto goback;
-    }
-
-    // This can incorrectly return serial-error on retry by conflicting 
-    // against itself: cut-1 solution: disable this serial_check (we 
-    // handle this case correctly on the master).  cut-2 solution might
-    // be to add a blkseq check here & return the correct rcode.
-#if 0
-    if (!usedb_only) {
-        if (clnt->arr)
-            currangearr_build_hash(clnt->arr);
-
-        if (clnt->arr &&
-            bdb_osql_serial_check(thedb->bdb_env, clnt->arr, &(clnt->arr->file),
-                                  &(clnt->arr->offset), 0)) {
-
-            if (gbl_extended_sql_debug_trace) {
-                fprintf(stderr, "td=%u %s line %d returning SQLITE_ABORT for serial_check failure\n", 
-                        pthread_self(), __func__, __LINE__);
-            }
-
-            rc = SQLITE_ABORT;
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_VERIFY) {
+        if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
             clnt->osql.xerr.errval = ERR_NOTSERIAL;
             errstat_cat_str(&(clnt->osql.xerr),
                             "transaction is not serializable");
-            goto goback;
+        } else {
+            clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+            errstat_cat_str(&(clnt->osql.xerr),
+                            "unable to update record rc = 4");
         }
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+        clnt->osql.xerr.errval = ERR_CONSTR;
+        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+        rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
+        rc = SQLITE_ABORT;
     }
-#endif
+    if (rc) {
+        clnt->early_retry = 0;
+        rc = SQLITE_ABORT;
+        goto goback;
+    }
+
+    /* optimization (will catch all transactions with no internal updates */
+    if (!force_master && osql_shadtbl_empty(clnt)) {
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
+        return 0;
+    }
+
+    usedb_only = osql_shadtbl_usedb_only(clnt);
+
+    if (!force_master && usedb_only &&
+        (!gbl_selectv_rangechk || !clnt->selectv_arr)) {
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
+        return 0;
+    }
 
     clnt->osql.timings.commit_prep = osql_log_time();
 
@@ -366,17 +351,33 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         goto goback;
     }
 
+    int sent_readsets = 0;
+    if (!clnt->osql.is_reorder_on) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
+        sent_readsets = 1;
+    }
+
     /* process shadow tables */
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
-    if (sentops && clnt->arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
-    }
+    /* Preserve the sentops optimization */
+    if (!sent_readsets && (force_master || sentops)) {
+        if (clnt->arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
 
-    if (clnt->selectv_arr) {
-        rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        if (clnt->selectv_arr) {
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
+        }
     }
 
     if (rc && rc != -2) {
@@ -419,7 +420,6 @@ goback:
     if (clnt->osql.xerr.errval == ERR_VERIFY &&
         clnt->dbtran.mode == TRANLEVEL_RECOM &&
         clnt->osql.replay != OSQL_RETRY_LAST) {
-        /*fprintf(stderr, "Received rc=%d=ERR_VERIFY\n", rc);*/
     } else {
         /* CLOSE the temporary tables */
         osql_shadtbl_close(clnt);
@@ -464,6 +464,16 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
 int recom_abort(struct sqlclntstate *clnt)
 {
+    int rc;
+
+    /* temp hook for sql transactions */
+    if (clnt->dbtran.dtran) {
+        rc = fdb_trans_rollback(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__,
+                   rc);
+        }
+    }
 
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
@@ -524,6 +534,20 @@ int selectv_range_commit(struct sqlclntstate *clnt)
 
     if (rc)
         return rc;
+
+    if (!clnt->osql.sock_started) {
+        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to start socksql transaction rc=%d\n", __func__,
+                   rc);
+            if (rc != SQLITE_ABORT)
+                rc = SQLITE_CLIENT_CHANGENODE;
+            return rc;
+        }
+        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
+                       rc);
+    }
 
     rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
     return rc;
@@ -733,10 +757,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             if (write_scdone) {
                 int rc = 0;
                 struct schema_change_type *s = iq->sc;
-                scdone_t type = -1;
+                bdb_state_type *bdb_state = 0;
+                scdone_t type = invalid;
+
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
-                    type = -1;
+                    type = invalid;
                 } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
@@ -747,11 +773,21 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = rename_table;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
-                if (type < 0 || s->db == NULL) {
+                else if (s->add_view || s->drop_view)
+                    type = user_view;
+
+                if (type == user_view) {
+                    bdb_state = thedb->bdb_env;
+                } else if (s->db != NULL) {
+                    bdb_state = s->db->handle;
+                }
+
+                if (type == invalid || bdb_state == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
-                    rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr);
+                    rc = bdb_llog_scdone_origname(bdb_state, type, 1,
+                                                  s->tablename, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible
                          * mode. For R7 or later, use SC_DONE_SAME_TRAN.
@@ -788,7 +824,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
     if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int scdone_abort_cleanup(struct ireq * iq);
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;

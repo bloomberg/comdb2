@@ -398,7 +398,8 @@ db:table, rc = db:exec(query)
 Description:
 
 This method creates an anonymous dbtable backed by the dynamic SQL query specified.  The resulting dbtable
-is fully equivalent to a dbtable referencing a base table, supporting all of the same methods.
+is fully equivalent to a dbtable referencing a base table, supporting all of the same methods.  Use of DDL
+statements is not allowed.
 
 Return Values:
 
@@ -814,10 +815,10 @@ Following sample show using datetimes
 
     local function main()
         declare n 'datetime'
-	n := "2016-01-01 America/New_York"
-	print(n.year, n.month, n.day, n.yday, n.wday, n.hour, n.min, n.sec, n.msec, n.isdst, n.timezone)
-	n:change_timezone('Europe/London')
-	print (n, n.year, n.month, n.day, n.yday, n.wday, n.hour, n.min, n.sec, n.msec, n.isdst, n.timezone)
+        n := "2016-01-01 America/New_York"
+        print(n.year, n.month, n.day, n.yday, n.wday, n.hour, n.min, n.sec, n.msec, n.isdst, n.timezone)
+        n:change_timezone('Europe/London')
+        print (n, n.year, n.month, n.day, n.yday, n.wday, n.hour, n.min, n.sec, n.msec, n.isdst, n.timezone)
     end
 
     2016-01-01T000000.000 America/New_York  2016    1       1       1       6       0       0       0       0       false   America/New_York
@@ -839,7 +840,7 @@ Return Values:
 |Name         |   Description             |Notes
 |-------------|---------------------------|-----
 |*type string*  |  a string representing the type   | suitable for input to db:cast 
- 
+
 Parameters:
 
 |  Name      |   Description|Notes
@@ -1000,7 +1001,7 @@ Return Values:
 |Name    |   Description
 |--------|----------------
 |*rc*    |   non zero is failure
- 
+
 Compare `rc` with the following named values to determine why `db:commit` failed:
 
 
@@ -1032,7 +1033,7 @@ Return Values:
 |Name         |   Description
 |-------------|--------------
 |*rc*  |   non zero is failure
- 
+
 Parameters:
 none
 
@@ -1056,7 +1057,7 @@ Return Values:
 |Name  | Description         |Notes
 |------|---------------------|-----------------
 |*rc*  | non zero is failure | failed to set number of columns 
- 
+
 Parameters:
 
 |  Name      |   Description
@@ -1079,7 +1080,7 @@ Return Values:
 |Name         |           Description  |Notes
 |-------------|------------------------|-----
 |*rc*  |  non zero is failure             | failed to set data type for column
- 
+
 Parameters:
 
 |  Name         |    Description                   |Notes
@@ -1273,10 +1274,10 @@ run_statement("exec procedure csvdemo(@csv)")
 `csvdemo.lua:`
 ```
 local function main(c)
-	local array = db:csv_to_table(c)
-	print(#array) -- array length
-	print(array[1]) -- customary in Lua to start arrays with index 1
-	print(array[4])
+    local array = db:csv_to_table(c)
+    print(#array) -- array length
+    print(array[1]) -- customary in Lua to start arrays with index 1
+    print(array[4])
 end
 ```
 
@@ -1292,8 +1293,8 @@ is another example showing Lua array for input with multiple records:
 
 ```
 string csv_str =
-	1,2,3
-	4,5,6
+    1,2,3
+    4,5,6
 bind(@csv, csv_str)
 run_statement("exec procedure csvdemo2(@csv)")
 ```
@@ -1301,11 +1302,11 @@ run_statement("exec procedure csvdemo2(@csv)")
 `csvdemo2.lua:`
 ```
 local function main(c)
-	local array = db:csv_to_table(c)
-	print(#array)
-	print(#array[1])
-	print(array[1][1])
-	print(array[2][3])
+    local array = db:csv_to_table(c)
+    print(#array)
+    print(#array[1])
+    print(array[1][1])
+    print(array[2][3])
 end
 ```
 
@@ -1354,15 +1355,15 @@ Examples:
 
 ```
 local function main()
-	local t = {}
-	t.ans = 42
-	t.pi = 3.14
-	t.arr = {"first", "second"}
-	t.obj = {firstName="John", lastName="Doe"}
-	t.now = db:now()
-	t.greeting = "hello, world"
-	local json = db:table_to_json(t)
-	print(json)
+    local t = {}
+    t.ans = 42
+    t.pi = 3.14
+    t.arr = {"first", "second"}
+    t.obj = {firstName="John", lastName="Doe"}
+    t.now = db:now()
+    t.greeting = "hello, world"
+    local json = db:table_to_json(t)
+    print(json)
 end
 ```
 
@@ -1425,8 +1426,8 @@ run_statement("exec procedure jsondemo(@json)")
 `jsondemo.lua:`
 ```
 local function main(j)
-	local tbl = db:json_to_table(j)
-	print(tbl.employees[3].lastName)
+    local tbl = db:json_to_table(j)
+    print(tbl.employees[3].lastName)
 end
 ```
 
@@ -1447,10 +1448,10 @@ It is possible to call one stored procedure from another. `db:sp()` returns a Lu
 `sp1.lua:`
 ```
 local function func()
-	print("sp1")
+    print("sp1")
 end
 local function main()
-	func()
+    func()
 end
 ```
 
@@ -1461,9 +1462,9 @@ local function func()
 	print("sp2")
 end
 local function main()
-	local sp1 = db:sp("sp1")
-	sp1()
-	func()
+    local sp1 = db:sp("sp1")
+    sp1()
+    func()
 end
 ```
 
@@ -1502,13 +1503,13 @@ engine would have performed.
 
 ```
 local function greet_name(s, f, l)
-	if s = 'm' then
-		return "Mr. " .. f .. " " .. l
-	elseif s = 'f' then
-		return "Ms. " .. f ..  " " ..l
-	else
-		return f ..  " " ..l
-	end
+    if s == 'm' then
+        return "Mr. " .. f .. " " .. l
+    elseif s == 'f' then
+        return "Ms. " .. f ..  " " ..l
+    else
+        return f ..  " " ..l
+    end
 end
 ```
 
@@ -1546,7 +1547,7 @@ can be maintained. This is illustrated in the example below where we provide a s
 ```
 // Table definition
 schema {
-	int i
+    int i
 }
 ```
 
@@ -1554,19 +1555,19 @@ schema {
 local nums = {} -- to save state during various step, final calls
 
 local function step(num)
-        table.insert(nums, num)
+    table.insert(nums, num)
 end
 
 local function final()
-        table.sort(nums)
-        local total = #nums
-        if total % 2 ~= 0 then
-                total = total + 1
-                return nums[total/2]
-        end
-        local a = total / 2
-        local b = a + 1
-        return (nums[a] + nums[b]) / 2
+    table.sort(nums)
+    local total = #nums
+    if total % 2 ~= 0 then
+        total = total + 1
+        return nums[total/2]
+    end
+    local a = total / 2
+    local b = a + 1
+    return (nums[a] + nums[b]) / 2
 end
 ```
 

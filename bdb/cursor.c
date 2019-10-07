@@ -94,6 +94,7 @@ as long as there was a successful move in the past
 #include "logmsg.h"
 #include "util.h"
 #include "tohex.h"
+#include "thrman.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)
@@ -620,8 +621,10 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         logmsg(LOGMSG_USER, "Cur %p opened with no shadow tran\n", cur);
     }
 
-    if (bdb_state->isopen == 0)
+    if (bdb_state->isopen == 0) {
+        free(pcur_ifn);
         return NULL;
+    }
 
     if (ixnum >= 0) {
         cur->idx = ixnum;
@@ -633,6 +636,7 @@ bdb_cursor_ifn_t *bdb_cursor_open(
                 logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
                        bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
+                free(pcur_ifn);
                 return NULL;
             }
         }
@@ -2144,12 +2148,22 @@ static void *pglogs_asof_thread(void *arg)
     static int fileid_max_count = 0;
     struct pglogs_queue_heads qh = {0};
     struct commit_list *lcommit, *bcommit, *next;
-    int pollms, ret;
+    int pollms, ret, haslock = 0;
+    DB_ENV *dbenv = bdb_state->dbenv;
+
+    /* Register the thread to the thread manager.
+       The thread accesses bdb_state in a loop.
+       Therefore we need to make sure that clean_exit
+       waits for the thread to exit before closing the bdb env. */
+    thrman_register(THRTYPE_PGLOGS_ASOF);
 
     /* We need to stop this thread when truncating the log */
-    bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
+    if (!db_is_stopped()) {
+        haslock = 1;
+        dbenv->lock_recovery_lock(dbenv);
+    }
 
-    while (1) {
+    while (!db_is_stopped()) {
         // Remove list
         int count, i, dont_poll = 0;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
@@ -2332,7 +2346,7 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
-        bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
+        dbenv->unlock_recovery_lock(dbenv);
         clear_newsi_pool();
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
@@ -2340,9 +2354,11 @@ static void *pglogs_asof_thread(void *arg)
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
-        bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
+        dbenv->lock_recovery_lock(dbenv);
     }
-    bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
+
+    if (haslock)
+        dbenv->unlock_recovery_lock(dbenv);
 
     return NULL;
 }
@@ -4095,12 +4111,18 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
         if (rc < 0)
             return rc;
         /* we are still positioned on the last record */
-        if (rc == IX_NOTFND || rc == IX_PASTEOF) {
+        if (rc == IX_NOTFND) {
             /* restore the previous position */
             if (cur->type == BDBC_IX && cur->state->ixdta[cur->idx]) {
                 *(struct datacopy_info *)cur->datacopy = datacopy_bck;
             }
-
+            return IX_PASTEOF;
+        } else if (rc == IX_PASTEOF) {
+            /* We were going left and hit EOF; let's reposition on to the first
+             * valid record. */
+            if ((rc = bdb_cursor_move(cur, DB_FIRST, bdberr)) < 0) {
+                return rc;
+            }
             return IX_PASTEOF;
         }
     } else {
@@ -6073,12 +6095,25 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
     if (cur->type == BDBC_DT && how == DB_FIRST && cur->pageorder) {
         /* Create my vs_stab temp_table if it doesn't exist. */
         if (cur->vs_skip == NULL) {
+            assert(cur->vs_stab == NULL);
             cur->vs_stab = bdb_temp_table_create(cur->state, bdberr);
         }
         /* Otherwise truncate it. */
         else {
-            bdb_temp_table_close_cursor(cur->state, cur->vs_skip, bdberr);
-            bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            int rc2 = bdb_temp_table_close_cursor(cur->state, cur->vs_skip,
+                                                  bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_close_cursor(%p, %p) rc %d, bdberr %d\n",
+                   __func__, cur->vs_stab, cur->vs_skip, rc, *bdberr);
+            }
+            assert(cur->vs_stab != NULL);
+            rc2 = bdb_temp_table_truncate(cur->state, cur->vs_stab, bdberr);
+            if (rc2 != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: bdb_temp_table_truncate(%p) rc %d, bdberr %d\n",
+                       __func__, cur->vs_stab, rc, *bdberr);
+            }
         }
 
         /* Get a cursor to the new (or truncated) table. */

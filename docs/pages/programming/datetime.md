@@ -290,7 +290,7 @@ Examples:
     *   if ```type```=='w',  since the beginning of the week
     *   if ```type```=='m',  since the beginning of the month
     *   if ```type```=='y',  since the beginning of the year
-    *  Example: ```select days(cast("2010-01-02" as datetime", x))``` returns 6 for x='w', and 1 for x=='m' or x=='y'. 
+    *  Example: ```select days(cast("2010-01-02" as datetime), x)``` returns 6 for x='w', and 1 for x=='m' or x=='y'. 
 
 
 ## Microsecond-precision Datetimes and Intervals

@@ -224,6 +224,8 @@ DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "maximum database thrashing)")
 DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
          "Size of the verify thread stack.")
+DEF_ATTR(VERIFY_POOL_MAXT, verify_pool_maxt, QUANTITY, 8,
+         "Max Number of verify threads in the thrd pool.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
@@ -299,7 +301,7 @@ DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
-DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 1,
+DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 0,
          "Scan tables in order of pages, not in order of rowids (faster for "
          "non-sparse tables).")
 DEF_ATTR_2(
@@ -370,10 +372,10 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 60,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
          "On replicants, check this often for transaction status.")
 DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
          100, "On replicants, maximum deadlock recovered count allowed.")
@@ -535,8 +537,8 @@ DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 600,
          "Maximum time in seconds to let 'old' transactions live.")
 DEF_ATTR(PRIVATE_BLKSEQ_MAXTRAVERSE, private_blkseq_maxtraverse, QUANTITY, 4,
          NULL)
-DEF_ATTR(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 1,
-         "Number of stripes for the blkseq table.")
+DEF_ATTR_2(PRIVATE_BLKSEQ_STRIPES, private_blkseq_stripes, QUANTITY, 8,
+           "Number of stripes for the blkseq table.", 0, dtastripe_verify, 0)
 DEF_ATTR(PRIVATE_BLKSEQ_ENABLED, private_blkseq_enabled, BOOLEAN, 1,
          "Sets whether dupe detection is enabled.")
 DEF_ATTR(PRIVATE_BLKSEQ_CLOSE_WARN_TIME, private_blkseq_close_warn_time,
@@ -670,6 +672,8 @@ DEF_ATTR(
 DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
+DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
+         "Check I/O in watchdog this often")
 
 /*
   BDB_ATTR_REPTIMEOUT

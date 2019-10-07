@@ -1,12 +1,12 @@
 [select * from comdb2_users] failed with rc -106 access denied
 [select * from comdb2_tablepermissions] failed with rc -106 access denied
 [create table '01234567890123456789012345'(i int)] failed with rc -3 User-schema name is too long
+(tablename='0123456789012345678901234@mohit')
 (tablename='dummy')
+(tablename='forecast@dcba')
 (tablename='sqlite_stat1')
 (tablename='sqlite_stat4')
 (tablename='t1')
 (tablename='t2')
 (tablename='test@abcd')
 (tablename='test@dcba')
-(tablename='forecast@dcba')
-(tablename='0123456789012345678901234@mohit')

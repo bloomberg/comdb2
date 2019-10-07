@@ -427,9 +427,8 @@ static void dbqueue_check_inactivity(struct consumer *consumer)
             return;
 
         if (genid == consumer->event_genid) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: event(s) has not been consumed for last "
-                   "%ld secs.\n",
+            logmsg(LOGMSG_USER,
+                   "%s: no events were consumed since last %ld secs.\n",
                    consumer->procedure_name,
                    current_time - consumer->inactive_since);
         } else {
@@ -459,7 +458,7 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
     /* If we are master then make sure all the queues are running */
-    if (iammaster && !dbenv->stopped && !dbenv->exiting) {
+    if (iammaster && !dbenv->stopped) {
         for (int ii = 0; ii < dbenv->num_qdbs; ii++) {
             if (dbenv->qdbs[ii] == NULL)
                 continue;
@@ -480,8 +479,8 @@ static void admin(struct dbenv *dbenv, int type)
                             char *name = consumer->procedure_name;
                             char *host =
                                 net_get_osql_node(thedb->handle_sibling);
-                            if (host == NULL && thedb->nsiblings == 1) {
-                                trigger_start(name); // standalone
+                            if (host == NULL) {
+                                trigger_start(name);
                             } else {
                                 void *net = thedb->handle_sibling;
                                 net_send_message(net, host, NET_TRIGGER_START,

@@ -204,10 +204,20 @@ public class Comdb2Handle extends AbstractConnection {
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
-        String envvar = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        statement_effects = (envvar != null && !envvar.equals("0"));
+        String queryeffectsEnv = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        statement_effects = (queryeffectsEnv != null && !queryeffectsEnv.equals("0"));
         if (statement_effects)
             sets.add("set queryeffects statement");
+
+        String userEnv = System.getenv("COMDB2_USER");
+        if (userEnv != null) {
+            sets.add("set user " + userEnv);
+        }
+
+        String passwordEnv = System.getenv("COMDB2_PASSWORD");
+        if (passwordEnv != null) {
+            sets.add("set password " + passwordEnv);
+        }
 
         if (verifyretry)
             sets.add("set verifyretry on");
@@ -1030,7 +1040,7 @@ public class Comdb2Handle extends AbstractConnection {
                     }
                     Thread.sleep(sleepms);
                 } catch (InterruptedException e) {
-                    tdlog(Level.WARNING, "Error while waiting for nodes", e);
+                    tdlog(Level.WARNING, "Error while waiting for nodes");
                 }
             }
 
@@ -1054,13 +1064,12 @@ public class Comdb2Handle extends AbstractConnection {
                 }
                 tdlog(Level.FINEST, "Connected to %s", dbHostConnected);
 
-                if (!is_begin) {
+                if (retry > 0 && !is_begin) {
                     retryAll = true;
                     int retryrc = retryQueries(retry, runLast);
 
                     if (retryrc < 0) {
                         tdlog(Level.FINE, "Can't retry query, retryrc = %d", retryrc);
-                        driverErrStr = "Can't retry query to db.";
                         return retryrc;
                     } 
                     else if (retryrc > 0) {
@@ -1155,7 +1164,7 @@ public class Comdb2Handle extends AbstractConnection {
             tdlog(Level.FINEST, "reading results");
             // Read results
             if ((nsh = readNsh()) == null || (raw = readRaw(nsh.length)) == null) {
-                tdlog(Level.FINEST, "Failure to read: nsh=%s raw=%s", nsh, raw);
+                tdlog(Level.FINEST, "Failure to read: nsh=%s raw=%s", nsh, Arrays.toString(raw));
                 // Read error
                 if (errVal != 0) {
                     if (is_rollback) {
@@ -1775,10 +1784,14 @@ readloop:
             return driverErrStr;
         if (lastResp == null) {
             if (firstResp.errStr != null
-                    && firstResp.errStr.length() > 0)
+                    && firstResp.errStr.length() > 0) {
+                driverErrStr = firstResp.errStr;
                 return firstResp.errStr;
+            }
             return driverErrStr;
         }
+
+        driverErrStr = lastResp.errStr;
         return lastResp.errStr;
     }
 

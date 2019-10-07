@@ -12,6 +12,7 @@ typedef struct systable_sqlpoolqueue {
     int64_t                 time_in_queue_ms;
     char                    *info;
     int                     info_is_null;
+    priority_t              priority;
 } systable_sqlpoolqueue_t;
 
 typedef struct getsqlpoolqueue {
@@ -40,6 +41,7 @@ static void collect(struct thdpool *pool, struct workitem *item, void *user)
         i->info = NULL;
         i->info_is_null = 1;
     }
+    i->priority = item->priority;
 }
 
 extern struct thdpool *gbl_sqlengine_thdpool;
@@ -63,11 +65,20 @@ static void free_sqlpoolqueue(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblSqlpoolQueueModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblSqlpoolQueueInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_sqlpool_queue", get_sqlpoolqueue,
-            free_sqlpoolqueue, sizeof(systable_sqlpoolqueue_t),
-            CDB2_INTEGER, "time_in_queue_ms", -1, offsetof(systable_sqlpoolqueue_t, time_in_queue_ms),
-            CDB2_CSTRING, "sql", offsetof(systable_sqlpoolqueue_t, info_is_null),
-                offsetof(systable_sqlpoolqueue_t, info), SYSTABLE_END_OF_FIELDS);
+    return create_system_table(db, "comdb2_sqlpool_queue",
+        &systblSqlpoolQueueModule, get_sqlpoolqueue, free_sqlpoolqueue,
+        sizeof(systable_sqlpoolqueue_t),
+        CDB2_INTEGER, "time_in_queue_ms", -1, offsetof(systable_sqlpoolqueue_t,
+                                                       time_in_queue_ms),
+        CDB2_CSTRING, "sql", offsetof(systable_sqlpoolqueue_t, info_is_null),
+        offsetof(systable_sqlpoolqueue_t, info),
+        CDB2_INTEGER, "priority", -1, offsetof(systable_sqlpoolqueue_t,
+                                               priority),
+        SYSTABLE_END_OF_FIELDS);
 }
 

@@ -44,6 +44,9 @@ add_library(sqlite
   ext/comdb2/systables.c
   ext/comdb2/fingerprints.c
   ext/comdb2/scstatus.c
+  ext/comdb2/connections.c 
+  ext/comdb2/views.c
+  ext/comdb2/sqlclientstats.c
   ext/misc/completion.c
   ext/misc/regexp.c
   ext/misc/json1.c
@@ -136,7 +139,6 @@ set(MODULE SQLITE)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_sqlite.h @ONLY)
 configure_file(src/parse.y parse.y COPYONLY)
 configure_file(tool/lempar.c lempar.c COPYONLY)
-configure_file(tool/addopcodes.tcl addopcodes.tcl COPYONLY)
 configure_file(tool/mkopcodec.tcl mkopcodec.tcl COPYONLY)
 configure_file(tool/mkopcodeh.tcl mkopcodeh.tcl COPYONLY)
 configure_file(tool/mkvdbeauxinlines.tcl mkvdbeauxinlines.tcl COPYONLY)
@@ -158,8 +160,6 @@ add_custom_command(
   OUTPUT parse.c parse.h
   DEPENDS lemon tool/lempar.c src/parse.y
   COMMAND lemon ${SQLITE_FLAGS} parse.y
-  COMMAND ${CMAKE_COMMAND} -E copy parse.h parse.h.temp
-  COMMAND SQLITE_BUILDING_FOR_COMDB2=1 ${tclsh} addopcodes.tcl parse.h.temp > parse.h
 )
 
 add_custom_command(
@@ -204,7 +204,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(sqlite mem protobuf bdb)
 

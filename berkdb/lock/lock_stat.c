@@ -227,8 +227,9 @@ __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, lockerid)
 		    "lsynch_off", (u_long)lrp->lsynch_off,
 		    "need_dd", (u_long)lrp->need_dd);
 		if (LOCK_TIME_ISVALID(&lrp->next_timeout)) {
+			struct tm mytime;
 			strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S",
-			    localtime((time_t*)&lrp->next_timeout.tv_sec));
+			    localtime_r((time_t*)&lrp->next_timeout.tv_sec, &mytime));
 			logmsgf(LOGMSG_USER, fp, "next_timeout: %s.%lu\n",
 			    buf, (u_long)lrp->next_timeout.tv_usec);
 		}
@@ -900,9 +901,10 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 
 	logmsgf(LOGMSG_USER, fp, "%s", F_ISSET(lip, DB_LOCKER_DELETED) ? "(D)" : "   ");
 
+	struct tm mytime;
 	if (LOCK_TIME_ISVALID(&lip->tx_expire)) {
 		s = lip->tx_expire.tv_sec;
-		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime(&s));
+		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime_r(&s, &mytime));
 		logmsgf(LOGMSG_USER, fp,
 			"expires %s.%lu", buf, (u_long)lip->tx_expire.tv_usec);
 	}
@@ -911,7 +913,7 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 
 	if (LOCK_TIME_ISVALID(&lip->lk_expire)) {
 		s = lip->lk_expire.tv_sec;
-		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime(&s));
+		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime_r(&s, &mytime));
 		logmsgf(LOGMSG_USER, fp,
 			" lk expires %s.%lu", buf, (u_long)lip->lk_expire.tv_usec);
 	}

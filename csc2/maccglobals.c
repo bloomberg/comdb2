@@ -3,9 +3,9 @@
 #include "maccparse.h"
 #include <string.h>
 
-char VER[16];
 struct constraint constraints[MAXCNSTRTS];
-struct symbol sym[MAX];
+struct check_constraint check_constraints[MAXCNSTRTS];
+struct symbol symb[MAX];
 struct table tables[MAXTBLS];
 struct constant constants[MAX];
 unsigned int un_start[MAX];
@@ -91,6 +91,7 @@ int opt_sync = 0;
 int opt_setsql = 0;
 int opt_schematype = 2;
 int nconstraints = -1;
+int n_check_constraints = -1;
 
 void init_globals()
 {
@@ -106,7 +107,7 @@ void init_globals()
     et_p = 0;
     ncluster = 0;
     ntables = 0;
-    memset(sym, 0, sizeof(sym));
+    memset(symb, 0, sizeof(symb));
     memset(tables, 0, sizeof(tables));
     memset(constants, 0, sizeof(constants));
     memset(keys, 0, sizeof(keys));
@@ -183,5 +184,7 @@ void init_globals()
     memset(opt_maindbname, 0, sizeof(opt_maindbname));
     memset(opt_tblname, 0, sizeof(opt_tblname));
     memset(constraints, 0, sizeof(struct constraint) * MAXCNSTRTS);
+    memset(check_constraints, 0, sizeof(struct check_constraint) * MAXCNSTRTS);
     nconstraints = -1;
+    n_check_constraints = -1;
 }

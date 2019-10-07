@@ -1231,6 +1231,34 @@ static void whereIndexExprTrans(
 }
 
 /*
+** The pTruth expression is always true because it is the WHERE clause
+** a partial index that is driving a query loop.  Look through all of the
+** WHERE clause terms on the query, and if any of those terms must be
+** true because pTruth is true, then mark those WHERE clause terms as
+** coded.
+*/
+static void whereApplyPartialIndexConstraints(
+  Expr *pTruth,
+  int iTabCur,
+  WhereClause *pWC
+){
+  int i;
+  WhereTerm *pTerm;
+  while( pTruth->op==TK_AND ){
+    whereApplyPartialIndexConstraints(pTruth->pLeft, iTabCur, pWC);
+    pTruth = pTruth->pRight;
+  }
+  for(i=0, pTerm=pWC->a; i<pWC->nTerm; i++, pTerm++){
+    Expr *pExpr;
+    if( pTerm->wtFlags & TERM_CODED ) continue;
+    pExpr = pTerm->pExpr;
+    if( sqlite3ExprCompare(0, pExpr, pTruth, iTabCur)==0 ){
+      pTerm->wtFlags |= TERM_CODED;
+    }
+  }
+}
+
+/*
 ** Generate code for the start of the iLevel-th loop in the WHERE clause
 ** implementation described by pWInfo.
 */
@@ -1679,7 +1707,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     codeCursorHint(pTabItem, pWInfo, pLevel, pRangeEnd);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     regBase = codeAllEqualityTerms(pParse,pLevel,bRev,nExtraReg,&zStartAff);
     assert( zStartAff==0 || sqlite3Strlen30(zStartAff)>=nEq );
     if( zStartAff && nTop ){
@@ -1848,6 +1876,14 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       whereIndexExprTrans(pIdx, iCur, iIdxCur, pWInfo);
     }
 
+    /* If a partial index is driving the loop, try to eliminate WHERE clause
+    ** terms from the query that must be true due to the WHERE clause of
+    ** the partial index
+    */
+    if( pIdx->pPartIdxWhere ){
+      whereApplyPartialIndexConstraints(pIdx->pPartIdxWhere, iCur, pWC);
+    }
+
     /* Record the instruction used to terminate the loop. */
     if( pLoop->wsFlags & WHERE_ONEROW ){
       pLevel->op = OP_Noop;
@@ -2011,7 +2047,12 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         pAndExpr = sqlite3ExprAnd(db, pAndExpr, pExpr);
       }
       if( pAndExpr ){
-        pAndExpr = sqlite3PExpr(pParse, TK_AND|TKFLG_DONTFOLD, 0, pAndExpr);
+        /* The extra 0x10000 bit on the opcode is masked off and does not
+        ** become part of the new Expr.op.  However, it does make the
+        ** op==TK_AND comparison inside of sqlite3PExpr() false, and this
+        ** prevents sqlite3PExpr() from implementing AND short-circuit 
+        ** optimization, which we do not want here. */
+        pAndExpr = sqlite3PExpr(pParse, TK_AND|0x10000, 0, pAndExpr);
       }
     }
 
@@ -2245,8 +2286,9 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         u32 x = pLevel->iLikeRepCntr;
         if( x>0 ){
           skipLikeAddr = sqlite3VdbeAddOp1(v, (x&1)?OP_IfNot:OP_If,(int)(x>>1));
+          VdbeCoverageIf(v, (x&1)==1);
+          VdbeCoverageIf(v, (x&1)==0);
         }
-        VdbeCoverage(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS) */
       }
 #ifdef WHERETRACE_ENABLED /* 0xffff */

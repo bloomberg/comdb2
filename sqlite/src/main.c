@@ -728,7 +728,7 @@ static int setupLookaside(sqlite3 *db, void *pBuf, int sz, int cnt){
     pStart = 0;
   }else if( pBuf==0 ){
     sqlite3BeginBenignMalloc();
-    pStart = sqlite3Malloc( sz*cnt );  /* IMP: R-61949-35727 */
+    pStart = sqlite3Malloc( sz*(sqlite3_int64)cnt );  /* IMP: R-61949-35727 */
     sqlite3EndBenignMalloc();
     if( pStart ) cnt = sqlite3MallocSize(pStart)/sz;
   }else{
@@ -866,6 +866,8 @@ int sqlite3_db_config(sqlite3 *db, int op, ...){
         { SQLITE_DBCONFIG_TRIGGER_EQP,           SQLITE_TriggerEQP     },
         { SQLITE_DBCONFIG_RESET_DATABASE,        SQLITE_ResetDatabase  },
         { SQLITE_DBCONFIG_DEFENSIVE,             SQLITE_Defensive      },
+        { SQLITE_DBCONFIG_WRITABLE_SCHEMA,       SQLITE_WriteSchema|
+                                                 SQLITE_NoSchemaError  },
       };
       unsigned int i;
       rc = SQLITE_ERROR; /* IMP: R-42790-23372 */
@@ -1162,8 +1164,8 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     {
       sqlite3_stmt *pStmt = 0;
       while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
-        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
-               __FILE__, __LINE__, db, sqlite3_sql(pStmt));
+        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> %p {%s}\n",
+               __FILE__, __LINE__, db, pStmt, sqlite3_sql(pStmt));
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3431,13 +3433,15 @@ opendb_out:
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-  pthread_mutex_lock(&mutex);
-  /* these modify global structures */
-  register_lua_sfuncs(db, thd);
-  register_lua_afuncs(db, thd);
-  register_date_functions(db); 
-  pthread_mutex_unlock(&mutex);
+  if( thd!=NULL ){
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&mutex);
+    /* these modify global structures */
+    register_lua_sfuncs(db, thd);
+    register_lua_afuncs(db, thd);
+    register_date_functions(db); 
+    pthread_mutex_unlock(&mutex);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ) sqlite3CodecQueryParameters(db, 0, zOpen);

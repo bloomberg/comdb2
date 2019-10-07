@@ -35,7 +35,9 @@ typedef struct Vdbe Vdbe;
 ** The names of the following types declared in vdbeInt.h are required
 ** for the VdbeOp definition.
 */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 typedef struct sqlite3_value Mem;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 typedef struct SubProgram SubProgram;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -298,7 +300,11 @@ u8 sqlite3VdbePrepareFlags(Vdbe*);
 void sqlite3VdbeSetSql(Vdbe*, const char *z, int n, u8);
 #ifdef SQLITE_ENABLE_NORMALIZE
 void sqlite3VdbeAddDblquoteStr(sqlite3*,Vdbe*,const char*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*,int);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 void sqlite3VdbeSwap(Vdbe*,Vdbe*);
 VdbeOp *sqlite3VdbeTakeOpArray(Vdbe*, int*, int*);

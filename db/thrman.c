@@ -49,6 +49,7 @@
 #include "thread_util.h"
 #include "osqlrepository.h"
 #include "logmsg.h"
+#include "str0.h"
 
 struct thr_handle {
     pthread_t tid;
@@ -251,7 +252,7 @@ void thrman_origin(struct thr_handle *thr, const char *origin)
 {
     if (thr) {
         if (origin) {
-            strncpy(thr->corigin, origin, sizeof(thr->corigin));
+            strncpy0(thr->corigin, origin, sizeof(thr->corigin));
             thr->corigin[sizeof(thr->corigin) - 1] = 0;
         } else
             thr->corigin[0] = 0;
@@ -351,6 +352,8 @@ const char *thrman_type2a(enum thrtype type)
         return "purge-old-files";
     case THRTYPE_TRIGGER:
         return "lua-trigger";
+    case THRTYPE_PGLOGS_ASOF:
+        return "pglogs-asof";
     default:
         return "??";
     }
@@ -377,10 +380,9 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
              * unlikely, but possible).  The worst that can happen is we'll
              * get an error, or wrong information. */
             struct sockaddr_in peeraddr;
-            int len = sizeof(peeraddr);
+            socklen_t len = sizeof(peeraddr);
             char addrstr[64];
-            if (getpeername(fd, (struct sockaddr *)&peeraddr,
-                            (socklen_t *)&len) < 0)
+            if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0)
                 SNPRINTF(buf, szbuf, pos, ", fd %d (getpeername:%s)", fd,
                          strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
@@ -464,11 +466,12 @@ static int thrman_check_threads_stopped_ll(void *context)
             thr_type_counts[THRTYPE_SQLPOOL] +
             thr_type_counts[THRTYPE_SQLENGINEPOOL] +
             thr_type_counts[THRTYPE_VERIFY] + thr_type_counts[THRTYPE_ANALYZE] +
-            thr_type_counts[THRTYPE_PURGEBLKSEQ])
+            thr_type_counts[THRTYPE_PURGEBLKSEQ] +
+            thr_type_counts[THRTYPE_PGLOGS_ASOF])
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
-    if (thedb->exiting && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
+    if (db_is_stopped() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
         all_gone = 0;
 
     if (self)

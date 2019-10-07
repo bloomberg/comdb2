@@ -72,6 +72,7 @@ static struct option long_options[] = {
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
     {"tunable", required_argument, NULL, 0},
+    {"version", no_argument, NULL, 'v'},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
@@ -89,6 +90,8 @@ static const char *help_text = {
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
     "        --tunable                  override tunable\n"
+    "        --help                     displays this help text and exit\n"
+    "        --version                  displays version information and exit\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -102,6 +105,14 @@ struct read_lrl_option_type {
     const char *lrlname;
     const char *dbname;
 };
+
+void print_version_and_exit()
+{
+    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s] [%s]\n",
+           gbl_db_version, gbl_db_codename, gbl_db_semver,
+           gbl_db_git_version_sha, gbl_db_buildtype);
+    exit(2);
+}
 
 void print_usage_and_exit()
 {
@@ -190,9 +201,10 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     int c;
     int options_idx;
 
-    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
+        if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
 
         switch (options_idx) {
@@ -295,56 +307,60 @@ void clear_deferred_options(void)
     }
 }
 
-static char *legacy_options[] = {"disallow write from beta if prod",
-                                 "noblobstripe",
-                                 "nullsort high",
-                                 "dont_sort_nulls_with_header",
-                                 "nochecksums",
-                                 "off fix_cstr",
-                                 "no_null_blob_fix",
-                                 "no_static_tag_blob_fix",
-                                 "dont_forbid_ulonglong",
-                                 "dont_init_with_ondisk_header",
-                                 "dont_init_with_instant_schema_change",
-                                 "dont_init_with_inplace_updates",
-                                 "dont_prefix_foreign_keys",
-                                 "dont_superset_foreign_keys",
-                                 "disable_inplace_blobs",
-                                 "disable_inplace_blob_optimization",
-                                 "disable_osql_blob_optimization",
-                                 "nocrc32c",
-                                 "enable_tagged_api",
-                                 "nokeycompr",
-                                 "norcache",
-                                 "usenames",
-                                 "setattr DIRECTIO 0",
-                                 "berkattr elect_highest_committed_gen 0",
-                                 "unnatural_types 1",
-                                 "enable_sql_stmt_caching none",
-                                 "on accept_on_child_nets",
-                                 "env_messages",
-                                 "off return_long_column_names",
-                                 "ddl_cascade_drop 0",
-                                 "setattr NET_SEND_GBLCONTEXT 1",
-                                 "setattr ENABLE_SEQNUM_GENERATIONS 0",
-                                 "setattr MASTER_LEASE 0",
-                                 "setattr SC_DONE_SAME_TRAN 0",
-                                 "logmsg notimestamp",
-                                 "queuedb_genid_filename off",
-                                 "decoupled_logputs off",
-                                 "init_with_time_based_genids",
-                                 "logmsg level info",
-                                 "logput window 1",
-                                 "osql_send_startgen off",
-                                 "create_default_user",
-                                 "allow_negative_column_size",
-                                 "osql_check_replicant_numops off",
-                                 "reorder_socksql_no_deadlock off",
-                                 "disable_tpsc_tblvers",
-                                 "on disable_etc_services_lookup",
-                                 "off osql_odh_blob",
-                                 "legacy_schema on",
-                                 "online_recovery off"};
+static char *legacy_options[] = {
+    "allow_negative_column_size",
+    "berkattr elect_highest_committed_gen 0",
+    "clean_exit_on_sigterm off",
+    "create_default_user",
+    "ddl_cascade_drop 0",
+    "decoupled_logputs off",
+    "disable_inplace_blob_optimization",
+    "disable_inplace_blobs",
+    "disable_osql_blob_optimization",
+    "disable_tpsc_tblvers",
+    "disallow write from beta if prod",
+    "dont_forbid_ulonglong",
+    "dont_init_with_inplace_updates",
+    "dont_init_with_instant_schema_change",
+    "dont_init_with_ondisk_header",
+    "dont_prefix_foreign_keys",
+    "dont_sort_nulls_with_header",
+    "dont_superset_foreign_keys",
+    "enable_sql_stmt_caching none",
+    "enable_tagged_api",
+    "env_messages",
+    "init_with_time_based_genids",
+    "legacy_schema on",
+    "logmsg level info",
+    "logmsg notimestamp",
+    "logput window 1",
+    "noblobstripe",
+    "nochecksums",
+    "nocrc32c",
+    "nokeycompr",
+    "no_null_blob_fix",
+    "norcache",
+    "no_static_tag_blob_fix",
+    "nullfkey off",
+    "nullsort high",
+    "off fix_cstr",
+    "off osql_odh_blob",
+    "off return_long_column_names",
+    "on accept_on_child_nets",
+    "on disable_etc_services_lookup",
+    "online_recovery off",
+    "osql_check_replicant_numops off",
+    "osql_send_startgen off",
+    "queuedb_genid_filename off",
+    "reorder_socksql_no_deadlock off",
+    "setattr DIRECTIO 0",
+    "setattr ENABLE_SEQNUM_GENERATIONS 0",
+    "setattr MASTER_LEASE 0",
+    "setattr NET_SEND_GBLCONTEXT 1",
+    "setattr SC_DONE_SAME_TRAN 0",
+    "unnatural_types 1",
+    "usenames",
+};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -376,14 +392,11 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     if (tokcmp(tok, *ltok, "if") == 0) {
         enum mach_class my_class = get_my_mach_class();
         tok = segtok(line, line_len, st, ltok);
-        if (my_class == CLASS_TEST && tokcmp(tok, *ltok, "test") &&
-            tokcmp(tok, *ltok, "dev"))
+        char *label = strndup(tok, *ltok);
+        int value = mach_class_name2class(label);
+
+        if (my_class == CLASS_UNKNOWN || my_class != value)
             return 0;
-        if (my_class == CLASS_ALPHA && tokcmp(tok, *ltok, "alpha")) return 0;
-        if (my_class == CLASS_UAT && tokcmp(tok, *ltok, "uat")) return 0;
-        if (my_class == CLASS_BETA && tokcmp(tok, *ltok, "beta")) return 0;
-        if (my_class == CLASS_PROD && tokcmp(tok, *ltok, "prod")) return 0;
-        if (my_class == CLASS_UNKNOWN) return 0;
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;
@@ -758,6 +771,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             }
             dbenv->sibling_hostname[0] = gbl_mynode;
         }
+    } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
+        int classval = 1;
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = mach_class_addclass(tok, classval);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+            classval++;
+        }
     } else if (tokcmp(tok, ltok, "pagesize") == 0) {
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
@@ -962,6 +985,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 logmsg(LOGMSG_ERROR,
                        "Failed to load schema: can't process schema file %s\n",
                        tok);
+                return -1;
+            }
+
+            /* Initialize table's check constraint members. */
+            if (init_check_constraints(db)) {
+                logmsg(LOGMSG_ERROR,
+                       "Failed to load check constraints for %s\n",
+                       db->tablename);
                 return -1;
             }
         } else {
@@ -1259,6 +1290,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         cdb2_hndl_tp *hndl;
         /* replicate_from <db_name> [dbs to query] */
+        if (gbl_exit)
+            return -1;
+
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
                                  "can only replicate from a single source\n");

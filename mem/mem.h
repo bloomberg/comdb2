@@ -36,7 +36,6 @@ XMACRO_COMDB2MA(COMDB2MA_STATIC_BERKDB,         "berkdb",           0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_NET,            "net",              0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_SQLITE,         "sqlite",           0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_UTIL,           "util",             0, 0) \
-XMACRO_COMDB2MA(COMDB2MA_STATIC_CSC2,           "csc2",             0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_DATETIME,       "datetime",         0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_DFP_DECNUMBER,  "dfp_decNumber",    0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_PROTOBUF,       "protobuf",         0, 0) \
@@ -111,11 +110,14 @@ struct mallinfo;
 typedef void (*stats_fn)(const struct mallinfo *mallinfo, int verbose,
                          int human_readable, void *arg);
 
-#ifdef PER_THREAD_MALLOC
 /*
 ** Thread type string.
 */
+#ifdef PER_THREAD_MALLOC
 extern __thread const char *thread_type_key;
+#define THREAD_TYPE(key) do { thread_type_key = (key); } while (0)
+#else
+#define THREAD_TYPE(key) do { (void)key; } while (0)
 #endif
 
 /*

@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/random.sh
+
+#export debug=1
+export stop_touch=./stop_updater
+
+[[ $debug == "1" ]] && set -x
+
+function cleanup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cleanup"
+    write_prompt $func "Running $func"
+    touch $stop_touch
+    wait
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    write_prompt $func "Running $func"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    cleanup
+    exit -1
+}
+
+function bulk_insert_unique_records
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="bulk_insert_unique_records"
+    write_prompt $func "Running $func"
+    typeset table=${1:-t1}
+    typeset cnt=${2:-100000}
+    typeset chunk=${3:-9999}
+    typeset start=0
+    typeset left=$cnt
+    typeset end=-1
+    j=0
+    while [[ $left -gt 0 ]]; do
+        start=$(( end + 1 ))
+        end=$(( start + chunk ))
+        if [[ $end -gt $cnt ]]; then
+            end=$cnt
+        fi
+        amt=$(( ( end - start ) + 1 ))
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into $table select * from generate_series($start, $end)" >/dev/null
+        left=$(( left - amt ))
+    done
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    write_prompt $func "Running $func"
+    drop_table
+    create_table
+    create_unique_index
+}
+
+function updater_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="updater_thread"
+    typeset slot=${1}
+    write_prompt $func "Running $func $slot"
+    typeset recs=${2}
+    typeset target=$(( recs + slot ))
+    typeset sleepbetween=${3:-.20}
+    typeset sleepafter=${4:-.20}
+    typeset table=${5:-t1}
+
+    while [[ ! -f $stop_touch ]]; do
+        typeset record=$(random $recs)
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "update $table set a = $target where a = $record" >/dev/null
+        [[ "$sleepbetween" != 0 ]] && sleep $sleepbetween
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "update $table set a = $record where a = $target" >/dev/null
+        [[ "$sleepafter" != 0 ]] && sleep $sleepafter
+    done
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "Running $func"
+    typeset recs=1000000
+    typeset updaters=2
+    typeset iterations=10
+    typeset i=0
+    bulk_insert_unique_records t1 $recs
+    rm -Rf $stop_touch
+
+    i=0
+    while [[ $i -lt $updaters ]]; do
+        updater_thread $(( i + 1 )) $recs &
+        let i=i+1
+    done
+
+    i=0
+    while [[ $i -lt $iterations ]]; do
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "rebuild t1" || failexit "failed to rebuild"
+        let i=i+1
+        echo "Completed $i rebuilds"
+    done
+    touch $stop_touch
+    wait
+}
+
+setup
+run_test
+echo "Success"

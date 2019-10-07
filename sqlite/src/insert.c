@@ -726,8 +726,8 @@ void sqlite3Insert(
     int rc;             /* Result code */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !pParse->ast ) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_INSERT, v, NULL);
+    ast_t *ast = ast_init(pParse, __func__);
+    if( ast ) ast_push(ast, AST_TYPE_INSERT, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     regYield = ++pParse->nMem;
     addrTop = sqlite3VdbeCurrentAddr(v) + 1;
@@ -860,6 +860,13 @@ void sqlite3Insert(
   }
 #ifndef SQLITE_OMIT_UPSERT
   if( pUpsert ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int gbl_noenv_messages;
+    if (gbl_noenv_messages == 0) {
+      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
+      goto insert_cleanup;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( IsVirtual(pTab) ){
       sqlite3ErrorMsg(pParse, "UPSERT not implemented for virtual table \"%s\"",
               pTab->zName);
@@ -1741,7 +1748,9 @@ void sqlite3GenerateConstraintChecks(
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regIdx, pIdx->nColumn, aRegIdx[ix]);
     VdbeComment((v, "for %s", pIdx->zName));
 #ifdef SQLITE_ENABLE_NULL_TRIM
-    if( pIdx->idxType==2 ) sqlite3SetMakeRecordP5(v, pIdx->pTable);
+    if( pIdx->idxType==SQLITE_IDXTYPE_PRIMARYKEY ){
+      sqlite3SetMakeRecordP5(v, pIdx->pTable);
+    }
 #endif
 
     /* In an UPDATE operation, if this index is the PRIMARY KEY index 
@@ -2405,6 +2414,13 @@ static int xferOptimization(
     if( pSrcIdx==0 ){
       return 0;    /* pDestIdx has no corresponding index in pSrc */
     }
+    if( pSrcIdx->tnum==pDestIdx->tnum && pSrc->pSchema==pDest->pSchema
+         && sqlite3FaultSim(411)==SQLITE_OK ){
+      /* The sqlite3FaultSim() call allows this corruption test to be
+      ** bypassed during testing, in order to exercise other corruption tests
+      ** further downstream. */
+      return 0;   /* Corrupt schema - two indexes on the same btree */
+    }
   }
 #ifndef SQLITE_OMIT_CHECK
   if( pDest->pCheck && sqlite3ExprListCompare(pSrc->pCheck,pDest->pCheck,-1) ){
@@ -2482,7 +2498,7 @@ static int xferOptimization(
       sqlite3RowidConstraint(pParse, onError, pDest);
       sqlite3VdbeJumpHere(v, addr2);
       autoIncStep(pParse, regAutoinc, regRowid);
-    }else if( pDest->pIndex==0 ){
+    }else if( pDest->pIndex==0 && !(db->mDbFlags & DBFLAG_VacuumInto) ){
       addr1 = sqlite3VdbeAddOp2(v, OP_NewRowid, iDest, regRowid);
     }else{
       addr1 = sqlite3VdbeAddOp2(v, OP_Rowid, iSrc, regRowid);
@@ -2545,7 +2561,7 @@ static int xferOptimization(
         sqlite3VdbeAddOp1(v, OP_SeekEnd, iDest);
       }
     }
-    if( !HasRowid(pSrc) && pDestIdx->idxType==2 ){
+    if( !HasRowid(pSrc) && pDestIdx->idxType==SQLITE_IDXTYPE_PRIMARYKEY ){
       idxInsFlags |= OPFLAG_NCHANGE;
     }
     sqlite3VdbeAddOp2(v, OP_IdxInsert, iDest, regData);

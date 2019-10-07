@@ -35,6 +35,9 @@ void print_cooked_access(BtCursor *pCur, int col);
 void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
+extern void comdb2_handle_limit(Vdbe*,Mem*);
+extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
+extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
 
 #define cur_is_raw(pCur)                               \
     (pCur ?                                            \
@@ -188,12 +191,20 @@ int sqlite3_found_count = 0;
 ** feature is used for test suite validation only and does not appear an
 ** production builds.
 **
-** M is an integer between 2 and 4.  2 indicates a ordinary two-way
-** branch (I=0 means fall through and I=1 means taken).  3 indicates
-** a 3-way branch where the third way is when one of the operands is
-** NULL.  4 indicates the OP_Jump instruction which has three destinations
-** depending on whether the first operand is less than, equal to, or greater
-** than the second. 
+** M is the type of branch.  I is the direction taken for this instance of
+** the branch.
+**
+**   M: 2 - two-way branch (I=0: fall-thru   1: jump                )
+**      3 - two-way + NULL (I=0: fall-thru   1: jump      2: NULL   )
+**      4 - OP_Jump        (I=0: jump p1     1: jump p2   2: jump p3)
+**
+** In other words, if M is 2, then I is either 0 (for fall-through) or
+** 1 (for when the branch is taken).  If M is 3, the I is 0 for an
+** ordinary fall-through, I is 1 if the branch was taken, and I is 2 
+** if the result of comparison is NULL.  For M=3, I=2 the jump may or
+** may not be taken, depending on the SQLITE_JUMPIFNULL flags in p5.
+** When M is 4, that means that an OP_Jump is being run.  I is 0, 1, or 2
+** depending on if the operands are less than, equal, or greater than.
 **
 ** iSrcLine is the source code line (from the __LINE__ macro) that
 ** generated the VDBE instruction combined with flag bits.  The source
@@ -204,9 +215,9 @@ int sqlite3_found_count = 0;
 ** alternate branch are never taken.  If a branch is never taken then
 ** flags should be 0x06 since only the fall-through approach is allowed.
 **
-** Bit 0x04 of the flags indicates an OP_Jump opcode that is only
+** Bit 0x08 of the flags indicates an OP_Jump opcode that is only
 ** interested in equal or not-equal.  In other words, I==0 and I==2
-** should be treated the same.
+** should be treated as equivalent
 **
 ** Since only a line number is retained, not the filename, this macro
 ** only works for amalgamation builds.  But that is ok, since these macros
@@ -230,6 +241,18 @@ int sqlite3_found_count = 0;
     mNever = iSrcLine >> 24;
     assert( (I & mNever)==0 );
     if( sqlite3GlobalConfig.xVdbeBranch==0 ) return;  /*NO_TEST*/
+    /* Invoke the branch coverage callback with three arguments:
+    **    iSrcLine - the line number of the VdbeCoverage() macro, with
+    **               flags removed.
+    **    I        - Mask of bits 0x07 indicating which cases are are
+    **               fulfilled by this instance of the jump.  0x01 means
+    **               fall-thru, 0x02 means taken, 0x04 means NULL.  Any
+    **               impossible cases (ex: if the comparison is never NULL)
+    **               are filled in automatically so that the coverage
+    **               measurement logic does not flag those impossible cases
+    **               as missed coverage.
+    **    M        - Type of jump.  Same as M argument above
+    */
     I |= mNever;
     if( M==2 ) I |= 0x04;
     if( M==4 ){
@@ -940,6 +963,15 @@ int sqlite3VdbeExec(
   assert( p->db );  /* db should not be null */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3VdbeEnter(p);
+#ifndef SQLITE_OMIT_PROGRESS_CALLBACK
+  if( db->xProgress ){
+    u32 iPrior = p->aCounter[SQLITE_STMTSTATUS_VM_STEP];
+    assert( 0 < db->nProgressOps );
+    nProgressLimit = db->nProgressOps - (iPrior % db->nProgressOps);
+  }else{
+    nProgressLimit = 0xffffffff;
+  }
+#endif
   if( p->rc==SQLITE_NOMEM ){
     /* This happens if a malloc() inside a call to sqlite3_column_text() or
     ** sqlite3_column_text16() failed.  */
@@ -953,15 +985,6 @@ int sqlite3VdbeExec(
   db->busyHandler.nBusy = 0;
   if( db->u1.isInterrupted ) goto abort_due_to_interrupt;
   sqlite3VdbeIOTraceSql(p);
-#ifndef SQLITE_OMIT_PROGRESS_CALLBACK
-  if( db->xProgress ){
-    u32 iPrior = p->aCounter[SQLITE_STMTSTATUS_VM_STEP];
-    assert( 0 < db->nProgressOps );
-    nProgressLimit = db->nProgressOps - (iPrior % db->nProgressOps);
-  }else{
-    nProgressLimit = 0xffffffff;
-  }
-#endif
 #ifdef SQLITE_DEBUG
   sqlite3BeginBenignMalloc();
   if( p->pc==0
@@ -1163,10 +1186,11 @@ check_for_interrupt:
   ** If the progress callback returns non-zero, exit the virtual machine with
   ** a return code SQLITE_ABORT.
   */
-  if( nVmStep>=nProgressLimit && db->xProgress!=0 ){
+  while( nVmStep>=nProgressLimit && db->xProgress!=0 ){
     assert( db->nProgressOps!=0 );
-    nProgressLimit = nVmStep + db->nProgressOps - (nVmStep%db->nProgressOps);
+    nProgressLimit += db->nProgressOps;
     if( db->xProgress(db->pProgressArg) ){
+      nProgressLimit = 0xffffffff;
       rc = SQLITE_INTERRUPT;
       goto abort_due_to_error;
     }
@@ -1453,6 +1477,7 @@ case OP_String8: {         /* same as TK_STRING, out2 */
   if( encoding!=SQLITE_UTF8 ){
     rc = sqlite3VdbeMemSetStr(pOut, pOp->p4.z, -1, SQLITE_UTF8, SQLITE_STATIC);
     assert( rc==SQLITE_OK || rc==SQLITE_TOOBIG );
+    if( rc ) goto too_big;
     if( SQLITE_OK!=sqlite3VdbeChangeEncoding(pOut, encoding) ) goto no_mem;
     assert( pOut->szMalloc>0 && pOut->zMalloc==pOut->z );
     assert( VdbeMemDynamic(pOut)==0 );
@@ -1465,7 +1490,6 @@ case OP_String8: {         /* same as TK_STRING, out2 */
     pOp->p4.z = pOut->z;
     pOp->p1 = pOut->n;
   }
-  testcase( rc==SQLITE_TOOBIG );
 #endif
   if( pOp->p1>db->aLimit[SQLITE_LIMIT_LENGTH] ){
     goto too_big;
@@ -1587,7 +1611,10 @@ case OP_Variable: {            /* out2 */
     goto too_big;
   }
   pOut = &aMem[pOp->p2];
-  sqlite3VdbeMemShallowCopy(pOut, pVar, MEM_Static);
+  if( VdbeMemDynamic(pOut) ) sqlite3VdbeMemSetNull(pOut);
+  memcpy(pOut, pVar, MEMCELLSIZE);
+  pOut->flags &= ~(MEM_Dyn|MEM_Ephem);
+  pOut->flags |= MEM_Static|MEM_FromBind;
   UPDATE_MAX_BLOBSIZE(pOut);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_debug_sql_opcodes ){
@@ -1709,7 +1736,6 @@ case OP_IntCopy: {            /* out2 */
   pOut = &aMem[pOp->p2];
   sqlite3VdbeMemSetInt64(pOut, pIn1->u.i);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  extern void comdb2_handle_limit(Vdbe*,Mem*);
   comdb2_handle_limit(p, pIn1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   break;
@@ -1730,18 +1756,6 @@ case OP_ResultRow: {
   assert( p->nResColumn==pOp->p2 );
   assert( pOp->p1>0 );
   assert( pOp->p1+pOp->p2<=(p->nMem+1 - p->nCursor)+1 );
-
-#ifndef SQLITE_OMIT_PROGRESS_CALLBACK
-  /* Run the progress counter just before returning.
-  */
-  if( db->xProgress!=0
-   && nVmStep>=nProgressLimit 
-   && db->xProgress(db->pProgressArg)!=0
-  ){
-    rc = SQLITE_INTERRUPT;
-    goto abort_due_to_error;
-  }
-#endif
 
   /* If this statement has violated immediate foreign key constraints, do
   ** not return the number of rows modified. And do not RELEASE the statement
@@ -1913,6 +1927,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   {
     Mem res;
     rc = sqliteVdbeMemDecimalBasicArithmetics( pIn1, pIn2, pOp->opcode, &res, 1);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res;
     if (rc)
     {
@@ -1924,6 +1939,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   {
     Mem res;
     rc = sqliteVdbeMemDecimalBasicArithmetics( pIn2, pIn1, pOp->opcode, &res, 0);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res;
     if (rc)
     {
@@ -1942,6 +1958,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* two intervals of the same type or 1 intervalds and 1 intervaldsus */
     Mem res;
     rc = sqlite3VdbeMemIntervalAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Interval) && (pIn1->flags & MEM_Int) &&
             ((pOp->opcode == OP_Multiply) || (pOp->opcode == OP_Divide))){
@@ -1949,6 +1966,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* interval and int */
     Mem res;
     rc = sqlite3VdbeMemIntervalAndInt(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Int) && (pIn1->flags & MEM_Interval)
    && (pOp->opcode == OP_Multiply)
@@ -1957,6 +1975,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* int and interval */
     Mem res;
     rc = sqlite3VdbeMemIntAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }
   else if( (pIn2->flags & MEM_Datetime) && (pIn1->flags & MEM_Datetime)
@@ -1966,6 +1985,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* two datetimes*/
     Mem res;
     rc = sqlite3VdbeMemDatetimeAndDatetime(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Datetime) && (pIn1->flags & MEM_Interval)
    && ((pOp->opcode == OP_Add) || (pOp->opcode == OP_Subtract))
@@ -1974,6 +1994,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     /* datetime and interval*/
     Mem res;
     rc = sqlite3VdbeMemDatetimeAndInterval(pIn2, pIn1, pOp->opcode, &res);
+    if( rc!=SQLITE_OK ) goto abort_due_to_error;
     *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
   }else if( (pIn2->flags & MEM_Interval) && (pIn1->flags & MEM_Datetime) ){
 
@@ -1981,6 +2002,7 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     if( pOp->opcode == OP_Add ){ 
       Mem res;
       rc = sqlite3VdbeMemIntervalAndDatetime(pIn2, pIn1, pOp->opcode, &res);
+      if( rc!=SQLITE_OK ) goto abort_due_to_error;
       *pOut = res; /*knowledge of _operateIntervalandInterval is assumed, no dyn alloc */
     }else{
       rc = SQLITE_MISMATCH;
@@ -2193,8 +2215,8 @@ case OP_MustBeInt: {            /* jump, in1 */
   pIn1 = &aMem[pOp->p1];
   if( (pIn1->flags & MEM_Int)==0 ){
     applyAffinity(pIn1, SQLITE_AFF_NUMERIC, encoding);
-    VdbeBranchTaken((pIn1->flags&MEM_Int)==0, 2);
     if( (pIn1->flags & MEM_Int)==0 ){
+      VdbeBranchTaken(1, 2);
       if( pOp->p2==0 ){
         rc = SQLITE_MISMATCH;
         goto abort_due_to_error;
@@ -2203,6 +2225,7 @@ case OP_MustBeInt: {            /* jump, in1 */
       }
     }
   }
+  VdbeBranchTaken(0, 2);
   MemSetTypeFlag(pIn1, MEM_Int);
   break;
 }
@@ -2243,7 +2266,11 @@ case OP_RealAffinity: {                  /* in1 */
 ** A NULL value is not changed by this routine.  It remains NULL.
 */
 case OP_Cast: {                  /* in1 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_SMALL );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pOp->p2>=SQLITE_AFF_BLOB && pOp->p2<=SQLITE_AFF_REAL );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   testcase( pOp->p2==SQLITE_AFF_TEXT );
   testcase( pOp->p2==SQLITE_AFF_BLOB );
   testcase( pOp->p2==SQLITE_AFF_NUMERIC );
@@ -2389,7 +2416,6 @@ case OP_Ge: {             /* same as TK_GE, jump, in1, in3 */
       ** OP_Eq or OP_Ne) then take the jump or not depending on whether
       ** or not both operands are null.
       */
-      assert( pOp->opcode==OP_Eq || pOp->opcode==OP_Ne );
       assert( (flags1 & MEM_Cleared)==0 );
       assert( (pOp->p5 & SQLITE_JUMPIFNULL)==0 || CORRUPT_DB );
       testcase( (pOp->p5 & SQLITE_JUMPIFNULL)!=0 );
@@ -2398,7 +2424,7 @@ case OP_Ge: {             /* same as TK_GE, jump, in1, in3 */
       ){
         res = 0;  /* Operands are equal */
       }else{
-        res = 1;  /* Operands are not equal */
+        res = ((flags3 & MEM_Null) ? -1 : +1);  /* Operands are not equal */
       }
     }else{
       /* SQLITE_NULLEQ is clear and at least one operand is NULL,
@@ -2539,7 +2565,7 @@ compare_op:
     pOut->u.i = res2;
     REGISTER_TRACE(pOp->p2, pOut);
   }else{
-    VdbeBranchTaken(res!=0, (pOp->p5 & SQLITE_NULLEQ)?2:3);
+    VdbeBranchTaken(res2!=0, (pOp->p5 & SQLITE_NULLEQ)?2:3);
     if( res2 ){
       goto jump_to_p2;
     }
@@ -2996,6 +3022,11 @@ case OP_Column: {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   pCrsr = pC->uc.pCursor;
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
+    /* We may reuse a Mem structure.
+       So delete any previously allocated memory in pDest. */
+    if( VdbeMemDynamic(pDest) ){
+      sqlite3VdbeMemSetNull(pDest);
+    }
     if(cur_is_remote(pCrsr)) {
       goto cooked_access;
     }
@@ -3146,15 +3177,15 @@ cooked_access:
       zEndHdr = zData + aOffset[0];
       testcase( zHdr>=zEndHdr );
       do{
-        if( (t = zHdr[0])<0x80 ){
+        if( (pC->aType[i] = t = zHdr[0])<0x80 ){
           zHdr++;
           offset64 += sqlite3VdbeOneByteSerialTypeLen(t);
         }else{
           zHdr += sqlite3GetVarint32(zHdr, &t);
+          pC->aType[i] = t;
           offset64 += sqlite3VdbeSerialTypeLen(t);
         }
-        pC->aType[i++] = t;
-        aOffset[i] = (u32)(offset64 & 0xffffffff);
+        aOffset[++i] = (u32)(offset64 & 0xffffffff);
       }while( i<=p2 && zHdr<zEndHdr );
 
       /* The record is corrupt if any of the following are true:
@@ -4239,6 +4270,7 @@ case OP_OpenDup: {
   pCx->pKeyInfo = pOrig->pKeyInfo;
   pCx->isTable = pOrig->isTable;
   pCx->pgnoRoot = pOrig->pgnoRoot;
+  pCx->isOrdered = pOrig->isOrdered;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   rc = sqlite3BtreeCursor(p, pOrig->pBtx, pCx->pgnoRoot,
                           BTREE_CUR_WR|BTREE_WRCSR, 1,
@@ -4472,7 +4504,6 @@ case OP_ColumnsUsed: {
   assert( pC->eCurType==CURTYPE_BTREE );
   pC->maskUsed = *(u64*)pOp->p4.pI64;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
   sqlite3BtreeCursorSetFieldUsed(pC->uc.pCursor, pC->maskUsed);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   break;
@@ -5158,7 +5189,6 @@ case OP_NewRowid: {           /* out2 */
   {
     UNUSED_PARAMETER2(res, cnt);
     UNUSED_PARAMETER2(pMem, pFrame);
-    extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
     v = sqlite3BtreeNewRowid(pC->uc.pCursor);
   }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -5892,17 +5922,13 @@ case OP_Sort: {        /* jump */
   p->aCounter[SQLITE_STMTSTATUS_SORT]++;
   /* Fall through into OP_Rewind */
 }
-/* Opcode: Rewind P1 P2 * * P5
+/* Opcode: Rewind P1 P2 * * *
 **
 ** The next use of the Rowid or Column or Next instruction for P1 
 ** will refer to the first entry in the database table or index.
 ** If the table or index is empty, jump immediately to P2.
 ** If the table or index is not empty, fall through to the following 
 ** instruction.
-**
-** If P5 is non-zero and the table is not empty, then the "skip-next"
-** flag is set on the cursor so that the next OP_Next instruction 
-** executed on it is a no-op.
 **
 ** This opcode leaves the cursor configured to move in forward order,
 ** from the beginning toward the end.  In other words, the cursor is
@@ -5914,6 +5940,7 @@ case OP_Rewind: {        /* jump */
   int res;
 
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  assert( pOp->p5==0 );
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
   assert( isSorter(pC)==(pOp->opcode==OP_SorterSort) );
@@ -5928,9 +5955,6 @@ case OP_Rewind: {        /* jump */
     pCrsr = pC->uc.pCursor;
     assert( pCrsr );
     rc = sqlite3BtreeFirst(pCrsr, &res);
-#ifndef SQLITE_OMIT_WINDOWFUNC
-    if( pOp->p5 ) sqlite3BtreeSkipNext(pCrsr);
-#endif
     pC->deferredMoveto = 0;
     pC->cacheStatus = CACHE_STALE;
   }
@@ -6986,8 +7010,7 @@ case OP_Program: {        /* jump */
   }
 #endif
   pOp = &aOp[-1];
-
-  break;
+  goto check_for_interrupt;
 }
 
 /* Opcode: Param P1 P2 * * *
@@ -7359,6 +7382,7 @@ case OP_AggFinal: {
   assert( (pMem->flags & ~(MEM_Null|MEM_Agg))==0 );
 #ifndef SQLITE_OMIT_WINDOWFUNC
   if( pOp->p3 ){
+    memAboutToChange(p, &aMem[pOp->p3]);
     rc = sqlite3VdbeMemAggValue(pMem, &aMem[pOp->p3], pOp->p4.pFunc);
     pMem = &aMem[pOp->p3];
   }else
@@ -8562,7 +8586,16 @@ abort_due_to_error:
   ** release the mutexes on btrees that were acquired at the
   ** top. */
 vdbe_return:
-  testcase( nVmStep>0 );
+#ifndef SQLITE_OMIT_PROGRESS_CALLBACK
+  while( nVmStep>=nProgressLimit && db->xProgress!=0 ){
+    nProgressLimit += db->nProgressOps;
+    if( db->xProgress(db->pProgressArg) ){
+      nProgressLimit = 0xffffffff;
+      rc = SQLITE_INTERRUPT;
+      goto abort_due_to_error;
+    }
+  }
+#endif
   p->aCounter[SQLITE_STMTSTATUS_VM_STEP] += (int)nVmStep;
   sqlite3VdbeLeave(p);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)

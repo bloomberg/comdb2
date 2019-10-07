@@ -741,9 +741,12 @@ public class Comdb2Connection implements Connection {
                 break;
 
             /* feature not supported - 0Axxx */
+            /* CDB2ERR_TRAN_MODE_UNSUPPORTED and SQLHERR_LIMIT have the same value.
+               The code below is commented out to avoid the confusion.
             case Constants.Errors.CDB2ERR_TRAN_MODE_UNSUPPORTED:
                 _ex = new SQLFeatureNotSupportedException(msg, "0A000", rc, ex);
                 break;
+            */
             case Constants.Errors.CDB2ERR_NOTSUPPORTED:
                 _ex = new SQLFeatureNotSupportedException(msg, "0A000", rc, ex);
                 break;
@@ -752,6 +755,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_CONSTRAINTS:
             case Constants.Errors.CDB2ERR_FKEY_VIOLATION:
             case Constants.Errors.CDB2ERR_NULL_CONSTRAINT:
+            case Constants.Errors.CDB2ERR_CHECK_CONSTRAINT:
             case Constants.Errors.CDB2ERR_DUPLICATE:
                 _ex = new SQLIntegrityConstraintViolationException(msg, "23000", rc, ex);
                 break;

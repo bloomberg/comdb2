@@ -1,0 +1,4 @@
+(NULL - CAST('0.0' AS DECIMAL)=NULL)
+(CAST('0.0' AS DECIMAL) - NULL=NULL)
+[SELECT x'00' - CAST('0.0' AS DECIMAL)] failed with rc 300 SQL logic error
+[SELECT CAST('0.0' AS DECIMAL) - x'00'] failed with rc 300 SQL logic error

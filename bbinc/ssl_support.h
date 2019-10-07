@@ -55,6 +55,7 @@
 #if HAVE_CRL
 #define SSL_CRL_OPT "ssl_crl"
 #endif
+#define SSL_MIN_TLS_VER_OPT "ssl_min_tls_ver"
 
 #define SSL_MODE_ALLOW          "ALLOW"
 #define SSL_MODE_REQUIRE        "REQUIRE"
@@ -140,6 +141,16 @@ typedef enum {
     PEER_SSL_REQUIRE
 } peer_ssl_mode;
 
+const static struct ssl_protocol {
+    double tlsver;
+    long opensslver;
+    const char *name;
+} SSL_NO_PROTOCOLS[] = {{-2.0, SSL_OP_NO_SSLv2, "SSLv2"},
+                        {-1.0, SSL_OP_NO_SSLv3, "SSLv3"},
+                        {1.0, SSL_OP_NO_TLSv1, "TLSv1"},
+                        {1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1"},
+                        {1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2"}};
+
 /*
  * Initialize SSL library.
  *
@@ -173,14 +184,15 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
  *               else use *ca as the trusted CA
  * sesssz      - SSL session cache size
  * ciphers     - cipher suites. ignored in client mode.
+ * mintlsver   - minimum acceptable TLS protocol version.
  *
  * RETURN VALUES
  * 0 upon success
  */
 int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
                             char **cert, char **key, char **ca, char **crl,
-                            long sesssz, const char *ciphers, char *err,
-                            size_t n);
+                            long sesssz, const char *ciphers, double mintlsver,
+                            char *err, size_t n);
 #define ssl_new_ctx SBUF2_FUNC(ssl_new_ctx)
 
 #endif

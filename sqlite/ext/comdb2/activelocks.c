@@ -6,6 +6,7 @@
 #include "comdb2systblInt.h"
 #include "ezsystables.h"
 #include "cdb2api.h"
+#include "str0.h"
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
@@ -50,13 +51,13 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->page_isnull = 0;
     }
     if (object)
-        strncpy(l->object_str, object, sizeof(l->object_str));
+        strncpy0(l->object_str, object, sizeof(l->object_str));
     else
         l->object_str[0] = '\0';
     l->object = l->object_str;
 
     if (rectype)
-        strncpy(l->type_str, rectype, sizeof(l->type_str));
+        strncpy0(l->type_str, rectype, sizeof(l->type_str));
     else 
         l->type_str[0] = '\0';
     l->type = l->type_str;
@@ -79,9 +80,13 @@ static void free_activelocks(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblActiveLocksModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblActivelocksInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_locks", get_activelocks,
-            free_activelocks, sizeof(systable_activelocks_t),
+    return create_system_table(db, "comdb2_locks", &systblActiveLocksModule,
+            get_activelocks, free_activelocks, sizeof(systable_activelocks_t),
             CDB2_INTEGER, "thread", -1, offsetof(systable_activelocks_t, threadid),
             CDB2_INTEGER, "lockerid", -1, offsetof(systable_activelocks_t, lockerid),
             CDB2_CSTRING, "mode", -1, offsetof(systable_activelocks_t, mode),

@@ -15,7 +15,9 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include <stdint.h>
 #include <stdlib.h>
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
+#include <limits.h>
 
 #include <string.h>
 #include <pthread.h>
@@ -37,8 +39,9 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include "locks_wrap.h"
 #include "comdb2_atomic.h"
+#include "thread_stats.h"
 
 
 struct bdb_state_tag;
@@ -132,7 +135,7 @@ static void
 bb_memp_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_fgets++;
@@ -206,6 +209,7 @@ __memp_falloc_len(mfp, offset, len)
 	}
 }
 
+u_int64_t gbl_memp_pgreads = 0;
 
 /*
  * __memp_fget_internal --
@@ -660,8 +664,8 @@ alloc:		/*
 
 		/* If we extended the file, make sure the page is never lost. */
 		if (extending) {
-			ATOMIC_ADD(hp->hash_page_dirty, 1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+			ATOMIC_ADD32(hp->hash_page_dirty, 1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
 			if (dbenv->tx_perfect_ckp) {
 				/* Set page first-dirty-LSN to not logged */
@@ -725,6 +729,7 @@ alloc:		/*
 				F_CLR(bhp, BH_PREFAULT);
 			}
 
+			gbl_memp_pgreads++;
 			if (did_io != NULL)
 				*did_io = 1;
 		}
@@ -793,7 +798,7 @@ alloc:		/*
 
 	if (F_ISSET(bhp, BH_TRASH)) {
 		if ((ret = __memp_pgread(dbmfp,
-			    hp, bhp,
+				hp, bhp,
 			    LF_ISSET(DB_MPOOL_CREATE) ? 1 : 0,
 			    is_recovery_page)) != 0)
 			 goto err;
@@ -834,6 +839,8 @@ alloc:		/*
 #endif
 
 	*(void **)addrp = bhp->buf;
+	if (bhp->fget_count < UINT_MAX)
+			bhp->fget_count++;
 
 	if (gbl_bb_berkdb_enable_memp_timing)
 		bb_memp_hit(start_time_us);

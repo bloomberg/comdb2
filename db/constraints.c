@@ -33,8 +33,6 @@
 #include "indices.h"
 #include "osqlsqlthr.h"
 
-#define DEBUG_REORDER 0
-
 
 static char *get_temp_ct_dbname(long long *);
 static int is_update_op(int op);
@@ -67,7 +65,6 @@ int has_cascading_reverse_constraints(struct dbtable *db)
 
     return 0;
 }
-
 
 /* this is for index on expressions */
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
@@ -273,9 +270,6 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
 
-#if DEBUG_REORDER
-logmsg(LOGMSG_DEBUG, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
-#endif
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -653,7 +647,7 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
         int upd_cascade = 0;
         struct backward_ct *bct = &ctrq->ctop.bwdct;
         struct dbtable *currdb = iq->usedb; /* make a copy */
-        char *skey = bct->key ? bct->key : "";
+        char *skey = bct ? bct->key : "";
 
         if (is_delete_op(bct->optype) && (bct->flags & CT_DEL_CASCADE))
             del_cascade = 1;
@@ -800,7 +794,8 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
             /* TODO verify we have proper schema change locks */
 
             rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx,
-                            BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
+                            BLOCK2_DELKL,
+                            RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -860,7 +855,8 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 NULL, /*blobs*/
                 0,    /*maxblobs*/
                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
+                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL |
+                    RECFLAGS_DONT_REORDER_IDX);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -1038,10 +1034,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             return ERR_INTERNAL;
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
-#if DEBUG_REORDER
-logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
-#endif
-
         int flags = curop->flags;
         /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
          * already been added to the indexes in add_record() to ensure
@@ -1052,7 +1044,6 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
         if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
             goto next_record;
         }
-
 
         /* only do once per genid *after* processing all idxs from tmptbl 
          * (which are in sequence for the same genid): 
@@ -1258,7 +1249,7 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
                 logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
                         __func__);
                 *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur); //AZ: this is wrong!?
+                close_constraint_table_cursor(cur); // AZ: this is wrong!?
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
@@ -1276,7 +1267,7 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
     return ERR_INTERNAL;
 }
 
-/* go through all entries in ct_add_table and verify that 
+/* go through all entries in ct_add_table and verify that
  * the key exists in the parent table if there are constraints */
 int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
@@ -1830,8 +1821,8 @@ inline void *get_constraint_table_cursor(void *table)
     if (table == NULL)
         abort();
     int err = 0;
-    struct temp_cursor *cur = bdb_temp_table_cursor(thedb->bdb_env, table,
-                                                    NULL, &err);
+    struct temp_cursor *cur =
+        bdb_temp_table_cursor(thedb->bdb_env, table, NULL, &err);
     if (!cur) {
         logmsg(LOGMSG_ERROR, "Can't create cursor err=%d\n", err);
     }
@@ -1989,6 +1980,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
 
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
+
         if (from_db == new_db) {
             snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
         } else {
@@ -2024,7 +2016,8 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 n_errors++;
                 continue;
             } else {
-                if (timepart_is_shard(rdb->tablename, 1, NULL)) {
+                if (timepart_is_shard(rdb->tablename, (!s || !s->views_locked),
+                                      NULL)) {
                     constraint_err(s, from_db, ct, jj,
                                    "foreign table is a shard");
                     n_errors++;

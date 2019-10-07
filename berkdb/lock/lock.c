@@ -43,6 +43,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include "logmsg.h"
 #include "util.h"
 #include "locks_wrap.h"
+#include "thread_stats.h"
 #include "tohex.h"
 
 
@@ -2725,8 +2726,8 @@ upgrade:
 		MUTEX_LOCK(dbenv, &newl->mutex);
 
 		if (gbl_bb_berkdb_enable_thread_stats) {
-			struct bb_berkdb_thread_stats *t;
-			struct bb_berkdb_thread_stats *p;
+			struct berkdb_thread_stats *t;
+			struct berkdb_thread_stats *p;
 			if (gbl_bb_berkdb_enable_lock_timing) {
 				x2 = bb_berkdb_fasttime();
 			} else {
@@ -2734,9 +2735,14 @@ upgrade:
 			}
 			t = bb_berkdb_get_thread_stats();
 			p = bb_berkdb_get_process_stats();
-			p->lock_wait_time_us += (x2 - x1);
+            uint64_t d = (x2 - x1);
+			p->lock_wait_time_us += d;
+			if (p->worst_lock_wait_time_us < d)
+				p->worst_lock_wait_time_us = d;
 			p->n_lock_waits++;
-			t->lock_wait_time_us += (x2 - x1);
+			t->lock_wait_time_us += d;
+			if (t->worst_lock_wait_time_us < d)
+				t->worst_lock_wait_time_us = d;
 			t->n_lock_waits++;
 
 			if (gbl_bb_log_lock_waits_fn) {
@@ -3171,6 +3177,20 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		lockp->refcount--;
 		return (0);
 	}
+	DB_LOCKER *sh_locker = lockp->holderp;
+
+	if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
+			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		for (int i = 0; i < sh_locker->ntrackedlocks; i++) {
+			if (sh_locker->tracked_locklist[i] == lockp) {
+				struct __db_lock *last = sh_locker->tracked_locklist[
+					sh_locker->ntrackedlocks - 1];
+				sh_locker->tracked_locklist[i] = last;
+				sh_locker->ntrackedlocks--;
+				i--;
+			}
+		}
+	}
 
 	/* Increment generation number. */
 	lockp->gen++;
@@ -3183,7 +3203,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 
 #ifdef DEBUG_LOCKS
-	DB_LOCKER *sh_locker = lockp->holderp;
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
 			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
@@ -5693,7 +5712,6 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
             if (size == sizeof(DB_LOCK_ILOCK) && 
                     IS_WRITELOCK(lock_mode) &&
                     ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
-                logmsg(LOGMSG_INFO, "Skipped write handle lock on replicant\n");
                 continue;
             }
 			do {
@@ -6241,6 +6259,18 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+
+#ifdef NEWSI_DEBUG
+	for (i = 0; i < locker->ntrackedlocks; i++) {
+		lp = SH_LIST_FIRST(&locker->heldby, __db_lock);
+		for ( ; lp != NULL; lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+			if (lp == locker->tracked_locklist[i])
+				break;
+		}
+		assert(lp != NULL);
+	}
+#endif
+
 	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];

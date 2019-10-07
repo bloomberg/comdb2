@@ -925,6 +925,7 @@ struct bdb_state_tag {
     unsigned int id;
     pthread_mutex_t gblcontext_lock;
     pthread_mutex_t children_lock;
+    signed char have_children_lock;
 
     FILE *bdblock_debug_fp;
     pthread_mutex_t bdblock_debug_lock;
@@ -1019,7 +1020,8 @@ struct bdb_state_tag {
     DB **blkseq[2];
     time_t blkseq_last_roll_time;
     DB_LSN *blkseq_last_lsn[2];
-    LISTC_T(struct seen_blkseq) blkseq_log_list[2];
+    listc_t *blkseq_log_list;
+    int pvt_blkseq_stripes;
     uint32_t genid_format;
 
     /* we keep a per bdb_state copy to enhance locality */
@@ -1617,8 +1619,12 @@ void *bdb_cursor_dbcp(bdb_cursor_impl_t *cur);
 
 extern int gbl_temptable_pool_capacity;
 hash_t *bdb_temp_table_histhash_init(void);
+int bdb_temp_table_clear_list(bdb_state_type *bdb_state);
+int bdb_temp_table_clear_pool(bdb_state_type *bdb_state);
+int bdb_temp_table_clear_cache(bdb_state_type *bdb_state);
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg);
 int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg);
+int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg);
 int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
                         int how, int *bdberr);
 int bdb_temp_table_keysize(struct temp_cursor *cursor);

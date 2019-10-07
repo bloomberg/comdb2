@@ -11,7 +11,6 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
         &remsql_plugin         /* Plugin-specific data */
     },
     {
-
         "remtran",             /* Plugin identifier */
         "remtran plugin",      /* Plugin description */
         COMDB2_PLUGIN_APPSOCK, /* Plugin type */

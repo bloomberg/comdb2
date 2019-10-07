@@ -29,8 +29,10 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include "logmsg.h"
+#include "str0.h"
 
 #include <sys/time.h>
+#include <str0.h>
 
 extern int gbl_maxretries;
 
@@ -165,7 +167,8 @@ typedef enum {
     LLMETA_TABLE_NUM_SC_DONE = 47,
     LLMETA_GLOBAL_STRIPE_INFO = 48,
     LLMETA_SC_START_LSN = 49,
-    LLMETA_SCHEMACHANGE_STATUS = 50
+    LLMETA_SCHEMACHANGE_STATUS = 50,
+    LLMETA_VIEW = 51, /* User defined views */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -1347,8 +1350,8 @@ int bdb_llmeta_set_tables(
     for (i = 0; i < numdbs && offset < buflen; ++i) {
         struct llmeta_table_name llmeta_tbl;
 
-        strncpy(llmeta_tbl.table_name, tblnames[i],
-                sizeof(llmeta_tbl.table_name));
+        strncpy0(llmeta_tbl.table_name, tblnames[i],
+                 sizeof(llmeta_tbl.table_name));
         llmeta_tbl.table_name_len = strlen(llmeta_tbl.table_name) + 1;
         llmeta_tbl.dbnum = dbnums[i];
 
@@ -1627,8 +1630,8 @@ static int bdb_new_file_version(
 
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
-    strncpy(file_type_dbname_file_num_key.dbname, db_name,
-            sizeof(file_type_dbname_file_num_key.dbname));
+    strncpy0(file_type_dbname_file_num_key.dbname, db_name,
+             sizeof(file_type_dbname_file_num_key.dbname));
     file_type_dbname_file_num_key.dbname_len =
         strlen(file_type_dbname_file_num_key.dbname) + 1;
 
@@ -1655,7 +1658,7 @@ static int bdb_new_file_version(
     version_num.version_num = inversion_num;
 
     p_buf = (uint8_t *)&real_version_num;
-    p_buf_end = (uint8_t *)(&real_version_num + sizeof(real_version_num));
+    p_buf_end = p_buf + sizeof(real_version_num);
 
     if (!(llmeta_version_number_put(&(version_num), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_version_number_put returns NULL\n",
@@ -1771,7 +1774,7 @@ bdb_chg_file_versions_int(tran_type *trans, /* must be !NULL */
 
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
-    strncpy(skey.dbname, tbl_name, sizeof(skey.dbname));
+    strncpy0(skey.dbname, tbl_name, sizeof(skey.dbname));
     skey.dbname_len = strlen(skey.dbname) + 1;
 
     p_buf_start = p_buf = (uint8_t *)key;
@@ -1792,7 +1795,7 @@ bdb_chg_file_versions_int(tran_type *trans, /* must be !NULL */
     memcpy(key_orig, key, key_offset);
 
     if (new_tbl_name) {
-        strncpy(new_skey.dbname, new_tbl_name, sizeof(new_skey.dbname));
+        strncpy0(new_skey.dbname, new_tbl_name, sizeof(new_skey.dbname));
         new_skey.dbname_len = strlen(new_skey.dbname) + 1;
 
         p_buf_start = p_buf = (uint8_t *)new_key;
@@ -2046,8 +2049,8 @@ bdb_set_pagesize(tran_type *input_trans, /* if this is !NULL it will be used as
         /* copy the db_name and check its length so that it fit
            with enough room left for the rest of the key */
         file_type_dbname_key.file_type = file_type;
-        strncpy(file_type_dbname_key.dbname, db_name,
-                sizeof(file_type_dbname_key.dbname));
+        strncpy0(file_type_dbname_key.dbname, db_name,
+                 sizeof(file_type_dbname_key.dbname));
         file_type_dbname_key.dbname_len =
             strlen(file_type_dbname_key.dbname) + 1;
 
@@ -2384,8 +2387,8 @@ static int bdb_get_file_version(
     /*add the file_type (ie dta, ix) */
     file_type_dbname_file_num_key.file_type = file_type;
 
-    strncpy(file_type_dbname_file_num_key.dbname, db_name,
-            sizeof(file_type_dbname_file_num_key.dbname));
+    strncpy0(file_type_dbname_file_num_key.dbname, db_name,
+             sizeof(file_type_dbname_file_num_key.dbname));
     file_type_dbname_file_num_key.dbname_len =
         strlen(file_type_dbname_file_num_key.dbname) + 1;
 
@@ -2438,7 +2441,7 @@ retry:
     }
 
     p_buf = (uint8_t *)&tmpversion;
-    p_buf_end = (uint8_t *)(&tmpversion + sizeof(tmpversion));
+    p_buf_end = p_buf + sizeof(tmpversion);
 
     if (!(llmeta_version_number_get(&(version_num), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s:llmeta_version_number_get returns NULL\n",
@@ -2598,8 +2601,8 @@ static int bdb_get_pagesize(tran_type *tran, /* transaction to use */
         /* copy the db_name and check its length so that it fit
            with enough room left for the rest of the key */
         file_type_dbname_key.file_type = file_type;
-        strncpy(file_type_dbname_key.dbname, db_name,
-                sizeof(file_type_dbname_key.dbname));
+        strncpy0(file_type_dbname_key.dbname, db_name,
+                 sizeof(file_type_dbname_key.dbname));
         file_type_dbname_key.dbname_len =
             strlen(file_type_dbname_key.dbname) + 1;
 
@@ -2845,8 +2848,8 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
 
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
-    strncpy(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+    strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
 
@@ -2909,6 +2912,7 @@ retry:
     /* set csc2_vers */
     p_file_type_dbname_csc2_vers_key.csc2_vers = csc2_vers;
 
+    /* TODO(NC): called again only to put csc2_vers. */
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, 
@@ -2999,8 +3003,8 @@ int bdb_get_csc2_highest(tran_type *trans, /* transaction to use, may be NULL */
 
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
-    strncpy(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+    strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
 
@@ -3090,7 +3094,7 @@ int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver)
     p_buf_end = p_buf_start + LLMETA_IXLEN;
 
     vers_key.file_type = LLMETA_CSC2;
-    strncpy(vers_key.dbname, dbname, sizeof(vers_key.dbname));
+    strncpy0(vers_key.dbname, dbname, sizeof(vers_key.dbname));
     vers_key.dbname_len = strlen(vers_key.dbname) + 1;
 
     while (ver) {
@@ -3156,8 +3160,8 @@ int bdb_get_csc2(tran_type *tran, /* transaction to use, may be NULL */
 
     /* copy the db_name and check its length so that it fit with enough room
      * left for the rest of the key */
-    strncpy(p_file_type_dbname_csc2_vers_key.dbname, db_name,
-            sizeof(p_file_type_dbname_csc2_vers_key.dbname));
+    strncpy0(p_file_type_dbname_csc2_vers_key.dbname, db_name,
+             sizeof(p_file_type_dbname_csc2_vers_key.dbname));
     p_file_type_dbname_csc2_vers_key.dbname_len =
         strlen(p_file_type_dbname_csc2_vers_key.dbname) + 1;
     /* zero this out for now */
@@ -3451,7 +3455,7 @@ int bdb_set_in_schema_change(
     schema_change.file_type = LLMETA_IN_SCHEMA_CHANGE;
 
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, db_name, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, db_name, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     p_buf_start = p_buf = (uint8_t *)key;
@@ -3582,7 +3586,7 @@ int bdb_get_in_schema_change(
     schema_change.file_type = LLMETA_IN_SCHEMA_CHANGE;
 
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, db_name, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, db_name, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     p_buf_start = p_buf = (uint8_t *)key;
@@ -3728,7 +3732,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     schema_change.file_type = LLMETA_SCHEMACHANGE_STATUS;
 
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, db_name, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, db_name, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     p_buf_start = p_buf = (uint8_t *)key;
@@ -3878,7 +3882,9 @@ backout:
     return -1;
 }
 
-static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr);
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
+                  int *bdberr);
+
 int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
                                  void ***sc_data_out, int *num, int *bdberr)
 {
@@ -3892,7 +3898,7 @@ int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
     *status_out = NULL;
     *sc_data_out = NULL;
 
-    rc = kv_get(&k, sizeof(k), &data, &nkey, bdberr);
+    rc = kv_get(NULL, &k, sizeof(k), &data, &nkey, bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
         return -1;
@@ -4016,8 +4022,8 @@ static int bdb_set_high_genid_int(
     /*copy the table name and check its length so that we have a clean key*/
     /* BTW- There's NO NULL BYTE!  So the stripe ends up using 3 bytes
        rather than 4 */
-    strncpy(high_genid_key_type.dbname, db_name,
-            sizeof(high_genid_key_type.dbname));
+    strncpy0(high_genid_key_type.dbname, db_name,
+             sizeof(high_genid_key_type.dbname));
     high_genid_key_type.dbname_len = strlen(high_genid_key_type.dbname);
 
     /* add stripe to key */
@@ -4190,8 +4196,8 @@ int bdb_get_high_genid(
     /*copy the table name and check its length so that we have a clean key*/
     /* BTW- There's NO NULL BYTE!  So the stripe ends up using 3 bytes
        rather than 4 */
-    strncpy(high_genid_key_type.dbname, db_name,
-            sizeof(high_genid_key_type.dbname));
+    strncpy0(high_genid_key_type.dbname, db_name,
+             sizeof(high_genid_key_type.dbname));
     high_genid_key_type.dbname_len = strlen(high_genid_key_type.dbname);
 
     /* add stripe to key */
@@ -4331,7 +4337,7 @@ static int make_sp_key(uint8_t *key, const char *name, int version)
     luakey.lua_vers = version;
     if (luakey.spname_len > LLMETA_SPLEN)
         return -1;
-    strcpy(luakey.spname, name);
+    strncpy0(luakey.spname, name, sizeof(luakey.spname));
     uint8_t *key_end = key + LLMETA_IXLEN;
     if (llmeta_file_type_spname_lua_vers_key_put(&luakey, key, key_end) == NULL)
         return -1;
@@ -4571,7 +4577,7 @@ int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
     file_type_key.lua_vers = 0;
     if (file_type_key.spname_len > LLMETA_SPLEN)
         return -1;
-    strcpy(file_type_key.spname, sp_name);
+    strncpy0(file_type_key.spname, sp_name, LLMETA_SPLEN);
 
     int lua_ver;
     if (version == 0) {
@@ -5012,7 +5018,7 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -5061,7 +5067,7 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -5123,7 +5129,7 @@ int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -5264,11 +5270,11 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
         break;
     }
 
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5386,11 +5392,11 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
 
     tbl_access_data.command_type = command_type;
 
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5477,11 +5483,11 @@ int bdb_tbl_op_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
 
     tbl_access_data.file_type = LLMETA_TABLE_USER_OP;
     tbl_access_data.command_type = command_type;
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5514,11 +5520,11 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
 
     tbl_access_data.file_type = LLMETA_TABLE_USER_OP;
     tbl_access_data.command_type = command_type;
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_op_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5764,11 +5770,11 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
         break;
     }
 
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -5813,8 +5819,8 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
 
     tbl_access_data.file_type = LLMETA_TABLE_USER_SCHEMA;
 
-    strncpy(tbl_access_data.tablename, username,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, username,
+             sizeof(tbl_access_data.tablename));
 
     bzero(tbl_access_data.username, sizeof(tbl_access_data.username));
 
@@ -5842,10 +5848,10 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
             *bdberr = BDBERR_BADARGS;
             return -1;
         }
-        strncpy(userschema, tbl_access_data.username,
-                sizeof(tbl_access_data.username));
+        strncpy0(userschema, tbl_access_data.username,
+                 sizeof(tbl_access_data.username));
         logmsg(LOGMSG_INFO, "User Schema for username %s is %s\n", username,
-                userschema);
+               userschema);
     } else {
         rc = -1;
     }
@@ -5879,11 +5885,11 @@ static int bdb_tbl_access_delete(bdb_state_type *bdb_state,
         break;
     }
 
-    strncpy(tbl_access_data.tablename, tblname,
-            sizeof(tbl_access_data.tablename));
+    strncpy0(tbl_access_data.tablename, tblname,
+             sizeof(tbl_access_data.tablename));
 
-    strncpy(tbl_access_data.username, username,
-            sizeof(tbl_access_data.username));
+    strncpy0(tbl_access_data.username, username,
+             sizeof(tbl_access_data.username));
 
     /* form llmeta record with file_type endianized */
     if (!(llmeta_tbl_access_put(&tbl_access_data, p_buf, p_buf_end))) {
@@ -6015,8 +6021,8 @@ static int bdb_sqlite_stat1_read_int(bdb_state_type *bdb_state,
 
     /* setup key */
     sqlstats.file_type = file_type;
-    strncpy(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
-    strncpy(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
+    strncpy0(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
+    strncpy0(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
 
     /* endianize key */
     if (!(p_buf = llmeta_sqlstat1_key_put(&sqlstats, p_buf, p_buf_end))) {
@@ -6098,8 +6104,8 @@ static int bdb_sqlite_stat1_delete_stale_int(bdb_state_type *bdb_state,
 
     /* create stats structure */
     sqlstats.file_type = file_type;
-    strncpy(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
-    strncpy(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
+    strncpy0(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
+    strncpy0(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
 
     /* endianize key */
     if (!(p_buf = llmeta_sqlstat1_stale_key_put(&sqlstats, p_buf, p_buf_end))) {
@@ -6161,8 +6167,8 @@ static int bdb_sqlite_stat1_write_int(bdb_state_type *bdb_state,
 
     /* create stats structure */
     sqlstats.file_type = file_type;
-    strncpy(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
-    strncpy(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
+    strncpy0(sqlstats.table_name, tbl, sizeof(sqlstats.table_name));
+    strncpy0(sqlstats.index_name, idx, sizeof(sqlstats.index_name));
 
     /* endianize key */
     if (!(p_buf = llmeta_sqlstat1_key_put(&sqlstats, p_buf, p_buf_end))) {
@@ -6586,8 +6592,8 @@ int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
     }
 
     analyzecoverage_key.file_type = LLMETA_ANALYZECOVERAGE_TABLE;
-    strncpy(analyzecoverage_key.dbname, tbl_name,
-            sizeof(analyzecoverage_key.dbname));
+    strncpy0(analyzecoverage_key.dbname, tbl_name,
+             sizeof(analyzecoverage_key.dbname));
     analyzecoverage_key.dbname_len = strlen(analyzecoverage_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -6675,8 +6681,8 @@ int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
     }
 
     analyzecoverage_key.file_type = LLMETA_ANALYZECOVERAGE_TABLE;
-    strncpy(analyzecoverage_key.dbname, tbl_name,
-            sizeof(analyzecoverage_key.dbname));
+    strncpy0(analyzecoverage_key.dbname, tbl_name,
+             sizeof(analyzecoverage_key.dbname));
     analyzecoverage_key.dbname_len = strlen(analyzecoverage_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -6825,8 +6831,8 @@ int bdb_get_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     }
 
     analyzethreshold_key.file_type = LLMETA_ANALYZETHRESHOLD_TABLE;
-    strncpy(analyzethreshold_key.dbname, tbl_name,
-            sizeof(analyzethreshold_key.dbname));
+    strncpy0(analyzethreshold_key.dbname, tbl_name,
+             sizeof(analyzethreshold_key.dbname));
     analyzethreshold_key.dbname_len = strlen(analyzethreshold_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -7080,8 +7086,8 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     }
 
     analyzethreshold_key.file_type = LLMETA_ANALYZETHRESHOLD_TABLE;
-    strncpy(analyzethreshold_key.dbname, tbl_name,
-            sizeof(analyzethreshold_key.dbname));
+    strncpy0(analyzethreshold_key.dbname, tbl_name,
+             sizeof(analyzethreshold_key.dbname));
     analyzethreshold_key.dbname_len = strlen(analyzethreshold_key.dbname);
 
     /* set pointers to start and end of buffer */
@@ -7349,8 +7355,8 @@ static int __llmeta_preop_alias(struct llmeta_tablename_alias_key *key,
     }
 
     key->file_type = LLMETA_FDB_TABLENAME_ALIAS;
-    strncpy(key->tablename_alias, tablename_alias,
-            sizeof(key->tablename_alias));
+    strncpy0(key->tablename_alias, tablename_alias,
+             sizeof(key->tablename_alias));
 
     if (llmeta_tablename_alias_key_put(key, (uint8_t *)key_buf,
                                        (uint8_t *)(key_buf + key_buf_len)) ==
@@ -7398,7 +7404,7 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
         return -1;
     }
 
-    strncpy(data.url, url, sizeof(data.url));
+    strncpy0(data.url, url, sizeof(data.url));
 
     if (llmeta_tablename_alias_data_put(
             &data, (uint8_t *)data_buf,
@@ -7732,8 +7738,8 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     /* add the key type */
     bzero(&schema_version, sizeof(schema_version));
     schema_version.file_type = LLMETA_TABLE_VERSION;
-    strncpy(schema_version.tblname, bdb_state->name,
-            sizeof(schema_version.tblname));
+    strncpy0(schema_version.tblname, bdb_state->name,
+             sizeof(schema_version.tblname));
 
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
@@ -7852,8 +7858,8 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     /* add the key type */
     bzero(&schema_version, sizeof(schema_version));
     schema_version.file_type = LLMETA_TABLE_VERSION;
-    strncpy(schema_version.tblname, bdb_state->name,
-            sizeof(schema_version.tblname));
+    strncpy0(schema_version.tblname, bdb_state->name,
+             sizeof(schema_version.tblname));
 
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
@@ -7924,7 +7930,7 @@ int bdb_table_version_select(const char *tblname, tran_type *tran,
 
     bzero(&schema_version, sizeof(schema_version));
     schema_version.file_type = LLMETA_TABLE_VERSION;
-    strncpy(schema_version.tblname, tblname, sizeof(schema_version.tblname));
+    strncpy0(schema_version.tblname, tblname, sizeof(schema_version.tblname));
 
     p_buf = (uint8_t *)key;
     p_buf_end = (p_buf + LLMETA_IXLEN);
@@ -8692,7 +8698,8 @@ done:
 */
 
 // get values for all matching keys
-static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
+                  int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8700,16 +8707,16 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **vals = NULL;
-    int rc =
-        bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, out, &fnd, bdberr);
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out,
+                                         &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
         }
         void *dta;
         int dsz;
-        rc =
-            bdb_lite_exact_var_fetch(llmeta_bdb_state, out, &dta, &dsz, bdberr);
+        rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, t, out, &dta, &dsz,
+                                           bdberr);
         if (rc || *bdberr != BDBERR_NOERROR) {
             break;
         }
@@ -8719,8 +8726,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
         }
         vals[n++] = dta;
         uint8_t nxt[LLMETA_IXLEN];
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     *num = n;
@@ -8729,7 +8736,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 }
 
 // get full keys for all matching partial keys
-static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+static int kv_get_keys(tran_type *t, void *k, size_t klen, void ***ret,
+                       int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8737,8 +8745,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **names = NULL;
-    int rc =
-        bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, out, &fnd, bdberr);
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out,
+                                         &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
@@ -8751,8 +8759,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
         memcpy(names[n], out, LLMETA_IXLEN);
         ++n;
         uint8_t nxt[LLMETA_IXLEN];
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     *num = n;
@@ -8841,7 +8849,7 @@ BB_COMPILE_TIME_ASSERT(key_seq, sizeof(llmeta_kv_key) == 4 + 4 + 8);
 static int bdb_kv_get(llmetakey_t llkey, char ***ret, int *num, int *bdberr)
 {
     llmetakey_t k = htonl(llkey);
-    return kv_get(&k, sizeof(k), (void ***)ret, num, bdberr);
+    return kv_get(NULL, &k, sizeof(k), (void ***)ret, num, bdberr);
 }
 
 static int bdb_kv_put(tran_type *tran, llmetakey_t llkey, void *dta, int dsz,
@@ -8925,11 +8933,11 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_VERSIONED_SP);
-    strcpy(u.sp.name, name);
-    strcpy(u.sp.version, version);
+    strncpy0(u.sp.name, name, sizeof(u.sp.name));
+    strncpy0(u.sp.version, version, sizeof(u.sp.version));
     char **srcs;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&srcs, &num, &bdberr);
+    rc = kv_get(NULL, &u, sizeof(u), (void ***)&srcs, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *src = srcs[0];
@@ -9022,10 +9030,10 @@ int bdb_get_default_versioned_sp(char *name, char **version)
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
     if (strlen(name) >= LLMETA_IXLEN)
         return -1;
-    strncpy(u.sp.name, name, sizeof(u.sp.name));
+    strncpy0(u.sp.name, name, sizeof(u.sp.name));
     char **versions;
     int rc, bdberr, num;
-    rc = kv_get(&u, sizeof(u), (void ***)&versions, &num, &bdberr);
+    rc = kv_get(NULL, &u, sizeof(u), (void ***)&versions, &num, &bdberr);
     if (rc == 0) {
         if (num == 1) {
             *version = versions[0];
@@ -9046,7 +9054,7 @@ int bdb_del_default_versioned_sp(tran_type *tran, char *name)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
-    strcpy(u.sp.name, name);
+    strncpy0(u.sp.name, name, sizeof(u.sp.name));
     int bdberr;
     int rc = kv_del(tran, &u, &bdberr);
     if (rc && bdberr == BDBERR_DEL_DTA)
@@ -9061,7 +9069,7 @@ static int bdb_get_sps_int(llmetakey_t k, char ***names, int *num)
         uint8_t buf[LLMETA_IXLEN];
     } * *v;
     int n, bdberr;
-    int rc = kv_get_keys(&k, sizeof(k), (void ***)&v, &n, &bdberr);
+    int rc = kv_get_keys(NULL, &k, sizeof(k), (void ***)&v, &n, &bdberr);
     char **ret = malloc(n * sizeof(char *));
     for (int i = 0; i < n; ++i) {
         ret[i] = strdup(v[i]->sp.name);
@@ -9090,7 +9098,7 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     strcpy(k.sp.name, name);
     size_t klen = sizeof(llmetakey_t) + strlen(name) + 1;
     int n, bdberr;
-    int rc = kv_get_keys(&k, klen, (void ***)&v, &n, &bdberr);
+    int rc = kv_get_keys(NULL, &k, klen, (void ***)&v, &n, &bdberr);
     char **ret = malloc(n * sizeof(char *));
     for (int i = 0; i < n; ++i) {
         ret[i] = strdup(v[i]->sp.version);
@@ -9201,7 +9209,7 @@ static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
         bdb_state = bdb_state->parent;
 
     key_struct.file_type = type;
-    strncpy(key_struct.dbname, tblname, sizeof(key_struct.dbname));
+    strncpy0(key_struct.dbname, tblname, sizeof(key_struct.dbname));
     key_struct.dbname_len = strlen(key_struct.dbname) + 1 /* NULL byte */;
 
     if (key_struct.dbname_len > LLMETA_TBLLEN) {
@@ -9275,7 +9283,7 @@ static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
     memset(&key, 0, sizeof(key));
     key.passwd.file_type = htonl(type);
     strcpy(key.passwd.user, user);
-    int rc = kv_get(&key, sizeof(key), out, &num, &bdberr);
+    int rc = kv_get(NULL, &key, sizeof(key), out, &num, &bdberr);
     if (rc == 0 && num == 1) return 0;
     if (*out) {
         void **data = *out;
@@ -9398,9 +9406,9 @@ int bdb_user_get_all(char ***users, int *num)
     void **u1, **u2;
     int key, n1, n2, bdberr;
     key = htonl(LLMETA_USER_PASSWORD);
-    kv_get_keys(&key, sizeof(key), &u1, &n1, &bdberr);
+    kv_get_keys(NULL, &key, sizeof(key), &u1, &n1, &bdberr);
     key = htonl(LLMETA_USER_PASSWORD_HASH);
-    kv_get_keys(&key, sizeof(key), &u2, &n2, &bdberr);
+    kv_get_keys(NULL, &key, sizeof(key), &u2, &n2, &bdberr);
     int n = n1 + n2;
     u1 = realloc(u1, sizeof(void *) * n);
     memcpy(u1 + n1, u2, sizeof(void *) * n2);
@@ -9470,13 +9478,13 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
            __func__, tblname, newtblname, ver);
 
     vers_key.file_type = LLMETA_CSC2;
-    strncpy(vers_key.dbname, tblname, sizeof(vers_key.dbname));
+    strncpy0(vers_key.dbname, tblname, sizeof(vers_key.dbname));
     vers_key.dbname_len = strlen(vers_key.dbname) + 1;
     new_vers_key.file_type = LLMETA_CSC2;
-    strncpy(new_vers_key.dbname, newtblname, sizeof(new_vers_key.dbname));
+    strncpy0(new_vers_key.dbname, newtblname, sizeof(new_vers_key.dbname));
     new_vers_key.dbname_len = strlen(new_vers_key.dbname) + 1;
 
-    while (ver) {
+    while (ver >= 0) {
         vers_key.csc2_vers = ver;
         new_vers_key.csc2_vers = ver;
         llmeta_file_type_dbname_csc2_vers_key_put(
@@ -9503,6 +9511,8 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                    "%d\n",
                    __func__, newtblname, tblname, ver);
         } else {
+            if (ver == 0)
+                return 0;
             logmsg(LOGMSG_DEBUG,
                    "%s didn't find old table '%s' version %d (so "
                    "not adding new-table '%s'?)\n",
@@ -9612,7 +9622,7 @@ int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
 
     schema_change.file_type = LLMETA_SC_START_LSN;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -9669,7 +9679,7 @@ int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
 
     schema_change.file_type = LLMETA_SC_START_LSN;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -9759,7 +9769,7 @@ int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr)
 
     schema_change.file_type = LLMETA_SC_START_LSN;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
@@ -9788,6 +9798,111 @@ done:
             if (arc)
                 rc = arc;
         }
+    }
+    return rc;
+}
+
+/* View key */
+struct llmeta_view_key {
+    int file_type;
+    char view_name[LLMETA_TBLLEN]; /* View name must be NULL terminated */
+};
+
+/* Fetch all view names */
+int bdb_get_view_names(tran_type *t, char **names, int *num)
+{
+    union {
+        struct llmeta_view_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } * *v;
+    int rc, n, bdberr;
+    llmetakey_t k;
+
+    k = htonl(LLMETA_VIEW);
+    rc = kv_get_keys(t, &k, sizeof(k), (void ***)&v, &n, &bdberr);
+    if (rc || (n == 0)) {
+        *num = 0;
+        return rc;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        names[i] = strdup(v[i]->key.view_name);
+        free(v[i]);
+    }
+    free(v);
+    *num = n;
+    return rc;
+}
+
+/* Fetch a specific view */
+int bdb_get_view(tran_type *t, const char *view_name, char **view_def)
+{
+    union {
+        struct llmeta_view_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    int rc, bdberr, num;
+    char **view_defs;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_VIEW);
+    /* View name */
+    strncpy0(u.key.view_name, view_name, sizeof(u.key.view_name));
+
+    rc = kv_get(t, &u, sizeof(u), (void ***)&view_defs, &num, &bdberr);
+    if (rc == 0) {
+        if (num == 1) {
+            *view_def = view_defs[0];
+        } else { // logical error: there can't be more that one view definition
+                 // per view
+            for (int i = 0; i < num; i++) {
+                free(view_defs[i]);
+            }
+            rc = 1;
+        }
+    }
+    free(view_defs);
+    return rc;
+}
+
+/* Add the given view */
+int bdb_put_view(tran_type *t, const char *view_name, char *view_def)
+{
+    union {
+        struct llmeta_view_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    int rc, bdberr;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_VIEW);
+    /* View name */
+    strncpy0(u.key.view_name, view_name, sizeof(u.key.view_name));
+
+    rc = kv_put(t, &u, view_def, strlen(view_def) + 1, &bdberr);
+    if (rc == 0) {
+        logmsg(LOGMSG_INFO, "View '%s' added\n", view_name);
+    }
+    return rc;
+}
+
+/* Delete the given view */
+int bdb_del_view(tran_type *t, const char *view_name)
+{
+    union {
+        struct llmeta_view_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    int rc, bdberr;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_VIEW);
+    /* View name */
+    strncpy0(u.key.view_name, view_name, sizeof(u.key.view_name));
+
+    rc = kv_del(t, &u, &bdberr);
+    if (rc == 0) {
+        logmsg(LOGMSG_INFO, "View '%s' deleted\n", view_name);
     }
     return rc;
 }

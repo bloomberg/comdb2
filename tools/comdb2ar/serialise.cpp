@@ -422,23 +422,31 @@ bool is_changeable_file(const std::string& filepath)
 
 }
 
-void replace_file_name(FileInfo fi, const std::string& repl_name,
+void replace_file_name(FileInfo &fi, const std::string& repl_name,
         const std::string& dbname)
 {
-    std::string somename = replace_dbname(repl_name, dbname,  
-            fi.get_filename());
-    std::cerr << "Replace " << fi.get_filename() <<
-        " with " << somename << "\n";
-    fi.set_filename(replace_dbname(repl_name, dbname, 
-                fi.get_filename())); 
+    std::string newname = replace_dbname(repl_name, dbname, fi.get_filename());
+    std::cerr << "Replace " << fi.get_filename() << " with " << newname << "\n";
+    fi.set_filename(replace_dbname(repl_name, dbname, fi.get_filename()));
+}
+
+static void serialise_page_list(const std::string &dbtxndir,
+                                const std::string &dbdir)
+{
+    std::string absfile, storename;
+    struct stat st;
+    makeabs(absfile, dbtxndir, "pagelist");
+    if (stat(absfile.c_str(), &st) == -1) {
+        return;
+    }
+    /* Pretend its a logfile */
+    FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+    serialise_file(fi);
 }
 
 static void serialise_log_files(
         const std::string& dbtxndir,
         const std::string& dbdir,
-        const std::string& dbname,
-        const std::string& repl_name,
-        bool rename,
         long long& log_number, bool complete_only)
 // Scan the dbtxndir directory for log files that we can archive, starting with
 // log file log_number.  If complete_only is set then we will only archive
@@ -471,15 +479,6 @@ static void serialise_log_files(
         std::cerr<<"Serializing "<<logfile<<std::endl;
         makeabs(absfile, dbtxndir, logfile);
         FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
-
-        if (rename)
-        {
-            if (is_changeable_file(fi.get_filename()))
-            {
-                replace_file_name(fi, repl_name, dbname);
-            }
-        }
-
         serialise_file(fi);
         log_number++;
     }
@@ -512,6 +511,14 @@ static void strip_cluster(const std::string& lrlpath,
             outstream  << line << std::endl;
         }
     }
+}
+
+static bool file_exists(const std::string &path) {
+    int rc = access(path.c_str(), F_OK);
+    if (rc == 0)
+        return true;
+    // treat not being able to access the file the same as file doesn't exist
+    return false;
 }
 
 void parse_lrl_file(const std::string& lrlpath,
@@ -634,11 +641,26 @@ void parse_lrl_file(const std::string& lrlpath,
     if (!certdir.empty())
         certdir += "/";
 
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_CERT) : cert);
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_KEY) : key);
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CA) : ca);
+    if (!cert.empty())
+        p_support_files->push_back(cert);
+    else if (file_exists(certdir + DEFAULT_SERVER_CERT))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_CERT);
+
+    if (!key.empty())
+        p_support_files->push_back(key);
+    else if (file_exists(certdir + DEFAULT_SERVER_KEY))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_KEY);
+
+    if (!ca.empty())
+        p_support_files->push_back(ca);
+    else if (file_exists(certdir + DEFAULT_CA))
+        p_support_files->push_back(certdir + DEFAULT_CA);
+
 #if HAVE_CRL
-    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CRL) : crl);
+    if (!crl.empty())
+        p_support_files->push_back(crl);
+    else if (file_exists(certdir + DEFAULT_CRL))
+        p_support_files->push_back(certdir + DEFAULT_CRL);
 #endif
 }
 
@@ -751,7 +773,6 @@ void serialise_database(
     std::string dbname;
     std::string dbdir;
     std::string dbtxndir;
-    std::string phystxndir;
     bool nonames = false;
     bool has_cluster_info = false;
     std::string origlrlname("");
@@ -901,10 +922,8 @@ void serialise_database(
     // Calculate path of .txn directory
     if (nonames) {
         dbtxndir = dbdir + "/logs";
-        phystxndir = dbtxndir;
     } else {
         dbtxndir = dbdir + "/" + dbname + ".txn";
-        phystxndir = dbdir + "/" + repl_name + ".txn";
     }
 
     // We will need to list the files in the data directory and txn dir
@@ -913,6 +932,12 @@ void serialise_database(
     if(!support_files_only) {
         listdir(dbdir_files, dbdir);
         listdir(dbtxndir_files, dbtxndir);
+    }
+
+    std::string rulesetdir = dbdir + "/rulesets";
+    std::list<std::string> ruleset_files;
+    if(file_exists(rulesetdir)) {
+        listdir(ruleset_files, rulesetdir);
     }
 
     // List of incremental comparison files to determine new/updated/deleted files
@@ -1301,19 +1326,21 @@ void serialise_database(
                 serialise_file(fi, iom, strippedpath);
             } else {
                 FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
-
-                /* if copy physical, enable file name swap. Skip lrl file, already done*/
-                if (copy_physical && !nonames)
-                {
-                    if (is_changeable_file(fi.get_filename()))
-                    {
-                        replace_file_name(fi, repl_name, dbname);
-                    }
-                }
-
                 serialise_file(fi, iom);
             }
             islrl = false;
+        }
+
+        // Now do ruleset files (if any).
+        // These are special because the relative "rulesets/" prefix must be
+        // preserved, unlike support files, where only the base file name is
+        // considered.
+        for(std::list<std::string>::const_iterator it = ruleset_files.begin();
+                it != ruleset_files.end();
+                ++it) {
+            abspath = dbdir + "/rulesets/" + *it;
+            FileInfo fi(FileInfo::RULESET_FILE, abspath, dbdir);
+            serialise_file(fi, iom);
         }
 
         // Now do optional files (if any)
@@ -1323,15 +1350,6 @@ void serialise_database(
                 abspath = *it;
                 makeabs(abspath, dbdir, *it);
                 FileInfo fi(FileInfo::OPTIONAL_FILE, abspath, dbdir);
-
-                if (copy_physical && !nonames)
-                {
-                    if (is_changeable_file(fi.get_filename()))
-                    {
-                        replace_file_name(fi, repl_name, dbname);
-                    }
-                }
-
                 serialise_file(fi, iom);
             }
             catch (SerialiseError &err) {
@@ -1352,28 +1370,17 @@ void serialise_database(
                 // directory and notify the running database that they can now be
                 // archived.
                 long long old_log_number(log_number);
-                serialise_log_files(dbtxndir, dbdir, dbname, repl_name, 
-                        copy_physical && !nonames, log_number, true);
+                serialise_log_files(dbtxndir, dbdir, log_number, true);
                 if(log_number != old_log_number && log_holder.get()) {
                     log_holder->release_log(log_number - 1);
-                }
-
-                // Ok, now serialise this file.
-                // change names if necessary
-                if (copy_physical && !nonames)
-                {
-                    if (is_changeable_file(it->get_filename()))
-                    {
-                        replace_file_name(*it, repl_name, dbname);
-                    }
                 }
 
                 serialise_file(*it, iom, "", incr_path, incr_create);
             }
 
             // Serialise all remaining log files, including incomplete ones
-            serialise_log_files(dbtxndir, dbdir, dbname, repl_name,
-                    copy_physical && !nonames, log_number, false);
+            serialise_log_files(dbtxndir, dbdir, log_number, false);
+            serialise_page_list(dbtxndir, dbdir);
         }
 
     // Serialise files for incremental backup
@@ -1402,7 +1409,7 @@ void serialise_database(
         // TODO: Figure out how to serialise logs after each file without
         // disrupting the page data file
         long long old_log_number(log_number);
-        serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, true);
+        serialise_log_files(dbtxndir, dbdir, log_number, true);
         if(log_number != old_log_number && log_holder.get()) {
             log_holder->release_log(log_number - 1);
         }
@@ -1457,7 +1464,7 @@ void serialise_database(
             // directory and notify the running database that they can now be
             // archived.
             long long old_log_number(log_number);
-            serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, true);
+            serialise_log_files(dbtxndir, dbdir, log_number, true);
             if(log_number != old_log_number && log_holder.get()) {
                 log_holder->release_log(log_number - 1);
             }
@@ -1468,7 +1475,7 @@ void serialise_database(
 
 
         // Serialise all remaining log files, including incomplete ones
-        serialise_log_files(dbtxndir, dbdir, "", "", false, log_number, false);
+        serialise_log_files(dbtxndir, dbdir, log_number, false);
     }
 
     // Generate fingerprint SHA file

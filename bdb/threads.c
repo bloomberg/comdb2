@@ -51,7 +51,9 @@
 #include <autoanalyze.h>
 #include <logmsg.h>
 
-int db_is_stopped(void);
+extern int db_is_stopped(void);
+extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
+extern void *rep_catchup_add_thread(void *arg);
 
 void *udp_backup(void *arg)
 {
@@ -139,12 +141,12 @@ void *memp_trickle_thread(void *arg)
     again:
         rc = bdb_state->dbenv->memp_trickle(
             bdb_state->dbenv, bdb_state->attr->memptricklepercent, &nwrote, 1);
-        if (rc == 0) {
-            if (rc == DB_LOCK_DESIRED) {
-                BDB_RELLOCK();
-                sleep(1);
-                BDB_READLOCK("memp_trickle_thread");
-            }
+        if (rc == DB_LOCK_DESIRED) {
+            BDB_RELLOCK();
+            sleep(1);
+            BDB_READLOCK("memp_trickle_thread");
+            goto again;
+        } else if (rc == 0) {
             if (nwrote != 0) {
                 goto again;
             }
@@ -245,7 +247,6 @@ void *master_lease_thread(void *arg)
     while (!db_is_stopped() &&
            (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
-            int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
         }
 
@@ -318,7 +319,6 @@ void *coherency_lease_thread(void *arg)
         now = time(NULL);
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
             if ((now - last_add_record) >= add_interval) {
-                void *rep_catchup_add_thread(void *arg);
                 pthread_create(&tid, &gbl_pthread_attr_detached,
                                rep_catchup_add_thread, bdb_state);
                 last_add_record = now;
@@ -381,13 +381,16 @@ extern int db_is_stopped();
 int64_t gbl_last_checkpoint_ms;
 int64_t gbl_total_checkpoint_ms;
 int gbl_checkpoint_count;
+int gbl_cache_flush_interval = 30;
+int backend_opened(void);
 
 void *checkpoint_thread(void *arg)
 {
-    int rc;
+    int rc, now;
     int checkpointtime;
     int checkpointtimepoll;
     int checkpointrand;
+    int loaded_cache = 0, last_cache_dump = 0;
     bdb_state_type *bdb_state;
     int start, end;
     int total_sleep_msec;
@@ -430,9 +433,7 @@ void *checkpoint_thread(void *arg)
                     broken);
         }
 
-        /* can't call checkpoint until llmeta is open if we are using rowlocks
-         */
-        if (gbl_rowlocks && !bdb_state->after_llmeta_init_done) {
+        if (gbl_rowlocks && !backend_opened()) {
             BDB_RELLOCK();
             sleep(1);
             continue;
@@ -450,6 +451,20 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
+
+        /* This is spawned before we open tables- don't repopulate the
+         * cache until the backend has opened */
+        if ((gbl_cache_flush_interval > 0) &&
+            ((now = time(NULL)) - last_cache_dump) > gbl_cache_flush_interval) {
+            if (!loaded_cache) {
+                bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
+                loaded_cache = 1;
+            } else {
+                bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 0);
+                last_cache_dump = now;
+            }
+        }
+
         end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;

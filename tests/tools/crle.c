@@ -46,7 +46,7 @@ static int mydecode(uint8_t *in, uint32_t insz, uint8_t *out, uint32_t outmax)
         if (rsize < 0)                                                         \
             assert(i == CNT(sizes));                                           \
         else                                                                   \
-            assert(sizes[i] == rsize);                                         \
+            assert(sizes[i] == (uint8_t)rsize);                                \
         break;                                                                 \
     } while (0)
 

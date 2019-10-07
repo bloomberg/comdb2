@@ -1,5 +1,8 @@
-#include "sqlite3.h"
 
+#ifndef _comdb2systbl_h
+#define _comdb2systbl_h
+
+#include "sqlite3.h"
 #ifndef _SQL_H_
 #include <mem_sqlite.h>
 #include <mem_override.h>
@@ -14,3 +17,5 @@ int comdb2SystblInit(sqlite3 *db);
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif  /* __cplusplus */
+
+#endif

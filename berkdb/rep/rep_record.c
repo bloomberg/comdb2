@@ -71,6 +71,7 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
+extern int gbl_dumptxn_at_commit;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -122,6 +123,12 @@ static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
 static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t, int));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
 static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
+
+extern void bdb_set_seqnum(void *);
+extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
+extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
+extern void wait_for_sc_to_stop(const char *operation);
+extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -446,7 +453,6 @@ int gbl_verbose_fills = 0;
 
 static int queue_log_more_count = 0;
 static int queue_log_fill_count = 0;
-int gbl_trace_repmore_reqs = 0;
 int gbl_verbose_repdups = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
@@ -554,7 +560,6 @@ static void *apply_thread(void *arg)
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
-					void bdb_set_seqnum(void *);
 					bdb_set_seqnum(dbenv->app_private);
 
 					if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
@@ -1003,7 +1008,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	unsigned long long bytes_sent;
 	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
-	int match, old, recovering, ret, t_ret, st = 0, sendtime;
+	int match, old, recovering, ret, t_ret, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
 	static unsigned long long rpm_count = 0;
@@ -1387,7 +1392,9 @@ skip:				/*
 			goto errlock;
 		}
 
-		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG;
+		/* REP_LOG_LOGPUT is almost the same as REP_LOG (the type gets reverted
+		   to REP_LOG in rep_send()), except that it can be throttled. */
+		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG_LOGPUT;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 			IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
 		sendflags = DB_REP_SENDACK;
@@ -1400,30 +1407,10 @@ skip:				/*
 			 * to send a NEWFILE message with lsn [n-1][MAX].
 			 */
 			if (lsn.file != oldfilelsn.file) {
-				st = comdb2_time_epochus();
-				if ((rc = __rep_send_message(dbenv,
-					*eidp, REP_NEWFILE, &oldfilelsn, NULL,
-					sendflags, NULL)) != 0) {
-
-					type = REP_LOG_MORE;
-					sendflags |= (DB_REP_NODROP|DB_REP_NOBUFFER);
-
-					if (gbl_verbose_fills){
-						logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE to "
-								"%s for NEWFILE %d:%d\n", __func__, __LINE__,
-								*eidp, lsn.file, lsn.offset);
-					}
-
-					if ((rc = __rep_send_message(dbenv,
+				/* REP_NEWFILE is not throttled. */
+				(void)__rep_time_send_message(dbenv,
 						*eidp, REP_NEWFILE, &oldfilelsn, NULL,
-						sendflags, NULL)) != 0 && gbl_verbose_fills) {
-						logmsg(LOGMSG_USER, "%s line %d failed to send "
-								"newfile to %s for LSN %d:%d %d\n",
-								__func__, __LINE__, *eidp, oldfilelsn.file,
-								oldfilelsn.offset, rc);
-					}
-				}
-				sendtime += (comdb2_time_epochus() - st);
+						sendflags, NULL, &sendtime);
 			}
 
 			R_LOCK(dbenv, &dblp->reginfo);
@@ -1452,7 +1439,6 @@ skip:				/*
 					 * and may miscount.
 					 */
 					rep->stat.st_nthrottles++;
-					type = REP_LOG_MORE;
 
 					if (gbl_verbose_fills){
 						logmsg(LOGMSG_USER, "%s line %d toggle %s fill "
@@ -1464,37 +1450,14 @@ skip:				/*
 				bytes -= (data_dbt.size + sizeof(REP_CONTROL));
 			}
 
-			st = comdb2_time_epochus();
-			if ((rc = __rep_send_message(dbenv, *eidp, type, &lsn, &data_dbt, 
-							sendflags, NULL)) != 0) {
-				if (gbl_verbose_fills) {
-					logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE for %s"
-							" LSN %d:%d on %d\n", __func__, __LINE__, *eidp, 
-							lsn.file, lsn.offset, rc);
-				}
-				type = REP_LOG_MORE;
-
-more:		   if (type == REP_LOG_MORE) {
-					/* Net queue could be full: send REP_LOG_MORE with the
-					 * NODROP flag lit */
-					sendflags |= (DB_REP_NODROP|DB_REP_NOBUFFER);
-					if (gbl_trace_repmore_reqs)
-						sendflags |= DB_REP_TRACE;
-
-					if (gbl_verbose_fills){
-						logmsg(LOGMSG_USER, "%s line %d toggled to LOG_MORE to "
-								"%s for LSN %d:%d\n", __func__, __LINE__, *eidp,
-								lsn.file, lsn.offset);
-					}
-
-					/* Replicant re-requests after timeout if this fails */
-					if ((rc = __rep_send_message(dbenv, *eidp, type, &lsn, 
-							&data_dbt, sendflags, NULL)) != 0 &&
-							gbl_verbose_fills) {
-						logmsg(LOGMSG_USER, "%s line %d failed LOG_MORE for %s,"
-								" %d\n", __func__, __LINE__, *eidp, rc);
-					}
-				}
+			if ((rc = __rep_time_send_message(dbenv, *eidp, type, &lsn, &data_dbt,
+							sendflags, NULL, &sendtime)) != 0) {
+more:
+				/* Net queue could be full. Send LOG_MORE to throttle.
+				   We will break out of the loop afterwards because type
+				   is changed in __rep_send_log_more() */
+				ret = __rep_send_log_more(dbenv, *eidp, &type,
+						&lsn, &data_dbt, sendflags, __func__, __LINE__);
 			} else {
 				if (gbl_verbose_fills && send_count == 0) {
 					logmsg(LOGMSG_USER, "%s line %d sent first record to %s,"
@@ -1503,7 +1466,6 @@ more:		   if (type == REP_LOG_MORE) {
 				}
 				send_count++;
 			}
-			sendtime += (comdb2_time_epochus() - st);
 
 			/*
 			 * If we are about to change files, then we'll need the
@@ -1668,7 +1630,7 @@ more:		   if (type == REP_LOG_MORE) {
 		int resp_rc;
 		sendflags = DB_REP_SENDACK;
 
-		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG;
+		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG_LOGPUT;
 		if (gbl_verbose_fills) {
 			if (rec && rec->size != 0) {
 				logmsg(LOGMSG_USER, "%s line %d received REP_LOG_REQ from %s %d:%d to "
@@ -1688,14 +1650,12 @@ more:		   if (type == REP_LOG_MORE) {
 			oldfilelsn.offset += logc->c_len;
 			bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
 
-			st = comdb2_time_epochus();
-			if ((resp_rc = __rep_send_message(dbenv, *eidp, type, &rp->lsn,
-						&data_dbt, sendflags, NULL))
+			if ((resp_rc = __rep_time_send_message(dbenv, *eidp, type, &rp->lsn,
+						&data_dbt, sendflags, NULL, &sendtime))
 					!= 0 && gbl_verbose_fills) {
 				logmsg(LOGMSG_USER, "%s line %d failed for %d:%d\n",
 						__func__, __LINE__, lsn.file, lsn.offset);
 			}
-			sendtime += (comdb2_time_epochus() - st);
 		} else if (ret == DB_NOTFOUND) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			endlsn = lp->lsn;
@@ -1729,28 +1689,24 @@ more:		   if (type == REP_LOG_MORE) {
 								"for LSN %d:%d\n", __func__, __LINE__, 
 								lsn.file, lsn.offset);
 					}
-					st = comdb2_time_epochus();
-					if ((resp_rc = __rep_send_message(dbenv, *eidp,
+					if ((resp_rc = __rep_time_send_message(dbenv, *eidp,
 								REP_VERIFY_FAIL, &lsn, NULL, 0,
-								NULL)) != 0 && gbl_verbose_fills) {
+								NULL, &sendtime)) != 0 && gbl_verbose_fills) {
 						/* But we will still return REP_OUTDATED */
 						logmsg(LOGMSG_USER, "%s line %d failed to send "
 								"rep_verify_fail for LSN %d:%d\n", __func__,
 								__LINE__, lsn.file, lsn.offset);
 					}
-					sendtime += (comdb2_time_epochus() - st);
 				} else {
 					endlsn.offset += logc->c_len;
-					st = comdb2_time_epochus();
-					if ((resp_rc = __rep_send_message(dbenv, *eidp,
+					if ((resp_rc = __rep_time_send_message(dbenv, *eidp,
 						REP_NEWFILE, &endlsn, NULL,
-						rec == NULL ? DB_REP_NOBUFFER : 0, NULL)) != 0 &&
+						rec == NULL ? DB_REP_NOBUFFER : 0, NULL, &sendtime)) != 0 &&
 							gbl_verbose_fills) {
 						logmsg(LOGMSG_USER, "%s line %d failed to send newfile "
 								"for LSN %d:%d\n", __func__, __LINE__, 
 								endlsn.file, endlsn.offset);
 					}
-					sendtime += (comdb2_time_epochus() - st);
 				}
 			} else {
 				/* Case 3 */
@@ -1778,16 +1734,14 @@ more:		   if (type == REP_LOG_MORE) {
 
 			/* IMPORTANT: send NEWFILE before breaking out of loop */
 			if (lsn.file != oldfilelsn.file) {
-				st = comdb2_time_epochus();
-				if ((resp_rc = __rep_send_message(dbenv,
+				if ((resp_rc = __rep_time_send_message(dbenv,
 					*eidp, REP_NEWFILE, &oldfilelsn, NULL,
-					(sendflags|DB_REP_NODROP|DB_REP_NOBUFFER), NULL)) != 0 &&
+					sendflags, NULL, &sendtime)) != 0 &&
 					gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d failed to send newfile "
 							"for LSN %d:%d, %d\n", __func__, __LINE__, 
 							oldfilelsn.file, oldfilelsn.offset, resp_rc);
 				}
-				sendtime += (comdb2_time_epochus() - st);
 			}
 
 			if (log_compare(&lsn, (DB_LSN *)rec->data) >= 0)
@@ -1797,30 +1751,11 @@ more:		   if (type == REP_LOG_MORE) {
 			oldfilelsn.offset += logc->c_len;
 
 			bytes_sent += (data_dbt.size + sizeof(REP_CONTROL));
-			st = comdb2_time_epochus();
-			if ((resp_rc = __rep_send_message(dbenv, *eidp, type, &lsn,
-				&data_dbt, sendflags, NULL)) != 0) {
-
-				if (gbl_verbose_fills) {
-					logmsg(LOGMSG_USER, "%s line %d failed to send log "
-							"for LSN %d:%d, %d - retrying with NOBUF/NODROP\n",
-							__func__, __LINE__, lsn.file, lsn.offset, resp_rc);
-				}
-
-				sendflags |= (DB_REP_NOBUFFER|DB_REP_NODROP);
-
-				if ((resp_rc = __rep_send_message(dbenv, *eidp, type, &lsn,
-						&data_dbt, sendflags|DB_REP_NOBUFFER|DB_REP_NODROP,
-						NULL)) != 0) {
-					if (gbl_verbose_fills) {
-						logmsg(LOGMSG_USER, "%s line %d failed NOBUF/NOSEND log "
-								"for LSN %d:%d, %d\n", __func__, __LINE__, 
-								lsn.file, lsn.offset, resp_rc);
-					}
-					break;
-				}
+			if ((resp_rc = __rep_time_send_message(dbenv, *eidp, type, &lsn,
+							&data_dbt, sendflags, NULL, &sendtime)) != 0) {
+				/* If the net queue is full, we break out of the loop. */
+				break;
 			}
-			sendtime += (comdb2_time_epochus() - st);
 		}
 
 		if (gbl_verbose_fills && 0 == logc->stat(logc, &lcstat)) {
@@ -2505,7 +2440,6 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		break;
 
 	case REP_PGDUMP_REQ:{
-			extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 			logmsg(LOGMSG_USER, "pgdump request from %s\n", *eidp);
 			__pgdump_reprec(dbenv, rec);
 			break;
@@ -3634,10 +3568,6 @@ gap_check:		max_lsn_dbtp = NULL;
 	case DB___txn_regop_rowlocks:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
-		;
-		extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-		extern int gbl_dumptxn_at_commit;
-
 		if (gbl_dumptxn_at_commit)
 			dumptxn(dbenv, &rp->lsn);
 		if (!F_ISSET(rep, REP_F_LOGSONLY)) {
@@ -4259,7 +4189,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			}
 			rq->used = 0;
 			thdpool_enqueue(dbenv->recovery_workers, worker_thd, rq,
-				0, NULL, 0);
+				0, NULL, 0, PRIORITY_T_DEFAULT);
 			rq = listc_rtl(&queues);
 		}
 	}
@@ -4953,6 +4883,9 @@ err1:
 	else
 		__os_free(dbenv, prep_args);
 
+	if (pglogs)
+		__os_free(dbenv, pglogs);
+
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
@@ -5556,12 +5489,18 @@ bad_resize:	;
 			(desired = (gbl_force_serial_on_writelock &&
 			 bdb_the_lock_desired()))) {
 
-		if (txn_args)
+		if (txn_args) {
 			__os_free(dbenv, txn_args);
-		if (txn_gen_args)
+			txn_args = NULL;
+		}
+		if (txn_gen_args) {
 			__os_free(dbenv, txn_gen_args);
-		if (txn_rl_args)
+			txn_gen_args = NULL;
+		}
+		if (txn_rl_args) {
 			__os_free(dbenv, txn_rl_args);
+			txn_rl_args = NULL;
+		}
 
 		ret = wait_for_running_transactions(dbenv);
 		if (ret) {
@@ -5653,7 +5592,7 @@ bad_resize:	;
 	listc_abl(&dbenv->inflight_transactions, rp);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
-	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
+	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0, PRIORITY_T_DEFAULT);
 
 	if (txn_args)
 		__os_free(dbenv, txn_args);
@@ -6461,7 +6400,6 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		void wait_for_sc_to_stop(const char *operation);
 		wait_for_sc_to_stop("log-truncate");
 	}
 
@@ -6624,7 +6562,6 @@ restart:
 
 err:
 	if (i_am_master) {
-		void allow_sc_to_run(void);
 		allow_sc_to_run();
 		assert(truncate_count == 1);
 		truncate_count--;
@@ -6722,7 +6659,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				}
 
 				if (txn_rl_args->timestamp < epoch) {
-					__os_free(dbenv, txn_rl_args);
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
 											"break-loop because timestamp "
@@ -6731,6 +6667,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
 					}
+					__os_free(dbenv, txn_rl_args);
 					done = 1;
 					break;
 				}
@@ -7204,103 +7141,6 @@ err:
 	__log_c_close(logc);
 
 	return -1;
-}
-
-unsigned long long
-get_current_context(dbenv)
-	DB_ENV *dbenv;
-{
-	unsigned long long context = 0;
-	int rc = 0;
-	DB_LSN lsn;
-	DB_LOGC *logc;
-	DBT logdta;
-	u_int32_t rectype;
-
-	__txn_regop_args *txn_args = NULL;
-	__txn_regop_gen_args *txn_gen_args = NULL;
-	__txn_regop_rowlocks_args *txn_rl_args = NULL;
-
-	__log_txn_lsn(dbenv, &lsn, NULL, NULL);
-
-	if ((rc = __log_cursor(dbenv, &logc)) != 0) {
-		logmsg(LOGMSG_ERROR, "%s:%d failed to get log cursor, rc %d\n",
-			__func__, __LINE__, rc);
-		return 0;
-	}
-	bzero(&logdta, sizeof(logdta));
-	logdta.flags = DB_DBT_REALLOC;
-	rc = logc->get(logc, &lsn, &logdta, DB_SET);
-	if (rc) {
-		logmsg(LOGMSG_ERROR, "%s:%d failed to get log at [%u][%u], rc %d\n",
-			__func__, __LINE__, lsn.file, lsn.offset, rc);
-		__log_c_close(logc);
-		return 0;
-	}
-	LOGCOPY_32(&rectype, logdta.data);
-
-	while (rectype != DB___txn_regop || rectype != DB___txn_regop_gen ||
-		rectype != DB___txn_regop_rowlocks) {
-again:
-		if (logdta.data) {
-			__os_free(dbenv, logdta.data);
-			logdta.data = NULL;
-		}
-		rc = logc->get(logc, &lsn, &logdta, DB_PREV);
-		if (rc) {
-			logmsg(LOGMSG_ERROR, 
-				"%s:%d failed to get log at [%u][%u], rc %d\n",
-				__func__, __LINE__, lsn.file, lsn.offset, rc);
-			__log_c_close(logc);
-			return 0;
-		}
-		LOGCOPY_32(&rectype, logdta.data);
-	}
-
-	if (rectype == DB___txn_regop) {
-		if ((rc = __txn_regop_read(dbenv, logdta.data, &txn_args)) != 0)
-			abort();
-		if (txn_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_args);
-			goto again;
-		}
-		context = __txn_regop_read_context(txn_args);
-		__os_free(dbenv, txn_args);
-		__log_c_close(logc);
-		return context;
-	}
-	else if (rectype == DB___txn_regop_gen) {
-		if ((rc =
-			__txn_regop_gen_read(dbenv, logdta.data,
-				&txn_gen_args)) != 0) {
-			abort();
-		}
-		if (txn_gen_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_gen_args);
-			goto again;
-		}
-		context = txn_gen_args->context;
-		__os_free(dbenv, txn_gen_args);
-		__log_c_close(logc);
-		return context;
-	}
-	else {
-		assert(rectype == DB___txn_regop_rowlocks);
-		if ((rc =
-			__txn_regop_rowlocks_read(dbenv, logdta.data,
-				&txn_rl_args)) != 0)
-			abort();
-		if (txn_rl_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_rl_args);
-			goto again;
-		}
-		context = txn_rl_args->context;
-		__os_free(dbenv, txn_rl_args);
-		__log_c_close(logc);
-		return context;
-	}
-
-	return 0;
 }
 
 static int

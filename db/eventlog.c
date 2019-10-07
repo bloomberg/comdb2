@@ -37,13 +37,17 @@
 #include "tohex.h"
 #include "plhash.h"
 #include "logmsg.h"
+#include "thread_stats.h"
 #include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
 
+extern int64_t comdb2_time_epochus(void);
+extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
+
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 2; // keep only last 2 event log files
+int eventlog_nkeep = 2; // keep only last 2 event log files
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
@@ -318,20 +322,22 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 {
-    const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    int64_t start = logger->startus;
-    int64_t end = comdb2_time_epochus();
+    const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
 
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
-    // runtime is in microseconds
-    cson_object_set(perfobj, "runtime", cson_new_int(end - start));
+    cson_object_set(perfobj, "tottime", cson_new_int(logger->durationus));
+    cson_object_set(perfobj, "processingtime",
+                    cson_new_int(logger->durationus - logger->queuetimeus));
+    if (logger->queuetimeus)
+        cson_object_set(perfobj, "qtime", cson_new_int(logger->queuetimeus));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
         thread_stats->n_pwrites || thread_stats->pread_time_us ||
         thread_stats->pwrite_time_us || thread_stats->lock_wait_time_us) {
         if (thread_stats->n_lock_waits) {
+            // NB: lockwaits/lockwaittime accumulate over deadlock/retries
             cson_object_set(perfobj, "lockwaits",
                             cson_new_int(thread_stats->n_lock_waits));
             cson_object_set(perfobj, "lockwaittime",
@@ -340,7 +346,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
         if (thread_stats->n_preads) {
             cson_object_set(perfobj, "reads",
                             cson_new_int(thread_stats->n_preads));
-            cson_object_set(perfobj, "readtimetime",
+            cson_object_set(perfobj, "readtime",
                             cson_new_int(thread_stats->pread_time_us));
         }
         if (thread_stats->n_pwrites) {
@@ -395,16 +401,20 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     for (int i = 0; i < logger->path->n_components; i++) {
         cson_value *component;
         component = cson_value_new_object();
-        cson_object *obj = cson_value_get_object(component);
+        cson_object *lobj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
         if (c->table[0])
-            cson_object_set(obj, "table",
+            cson_object_set(lobj, "table",
                             cson_value_new_string(c->table, strlen(c->table)));
-        if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
-        if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
-        if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
-        if (c->nwrite) cson_object_set(obj, "write", cson_new_int(c->nwrite));
+        if (c->ix != -1)
+            cson_object_set(lobj, "index", cson_new_int(c->ix));
+        if (c->nfind)
+            cson_object_set(lobj, "find", cson_new_int(c->nfind));
+        if (c->nnext)
+            cson_object_set(lobj, "next", cson_new_int(c->nnext));
+        if (c->nwrite)
+            cson_object_set(lobj, "write", cson_new_int(c->nwrite));
         cson_array_append(arr, component);
     }
     cson_object_set(obj, "path", components);
@@ -446,13 +456,15 @@ static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (eventlog == NULL || !eventlog_enabled) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
+    }
 
     bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
 
-    Pthread_mutex_lock(&eventlog_lk);
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(obj, logger);
     }
@@ -489,14 +501,19 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
 
     if (logger->error) {
+        cson_object_set(obj, "rc", cson_new_int(logger->rc));
         cson_object_set(obj, "error_code", cson_new_int(logger->error_code));
         cson_object_set(
             obj, "error",
             cson_value_new_string(logger->error, strlen(logger->error)));
+
+        if (logger->iq && logger->iq->retries > 0)
+            cson_object_set(obj, "deadlockretries",
+                            cson_new_int(logger->iq->retries));
     }
 
     cson_object_set(obj, "host",
-                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+                    cson_value_new_string(logger->origin, strlen(logger->origin)));
 
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
@@ -505,8 +522,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                         cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
     }
 
-    if (logger->queuetimeus)
-        cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
     if (logger->clnt) {
         uint64_t clientstarttime = get_client_starttime(logger->clnt);
         if (clientstarttime && logger->startus > clientstarttime)
@@ -517,6 +532,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
             cson_object_set(obj, "clientretries",
                     cson_new_int(clientretries));
         }
+        cson_object_set(obj, "connid", cson_new_int(logger->clnt->connid));
+        cson_object_set(obj, "pid", cson_new_int(logger->clnt->last_pid));
     }
 
     eventlog_context(obj, logger);
@@ -527,13 +544,15 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (eventlog == NULL || !eventlog_enabled) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
+    }
 
     cson_value *val;
     cson_object *obj;
 
-    Pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
         Pthread_mutex_unlock(&eventlog_lk);
@@ -549,7 +568,8 @@ void eventlog_add(const struct reqlogger *logger)
     eventlog_add_int(obj, logger);
 
     Pthread_mutex_lock(&eventlog_lk);
-    cson_output(val, write_json, eventlog, &opt);
+    if (eventlog != NULL && eventlog_enabled)
+        cson_output(val, write_json, eventlog, &opt);
     Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
@@ -708,16 +728,17 @@ void eventlog_process_message(char *line, int lline, int *toff)
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
                         u_int32_t nlockers, u_int32_t victim)
 {
-    if (eventlog == NULL)
+    Pthread_mutex_lock(&eventlog_lk);
+    if (!eventlog_enabled || eventlog == NULL) {
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
-    if (!eventlog_enabled)
-        return;
+    }
+    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_value *dval = cson_value_new_object();
     cson_object *obj = cson_value_get_object(dval);
 
     cson_value *dd_list = cson_value_new_array();
-    int64_t comdb2_time_epochus(void);
     uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
@@ -734,7 +755,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
 
-        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);
@@ -747,6 +767,8 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     logmsg(LOGMSG_USER, "\n");
 
     Pthread_mutex_lock(&eventlog_lk);
-    cson_output(dval, write_json, eventlog, &opt);
+    if (eventlog_enabled && eventlog != NULL)
+        cson_output(dval, write_json, eventlog, &opt);
     Pthread_mutex_unlock(&eventlog_lk);
+    cson_value_free(dval);
 }

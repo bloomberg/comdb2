@@ -66,7 +66,6 @@ BB_COMPILE_TIME_ASSERT(net_write_header_type,
 typedef struct write_node_data {
     int flags;
     int enque_time;
-    int pooled;
     struct write_node_data *next;
     struct write_node_data *prev;
     size_t len;
@@ -186,10 +185,7 @@ struct host_node_tag {
     struct netinfo_struct *netinfo_ptr;
     stats_type stats; /* useful per host */
 
-    pthread_mutex_t pool_lock;
-    void *write_pool;
-
-#ifndef PER_THREAD_MALLOC
+#ifdef PER_THREAD_MALLOC
     comdb2ma msp;
 #endif
 
@@ -311,7 +307,6 @@ struct netinfo_struct {
     int trace;
 
     int pool_size;
-    int pool_extend;
 
     int user_data_buf_size;
     int net_test;

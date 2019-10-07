@@ -117,6 +117,7 @@ extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
+extern int gbl_toblock_random_deadlock_trans;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
@@ -205,6 +206,10 @@ extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
+extern int gbl_random_thdpool_work_timeout;
+extern int gbl_thdpool_queue_only;
+extern int gbl_random_sql_work_delayed;
+extern int gbl_random_sql_work_rejected;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
@@ -219,6 +224,19 @@ extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
+extern int gbl_abort_on_dta_lookup_error;
+extern int gbl_osql_snap_info_hashcheck;
+extern int gbl_debug_children_lock;
+extern int gbl_serialize_reads_like_writes;
+extern int gbl_long_log_truncation_warn_thresh_sec;
+extern int gbl_long_log_truncation_abort_thresh_sec;
+extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_cache_flush_interval;
+extern int gbl_load_cache_threads;
+extern int gbl_load_cache_max_pages;
+extern int gbl_dump_cache_max_pages;
+extern int gbl_max_pages_per_cache_thread;
+extern int gbl_memp_dump_cache_threshold;
 
 extern long long sampling_threshold;
 
@@ -234,6 +252,10 @@ extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
+extern char *gbl_machine_class;
+
+extern char *gbl_kafka_topic;
+extern char *gbl_kafka_brokers;
 
 /* util/ctrace.c */
 extern int nlogs;
@@ -267,11 +289,12 @@ extern int explicit_flush_trace;
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+extern int set_pbkdf2_iterations(int val);
 
 #include <stdbool.h>
 extern bool gbl_rcache;
 
-static char *name = NULL;
+static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;
 
@@ -286,6 +309,19 @@ extern int gbl_osql_check_replicant_numops;
 extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
+extern int gbl_selectv_writelock_on_update;
+extern int gbl_selectv_writelock;
+
+int gbl_debug_tmptbl_corrupt_mem;
+
+extern int gbl_reorder_idx_writes;
+extern int gbl_clean_exit_on_sigterm;
+extern int gbl_debug_omit_dta_write;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
+extern int eventlog_nkeep;
+
+int gbl_page_order_table_scan = 0;
 
 extern int gbl_reorder_idx_writes;
 
@@ -564,6 +600,15 @@ static int memnice_update(void *context, void *value)
     return 0;
 }
 
+int dtastripe_verify(void *context, void *stripes)
+{
+    int iStripes = *(int *)stripes;
+    if ((iStripes < 1) || (iStripes > 16)) {
+        return 1;
+    }
+    return 0;
+}
+
 static int maxretries_verify(void *context, void *value)
 {
     if (*(int *)value < 2) {
@@ -668,7 +713,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
-
 static int netconndumptime_update(void *context, void *value)
 {
     int val = *(int *)value;
@@ -683,7 +727,7 @@ static void *netconndumptime_value(void *context)
     return val;
 }
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 static int deadlock_policy_override_update(void *context, void *value)
@@ -698,6 +742,20 @@ static int deadlock_policy_override_update(void *context, void *value)
     *(int *)tunable->var = val;
     logmsg(LOGMSG_INFO, "Set deadlock policy to %s\n",
            deadlock_policy_str(val));
+    return 0;
+}
+
+extern void clean_exit_sigwrap(int signum);
+
+static int update_clean_exit_on_sigterm(void *context, void *value) {
+    int val = *(int *)value;
+    if (val)
+        signal(SIGTERM, clean_exit_sigwrap);
+    else
+        signal(SIGTERM, SIG_DFL);
+
+    gbl_clean_exit_on_sigterm = val;
+
     return 0;
 }
 
@@ -796,9 +854,22 @@ static int sql_tranlevel_default_update(void *context, void *value)
 
 static int pbkdf2_iterations_update(void *context, void *value)
 {
-    extern int set_pbkdf2_iterations(int val);
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
+}
+
+static int page_order_table_scan_update(void *context, void *value)
+{
+    if ((*(int *)value) == 0) {
+        gbl_page_order_table_scan = 0;
+    } else {
+        gbl_page_order_table_scan = 1;
+    }
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN,
+                 gbl_page_order_table_scan);
+    logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
+           (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
 }
 
 /* Routines for the tunable system itself - tunable-specific

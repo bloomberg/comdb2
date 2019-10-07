@@ -26,19 +26,27 @@
 #include <logical_cron.h>
 #include "cdb2_constants.h"
 
+#define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
+
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
 extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
+extern int gbl_legacy_schema;
+
+extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+extern int sqlite3ParserFallback(int iToken);
+extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
+extern void *comdb2_get_ddl_context(char *name);
 
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
 {
-    pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
+    pParse->rc = rc;
     return rc;
 }
 
@@ -110,7 +118,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 {
     int rc = 0;
     char *table_name;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
 
     table_name = strndup(name, name_len);
     if (table_name == NULL) {
@@ -126,20 +134,20 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if(gbl_allow_user_schema && thd->clnt->user[0] != '\0' &&
-       strcasecmp(thd->clnt->user,DEFAULT_USER) != 0) {
+    if(gbl_allow_user_schema && clnt->user[0] != '\0' &&
+       strcasecmp(clnt->user,DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
         if (username) {
             /* Do nothing. */
-            strncpy(dst, table_name, MAXTABLELEN);
+            strncpy0(dst, table_name, MAXTABLELEN);
         } else { /* Add user nmame. */
             /* Make it part of user schema. */
             char userschema[MAXTABLELEN];
             int bdberr;
             int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
+            if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user, userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
@@ -153,7 +161,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
               }
             } else {
               bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
-                                       thd->clnt->user);
+                                       clnt->user);
               if (bytes_written >= MAXTABLELEN) {
                 rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
                                                      "too long");
@@ -162,7 +170,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             }
         }
     } else {
-       strncpy(dst, table_name, MAXTABLELEN);
+       strncpy0(dst, table_name, MAXTABLELEN);
     }
 
     // Check whether the user is allowed perform this schema change.
@@ -182,7 +190,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        if (db != NULL && (error_flag == ERROR_ON_TBL_FOUND)) {
+        struct dbview *view = get_view_by_name(dst);
+        if ((db != NULL || view != NULL) &&
+            (error_flag == ERROR_ON_TBL_FOUND)) {
             rc = setError(pParse, SQLITE_ERROR, "Table already exists");
             goto cleanup;
         }
@@ -300,7 +310,7 @@ static inline int chkAndCopyPartitionTokens(Parse *pParse, char *dst, Token *t1,
         goto cleanup;
     }
 
-    strncpy(dst, table_name, MAXTABLELEN);
+    strncpy0(dst, table_name, MAXTABLELEN);
 
 cleanup:
     free(table_name);
@@ -378,7 +388,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
 
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
-     struct sql_thread *thd = pthread_getspecific(query_info_key);
+     struct sqlclntstate *clnt = get_sql_clnt();
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
      int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
@@ -386,10 +396,10 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      if (authOn != 0)
         return SQLITE_OK;
 
-     if (thd->clnt && tablename)
+     if (clnt && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, thd->clnt->user, &bdberr))
+            tablename, clnt->user, &bdberr))
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
@@ -422,21 +432,20 @@ int comdb2AuthenticateUserOp(Parse* pParse)
 /* Only an op user can turn authentication on. */
 static int comdb2AuthenticateOpPassword(Parse* pParse)
 {
-     struct sql_thread *thd = pthread_getspecific(query_info_key);
+     struct sqlclntstate *clnt = get_sql_clnt();
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
-     if (thd->clnt)
+     if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         struct sqlclntstate *s = thd->clnt;
-         if (bdb_user_password_check(s->user, s->password, NULL))
+         if (bdb_user_password_check(clnt->user, clnt->password, NULL))
          {
             return SQLITE_AUTH;
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", thd->clnt->user,
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", clnt->user,
                                    &bdberr))
              return SQLITE_AUTH;
          else
@@ -448,7 +457,7 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
 
 int comdb2SqlDryrunSchemaChange(OpFunc *f)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
 
     FILE *fl = tmpfile();
@@ -482,7 +491,7 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
 
     /*
     */
-    osqlstate_t *osql = &thd->clnt->osql;
+    osqlstate_t *osql = &clnt->osql;
     osql->xerr.errval = 0;
     f->errorMsg = osql->xerr.errstr;
     return f->rc;
@@ -512,8 +521,7 @@ static int comdb2SqlSchemaChange(OpFunc *f)
 
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
+    struct sqlclntstate *clnt = get_sql_clnt();
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int sentops = 0;
@@ -597,8 +605,8 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 static int authenticateSC(const char * table,  Parse *pParse)
 {
     char *username = strstr(table, "@");
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    if (username && strcmp(username+1, thd->clnt->user) == 0) {
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (username && strcmp(username+1, clnt->user) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserDDL(table) == 0) {
         return 0;
@@ -620,6 +628,15 @@ void comdb2CreateTableCSC2(
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     int table_exists = 0;
@@ -670,6 +687,15 @@ void comdb2AlterTableCSC2(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     struct schema_change_type *sc = new_schemachange_type();
@@ -705,6 +731,15 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -803,6 +838,15 @@ void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_TABLE, 0, 0, 0) ){
+            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB + opt);
 }
 
@@ -812,6 +856,15 @@ void comdb2RebuildData(Parse* p, Token* nm, Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_DATA, 0, 0, 0) ){
+            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     comdb2Rebuild(p,nm,lnm,REBUILD_DATA + opt);
 }
 
@@ -820,6 +873,15 @@ void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
     if (comdb2IsPrepareOnly(p))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_DATABLOB, 0, 0, 0) ){
+            setError(p, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     comdb2Rebuild(p, nm, lnm, REBUILD_BLOB + opt);
 }
 
@@ -827,6 +889,15 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_TRUNCATE_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -865,7 +936,17 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_INDEX, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
+
     char* indexname;
     int index_num;
 
@@ -938,6 +1019,15 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PROC, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -979,6 +1069,15 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1022,6 +1121,15 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_PROC, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1073,6 +1181,15 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -1138,6 +1255,12 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     }
     strncpy0(retention_str, retention->z, retention->n + 1);
     tp->retention = atoi(retention_str);
+#if 0    
+    if (tp->retention < 2) {
+        setError(pParse, SQLITE_MISUSE, "Retention must be at least 2");
+        goto clean_arg;
+    }
+#endif
 
     char start_str[200];
 
@@ -1171,6 +1294,15 @@ void comdb2DropPartition(Parse* pParse, Token* partition_name)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_PART, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
@@ -1240,6 +1372,15 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1279,6 +1420,15 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1323,6 +1473,15 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1366,6 +1525,15 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1402,6 +1570,15 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1437,6 +1614,15 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ANALYZE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1483,6 +1669,15 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1538,6 +1733,15 @@ void comdb2getAlias(Parse* pParse, Token* t1)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1577,6 +1781,15 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, revoke ? SQLITE_REVOKE : SQLITE_GRANT, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -1653,7 +1866,14 @@ void comdb2enableAuth(Parse* pParse, int on)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-    Vdbe *v  = sqlite3GetVdbe(pParse);
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateOpPassword(pParse))
     {
@@ -1661,6 +1881,7 @@ void comdb2enableAuth(Parse* pParse, int on)
         return;
     }
 
+    Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     
     if (arg)
@@ -1705,6 +1926,15 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     char username[MAX_USERNAME_LEN];
     char passwd[MAX_PASSWORD_LEN];
@@ -1753,10 +1983,10 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 
     if (comdb2AuthenticateUserDDL(""))
     {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        struct sqlclntstate *clnt = get_sql_clnt();
         /* Check if its password change request */
-        if (!(thd && thd->clnt &&
-                   strcmp(thd->clnt->user, password->user) == 0 )) {
+        if (!(clnt &&
+                   strcmp(clnt->user, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             goto clean_arg;
         }
@@ -1776,11 +2006,17 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-    if (comdb2AuthenticateUserOp(pParse))
+#ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
-        return;
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
     }
+#endif
+
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
@@ -1830,15 +2066,33 @@ int comdb2genidcontainstime(void)
 int producekw(OpFunc *f)
 {
     int found = 0;
+
     for (int i=0; i < sqlite3_keyword_count(); i++)
     {
-        if ((f->int_arg != KW_ALL) && (f->int_arg != KW_RES))
-            continue;
-
         const char *zName = 0;
         int nName = 0;
         if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
-            opFuncPrintf(f, "%.*s", nName, zName);
+            char kw[100];
+
+            if (nName < sizeof(kw)-1 && (f->int_arg == KW_RES || f->int_arg == KW_FB)) {
+                // See if reserved word
+                int tok;
+
+                strncpy(kw, zName, nName);
+                kw[nName] = 0;
+
+                int rc = sqlite3GetToken((unsigned char*) kw, &tok);
+                if (rc > 0) {
+                    int isfb = sqlite3ParserFallback(tok);
+                    if ((isfb && f->int_arg == KW_FB) || (!isfb && f->int_arg == KW_RES)) {
+                        opFuncPrintf(f, "%.*s", nName, zName);
+                        found++;
+                    }
+                }
+                continue;
+            }
+            else if (f->int_arg == KW_ALL)
+                opFuncPrintf(f, "%.*s", nName, zName);
             found++;
         }
     }
@@ -1851,6 +2105,15 @@ void comdb2getkw(Parse* pParse, int arg)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Keyword"};
@@ -1886,6 +2149,15 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Coverage"};
     const int coltype = OPFUNC_INT_TYPE;
@@ -1904,6 +2176,15 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     char tblname[MAXTABLELEN];
 
@@ -1939,6 +2220,15 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_GET_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Threshold"};
     const int coltype = OPFUNC_INT_TYPE;
@@ -1955,11 +2245,11 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
 int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
                       size_t len)
 {
-   struct sql_thread *thd = pthread_getspecific(query_info_key);
+   struct sqlclntstate *clnt = get_sql_clnt();
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        snprintf(tableName, len, "%s", p->zName);
-   } else if (thd->clnt && (thd->clnt->user[0] != '\0') &&
+   } else if (clnt && (clnt->user[0] != '\0') &&
               !strchr(p->zName, '@') &&
               strncasecmp(p->zName, "sqlite_", 7) &&
               strncasecmp(p->zName, "comdb2", 6))
@@ -1968,7 +2258,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
        int bdberr;
        int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user,
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user,
                                          userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
            bytes_written = snprintf(tableName, len, "%s", p->zName);
@@ -1984,7 +2274,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
          }
        } else {
          bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
-                                  thd->clnt->user);
+                                  clnt->user);
          if (bytes_written >= len) {
              return 1;
          }
@@ -1998,15 +2288,23 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
-    BpfuncArg *arg = NULL;
-
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    BpfuncArg *arg = NULL;
 
     if (retention < 2)
     {
@@ -2055,11 +2353,23 @@ clean_arg:
 static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
         int isset, long long value)
 {
-    char name[MAXTABLELEN];
-    char *query;
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
-        goto err;       
+        return;
+
+    char name[MAXTABLELEN];
+    char *query;
 
     if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
         goto err;
@@ -2089,6 +2399,15 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     char table[MAXTABLELEN];
     char newTable[MAXTABLELEN];
@@ -2124,7 +2443,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->nothrevent = 1;
     sc->live = 1;
     sc->rename = 1;
-    strncpy(sc->newtable, newTable, sizeof(sc->newtable));
+    strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                         (vdbeFuncArgFree)&free_schema_change_type);
@@ -2139,6 +2458,15 @@ void comdb2schemachangeCommitsleep(Parse* pParse, int num)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -2149,6 +2477,15 @@ void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
@@ -2230,6 +2567,14 @@ struct comdb2_key {
     LINKC_T(struct comdb2_key) lnk;
 };
 
+/* Supported constraint types */
+enum {
+    CONS_FKEY = 1 << 1,
+    CONS_CHECK = 1 << 2,
+};
+
+#define CONS_ALL (CONS_FKEY | CONS_CHECK)
+
 /* Constraint flags */
 enum {
     CONS_UPD_CASCADE = 1 << 0,
@@ -2240,6 +2585,8 @@ enum {
 struct comdb2_constraint {
     /* Name of the constraint. */
     char *name;
+    /* Constraint type */
+    uint8_t type;
 
     /*
        The following are helper fields to hold the column names and respective
@@ -2260,7 +2607,8 @@ struct comdb2_constraint {
     char *parent_key;
     /* Constraint flags */
     uint8_t flags;
-
+    /* CHECK expr */
+    char *check_expr;
     /* Link */
     LINKC_T(struct comdb2_constraint) lnk;
 };
@@ -2687,6 +3035,34 @@ err:
     return 1;
 }
 
+static void csc2_append_fkey_cons(struct strbuf *csc2,
+                                  struct comdb2_constraint *constraint)
+{
+    if (constraint->name)
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+
+    strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
+    strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
+                   constraint->parent_key);
+
+    if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
+        strbuf_append(csc2, "on update cascade ");
+    }
+    if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
+        strbuf_append(csc2, "on delete cascade ");
+    }
+}
+
+static void csc2_append_check_cons(struct strbuf *csc2,
+                                   struct comdb2_constraint *constraint)
+{
+    strbuf_append(csc2, "check ");
+    if (constraint->name) {
+        strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
+    }
+    strbuf_appendf(csc2, "{where %s}", constraint->check_expr);
+}
+
 /*
   Format the table information into a CSC2 string.
 */
@@ -2787,7 +3163,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
             strbuf_appendf(csc2, "%s%s ",
                            (idx_part->flags & INDEX_ORDER_DESC) ? "<DESCEND> "
-                                                                  : "",
+                                                                : "",
                            idx_part->name);
 
             added++;
@@ -2816,18 +3192,10 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 
         strbuf_append(csc2, "\n\t\t");
 
-        if (constraint->name)
-            strbuf_appendf(csc2, "\"%s\" = ", constraint->name);
-
-        strbuf_appendf(csc2, "\"%s\" -> ", constraint->child->name);
-        strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
-                       constraint->parent_key);
-
-        if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
-            strbuf_append(csc2, "on update cascade ");
-        }
-        if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
-            strbuf_append(csc2, "on delete cascade ");
+        if (constraint->type == CONS_FKEY) {
+            csc2_append_fkey_cons(csc2, constraint);
+        } else if (constraint->type == CONS_CHECK) {
+            csc2_append_check_cons(csc2, constraint);
         }
     }
 
@@ -2929,10 +3297,24 @@ static int gen_constraint_name_int(char *in, size_t in_size, char *out,
     return 0;
 }
 
-int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
-                        size_t out_size)
+static int serialize_check_attributes(const char *check_expr, char *buf,
+                                      size_t buf_sz)
 {
-    char buf[3 * 1024];
+    int pos = 0;
+    /* CHECK expression */
+    SNPRINTF(buf, buf_sz, pos, "%s", check_expr);
+
+done:
+    return pos;
+}
+
+/* Serialize the details of the constraint into the specified buffer.
+ * NOTE: There's a sister function below 'serialize_fk_attributes2' that does
+ * the same this, but out of a different structure (struct comdb2_constraint).
+ */
+static int serialize_fk_attributes(constraint_t *pConstraint, int parent_idx,
+                                   char *buf, size_t buf_sz)
+{
     struct dbtable *table;
     struct schema *key;
     int pos = 0;
@@ -2951,11 +3333,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -2965,7 +3347,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
     /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
+    SNPRINTF(buf, buf_sz, pos, "%s", pConstraint->table[parent_idx])
 
     /* Get the parent table */
     table = get_dbtable_by_name(pConstraint->table[parent_idx]);
@@ -2987,11 +3369,11 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
             for (int j = 0; j < key->nmembers; j++) {
                 /* Column name */
-                SNPRINTF(buf, sizeof(buf), pos, "%s", key->member[j].name)
+                SNPRINTF(buf, buf_sz, pos, "%s", key->member[j].name)
 
                 /* Sort order */
                 if (key->member[j].flags & INDEX_DESCEND)
-                    SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+                    SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
             }
             break;
         }
@@ -3001,15 +3383,12 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 #endif
 
 done:
-    gen_constraint_name_int(buf, pos, out, out_size);
-
-    return 0;
+    return pos;
 }
 
-static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
-                                size_t out_size)
+static int serialize_fk_attributes2(struct comdb2_constraint *constraint,
+                                    char *buf, size_t buf_sz)
 {
-    char buf[3 * 1024];
     int pos = 0;
     struct comdb2_index_part *idx_part;
 
@@ -3017,29 +3396,71 @@ static int gen_constraint_name2(struct comdb2_constraint *constraint, char *out,
     LISTC_FOR_EACH(&constraint->child_idx_col_list, idx_part, lnk)
     {
         /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
         /* Sort order */
         if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
     }
 
     /* Parent table name */
-    SNPRINTF(buf, sizeof(buf), pos, "%s", constraint->parent_table)
+    SNPRINTF(buf, buf_sz, pos, "%s", constraint->parent_table)
 
     /* Parent key columns and sort orders */
     LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
     {
         /* Column name */
-        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_part->name)
+        SNPRINTF(buf, buf_sz, pos, "%s", idx_part->name)
 
         /* Sort order */
         if (idx_part->flags & INDEX_ORDER_DESC)
-            SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
+            SNPRINTF(buf, buf_sz, pos, "%s", "DESC")
     }
 
 done:
-    gen_constraint_name_int(buf, pos, out, out_size);
+    return pos;
+}
+
+int gen_fk_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
+                           size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_fk_attributes(pConstraint, parent_idx, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+int gen_check_constraint_name(check_constraint_t *pConstraint, char *out,
+                              size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    end = serialize_check_attributes(pConstraint->expr, ptr, sizeof(buf));
+    gen_constraint_name_int(buf, end, out, out_size);
+
+    return 0;
+}
+
+static int gen_constraint_name(struct comdb2_constraint *constraint, char *out,
+                               size_t out_size)
+{
+    char buf[3 * 1024];
+    char *ptr = (char *)buf;
+    int end;
+
+    if (constraint->type == CONS_CHECK) {
+        end = serialize_check_attributes(constraint->check_expr, ptr,
+                                         sizeof(buf));
+    } else {
+        end = serialize_fk_attributes2(constraint, ptr, sizeof(buf));
+    }
+    gen_constraint_name_int(buf, end, out, out_size);
 
     return 0;
 }
@@ -3086,14 +3507,14 @@ static struct comdb2_column *find_column_by_name(struct comdb2_ddl_context *ctx,
     return 0;
 }
 
-static struct comdb2_key *
-find_suitable_key(comdb2_index_part_lst *idx_col_list,
-                  comdb2_key_lst *key_list)
+static struct comdb2_key *find_suitable_key(comdb2_index_part_lst *idx_col_list,
+                                            comdb2_key_lst *key_list)
 {
     struct comdb2_key *current_key;
+    struct comdb2_key *matched_key = NULL;
     struct comdb2_index_part *current_idx_part;
     struct comdb2_index_part *idx_part;
-    int key_found = 0;
+    int matched;
 
     LISTC_FOR_EACH(key_list, current_key, lnk)
     {
@@ -3102,27 +3523,29 @@ find_suitable_key(comdb2_index_part_lst *idx_col_list,
             continue;
 
         /* Let's start by assuming that we have found the matching key. */
-        key_found = 1;
+        matched = 1;
 
         current_idx_part = LISTC_TOP(&current_key->idx_col_list);
 
         LISTC_FOR_EACH(idx_col_list, idx_part, lnk)
         {
-            if ((strcasecmp(idx_part->name, current_idx_part->name) != 0) ||
-                (idx_part->flags != current_idx_part->flags)) {
-                key_found = 0;
-                break;
+            if (strcasecmp(idx_part->name, current_idx_part->name) != 0) {
+                matched = 0;
             }
             /* Move to the next index column in the key. */
             current_idx_part = LISTC_NEXT(current_idx_part, lnk);
         }
-
-        if (key_found == 1) {
-            break;
+        if (matched) {
+            /* Prefer the smaller of the matched keys. */
+            if (matched_key &&
+                (listc_size(matched_key) > listc_size(current_key))) {
+                matched_key = current_key;
+            } else {
+                matched_key = current_key;
+            }
         }
     }
-
-    return (key_found == 1) ? current_key : 0;
+    return matched_key;
 }
 
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
@@ -3199,6 +3622,10 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         if (constraint->flags & CONS_DELETED)
             continue;
 
+        /* Skip for CHECK constraints. */
+        if (constraint->type == CONS_CHECK)
+            continue;
+
         /* Check if there's already a child key */
         if (constraint->child)
             continue;
@@ -3258,7 +3685,6 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     /* Generate CSC2 for the new/existing table. */
     csc2 = format_csc2(ctx);
 
-    int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
     /* save context to client */
     if (comdb2_save_ddl_context(ctx->schema->name, ctx, ctx->mem) != 0) {
         /* We get here if we are not in client transaction or it failed to save
@@ -3390,13 +3816,204 @@ oom:
     return 1;
 }
 
+static void escape_expr(struct strbuf *out, const char *expr)
+{
+    while (*expr) {
+        if (*expr == '"') {
+            strbuf_append(out, "\\\"");
+        } else {
+            strbuf_appendf(out, "%c", *expr);
+        }
+        ++expr;
+    }
+}
+
+static int retrieve_check_constraint(Parse *pParse,
+                                     struct comdb2_ddl_context *ctx,
+                                     check_constraint_t *cons)
+{
+    struct comdb2_constraint *constraint;
+
+    constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+    if (constraint == 0)
+        goto oom;
+
+    /* Type */
+    constraint->type = CONS_CHECK;
+
+    /* CHECK expression */
+    constraint->check_expr = comdb2_strdup(ctx->mem, cons->expr);
+    if (constraint->check_expr == 0)
+        goto oom;
+
+    /* TODO: (NC) escape quotes? */
+
+    /* Name */
+    assert(cons->consname);
+    constraint->name = comdb2_strdup(ctx->mem, cons->consname);
+    if (constraint->name == 0)
+        goto oom;
+
+    listc_abl(&ctx->schema->constraint_list, constraint);
+    return 0;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+    return 2;
+}
+
+static int retrieve_fk_constraint(Parse *pParse, struct comdb2_ddl_context *ctx,
+                                  constraint_t *cons)
+{
+    struct comdb2_constraint *constraint;
+    struct comdb2_index_part *idx_part;
+    struct comdb2_key *child_key;
+    struct dbtable *parent_table;
+    struct schema *parent_schema;
+    struct comdb2_key *current;
+    int key_found = 0;
+
+    /* Locate the child key. */
+    LISTC_FOR_EACH(&ctx->schema->key_list, current, lnk)
+    {
+        if (strcasecmp(cons->lclkeyname, current->name) == 0) {
+            child_key = current;
+            key_found = 1;
+            break;
+        }
+    }
+
+    if (key_found == 0) {
+        setError(pParse, SQLITE_ERROR,
+                 "FK: Local key used in the foreign key constraint could not "
+                 "be found.");
+        goto err;
+    }
+
+    /* Locate the parent key. */
+    for (int i = 0; i < cons->nrules; i++) {
+        parent_schema = 0;
+        parent_table = get_dbtable_by_name(cons->table[i]);
+        if (parent_table == 0) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
+                            cons->table[i]);
+            goto err;
+        }
+
+        for (int j = 0; j < parent_table->schema->nix; j++) {
+            if (strcasecmp(parent_table->schema->ix[j]->csctag,
+                           cons->keynm[i]) == 0) {
+                parent_schema = parent_table->schema->ix[j];
+            }
+        }
+        if (parent_schema == 0) {
+            setError(pParse, SQLITE_ERROR,
+                     "FK: Referenced key used in the foreign key constraint "
+                     "could not be found.");
+            goto err;
+        }
+
+        constraint =
+            comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+        if (constraint == 0)
+            goto oom;
+
+        /* Type */
+        constraint->type = CONS_FKEY;
+
+        /* Initialize the lists. */
+        listc_init(&constraint->child_idx_col_list,
+                   offsetof(struct comdb2_index_part, lnk));
+        listc_init(&constraint->parent_idx_col_list,
+                   offsetof(struct comdb2_index_part, lnk));
+
+        /* Add child index columns. */
+        struct comdb2_index_part *current;
+        LISTC_FOR_EACH(&child_key->idx_col_list, current, lnk)
+        {
+            idx_part =
+                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_part));
+            if (idx_part == 0)
+                goto oom;
+
+            idx_part->name = current->name;
+            idx_part->flags = current->flags;
+            idx_part->column = current->column;
+
+            listc_abl(&constraint->child_idx_col_list, idx_part);
+        }
+
+        /* Add parent index columns. */
+        for (int j = 0; j < parent_schema->nmembers; j++) {
+            idx_part =
+                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_part));
+            if (idx_part == 0)
+                goto oom;
+
+            idx_part->name =
+                comdb2_strdup(ctx->mem, parent_schema->member[j].name);
+            if (idx_part->name == 0)
+                goto oom;
+
+            if (parent_schema->member[j].flags & INDEX_DESCEND) {
+                idx_part->flags |= INDEX_ORDER_DESC;
+            }
+            /* There's no comdb2_column for foreign columns. */
+            // idx_part->column = 0;
+
+            listc_abl(&constraint->parent_idx_col_list, idx_part);
+        }
+
+        /* Reference to the child key. */
+        constraint->child = child_key;
+
+        /* Parent table name. */
+        constraint->parent_table =
+            comdb2_strdup(ctx->mem, parent_table->tablename);
+        if (constraint->parent_table == 0)
+            goto oom;
+
+        /* Parent key name */
+        constraint->parent_key = comdb2_strdup(ctx->mem, parent_schema->csctag);
+        if (constraint->parent_key == 0)
+            goto oom;
+
+        /* Flags */
+        if (cons->flags & CT_UPD_CASCADE) {
+            constraint->flags |= CONS_UPD_CASCADE;
+        }
+        if (cons->flags & CT_DEL_CASCADE) {
+            constraint->flags |= CONS_DEL_CASCADE;
+        }
+
+        if (cons->consname) {
+            /*
+              CSC2 does not allow named constraints to have multiple
+              parent key references.
+            */
+            assert(i == 0);
+            constraint->name = comdb2_strdup(ctx->mem, cons->consname);
+            if (constraint->name == 0)
+                goto oom;
+        }
+        listc_abl(&ctx->schema->constraint_list, constraint);
+    }
+    return 0;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+err:
+    return 1;
+}
+
 /*
   Fetch the schema definition of the table being altered.
 */
 static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     struct dbtable *table;
-    struct dbtable *parent_table;
     struct schema *schema;
     struct dbtag *tag;
 
@@ -3464,8 +4081,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             key->flags |= KEY_UNIQNULLS;
         }
 
-        listc_init(&key->idx_col_list,
-                   offsetof(struct comdb2_index_part, lnk));
+        listc_init(&key->idx_col_list, offsetof(struct comdb2_index_part, lnk));
 
         struct comdb2_column *column;
         struct comdb2_index_part *idx_part;
@@ -3479,7 +4095,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (schema->ix[i]->member[j].isExpr) {
                 struct strbuf *csc2_expr;
                 struct comdb2_column expr_col;
-                char *c;
 
                 /* field.idx is the index of column in the table. It's -1
                  * for index on expression. */
@@ -3498,18 +4113,12 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                 if (expr_col.len > 0) {
                     strbuf_appendf(csc2_expr, "[%d]", expr_col.len);
                 }
+
                 strbuf_append(csc2_expr, ")\"");
 
                 /* Expression */
-                c = schema->ix[i]->member[j].name;
-                while(*c) {
-                    if (*c == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *c);
-                    }
-                    ++c;
-                }
+                escape_expr(csc2_expr, schema->ix[i]->member[j].name);
+
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -3551,142 +4160,14 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     /* Populate constraints list */
-    struct comdb2_constraint *constraint;
-    struct comdb2_index_part *idx_part;
-    struct comdb2_key *child_key;
-    struct schema *parent_schema;
     for (int i = 0; i < table->n_constraints; i++) {
-        struct comdb2_key *current;
-        int key_found = 0;
-        /* Locate the child key. */
-        LISTC_FOR_EACH(&ctx->schema->key_list, current, lnk)
-        {
-            if (strcasecmp(table->constraints[i].lclkeyname, current->name) ==
-                0) {
-                child_key = current;
-                key_found = 1;
-                break;
-            }
-        }
-
-        if (key_found == 0) {
-            setError(pParse, SQLITE_ERROR,
-                     "FK: Local key used in the foreign "
-                     "key constraint could not be "
-                     "found.");
-            goto cleanup;
-        }
-
-        /* Locate the parent key. */
-        for (int j = 0; j < table->constraints->nrules; j++) {
-            parent_schema = 0;
-            parent_table = get_dbtable_by_name(table->constraints[i].table[j]);
-            if (parent_table == 0) {
-                pParse->rc = SQLITE_ERROR;
-                sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
-                                table->constraints[i].table[j]);
-                goto cleanup;
-            }
-
-            for (int k = 0; k < parent_table->schema->nix; k++) {
-                if (strcasecmp(parent_table->schema->ix[k]->csctag,
-                               table->constraints[i].keynm[j]) == 0) {
-                    parent_schema = parent_table->schema->ix[k];
-                }
-            }
-            if (parent_schema == 0) {
-                setError(pParse, SQLITE_ERROR,
-                         "FK: Referenced key used in the "
-                         "foreign key constraint could "
-                         "not be found.");
-                goto cleanup;
-            }
-
-            constraint =
-                comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
-            if (constraint == 0)
-                goto oom;
-
-            /* Initialize the lists. */
-            listc_init(&constraint->child_idx_col_list,
-                       offsetof(struct comdb2_index_part, lnk));
-            listc_init(&constraint->parent_idx_col_list,
-                       offsetof(struct comdb2_index_part, lnk));
-
-            /* Add child index columns. */
-            struct comdb2_index_part *current;
-            LISTC_FOR_EACH(&child_key->idx_col_list, current, lnk)
-            {
-                idx_part = comdb2_calloc(ctx->mem, 1,
-                                           sizeof(struct comdb2_index_part));
-                if (idx_part == 0)
-                    goto oom;
-
-                idx_part->name = current->name;
-                idx_part->flags = current->flags;
-                idx_part->column = current->column;
-
-                listc_abl(&constraint->child_idx_col_list, idx_part);
-            }
-
-            /* Add parent index columns. */
-            for (int i = 0; i < parent_schema->nmembers; i++) {
-                idx_part = comdb2_calloc(ctx->mem, 1,
-                                           sizeof(struct comdb2_index_part));
-                if (idx_part == 0)
-                    goto oom;
-
-                idx_part->name =
-                    comdb2_strdup(ctx->mem, parent_schema->member[i].name);
-                if (idx_part->name == 0)
-                    goto oom;
-
-                if (parent_schema->member[i].flags & INDEX_DESCEND) {
-                    idx_part->flags |= INDEX_ORDER_DESC;
-                }
-                /* There's no comdb2_column for foreign columns. */
-                // idx_part->column = 0;
-
-                listc_abl(&constraint->parent_idx_col_list, idx_part);
-            }
-
-            /* Reference to the child key. */
-            constraint->child = child_key;
-
-            /* Parent table name. */
-            constraint->parent_table =
-                comdb2_strdup(ctx->mem, parent_table->tablename);
-            if (constraint->parent_table == 0)
-                goto oom;
-
-            /* Parent key name */
-            constraint->parent_key =
-                comdb2_strdup(ctx->mem, parent_schema->csctag);
-            if (constraint->parent_key == 0)
-                goto oom;
-
-            /* Flags */
-            if (table->constraints[i].flags & CT_UPD_CASCADE) {
-                constraint->flags |= CONS_UPD_CASCADE;
-            }
-            if (table->constraints[i].flags & CT_DEL_CASCADE) {
-                constraint->flags |= CONS_DEL_CASCADE;
-            }
-
-            if (table->constraints[i].consname) {
-                /*
-                  Csc2 does not allow named constraints to have multiple
-                  parent key references.
-                */
-                assert(j == 0);
-                constraint->name =
-                    comdb2_strdup(ctx->mem, table->constraints[i].consname);
-                if (constraint->name == 0)
-                    goto oom;
-            }
-
-            listc_abl(&ctx->schema->constraint_list, constraint);
-        }
+        if ((retrieve_fk_constraint(pParse, ctx, &table->constraints[i])))
+            goto err;
+    }
+    for (int i = 0; i < table->n_check_constraints; i++) {
+        if ((retrieve_check_constraint(pParse, ctx,
+                                       &table->check_constraints[i])))
+            goto err;
     }
 
     /* Fetch all user-defined tags. */
@@ -3732,7 +4213,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
-cleanup:
+err:
     return 1;
 }
 
@@ -3747,6 +4228,15 @@ void comdb2AlterTableStart(
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     struct comdb2_ddl_context *ctx;
 
@@ -3875,6 +4365,15 @@ void comdb2CreateTableStart(
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     int table_exists = 0;
 
@@ -4302,7 +4801,7 @@ void comdb2AddDbpad(Parse *pParse, int dbpad)
 }
 
 static struct comdb2_constraint *
-find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
+find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons, int type)
 {
     struct comdb2_constraint *constraint;
     char *constraint_name;
@@ -4314,9 +4813,12 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
         if (constraint->flags & CONS_DELETED)
             continue;
 
+        if ((constraint->type & type) == 0)
+            continue;
+
         if (constraint->name == 0) {
-            gen_constraint_name2(constraint, constraint_name_buf,
-                                 sizeof(constraint_name_buf));
+            gen_constraint_name(constraint, constraint_name_buf,
+                                sizeof(constraint_name_buf));
             constraint_name = constraint_name_buf;
         } else {
             constraint_name = constraint->name;
@@ -4507,15 +5009,7 @@ static void comdb2AddIndexInt(
 
                 /* Expression */
                 strbuf_append(csc2_expr, "\"");
-                ptr = expr;
-                while(*ptr) {
-                    if (*ptr == '"') {
-                        strbuf_append(csc2_expr, "\\\"");
-                    } else {
-                        strbuf_appendf(csc2_expr, "%c", *ptr);
-                    }
-                    ++ptr;
-                }
+                escape_expr(csc2_expr, expr);
                 strbuf_append(csc2_expr, "\"");
 
                 idx_part->name =
@@ -4548,6 +5042,12 @@ static void comdb2AddIndexInt(
         char *where_clause;
         size_t where_sz;
 
+        if (gbl_noenv_messages == 0) {
+            extern int gbl_noenv_messages;
+            setError(pParse, SQLITE_ERROR, "Partial index not enabled");
+            goto cleanup;
+        }
+
         where_sz = zEnd - zStart;
         assert(where_sz > 0);
         where_clause = comdb2_strndup(ctx->mem, zStart, where_sz + 1);
@@ -4567,13 +5067,13 @@ static void comdb2AddIndexInt(
       the command.
     */
     if (key->name == 0) {
-        char *keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
-        if (keyname == 0) {
+        char *loc_keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
+        if (loc_keyname == 0) {
             goto oom;
         }
 
-        gen_key_name(key, ctx->schema->name, keyname, MAXGENKEYLEN);
-        key->name = keyname;
+        gen_key_name(key, ctx->schema->name, loc_keyname, MAXGENKEYLEN);
+        key->name = loc_keyname;
     }
 
     /*
@@ -4743,6 +5243,15 @@ void comdb2CreateIndex(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     Vdbe *v;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
@@ -4879,7 +5388,6 @@ static int
 find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
                                   struct comdb2_constraint *constraint)
 {
-    void *comdb2_get_ddl_context(char *name);
     struct comdb2_ddl_context *clnt_ctx = NULL;
     struct comdb2_key *key;
 
@@ -4910,6 +5418,53 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     return 1;
 }
 
+/* Set the constraint name. Also check whether another
+ * constraint exists with the same name.
+ */
+static int set_constraint_name(Parse *pParse,
+                               struct comdb2_constraint *constraint)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char constraint_name_buf[MAXCONSLEN + 1];
+    char *constraint_name;
+
+    if (pParse->constraintName.n == 0) {
+        /* Generate the constraint name. */
+        gen_constraint_name(constraint, constraint_name_buf,
+                            sizeof(constraint_name_buf));
+        constraint_name = constraint_name_buf;
+    } else {
+        if (pParse->constraintName.n > MAXCONSLEN) {
+            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
+            return 1;
+        }
+        memcpy(constraint_name_buf, pParse->constraintName.z,
+               pParse->constraintName.n);
+        constraint_name_buf[pParse->constraintName.n] = 0;
+        constraint_name = constraint_name_buf;
+        sqlite3Dequote(constraint_name);
+    }
+
+    /* Check whether a similar constraint already exists. */
+    if ((find_cons_by_name(ctx, constraint_name, CONS_ALL))) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
+                        constraint_name);
+        return 1;
+    }
+
+    /* Don't use auto-generated constraint name for foreign keys. */
+    if (pParse->constraintName.n > 0 || constraint->type != CONS_FKEY) {
+        constraint->name = comdb2_strdup(ctx->mem, constraint_name);
+        if (constraint->name == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -4925,8 +5480,6 @@ void comdb2CreateForeignKey(
     struct comdb2_index_part *idx_part;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct dbtable *parent_table;
-    char *constraint_name;
-    char constraint_name_buf[MAXCONSLEN + 1];
     int key_found = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -5105,37 +5658,14 @@ void comdb2CreateForeignKey(
     }
 
 parent_key_found:
-    /* Verify the conststraint action. */
+    /* Verify the constraint action. */
     if ((check_constraint_action(pParse, &flags))) {
         goto cleanup;
     }
     constraint->flags = flags;
+    constraint->type = CONS_FKEY;
 
-    if (pParse->constraintName.n == 0) {
-        /*
-          Check whether a similar constraint already exists.
-
-          Generate the constraint name.
-        */
-        gen_constraint_name2(constraint, constraint_name_buf,
-                             sizeof(constraint_name_buf));
-        constraint_name = constraint_name_buf;
-    } else {
-        if (pParse->constraintName.n > MAXCONSLEN) {
-            setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
-            goto cleanup;
-        }
-        constraint->name = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                          pParse->constraintName.n);
-        if (constraint->name == 0)
-            goto oom;
-        sqlite3Dequote(constraint->name);
-        constraint_name = constraint->name;
-    }
-    if ((find_cons_by_name(ctx, constraint_name))) {
-        pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Constraint '%s' already exists.",
-                        constraint_name);
+    if ((set_constraint_name(pParse, constraint)) != 0) {
         goto cleanup;
     }
 
@@ -5165,9 +5695,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     return;
 }
 
-void comdb2DropForeignKey(Parse *pParse, /* Parser context */
-                          Token *pName   /* Foreign key name */
-)
+static void drop_constraint(Parse *pParse, Token *pName, int type)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -5189,18 +5717,18 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
         goto oom;
     sqlite3Dequote(name);
 
-    /* Check whether the FK exists. */
-    cons = find_cons_by_name(ctx, name);
+    /* Check whether the constraint exists. */
+    cons = find_cons_by_name(ctx, name, type);
     if (cons) {
-        /* Mark FK as dropped. */
+        /* Mark it as dropped. */
         cons->flags |= CONS_DELETED;
     } else {
         pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Foreign key '%s' not found.", name);
+        sqlite3ErrorMsg(pParse, "Constraint '%s' not found.", name);
         goto cleanup;
     }
 
-    /* Foreign key marked for removal. */
+    /* Constraint marked for removal. */
 
     return;
 
@@ -5209,6 +5737,22 @@ oom:
 
 cleanup:
     free_ddl_context(pParse);
+}
+
+void comdb2DropForeignKey(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_FKEY);
+    return;
+}
+
+void comdb2DropConstraint(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    drop_constraint(pParse, pName, CONS_ALL);
+    return;
 }
 
 /*
@@ -5383,6 +5927,15 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_INDEX, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
 
     Vdbe *v;
     struct dbtable *table = NULL;
@@ -5572,22 +6125,41 @@ cleanup:
     return;
 }
 
-void comdb2putTunable(Parse *pParse, Token *name, Token *value)
+void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
-    char *t_name;
+    char t_name[160];
+    char *t_name1;
+    char *t_name2 = NULL;
     char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
 
-    rc = create_string_from_token(NULL, pParse, &t_name, name);
+    rc = create_string_from_token(NULL, pParse, &t_name1, name1);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
+    if (name2 && name2->n > 0) {
+        rc = create_string_from_token(NULL, pParse, &t_name2, name2);
+        if (rc != SQLITE_OK)
+            goto cleanup; /* Error has been set. */
+        snprintf(t_name, sizeof(t_name) - 1, "%s.%s", t_name1, t_name2);
+    } else {
+        snprintf(t_name, sizeof(t_name) - 1, "%s", t_name1);
+    }
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
@@ -5597,7 +6169,8 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     }
 
 cleanup:
-    free(t_name);
+    free(t_name1);
+    free(t_name2);
     free(t_value);
     return;
 }
@@ -5870,5 +6443,167 @@ void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
 out:
     if (t_action)
         free(t_action);
+    free_schema_change_type(sc);
+}
+
+void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
+                              Expr *pCheckExpr,   /* The check expression */
+                              const char *zStart, /* Start of CHECK expr text */
+                              const char *zEnd    /* End of CHECK expr text */
+)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (gbl_legacy_schema) {
+        setError(pParse, SQLITE_ERROR, "CHECK CONSTRAINT not enabled");
+        return;
+    }
+
+    struct comdb2_constraint *constraint;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    size_t check_expr_sz;
+
+    if (use_sqlite_impl(pParse)) {
+        assert(ctx == 0);
+        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        return;
+    }
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_constraint));
+    if (constraint == 0)
+        goto oom;
+
+    constraint->type = CONS_CHECK;
+    /* Get CHECK expression */
+    assert(pCheckExpr && zStart && zEnd);
+    check_expr_sz = zEnd - zStart;
+    assert(check_expr_sz > 0);
+    constraint->check_expr = comdb2_strndup(ctx->mem, zStart, check_expr_sz);
+    if (constraint->check_expr == 0)
+        goto oom;
+
+    /* TODO: (NC) escape quotes? */
+
+    if ((set_constraint_name(pParse, constraint)) != 0) {
+        goto cleanup;
+    }
+
+    /* Add this new constraint to the list. */
+    listc_abl(&ctx->schema->constraint_list, constraint);
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    sqlite3ExprDelete(pParse->db, pCheckExpr);
+    free_ddl_context(pParse);
+    return;
+}
+
+void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
+                        const char *zStmt, int temp)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_VIEW, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    if (temp) {
+        setError(pParse, SQLITE_MISUSE, "Can't create temporary views");
+        return;
+    }
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (view_name_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    } else {
+        memcpy(sc->tablename, view_name, view_name_len);
+    }
+
+    sc->newcsc2 = strdup(zStmt); /* Freed by free_schema_change_type() */
+    if (sc->newcsc2 == NULL) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto out;
+    }
+
+    sc->add_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+    return;
+}
+
+void comdb2_drop_view(Parse *pParse, SrcList *pName)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_DROP_VIEW, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    sc->tablename_len = strlen(pName->a[0].zName);
+    if (sc->tablename_len >= MAXTABLELEN) {
+        setError(pParse, SQLITE_MISUSE, "View name is too long");
+        goto out;
+    }
+    memcpy(sc->tablename, pName->a[0].zName, sc->tablename_len);
+
+    sc->drop_view = 1;
+    sc->nothrevent = 1;
+    sc->type = -1;
+    sc->live = 1;
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
     free_schema_change_type(sc);
 }

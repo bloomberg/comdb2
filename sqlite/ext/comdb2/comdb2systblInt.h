@@ -1,3 +1,6 @@
+#ifndef comdb2systblInt_h
+#define comdb2systblInt_h
+
 #include "sqlite3.h"
 
 #ifdef __cplusplus
@@ -47,10 +50,13 @@ int systblBlkseqInit(sqlite3 *db);
 int systblTimepartInit(sqlite3*db);
 int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
+int systblViewsInit(sqlite3 *);
+int systblSQLClientStats(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
 int systblScStatusInit(sqlite3 *db);
+int systblConnectionsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")
@@ -58,3 +64,5 @@ int systblScStatusInit(sqlite3 *db);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif

@@ -29,6 +29,7 @@ extern "C" {
 
 #include <stdio.h>
 #include <inttypes.h>
+#include <priority_queue.h>
 
 struct thdpool;
 
@@ -64,6 +65,7 @@ struct workitem {
     LINKC_T(struct workitem) linkv;
     int available;
     char *persistent_info;
+    priority_t priority;
 };
 
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
@@ -76,6 +78,7 @@ typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
+void thdpool_destroy(struct thdpool **pool_p);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn);
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
@@ -97,10 +100,12 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 enum {
     THDPOOL_ENQUEUE_FRONT = 0x1,
     THDPOOL_FORCE_DISPATCH = 0x2,
-    THDPOOL_FORCE_QUEUE = 0x4
+    THDPOOL_FORCE_QUEUE = 0x4,
+    THDPOOL_QUEUE_ONLY = 0x8
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags);
+                    int queue_override, char *persistent_info, uint32_t flags,
+                    priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);
@@ -108,9 +113,12 @@ void thdpool_set_wait(struct thdpool *pool, int wait);
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);
 char *thdpool_get_name(struct thdpool *pool);
+priority_t thdpool_get_highest_priority(struct thdpool *pool);
 int thdpool_get_status(struct thdpool *pool);
 int thdpool_get_nthds(struct thdpool *pool);
 int thdpool_get_nfreethds(struct thdpool *pool);
+void thdpool_add_waitthd(struct thdpool *pool);
+void thdpool_remove_waitthd(struct thdpool *pool);
 int thdpool_get_maxthds(struct thdpool *pool);
 int thdpool_get_peaknthds(struct thdpool *pool);
 int thdpool_get_creates(struct thdpool *pool);
@@ -135,11 +143,14 @@ int thdpool_get_dump_on_full(struct thdpool *pool);
 void thdpool_list_pools(void);
 void thdpool_command_to_all(char *line, int lline, int st);
 void thdpool_set_dump_on_full(struct thdpool *pool, int onoff);
+/* TODO: maybe thdpool_set_event_callback, to call for various life cycle events? */
+void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*));
 
 int thdpool_lock(struct thdpool *pool);
 int thdpool_unlock(struct thdpool *pool);
 
 struct thdpool *thdpool_next_pool(struct thdpool *pool);
+
 
 #ifdef __cplusplus
 }

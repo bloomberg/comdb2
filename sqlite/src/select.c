@@ -83,6 +83,11 @@ struct SortCtx {
 #define SORTFLAG_UseSorter  0x01   /* Use SorterOpen instead of OpenEphemeral */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int comdb2_register_limit(int, int);
+extern void comdb2_register_offset(int, int, int);
+extern const char *comdb2_get_dbname(void);
+extern void comdb2_set_verify_remote_schemas(void);
+
 static void _set_src_recording(
   Parse *pParse,
   Select *pSub
@@ -2253,7 +2258,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    extern int comdb2_register_limit(int, int);
     int is_parallel;
     if( (is_parallel = comdb2_register_limit(iLimit, ++pParse->nMem))!=0 ){
       sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, pParse->nMem);
@@ -2268,7 +2272,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      extern void comdb2_register_offset(int, int, int);
       if( is_parallel ){
         comdb2_register_offset(iOffset, iOffset+1, ++pParse->nMem);
         sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, pParse->nMem);
@@ -5397,7 +5400,7 @@ static void finalizeAggFunctions(Parse *pParse, AggInfo *pAggInfo){
 **
 ** If regAcc is non-zero and there are no min() or max() aggregates
 ** in pAggInfo, then only populate the pAggInfo->nAccumulator accumulator
-** registers i register regAcc contains 0. The caller will take care
+** registers if register regAcc contains 0. The caller will take care
 ** of setting and clearing regAcc.
 */
 static void updateAccumulator(Parse *pParse, int regAcc, AggInfo *pAggInfo){
@@ -5502,7 +5505,6 @@ static int sql_has_remotes(
   int i;
 
   for(i=0;i<pList->nSrc; i++){
-    extern const char *comdb2_get_dbname(void);
     char *dbname = pList->a[i].zDatabase;
     if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
             strcasecmp(dbname, comdb2_get_dbname())) {
@@ -5596,7 +5598,9 @@ static struct SrcList_item *isSelfJoinView(
       ** names in the same FROM clause. */
       continue;
     }
-    if( sqlite3ExprCompare(0, pThis->pSelect->pWhere, pS1->pWhere, -1) ){
+    if( sqlite3ExprCompare(0, pThis->pSelect->pWhere, pS1->pWhere, -1)
+     || sqlite3ExprCompare(0, pThis->pSelect->pHaving, pS1->pHaving, -1) 
+    ){
       /* The view was modified by some other optimization such as
       ** pushDownWhereTerms() */
       continue;
@@ -5621,7 +5625,8 @@ static struct SrcList_item *isSelfJoinView(
 **   *  The subquery is a UNION ALL of two or more terms
 **   *  The subquery does not have a LIMIT clause
 **   *  There is no WHERE or GROUP BY or HAVING clauses on the subqueries
-**   *  The outer query is a simple count(*)
+**   *  The outer query is a simple count(*) with no WHERE clause or other
+**      extraneous syntax.
 **
 ** Return TRUE if the optimization is undertaken.
 */
@@ -5632,6 +5637,8 @@ static int countOfViewOptimization(Parse *pParse, Select *p){
   sqlite3 *db;
   if( (p->selFlags & SF_Aggregate)==0 ) return 0;   /* This is an aggregate */
   if( p->pEList->nExpr!=1 ) return 0;               /* Single result column */
+  if( p->pWhere ) return 0;
+  if( p->pGroupBy ) return 0;
   pExpr = p->pEList->a[0].pExpr;
   if( pExpr->op!=TK_AGG_FUNCTION ) return 0;        /* Result is an aggregate */
   if( sqlite3_stricmp(pExpr->u.zToken,"count") ) return 0;  /* Is count() */
@@ -5761,7 +5768,6 @@ int sqlite3Select(
     if( pParse->checkSchema == 1 /* parsing error */ && 
             pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
                 strlen("no such column")) == 0){
-      extern void comdb2_set_verify_remote_schemas(void);
       if (sql_has_remotes(pParse, p->pSrc)) {
         comdb2_set_verify_remote_schemas();
       }
@@ -5881,8 +5887,8 @@ int sqlite3Select(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( !pParse->ast ) pParse->ast = ast_init();
-  ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
+  ast_t *ast = ast_init(pParse, __func__);
+  if( ast ) ast_push(ast, AST_TYPE_SELECT, v, p);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()

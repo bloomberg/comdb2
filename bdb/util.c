@@ -40,6 +40,8 @@
 #include <memory_sync.h>
 #include <logmsg.h>
 
+extern int __dbreg_get_name(DB_ENV *dbenv, u_int8_t *fid, char **);
+
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 {
     return (bdb_state->ixdups[ixnum] || bdb_state->ixnulls[ixnum]);
@@ -167,8 +169,6 @@ void bdb_lock_name(bdb_state_type *bdb_state, char *s, size_t slen,
     char *namep;
 
     if (lockid_len == sizeof(struct __db_ilock)) {
-        extern int __dbreg_get_name(DB_ENV * dbenv, u_int8_t * fid, char **);
-
         memcpy(&pgno, lockid, sizeof(db_pgno_t));
         fidp = (u_int32_t *)(ptr + sizeof(db_pgno_t));
         type = *(u_int32_t *)(ptr + sizeof(db_pgno_t) + DB_FILE_ID_LEN);

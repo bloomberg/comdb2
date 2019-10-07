@@ -432,7 +432,7 @@ start_loading(DBC *dbc)
 	start_loading_async_cb(job);
 #else
 	rc = thdpool_enqueue(gbl_udppfault_thdpool, start_loading_async_pp, job,
-	    0, NULL, 0);
+	    0, NULL, 0, PRIORITY_T_DEFAULT);
 #endif
 	return rc;
 }

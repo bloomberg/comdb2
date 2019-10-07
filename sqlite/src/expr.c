@@ -18,6 +18,11 @@
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "logmsg.h"
+
+
+extern int comdb2genidcontainstime(void);
+extern char* fdb_table_name(int iTable);
+extern const char* comdb2_get_sql(void);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Forward declarations */
@@ -871,7 +876,7 @@ Expr *sqlite3PExpr(
     p = sqlite3DbMallocRawNN(pParse->db, sizeof(Expr));
     if( p ){
       memset(p, 0, sizeof(Expr));
-      p->op = op & TKFLG_MASK;
+      p->op = op & 0xff;
       p->iAgg = -1;
     }
     sqlite3ExprAttachSubtrees(pParse->db, p, pLeft, pRight);
@@ -1336,7 +1341,7 @@ static Expr *exprDup(sqlite3 *db, Expr *p, int dupFlags, u8 **pzBuffer){
 static With *withDup(sqlite3 *db, With *p){
   With *pRet = 0;
   if( p ){
-    int nByte = sizeof(*p) + sizeof(p->a[0]) * (p->nCte-1);
+    sqlite3_int64 nByte = sizeof(*p) + sizeof(p->a[0]) * (p->nCte-1);
     pRet = sqlite3DbMallocZero(db, nByte);
     if( pRet ){
       int i;
@@ -1604,7 +1609,7 @@ ExprList *sqlite3ExprListAppend(
   }else if( (pList->nExpr & (pList->nExpr-1))==0 ){
     ExprList *pNew;
     pNew = sqlite3DbRealloc(db, pList, 
-             sizeof(*pList)+(2*pList->nExpr - 1)*sizeof(pList->a[0]));
+         sizeof(*pList)+(2*(sqlite3_int64)pList->nExpr-1)*sizeof(pList->a[0]));
     if( pNew==0 ){
       goto no_mem;
     }
@@ -2219,12 +2224,19 @@ int sqlite3IsRowid(const char *z){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsComdb2Rowid(const char *z){
+int sqlite3IsComdb2Rowid(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
   return (sqlite3StrICmp(z, "COMDB2_ROWID") == 0);
 }
 
-int sqlite3IsComdb2RowTimestamp(const char *z){
-  extern int comdb2genidcontainstime(void);
+int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
   if (comdb2genidcontainstime()){
       return 
           (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
@@ -2778,8 +2790,8 @@ void sqlite3CodeRhsOfIN(
 
   if( ExprHasProperty(pExpr, EP_xIsSelect) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( !pParse->ast ) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
+    ast_t *ast = ast_init(pParse, __func__);
+    if( ast ) ast_push(ast, AST_TYPE_IN, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* Case 1:     expr IN (SELECT ...)
     **
@@ -5121,6 +5133,17 @@ static int impliesNotNullRow(Walker *pWalker, Expr *pExpr){
 */
 int sqlite3ExprImpliesNonNullRow(Expr *p, int iTab){
   Walker w;
+  p = sqlite3ExprSkipCollate(p);
+  while( p ){
+    if( p->op==TK_NOTNULL ){
+      p = p->pLeft;
+    }else if( p->op==TK_AND ){
+      if( sqlite3ExprImpliesNonNullRow(p->pLeft, iTab) ) return 1;
+      p = p->pRight;
+    }else{
+      break;
+    }
+  }
   w.xExprCallback = impliesNotNullRow;
   w.xSelectCallback = 0;
   w.xSelectCallback2 = 0;
@@ -5512,8 +5535,7 @@ void sqlite3ClearTempRegCache(Parse *pParse){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "vdbeInt.h"
 
-extern char* fdb_table_name(int iTable);
-static char *print_mem(Mem *m){
+char *print_mem(Mem *m){
   int flg = m->flags & MEM_TypeMask;
   char *hex = "0123456789ABCDEF";
 
@@ -5536,7 +5558,7 @@ static char *print_mem(Mem *m){
       }
       key[2*m->n] = '\0';
 
-      return sqlite3_mprintf("x'%s'", key);
+      return sqlite3_mprintf("x'%q'", key);
     }
     case MEM_Datetime: {
       char tmp[256];
@@ -5545,7 +5567,7 @@ static char *print_mem(Mem *m){
 	return sqlite3_mprintf("???");
       }
 
-      return sqlite3_mprintf("\"%s\"", tmp);
+      return sqlite3_mprintf("'%q'", tmp);
     }
   }
   /** TODO: should I return NULL here? */
@@ -5726,10 +5748,8 @@ char * binary_op(int op){
     case TK_TO_REAL:
     case TK_TO_DECIMAL:
     case TK_ISNOT:
-    case TK_END_OF_FILE:
     case TK_ILLEGAL:
     case TK_SPACE:
-    case TK_UNCLOSED_STRING:
     case TK_FUNCTION:
     case TK_COLUMN:
     case TK_AGG_FUNCTION:
@@ -5743,7 +5763,6 @@ char * binary_op(int op){
   return "???????";
 }
 
-extern const char* comdb2_get_sql(void);
 #include "comdb2.h"
 #include "dohsql.h"
 
@@ -5796,7 +5815,7 @@ static char* sqlite3ExprDescribe_inner(
     case TK_COMMA:
         break;
     case TK_ID:
-        return sqlite3_mprintf("%s", pExpr->u.zToken);
+        return sqlite3_mprintf("\"%w\"", pExpr->u.zToken);
     case TK_INDEXED:
     case TK_ABORT:
     case TK_ACTION:
@@ -6231,10 +6250,8 @@ static char* sqlite3ExprDescribe_inner(
     case TK_TO_REAL:
     case TK_TO_DECIMAL:
     case TK_ISNOT:
-    case TK_END_OF_FILE:
     case TK_ILLEGAL:
-    case TK_SPACE:
-    case TK_UNCLOSED_STRING: {
+    case TK_SPACE: {
       break;
     }
     case TK_FUNCTION: {
@@ -6271,7 +6288,7 @@ default_prec:
             if(pExpr->x.pList) 
             {
                 assert(pExpr->x.pList->nExpr == 1);
-                return sqlite3_mprintf("now(\'%s\')", 
+                return sqlite3_mprintf("now('%q')", 
                                        pExpr->x.pList->a[0].pExpr->u.zToken);
             }
             else
@@ -6328,11 +6345,7 @@ default_prec:
         name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
         break;
       }
-      if( atRuntime ){
-        return sqlite3_mprintf("\"%q\"", name);
-      }else{
-        return sqlite3_mprintf("%q", name);
-      }
+      return sqlite3_mprintf("\"%w\"", name);
     }
     case TK_AGG_FUNCTION:
     case TK_AGG_COLUMN: {

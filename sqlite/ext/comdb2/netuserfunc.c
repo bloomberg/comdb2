@@ -61,9 +61,14 @@ static void free_net_userfuncs(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblNetUserfuncsModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblNetUserfuncsInit(sqlite3 *db) {
-    return create_system_table(db, "comdb2_net_userfuncs", get_net_userfuncs,
-            free_net_userfuncs, sizeof(systable_net_userfunc_t),
+    return create_system_table(db, "comdb2_net_userfuncs",
+            &systblNetUserfuncsModule, get_net_userfuncs, free_net_userfuncs,
+            sizeof(systable_net_userfunc_t),
             CDB2_CSTRING, "service", -1, offsetof(systable_net_userfunc_t, service),
             CDB2_CSTRING, "userfunc", -1, offsetof(systable_net_userfunc_t, userfunc),
             CDB2_INTEGER, "count", -1, offsetof(systable_net_userfunc_t, count),

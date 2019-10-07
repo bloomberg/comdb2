@@ -21,22 +21,17 @@
  * Shamelessly based on Peter Martin's bigsnd thread pool.
  */
 
-#include "limit_fortify.h"
+#include <assert.h>
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <sys/time.h>
+#include <strings.h>
 #include "ctrace.h"
-
-#include <unistd.h>
-
 #include <epochlib.h>
 #include <segstring.h>
-
 #include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
@@ -45,14 +40,17 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include <locks_wrap.h>
-
+#include "locks_wrap.h"
 #include "debug_switches.h"
+#include "logmsg.h"
+#include "priority_queue.h"
+#include "comdb2_atomic.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
 #endif
-#include "logmsg.h"
+
+int gbl_random_thdpool_work_timeout = 0;
 
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
@@ -66,6 +64,11 @@ struct thd {
 
     /* Work item that we need to do. */
     struct workitem work;
+
+    /* This is the description of work item in progress.
+     * It is not owned by the thread (thd) structure, do
+     * not free this. */
+    const char *persistent_info;
 
     /* To signal thread if there is work for it. */
     pthread_cond_t cond;
@@ -101,6 +104,8 @@ struct thdpool {
 
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
+    unsigned nactthd;   /* current number of active threads */
+    unsigned nwaitthd;  /* current number of wait/consumer threads */
     unsigned peaknthd;  /* maximum num threads ever */
     unsigned maxqueue;  /* maximum work items to queue */
     unsigned peakqueue; /* peak queue size */
@@ -114,6 +119,7 @@ struct thdpool {
     unsigned num_enqueued;
     unsigned num_dequeued;
     unsigned num_timeout;
+    unsigned num_completed;
     unsigned num_creates;
     unsigned num_exits;
     unsigned num_failed_dispatches;
@@ -126,7 +132,7 @@ struct thdpool {
     /* Work queue, and pool for allocating queued work items.  We only start
      * queueing if all threads are busy and we've hit max threads. */
     pool_t *pool;
-    LISTC_T(struct workitem) queue;
+    priority_queue_t queue;
 
     int exit_on_create_fail;
 
@@ -147,6 +153,7 @@ struct thdpool {
 #ifdef MONITOR_STACK
     comdb2ma stack_alloc;
 #endif
+    void (*queued_callback)(void*);
 };
 
 pthread_mutex_t pool_list_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -240,7 +247,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 #endif
     listc_init(&pool->thdlist, offsetof(struct thd, thdlist_linkv));
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
-    listc_init(&pool->queue, offsetof(struct workitem, linkv));
+    priority_queue_initialize(&pool->queue);
 
     Pthread_mutex_init(&pool->mutex, NULL);
     Pthread_attr_init(&pool->attrs);
@@ -270,16 +277,43 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
+void thdpool_destroy(struct thdpool **pool_p)
+{
+    if (!*pool_p)
+        return;
+    struct thdpool *pool = *pool_p;
+    *pool_p = NULL;
+
+    Pthread_mutex_lock(&pool_list_lk);
+    listc_rfl(&threadpools, pool);
+    Pthread_mutex_unlock(&pool_list_lk);
+
+    Pthread_cond_destroy(&pool->wait_for_thread);
+    Pthread_mutex_destroy(&pool->mutex);
+    Pthread_attr_destroy(&pool->attrs);
+
+    priority_queue_clear(&pool->queue);
+
+    free(pool->busy_hist);
+    pool_free(pool->pool);
+    free(pool->name);
+    free(pool);
+}
+
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
                      void *user)
 {
     LOCK(&pool->mutex)
     {
-        struct workitem *item;
-        LISTC_FOR_EACH(&pool->queue, item, linkv)
-        {
-            (foreach_fn)(pool, item, user);
-        }
+        /*
+        ** NOTE: This cast from thdpool_foreach_fn to
+        **       priority_queue_foreach_fn is "safe"
+        **       because they have more-or-less the
+        **       same type signature (i.e. they both
+        **       take three pointers).
+        */
+        priority_queue_foreach(&pool->queue, pool,
+                (priority_queue_foreach_fn)foreach_fn, user);
     }
     UNLOCK(&pool->mutex);
 }
@@ -378,14 +412,17 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Num work items enqueued   : %u\n", pool->num_enqueued);
         logmsgf(LOGMSG_USER, fh, "  Num work items dequeued   : %u\n", pool->num_dequeued);
         logmsgf(LOGMSG_USER, fh, "  Num work items timeout    : %u\n", pool->num_timeout);
+        logmsgf(LOGMSG_USER, fh, "  Num work items completed  : %u\n", pool->num_completed);
         logmsgf(LOGMSG_USER, fh, "  Num failed dispatches     : %u\n",
                 pool->num_failed_dispatches);
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
         logmsgf(LOGMSG_USER, fh, "  Maximum num threads       : %u\n", pool->maxnthd);
+        logmsgf(LOGMSG_USER, fh, "  Num active threads        : %u\n", pool->nactthd);
+        logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n", pool->nwaitthd);
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue current size   : %u\n",
-                listc_size(&pool->queue));
+                priority_queue_count(&pool->queue));
         logmsgf(LOGMSG_USER, fh, "  Long wait alarm threshold : %u ms\n", pool->longwaitms);
         logmsgf(LOGMSG_USER, fh, "  Thread linger time        : %u seconds\n",
                 pool->lingersecs);
@@ -568,56 +605,60 @@ void thdpool_resume(struct thdpool *pool)
  * is no work. */
 static int get_work_ll(struct thd *thd, struct workitem *work)
 {
-    struct workitem *next;
-
     if (thd->work.available) {
-        memcpy(work, &thd->work, sizeof(*work));
-        thd->work.available = 0;
+        memcpy(work, &thd->work, sizeof(struct workitem));
+        memset(&thd->work, 0, sizeof(struct workitem));
         return 1;
     } else {
-        while ((next = listc_rtl(&thd->pool->queue)) != NULL) {
-            if (thd->pool->maxqueueagems > 0 &&
-                comdb2_time_epochms() - work->queue_time_ms >
-                    thd->pool->maxqueueagems) {
-                if (thd->pool->dque_fn)
-                    thd->pool->dque_fn(thd->pool, next, 1);
+        struct thdpool *pool = thd->pool;
+        struct workitem *next;
+        while ((next = priority_queue_next(&pool->queue)) != NULL) {
+            int force_timeout = 0;
+            if ((thd->pool->maxqueueagems > 0) &&
+                gbl_random_thdpool_work_timeout &&
+                !(rand() % gbl_random_thdpool_work_timeout)) {
+                force_timeout = 1;
+                logmsg(LOGMSG_WARN,
+                       "%s: forcing a random work item timeout\n",
+                       __func__);
+            }
+            if (force_timeout || (thd->pool->maxqueueagems > 0 &&
+                comdb2_time_epochms() - next->queue_time_ms >
+                    pool->maxqueueagems)) {
+                if (pool->dque_fn)
+                    pool->dque_fn(thd->pool, next, 1);
                 if (next->persistent_info) {
                     free(next->persistent_info);
                     next->persistent_info = NULL;
                 }
-                thd->work.work_fn(thd->pool, next->work, NULL, THD_FREE);
-                pool_relablk(thd->pool->pool, next);
+                next->work_fn(pool, next->work, NULL, THD_FREE);
+                pool_relablk(pool->pool, next);
                 thd->pool->num_timeout++;
                 continue;
             }
 
-            if (thd->pool->dque_fn)
-                thd->pool->dque_fn(thd->pool, next, 0);
+            if (pool->dque_fn)
+                pool->dque_fn(pool, next, 0);
             memcpy(work, next, sizeof(*work));
-            pool_relablk(thd->pool->pool, next);
-            thd->pool->num_dequeued++;
-            thd->work.persistent_info = next->persistent_info;
+            pool_relablk(pool->pool, next);
+            pool->num_dequeued++;
             return 1;
         }
         return 0;
     }
 }
 
-// call after obtaining pool lock
-static inline void free_work_persistent_info(struct thd *thd,
-                                             struct workitem *work)
-{
-    free(work->persistent_info);
-    if (thd->work.persistent_info == work->persistent_info)
-        thd->work.persistent_info = NULL;
-    work->persistent_info = NULL;
-}
-
 static void *thdpool_thd(void *voidarg)
 {
-    int check_exit = 0;
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
+
+    ATOMIC_ADD32(pool->nactthd, 1);
+
+    logmsg(LOGMSG_DEBUG, "%s(%s): thread going active: %u active\n",
+           __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
+
+    int check_exit = 0;
     void *thddata = NULL;
 
     thdpool_thdinit_fn init_fn;
@@ -625,13 +666,13 @@ static void *thdpool_thd(void *voidarg)
 
     thread_started("thdpool");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = pool->name;
-#endif
+    THREAD_TYPE(pool->name);
     thd->archtid = getarchtid();
 
     if (pool->per_thread_data_sz > 0) {
         thddata = alloca(pool->per_thread_data_sz);
+        assert(thddata != NULL);
+        memset(thddata, 0, pool->per_thread_data_sz);
     }
 
     init_fn = pool->init_fn;
@@ -645,23 +686,22 @@ static void *thdpool_thd(void *voidarg)
 
         LOCK(&pool->mutex)
         {
-            if (work.persistent_info) {
-                free_work_persistent_info(thd, &work);
-            }
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
 
-            if (pool->maxnthd > 0 && listc_size(&pool->thdlist) > pool->maxnthd)
+            if (pool->maxnthd > 0 &&
+                listc_size(&pool->thdlist) > (pool->maxnthd + pool->nwaitthd))
                 check_exit = 1;
             else
                 check_exit = 0;
 
-            if (pool->wait && pool->waiting_for_thread)
+            if (pool->waiting_for_thread)
                 Pthread_cond_signal(&pool->wait_for_thread);
 
             /* Get work.  If there is no work then place us on the free
              * list and wait for work. */
+            memset(&work, 0, sizeof(struct workitem)); /* work is output, zero first */
             while (!get_work_ll(thd, &work)) {
                 int rc = 0;
                 if (listc_size(&pool->thdlist) > pool->minnthd && !ts) {
@@ -718,6 +758,13 @@ static void *thdpool_thd(void *voidarg)
             /* We have work.  We will already have been removed from the
              * free list by the enqueue function so just take our work
              * parameters, release lock and do it. */
+
+            /* Since there is (now) no escape from this code path without
+             * actually performing the work, set the thread state for the
+             * current work in progress, obtained from get_work_ll, while
+             * still holding the pool lock. */
+
+            thd->persistent_info = work.persistent_info;
         }
         UNLOCK(&pool->mutex);
 
@@ -728,14 +775,29 @@ static void *thdpool_thd(void *voidarg)
         }
 
         work.work_fn(pool, work.work, thddata, THD_RUN);
+        ATOMIC_ADD32(pool->num_completed, 1);
+
+        /* work is no longer pending, reset thread state for
+         * the current work in progress before doing anything
+         * else.  this should make it as accurate as possible
+         * from the perspective of other threads that may need
+         * to examine it. */
+        LOCK(&pool->mutex) {
+            thd->persistent_info = NULL;
+            if (work.persistent_info != NULL) {
+                free(work.persistent_info);
+                work.persistent_info = NULL;
+            }
+        }
+        UNLOCK(&pool->mutex);
 
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
         if (check_exit) {
             LOCK(&pool->mutex)
             {
-                if (pool->maxnthd > 0 &&
-                    listc_size(&pool->thdlist) > pool->maxnthd) {
+                if (pool->maxnthd > 0 && listc_size(&pool->thdlist) >
+                                             (pool->maxnthd + pool->nwaitthd)) {
                     listc_rfl(&pool->thdlist, thd);
                     if (thd->on_freelist)
                         abort();
@@ -752,11 +814,6 @@ static void *thdpool_thd(void *voidarg)
     }
 thread_exit:
 
-    if (work.persistent_info) {
-        LOCK(&pool->mutex) { free_work_persistent_info(thd, &work); }
-        UNLOCK(&pool->mutex);
-    }
-
     delt_fn = pool->delt_fn;
     if (delt_fn)
         delt_fn(pool, thddata);
@@ -767,15 +824,26 @@ thread_exit:
 
     free(thd);
 
+    logmsg(LOGMSG_DEBUG, "%s(%s): thread going inactive: %u active\n",
+           __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
+
+    ATOMIC_ADD32(pool->nactthd, -1);
     return NULL;
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags)
+                    int queue_override, char *persistent_info, uint32_t flags,
+                    priority_t priority)
 {
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
+    int queue_only = (flags & THDPOOL_QUEUE_ONLY);
+
+    /* If the special "enqueue at front" flag is set, only default priority
+     * to highest (i.e. using a[nother] specific priority overrides flag). */
+    if (enqueue_front && (priority == PRIORITY_T_DEFAULT))
+        priority = PRIORITY_T_HEAD;
 
     /* If queue_override is true, try to enqueue unless hitting maxqoverride;
        If force_queue is true, enqueue regardless. */
@@ -788,6 +856,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         struct thd *thd;
         struct workitem *item = NULL;
         unsigned nbusy;
+        int did_create = 0;
 
         if (pool->stopped) {
             pool->num_failed_dispatches++;
@@ -828,8 +897,13 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
      * work item to the new thread. */
     again:
         thd = listc_rtl(&pool->freelist);
-        if (!thd && (force_dispatch || pool->maxnthd == 0 ||
-                     listc_size(&pool->thdlist) < pool->maxnthd)) {
+        if (thd) {
+            assert(thd->on_freelist);
+            thd->on_freelist = 0;
+        }
+        if (!thd &&
+            (force_dispatch || pool->maxnthd == 0 ||
+             listc_size(&pool->thdlist) < (pool->maxnthd + pool->nwaitthd))) {
             int rc;
 
             thd = calloc(1, sizeof(struct thd));
@@ -873,42 +947,55 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             if (listc_size(&pool->thdlist) > pool->peaknthd) {
                 pool->peaknthd = listc_size(&pool->thdlist);
             }
+            did_create = 1;
             pool->num_creates++;
         }
 
-        if (thd == NULL && pool->wait) {
+        if ((queue_only && did_create) || (thd == NULL && pool->wait)) {
 
             pool->waiting_for_thread = 1;
             Pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
             pool->waiting_for_thread = 0;
 
-            goto again;
+            if (!queue_only) goto again;
         }
 
-        if (thd) {
+        if (!queue_only && thd) {
             item = &thd->work;
-            thd->on_freelist = 0;
             pool->num_passed++;
         } else {
-            if (listc_size(&pool->queue) >= pool->maxqueue) {
+#ifndef NDEBUG
+            /* TODO: Carefully evaluate this code for non-debug builds. */
+            /* if there are no active threads (i.e. we did not start one?),
+             * there may not be much point in queueing an event that may
+             * never be processed? */
+            if (ATOMIC_LOAD32(pool->nactthd) == 0) {
+                logmsg(LOGMSG_WARN, "%s(%s): queue with no threads active?\n",
+                       __func__, pool->name);
+            }
+#endif
+            /* queue work */
+            int queue_count = priority_queue_count(&pool->queue);
+
+            if (queue_count >= pool->maxqueue) {
                 if (force_queue ||
                     (queue_override &&
                      (enqueue_front || !pool->maxqueueoverride ||
-                      listc_size(&pool->queue) <
+                      queue_count <
                           (pool->maxqueue + pool->maxqueueoverride)))) {
-                    if (thdpool_alarm_on_queing(listc_size(&pool->queue))) {
+                    if (thdpool_alarm_on_queing(queue_count)) {
                         int now = comdb2_time_epoch();
 
                         if (now > pool->last_queue_alarm ||
-                            listc_size(&pool->queue) > pool->last_alarm_max) {
+                            queue_count > pool->last_alarm_max) {
                             logmsg(LOGMSG_USER, "%d Queing sql, queue size=%d. "
                                             "max_queue=%d "
                                             "max_queue_override=%d\n",
-                                    __LINE__, listc_size(&pool->queue),
+                                    __LINE__, queue_count,
                                     pool->maxqueue, pool->maxqueueoverride);
 
                             pool->last_queue_alarm = now;
-                            pool->last_alarm_max = listc_size(&pool->queue);
+                            pool->last_alarm_max = queue_count;
                         }
                     }
                 } else {
@@ -916,7 +1003,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         logmsg(LOGMSG_USER, "%d FAILED to queue sql, queue "
                                         "size=%d. max_queue=%d "
                                         "max_queue_override=%d\n",
-                                __LINE__, listc_size(&pool->queue),
+                                __LINE__, queue_count,
                                 pool->maxqueue, pool->maxqueueoverride);
                     }
 
@@ -939,8 +1026,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                             {
                                 crt++;
                                 ctrace("%d. %s\n", crt,
-                                       (thd->work.persistent_info)
-                                           ? thd->work.persistent_info
+                                       (thd->persistent_info)
+                                           ? thd->persistent_info
                                            : "NULL");
                             }
                             ctrace(" === Done (%d sql queries)\n", crt);
@@ -967,14 +1054,24 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         pool->name);
                 return -1;
             }
-            pool->num_enqueued++;
-            if (enqueue_front)
-                listc_atl(&pool->queue, item);
-            else
-                listc_abl(&pool->queue, item);
+            int queue_rc = priority_queue_add(&pool->queue, priority, item);
 
-            if (listc_size(&pool->queue) > pool->peakqueue) {
-                pool->peakqueue = listc_size(&pool->queue);
+            if (queue_rc != 0) {
+                pool_relablk(pool->pool, item);
+                pool->num_failed_dispatches++;
+                errUNLOCK(&pool->mutex);
+                logmsg(LOGMSG_ERROR, "%s(%s):priority_queue_add failed, rc=%d\n",
+                        __func__, pool->name, queue_rc);
+                return -1;
+            }
+
+            pool->num_enqueued++;
+
+            if (pool->queued_callback)
+                pool->queued_callback(work);
+
+            if (queue_count > pool->peakqueue) {
+                pool->peakqueue = queue_count;
             }
         }
 
@@ -983,6 +1080,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         item->persistent_info = persistent_info;
         item->queue_time_ms = comdb2_time_epochms();
         item->available = 1;
+        item->priority = priority;
 
         /* Now wake up the thread with work to do. */
         if (!thd) {
@@ -1003,6 +1101,11 @@ char *thdpool_get_name(struct thdpool *pool)
     return pool->name;
 }
 
+priority_t thdpool_get_highest_priority(struct thdpool *pool)
+{
+    return priority_queue_highest(&pool->queue);
+}
+
 int thdpool_get_status(struct thdpool *pool)
 {
     return pool->stopped;
@@ -1016,6 +1119,16 @@ int thdpool_get_nthds(struct thdpool *pool)
 int thdpool_get_nfreethds(struct thdpool *pool)
 {
     return pool->freelist.count;
+}
+
+void thdpool_add_waitthd(struct thdpool *pool)
+{
+    pool->nwaitthd++;
+}
+
+void thdpool_remove_waitthd(struct thdpool *pool)
+{
+    pool->nwaitthd--;
 }
 
 int thdpool_get_maxthds(struct thdpool *pool)
@@ -1085,7 +1198,7 @@ int thdpool_get_maxqueue(struct thdpool *pool)
 
 int thdpool_get_nqueuedworks(struct thdpool *pool)
 {
-    return listc_size(&pool->queue);
+    return priority_queue_count(&pool->queue);
 }
 
 int thdpool_get_longwaitms(struct thdpool *pool)
@@ -1142,5 +1255,10 @@ struct thdpool *thdpool_next_pool(struct thdpool *pool)
 
 int thdpool_get_queue_depth(struct thdpool *pool)
 {
-    return pool->queue.count;
+    return priority_queue_count(&pool->queue);
+}
+
+void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*)) 
+{
+    pool->queued_callback = callback;
 }

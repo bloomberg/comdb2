@@ -154,7 +154,7 @@ int insert(cdb2_hndl_tp **indb, const char *readnode)
         }
     }
 
-    strncpy(cnonce_begin, cdb2_cnonce(db), sizeof(cnonce_begin));
+    strncpy(cnonce_begin, cdb2_cnonce(db), sizeof(cnonce_begin) - 1);
 
     for (int j = 0; j < inserts_per_txn; j++) {
         snprintf(sql, sizeof(sql),
@@ -280,7 +280,7 @@ int insert(cdb2_hndl_tp **indb, const char *readnode)
             return rc;
         }
 
-        strncpy(cnonce_begin, cdb2_cnonce(db), sizeof(cnonce_begin));
+        strncpy(cnonce_begin, cdb2_cnonce(db), sizeof(cnonce_begin) - 1);
 
         snprintf(sql, sizeof(sql),
                  "insert into jepsen(id, value) values(%d, %d)", i, val);

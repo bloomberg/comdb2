@@ -80,7 +80,7 @@ undone.
 ![upsert-clause](images/upsert-clause.gif)
 
 
-The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
+The ```INSERT``` statement comes in three basic forms. The first form (with the "VALUES" keyword) creates a single new
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
 of columns in the table. If a column-list is specified, then the number of values must match the number of 
 specified columns. Columns of the table that do not appear in the column list are filled with the default value, 
@@ -90,6 +90,11 @@ The second form of the ```INSERT``` statement takes its data from a ```SELECT```
 result of the SELECT must exactly match the number of columns in the table if no column list is specified, or it 
 must match the number of columns named in the column list. A new entry is made in the table for every row of the 
 ```SELECT``` result. The ```SELECT``` may be simple or compound.
+
+The third form of the ```INSERT``` statement is with ```DEFAULT VALUES```. This
+inserts a single new row in the named table populated with default values for
+columns, or with a NULL if no default value is specified as part of column
+definition.
 
 Note that if wrapped in a ```BEGIN```/```COMMIT``` pair, the ```INSERT``` is considered a [deferred](transaction_model.html#immediate-and-deferred-statements)
 statement, and will not return an error (except in the rare case of a connection failure) until ```COMMIT``` time.
@@ -267,7 +272,8 @@ See also:
 ![CREATE PROCEDURE](images/create-proc.gif)
 
 The ```CREATE PROCEDURE``` statement defines a new procedure.  Procedures can be run directly with the 
-```EXEC PROCEDURE``` statement. Defined procedures can also be registered as new SQL functions with the
+```EXEC PROCEDURE``` or ```EXECUTE PROCEDURE``` statements. Defined procedures can also be registered
+as new SQL functions with the
 [CREATE LUA FUNCTION](#create-lua-function) statement, or as triggers with ```CREATE LUA TRIGGER```/
 ```CREATE LUA CONSUMER``` statements.
 
@@ -280,7 +286,7 @@ the [```PUT DEFAULT PROCEDURE```](#put) statement.
 
 For detailed information on writing stored procedures, see the [stored procedures](storedprocs.html) section.
 
-### EXEC PROCEDURE
+### EXEC/EXECUTE PROCEDURE
 
 ![exec procedure](images/exec-procedure.gif)
 
@@ -327,7 +333,7 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in **version R7**, follows the usual standard data
+The second approach, added in version `7.0`, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using this syntax implicitly creates a ```UNIQUE``` index
 named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
@@ -431,7 +437,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in **version R7**, supports the usual standard data
+The second approach, added in version `7.0`, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -479,7 +485,7 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0. Indexes on
+table. The support for ```CREATE INDEX``` was added in version `7.0`. Indexes on
 expression cannot be currently created via this command.
 
 ### DROP INDEX
@@ -489,7 +495,17 @@ expression cannot be currently created via this command.
 The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
 INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
-same name. The support for ```DROP INDEX``` was added in version 7.0.
+same name. The support for ```DROP INDEX``` was added in version `7.0`.
+
+### CREATE VIEW
+
+![CREATE VIEW](images/create-view.gif)
+
+The ```CREATE VIEW``` statement can be used to create a view, which is essentially
+an alias of a SELECT statement. Views cannot be used to modify records. Thus, an
+attempt to INSERT, UPDATE or DELETE on a view would fail. One may think of views
+as READ-ONLY tables. A list of views can be obtained by querying ```comdb2_views```
+system table.
 
 ## Access control
 
@@ -666,6 +682,13 @@ do not need to be quoted. For example, ```SET USER mike``` is correct.  ```SET U
 This sets the current connection's transaction level.  See 
 [transaction levels](transaction_model.html#isolation-levels-and-artifacts) for more details
 
+### SET TRANSACTION CHUNK
+
+This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
+the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
+as a sequence of small lock-footprint transactions.  Currently only supported for bulk inserts in a client specified 
+```BEGIN ... COMMIT``` transaction.
+
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
@@ -761,6 +784,9 @@ Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#cli
 ### SET SSL_CRL
 
 Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_MIN_TLS_VER
+Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
 ## Common syntax rules
 
@@ -918,3 +944,4 @@ partition_info |
 comdb2_host | Returns the hostname on which this query is executing.
 comdb2_dbname | Returns the name of the connected database.
 comdb2_prevquerycost | Returns the cost of the previously executed query, when possible.
+comdb2_user() | Returns the name of the current authenticated user for the session.

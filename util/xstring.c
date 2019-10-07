@@ -997,6 +997,7 @@ char *zoe_strrev(char *s)
     }
     return s;
 }
+#if 0
 /*****************************************************************************
 DESCRIPTION:
         Trims off leading characters by shifting the characters left.
@@ -1032,6 +1033,7 @@ char *strltrims(char *s, const char *trims)
 
     return s;
 }
+#endif
 /*****************************************************************************
 DESCRIPTION:
         Returns a pointer to the first trailing character.

@@ -70,6 +70,9 @@ include_directories(
   ${PROJECT_BINARY_DIR}/sqlite
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
+if(WITH_RDKAFKA)
+  ${RDKAFKA_INCLUDE_DIR}
+endif()
 )
 add_dependencies(lua mem protobuf sqlite)

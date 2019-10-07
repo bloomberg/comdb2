@@ -19,6 +19,9 @@
 #include "translistener.h"
 #include "logmsg.h"
 
+extern int dbqueue_add_consumer(struct dbtable *db, int consumern,
+                                const char *method, int noremove);
+
 int consumer_change(const char *queuename, int consumern, const char *method)
 {
     struct dbtable *db;
@@ -33,9 +36,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     /* Stop everything */
     stop_threads(thedb);
     broadcast_quiesce_threads();
-
-    extern int dbqueue_add_consumer(struct dbtable *db, int consumern, const char *method,
-            int noremove);
 
     /* Do the change.  If it works locally then assume that it will work
      * globally. */

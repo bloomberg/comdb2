@@ -18,7 +18,8 @@
 #define __INCLUDED_COMDB2_INITIALIZER_H
 
 struct comdb2_initializer {
-    int (*initializer_handler)();
+    int (*pre_recovery)();
+    int (*post_recovery)();
 };
 typedef struct comdb2_initializer comdb2_initializer_t;
 

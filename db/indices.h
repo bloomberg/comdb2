@@ -17,8 +17,6 @@
 #ifndef INCLUDED_INDICES_H
 #define INCLUDED_INDICES_H
 
-typedef struct blob_buffer blob_buffer_t;
-
 int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
                      blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                      int *ixfailnum, int *retrc, const char *ondisktag,

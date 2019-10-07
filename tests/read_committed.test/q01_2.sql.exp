@@ -1,6 +1,6 @@
 (rows deleted=0)
 [delete from t1 where 1] rc 0
-[set transaction read commited] rc 0
+[set transaction read committed] rc 0
 [begin] rc 0
 [insert into t1 (a,b) values (2,1)] rc 0
 [insert into t1 (a,b) values (1,2)] rc 0

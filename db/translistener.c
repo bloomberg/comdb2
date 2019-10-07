@@ -38,6 +38,7 @@
 #include <tcputil.h>
 #include <unistd.h>
 #include <logmsg.h>
+#include "str0.h"
 
 struct javasp_trans_state {
     /* Which events we are subscribed for. */
@@ -226,14 +227,6 @@ void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle)
 {
     bzero(javasp_trans_handle, sizeof(struct javasp_trans_state));
     free(javasp_trans_handle);
-}
-
-int javasp_trans_misc_trigger(struct javasp_trans_state *javasp_trans_handle,
-                              int event)
-{
-    if (javasp_trans_handle == NULL)
-        return 0;
-    return 0;
 }
 
 struct byte_buffer {
@@ -904,7 +897,7 @@ struct javasp_rec *javasp_alloc_rec(const void *od_dta, size_t od_len,
     }
     bzero(rec, sizeof(struct javasp_rec));
 
-    strncpy(rec->tablename, tblname, sizeof(rec->tablename));
+    strncpy0(rec->tablename, tblname, sizeof(rec->tablename));
     rec->ondisk_dta = od_dta;
     rec->ondisk_dta_len = od_len;
     rec->schema = schema;
@@ -1137,7 +1130,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
                               const char *paramvalue)
 {
     char *resource;
-    char *argv[256];
+    char *argv[256] = {0};
     char *paramcpy = NULL;
     char *endp;
     int argc = 0;
@@ -1274,9 +1267,8 @@ int javasp_load_procedure_int(const char *name, const char *param,
 
             tablename = strtok_r(NULL, toksep, &endp);
             if (tablename == NULL) {
-                logmsg(LOGMSG_ERROR, 
-                        "table takes one argument (table %s, config file %s)\n",
-                        tablename, argv[0]);
+                logmsg(LOGMSG_ERROR,
+                       "table takes one argument (config file %s)\n", argv[0]);
                 rc = -1;
                 goto done;
             }

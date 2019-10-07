@@ -67,12 +67,14 @@ void comdb2DropPrimaryKey(Parse *);
 void comdb2AddIndex(Parse *, Token *, ExprList *, int, Expr *, const char *,
                     const char *, int, u8, int);
 void comdb2AddDbpad(Parse *, int);
+void comdb2AddCheckConstraint(Parse *, Expr *, const char *, const char *);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
                        Token *, Expr *, const char *, const char *, int, int,
                        u8, int, int);
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
 void comdb2DropForeignKey(Parse *, Token *);
+void comdb2DropConstraint(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
 void comdb2DropIndex(Parse *, Token *, Token *, int);
 void comdb2AlterDropIndex(Parse *, Token *);
@@ -125,7 +127,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm);
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);
 void comdb2schemachangeConvertsleep(Parse* pParse, int num);
-void comdb2putTunable(Parse *pParse, Token *name, Token *value);
+void comdb2putTunable(Parse*, Token*, Token*, Token*);
 
 enum
 {

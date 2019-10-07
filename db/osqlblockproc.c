@@ -64,8 +64,10 @@
 #include "comdb2uuid.h"
 #include "bpfunc.h"
 #include "logmsg.h"
+#include "time_accounting.h"
+#include <ctrace.h>
+#include "intern_strings.h"
 #include "dyn_array.h"
-
 #define DEBUG_REORDER 0
 
 int g_osql_blocksql_parallel_max = 5;
@@ -107,6 +109,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
+extern const char *get_tablename_from_rpl(unsigned long long rqid,
+                                          const char *rpl, int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -122,8 +126,8 @@ static int req2blockop(int reqtype);
  *
  * key will compare by rqid, uuid, table, stripe, genid, is_rec, then sequence
  */
-static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
-                              int key2len, const void *key2)
+int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
+                       int key2len, const void *key2)
 {
     assert(sizeof(oplog_key_t) == key1len);
     assert(sizeof(oplog_key_t) == key2len);
@@ -219,6 +223,29 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         dyn_array_init(&tran->add_osql_rows, thedb->bdb_env);
         dyn_array_set_cmpr(&tran->add_osql_rows, osql_bplog_instbl_key_cmp);
     }
+    /*
+    tran->db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
+    if (!tran->db || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
+        free(tran);
+        return -1;
+    }
+
+    bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
+
+    if (sess->is_reorder_on) {
+        tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
+        if (!tran->db_ins) {
+            // We can stll work without a INS table
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to create temp table for INS bdberr=%d\n",
+                   __func__, bdberr);
+        } else
+            bdb_temp_table_set_cmp_func(tran->db_ins,
+                                        osql_bplog_instbl_key_cmp);
+    }
+    */
 
     tran->dowait = 1;
 
@@ -258,8 +285,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             /* this is socksql, recom, snapisol or serial; no retry here
              */
             generr.errval = ERR_INTERNAL;
-            strncpy(generr.errstr, "master cancelled transaction",
-                    sizeof(generr.errstr));
+            strncpy0(generr.errstr, "master cancelled transaction",
+                     sizeof(generr.errstr));
             xerr = &generr;
             error = 1;
             break;
@@ -276,7 +303,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     }
 
     /* please stop !!! */
-    if (thedb->stopped || thedb->exiting) {
+    if (db_is_stopped()) {
         if (stop_time == 0) {
             stop_time = comdb2_time_epoch();
         } else {
@@ -366,12 +393,8 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
         sc = iq->sc;
     }
-    if (rc) {
-        extern pthread_mutex_t csc2_subsystem_mtx;
-        Pthread_mutex_lock(&csc2_subsystem_mtx);
+    if (rc)
         csc2_free_all();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-    }
     if (rc == ERR_NOMASTER) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
@@ -396,6 +419,62 @@ int osql_bplog_schemachange(struct ireq *iq)
     return rc;
 }
 
+typedef struct {
+    struct ireq *iq;
+    void *trans;
+    struct block_err *err;
+} ckgenid_state_t;
+
+static int pselectv_callback(void *arg, const char *tablename, int tableversion,
+                             unsigned long long genid)
+{
+    ckgenid_state_t *cgstate = (ckgenid_state_t *)arg;
+    struct ireq *iq = cgstate->iq;
+    void *trans = cgstate->trans;
+    struct block_err *err = cgstate->err;
+    int rc, bdberr = 0;
+
+    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans)) != 0) {
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            return RC_INTERNAL_RETRY;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            return ERR_INTERNAL;
+        }
+    }
+
+    if ((rc = osql_set_usedb(iq, tablename, tableversion, 0, err)) != 0) {
+        return rc;
+    }
+
+    if ((rc = ix_check_genid_wl(iq, trans, genid, &bdberr)) != 0) {
+        if (rc != 1) {
+            unsigned long long lclgenid = bdb_genid_to_host_order(genid);
+            if ((bdberr == 0 && rc == 0) ||
+                (bdberr == IX_PASTEOF && rc == -1)) {
+                err->ixnum = -1;
+                err->errcode = ERR_CONSTR;
+                ctrace("constraints error, no genid %llx (%llu)\n", lclgenid,
+                       lclgenid);
+                reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
+                          "constraints error, no genid");
+                return ERR_CONSTR;
+            }
+
+            if (bdberr != RC_INTERNAL_RETRY) {
+                reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
+                          "unable to find genid =%llx rc=%d", lclgenid, bdberr);
+            }
+
+            return bdberr;
+        }
+    }
+    return 0;
+}
+
 /**
  * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
@@ -404,7 +483,16 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int rc = 0;
+    ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
+    int rc;
+
+    /* Pre-process selectv's, getting a writelock on rows that are later updated
+     */
+    if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
+                                   pselectv_callback, &cgstate)) != 0) {
+        iq->timings.req_applied = osql_log_time();
+        return rc;
+    }
 
     /* apply changes */
     rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
@@ -456,12 +544,9 @@ char *osql_get_tran_summary(struct ireq *iq)
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
         int sz = 128;
-        int min_rtt = INT_MAX;
-        int max_rtt = 0;
-        int min_tottm = INT_MAX;
-        int max_tottm = 0;
-        int min_rtrs = 0;
-        int max_rtrs = 0;
+        int rtt = 0;
+        int tottm = 0;
+        int rtrs = 0;
 
         ret = (char *)malloc(sz);
         if (!ret) {
@@ -470,24 +555,13 @@ char *osql_get_tran_summary(struct ireq *iq)
         }
 
         if (tran->iscomplete) {
-            int crt_tottm = 0;
-            int crt_rtt = 0;
-            int crt_rtrs = 0;
-
-            osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
-
-            min_tottm = (min_tottm < crt_tottm) ? min_tottm : crt_tottm;
-            max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
-            min_rtt = (min_rtt < crt_rtt) ? min_rtt : crt_rtt;
-            max_rtt = (max_rtt > crt_rtt) ? max_rtt : crt_rtt;
-            min_rtrs = (min_rtrs < crt_rtrs) ? min_rtrs : crt_rtrs;
-            max_rtrs = (max_rtrs > crt_rtrs) ? max_rtrs : crt_rtrs;
+            osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
         }
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]", nametype,
-                 min_tottm, max_tottm, min_rtt, max_rtt, min_rtrs, max_rtrs);
+        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype, tottm, rtt,
+                 rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -575,18 +649,17 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
-void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
-                       oplog_key_t *key)
+void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
+                       struct ireq *iq, char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        extern const char *get_tablename_from_rpl(const char *rpl);
-        const char *tablename = get_tablename_from_rpl(rpl);
+        const char *tablename = get_tablename_from_rpl(rqid, rpl, NULL);
         assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
             sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
@@ -597,6 +670,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         }
         break;
     }
+    case OSQL_RECGENID:
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
@@ -631,10 +705,14 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         assert(key->stripe >= 0);
         break;
     }
-    case OSQL_RECGENID: {
-        key->tbl_idx = sess->tbl_idx;
+    /* This doesn't touch btrees and should be processed first */
+    case OSQL_SERIAL:
+    case OSQL_SELECTV:
+        key->tbl_idx = 0;
+        key->genid = 0;
+        key->stripe = 0;
+        key->is_rec = 0;
         break;
-    }
     default:
         break;
     }
@@ -676,7 +754,7 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     sorese_info.type = -1; /* I don't need it */
 
     generr.errval = errval;
-    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+    strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
     int rc =
         osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
@@ -753,8 +831,20 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
+    if (type == OSQL_USEDB &&
+        (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
+        int tableversion = 0;
+        const char *tablename =
+            get_tablename_from_rpl(rqid, rpl, &tableversion);
+        sess->table = intern(tablename);
+        sess->tableversion = tableversion;
+    }
+
+    if (sess->selectv_writelock_on_update)
+        osql_cache_selectv(type, sess, rqid, rpl);
+
     if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, iq, rpl, &key);
+        setup_reorder_key(type, sess, rqid, iq, rpl, &key);
     }
 
     DEBUG_PRINT_TMPBL_SAVING();
@@ -763,7 +853,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (sess->last_is_ins)
         arr = &tran->add_osql_rows;
 
-    rc_op = dyn_array_append(arr, &key, sizeof(key), rpl, rplen);
+    ACCUMULATE_TIMING(CHR_TMPSVOP,
+        rc_op = dyn_array_append(arr, &key, sizeof(key), rpl, rplen););
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d\n",
                __func__, sess->seq, rc_op);
@@ -1097,18 +1188,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 }
 
 /**
- * Signal blockprocessor that one has completed
- * For now this is used only for
- *
- */
-int osql_bplog_session_is_done(struct ireq *iq)
-{
-    blocksql_tran_t *tran = iq->blocksql_tran;
-    if (tran) return 0;
-    return -1;
-}
-
-/**
  * Set parallelism threshold
  *
  */
@@ -1270,7 +1349,6 @@ static int process_this_session(
     uuid_t uuid;
 
     iq->queryid = osql_sess_queryid(sess);
-
     osql_sess_getuuid(sess, uuid);
 
     if (rqid != OSQL_RQID_USE_UUID)
@@ -1280,6 +1358,7 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     logmsg(LOGMSG_DEBUG, "OSQL ");
     dyn_array_dump(&tran->osql_rows);
@@ -1321,6 +1400,9 @@ static int process_this_session(
     if (rc)
         return rc;
 
+    /* if only one row add/upd/del then no need to reorder indices */
+    if (sess->tran_rows <= 1)
+        flags |= OSQL_DONT_REORDER_IDX;
 
     while (!rc && !rc_out) {
         char *data = NULL;

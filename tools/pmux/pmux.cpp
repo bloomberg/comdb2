@@ -298,7 +298,7 @@ static void init_router_mode()
 
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
+    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path) - 1);
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
@@ -406,7 +406,6 @@ static void dealloc_svc_running_on_port(int port)
     for (std::map<std::string, int>::iterator it = port_map.begin();
          it != port_map.end(); ++it) {
         if (it->second == port) {
-            int port = it->second;
             pmux_store->del_port(it->first.c_str());
             port_map.erase(it);
             if (is_port_in_range(port))
@@ -574,8 +573,10 @@ static int route_to_instance(char *svc, int fd)
 void disallowed_write(connection &c, char *cmd)
 {
     char *ip = inet_ntoa(c.addr);
+#ifdef VERBOSE
     syslog(LOG_INFO, "attempt to write (%s) from remote connection %s\n", cmd,
            ip);
+#endif
     conn_printf(c, "-1 write requests not permitted from this host\n");
 }
 
@@ -583,7 +584,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
                    connection &c)
 {
     int bad = 0;
-    char *cmd = NULL, *svc = NULL, *sav;
+    char *cmd = nullptr, *svc = nullptr, *sav;
 
 #ifdef VERBOSE
     syslog(LOG_INFO, "%d: cmd: %s\n", fd.fd, in);
@@ -591,13 +592,13 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
 #endif
 
     cmd = strtok_r(in, " ", &sav);
-    if (cmd == NULL)
+    if (cmd == nullptr)
         goto done;
 
     if (strcmp(cmd, "reg") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
                 int port = get_svc_port(svc);
@@ -610,17 +611,17 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "get") == 0) {
-        char *echo = strtok_r(NULL, " ", &sav);
-        if (echo == NULL) {
+        char *echo = strtok_r(nullptr, " ", &sav);
+        if (echo == nullptr) {
             conn_printf(c, "-1 missing service name\n");
         } else {
             if (strcmp(echo, "/echo") == 0) {
-                svc = strtok_r(NULL, " ", &sav);
+                svc = strtok_r(nullptr, " ", &sav);
             } else {
                 svc = echo;
-                echo = NULL;
+                echo = nullptr;
             }
-            if (svc == NULL) {
+            if (svc == nullptr) {
                 conn_printf(c, "-1\n");
             } else {
                 int port = get_svc_port(svc);
@@ -631,8 +632,8 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
             }
         }
     } else if (strcmp(cmd, "rte") == 0) {
-        char *svc = strtok_r(NULL, " ", &sav);
-        if (svc == NULL) {
+        char *svc = strtok_r(nullptr, " ", &sav);
+        if (svc == nullptr) {
             conn_printf(c, "-1\n");
         } else {
             int rc = route_to_instance(svc, fd.fd);
@@ -645,8 +646,8 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
         }
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
                 int rc = dealloc_port(svc);
@@ -657,11 +658,11 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
         }
     } else if (strcmp(cmd, "use") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
-                char *p = strtok_r(NULL, " ", &sav);
+                char *p = strtok_r(nullptr, " ", &sav);
                 int use = p ? atoi(p) : 0;
                 if (use == 0) {
                     conn_printf(c, "-1 missing/invalid port\n");
@@ -681,20 +682,18 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
     } else if (strcmp(cmd, "used") == 0 || strcmp(cmd, "list") == 0) {
         used(c);
     } else if (strcmp(cmd, "hello") == 0) {
-        svc = strtok_r(NULL, " ", &sav);
+        svc = strtok_r(nullptr, " ", &sav);
         if (c.writable && svc != nullptr) {
-            if (svc != nullptr) {
-                c.is_hello = true;
-                {
-                    std::lock_guard<std::mutex> l(active_services_mutex);
-                    active_services.insert(std::string(svc));
-                }
-                c.service = std::string(svc);
-                conn_printf(c, "ok\n");
-#ifdef VERBOSE
-                std::cout << "hello from " << svc << std::endl;
-#endif
+            c.is_hello = true;
+            {
+                std::lock_guard<std::mutex> l(active_services_mutex);
+                active_services.insert(std::string(svc));
             }
+            c.service = std::string(svc);
+            conn_printf(c, "ok\n");
+#ifdef VERBOSE
+            std::cout << "hello from " << svc << std::endl;
+#endif
         } else if (svc == nullptr) {
             conn_printf(c, "-1 missing service name\n");
         } else {
@@ -820,7 +819,7 @@ static bool init_local_names()
     struct hostent *me;
     me = gethostbyname("localhost");
 
-    if (me == NULL) {
+    if (me == nullptr) {
         syslog(LOG_ERR, "gethostbyname(\"localhost\") %d\n", h_errno);
         return false;
     }
@@ -840,13 +839,13 @@ static bool init_local_names()
     return true;
 }
 
-static bool init(std::vector<std::pair<int, int>> port_ranges)
+static bool init(const std::vector<std::pair<int, int>> &pranges)
 {
 
     if (!init_local_names())
         return false;
 
-    for (auto &range : port_ranges) {
+    for (auto &range : pranges) {
 #ifdef VERBOSE
         syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
                range.second);
@@ -918,8 +917,8 @@ static int make_range(char *s, std::pair<int, int> &range)
     std::string orig(s);
     char *sav;
     char *first = strtok_r(s, ":", &sav);
-    char *second = strtok_r(NULL, ":", &sav);
-    if (first == NULL || second == NULL) {
+    char *second = strtok_r(nullptr, ":", &sav);
+    if (first == nullptr || second == nullptr) {
         syslog(LOG_ERR, "bad port range -> %s\n", orig.c_str());
         return 1;
     }
@@ -963,7 +962,7 @@ int main(int argc, char **argv)
         syslog(LOG_WARNING, "setting open_max to:%ld\n", open_max);
     }
     char *host = getenv("HOSTNAME");
-    if (host == NULL) {
+    if (host == nullptr) {
         long hostname_max = sysconf(_SC_HOST_NAME_MAX);
         if (hostname_max == -1) {
             syslog(LOG_WARNING, "sysconf(_SC_HOST_NAME_MAX): %d %s ", errno,
@@ -977,7 +976,7 @@ int main(int argc, char **argv)
         if (rc == 0)
             host = strdup(myhost);
     }
-    if (host == NULL) {
+    if (host == nullptr) {
         syslog(LOG_CRIT,
                "Can't figure out hostname: please export HOSTNAME.\n");
         return EXIT_FAILURE;
@@ -1011,7 +1010,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }
-            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path) - 1);
             break;
         case 'p':
             if (default_ports) {

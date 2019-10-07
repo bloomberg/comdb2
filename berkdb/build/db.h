@@ -25,12 +25,14 @@
 #include <pthread.h>
 
 #include <list.h>
+#include <priority_queue.h>
 #include <pool.h>
 #include <plhash.h>
 #include <dlmalloc.h>
 #include <thdpool.h>
 #include <mem_berkdb.h>
 #include <sys/time.h>
+#include <sbuf2.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -53,7 +55,6 @@
 /* <sys/types.h> does not include <inttypes.h> on some systems. */
 #include <inttypes.h>
 #include <stdio.h>
-#endif
 
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
@@ -502,6 +503,7 @@ struct __db_lock_stat {
 	u_int64_t st_nnowaits;		/* Number of requests that would have
 					   waited, but NOWAIT was set. */
 	u_int64_t st_ndeadlocks;	/* Number of lock deadlocks. */
+	u_int64_t st_locks_aborted;	/* Number of locks released on deadlocks.*/
 	db_timeout_t st_locktimeout;	/* Lock timeout. */
 	u_int64_t st_nlocktimeouts;	/* Number of lock timeouts. */
 	db_timeout_t st_txntimeout;	/* Transaction timeout. */
@@ -876,7 +878,7 @@ struct __db_mpool_stat {
 	u_int64_t st_page_trickle;	/* Pages written by memp_trickle. */
 	u_int64_t st_pages;		/* Total number of pages. */
 	u_int64_t st_page_clean;	/* Clean pages. */
-	int32_t   st_page_dirty;	/* Dirty pages. */
+	uint32_t  st_page_dirty;	/* Dirty pages. */
 	u_int64_t st_hash_buckets;	/* Number of hash buckets. */
 	u_int64_t st_hash_searches;	/* Total hash chain searches. */
 	u_int64_t st_hash_longest;	/* Longest hash chain searched. */
@@ -1381,6 +1383,7 @@ struct __db {
 	DB_MPOOLFILE *mpf;		/* Backing buffer pool. */
 
 	DB_MUTEX *mutexp;		/* Synchronization for free threading */
+	DB_MUTEX *free_mutexp;		/* Synchronization for free threading */
 
 	char *fname, *dname;		/* File/database passed to DB->open. */
 	u_int32_t open_flags;		/* Flags passed to DB->open. */
@@ -1750,7 +1753,6 @@ struct cursor_track {
     unsigned nframes;
     u_int32_t lockerid;
 };
-extern pthread_key_t DBG_FREE_CURSOR;
 
 
 struct __dbc {
@@ -2342,6 +2344,10 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
+	int  (*memp_dump) __P((DB_ENV *, SBUF2 *, u_int64_t maxpages));
+	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_dump_default) __P((DB_ENV *, u_int32_t));
+	int  (*memp_load_default) __P((DB_ENV *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
@@ -2714,37 +2720,6 @@ void __db_hdestroy __P((void));
 #endif
 
 
-
-/* SJ - jamming this into berkeley.  If you change this struct, recompile
- * everything.  Note that there is an identical copy of this struct in
- * bdb_api.h just to make the code maintenance issue even worse.  And even
- * worse than that, this stuff is all duplicated in build_ibm/db.h and
- * build_sundev1/db.h */
-struct bb_berkdb_thread_stats {
-	unsigned n_lock_waits;
-	uint64_t lock_wait_time_us;
-
-	unsigned n_preads;
-	unsigned pread_bytes;
-	uint64_t pread_time_us;
-
-	unsigned n_pwrites;
-	unsigned pwrite_bytes;
-	uint64_t pwrite_time_us;
-
-	unsigned n_memp_fgets;
-	uint64_t memp_fget_time_us;
-
-	unsigned n_memp_pgs;
-	uint64_t memp_pg_time_us;
-
-	unsigned n_shallocs;
-	uint64_t shalloc_time_us;
-
-	unsigned n_shalloc_frees;
-	uint64_t shalloc_free_time_us;
-};
-
 /*
  * Helper macros for microsecond-granularity event logging.
  * Multiplication usually takes fewer CPU cycles than division. Therefore
@@ -2758,8 +2733,8 @@ struct bb_berkdb_thread_stats {
 #define M2U(msec) ((msec) * 1000ULL)
 #endif
 uint64_t bb_berkdb_fasttime(void);
-struct bb_berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
-struct bb_berkdb_thread_stats *bb_berkdb_get_process_stats(void);
+struct berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
+struct berkdb_thread_stats *bb_berkdb_get_process_stats(void);
 void bb_berkdb_thread_stats_init(void);
 void bb_berkdb_thread_stats_reset(void);
 
@@ -2910,6 +2885,7 @@ struct __ltrans_descriptor {
 };
 
 int __checkpoint_open(DB_ENV *dbenv, const char *db_home);
+int __page_cache_set_path(DB_ENV *dbenv, const char *db_home);
 int __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery);
@@ -2929,7 +2905,6 @@ void __berkdb_count_freeepages_abort(void);
 int get_committed_lsns(DB_ENV *dbenv, DB_LSN **lsns, int *n_lsns,
 	int epoch, int file, int offset);
 
-unsigned long long get_current_context(DB_ENV *dbenv);
 int get_lsn_context_from_timestamp(DB_ENV *dbenv, int32_t timestamp,
 	DB_LSN *ret_lsn, unsigned long long *ret_context);
 int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
@@ -2942,7 +2917,8 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-	void *work, int queue_override, char *persistent_info, uint32_t flags);
+	void *work, int queue_override, char *persistent_info, uint32_t flags,
+        priority_t priority);
 
 
 typedef struct {
@@ -2958,3 +2934,5 @@ void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 }
 #endif
 #endif				/* !_DB_EXT_PROT_IN_ */
+
+#endif

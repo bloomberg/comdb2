@@ -184,7 +184,7 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public int getMaxFieldSize() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return 0;
     }
 
     @Override
@@ -194,11 +194,12 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public int getMaxRows() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return 0;
     }
 
     @Override
     public void setMaxRows(int max) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
     }
 
     @Override

@@ -40,6 +40,8 @@ public class DatabaseDiscovery {
     static final String CDB2DBCONFIG_LOCAL = "/bb/bin/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV_PATH = "/opt/bb/etc/cdb2/config.d/";
+    static final String CDB2DBCONFIG_NOBBENV_PATH_PROP = "extra_config_path";
+    static final String CDB2DBCONFIG_SECONDARY_PATH = "/bb/etc/cdb2/config.d/";
 
     /* comdb2lcldb, per jvm. */
     static class TimeAndHosts {
@@ -165,11 +167,19 @@ public class DatabaseDiscovery {
          * property is not specified.
          */
         if (readCfg) {
+            /* Attempt to process DPKG path first. */
+            String perDbConf = CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg";
+            File f = new File(perDbConf);
+            /* Attempt to process BPKG path next. */
+            if (!f.exists())
+                perDbConf = System.getProperty(CDB2DBCONFIG_NOBBENV_PATH_PROP,
+                        CDB2DBCONFIG_SECONDARY_PATH) + "/" + hndl.myDbName + ".cfg";
+            readComdb2dbCfg(perDbConf, hndl);
+
             String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
             boolean rc = readComdb2dbCfg(configPath, hndl);
             if (!rc) /* fall back to /bb/bin if noenv conf not found */
                 rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
-            readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
         }
 
         if (dbinfoOrDNS) {
@@ -315,11 +325,9 @@ public class DatabaseDiscovery {
             if (validHosts.size() <= 0)
                 throw new IOException("Received incomplete dbinfo response");
 
-            if (hndl != null) {
-                hndl.masterIndexInMyDbHosts = master;
-                hndl.numHostsSameRoom = hosts_same_room;
-                hndl.peersslmode = dbInfoResp.peermode;
-            }
+            hndl.masterIndexInMyDbHosts = master;
+            hndl.numHostsSameRoom = hosts_same_room;
+            hndl.peersslmode = dbInfoResp.peermode;
 
             return master;
 

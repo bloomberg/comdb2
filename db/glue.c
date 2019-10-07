@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <inttypes.h>
 
 #include <sys/types.h>
@@ -91,6 +90,7 @@
 
 #include "views.h"
 #include "logmsg.h"
+#include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -146,6 +146,13 @@ struct net_morestripe_msg {
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
+extern int gbl_use_fastseed_for_comdb2_seqno;
+extern int gbl_debug_omit_idx_write;
+extern int gbl_debug_omit_blob_write;
+
+extern int get_physical_transaction(bdb_state_type *bdb_state,
+                                    tran_type *logical_tran,
+                                    tran_type **outtran, int force_commit);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
@@ -294,9 +301,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(
-                bdb_state_type * bdb_state, tran_type * logical_tran,
-                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
             if (rc) {
@@ -706,13 +710,15 @@ int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 {
     db_seqnum_type seqnum;
+    int rc = -1;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
 
-    bdb_get_myseqnum(bdb_handle, (void *)&seqnum);
-
-    return trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
-                                     0 /*adaptive*/, &seqnum);
+    if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
+        rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
+                                       0 /*adaptive*/, &seqnum);
+    }
+    return rc;
 }
 
 int trans_commit_logical_tran(void *trans, int *bdberr)
@@ -886,28 +892,27 @@ int cmp_context(struct ireq *iq, unsigned long long genid,
 /*        TRANSACTIONAL INDEX ROUTINES        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-int ix_isnullk(void *db_table, void *key, int ixnum)
+int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
 {
-    struct dbtable *db = db_table;
     struct schema *dbixschema;
     int ifld;
-    if (!db || !key || ixnum < 0 || ixnum >= db->nix) {
+    if (!tbl || !key || ixnum < 0 || ixnum >= tbl->nix) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: bad args, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum);
+               "ix_isnullk: bad args, tbl = %p, key = %p, ixnum = %d\n", tbl,
+               key, ixnum);
         return 0;
     }
-    if (db->ix_dupes[ixnum]) {
+    if (tbl->ix_dupes[ixnum]) {
         return 0;
     }
-    if (!db->ix_nullsallowed[ixnum]) {
+    if (!tbl->ix_nullsallowed[ixnum]) {
         return 0;
     }
-    dbixschema = db->ixschema[ixnum];
+    dbixschema = tbl->ixschema[ixnum];
     if (!dbixschema) {
         logmsg(LOGMSG_ERROR,
-            "ix_isnullk: missing schema, db = %p, key = %p, ixnum = %d\n",
-            db, key, ixnum);
+               "ix_isnullk: missing schema, tbl = %p, key = %p, ixnum = %d\n",
+               tbl, key, ixnum);
         return 0;
     }
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
@@ -917,22 +922,21 @@ int ix_isnullk(void *db_table, void *key, int ixnum)
             int offset = dbixfield->offset;
             if (offset >= 0 && stype_is_null((bkey + offset))) {
                 /* fprintf(stderr,
-                    "ix_isnullk: found NULL, db = %p, key = %p, ixnum = %d, ifld = %d\n",
-                    db, key, ixnum, ifld); */
+                    "ix_isnullk: found NULL, tbl = %p, key = %p, ixnum = %d,
+                   ifld = %d\n", tbl, key, ixnum, ifld); */
                 return 1;
             }
         }
     }
     /* fprintf(stderr,
-        "ix_isnullk: no NULL, db = %p, key = %p, ixnum = %d\n",
-        db, key, ixnum); */
+        "ix_isnullk: no NULL, tbl = %p, key = %p, ixnum = %d\n",
+        tbl, key, ixnum); */
     return 0;
 }
 
 int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
@@ -942,7 +946,7 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
         return 0;
     }
 
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -973,15 +977,20 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
             unsigned long long genid, int rrn, void *dta, int dtalen, int isnull)
 {
-    return ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum, genid, rrn, dta,
-                         dtalen, isnull);
+    if (gbl_debug_omit_idx_write) {
+        return 0;
+    }
+    int rc;
+    ACCUMULATE_TIMING(CHR_IXADDK,
+                      rc = ix_addk_auxdb(AUXDB_NONE, iq, trans, key, ixnum,
+                                         genid, rrn, dta, dtalen, isnull););
+    return rc;
 }
 
 int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
                unsigned long long oldgenid, unsigned long long genid, void *dta,
                int dtalen, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
@@ -991,7 +1000,7 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
         return 0;
     }
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -1021,7 +1030,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
 int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
                   int rrn, unsigned long long genid, int isnull)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
     if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
@@ -1029,7 +1037,7 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
             reqprintf(iq, "ix_delk_auxdb: ix %d write disabled", ixnum);
         return 0;
     }
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_delkey";
@@ -1081,10 +1089,9 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
                   int rrn, unsigned long long *genid, int verifydta, int modnum,
                   int use_new_genid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     if (vptr != 0)
@@ -1117,10 +1124,9 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    int blobno, int rrn, unsigned long long newgenid,
                    int odhready)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     if (vptr != 0)
@@ -1158,10 +1164,9 @@ int blob_upv(struct ireq *iq, void *trans, int vptr,
 int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
                    unsigned long long oldgenid, unsigned long long newgenid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_upd_genid";
@@ -1186,11 +1191,10 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
  */
 int dat_get_active_stripe(struct ireq *iq)
 {
-    struct dbtable *db = iq->usedb;
     void *bdb_handle;
     int stripe;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
 
     iq->gluewhere = "bdb_get_active_dtafile";
     stripe = bdb_get_active_stripe(bdb_handle);
@@ -1202,11 +1206,10 @@ int dat_get_active_stripe(struct ireq *iq)
 int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
                   int datalen, unsigned long long *genid, int *out_rrn)
 {
-    struct dbtable *db = iq->usedb;
     int bdberr, rrn;
     void *bdb_handle;
     int modnum = 0;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_allocdta_genid";
@@ -1234,16 +1237,21 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
 int dat_add(struct ireq *iq, void *trans, void *data, int datalen,
             unsigned long long *genid, int *out_rrn)
 {
-    return dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen, genid, out_rrn);
+    int rc;
+
+    ACCUMULATE_TIMING(CHR_DATADD,
+                      rc = dat_add_auxdb(AUXDB_NONE, iq, trans, data, datalen,
+                                         genid, out_rrn););
+
+    return rc;
 }
 
 int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
             unsigned long long genid)
 {
-    struct dbtable *db = iq->usedb;
     int bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
@@ -1266,18 +1274,13 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
              size_t length, int rrn, unsigned long long genid, int odhready)
 {
-    return blob_add_auxdb(AUXDB_NONE, iq, trans, blobno, data, length, rrn,
-                          genid, odhready);
-}
+    if (gbl_debug_omit_blob_write) {
+        return 0;
+    }
 
-int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid,
-                   int odhready)
-{
-    struct dbtable *db = iq->usedb;
     int bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
@@ -1300,10 +1303,9 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
 int dat_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                   unsigned long long genid, int delblobs)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_deallocdta";
@@ -1350,10 +1352,9 @@ int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
 int blob_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                    unsigned long long genid, int blobno)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_deallocdta_n_genid";
@@ -1380,11 +1381,10 @@ int blob_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
 int dat_upgrade(struct ireq *iq, void *trans, void *newdta, int newlen,
                 unsigned long long genid)
 {
-    struct dbtable *db = iq->usedb;
     int rc, bdberr;
     void *bdb_handle;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -1771,10 +1771,9 @@ int get_next_genids(struct ireq *iq, int ixnum, void *key, int keylen,
 {
     int rc;
     void *bdb_handle;
-    struct dbtable *db = iq->usedb;
     int bdb_err;
 
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
+    bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
@@ -2016,11 +2015,10 @@ int ix_find_auxdb_by_rrn_and_genid_prefault(int auxdb, struct ireq *iq, int rrn,
     return rc;
 }
 
-static int ix_find_auxdb_by_rrn_and_genid_tran(
-        int auxdb, struct ireq *iq, int rrn,
-        unsigned long long genid, void *fnddta,
-        int *fndlen, int maxlen, void *trans,
-        int *ver, int for_write)
+int ix_find_auxdb_by_rrn_and_genid_tran(int auxdb, struct ireq *iq, int rrn,
+                                        unsigned long long genid, void *fnddta,
+                                        int *fndlen, int maxlen, void *trans,
+                                        int *ver, int for_write)
 {
     int rc;
     int retries = 0;
@@ -2228,13 +2226,13 @@ int ix_find_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
 }
 
 int ix_load_for_write_by_genid_tran(struct ireq *iq, int rrn,
-                                  unsigned long long genid, void *fnddta,
-                                  int *fndlen, int maxlen, void *trans)
+        unsigned long long genid, void *fnddta,
+        int *fndlen, int maxlen, void *trans)
 {
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, NULL, 1 /* for_write */);
+            fndlen, maxlen, trans, NULL, 1 /* for_write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
@@ -2251,7 +2249,7 @@ int ix_find_ver_by_rrn_and_genid_tran(struct ireq *iq, int rrn,
     int rc = 0;
 
     rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, rrn, genid, fnddta,
-                                             fndlen, maxlen, trans, version, 0 /* for write */);
+                                             fndlen, maxlen, trans, version, 0 /*for write */);
 
     if (rc == IX_EMPTY)
         rc = IX_NOTFND;
@@ -2639,7 +2637,6 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
                        int *retries, unsigned long long context,
                        bdb_cursor_ser_t *cur_ser)
 {
-    struct dbtable *db = iq->usedb;
     char *req;
     int ixrc, bdberr, lcl_retries;
     void *bdb_handle;
@@ -2651,7 +2648,7 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
             reqprintf(iq, "ix_prev_blobs_auxdb: ix %d read disabled", ixnum);
         return ERR_INDEX_DISABLED;
     }
-    bdb_handle = get_bdb_handle(db, auxdb);
+    bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     iq->gluewhere = "ix_prev_blobs_auxdb";
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2702,7 +2699,7 @@ retry:
                 fnddta, maxlen, fndlen, fndkey, fndrrn, genid, &args, &bdberr);
             iq->gluewhere = "bdb_fetch_prev_genid_nl done";
         }
-        VTAG(ixrc, db);
+        VTAG(ixrc, iq->usedb);
     } else if (cur_ser) {
         iq->gluewhere = req = "bdb_fetch_prev_nodta_genid_nl_ser";
         ixrc = bdb_fetch_prev_nodta_genid_nl_ser(
@@ -2835,7 +2832,7 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
                  int *fndrrn, unsigned long long *genid, void *fnddta,
                  int *fndlen, int *recnum, int maxlen)
 {
-    struct dbtable *db = iq->usedb;
+    const dbtable *db = iq->usedb;
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
@@ -3185,176 +3182,6 @@ void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-/* yuk. */
-static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
-                                 char **table, char **csc2, char **fname,
-                                 char **aname)
-{
-    int tlen, flen;
-    char *dta = (char *)dtap;
-    char **fvar = NULL;
-    int offset;
-    int origlen;
-
-    *table = NULL;
-    *csc2 = NULL;
-    *fname = NULL;
-    *aname = NULL;
-
-    if (dtalen < 8) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    memcpy(&tlen, dta, sizeof(int));
-    memcpy(&flen, dta + sizeof(int), sizeof(int));
-
-    if (dtalen < 2 * sizeof(int) + tlen + flen) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    /* length of original data before I added the advisory file name */
-    origlen = 2 * sizeof(int) + tlen + flen;
-
-    if (flen > 0) {
-        offset = 2 * sizeof(int) + tlen;
-        if (flen >= 6 && memcmp(dta + offset, "<CSC2>", 6) == 0) {
-            flen -= 6;
-            offset += 6;
-            fvar = csc2;
-        } else {
-            fvar = fname;
-        }
-        *fvar = malloc(flen + 1);
-        if (!*fvar) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*fvar, dta + offset, flen);
-        (*fvar)[flen] = '\0';
-    }
-
-    *table = malloc(tlen + 1);
-    if (!*table) {
-        if (*fvar)
-            free(*fvar);
-        logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-    memcpy(*table, dta + 2 * sizeof(int), tlen);
-    (*table)[tlen] = '\0';
-
-    if (dtalen > origlen) {
-        /* the extra data is the advised file name. */
-        int anamelen = dtalen - origlen;
-        *aname = malloc(anamelen + 1);
-        if (!*aname) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            if (*fvar)
-                free(*fvar);
-            free(*table);
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*aname, dta + origlen, anamelen);
-        (*aname)[anamelen] = '\0';
-    }
-
-    return 0;
-}
-
-void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
-                        void *dtap, int dtalen)
-{
-    char *table;
-    char *csc2;
-    char *fname;
-    char *aname;
-    int rc;
-    int rc2;
-
-    rc = decode_schema_net_msg(hndl, dtap, dtalen, &table, &csc2, &fname,
-                               &aname);
-    if (rc != 0)
-        return;
-
-    if (fname || aname) {
-        logmsg(LOGMSG_ERROR, "%s: fname and aname no longer supported\n", __func__);
-
-        net_ack_message(hndl, 1);
-        if (table)
-            free(table);
-        if (csc2)
-            free(csc2);
-        if (fname)
-            free(fname);
-        if (aname)
-            free(aname);
-        return;
-    }
-
-    rc = reload_schema(table, csc2, NULL);
-
-    rc2 = create_sqlmaster_records(NULL);
-    if (rc2) {
-        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
-    }
-    create_sqlite_master(); /* create sql statements */
-
-    net_ack_message(hndl, rc || rc2);
-
-    if (table)
-        free(table);
-    if (csc2)
-        free(csc2);
-}
-
-void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
-                  void *dtap, int dtalen)
-{
-    int len, free_handle;
-    char table[MAXTABLELEN];
-    char *dta = (char *)dtap;
-    struct dbtable *db;
-    int bdberr;
-
-    memset(table, 0, sizeof(table));
-    if (dtalen < 2 * sizeof(int)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(&len, dta, sizeof(int));
-    if (dtalen < 2 * sizeof(int) + len) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(table, dta + sizeof(int), len);
-    memcpy(&free_handle, dta + sizeof(int) + len, sizeof(int));
-    logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
-
-    db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
-    if (db == NULL) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    bdb_close_only(db->handle, &bdberr);
-    logmsg(LOGMSG_DEBUG, "net_close_db bdb_close_only %d\n", bdberr);
-    if (free_handle) {
-        bdb_free(db->handle, &bdberr);
-        db->handle = NULL;
-        logmsg(LOGMSG_DEBUG, "net_close_db bdb_free %d\n", bdberr);
-    }
-    if (net_ack_message(hndl, 0)) {
-        logmsg(LOGMSG_DEBUG, 
-               "net_close_db: Error sending back the acknoledgement\n");
-    }
-}
-
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
@@ -3413,39 +3240,11 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
-    if (!thedb || thedb->stopped || gbl_exit || !gbl_ready) {
+    if (!thedb || db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_WARN, "I am not ready, ignoring NET_FLUSH_ALL\n");
         return;
     }
     flush_db();
-    net_ack_message(hndl, 0);
-}
-
-static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
-                                            char *fromnode, int usertype,
-                                            void *dtap, int dtalen,
-                                            uint8_t is_tcp)
-{
-    int rc;
-    struct net_morestripe_msg *msg;
-    msg = dtap;
-
-    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
-        logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
-                dtalen);
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    apply_new_stripe_settings(msg->newdtastripe, msg->newblobstripe);
-
-    rc = open_all_dbs();
-    if (rc != 0) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    fix_blobstripe_genids(NULL);
     net_ack_message(hndl, 0);
 }
 
@@ -3510,6 +3309,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
                       void *dtap, int dtalen, uint8_t is_tcp)
 {
+    /* TODO: Does nothing?  Refactor to remove it? */
 }
 
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
@@ -3555,7 +3355,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
 {
 
     /* if this arrives too early, it will crash the master */
-    if (thedb->stopped || gbl_exit || !gbl_ready) {
+    if (db_is_stopped() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_ERROR, "%s: received trap during lunch time\n", __func__);
         return;
     }
@@ -3947,17 +3747,17 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         }
 
-        net_set_pool_size(dbenv->handle_sibling, gbl_maxreclen + 300);
-        net_set_pool_size(dbenv->handle_sibling_offload, gbl_maxreclen + 300);
+        /* get the max rec len, or a sane default */
+        gbl_maxreclen = get_max_reclen(dbenv);
+        if (gbl_maxreclen < 0)
+            gbl_maxreclen = 512;
+        net_set_pool_size(dbenv->handle_sibling, (gbl_maxreclen + 300) * 1024);
+        net_set_pool_size(dbenv->handle_sibling_offload,
+                          (gbl_maxreclen + 300) * 1024);
 
         net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,
                                gbl_accept_on_child_nets);
-
-        /* get the max rec len, or a sane default */
-        gbl_maxreclen = get_max_reclen(dbenv);
-        if (gbl_maxreclen == 0)
-            gbl_maxreclen = 512;
 
 #if 0
         net_set_callback_data(dbenv->handle_sibling, dbenv);
@@ -4401,7 +4201,7 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
 {
     int ii;
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
-        struct dbtable *db = dbenv->qdbs[ii];
+        const dbtable *db = dbenv->qdbs[ii];
         int consumern;
 
         /* register all consumers */
@@ -5060,6 +4860,26 @@ void flush_db(void)
     bdb_flush(thedb->bdb_env, &rc);
 }
 
+void dump_cache(const char *file, int max_pages)
+{
+    bdb_dump_cache_to_file(thedb->bdb_env, file, max_pages);
+}
+
+void load_cache(const char *file)
+{
+    bdb_load_cache(thedb->bdb_env, file);
+}
+
+void load_cache_default(void)
+{
+    bdb_load_cache_default(thedb->bdb_env);
+}
+
+void dump_cache_default(void)
+{
+    bdb_dump_cache_default(thedb->bdb_env);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*          LITE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -5639,8 +5459,6 @@ void compr_print_stats()
     int ii;
     int odh, compr, blob_compr;
 
-    const char *bdb_compr_alg_2a(int alg);
-
     logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
     logmsg(LOGMSG_USER, "These apply to new records only!\n");
 
@@ -5773,7 +5591,6 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
     return rc;
 }
 
-extern int gbl_use_fastseed_for_comdb2_seqno;
 long long get_unique_longlong(struct dbenv *env)
 {
     long long id = 0;
@@ -5970,6 +5787,29 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
     *bdberr = 0;
     rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
                                        0, trans);
+    if (rc == IX_FND)
+        return 1;
+    if (rc == IX_NOTFND)
+        return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/**
+ * Check a genid, but get a writelock on the page rather than
+ * a readlock. Returns 0 if not found, 1 if found, -1 if error
+ *
+ */
+int ix_check_genid_wl(struct ireq *iq, void *trans, unsigned long long genid,
+                      int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+
+    *bdberr = 0;
+    rc = ix_find_auxdb_by_rrn_and_genid_tran(AUXDB_NONE, iq, 2, genid, NULL,
+                                             &reqdtalen, 0, trans, NULL, 1);
+
     if (rc == IX_FND)
         return 1;
     if (rc == IX_NOTFND)

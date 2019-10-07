@@ -35,6 +35,7 @@
 #include "sc_stripes.h"
 #include "sc_drop_table.h"
 #include "sc_rename_table.h"
+#include "sc_view.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
@@ -197,9 +198,14 @@ static void free_sc(struct schema_change_type *s)
 {
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+
+    /* Bail out if we're in a time partition rollout otherwise
+       we may deadlock with a regular schema change. The time partition
+       rollout will invoke csc2_free_all() without holding views_lk. */
+    if (s->views_locked)
+        return;
+
     csc2_free_all();
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
@@ -265,6 +271,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
 {
     int rc, bdberr = 0;
     tran_type *tran = input_tran;
+    bdb_state_type *bdb_state = 0;
 
     if (tran == NULL) {
         rc = trans_start_sc(iq, NULL, &tran);
@@ -285,7 +292,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         return rc;
     }
 
-    if ((rc = mark_schemachange_over_tran(s->db->tablename, tran)))
+    if ((rc = mark_schemachange_over_tran(s->tablename, tran)))
         return rc;
 
     if (bdb_set_schema_change_status(tran, s->tablename, NULL, 0,
@@ -295,6 +302,8 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                "%s: failed to set bdb schema change status, bdberr %d\n",
                __func__, bdberr);
     }
+
+    bdb_state = (type == user_view) ? thedb->bdb_env : s->db->handle;
 
     if (input_tran == NULL) {
         // void all_locks(void*);
@@ -306,7 +315,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         }
 
         int bdberr = 0;
-        if ((rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr)) ||
+        if ((rc = bdb_llog_scdone(bdb_state, type, 1, &bdberr)) ||
             bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
@@ -314,7 +323,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         sc_del_unused_files(s->db);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
-        rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->tablename,
+        rc = bdb_llog_scdone_tran(bdb_state, type, input_tran, s->tablename,
                                   &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
@@ -340,7 +349,7 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     }
     if (sc->usedbtablevers != version) {
         errstat_set_strf(&iq->errstat,
-                         "stale version for table:%s master:%d replicant:%d",
+                         "stale version for table:%s master:%llu replicant:%d",
                          sc->tablename, version, sc->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
@@ -355,9 +364,11 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     if (s->finalize_only) {
         return s->sc_rc;
     }
-    set_original_tablename(s);
-    if ((rc = check_table_version(iq, s)) != 0) { // non-tran ??
-        goto end;
+    if (type != user_view) {
+        set_original_tablename(s);
+        if ((rc = check_table_version(iq, s)) != 0) { // non-tran ??
+            goto end;
+        }
     }
     if (!s->resume)
         set_sc_flgs(s);
@@ -497,6 +508,8 @@ char *get_ddl_type_str(struct schema_change_type *s)
         return "ALTER QUEUE";
     else if (s->type == DBTYPE_MORESTRIPE)
         return "ALTER STRIPE";
+    else if (s->add_view)
+        return "VIEW";
 
     return "UNKNOWN";
 }
@@ -505,6 +518,9 @@ char *get_ddl_csc2(struct schema_change_type *s)
 {
     return s->newcsc2 ? s->newcsc2 : "";
 }
+int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran);
+int do_drop_view(struct ireq *iq, struct schema_change_type *s,
+                 tran_type *tran);
 
 int do_schema_change_tran(sc_arg_t *arg)
 {
@@ -516,6 +532,11 @@ int do_schema_change_tran(sc_arg_t *arg)
     if (iq == NULL) {
         abort();
     }
+
+    Pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtxStart);
+    Pthread_cond_signal(&s->condStart);
+    Pthread_mutex_unlock(&s->mtxStart);
 
     s->iq = iq;
     enum thrtype oldtype = prepare_sc_thread(s);
@@ -559,6 +580,10 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
+    else if (s->add_view)
+        rc = do_ddl(do_add_view, finalize_add_view, iq, s, trans, user_view);
+    else if (s->drop_view)
+        rc = do_ddl(do_drop_view, finalize_drop_view, iq, s, trans, user_view);
 
     if (rc == SC_MASTER_DOWNGRADE) {
         while (s->logical_livesc) {
@@ -651,7 +676,6 @@ int do_schema_change_locked(struct schema_change_type *s)
     /* the only callers are lightweight timepartition events,
        which already have schema lock */
     arg->iq->sc_locked = 1;
-    Pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
@@ -688,6 +712,10 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
+    else if (s->add_view)
+        rc = do_finalize(finalize_add_view, iq, s, trans, user_view);
+    else if (s->drop_view)
+        rc = do_finalize(finalize_drop_view, iq, s, trans, user_view);
 
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
@@ -719,9 +747,11 @@ void *sc_resuming_watchdog(void *p)
         mark_schemachange_over(iq.sc->tablename);
         if (iq.sc->addonly) {
             delete_temp_table(&iq, iq.sc->db);
-            if (iq.sc->addonly == SC_DONE_ADD)
+            if (iq.sc->addonly == SC_DONE_ADD) {
                 delete_db(iq.sc->tablename);
+            }
         }
+        /* TODO: (NC) Also delete view? */
         sc_del_unused_files(iq.sc->db);
         Pthread_mutex_unlock(&(iq.sc->mtx));
         free_schema_change_type(iq.sc);
@@ -1406,8 +1436,9 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             poll(NULL, 0, 100);
         }
         if (s->addonly) {
-            if (s->addonly == SC_DONE_ADD)
+            if (s->addonly == SC_DONE_ADD) {
                 delete_db(s->tablename);
+            }
             if (s->newdb) {
                 backout_schemas(s->newdb->tablename);
             }
@@ -1419,6 +1450,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             }
             change_schemas_recover(s->db->tablename);
         }
+        /* TODO: (NC) Also delete view? */
         sc_del_unused_files_tran(s->db, tran);
         s = iq->sc = s->sc_next;
     }

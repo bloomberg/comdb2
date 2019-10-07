@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
@@ -113,6 +114,8 @@ typedef struct comdb2_objpool {
     void *new_arg;
     obj_del_fn del_fn;
     void *del_arg;
+    obj_not_fn not_fn;
+    void *not_arg;
 
     /* eviction thread */
     int evict_thd_run;
@@ -172,7 +175,8 @@ typedef struct comdb2_objpool {
 static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
                                      unsigned int cap, obj_new_fn new_fn,
                                      void *new_arg, obj_del_fn del_fn,
-                                     void *del_arg, enum objpool_type type);
+                                     void *del_arg, obj_not_fn not_fn,
+                                     void *not_arg, enum objpool_type type);
 
 static int object_create(comdb2_objpool_t op, void **objp);
 static int hash_elem_free_wrapper(void *, void *);
@@ -210,6 +214,8 @@ static void objpool_rand_get(comdb2_objpool_t op, void **objp);
 static void objpool_rand_evict(comdb2_objpool_t op);
 static void objpool_rand_clear(comdb2_objpool_t op);
 
+static void objpool_evict_all_int(comdb2_objpool_t op);
+
 /*************************
 ** stats-display helpers *
 **************************/
@@ -218,27 +224,33 @@ static const char *objpool_type_name(comdb2_objpool_t op);
 
 int comdb2_objpool_create_lifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_LIFO);
+                                     del_arg, not_fn, not_arg, OP_LIFO);
 }
 
 int comdb2_objpool_create_fifo(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_FIFO);
+                                     del_arg, not_fn, not_arg, OP_FIFO);
 }
 
 int comdb2_objpool_create_rand(comdb2_objpool_t *opp, const char *name,
                                unsigned int cap, obj_new_fn new_fn,
-                               void *new_arg, obj_del_fn del_fn, void *del_arg)
+                               void *new_arg, obj_del_fn del_fn,
+                               void *del_arg, obj_not_fn not_fn,
+                               void *not_arg)
 {
     srand(time(NULL));
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
-                                     del_arg, OP_RAND);
+                                     del_arg, not_fn, not_arg, OP_RAND);
 }
 
 int comdb2_objpool_stop(comdb2_objpool_t op)
@@ -257,6 +269,12 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
     Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 0;
     Pthread_mutex_unlock(&op->data_mutex);
+    return 0;
+}
+
+int comdb2_objpool_clear(comdb2_objpool_t op)
+{
+    objpool_evict_all_int(op);
     return 0;
 }
 
@@ -355,16 +373,20 @@ int comdb2_objpool_return(comdb2_objpool_t op, void *obj)
     return objpool_return_int(op, obj);
 }
 
-int comdb2_objpool_available(comdb2_objpool_t op)
+int comdb2_objpool_notify(comdb2_objpool_t op, int force)
 {
-    int avail;
-
+    int rc;
+    assert(op != NULL);
+    OP_DBG(op, "notify pool");
     Pthread_mutex_lock(&op->data_mutex);
-
-    avail = !exhausted(op) || !full(op);
-
+    if (force || (op->nborrowwaits != 0)) {
+        Pthread_cond_broadcast(&op->unexhausted);
+        rc = 0;
+    } else {
+        rc = EPERM;
+    }
     Pthread_mutex_unlock(&op->data_mutex);
-    return avail;
+    return rc;
 }
 
 int comdb2_objpool_borrow(comdb2_objpool_t op, void **objp)
@@ -459,7 +481,8 @@ int comdb2_objpool_stats(comdb2_objpool_t op)
 static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
                                      unsigned int cap, obj_new_fn new_fn,
                                      void *new_arg, obj_del_fn del_fn,
-                                     void *del_arg, enum objpool_type type)
+                                     void *del_arg, obj_not_fn not_fn,
+                                     void *not_arg, enum objpool_type type)
 {
     comdb2_objpool_t op;
     const char *pname;
@@ -531,6 +554,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     op->new_arg = new_arg;
     op->del_fn = del_fn;
     op->del_arg = del_arg;
+    op->not_fn = not_fn;
+    op->not_arg = not_arg;
 
     op->namesz = sz;
     strcpy(op->name, pname);
@@ -588,7 +613,7 @@ static int object_create(comdb2_objpool_t op, void **objp)
         if (op->nobjs > op->npeakobjs)
             op->npeakobjs = op->nobjs;
         ++op->nactiveobjs;
-        logmsg(LOGMSG_INFO, "creating a %s object %p\n", op->name, *objp);
+        logmsg(LOGMSG_INFO, "created a pool %s object %p\n", op->name, *objp);
         OP_DBG(op, "create object done");
     } else {
         if (op->del_fn != NULL)
@@ -670,7 +695,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         return EPERM;
     }
 
-    rec = (pooled_object *)hash_find(op->history, &obj);
+    rec = (pooled_object *)hash_find_readonly(op->history, &obj);
     if (rec == NULL) {
         --op->nforcedobjs;
         ++op->nreturns;
@@ -678,6 +703,8 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         rc = 0;
         if (op->del_fn != NULL)
             rc = op->del_fn(obj, op->del_arg);
+        logmsg(LOGMSG_INFO, "destroyed a forced pool %s object %p (%d)\n",
+               op->name, obj, rc);
         OP_DBG(op, "object deleted");
     } else if (rec->active == 0) {
         OP_DBG(op, "error- double return");
@@ -696,7 +723,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         --op->nactiveobjs;
         ++op->nreturns;
         --op->nobjs;
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, obj);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, obj);
         OP_DBG(op, "evicted due to max idle");
     } else {
         clock_gettime(CLOCK_REALTIME, &rec->tm);
@@ -746,6 +773,8 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
         return EPERM;
     }
 
+retry:
+
     if (exhausted(op)) {
         if (!full(op)) {
             /*
@@ -773,6 +802,9 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                     op->npeakobjs = op->nforcedobjs + op->nobjs;
                 ++op->nborrows;
             }
+            logmsg(LOGMSG_INFO, "created a forced pool %s object %p (%d)\n",
+                   op->name, *objp, rc);
+            OP_DBG(op, "forced create object done");
             Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
@@ -787,6 +819,25 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
         }
 
         while (1) {
+            /*
+             ** first, issue a notification to the pool and
+             ** give it a chance to do something to prepare
+             ** for waiting -OR- to force object creation
+             ** -OR- cancel waiting and fail the request.
+             */
+            if (op->not_fn != NULL) {
+                int not_rc = op->not_fn(objp, op->not_arg);
+                if (not_rc == OP_FAIL_NOW) {
+                    OP_DBG(op, "canceled by not_fn()");
+                    Pthread_mutex_unlock(&op->data_mutex);
+                    return ECANCELED;
+                } else if (not_rc == OP_FORCE_NOW) {
+                    OP_DBG(op, "forced by not_fn()");
+                    force = 1;
+                    goto retry; /* mutex still held */
+                }
+            }
+
             /*
              ** if pool is full and caller is willing to wait,
              ** make a condition wait on unexhausted
@@ -836,6 +887,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                 }
                 /* if caller didn't specify waiting time, cond_wait again */
             } else {
+                OP_DBG(op, "pool exhausted but no longer full");
                 rc = object_create(op, objp);
                 if (rc == 0)
                     ++op->nborrows;
@@ -887,7 +939,9 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (indx = 0; indx != nidles(op); ++indx) {
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles; ++indx) {
 
         if (reached_min_idle_criteria(op))
             break;
@@ -905,12 +959,12 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
             op->del_fn(object, op->del_arg);
         --op->nobjs;
 
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
         OP_DBG(op, "idle object evicted");
     }
 
     if (indx != 0) {
-        memcpy(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
+        memmove(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
 
         op->in -= indx;
         op->out = op->in - 1;
@@ -955,7 +1009,9 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (cnt = 0; cnt != nidles(op); ++cnt) {
+    int nidles = nidles(op);
+
+    for (cnt = 0; cnt < nidles; ++cnt) {
         if (reached_min_idle_criteria(op))
             break;
 
@@ -976,7 +1032,7 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
             op->del_fn(object, op->del_arg);
         --op->nobjs;
 
-        logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
         OP_DBG(op, "idle object evicted");
     }
 
@@ -1023,7 +1079,9 @@ static void objpool_rand_evict(comdb2_objpool_t op)
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
-    for (indx = 0; indx != nidles(op) && op->objs[indx] != NULL;) {
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles && op->objs[indx] != NULL;) {
         if (reached_min_idle_criteria(op))
             break;
 
@@ -1045,7 +1103,7 @@ static void objpool_rand_evict(comdb2_objpool_t op)
             --op->in;
             op->objs[indx] = op->objs[op->in];
 
-            logmsg(LOGMSG_INFO, "destroying a %s object %p\n", op->name, object);
+            logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
             OP_DBG(op, "idle object evicted");
         }
     }
@@ -1062,6 +1120,40 @@ static void objpool_rand_clear(comdb2_objpool_t op)
             op->del_fn(op->objs[indx], op->del_arg);
 }
 // ^^^^^^get/put impl
+
+static void objpool_evict_all_int(comdb2_objpool_t op)
+{
+    int indx;
+    pooled_object *rec;
+    void *object;
+
+    Pthread_mutex_lock(&op->data_mutex);
+
+    int nidles = nidles(op);
+
+    for (indx = 0; indx < nidles; ++indx) {
+        object = op->objs[indx];
+        rec = (pooled_object *)hash_find(op->history, &object);
+
+        hash_del(op->history, rec);
+        free(rec);
+        if (op->del_fn != NULL)
+            op->del_fn(object, op->del_arg);
+        --op->nobjs;
+
+        logmsg(LOGMSG_INFO, "destroyed a pool %s object %p\n", op->name, object);
+        OP_DBG(op, "object evicted");
+    }
+
+    if (indx != 0) {
+        memmove(op->objs, op->objs + indx, sizeof(void *) * (op->in - indx));
+
+        op->in -= indx;
+        op->out = op->in - 1;
+    }
+
+    Pthread_mutex_unlock(&op->data_mutex);
+}
 
 static int opt_capacity(comdb2_objpool_t op, int value)
 {
@@ -1120,8 +1212,8 @@ static int opt_capacity(comdb2_objpool_t op, int value)
 
     free(op->objs);
     op->objs = resized;
-    op->out = 0;
     op->in = ntotalcpy;
+    op->out = (op->type == OP_LIFO) ? (op->in - 1) : 0;
     op->nobjs = ntotalcpy + op->nactiveobjs;
     op->capacity = value;
 

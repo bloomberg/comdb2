@@ -13,10 +13,10 @@ mkdir backup && cd backup
 
 # standalone
 if [ -z "$CLUSTER" ]; then
-    $COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl | $COMDB2AR_EXE x -x $COMDB2_EXE $(pwd) $(pwd)
+    $COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl | $COMDB2AR_EXE x -x $COMDB2_EXE ${PWD} ${PWD}
 else
     host=`echo $CLUSTER | cut -d" " -f1`
-    ssh -o StrictHostKeyChecking=no $host "$COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl" | $COMDB2AR_EXE x -x $COMDB2_EXE $(pwd) $(pwd)
+    ssh -o StrictHostKeyChecking=no $host "$COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl" | $COMDB2AR_EXE x -x $COMDB2_EXE ${PWD} ${PWD}
 fi
 
 find . -name 'root.crt' | grep 'root.crt'

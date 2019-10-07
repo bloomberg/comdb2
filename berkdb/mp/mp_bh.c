@@ -34,8 +34,9 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <sys/types.h>
 #include <dirent.h>
 
-#include <logmsg.h>
-#include <locks_wrap.h>
+#include "logmsg.h"
+#include "locks_wrap.h"
+#include "thread_stats.h"
 #include "comdb2_atomic.h"
 
 char *bdb_trans(const char infile[], char outfile[]);
@@ -409,8 +410,8 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	if (pgidx < 0)
 		return DB_PAGE_NOTFOUND;
 
-	ATOMIC_ADD(hp->hash_page_dirty, 1);
-	ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+	ATOMIC_ADD32(hp->hash_page_dirty, 1);
+	ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
@@ -1095,8 +1096,8 @@ file_dead:
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
 			    bhp->mf_offset, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
-			ATOMIC_ADD(hp->hash_page_dirty, -1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
+			ATOMIC_ADD32(hp->hash_page_dirty, -1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, -1);
 
 			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */
@@ -1131,7 +1132,7 @@ static void
 bb_memp_pg_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_pgs++;

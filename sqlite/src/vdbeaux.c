@@ -120,9 +120,15 @@ void sqlite3VdbeAddDblquoteStr(sqlite3 *db, Vdbe *p, const char *z){
 int sqlite3VdbeUsesDoubleQuotedString(
   Vdbe *pVdbe,            /* The prepared statement */
   const char *zId         /* The double-quoted identifier, already dequoted */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId           /* Return value when there is no Vdbe. */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   DblquoteStr *pStr;
   assert( zId!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pVdbe==0 ) return iDefDqId;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
     if( strcmp(zId, pStr->z)==0 ) return 1;
@@ -192,9 +198,11 @@ static int growOpArray(Vdbe *v, int nOp){
   ** operation (without SQLITE_TEST_REALLOC_STRESS) is to double the current
   ** size of the op array or add 1KB of space, whichever is smaller. */
 #ifdef SQLITE_TEST_REALLOC_STRESS
-  int nNew = (v->nOpAlloc>=512 ? v->nOpAlloc*2 : v->nOpAlloc+nOp);
+  sqlite3_int64 nNew = (v->nOpAlloc>=512 ? 2*(sqlite3_int64)v->nOpAlloc
+                        : (sqlite3_int64)v->nOpAlloc+nOp);
 #else
-  int nNew = (v->nOpAlloc ? v->nOpAlloc*2 : (int)(1024/sizeof(Op)));
+  sqlite3_int64 nNew = (v->nOpAlloc ? 2*(sqlite3_int64)v->nOpAlloc
+                        : (sqlite3_int64)(1024/sizeof(Op)));
   UNUSED_PARAMETER(nOp);
 #endif
 
@@ -674,6 +682,7 @@ int sqlite3VdbeAssertMayAbort(Vdbe *v, int mayAbort){
     int opcode = pOp->opcode;
     if( opcode==OP_Destroy || opcode==OP_VUpdate || opcode==OP_VRename 
      || opcode==OP_VDestroy
+     || (opcode==OP_Function0 && pOp->p4.pFunc->funcFlags&SQLITE_FUNC_INTERNAL)
      || ((opcode==OP_Halt || opcode==OP_HaltIfNull) 
       && ((pOp->p1)!=SQLITE_OK && pOp->p2==OE_Abort))
     ){
@@ -989,7 +998,7 @@ void sqlite3VdbeScanStatus(
   LogEst nEst,                    /* Estimated number of output rows */
   const char *zName               /* Name of table or index being scanned */
 ){
-  int nByte = (p->nScan+1) * sizeof(ScanStatus);
+  sqlite3_int64 nByte = (p->nScan+1) * sizeof(ScanStatus);
   ScanStatus *aNew;
   aNew = (ScanStatus*)sqlite3DbRealloc(p->db, p->aScan, nByte);
   if( aNew ){
@@ -2193,9 +2202,9 @@ void sqlite3VdbeIOTraceSql(Vdbe *p){
 ** of a ReusableSpace object by the allocSpace() routine below.
 */
 struct ReusableSpace {
-  u8 *pSpace;          /* Available memory */
-  int nFree;           /* Bytes of available memory */
-  int nNeeded;         /* Total bytes that could not be allocated */
+  u8 *pSpace;            /* Available memory */
+  sqlite3_int64 nFree;   /* Bytes of available memory */
+  sqlite3_int64 nNeeded; /* Total bytes that could not be allocated */
 };
 
 /* Try to allocate nByte bytes of 8-byte aligned bulk memory for pBuf
@@ -2215,7 +2224,7 @@ struct ReusableSpace {
 static void *allocSpace(
   struct ReusableSpace *p,  /* Bulk memory available for allocation */
   void *pBuf,               /* Pointer to a prior allocation */
-  int nByte                 /* Bytes of memory needed */
+  sqlite3_int64 nByte       /* Bytes of memory needed */
 ){
   assert( EIGHT_BYTE_ALIGNMENT(p->pSpace) );
   if( pBuf==0 ){
@@ -3495,6 +3504,10 @@ unsigned long long bdb_genid_to_host_order(unsigned long long genid);
 ** carried out.  Seek the cursor now.  If an error occurs, return
 ** the appropriate error code.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int gbl_abort_on_dta_lookup_error = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
   int res, rc;
 #ifdef SQLITE_TEST
@@ -3522,6 +3535,8 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
              bdb_genid_to_host_order(p->movetoTarget), 
              bdb_genid_to_host_order(p->movetoTarget));
     logmsg(LOGMSG_ERROR, "%s\n", errmsg);
+    if (gbl_abort_on_dta_lookup_error)
+        abort();
     return SQLITE_DEADLOCK;
   }
   /* this is a direct lookup for a genid;
@@ -3536,6 +3551,8 @@ static int SQLITE_NOINLINE handleDeferredMoveto(VdbeCursor *p){
              "Dta lookup lost the race for tbl %s genid=%llu found=%llu\n",
              sqlite3BtreeGetTblName(p->uc.pCursor),
              p->movetoTarget, genid);
+      if (gbl_abort_on_dta_lookup_error)
+          abort();
       return SQLITE_DEADLOCK;
     }
   }
@@ -4355,7 +4372,11 @@ u32 sqlite3VdbeSerialGet(
       ** length.
       ** EVIDENCE-OF: R-28401-00140 Value is a string in the text encoding and
       ** (N-13)/2 bytes in length. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      static const u32 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       static const u16 aFlag[] = { MEM_Blob|MEM_Ephem, MEM_Str|MEM_Ephem };
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pMem->z = (char *)buf;
       pMem->n = (serial_type-12)/2;
       pMem->flags = aFlag[serial_type&1];
@@ -5705,10 +5726,11 @@ int sqlite3_value_dup_inplace(
   memset(pNew, 0, sizeof(Mem));
   memcpy(pNew, pOrig, MEMCELLSIZE);
   pNew->flags &= ~MEM_Dyn;
+  pNew->szMalloc = 0;
   pNew->db = 0;
   if( pNew->flags&(MEM_Str|MEM_Blob) ){
     int rc;
-    pNew->flags &= ~(MEM_Static|MEM_Dyn);
+    pNew->flags &= ~MEM_Static;
     pNew->flags |= MEM_Ephem;
     rc = sqlite3VdbeMemMakeWriteable(pNew);
     if( rc!=SQLITE_OK ) return rc;

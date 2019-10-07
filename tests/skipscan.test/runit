@@ -8,6 +8,21 @@ function failexit
     exit -1
 }
 
+function assertcnt 
+{
+    tbl=$1
+    target=$2
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count of $tbl is now $cnt but should be $target"
+    fi
+}
+
 dbnm=$1
 table=t1
 
@@ -28,12 +43,17 @@ keys
 }
 "
 
-
-for i in `seq 1 25` ; do
-    for j in `seq 1 200` ; do
+i=1
+while [ $i -le 25 ] ; do
+    j=1
+    while [ $j -le 200 ] ; do
         echo "insert into $table (a,b,c) values($i, $j, now())"
+        let j=j+1
     done
+    let i=i+1
 done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - > /dev/null
+
+assertcnt $table $((25*200))
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "analyze $table"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "explain query plan select a from $table where b < 34"

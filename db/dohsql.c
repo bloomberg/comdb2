@@ -112,7 +112,6 @@ struct dohsql {
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
 };
-typedef struct dohsql dohsql_t;
 
 struct dohsql_stats {
     long long num_reqs;
@@ -146,14 +145,12 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
     struct sqlclntstate *clnt = work;
     switch (op) {
     case THD_RUN:
-        sqlengine_setup_temp_table_mtx(clnt);
         sqlengine_work_shard(pool, work, thddata);
         break;
     case THD_FREE:
-        sqlengine_cleanup_temp_table_mtx(clnt);
         /* error, we are done */
         clnt->query_rc = -1;
-        clnt->done = 1;
+        signal_clnt_as_done(clnt);
         break;
     }
 }
@@ -850,7 +847,7 @@ static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c)
 {
     int i;
     for (i = 0; i < conn->nparams; i++) {
-        if (!strcasecmp(b, conn->params[i].name)) {
+        if (!strcmp(b, conn->params[i].name)) {
             *c = conn->params[i].pos;
             return 0;
         }
@@ -1091,10 +1088,6 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(clnt->sql);
     clnt->sql = NULL;
     cleanup_clnt(clnt);
-    Pthread_mutex_destroy(&clnt->wait_mutex);
-    Pthread_cond_destroy(&clnt->wait_cond);
-    Pthread_mutex_destroy(&clnt->write_lock);
-    Pthread_mutex_destroy(&clnt->dtran_mtx);
     free(clnt);
 }
 
@@ -1200,7 +1193,8 @@ int dohsql_distribute(dohsql_node_t *node)
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
-                                 sqlcpy = strdup(node->nodes[i]->sql), 0);
+                                 sqlcpy = strdup(node->nodes[i]->sql), 0,
+                                 PRIORITY_T_DEFAULT);
             if (rc) {
                 free(sqlcpy);
                 return SHARD_ERR_GENERIC;
@@ -1453,9 +1447,20 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
         b = conns->conns[order[idx_b]].que->lst.top->obj;
 
         for (i = 0; i < conns->order_size /*conns->ncols*/; i++) {
-            ret = sqlite3MemCompare(&a[i], &b[i], NULL);
+            int orderby_idx = (conns->order_dir[i] > 0)
+                                  ? conns->order_dir[i]
+                                  : (-conns->order_dir[i]);
+            assert(orderby_idx > 0);
+            orderby_idx--;
+            if (gbl_dohsql_verbose) {
+                extern char *print_mem(Mem * m);
+                logmsg(LOGMSG_USER, "%lu COMPARE %s <> %s\n", pthread_self(),
+                       print_mem(&a[orderby_idx]), print_mem(&b[orderby_idx]));
+            }
+
+            ret = sqlite3MemCompare(&a[orderby_idx], &b[orderby_idx], NULL);
             if (ret) {
-                if (conns->order_dir[i])
+                if (conns->order_dir[i] < 0)
                     ret = -ret;
                 break;
             }
@@ -1742,6 +1747,11 @@ int order_init(dohsql_t *conns, dohsql_node_t *node)
 int dohsql_is_parallel_shard(void)
 {
     GET_CLNT;
+    /* exclude statements that do not arrive
+       by a supported plugin */
+    if (!clnt->plugin.write_response)
+        return 1;
+
     return (clnt->conns || DOHSQL_CLIENT);
 }
 
@@ -1866,7 +1876,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     } else {
         /* if already allocated, check to see if name is already in */
         for (i = 0; i < params->nparams; i++) {
-            if (!strcasecmp(name, params->params[i].name)) {
+            if (!strcmp(name, params->params[i].name)) {
                 /* done here */
                 return params;
             }
@@ -1892,6 +1902,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (params->params)
             free(params->params);
         free(params);
+        *pparams = NULL;
         return NULL;
     }
     params->params = temparr;

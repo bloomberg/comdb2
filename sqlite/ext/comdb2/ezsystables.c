@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "sqlite3.h"
 #include <cdb2api.h>
@@ -12,10 +13,11 @@
 #include "types.h"
 #include "comdb2systbl.h"
 
-/* This tries to make it easier to add system tables.  There's usually lots of boilerplate
- * code.  A common case though is that you have an array of structures that you want to
- * emit.   create_system_table lets you specify a table name, the size of the structure,
- * and a list of fields and types.  It takes care of the boilerplate. */
+/* This tries to make it easier to add system tables. There's usually lots of
+ * boilerplate code. A common case though is that you have an array of
+ * structures that you want to emit. create_system_table lets you specify a
+ * table name, the size of the structure, and a list of fields and types. It
+ * takes care of the boilerplate. */
 
 enum {
     FIELD_TYPE_MASK = 0x0fff
@@ -145,7 +147,7 @@ static void* get_field_ptr(struct systable *t, char *rec, int column) {
                 out = *(void**) &rec[t->fields[column].offset];
             else
                 out = &rec[t->fields[column].offset];
-            break; 
+            break;
 
         case CDB2_CSTRING:
             out = *(void**) &rec[t->fields[column].offset];
@@ -196,7 +198,7 @@ static int systbl_column(
         case CDB2_DATETIMEUS: {
             dttz_t dtz;
             int le = 1;
-            char tz[CDB2_MAX_TZNAME];
+            const char *tz = "UTC";
 #ifndef _LINUX_SOURCE
             le = 0;
 #endif
@@ -272,7 +274,9 @@ static int systbl_filter(
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
-  return SQLITE_OK;
+    struct ez_systable_cursor *pCur = (struct ez_systable_cursor*) pVtabCursor;
+    pCur->rowid = 0;
+    return SQLITE_OK;
 }
 
 
@@ -282,25 +286,35 @@ static int systbl_eof(sqlite3_vtab_cursor *cur){
 }
 
 static int systbl_disconnect(sqlite3_vtab *pVtab){
-    // SQLite still wants a disconnect.  We have some per-module
-    // state, but that gets freed in the module destructor, so
-    // this is a no-op.
+    free(pVtab);
     return SQLITE_OK;
 }
 
-static const sqlite3_module systbl = {
-    .xConnect = systbl_connect,
-    .xBestIndex = systbl_best_index,
-    .xOpen = systbl_open,
-    .xClose = systbl_close,
-    .xFilter = systbl_filter,
-    .xDisconnect = systbl_disconnect,
-    .xNext = systbl_next,
-    .xEof = systbl_eof,
-    .xColumn = systbl_column,
-    .xRowid = systbl_rowid,
-    .access_flag = CDB2_ALLOW_USER,
-};
+static void init_module(sqlite3_module *module)
+{
+    assert(module);
+    if (module->xConnect == NULL)
+        module->xConnect = systbl_connect;
+    if (module->xBestIndex == NULL)
+        module->xBestIndex = systbl_best_index;
+    if (module->xOpen == NULL)
+        module->xOpen = systbl_open;
+    if (module->xClose == NULL)
+        module->xClose = systbl_close;
+    if (module->xFilter == NULL)
+        module->xFilter = systbl_filter;
+    if (module->xDisconnect == NULL)
+        module->xDisconnect = systbl_disconnect;
+    if (module->xNext == NULL)
+        module->xNext = systbl_next;
+    if (module->xEof == NULL)
+        module->xEof = systbl_eof;
+    if (module->xColumn == NULL)
+        module->xColumn = systbl_column;
+    if (module->xRowid == NULL)
+        module->xRowid = systbl_rowid;
+    /* ezsystables does not modify module->access_flag. */
+}
 
 void destroy_system_table(void *p) {
     struct systable *t = p;
@@ -311,11 +325,13 @@ void destroy_system_table(void *p) {
     free(t);
 }
 
-int create_system_table(sqlite3 *db, char *name, 
-        int(*init_callback)(void **data, int *npoints), 
-        void(*release_callback)(void *data, int npoints), 
+int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
+        int(*init_callback)(void **data, int *npoints),
+        void(*release_callback)(void *data, int npoints),
         size_t struct_size, ...) {
     struct systable *sys;
+
+    init_module(module);
 
     sys = malloc(sizeof(struct systable));
     sys->name = strdup(name);
@@ -332,7 +348,7 @@ int create_system_table(sqlite3 *db, char *name,
 
     int type = va_arg(args, int);
     while (type != SYSTABLE_END_OF_FIELDS) {
-        char *name = va_arg(args, char*);
+        char *vname = va_arg(args, char*);
         int nulloffset = va_arg(args, size_t);
         int offset = va_arg(args, size_t);
 
@@ -341,7 +357,7 @@ int create_system_table(sqlite3 *db, char *name,
             sys->fields = realloc(sys->fields, nalloc * sizeof(struct sysfield));
         }
 
-        sys->fields[sys->nfields].name = strdup(name);
+        sys->fields[sys->nfields].name = strdup(vname);
         sys->fields[sys->nfields].type = type;
         sys->fields[sys->nfields].nulloffset = nulloffset;
         sys->fields[sys->nfields++].offset = offset;
@@ -349,7 +365,8 @@ int create_system_table(sqlite3 *db, char *name,
         type = va_arg(args, int);
     }
 
-    int rc = sqlite3_create_module_v2(db, name, &systbl, sys, destroy_system_table);
+    int rc = sqlite3_create_module_v2(db, name, module, sys,
+                                      destroy_system_table);
     if (rc) {
         fprintf(stderr, "create rc %d %s\n", rc, sqlite3_errmsg(db));
         return rc;

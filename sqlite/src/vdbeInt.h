@@ -310,16 +310,11 @@ struct sqlite3_value {
   u8  eSubtype;       /* Subtype for this value */
   int n;              /* Number of characters in string value, excluding '\0' */
   char *z;            /* String or BLOB value */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3 *db;        /* The associated database connection */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* ShallowCopy only needs to copy the information above */
   char *zMalloc;      /* Space to hold MEM_Str or MEM_Blob if szMalloc>0 */
   int szMalloc;       /* Size of the zMalloc allocation */
   u32 uTemp;          /* Transient storage for serial_type in OP_MakeRecord */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   sqlite3 *db;        /* The associated database connection */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   void (*xDel)(void*);/* Destructor for Mem.z - only valid if MEM_Dyn */
 #ifdef SQLITE_DEBUG
   Mem *pScopyFrom;    /* This Mem is a shallow copy of pScopyFrom */
@@ -352,22 +347,21 @@ struct sqlite3_value {
 #define MEM_Real      0x0008   /* Value is a real number */
 #define MEM_Blob      0x0010   /* Value is a BLOB */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define MEM_Datetime  0x0020   /* Value is a datetime */
-#define MEM_Interval  0x0040   /* Value is an interval/decimal */
-#define MEM_Small     0x0080   /* Value is a small float */
-#define MEM_AffMask   0x00ff   /* Mask of affinity bits */
-#define MEM_RowSet    0x0100   /* Value is a RowSet object */
-#define MEM_Frame     0x0200   /* Value is a VdbeFrame object */
-#define MEM_Undefined 0x0400   /* Value is undefined */
-#define MEM_Cleared   0x0800   /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0x0fff   /* Mask of type bits */
+#define MEM_Datetime  0x00020  /* Value is a datetime */
+#define MEM_Interval  0x00040  /* Value is an interval/decimal */
+#define MEM_Small     0x00080  /* Value is a small float */
+#define MEM_AffMask   0x000ff  /* Mask of affinity bits */
+#define MEM_FromBind  0x00100  /* Value originates from sqlite3_bind() */
+#define MEM_Undefined 0x00200  /* Value is undefined */
+#define MEM_Cleared   0x00400  /* NULL set by OP_Null, not from data */
+#define MEM_TypeMask  0x306ff  /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
-/* Available          0x0020   */
+#define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
 /* Available          0x0040   */
 #define MEM_Undefined 0x0080   /* Value is undefined */
 #define MEM_Cleared   0x0100   /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0xc1ff   /* Mask of type bits */
+#define MEM_TypeMask  0xc1df   /* Mask of type bits */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
@@ -377,15 +371,15 @@ struct sqlite3_value {
 ** string is \000 or \u0000 terminated
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define MEM_Term      0x001000 /* String in Mem.z is zero terminated */
-#define MEM_Dyn       0x002000 /* Need to call Mem.xDel() on Mem.z */
-#define MEM_Static    0x004000 /* Mem.z points to a static string */
-#define MEM_Ephem     0x008000 /* Mem.z points to an ephemeral string */
-#define MEM_Agg       0x010000 /* Mem.z points to an agg function context */
-#define MEM_Zero      0x020000 /* Mem.i contains count of 0s appended to blob */
+#define MEM_Term      0x000800 /* String in Mem.z is zero terminated */
+#define MEM_Dyn       0x001000 /* Need to call Mem.xDel() on Mem.z */
+#define MEM_Static    0x002000 /* Mem.z points to a static string */
+#define MEM_Ephem     0x004000 /* Mem.z points to an ephemeral string */
+#define MEM_Agg       0x008000 /* Mem.z points to an agg function context */
+#define MEM_Zero      0x010000 /* Mem.i contains count of 0s appended to blob */
+#define MEM_Subtype   0x020000 /* Mem.eSubtype is valid */
 #define MEM_Xor       0x040000 /* Mem.z needs XOR; <DESCEND> keys */
 #define MEM_OpFunc    0x080000 /* Mem.u is a custom function */
-#define MEM_Subtype   0x100000 /* Mem.eSubtype is valid */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_Term      0x0200   /* String in Mem.z is zero terminated */
 #define MEM_Dyn       0x0400   /* Need to call Mem.xDel() on Mem.z */
@@ -411,6 +405,12 @@ struct sqlite3_value {
 */
 #define MemSetTypeFlag(p, f) \
    ((p)->flags = ((p)->flags&~(MEM_TypeMask|MEM_Zero))|f)
+
+/*
+** True if Mem X is a NULL-nochng type.
+*/
+#define MemNullNochng(X) \
+  ((X)->flags==(MEM_Null|MEM_Zero) && (X)->n==0 && (X)->u.nZero==0)
 
 /*
 ** Return true if a memory cell is not marked as invalid.  This macro
@@ -581,6 +581,9 @@ struct Vdbe {
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oeFlag;              /* ON CONFLICT action */
   u8 upsertIdx;           /* ON CONFLICT target */
+  i64 luaStartTime;       /* start time for Lua running a query */
+  i64 luaRows;            /* number of rows processed by Lua */
+  double luaSavedCost;    /* saved cost for this Lua thread */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -789,6 +792,6 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
-#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)==SQLITE_MAX_U32 || (t)==(SQLITE_MAX_U32-1) )
+#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)==SQLITE_MAX_U32 || ((unsigned int)t)==(SQLITE_MAX_U32-1) )
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif /* !defined(SQLITE_VDBEINT_H) */

@@ -36,6 +36,7 @@ int logmsgperror(const char *s);
 void logmsg_set_name(char *name);
 void logmsg_set_syslog(int onoff);
 void logmsg_set_file(FILE *file);
+int logmsg_level_ok(loglvl lvl);
 void logmsg_set_level(loglvl lvl);
 void logmsg_set_time(int onoff);
 
@@ -47,5 +48,8 @@ int logmsg_timestamp_update(void *unused, void *value);
 void *logmsg_level_value(void *unused);
 void *logmsg_syslog_value(void *unused);
 void *logmsg_timestamp_value(void *unused);
+
+int io_override_set_std(FILE *);
+FILE *io_override_get_std(void);
 
 #endif

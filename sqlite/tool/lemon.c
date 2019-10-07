@@ -48,6 +48,7 @@ extern int access(const char *path, int mode);
 #define MAXRHS 1000
 #endif
 
+extern void memory_error();
 static int showPrecedenceConflict = 0;
 static char *msort(char*,char**,int(*)(const char*,const char*));
 
@@ -3848,7 +3849,7 @@ PRIVATE int translate_code(struct lemon *lemp, struct rule *rp){
           ErrorMsg(lemp->filename,rp->ruleline,
             "%s(%s) has the same label as the LHS but is not the left-most "
             "symbol on the RHS.",
-            rp->rhs[i]->name, rp->rhsalias);
+            rp->rhs[i]->name, rp->rhsalias[i]);
           lemp->errorcnt++;
         }
         for(j=0; j<i; j++){
@@ -4919,7 +4920,6 @@ char *SetNew(void){
   char *s;
   s = (char*)calloc( size, 1);
   if( s==0 ){
-    extern void memory_error();
     memory_error();
   }
   return s;

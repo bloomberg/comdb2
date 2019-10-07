@@ -227,8 +227,9 @@ void pool_dump(pool_t *p, char *name)
 
     for (blk = p->blocks, ii = 0; blk != 0 && ii <= p->nblocks;
          ii++, blk = blk->prev) {
+        char my_buf[30];
         logmsg(LOGMSG_USER, "BLOCK %-10d (%p) TIME=%s", ii, blk,
-               ctime((time_t *)&blk->time));
+               ctime_r((time_t *)&blk->time, my_buf));
     }
     logmsg(LOGMSG_USER, "DUMP COMPLETE\n");
 }

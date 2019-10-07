@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+TMPDIR=${TMPDIR:-/tmp}
+
+#set -e 
+set -x
+
+# args
+a_dbn=$1
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
+r="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default -"
+rt="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default "
+rtm="cdb2sql -s -n ${master} ${CDB2_OPTIONS} $a_dbn default "
+
+outlog='log.run'
+
+#>>$outlog
+
+function check_done
+{ 
+    $rtm "exec procedure sys.cmd.send('long')" | grep -A 3 "'t'" | grep DONE >> $outlog
+}
+
+echo "Starting"
+echo "Starting" > $outlog
+
+echo "Inserting rows"
+echo "Inserting rows" >> $outlog
+$r >> $outlog << "EOF" 
+begin
+insert into t2 select value from generate_series(1, 5000)
+commit
+EOF
+
+echo "Inserting chunks of 99 rows"
+echo "Inserting chunks of 99 rows" >> $outlog
+$r >> $outlog << "EOF" 
+set transaction chunk 99 
+begin 
+insert into t select * from t2
+commit
+EOF
+
+check_done
+
+$rt "select count(*) from t" >> $outlog
+
+echo "Deleting the existing rows"
+echo "Deleting the existing rows" >> $outlog
+$r >> $outlog << "EOF" 
+begin
+delete from t where 1
+commit
+EOF
+
+check_done
+
+echo "Inserting chunks of 1 row"
+echo "Inserting chunks of 1 row" >> $outlog
+$r >> $outlog << "EOF" 
+set transaction chunk 1 
+begin
+insert into t select * from t2
+commit
+EOF
+
+check_done
+
+$rt "select count(*) from t" >> $outlog
+
+echo "Deleting the existing rows"
+echo "Deleting the existing rows" >> $outlog
+$r >> $outlog << "EOF" 
+begin
+delete from t where 1
+commit
+EOF
+
+check_done
+
+echo "Multiple inserts in a transaction chunks of 1"
+echo "Multiple inserts in a transaction chunks of 1" >> $outlog
+$r >> $outlog << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+insert into t values (2)
+insert into t values (3)
+insert into t values (4)
+insert into t values (5)
+insert into t values (6)
+commit
+EOF
+
+check_done
+
+echo "Failure tests"
+echo "Failure tests" >> $outlog
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+commit
+EOF
+
+check_done
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+insert into t values (2)
+commit
+EOF
+
+check_done
+
+$rt "select * from t order by a limit 3" >> $outlog
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+insert into t values (2)
+select * from t order by a limit 3
+commit
+EOF
+
+check_done
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+select * from t order by a limit 3
+insert into t values (123456789)
+commit
+EOF
+
+$rt "select * from t where a>1000" >> $outlog
+
+check_done
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (1)
+insert into t values (2)
+insert into t values (3)
+insert into t values (4)
+insert into t values (5)
+insert into t values (123456789)
+commit
+EOF
+
+$rt "select * from t where a>1000" >> $outlog
+
+$rt "select count(*) from t" >> $outlog
+
+check_done
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+begin
+insert into t values (123456789)
+insert into t values (1)
+commit
+EOF
+
+$rt "select * from t where a>1000" >> $outlog
+
+$rt "select count(*) from t" >> $outlog
+
+check_done
+
+# get testcase output
+testcase_output=$(cat $outlog)
+
+# get expected output
+expected_output=$(cat log.expected)
+
+# verify 
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testcase}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{log.expected,$outlog}"
+    echo " "
+    diff log.expected $outlog
+    echo " "
+    exit 1
+
+fi
+
+echo "Testcase passed."
+

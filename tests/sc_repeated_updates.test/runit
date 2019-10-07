@@ -120,7 +120,7 @@ function update_same_record
         assertcnt $nrecs "update_same_record"
         let j=j+1
     done
-    succ=`grep "rows updated=1" update1.out | wc -l`
+    succ=`grep -c "rows updated=1" update1.out`
     if [[ $succ -ne $loc_recs ]] ; then
 	failexit "update_same_record: all $loc_recs should have resulted in successful update instead of $succ"
     fi
@@ -141,7 +141,7 @@ function update_same_record_fail
         assertcnt $nrecs "update_same_record_fail"
         let j=j+1
     done
-    failed=`grep failed update3.out | wc -l`
+    failed=`grep -c failed update3.out`
     if [[ $failed -ne $((loc_recs-1)) ]] ; then
 	failexit "update_same_record_fail: number failed is only $failed -ne $((loc_recs-1))"
     fi
@@ -173,7 +173,7 @@ function update_records
         done
         let t=t+1
 
-        succ=`grep "rows updated=1" update2.out | wc -l`
+        succ=`grep -c "rows updated=1" update2.out`
         if [[ $succ -ne $nrecs ]] ; then
             failexit "update_records: all $nrecs should have resulted in successful update instead of $succ"
         fi
@@ -201,7 +201,7 @@ function update_records_fail
         #sleep 0.1
     done
 
-    failed=`grep failed update4.out | wc -l`
+    failed=`grep -c failed update4.out`
     if [[ $failed -ne $((nrecs-dist)) ]] ; then
 	failexit "update_records_fail: number failed is only $failed -ne $((nrecs-dist))"
     fi

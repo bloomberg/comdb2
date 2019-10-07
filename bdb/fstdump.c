@@ -54,7 +54,8 @@
 #include <str0.h>
 
 #include <sbuf2.h>
-#include <logmsg.h>
+#include "logmsg.h"
+#include "thread_stats.h"
 
 struct error_extension {
     uint32_t length; /* length of this struct in bytes */
@@ -425,7 +426,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         ms_after = comdb2_time_epochms();
         ms_diff = ms_after - ms_before;
         if (ms_diff > common->bdb_parent_state->attr->fstdump_longreq) {
-            const struct bdb_thread_stats *thread_stats =
+            const struct berkdb_thread_stats *thread_stats =
                 bdb_get_thread_stats();
             logmsg(LOGMSG_ERROR, "fstdump_thread: LONG REQUEST dbcp->c_get %d ms\n",
                     ms_diff);
@@ -1290,9 +1291,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 
         if (!is_handled_rc(rc))
             break;
-
-        if (rc == DB_REP_HANDLE_DEAD) {
-        }
 
         if (++retries > deadlock_sleep_start)
             usleep(deadlock_sleep_amt);

@@ -38,8 +38,9 @@ extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_rowlocks;
 
-void stack_me(char *location);
-
+extern void stack_me(char *location);
+extern void log_snap_info_key(snap_uid_t *);
+extern void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -418,7 +419,6 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_WARN, "*");
-		extern void log_snap_info_key(snap_uid_t *);
 		log_snap_info_key(idmap[j].snap_info);
 		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
@@ -763,7 +763,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 				break;
 			case DB_LOCK_MAXLOCKS:
 			case DB_LOCK_MAXWRITE:
-				if (idmap[i].count <idmap[killid].count)
+				if (idmap[i].count < idmap[killid].count)
 					 continue;
 				keeper = i;
 
@@ -773,7 +773,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 			case DB_LOCK_MINLOCKS:
 			case DB_LOCK_MINWRITE:
 			case DB_LOCK_MINWRITE_NOREAD:
-				if (idmap[i].count >idmap[killid].count) {
+				if (idmap[i].count > idmap[killid].count) {
 					if (idmap[i].count >100) {
 						/*
 						 * fprintf(stderr, "sparing %d cause he has %d locks\n",
@@ -788,7 +788,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 			case DB_LOCK_YOUNGEST_EVER:
 				/* if current younger, keep it */
-				if (idmap[i].count <idmap[killid].count) {
+				if (idmap[i].count < idmap[killid].count) {
 					continue;
 				}
 				keeper = i;
@@ -869,7 +869,6 @@ dokill:
 		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
 #ifdef DEBUG_LOCKS
 			__lock_dump_active_locks(dbenv, stderr);
@@ -940,7 +939,7 @@ __init_lockerid_priority(dbenv, atype, lip, ptr_idarr)
 	case DB_LOCK_MINWRITE_NOREAD:
 		/* bias by the number of times we retried this txn */
 		ptr_idarr->count = lip->nretries * dbenv->lk_max;
-		ptr_idarr->count +=lip->nwrites;
+		ptr_idarr->count += lip->nwrites;
 
 		break;
 	case DB_LOCK_YOUNGEST_EVER:
@@ -949,7 +948,7 @@ __init_lockerid_priority(dbenv, atype, lip, ptr_idarr)
 		break;
 	case DB_LOCK_MINWRITE_EVER:
 		ptr_idarr->count = lip->nretries;
-		ptr_idarr->count +=lip->nwrites;
+		ptr_idarr->count += lip->nwrites;
 
 		break;
 	}
@@ -965,24 +964,24 @@ __adjust_lockerid_priority(dbenv, atype, lip, ptr_idarr)
 	switch (atype) {
 	case DB_LOCK_MINLOCKS:
 	case DB_LOCK_MAXLOCKS:
-		ptr_idarr->count +=lip->nlocks;
+		ptr_idarr->count += lip->nlocks;
 
 		break;
 	case DB_LOCK_MINWRITE:
 	case DB_LOCK_MINWRITE_NOREAD:
 		/* bias by the number of times we retried this txn */
-		ptr_idarr->count +=lip->nretries * dbenv->lk_max;
-		ptr_idarr->count +=lip->nwrites;
+		ptr_idarr->count += lip->nretries * dbenv->lk_max;
+		ptr_idarr->count += lip->nwrites;
 
 		break;
 	case DB_LOCK_YOUNGEST_EVER:
-		if (ptr_idarr->count >lip->nretries)
+		if (ptr_idarr->count > lip->nretries)
 			ptr_idarr->count = lip->nretries;	/* this is the age in epoch seconds */
 
 		break;
 	case DB_LOCK_MINWRITE_EVER:
-		ptr_idarr->count +=lip->nretries;
-		ptr_idarr->count +=lip->nwrites;
+		ptr_idarr->count += lip->nretries;
+		ptr_idarr->count += lip->nwrites;
 
 		break;
 	}
@@ -1871,6 +1870,7 @@ __dd_abort(dbenv, info)
 	MUTEX_UNLOCK(dbenv, &lockp->mutex);
 
 	region->stat.st_ndeadlocks++;
+    region->stat.st_locks_aborted += lockerp->nlocks;
 ounlock:unlock_obj_partition(region, partition);
 unlock:unlock_locker_partition(region, lockerp->partition);
 out:unlock_lockers(region);

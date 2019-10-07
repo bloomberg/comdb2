@@ -480,6 +480,9 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		if ((ret = __db_mutex_setup(dbenv, dbmp->reginfo, &dbp->mutexp,
 			MUTEX_ALLOC | MUTEX_THREAD)) != 0)
 			return (ret);
+		if ((ret = __db_mutex_setup(dbenv, dbmp->reginfo, &dbp->free_mutexp,
+			MUTEX_ALLOC | MUTEX_THREAD)) != 0)
+			return (ret);
 	}
 
 	/*
@@ -971,6 +974,11 @@ never_opened:
 		dbmp = dbenv->mp_handle;
 		__db_mutex_free(dbenv, dbmp->reginfo, dbp->mutexp);
 		dbp->mutexp = NULL;
+	}
+	if (dbp->free_mutexp != NULL) {
+		dbmp = dbenv->mp_handle;
+		__db_mutex_free(dbenv, dbmp->reginfo, dbp->free_mutexp);
+		dbp->free_mutexp = NULL;
 	}
 
 	/* Discard any memory allocated for the file and database names. */

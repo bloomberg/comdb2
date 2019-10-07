@@ -601,6 +601,7 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
 #ifdef sqlite3Parser_ENGINEALWAYSONSTACK
   yyParser sEngine;    /* Space to hold the Lemon-generated Parser object */
 #endif
+  VVA_ONLY( u8 startedWithOom = db->mallocFailed );
 
   assert( zSql!=0 );
   mxSqlLen = db->aLimit[SQLITE_LIMIT_SQL_LENGTH];
@@ -632,6 +633,8 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   assert( pParse->pNewTrigger==0 );
   assert( pParse->nVar==0 );
   assert( pParse->pVList==0 );
+  pParse->pParentParse = db->pParse;
+  db->pParse = pParse;
   while( 1 ){
     n = sqlite3GetToken((u8*)zSql, &tokenType);
     mxSqlLen -= n;
@@ -688,7 +691,8 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
     sqlite3Parser(pEngine, tokenType, pParse->sLastToken);
     lastTokenParsed = tokenType;
     zSql += n;
-    if( pParse->rc!=SQLITE_OK || db->mallocFailed ) break;
+    assert( db->mallocFailed==0 || pParse->rc!=SQLITE_OK || startedWithOom );
+    if( pParse->rc!=SQLITE_OK ) break;
   }
   assert( nErr==0 );
 #ifdef YYTRACKMAXSTACKDEPTH
@@ -756,6 +760,8 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
     pParse->pZombieTab = p->pNextZombie;
     sqlite3DeleteTable(db, p);
   }
+  db->pParse = pParse->pParentParse;
+  pParse->pParentParse = 0;
   assert( nErr==0 || pParse->rc!=SQLITE_OK );
   return nErr;
 }
@@ -780,6 +786,11 @@ static void addSpaceSeparator(sqlite3_str *pStr){
 char *sqlite3Normalize(
   Vdbe *pVdbe,       /* VM being reprepared */
   const char *zSql   /* The original SQL string */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId      /* Zero if double quoted strings should always be
+                      * treated as identifiers when there is no Vdbe
+                      * available */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   sqlite3 *db;       /* The database connection */
   int i;             /* Next unread byte of zSql[] */
@@ -792,7 +803,11 @@ char *sqlite3Normalize(
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db = sqlite3VdbeDb(pVdbe);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   tokenType = -1;
   nParen = iStartIN = nParenAtIN = 0;
   pStr = sqlite3_str_new(db);
@@ -846,12 +861,20 @@ char *sqlite3Normalize(
         iStartIN = 0;
         j = pStr->nChar;
         if( sqlite3Isquote(zSql[i]) ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          char *zId = sqlite3_mprintf("%.*s", n, zSql+i);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           char *zId = sqlite3DbStrNDup(db, zSql+i, n);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           int nId;
           int eType = 0;
           if( zId==0 ) break;
           sqlite3Dequote(zId);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId) ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;
@@ -874,6 +897,13 @@ char *sqlite3Normalize(
         }
         break;
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      case TK_NOSQL: {
+        addSpaceSeparator(pStr);
+        sqlite3_str_append(pStr, zSql+i, n);
+        break;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       case TK_SELECT: {
         iStartIN = 0;
         /* fall through */

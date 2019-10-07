@@ -78,8 +78,7 @@ assertres "\"$res\"" \""[select * from nonexistent] failed with rc -3 no such ta
 COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
 ls -ltr $TESTDIR/var/log/cdb2/ | grep events
-logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | tail -1`
-logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+logfl=`find $TESTDIR/var/log/cdb2/ -printf "%T@ %p\n" | grep "/$DBNAME" | grep events | sort -n | cut -f2 -d' ' | tail -1`
 logflunziped=${logfl}.unzipped
 if [ "x$logfl" == "x" ] ; then
     failexit "event logfl can not be found"
@@ -186,7 +185,7 @@ sleep 3
 
 COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
-find $TESTDIR/var/log/cdb2/ | grep $DBNAME | grep '.events.' > logfls.txt
+find $TESTDIR/var/log/cdb2/ | grep "/$DBNAME" | grep '.events.' > logfls.txt
 echo logfls
 cat logfls.txt
 
@@ -200,7 +199,7 @@ cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
 echo lastfls 
 cat lastfls.txt
 
-res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep '"type": "sql"'| wc -l)
+res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep -c '"type": "sql"')
 assertres $res 1
 
 exit 0

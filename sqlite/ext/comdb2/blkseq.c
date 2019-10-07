@@ -12,6 +12,8 @@
 #include "build/db.h"
 #include <bdb/bdb_api.h>
 
+extern int blkseq_get_rcode(void *data, int datalen);
+
 typedef struct systable_blkseq {
     int64_t stripe;
     int64_t ix;
@@ -60,7 +62,6 @@ static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
     } else {
         int timestamp;
         int age;
-        int blkseq_get_rcode(void *data, int datalen);
         int rcode = blkseq_get_rcode(data->data, data->size);
         memcpy(&timestamp, (uint8_t *)data->data + (data->size - 4), 4);
         age = now - timestamp;
@@ -102,10 +103,15 @@ static void free_blkseq(void *p, int n)
     free(p);
 }
 
+sqlite3_module systblBlkseqModule = {
+    .access_flag = CDB2_ALLOW_USER,
+};
+
 int systblBlkseqInit(sqlite3 *db)
 {
     return create_system_table(
-        db, "comdb2_blkseq", get_blkseq, free_blkseq, sizeof(systable_blkseq_t),
+        db, "comdb2_blkseq", &systblBlkseqModule,
+        get_blkseq, free_blkseq, sizeof(systable_blkseq_t),
         CDB2_INTEGER, "stripe", -1, offsetof(systable_blkseq_t, stripe),
         CDB2_INTEGER, "index", -1, offsetof(systable_blkseq_t, ix),
         CDB2_CSTRING, "id", -1, offsetof(systable_blkseq_t, id),

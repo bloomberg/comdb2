@@ -735,9 +735,8 @@ static int bdb_fetch_int_ll(
             }
 
             dbp = bdb_state->dbp_data[0][dtafile];
-            extern int gbl_reorder_idx_writes;
-            if (args->for_write && gbl_reorder_idx_writes) {
-                flags |= DB_RMW;
+            if (args->for_write) {
+                 flags |= DB_RMW;
             }
         }
 
@@ -2265,7 +2264,8 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
         rc = bdb_lock_table_read(bdb_state, tran);
 
         if (rc) {
-            logmsg(LOGMSG_ERROR, "bdb_fetch_int unable to get table read lock.\n");
+            logmsg(LOGMSG_ERROR,
+                   "bdb_fetch_int unable to get table read lock.\n");
             return -1;
         }
     }

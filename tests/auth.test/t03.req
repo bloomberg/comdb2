@@ -1,5 +1,8 @@
 set user user2
+select comdb2_user();
 set password password2
+select comdb2_user();
 select 'user2'
+select comdb2_user();
 #only op can turn off authentication
 put authentication off

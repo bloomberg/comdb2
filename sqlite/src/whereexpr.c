@@ -1543,6 +1543,12 @@ Bitmask sqlite3WhereExprUsageNN(WhereMaskSet *pMaskSet, Expr *p){
   }else if( p->x.pList ){
     mask |= sqlite3WhereExprListUsage(pMaskSet, p->x.pList);
   }
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  if( p->op==TK_FUNCTION && p->y.pWin ){
+    mask |= sqlite3WhereExprListUsage(pMaskSet, p->y.pWin->pPartition);
+    mask |= sqlite3WhereExprListUsage(pMaskSet, p->y.pWin->pOrderBy);
+  }
+#endif
   return mask;
 }
 Bitmask sqlite3WhereExprUsage(WhereMaskSet *pMaskSet, Expr *p){

@@ -107,9 +107,10 @@ enum {
 /* flags for schema conversion */
 enum {
     /* conversion for update: skip fields missing in source buffer */
-    CONVERT_UPDATE = 1,
+    CONVERT_UPDATE               = 1,
     CONVERT_LITTLE_ENDIAN_CLIENT = 2,
-    CONVERT_NULL_NO_ERROR = 4 // support instant sc for dbstore
+    CONVERT_NULL_NO_ERROR        = 4, // support instant sc for dbstore
+    CONVERT_IGNORE_BLOBS         = 8
 };
 
 typedef enum convert_errcode {
@@ -415,7 +416,7 @@ int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail, int *tail
                            char *outbuf, struct convert_failure *reason,
                            const char *tzname);
 
-int create_key_from_ondisk_blobs(struct dbtable *db, int ixnum, char **tail,
+int create_key_from_ondisk_blobs(const struct dbtable *db, int ixnum, char **tail,
                                  int *taillen, char *mangled_key,
                                  const char *fromtag, const char *inbuf,
                                  int inbuflen, const char *totag, char *outbuf,
@@ -430,11 +431,14 @@ int create_key_from_ondisk_sch(struct dbtable *db, struct schema *fromsch, int i
                                struct convert_failure *reason,
                                const char *tzname);
 
-int create_key_from_ondisk_sch_blobs(
-    struct dbtable *db, struct schema *fromsch, int ixnum, char **tail, int *taillen,
-    char *mangled_key, const char *fromtag, const char *inbuf, int inbuflen,
-    const char *totag, char *outbuf, struct convert_failure *reason,
-    blob_buffer_t *inblobs, int maxblobs, const char *tzname);
+int create_key_from_ondisk_sch_blobs(const struct dbtable *db, struct schema *fromsch,
+                                     int ixnum, char **tail, int *taillen,
+                                     char *mangled_key, const char *fromtag,
+                                     const char *inbuf, int inbuflen,
+                                     const char *totag, char *outbuf,
+                                     struct convert_failure *reason,
+                                     blob_buffer_t *inblobs, int maxblobs,
+                                     const char *tzname);
 
 int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,

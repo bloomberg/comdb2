@@ -115,7 +115,7 @@ function run_blobstripe_test
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into bstripe select *, x'11' from generate_series limit 1000" 2>/dev/null
     x=$(count bstripe)
     [[ "$x" == "2000" ]] || failexit "incorrect count for bstripe, $x"
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from bstripe" | egrep -v 11 | wc -l)
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from bstripe" | egrep -c -v 11)
     [[ "$x" == "0" ]] || failexit "incorrect blobs for blobstripe"
 }
 
