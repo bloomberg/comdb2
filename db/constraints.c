@@ -849,7 +849,7 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE UPD:");
             /* TODO verify we have proper schema change locks */
             int saved_flgs = iq->osql_flags;
-            iq->osql_flags &=(~OSQL_FLAGS_REORDER_IDX_ON);
+            osql_unset_index_reorder_bit(&iq->osql_flags);
 
             rc = upd_record(
                 iq, trans, NULL,                               /*primkey*/

@@ -1397,7 +1397,11 @@ static int process_this_session(
     if (rc)
         return rc;
 
-    /* only reorder indices if more than one row add/upd/del */
+    /* only reorder indices if more than one row add/upd/dels
+     * NB: the idea is that single row transactions can not deadlock but
+     * update can have a del/ins index component and can deadlock -- in future 
+     * consider reordering for single upd stmts (only if performance 
+     * improves so this requires a solid test). */
     if (sess->tran_rows > 1 && gbl_reorder_idx_writes)
         iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
 
