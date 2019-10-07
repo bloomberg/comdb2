@@ -3175,7 +3175,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              *    BLOCK2_RECOM
              *    BLOCK2_SNAPISOL
              *    BLOCK2_SERIAL */
-            int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX;
+            int addflags =
+                RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_REORDER_IDX;
             if (delayed == 0 && opnum == num_reqs - 1 &&
                 iq->usedb->n_constraints == 0 && gbl_goslow == 0) {
                 addflags |= RECFLAGS_NO_CONSTRAINTS;
@@ -3267,13 +3268,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end,
-                            (uint8_t *)p_buf_data, p_buf_data_end, nulls,
-                            NULL, /*blobs*/
-                            0,    /*maxblobs*/
-                            &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
-                            hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX, 0);
+            rc = add_record(
+                iq, trans, p_buf_tag_name, p_buf_tag_name_end,
+                (uint8_t *)p_buf_data, p_buf_data_end, nulls, NULL, /*blobs*/
+                0,                                                  /*maxblobs*/
+                &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL, hdr.opcode,
+                opnum, /*blkpos*/
+                RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_REORDER_IDX, 0);
             if (rc != 0) {
                 numerrs = 1;
                 GOTOBACKOUT;
@@ -3550,7 +3551,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             NULL /*p_buf_vrec_end*/, nulls, NULL, /*updcols*/
                             blobs, MAXBLOBS, &genid, -1ULL, -1ULL, &err.errcode,
                             &err.ixnum, hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY |
+                                RECFLAGS_DONT_REORDER_IDX);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
@@ -3647,18 +3649,18 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
-                                               verification data*/
-                            updrrn.rrn, 0,   /*vgenid*/
-                            p_buf_tag_name, p_buf_tag_name_end,
-                            (uint8_t *)p_buf_data_new, p_buf_data_new_end,
-                            (uint8_t *)p_buf_data_v, p_buf_data_v_end, nulls,
-                            NULL, /*updcols*/
-                            NULL, /*blobs*/
-                            0,    /*maxblobs*/
-                            &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
-                            hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
+            rc = upd_record(
+                iq, trans, NULL, /*primkey - will be formed from
+                                   verification data*/
+                updrrn.rrn, 0,   /*vgenid*/
+                p_buf_tag_name, p_buf_tag_name_end, (uint8_t *)p_buf_data_new,
+                p_buf_data_new_end, (uint8_t *)p_buf_data_v, p_buf_data_v_end,
+                nulls, NULL, /*updcols*/
+                NULL,        /*blobs*/
+                0,           /*maxblobs*/
+                &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum, hdr.opcode,
+                opnum, /*blkpos*/
+                RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_REORDER_IDX);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -3745,13 +3747,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             /* add */
-            rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end,
-                            (uint8_t *)p_buf_data, p_buf_data_end, nulls,
-                            NULL, /*blobs*/
-                            0,    /*maxblobs*/
-                            &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
-                            hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX, 0);
+            rc = add_record(
+                iq, trans, p_buf_tag_name, p_buf_tag_name_end,
+                (uint8_t *)p_buf_data, p_buf_data_end, nulls, NULL, /*blobs*/
+                0,                                                  /*maxblobs*/
+                &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL, hdr.opcode,
+                opnum, /*blkpos*/
+                RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_REORDER_IDX, 0);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -4015,18 +4017,18 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
-                                               verification data*/
-                            rrn, 0,          /*vgenid*/
-                            p_buf_tag_name, p_buf_tag_name_end,
-                            (uint8_t *)p_newdta, p_newdta_end,
-                            (uint8_t *)p_buf_vdta, p_buf_vdta_end, nulls,
-                            NULL, /*updcols*/
-                            NULL, /*blobs*/
-                            0,    /*maxblobs*/
-                            &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum,
-                            hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY|RECFLAGS_DONT_REORDER_IDX);
+            rc = upd_record(
+                iq, trans, NULL, /*primkey - will be formed from
+                                   verification data*/
+                rrn, 0,          /*vgenid*/
+                p_buf_tag_name, p_buf_tag_name_end, (uint8_t *)p_newdta,
+                p_newdta_end, (uint8_t *)p_buf_vdta, p_buf_vdta_end, nulls,
+                NULL, /*updcols*/
+                NULL, /*blobs*/
+                0,    /*maxblobs*/
+                &genid, -1ULL, -1ULL, &err.errcode, &err.ixnum, hdr.opcode,
+                opnum, /*blkpos*/
+                RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_REORDER_IDX);
 
             if (rc != 0) {
                 numerrs = 1;
