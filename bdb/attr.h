@@ -319,7 +319,11 @@ DEF_ATTR(REP_PROCESSORS, rep_processors, QUANTITY, 4,
          "stream.")
 DEF_ATTR(REP_PROCESSORS_ROWLOCKS, rep_processors_rowlocks, QUANTITY, 0,
          "Rowlocks touches 1 file/txn; it's handled by the processor thread.")
+#ifdef _SUN_SOURCE
+DEF_ATTR(REP_LSN_CHAINING, rep_lsn_chaining, BOOLEAN, 1,
+#else
 DEF_ATTR(REP_LSN_CHAINING, rep_lsn_chaining, BOOLEAN, 0,
+#endif
          "If set, will force trasnactions on replicant to always release locks "
          "in LSN order.")
 DEF_ATTR(REP_MEMSIZE, rep_memsize, QUANTITY, 524288,
