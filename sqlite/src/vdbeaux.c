@@ -5759,7 +5759,7 @@ Mem *sqlite3CloneResult(
   }else{
     *pSize -= memRowSize(pMem, nCols);
     for(i=0; i<nCols; ++i){
-      sqlite3_value_free_inplace(pMem + i);
+      sqlite3_value_free_inplace(&pMem[i]);
     }
   }
   memset(pMem, 0, sizeof(Mem) * nCols);
