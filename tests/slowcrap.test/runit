@@ -219,11 +219,11 @@ assertres ()
 
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
-CNT=1000
+CNT=9000
 echo -n "insert into t6 values(1,1,1)" > gg.in
 for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
 
-for j in `seq 1 1` ; do 
+for j in `seq 1 100` ; do 
 cdb2sql ${CDB2_OPTIONS} $dbnm default -f gg.in
 assertcnt t6 $CNT
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
