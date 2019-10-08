@@ -7020,9 +7020,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
 
-        if (*flags & OSQL_DONT_REORDER_IDX)
-            locflags |= RECFLAGS_DONT_REORDER_IDX;
-
         rc = del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode,
                         &err->ixnum, BLOCK2_DELKL, locflags);
 
@@ -7089,9 +7086,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         } else {
             osql_set_delayed(iq);
         }
-
-        if (*flags & OSQL_DONT_REORDER_IDX)
-            addflags |= RECFLAGS_DONT_REORDER_IDX;
 
         rc = add_record(iq, trans, tag_name_ondisk,
                         tag_name_ondisk + tag_name_ondisk_len, /*tag*/
@@ -7266,12 +7260,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                         blobs that should exist in the new
                                         record, override the update
                                         function's default behaviour and
-                                        have
-                                        it erase any blobs that haven't been
+                                        have it erase any blobs that havent been
                                         collected. */
-
-        if (*flags & OSQL_DONT_REORDER_IDX)
-            locflags |= RECFLAGS_DONT_REORDER_IDX;
 
         rc = upd_record(iq, trans, NULL, rrn, genid, tag_name_ondisk,
                         tag_name_ondisk + tag_name_ondisk_len, /*tag*/

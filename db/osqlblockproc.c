@@ -71,6 +71,7 @@
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
+extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
@@ -1396,9 +1397,13 @@ static int process_this_session(
     if (rc)
         return rc;
 
-    /* if only one row add/upd/del then no need to reorder indices */
-    if (sess->tran_rows <= 1)
-        flags |= OSQL_DONT_REORDER_IDX;
+    /* only reorder indices if more than one row add/upd/dels
+     * NB: the idea is that single row transactions can not deadlock but
+     * update can have a del/ins index component and can deadlock -- in future 
+     * consider reordering for single upd stmts (only if performance 
+     * improves so this requires a solid test). */
+    if (sess->tran_rows > 1 && gbl_reorder_idx_writes)
+        iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
 
     while (!rc && !rc_out) {
         char *data = NULL;
