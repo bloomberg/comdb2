@@ -157,16 +157,25 @@ static inline int do_transfer(dyn_array_t *arr)
     return 0;
 }
 
+static inline int init_internal_buffers(dyn_array_t *arr)
+{
+    arr->capacity = 512;
+    arr->kv = malloc(sizeof(*arr->kv) * arr->capacity);
+    if (!arr->kv)
+        return 1;
+    arr->buffer_capacity = 16*1024;
+    arr->buffer = malloc(arr->buffer_capacity);
+    if (!arr->buffer)
+        return 1;
+    return 0;
+}
+
 static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void *data, int datalen)
 {
     if (arr->capacity == 0) {
         assert(arr->items == 0);
-        arr->capacity = 512;
-        arr->kv = malloc(sizeof(*arr->kv) * arr->capacity);
-        if (!arr->kv) return 1;
-        arr->buffer_capacity = 16*1024;
-        arr->buffer = malloc(arr->buffer_capacity);
-        if (!arr->buffer) return 1;
+        if(init_internal_buffers(arr))
+            return 1;
     }
     if (arr->items + 1 >= arr->capacity) {
         arr->capacity *= 2;
@@ -174,15 +183,20 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
         if (!n) return 1;
         arr->kv = n;
     }
-    if (arr->buffer_capacity <= arr->buffer_curr_offset + keylen + datalen) {
-        while (arr->buffer_capacity < arr->buffer_curr_offset + keylen + datalen)
+
+    int new_offset = arr->buffer_curr_offset + keylen + datalen;
+    if (arr->buffer_capacity <= new_offset) {
+        while (arr->buffer_capacity <= new_offset)
             arr->buffer_capacity *= 2;
         void *n = realloc(arr->buffer, arr->buffer_capacity);
         if (!n) return 1;
         arr->buffer = n;
     }
-    if (arr->buffer_capacity <= arr->buffer_curr_offset + keylen + datalen)
+
+    // assert(arr->buffer_capacity <= new_offset);
+    if (arr->buffer_capacity <= new_offset)
         abort();
+
 
     char *buffer = arr->buffer;
     void *keyloc = &buffer[arr->buffer_curr_offset];
