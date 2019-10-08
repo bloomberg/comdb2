@@ -8230,6 +8230,81 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     sqlite3VdbeError(vdbe, "%s", errstr);                                      \
     sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
+
+static int chunk_transaction()
+{
+    int rc = SQLITE_OK;
+
+    if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
+
+        /* commit current transaction and reopen another one */
+
+        /* disconnect berkeley db cursors */
+        bdberr = 0;
+        unlock_bdb_cursors(thd, NULL, &bdberr);
+        if (bdberr) {
+            comdb2_sqlite3VdbeError(
+                    pCur->vdbe, "Failed to disconnect berkeleydb cursors");
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+
+        /* commit current transaction */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                SQLENG_FNSH_STATE);
+        rc = handle_sql_commitrollback(clnt->thd, clnt,
+                TRANS_CLNTCOMM_CHUNK);
+        if (rc) {
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                    errstat_get_str(&clnt->osql.xerr));
+            logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
+            commit_rc = SQLITE_ABORT;
+            /* we need to recreate the transaction in any case
+               goto done;
+             */
+        }
+
+        /* need to reset shadow table fast point in cursors */
+        if (thd->bt) {
+            BtCursor *cur = NULL;
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                cur->shadtbl = NULL;
+            }
+        }
+
+        /* restart a new transaction */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                SQLENG_PRE_STRT_STATE);
+        rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
+        if (rc && !commit_rc) {
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                    "Failed to start a new chunk");
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+
+        rc = _start_new_transaction(clnt, thd);
+        if (rc && !commit_rc) {
+            comdb2_sqlite3VdbeError(
+                    pCur->vdbe, "Failed to initialize new transaction");
+
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+        rc = commit_rc;
+
+        clnt->dbtran.crtchunksize = 1;
+        if (rc != SQLITE_OK)
+            goto done;
+
+    } else {
+        clnt->dbtran.crtchunksize++;
+    }
+done:
+    return rc
+}
+
 /*
  ** Insert a new record into the BTree.  The key is given by (pKey,nKey)
  ** and the data is given by (pData,nData).  The cursor is used only to
@@ -8396,72 +8471,8 @@ int sqlite3BtreeInsert(
 
         if (clnt->dbtran.maxchunksize > 0 &&
             clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-            if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
-
-                /* commit current transaction and reopen another one */
-
-                /* disconnect berkeley db cursors */
-                bdberr = 0;
-                unlock_bdb_cursors(thd, NULL, &bdberr);
-                if (bdberr) {
-                    comdb2_sqlite3VdbeError(
-                        pCur->vdbe, "Failed to disconnect berkeleydb cursors");
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-
-                /* commit current transaction */
-                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                        SQLENG_FNSH_STATE);
-                rc = handle_sql_commitrollback(clnt->thd, clnt,
-                                               TRANS_CLNTCOMM_CHUNK);
-                if (rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                                            errstat_get_str(&clnt->osql.xerr));
-                    logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
-                    commit_rc = SQLITE_ABORT;
-                    /* we need to recreate the transaction in any case
-                    goto done;
-                    */
-                }
-
-                /* need to reset shadow table fast point in cursors */
-                if (thd->bt) {
-                    BtCursor *cur = NULL;
-                    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
-                    {
-                        cur->shadtbl = NULL;
-                    }
-                }
-
-                /* restart a new transaction */
-                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                        SQLENG_PRE_STRT_STATE);
-                rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
-                if (rc && !commit_rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                                            "Failed to start a new chunk");
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-
-                rc = _start_new_transaction(clnt, thd);
-                if (rc && !commit_rc) {
-                    comdb2_sqlite3VdbeError(
-                        pCur->vdbe, "Failed to initialize new transaction");
-
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-                rc = commit_rc;
-
-                clnt->dbtran.crtchunksize = 1;
-                if (rc != SQLITE_OK)
-                    goto done;
-
-            } else {
-                clnt->dbtran.crtchunksize++;
-            }
+            if ((rc = chunk_transaction(pCur, thd, clnt, bdberr)) != SQLITE_OK)
+                goto done;
         }
 
         /* We ignore keys on insert but save dirty keys.
