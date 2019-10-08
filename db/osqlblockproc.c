@@ -73,6 +73,7 @@
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
+extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
@@ -111,6 +112,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(unsigned long long rqid,
                                           const char *rpl, int *tableversion);
+extern void init_reorder_tbl();
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -1381,17 +1383,8 @@ static int process_this_session(
 		return 0;
     }
 
-
-    /* if only one row add/upd/del then no need to reorder indices */
-    if (sess->tran_rows <= 1)
-        flags |= OSQL_DONT_REORDER_IDX;
-    else {
-        void init_reorder_tbl();
-        init_reorder_tbl();
-    }
-
     oplog_key_t *opkey = NULL;
-	dyn_array_get_key(&tran->osql_rows, (void**)&opkey);
+    dyn_array_get_key(&tran->osql_rows, (void**)&opkey);
 
     oplog_key_t *opkey_ins = NULL;
     uint8_t add_stripe = 0;
@@ -1400,9 +1393,15 @@ static int process_this_session(
     if (rc)
         return rc;
 
-    /* if only one row add/upd/del then no need to reorder indices */
-    if (sess->tran_rows <= 1)
-        flags |= OSQL_DONT_REORDER_IDX;
+    /* only reorder indices if more than one row add/upd/dels
+     * NB: the idea is that single row transactions can not deadlock but
+     * update can have a del/ins index component and can deadlock -- in future 
+     * consider reordering for single upd stmts (only if performance 
+     * improves so this requires a solid test). */
+    if (sess->tran_rows > 1 && gbl_reorder_idx_writes) {
+        iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
+        init_reorder_tbl();
+    }
 
     while (!rc && !rc_out) {
         char *data = NULL;

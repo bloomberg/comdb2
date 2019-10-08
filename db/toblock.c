@@ -4794,9 +4794,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     ixout = -1;
     errout = 0;
 
-    if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
+    if (delayed || gbl_goslow || osql_is_index_reorder_on(iq->osql_flags)) {
 
-        if (gbl_reorder_idx_writes) {
+        if (osql_is_index_reorder_on(iq->osql_flags)) {
             if (iq->debug)
                 reqpushprefixf(iq, "process_defered_table:");
             rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,

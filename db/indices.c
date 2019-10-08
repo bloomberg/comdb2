@@ -22,8 +22,7 @@
 #include "indices.h"
 #include "tohex.h"
 #include "dyn_array.h"
-
-#define DEBUG_REORDER 0
+#include "sqloffload.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
@@ -355,7 +354,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             }
             ditk.ixnum = ixnum;
             ditk.ixlen = ixkeylen;
-            if (od_dta_tail)
+            if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                 append_genid_to_key(&ditk, ixkeylen);
 #if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
@@ -497,10 +496,10 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     dtikey_t delditk = {0}; // will serve as the delete key obj
     dtikey_t ditk = {0};    // will serve as the add or upd key obj
     bool reorder =
-        gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        osql_is_index_reorder_on(iq->osql_flags) && 
+        iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
-        iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
-        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
+        iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -644,7 +643,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 ditk.ixnum = ixnum;
                 ditk.ixlen = keysize;
 
-                if (od_dta_tail)
+                if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                     append_genid_to_key(&ditk, keysize);
                 rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                 if (rc != 0) {
@@ -686,7 +685,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     delditk.genid = vgenid;
                     delditk.ixnum = ixnum;
                     delditk.ixlen = keysize;
-                    if (od_dta_tail)
+                    if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                         append_genid_to_key(&delditk, keysize);
                     rc = dyn_array_append(&defered_index_array, &delditk, sizeof(delditk), data, datalen);
                     if (rc != 0) {
@@ -736,7 +735,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     ditk.genid = *newgenid;
                     ditk.ixnum = ixnum;
                     ditk.ixlen = keysize;
-                    if (od_dta_tail)
+                    if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                         append_genid_to_key(&ditk, keysize);
                     rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                     if (rc != 0) {
@@ -779,10 +778,10 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     int rc = 0;
     dtikey_t delditk = {0};
     bool reorder =
-        gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        osql_is_index_reorder_on(iq->osql_flags) &&
+        iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
-        iq->usedb->n_constraints == 0 && /* dont reorder if foreign constrts */
-        (flags & RECFLAGS_DONT_REORDER_IDX) == 0;
+        iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
     if (reorder) {
         delditk.type = DIT_DEL;
@@ -791,7 +790,6 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     }
 
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
         char *key = delditk.ixkey;
 
         /* only delete keys when told */
@@ -804,6 +802,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         if (iq->idxDelete)
             memcpy(key, iq->idxDelete[ixnum], keysize);
         else {
+            char keytag[MAXTAGLEN];
             snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
             rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ondisktag, od_dta,
                                         keytag, key, NULL, del_idx_blobs,
@@ -933,7 +932,6 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
 
     /* Add all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
         char mangled_key[MAXKEYLEN];
         char *od_dta_tail = NULL;
@@ -949,18 +947,21 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             !(ins_keys & (1ULL << ixnum)))
             continue;
 
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
         /* form new index */
         if (iq->idxInsert)
             rc =
                 create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
                                      mangled_key, (char *)new_dta, nd_len, key);
-        else
+        else {
+            char keytag[MAXTAGLEN];
+            snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
+
             rc = create_key_from_ondisk_blobs(
                 iq->usedb, ixnum, &od_dta_tail, &od_tail_len, mangled_key,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK", (char *)new_dta,
                 nd_len, keytag, key, NULL, blobs, blobs ? MAXBLOBS : 0, NULL);
+        }
+
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "upd_new_record_add2indices: %s newgenid 0x%llx "
@@ -1032,7 +1033,6 @@ int upd_new_record_indices(
     int rc = 0;
     /* First delete all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
@@ -1044,19 +1044,21 @@ int upd_new_record_indices(
             !(del_keys & (1ULL << ixnum)))
             continue;
 
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
-        int keysize = iq->usedb->ix_keylen[ixnum];
+        int keysize = getkeysize(iq->usedb, ixnum);
         if (iq->idxDelete) {
             memcpy(key, iq->idxDelete[ixnum], keysize);
-            rc = 0;
-        } else
+        } else {
+            char keytag[MAXTAGLEN];
+            snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
+
             rc = create_key_from_ondisk_blobs(
                 iq->usedb, ixnum, NULL, NULL, NULL,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
                 use_new_tag ? (char *)sc_old : (char *)old_dta,
                 0 /*not needed*/, keytag, key, NULL, del_idx_blobs,
                 del_idx_blobs ? MAXBLOBS : 0, NULL);
+        }
+
         if (rc == -1) {
             logmsg(LOGMSG_ERROR,
                    "upd_new_record oldgenid 0x%llx conversions -> "
@@ -1117,7 +1119,6 @@ int del_new_record_indices(struct ireq *iq, void *trans,
 {
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
@@ -1129,8 +1130,6 @@ int del_new_record_indices(struct ireq *iq, void *trans,
             !(del_keys & (1ULL << ixnum)))
             continue;
 
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
         /* Convert from OLD ondisk schema to NEW index schema - this
          * must work by definition. */
         /*
@@ -1140,13 +1139,18 @@ int del_new_record_indices(struct ireq *iq, void *trans,
         if (iq->idxDelete) {
             memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
             rc = 0;
-        } else
+        } else {
+            char keytag[MAXTAGLEN];
+            snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
+
             rc = create_key_from_ondisk_blobs(
                 iq->usedb, ixnum, NULL, NULL, NULL,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
                 use_new_tag ? (char *)sc_old : (char *)old_dta,
                 0 /*not needed */, keytag, key, NULL, del_idx_blobs,
                 del_idx_blobs ? MAXBLOBS : 0, NULL);
+        }
+
         if (rc == -1) {
             logmsg(LOGMSG_ERROR,
                    "del_new_record ngenid 0x%llx conversion -> ix%d failed\n",
@@ -1250,7 +1254,6 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
 
     int rc = dyn_array_first(&defered_index_array);
     if (rc != IX_OK) {
-        //free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
             if (iq->debug)
                 reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
