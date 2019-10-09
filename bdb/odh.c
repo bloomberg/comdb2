@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "bdb_int.h"
 #include <locks.h>
