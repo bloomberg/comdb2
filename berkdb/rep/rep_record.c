@@ -4337,12 +4337,12 @@ err:
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
-        Pthread_mutex_lock(&dbenv->ser_lk);
-        dbenv->ser_count--;
-        assert(dbenv->ser_count >= 0);
-        if (dbenv->ser_count == 0) {
-            Pthread_cond_broadcast(&dbenv->ser_cond);
-        }
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		dbenv->ser_count--;
+		assert(dbenv->ser_count >= 0);
+		if (dbenv->ser_count == 0) {
+			Pthread_cond_broadcast(&dbenv->ser_cond);
+		}
 		Pthread_mutex_unlock(&dbenv->ser_lk);
 	}
 
@@ -5021,20 +5021,20 @@ wait_for_running_transactions(dbenv)
 	if (dbenv->lsn_chain) {
 		return wait_for_lsn_chain_lk(dbenv);
 	} else {
-        int count = 0;
+		int count = 0;
 		/* Grab the writelock */
-        Pthread_mutex_lock(&dbenv->ser_lk);
-        while(dbenv->ser_count > 0) {
-            struct timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec++;
-            pthread_cond_timedwait(&dbenv->ser_cond, &dbenv->ser_lk, &ts);
-            count++;
-            if (count > 5) {
-                logmsg(LOGMSG_ERROR, "%s: waiting for processor threads to "
-                        "complete\n", __func__);
-            }
-        }
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		while(dbenv->ser_count > 0) {
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			ts.tv_sec++;
+			pthread_cond_timedwait(&dbenv->ser_cond, &dbenv->ser_lk, &ts);
+			count++;
+			if (count > 5) {
+				logmsg(LOGMSG_ERROR, "%s: waiting for processor threads to "
+						"complete\n", __func__);
+			}
+		}
 		Pthread_mutex_unlock(&dbenv->ser_lk);
 		return 0;
 	}
@@ -5581,9 +5581,9 @@ bad_resize:	;
 		if (ret)
 			goto err;
 	} else {
-        Pthread_mutex_lock(&dbenv->ser_lk);
-        dbenv->ser_count++;
-        Pthread_mutex_unlock(&dbenv->ser_lk);
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		dbenv->ser_count++;
+		Pthread_mutex_unlock(&dbenv->ser_lk);
 	}
 
 	/* Dispatch to a processor thread. */

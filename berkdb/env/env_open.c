@@ -608,8 +608,8 @@ foundlsn:
 		Pthread_mutex_init(&dbenv->recover_lk, NULL);
 		Pthread_cond_init(&dbenv->recover_cond, NULL);
 		Pthread_mutex_init(&dbenv->ser_lk, NULL);
-        Pthread_cond_init(&dbenv->ser_cond, NULL);
-        dbenv->ser_count = 0;
+		Pthread_cond_init(&dbenv->ser_cond, NULL);
+		dbenv->ser_count = 0;
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		listc_init(&dbenv->inactive_transactions,
