@@ -8305,7 +8305,6 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             }
         }
 
-
         if (rc && !commit_rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
                                     "Failed to initialize new transaction");
