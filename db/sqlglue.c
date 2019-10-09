@@ -168,7 +168,7 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur);
 enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
-        struct sql_thread *thd);
+                             struct sql_thread *thd);
 
 CurRange *currange_new()
 {
@@ -3660,8 +3660,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         }
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
 
-            if (clnt->dbtran.maxchunksize > 0 && clnt->dbtran.mode == TRANLEVEL_SOSQL &&
-                    clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+            if (clnt->dbtran.maxchunksize > 0 &&
+                clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+                clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                 if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
                     goto done;
             }
@@ -8240,9 +8241,8 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     sqlite3VdbeError(vdbe, "%s", errstr);                                      \
     sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
-
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
-        struct sql_thread *thd)
+                             struct sql_thread *thd)
 {
     int rc = SQLITE_OK;
     int commit_rc = SQLITE_OK;
@@ -8255,8 +8255,8 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         /* disconnect berkeley db cursors */
         unlock_bdb_cursors(thd, NULL, &bdberr);
         if (bdberr) {
-            comdb2_sqlite3VdbeError(
-                    pCur->vdbe, "Failed to disconnect berkeleydb cursors");
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                                    "Failed to disconnect berkeleydb cursors");
             rc = SQLITE_ERROR;
             goto done;
         }
@@ -8269,17 +8269,15 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                 cur->shadtbl = NULL;
                 if (cur->bdbcur)
                     bdb_osql_skip_close(thedb->bdb_env, cur->bdbcur);
-             }
+            }
         }
 
         /* commit current transaction */
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                SQLENG_FNSH_STATE);
-        rc = handle_sql_commitrollback(clnt->thd, clnt,
-                TRANS_CLNTCOMM_CHUNK);
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
+        rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
         if (rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
-                    errstat_get_str(&clnt->osql.xerr));
+                                    errstat_get_str(&clnt->osql.xerr));
             logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
             commit_rc = SQLITE_ABORT;
             /* we need to recreate the transaction in any case
@@ -8289,19 +8287,18 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         /* restart a new transaction */
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                SQLENG_PRE_STRT_STATE);
+                                SQLENG_PRE_STRT_STATE);
         rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
         if (rc && !commit_rc) {
-            comdb2_sqlite3VdbeError(pCur->vdbe,
-                    "Failed to start a new chunk");
+            comdb2_sqlite3VdbeError(pCur->vdbe, "Failed to start a new chunk");
             rc = SQLITE_ERROR;
             goto done;
         }
 
         rc = _start_new_transaction(clnt, thd);
         if (rc && !commit_rc) {
-            comdb2_sqlite3VdbeError(
-                    pCur->vdbe, "Failed to initialize new transaction");
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                                    "Failed to initialize new transaction");
 
             rc = SQLITE_ERROR;
             goto done;
@@ -8482,7 +8479,8 @@ int sqlite3BtreeInsert(
             goto done;
         }
 
-        if (clnt->dbtran.maxchunksize > 0 && clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+        if (clnt->dbtran.maxchunksize > 0 &&
+            clnt->dbtran.mode == TRANLEVEL_SOSQL &&
             clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
             if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
                 goto done;

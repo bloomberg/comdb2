@@ -1023,7 +1023,8 @@ int bdb_osql_skip_close(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
     if (cur->skip) {
         rc = bdb_temp_table_close_cursor(bdb_state, cur->skip, &bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: close cursor %d %d\n", __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: close cursor %d %d\n", __func__, rc,
+                   bdberr);
         cur->skip = NULL;
     }
 
