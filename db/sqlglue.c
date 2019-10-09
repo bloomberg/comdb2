@@ -67,7 +67,7 @@
 #include "crc32c.h"
 #include "types.h"
 #include "util.h"
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "flibc.h"
 
