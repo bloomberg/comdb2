@@ -8244,6 +8244,7 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                              struct sql_thread *thd)
 {
+    BtCursor *cur = NULL;
     int rc = SQLITE_OK;
     int commit_rc = SQLITE_OK;
     int bdberr = 0;
@@ -8263,12 +8264,11 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         /* need to reset shadow table fast point in cursors */
         if (thd->bt) {
-            BtCursor *cur = NULL;
             LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
             {
                 cur->shadtbl = NULL;
                 if (cur->bdbcur)
-                    bdb_osql_skip_close(thedb->bdb_env, cur->bdbcur);
+                    bdb_osql_cursor_reset(thedb->bdb_env, cur->bdbcur);
             }
         }
 
@@ -8296,6 +8296,16 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         }
 
         rc = _start_new_transaction(clnt, thd);
+
+        if (thd->bt) {
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                if (cur->bdbcur)
+                    bdb_osql_cursor_set(cur->bdbcur, clnt->dbtran.shadow_tran);
+            }
+        }
+
+
         if (rc && !commit_rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe,
                                     "Failed to initialize new transaction");

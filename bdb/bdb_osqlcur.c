@@ -1014,7 +1014,7 @@ int bdb_osql_destroy(int *bdberr)
     return rc;
 }
 
-int bdb_osql_skip_close(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
+int bdb_osql_cursor_reset(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
     int rc = 0;
@@ -1029,4 +1029,11 @@ int bdb_osql_skip_close(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
     }
 
     return rc;
+}
+
+void bdb_osql_cursor_set(bdb_cursor_ifn_t *pcur_ifn, tran_type *shadow_tran)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+
+    cur->shadow_tran = shadow_tran;
 }
