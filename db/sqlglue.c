@@ -167,6 +167,9 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur);
 
 enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 
+static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
+        struct sql_thread *thd);
+
 CurRange *currange_new()
 {
     CurRange *rc = (CurRange *)malloc(sizeof(CurRange));
@@ -3656,6 +3659,13 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 #endif
         }
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
+
+            if (clnt->dbtran.maxchunksize > 0 && clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+                    clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
+                    goto done;
+            }
+
             if (is_sqlite_stat(pCur->db->tablename)) {
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
@@ -8231,22 +8241,35 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
 
-static int chunk_transaction()
+static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
+        struct sql_thread *thd)
 {
     int rc = SQLITE_OK;
+    int commit_rc = SQLITE_OK;
+    int bdberr = 0;
 
     if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
 
         /* commit current transaction and reopen another one */
 
         /* disconnect berkeley db cursors */
-        bdberr = 0;
         unlock_bdb_cursors(thd, NULL, &bdberr);
         if (bdberr) {
             comdb2_sqlite3VdbeError(
                     pCur->vdbe, "Failed to disconnect berkeleydb cursors");
             rc = SQLITE_ERROR;
             goto done;
+        }
+
+        /* need to reset shadow table fast point in cursors */
+        if (thd->bt) {
+            BtCursor *cur = NULL;
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                cur->shadtbl = NULL;
+                if (cur->bdbcur)
+                    bdb_osql_skip_close(thedb->bdb_env, cur->bdbcur);
+             }
         }
 
         /* commit current transaction */
@@ -8262,15 +8285,6 @@ static int chunk_transaction()
             /* we need to recreate the transaction in any case
                goto done;
              */
-        }
-
-        /* need to reset shadow table fast point in cursors */
-        if (thd->bt) {
-            BtCursor *cur = NULL;
-            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
-            {
-                cur->shadtbl = NULL;
-            }
         }
 
         /* restart a new transaction */
@@ -8302,7 +8316,7 @@ static int chunk_transaction()
         clnt->dbtran.crtchunksize++;
     }
 done:
-    return rc
+    return rc;
 }
 
 /*
@@ -8335,7 +8349,6 @@ int sqlite3BtreeInsert(
     blob_buffer_t blobs[MAXBLOBS];
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
-    int commit_rc = 0;
 
     if (thd && pCur->db == NULL) {
         thd->nwrite++;
@@ -8469,9 +8482,9 @@ int sqlite3BtreeInsert(
             goto done;
         }
 
-        if (clnt->dbtran.maxchunksize > 0 &&
+        if (clnt->dbtran.maxchunksize > 0 && clnt->dbtran.mode == TRANLEVEL_SOSQL &&
             clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-            if ((rc = chunk_transaction(pCur, thd, clnt, bdberr)) != SQLITE_OK)
+            if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
                 goto done;
         }
 

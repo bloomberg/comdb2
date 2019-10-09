@@ -124,4 +124,14 @@ struct bdb_osql_log *bdb_osql_shadow_get_lastlog(bdb_cursor_ifn_t *cur,
  */
 int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *cur, struct bdb_osql_log *log,
                                 int *bdberr);
+
+/**
+ * Close the skip cursor 
+ * Normally the cursor is closed upon table consumption; 
+ * We need to reset it before closing the underlying temp table as well
+ * if this is a chunk transaction
+ *
+ */
+ int bdb_osql_skip_close(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn);
+
 #endif
