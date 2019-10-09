@@ -31,7 +31,7 @@
 #include <strings.h>
 #include "ctrace.h"
 #include <epochlib.h>
-#include <segstring.h>
+#include <segstr.h>
 #include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
