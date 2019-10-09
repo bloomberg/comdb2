@@ -362,16 +362,16 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (1=1)
 (out='Verify succeeded.')
 (2=2)
-(out='Usage: verify("<table>" [,"parallel"|"data"|"blobs"|"indices"])')
-[exec procedure sys.cmd.verify()] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed.
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+[exec procedure sys.cmd.verify()] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (3=3)
-(out='Usage: verify("<table>" [,"parallel"|"data"|"blobs"|"indices"])')
-[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed.
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (4=4)
 [exec procedure sys.cmd.verify(\"nonexistent\")] failed with rc -3 bad argument -> \"nonexistent\")
 (5=5)
 (out='Table "nonexistent" does not exist.')
-[exec procedure sys.cmd.verify("nonexistent")] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed.
+[exec procedure sys.cmd.verify("nonexistent")] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (6=6)
 (version='sptest')
 (i=1, count(*)=20)
