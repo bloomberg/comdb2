@@ -36,7 +36,7 @@
 #include <netinet/in.h>
 #include <plbitlib.h>
 #include <segstr.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <netinet/in.h>
 #include "util.h"

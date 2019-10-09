@@ -17,7 +17,7 @@
 #include <segstr.h>
 #include <list.h>
 #include <plhash.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <net.h>
 #include <bdb_int.h>
