@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.30.0"
-#define SQLITE_VERSION_NUMBER 3030000
-#define SQLITE_SOURCE_ID      "2019-10-05 00:33:05 be9f5d8487c0477ea631858fa287ce614c015b4900fc012a06cdb147fd6fe752"
+#define SQLITE_VERSION        "3.30.1"
+#define SQLITE_VERSION_NUMBER 3030001
+#define SQLITE_SOURCE_ID      "2019-10-10 21:30:23 9fcc10a10b70d7d1835f7fc5353b127d8a2fefecf6951a603c6257d895c2417f"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
