@@ -26,10 +26,8 @@ function bulk_insert_records
     write_prompt $func "Running $func"
     typeset count=${1:-10000}
     j=0
-    while [[ $j -lt $count ]]; do
-        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into sessions_index (applicationId,key,sessionIds,occToken) values (\"$j\",\"$j\",\"$j\",x'babababababababababababababababa')" >/dev/null 2>&1
-        let j=j+1
-    done
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "WITH RECURSIVE cnt(x) as (SELECT 1 UNION ALL SELECT x + 1 FROM cnt LIMIT $count) INSERT INTO sessions_index(applicationId, key, sessionIds, occToken) SELECT x, x, x, x'babababababababababababababababa' from cnt"
 }
 
 function setup
@@ -47,7 +45,7 @@ function updater_thread
     typeset func="updater_thread"
     write_prompt $func "Running $func"
     typeset thd=${1}
-    typeset iterations=${2:-100000}
+    typeset iterations=${2:-50000}
     typeset thresholdms=${3:-500}
     typeset updater=${TESTSBUILDDIR}/updater
     $updater -d $DBNAME -i $iterations -t $thresholdms -c $CDB2_CONFIG 2>&1 | gawk "{print \"[$func-$thd]\", \$0; fflush(); }"
