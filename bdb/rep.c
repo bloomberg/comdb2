@@ -2363,9 +2363,9 @@ static inline int copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum,
                               int node_ix)
 {
     int trace = bdb_state->attr->wait_for_seqnum_trace, now;
+    int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
     static int lastpr = 0;
 
-    int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
     if (seqnum->generation > last_generation) {
         return 1;
     }
@@ -3697,7 +3697,14 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
         bzero(seqnum, sizeof(seqnum_type));
     } else {
         uint32_t rep_gen;
-        bdb_state->dbenv->replicant_generation(bdb_state->dbenv, &rep_gen);
+
+        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &rep_gen);
+        } else {
+            /* Replicant generation is updated after verify-match */
+            bdb_state->dbenv->replicant_generation(bdb_state->dbenv, &rep_gen);
+        }
+
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         int myhost_ix = nodeix(bdb_state->repinfo->myhost);
