@@ -32,6 +32,7 @@
 #include "views.h"
 #include "indices.h"
 #include "osqlsqlthr.h"
+#include "sqloffload.h"
 
 
 static char *get_temp_ct_dbname(long long *);
@@ -793,9 +794,14 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE DEL:");
             /* TODO verify we have proper schema change locks */
 
+
+            int saved_flgs = iq->osql_flags;
+            osql_unset_index_reorder_bit(&iq->osql_flags);
+
             rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx,
                             BLOCK2_DELKL,
-                            RECFLAGS_DONT_LOCK_TBL | RECFLAGS_DONT_REORDER_IDX);
+                            RECFLAGS_DONT_LOCK_TBL);
+            iq->osql_flags = saved_flgs;
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -842,6 +848,8 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
             if (iq->debug)
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE UPD:");
             /* TODO verify we have proper schema change locks */
+            int saved_flgs = iq->osql_flags;
+            osql_unset_index_reorder_bit(&iq->osql_flags);
 
             rc = upd_record(
                 iq, trans, NULL,                               /*primkey*/
@@ -855,8 +863,9 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 NULL, /*blobs*/
                 0,    /*maxblobs*/
                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL |
-                    RECFLAGS_DONT_REORDER_IDX);
+                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+
+            iq->osql_flags = saved_flgs;
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;

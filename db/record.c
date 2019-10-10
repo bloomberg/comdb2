@@ -52,7 +52,6 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_reorder_idx_writes;
 
 static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                               size_t maxblobs, const char *tblname,
@@ -483,9 +482,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (iq->usedb->nix > 0) {
         bool reorder =
-            gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
-            rec_flags == 0 && (flags & RECFLAGS_DONT_REORDER_IDX) == 0 &&
-            iq->usedb->sc_from != iq->usedb &&
+            osql_is_index_reorder_on(iq->osql_flags) && !is_event_from_sc(flags) &&
+            rec_flags == 0 && iq->usedb->sc_from != iq->usedb &&
             strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
             strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
             strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
