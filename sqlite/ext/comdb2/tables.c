@@ -284,6 +284,8 @@ int comdb2SystblInit(
       rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
     rc = systblConnectionsInit(db);
+  if (rc == SQLITE_OK)
+    rc  = systblSQLClientStats(db);
 #endif
   return rc;
 }

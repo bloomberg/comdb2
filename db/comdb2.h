@@ -538,6 +538,9 @@ struct rawnodestats {
     unsigned sql_rows;
 
     struct time_metric *svc_time; /* <-- offsetof */
+
+    pthread_mutex_t lk;
+    hash_t *fingerprints;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
@@ -3618,4 +3621,6 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 #endif /* !INCLUDED_COMDB2_H */

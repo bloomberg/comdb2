@@ -44,6 +44,7 @@ unknown @ls sub-command foo
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
 (name='comdb2_sc_status')
+(name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
 (name='comdb2_systables')
 (name='comdb2_tablepermissions')

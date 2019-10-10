@@ -1081,10 +1081,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
+    unsigned char fingerprint[FINGERPRINTSZ];
+    int have_fingerprint = 0;
+
     if (gbl_fingerprint_queries) {
         if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
             add_fingerprint(h->sql, clnt->zNormSql, h->cost, h->time,
-                            clnt->nrows, logger);
+                            clnt->nrows, logger, fingerprint);
+            have_fingerprint = 1;
         } else {
             reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
         }
@@ -1105,6 +1109,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if ((rawnodestats = clnt->rawnodestats) != NULL) {
         rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
         time_metric_add(rawnodestats->svc_time, h->time);
+        if (have_fingerprint)
+            add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, h->cost, clnt->nrows, h->time);
     }
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;

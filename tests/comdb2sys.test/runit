@@ -137,4 +137,7 @@ for testcase in *.req ; do
 
 done
 
-echo "Testcase passed."
+./testsqlclients - $a_dbn
+rc=$?
+
+exit $rc
