@@ -2704,8 +2704,7 @@ enum {
                               RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS |
                               1 << 9,
     RECFLAGS_DONT_LOCK_TBL = 1 << 10,
-    RECFLAGS_DONT_REORDER_IDX = 1 << 11,
-    RECFLAGS_MAX = 1 << 12
+    RECFLAGS_MAX = 1 << 11
 };
 
 /* flag codes */
