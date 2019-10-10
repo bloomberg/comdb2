@@ -109,6 +109,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(unsigned long long rqid,
                                           const char *rpl, int *tableversion);
+extern void bdb_temp_array_set_cachesz(struct temp_table *tmp_arr, unsigned long long sz);
+extern void bdb_temp_array_set_max_mem_entries(struct temp_table *tmp_arr, int cnt);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -225,6 +227,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     }
 
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
+    bdb_temp_array_set_cachesz(tran->db, 100000000);
+    bdb_temp_array_set_max_mem_entries(tran->db, 1000000);
 
     if (sess->is_reorder_on) {
         tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
