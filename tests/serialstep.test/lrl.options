@@ -9,5 +9,8 @@ table rollover rollover.csc2
 table t1 t1.csc2
 table intv intv.csc2
 enable_snapshot_isolation
+setattr WAIT_FOR_SEQNUM_TRACE 1
+logmsg level info
+set_coherent_state_trace on
 #on extended_sql_debug_trace
 #on enable_osql_logging

@@ -2418,6 +2418,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int now;
     int track_times;
     int node_ix = nodeix(host);
+    int seqnum_trace = bdb_state->attr->wait_for_seqnum_trace;
 
     track_times = bdb_state->attr->track_replication_times;
 
@@ -2439,9 +2440,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             static unsigned long long count = 0;
             count++;
 
-            if (bdb_state->attr->wait_for_seqnum_trace && (now = time(NULL)) > lastpr) {
+            if (seqnum_trace && (now = time(NULL)) > lastpr) {
                 logmsg(LOGMSG_USER, "%s: rejecting seqnum from %s because gen is "
-                                "%u, i want %u, count=%llu\n",
+                                "%u (low), i want %u, count=%llu\n",
                         __func__, host, seqnum->generation, mygen, count);
                 lastpr = now;
             }
@@ -2449,6 +2450,17 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
 
         if (seqnum->generation > mygen) {
+            static unsigned long long count = 0;
+            static time_t lastpr = 0;
+            count++;
+
+            if (seqnum_trace && (now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_USER, "%s: rejecting seqnum from %s because gen is "
+                                "%u (high), i want %u, count=%llu\n",
+                        __func__, host, seqnum->generation, mygen, count);
+                lastpr = now;
+            }
+
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
                 call_for_election(bdb_state, __func__, __LINE__);
@@ -2912,7 +2924,35 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     return 0;
 }
 
-/* returns -999 on timeout */
+static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
+{
+    switch (rc) {
+        case 1: case -2: case -10: case -1:
+            return 1;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
+
+/*
+ * Return values:
+ *    GOOD RETURN CODE
+ *    0 - node has caught up
+ *
+ *    NORMAL TIMEOUT
+ *    -999 - the caller will mark incoherent
+ *
+ *    SPECIAL CASES: DON'T WAIT ANYMORE
+ *    1 - node is not coherent / newly online and catching up (don't wait for it)
+ *   -2 - node is rtcpu'd - this code marks incoherent and sets deferred commits
+ *  -10 - node's generation is higher than what we are waiting on (don't wait for it)
+ *   -1 - node has been decommissioned (don't wait for it)
+ *
+ *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
+ *   we wait for.  This counts against durability.
+ */
 static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              seqnum_type *seqnum,
                                              const char *host, int timeoutms, int lineno)
@@ -3308,6 +3348,15 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                        __func__, __LINE__);
                 return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
             }
+
+            if (wait_for_seqnum_remove_node(bdb_state, rc)) {
+                nodelist[i] = nodelist[numnodes-1];
+                numnodes--;
+                if (numnodes <= 0)
+                    goto done_wait;
+                i--;
+                assert(rc != 0);
+            } 
 
             if (rc == 0) {
                 base_node = nodelist[i];
