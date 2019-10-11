@@ -115,14 +115,14 @@ function getmaster {
 
 #make sure verify behaves as we expect
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify.out
-echo "Usage: verify(\"<table>\" [,\"parallel\"|\"data\"|\"blobs\"|\"indices\"])
-[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
 if ! diff verify.out verify.exp ; then
     failexit "Verify did not fail correctly, see verify.out"
 fi
 
 echo "Table \"nonexistent\" does not exist.
-[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
 if ! diff verify.out verify.exp ; then
     failexit "Verify did not fail correctly, see verify.out"
@@ -208,6 +208,16 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.omit_blo
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
+
+
+tables=$(timeout 1m cdb2sql --tabs $dbnm --host $master 'select * from comdb2_tables')
+for t in $tables ; do
+    outfl=${t}_verify.out
+    timeout 3m cdb2sql --verbose --tabs $dbnm --host $master "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+    if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
+        failexit "Failed verify: Table $t"
+    fi
+done
 
 
 echo "Success"

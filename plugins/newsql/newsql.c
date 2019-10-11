@@ -2149,6 +2149,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     if (incoh_reject(arg->admin, dbenv->bdb_env)) {
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 
@@ -2164,6 +2167,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     */
     if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
         dbenv->master != gbl_mynode) {
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d td %u new query on replicant with sync none, dropping\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 
@@ -2278,8 +2284,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
-#if 0
-        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#ifndef NDEBUG
+#define MAXTOPRINT 200
+        int num = logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT,
+                         sql_query->sql_query);
+        if (num >= MAXTOPRINT)
+            logmsg(LOGMSG_DEBUG, "...'\n");
+        else
+            logmsg(LOGMSG_DEBUG, "'\n");
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;

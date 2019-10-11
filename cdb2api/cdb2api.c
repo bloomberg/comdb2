@@ -1209,6 +1209,8 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 }
 #endif
 
+static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
+
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                               const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][64], int *num_hosts,
@@ -1422,6 +1424,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                     }
                 }
 #endif
+            } else if (strcasecmp("include_defaults", tok) == 0) {
+                pthread_mutex_unlock(&cdb2_sockpool_mutex);
+                only_read_config(NULL, 1, 1);
+                pthread_mutex_lock(&cdb2_sockpool_mutex);
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -1466,7 +1472,7 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 static int read_available_comdb2db_configs(
     cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
     int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
-    int *num_db_hosts, int *dbnum)
+    int *num_db_hosts, int *dbnum, int noLock, int defaultOnly)
 {
     char filename[PATH_MAX];
     SBUF2 *s;
@@ -1475,9 +1481,9 @@ static int read_available_comdb2db_configs(
     if (hndl)
         debugprint("entering\n");
 
-    pthread_mutex_lock(&cdb2_cfg_lock);
+    if (!noLock) pthread_mutex_lock(&cdb2_cfg_lock);
     if (get_config_file(dbname, filename, sizeof(filename)) != 0) {
-        pthread_mutex_unlock(&cdb2_cfg_lock);
+        if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "Config file name too long.");
         return -1;
@@ -1489,13 +1495,13 @@ static int read_available_comdb2db_configs(
         *num_db_hosts = 0;
     int *send_stack = hndl ? (&hndl->send_stack) : NULL;
 
-    if (CDB2DBCONFIG_BUF != NULL) {
+    if (!defaultOnly && CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                           db_hosts, num_db_hosts, dbnum, send_stack);
         fallback_on_bb_bin = 0;
     } else {
-        if (*CDB2DBCONFIG_NOBBENV != '\0') {
+        if (!defaultOnly && *CDB2DBCONFIG_NOBBENV != '\0') {
             s = sbuf2openread(CDB2DBCONFIG_NOBBENV);
             if (s != NULL) {
                 read_comdb2db_cfg(NULL, s, comdb2db_name, NULL, comdb2db_hosts,
@@ -1529,7 +1535,7 @@ static int read_available_comdb2db_configs(
                           num_db_hosts, dbnum, send_stack);
         sbuf2close(s);
     }
-    pthread_mutex_unlock(&cdb2_cfg_lock);
+    if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
 }
 
@@ -1594,7 +1600,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (read_cfg) {
         rc = read_available_comdb2db_configs(
             hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num,
-            dbname, db_hosts, num_db_hosts, dbnum);
+            dbname, db_hosts, num_db_hosts, dbnum, 0, 0);
         if (rc == -1)
             return rc;
         if (master)
@@ -5436,10 +5442,11 @@ after_callback:
     return rc;
 }
 
-static inline void only_read_config(cdb2_hndl_tp *hndl)
+static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
+                                    int defaultOnly)
 {
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                                    NULL, NULL);
+                                    NULL, NULL, noLock, defaultOnly);
     set_cdb2_timeouts(hndl);
 }
 
@@ -5455,7 +5462,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 
     if (!cdb2cfg_override) {
         /* Try dbinfo query without any host info. */
-        only_read_config(hndl);
+        only_read_config(hndl, 0, 0);
         if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                               hndl->hosts, hndl->ports, &hndl->master,
                               &hndl->num_hosts,
@@ -5712,7 +5719,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     assert(type_copy[0] == '@');
     char *s = type_copy + 1; // advance past the '@'
 
-    only_read_config(hndl);
+    only_read_config(hndl, 0, 0);
 
     char *machine;
     machine = strtok_r(s, ",", &eomachine);
@@ -6100,7 +6107,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
-        only_read_config(hndl);
+        only_read_config(hndl, 0, 0);
         strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]) - 1);
         char *p = strchr(hndl->hosts[0], ':');
         if (p) {

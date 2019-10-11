@@ -20,6 +20,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 
 #include <sys/types.h>
 #include <pthread.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>

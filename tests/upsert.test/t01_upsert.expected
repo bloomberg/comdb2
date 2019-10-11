@@ -1,18 +1,4 @@
-done
-done
-done
-done
-done
-done
-(i=1, j=0)
-done
-done
-(i=1, j=1)
-done
-done
-done
-(i=1, j=1)
-done
+(part='---------------------------------- PART #01 ----------------------------------')
 done
 done
 done
@@ -27,8 +13,28 @@ done
 done
 done
 done
+(i=1, j=1)
+done
+done
+(part='---------------------------------- PART #02 ----------------------------------')
+done
+done
+done
+done
+done
+done
+done
 (i=1, j=0)
 done
+done
+(i=1, j=1)
+done
+done
+done
+(i=1, j=0)
+done
+done
+(part='---------------------------------- PART #03 ----------------------------------')
 done
 done
 done
@@ -45,6 +51,8 @@ done
 done
 (i=1, j=2)
 done
+done
+(part='---------------------------------- PART #04 ----------------------------------')
 done
 done
 done
@@ -82,6 +90,8 @@ done
 (a='two', b=1)
 done
 done
+(part='---------------------------------- PART #05 ----------------------------------')
+done
 done
 done
 (rows inserted=2)
@@ -111,6 +121,8 @@ done
 (a=3, b=4, c=0, 'x'='x')
 done
 done
+done
+(part='---------------------------------- PART #06 ----------------------------------')
 done
 done
 done

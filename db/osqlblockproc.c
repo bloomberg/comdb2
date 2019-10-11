@@ -71,6 +71,7 @@
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
+extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
@@ -734,10 +735,12 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     case OSQL_UPDREC:
     case OSQL_DELREC:
         sess->last_is_ins = 0;
+        sess->tran_rows++;
         break;
     case OSQL_INSERT:
     case OSQL_INSREC:
         sess->last_is_ins = 1;
+        sess->tran_rows++;
         break;
     default:
         sess->last_is_ins = 0;
@@ -1359,12 +1362,15 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
-                                   tmpcursor_t * cur);
-    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
-    if (dbc_ins)
-        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+                                   tmpcursor_t * cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc, LOGMSG_DEBUG);
+    if (dbc_ins) {
+        logmsg(LOGMSG_DEBUG, "INS ");
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins, LOGMSG_DEBUG);
+    }
 #endif
 
     /* go through each record */
@@ -1391,6 +1397,14 @@ static int process_this_session(
     if (rc)
         return rc;
 
+    /* only reorder indices if more than one row add/upd/dels
+     * NB: the idea is that single row transactions can not deadlock but
+     * update can have a del/ins index component and can deadlock -- in future 
+     * consider reordering for single upd stmts (only if performance 
+     * improves so this requires a solid test). */
+    if (sess->tran_rows > 1 && gbl_reorder_idx_writes)
+        iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
+
     while (!rc && !rc_out) {
         char *data = NULL;
         int datalen = 0;
@@ -1412,7 +1426,8 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        /* this locks pages */
+        /* This call locks pages:
+         * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
         free(data);

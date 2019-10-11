@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 set -x
 
+set -x
 # Grab my database name.
 dbnm=$1
 
@@ -478,7 +479,9 @@ function do_verify
 
 function do_schemachange
 {
+do_verify
 sleep 2
+do_verify
 echo "Add int index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
@@ -496,6 +499,7 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
+echo "do_verify after first schema change"
 do_verify
 
 sleep 2
@@ -516,6 +520,7 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
+echo "do_verify after second schema change"
 do_verify
 
 sleep 2
@@ -857,7 +862,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t1.txt select_t1_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t1.txt,select_t1_final.txt}' to see the error."
 
     exit 1
 

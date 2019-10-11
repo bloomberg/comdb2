@@ -1,3 +1,4 @@
+1 SELECT '---------------------------------- PART #01 ----------------------------------' AS part;
 1 CREATE TABLE t1(i INT PRIMARY KEY, j INT)
 1 SET TRANSACTION READ COMMITTED
 2 SET TRANSACTION READ COMMITTED
@@ -12,6 +13,7 @@
 1 SELECT * FROM t1;
 1 DROP TABLE t1;
 
+1 SELECT '---------------------------------- PART #02 ----------------------------------' AS part;
 1 CREATE TABLE t1(i INT PRIMARY KEY, j INT)
 1 SET TRANSACTION READ COMMITTED
 2 SET TRANSACTION READ COMMITTED
@@ -26,6 +28,7 @@
 1 SELECT * FROM t1;
 1 DROP TABLE t1;
 
+1 SELECT '---------------------------------- PART #03 ----------------------------------' AS part;
 1 CREATE TABLE t1(i INT PRIMARY KEY, j INT)
 1 SET TRANSACTION READ COMMITTED
 2 SET TRANSACTION READ COMMITTED
@@ -40,6 +43,7 @@
 1 SELECT * FROM t1;
 1 DROP TABLE t1;
 
+1 SELECT '---------------------------------- PART #04 ----------------------------------' AS part;
 # Test upsert1-400 from upstream
 # BLOCKSQL Isolation level
 1 SET TRANSACTION BLOCKSQL
@@ -62,6 +66,7 @@
 1 SELECT a, b FROM t1 ORDER BY a;
 1 DROP TABLE t1;
 
+1 SELECT '---------------------------------- PART #05 ----------------------------------' AS part;
 # Test upsert2-200 from upstream
 # BLOCKSQL Isolation level
 1 SET TRANSACTION BLOCKSQL
@@ -82,6 +87,7 @@
 1 DROP TABLE t1;
 1 SET TRANSACTION BLOCKSQL
 
+1 SELECT '---------------------------------- PART #06 ----------------------------------' AS part;
 # https://github.com/bloomberg/comdb2/issues/1148
 1 DROP TABLE IF EXISTS t1;
 1 DROP TABLE IF EXISTS t2;

@@ -394,7 +394,7 @@ set all_graphs {
   drop {
     line DROP {or
       {line TABLE {opt IF EXISTS} /table-name}
-      {line PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
+      {line PROCEDURE /procedure-name {opt VERSION} {or /string-literal /numeric-literal}}
       {line LUA {or
         {line {or TRIGGER CONSUMER} /procedure-name}
         {line {or SCALAR AGGREGATE} FUNCTION /procedure-name}}}
@@ -489,14 +489,14 @@ stack
           {line USER /user-name}
           {line PASSWORD /password}
           {line SPVERSION /procedure-name /default-version}
-          {line READONLY}
+          {line PREPARE_ONLY {or ON OFF}}
+          {line READONLY {or ON OFF}}
           {line HASQL {or ON OFF}}
-          {line REMOTE /database {or READ WRITE EXECUTE} HUH}
+          {line REMOTE {opt {line /database {or READ WRITE EXECUTE} HUH}}}
           {line GETCOST {or ON OFF}}
           {line MAXTRANSIZE /numeric-literal}
-          {line PLANNEREFFORT
+          {line PLANNEREFFORT /numeric-literal}
       }
-    }
   }
   exec-procedure {
       line {or EXEC EXECUTE} PROCEDURE /procedure-name ( {opt {line
