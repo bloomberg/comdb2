@@ -2544,10 +2544,11 @@ struct __db_env {
 	/* Stable LSN: must be acked by majority of cluster. */
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
+    uint32_t rep_gen;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
-
+    int (*replicant_generation) __P((DB_ENV *, uint32_t *));
 	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));

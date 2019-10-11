@@ -1,0 +1,16 @@
+//PRQS DB schema from commit sha 0cafae534942c49aaa16612399182c37641c0d22
+// sessions_index.csc2
+// A index into session ids.
+
+tag ondisk
+{
+    cstring applicationId[30]  // Id to identify application
+    cstring key[128]           // Unique key within application scope.
+    vutf8   sessionIds         // String representation of a session id.
+    byte    occToken[16]       // bdlb::Guid used to represent "version" of key.
+}
+
+keys
+{
+    "PRIMARY" = applicationId + key
+}

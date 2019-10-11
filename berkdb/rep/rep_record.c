@@ -7570,6 +7570,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		goto errunlock;
 	}
 
+    dbenv->rep_gen = rep->gen;
+
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 		__func__, prevlsn.file, prevlsn.offset, trunclsn.file,
 		trunclsn.offset);
