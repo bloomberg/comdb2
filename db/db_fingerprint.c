@@ -33,8 +33,9 @@ extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
 void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
-                     int64_t time,  int64_t nrows, struct reqlogger *logger, 
-                     unsigned char *fingerprint_out) {
+                     int64_t time, int64_t nrows, struct reqlogger *logger,
+                     unsigned char *fingerprint_out)
+{
     assert(zSql);
     assert(zNormSql);
     size_t nNormSql = strlen(zNormSql);
@@ -72,14 +73,15 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
 
-        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+        char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
         util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
         struct reqlogger *statlogger = NULL;
 
         // dump to statreqs immediately
         statlogger = reqlog_alloc();
         reqlog_diffstat_init(statlogger);
-        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp, t->zNormSql);
+        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp,
+                    t->zNormSql);
         reqlog_diffstat_dump(statlogger);
         reqlog_free(statlogger);
 

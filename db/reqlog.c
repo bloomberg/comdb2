@@ -2031,7 +2031,8 @@ void init_clientstats_table()
 #define UNKNOWN_NAME "Unknown"
 #define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
 
-static int hash_free_element(void *elem, void *unused) {
+static int hash_free_element(void *elem, void *unused)
+{
     free(elem);
     return 0;
 }
@@ -2110,7 +2111,8 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     Pthread_mutex_destroy(&old_entry->mtx);
                     Pthread_mutex_destroy(&old_entry->rawtotals.lk);
                     if (old_entry->rawtotals.fingerprints) {
-                        hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
+                        hash_for(old_entry->rawtotals.fingerprints,
+                                 hash_free_element, NULL);
                         hash_free(old_entry->rawtotals.fingerprints);
                     }
                     time_metric_free(old_entry->rawtotals.svc_time);
@@ -2786,46 +2788,58 @@ inline int reqlog_get_retries(const struct reqlogger *logger)
     return logger->iq ? logger->iq->retries : 0;
 }
 
-struct dump_client_sql_options  {
+struct dump_client_sql_options {
     struct reqlogger *logger;
     int do_snap;
     nodestats_t *st;
-    char fingerprint[FINGERPRINTSZ*2+1];
+    char fingerprint[FINGERPRINTSZ * 2 + 1];
 };
 
-static int print_client_fingerprint(struct reqlogger *logger, char *host, char *task, char *fp, int64_t count, int64_t cost, int64_t time, int64_t rows) {
-    reqlog_logf(logger, REQL_INFO, "host=%s task=%s fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", host, task, fp, count, cost, time, rows);
+static int print_client_fingerprint(struct reqlogger *logger, char *host,
+                                    char *task, char *fp, int64_t count,
+                                    int64_t cost, int64_t time, int64_t rows)
+{
+    reqlog_logf(logger, REQL_INFO,
+                "host=%s task=%s fp=%s count=%" PRId64 " cost=%" PRId64
+                " time=%" PRId64 " rows=%" PRId64 "\n",
+                host, task, fp, count, cost, time, rows);
     return 0;
 }
 
-static int dump_client_fingerprint(void *ent, void *arg) {
-    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
-    struct query_count *cnt = (struct query_count*) ent;
-    char fingerprint[FINGERPRINTSZ*2+1];
+static int dump_client_fingerprint(void *ent, void *arg)
+{
+    struct dump_client_sql_options *options =
+        (struct dump_client_sql_options *)arg;
+    struct query_count *cnt = (struct query_count *)ent;
+    char fingerprint[FINGERPRINTSZ * 2 + 1];
 
     util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
     if (options->do_snap) {
-        if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
-            print_client_fingerprint(options->logger, options->st->host, options->st->task, fingerprint,
-                        cnt->count - cnt->last_count,
-                        cnt->cost - cnt->last_cost,
-                        cnt->timems - cnt->last_timems,
-                        cnt->rows - cnt->last_rows);
+        if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost ||
+            cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
+            print_client_fingerprint(
+                options->logger, options->st->host, options->st->task,
+                fingerprint, cnt->count - cnt->last_count,
+                cnt->cost - cnt->last_cost, cnt->timems - cnt->last_timems,
+                cnt->rows - cnt->last_rows);
             cnt->last_count = cnt->count;
             cnt->last_cost = cnt->cost;
             cnt->last_rows = cnt->rows;
             cnt->last_timems = cnt->timems;
         }
-    }
-    else {
-        print_client_fingerprint(options->logger, options->st->host, options->st->task, fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
+    } else {
+        print_client_fingerprint(options->logger, options->st->host,
+                                 options->st->task, fingerprint, cnt->count,
+                                 cnt->cost, cnt->timems, cnt->rows);
     }
     return 0;
 }
 
-static int dump_client_sql_data_single(void *ent, void *arg) {
-    nodestats_t *st = (nodestats_t*) ent;
-    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
+static int dump_client_sql_data_single(void *ent, void *arg)
+{
+    nodestats_t *st = (nodestats_t *)ent;
+    struct dump_client_sql_options *options =
+        (struct dump_client_sql_options *)arg;
     options->st = st;
     Pthread_mutex_lock(&st->rawtotals.lk);
     if (st->rawtotals.fingerprints)
@@ -2834,19 +2848,25 @@ static int dump_client_sql_data_single(void *ent, void *arg) {
     return 0;
 }
 
-void dump_client_sql_data(struct reqlogger *logger, int do_snapshot) {
-    struct dump_client_sql_options options = { .do_snap = do_snapshot, .logger = logger };
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot)
+{
+    struct dump_client_sql_options options = {.do_snap = do_snapshot,
+                                              .logger = logger};
     Pthread_rwlock_wrlock(&clientstats_lk);
     if (clientstats)
         hash_for(clientstats, dump_client_sql_data_single, &options);
     Pthread_rwlock_unlock(&clientstats_lk);
 }
 
-void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems) {
+void add_fingerprint_to_rawstats(struct rawnodestats *stats,
+                                 unsigned char *fingerprint, int cost, int rows,
+                                 int timems)
+{
     Pthread_mutex_lock(&stats->lk);
     if (stats->fingerprints == NULL) {
         // TODO: where does this get destroyed?
-        stats->fingerprints = hash_init_o(offsetof(struct query_count, fingerprint), FINGERPRINTSZ);
+        stats->fingerprints = hash_init_o(
+            offsetof(struct query_count, fingerprint), FINGERPRINTSZ);
         if (stats->fingerprints == NULL)
             abort();
     }
@@ -2868,17 +2888,19 @@ struct client_sql_systable_options {
     int nstats;
     int nalloced;
 
-    nodestats_t *st; 
+    nodestats_t *st;
 };
 
-
-int gather_client_sql_data_fingerprint(void *ent, void *arg) {
-    struct client_sql_systable_options *opt = (struct client_sql_systable_options*) arg;
-    struct query_count *cnt = (struct query_count*) ent;
+int gather_client_sql_data_fingerprint(void *ent, void *arg)
+{
+    struct client_sql_systable_options *opt =
+        (struct client_sql_systable_options *)arg;
+    struct query_count *cnt = (struct query_count *)ent;
 
     if (opt->nstats == opt->nalloced) {
         opt->nalloced = opt->nalloced * 2 + 16;
-        void *p = realloc(opt->stats, sizeof(struct client_sql_systable_data) * opt->nalloced);
+        void *p = realloc(opt->stats, sizeof(struct client_sql_systable_data) *
+                                          opt->nalloced);
         if (p == NULL)
             return 1;
         opt->stats = p;
@@ -2894,21 +2916,25 @@ int gather_client_sql_data_fingerprint(void *ent, void *arg) {
     return 0;
 }
 
-int gather_client_sql_data_single(void *ent, void *arg) {
-    struct client_sql_systable_options *opt = (struct client_sql_systable_options*) arg;
-    nodestats_t *st = (nodestats_t*) ent;
+int gather_client_sql_data_single(void *ent, void *arg)
+{
+    struct client_sql_systable_options *opt =
+        (struct client_sql_systable_options *)arg;
+    nodestats_t *st = (nodestats_t *)ent;
     opt->st = st;
     Pthread_mutex_lock(&st->rawtotals.lk);
     int rc = 0;
     if (st->rawtotals.fingerprints)
-        rc = hash_for(st->rawtotals.fingerprints, gather_client_sql_data_fingerprint, arg);
+        rc = hash_for(st->rawtotals.fingerprints,
+                      gather_client_sql_data_fingerprint, arg);
     Pthread_mutex_unlock(&st->rawtotals.lk);
     return rc;
 }
 
 void free_client_sql_data(void *data, int npoints);
 
-int gather_client_sql_data(void **data_out, int *npoints) {
+int gather_client_sql_data(void **data_out, int *npoints)
+{
     struct client_sql_systable_options opt = {0};
 
     *npoints = 0;
@@ -2930,8 +2956,10 @@ int gather_client_sql_data(void **data_out, int *npoints) {
     return rc;
 }
 
-void free_client_sql_data(void *data, int npoints) {
-    struct client_sql_systable_data *stats = (struct client_sql_systable_data*) data;
+void free_client_sql_data(void *data, int npoints)
+{
+    struct client_sql_systable_data *stats =
+        (struct client_sql_systable_data *)data;
     for (int i = 0; i < npoints; i++) {
         free(stats[i].task);
     }

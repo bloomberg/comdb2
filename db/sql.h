@@ -1189,8 +1189,8 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
-void add_fingerprint(const char *, const char *, int64_t, int64_t,
-        int64_t, struct reqlogger *logger, unsigned char *fingerprint_out);
+void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
+                     struct reqlogger *logger, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1214,7 +1214,7 @@ struct client_sql_systable_data {
     int64_t cost;
     int64_t rows;
 
-    char fp[FINGERPRINTSZ*2+1];
+    char fp[FINGERPRINTSZ * 2 + 1];
 };
 
 struct query_count {
@@ -1234,6 +1234,8 @@ struct query_count {
     int64_t last_timems;
 };
 
-void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
+void add_fingerprint_to_rawstats(struct rawnodestats *stats,
+                                 unsigned char *fingerprint, int cost, int rows,
+                                 int timems);
 
 #endif
