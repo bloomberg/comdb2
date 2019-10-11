@@ -903,11 +903,12 @@ retry:
 
     /* update access history */
     rec = (pooled_object *)hash_find(op->history, objp);
+    Pthread_mutex_unlock(&op->data_mutex);
+
     rec->active = 1;
     ++rec->nborrows;
     rec->tid = pthread_self();
 
-    Pthread_mutex_unlock(&op->data_mutex);
 
     OP_DBG(op, "borrowed from pool");
     return rc;
