@@ -26,10 +26,10 @@ struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;
     uint32_t lkcountercheck_lasttime; // used for checking lockwaints
-    uint32_t thrcount;           // number of threads currently available
-    uint32_t maxthreads;         // maximum number of SC threads allowed
-    int is_decrease_thrds;       // is feature on to backoff and decrease threads
-    uint32_t total_lasttime;     // last time we computed total stats
+    uint32_t thrcount;                // number of threads currently available
+    uint32_t maxthreads;              // maximum number of SC threads allowed
+    int is_decrease_thrds;   // is feature on to backoff and decrease threads
+    uint32_t total_lasttime; // last time we computed total stats
 };
 
 /* for passing state data to schema change threads/functions */

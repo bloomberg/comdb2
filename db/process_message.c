@@ -1651,8 +1651,7 @@ clipper_usage:
                        allow_cluster_from_remote(host) ? "YES" : "NO");
                 logmsg(LOGMSG_USER, "Allow queue broadcast to %s ? %s\n", host,
                        allow_broadcast_to_remote(host) ? "YES" : "NO");
-            }
-            else
+            } else
                 dump_remote_policy();
         } else if (tokcmp(tok, ltok, "size") == 0) {
             dump_table_sizes(thedb);

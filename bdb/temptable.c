@@ -636,7 +636,8 @@ done:
 #endif
     ++gbl_temptable_created;
 
-    if (tbl != NULL) ATOMIC_ADD32(gbl_temptable_count, 1);
+    if (tbl != NULL)
+        ATOMIC_ADD32(gbl_temptable_count, 1);
 
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
@@ -1518,7 +1519,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
             bdb_state->temp_stats->st_pages += tmp->st_pages;
             ATOMIC_ADD32(bdb_state->temp_stats->st_page_dirty,
-                       tmp->st_page_dirty);
+                         tmp->st_page_dirty);
             bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
             bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
             bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;

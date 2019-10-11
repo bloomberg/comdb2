@@ -244,11 +244,11 @@ static inline int print_verify_progress(verify_common_t *par, int now)
         par->nrecs_progress = 0;
     } else {
         unsigned long long delta = par->items_processed - par->saved_progress;
-        rc = locprint(par->sb, par->lua_callback, par->lua_params,
-                      "!verify: processed %lld items, %lld per second%s",
-                      par->items_processed,
-                      delta / par->progress_report_seconds,
-                      par->sb ? "\n" : "");
+        rc =
+            locprint(par->sb, par->lua_callback, par->lua_params,
+                     "!verify: processed %lld items, %lld per second%s",
+                     par->items_processed, delta / par->progress_report_seconds,
+                     par->sb ? "\n" : "");
         par->saved_progress = par->items_processed;
     }
 

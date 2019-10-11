@@ -37,17 +37,19 @@ void reset_time_accounting(int el)
 
 void print_time_accounting(int el)
 {
-    logmsg(LOGMSG_USER, "Timing information for %s: %"PRIu64"us\n", CHR_NAMES[el],
-           gbl_chron_times[el]);
+    logmsg(LOGMSG_USER, "Timing information for %s: %" PRIu64 "us\n",
+           CHR_NAMES[el], gbl_chron_times[el]);
 }
 
 void print_all_time_accounting()
 {
     extern int gbl_create_mode;
-    if (gbl_create_mode) return;
+    if (gbl_create_mode)
+        return;
     logmsg(LOGMSG_USER, "Timing information:\n");
     for (int i = 0; i < CHR_MAX; i++) {
-        logmsg(LOGMSG_USER, "%s: %"PRIu64"us\n", CHR_NAMES[i], ATOMIC_LOAD64(gbl_chron_times[i]));
+        logmsg(LOGMSG_USER, "%s: %" PRIu64 "us\n", CHR_NAMES[i],
+               ATOMIC_LOAD64(gbl_chron_times[i]));
     }
 }
 
