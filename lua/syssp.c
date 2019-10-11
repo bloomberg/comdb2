@@ -205,12 +205,52 @@ static int db_comdb_analyze(Lua L) {
 }
 
 
+/* verify() can take up to 3 parameters (table, mode, verbose):
+ * when we check we look for lua_isstring(L, 1), 2 and 3
+ * when we fetch the string we look for lua_tostring(L, -3), -2, -1
+ */
 static int db_comdb_verify(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *tblname = NULL;
+
     if (lua_isstring(L, 1)) {
-        tblname = (char *) lua_tostring(L, -1);
+        tblname = (char *) lua_tostring(L, -3);
+    }
+    verify_mode_t mode = VERIFY_SERIAL;
+    int verbose = 0;
+
+    if (lua_isstring(L, 2)) {
+        char *m = (char *) lua_tostring(L, -2);
+        if (strcmp(m, "parallel") == 0) {
+            mode = VERIFY_PARALLEL;
+            logmsg(LOGMSG_INFO, "Verify in parallel mode table %s\n", tblname);
+        } else if (strcmp(m, "data") == 0) {
+            mode = VERIFY_DATA;
+            logmsg(LOGMSG_INFO, "Verify ONLY data for table %s\n", tblname);
+        } else if (strcmp(m, "indices") == 0) {
+            mode = VERIFY_INDICES;
+            logmsg(LOGMSG_INFO, "Verify ONLY indices for table %s\n", tblname);
+        } else if (strcmp(m, "blobs") == 0) {
+            mode = VERIFY_BLOBS;
+            logmsg(LOGMSG_INFO, "Verify ONLY blobs for table %s\n", tblname);
+        } else if (strcmp(m, "serial") == 0) {
+            mode = VERIFY_SERIAL;
+            logmsg(LOGMSG_INFO, "Verify in serial mode table %s\n", tblname);
+        } else if (strcmp(m, "verbose") == 0) {
+            verbose = 1;
+            logmsg(LOGMSG_DEBUG, "Verify verbose \n");
+        } else {
+            tblname = NULL; // garbage was passed in, mode invalid
+        }
+
+        if (lua_isstring(L, 3)) {
+            char *v = (char *) lua_tostring(L, -1);
+            if (strcmp(v, "verbose") == 0) {
+                verbose = 1;
+                logmsg(LOGMSG_DEBUG, "Verify verbose \n");
+            }
+        }
     }
 
     char *cols[] = {"out"};
@@ -220,7 +260,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\")");
+        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
         return luaL_error(L, "Verify failed.");
     }
 
@@ -228,8 +268,8 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s'\n", tblname);
-        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+        rc = verify_table_mode(tblname, NULL, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
+        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
         char buf[128] = {0};
@@ -635,8 +675,8 @@ static struct sp_source syssps[] = {
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
-        "local function main(tbl)\n"
-        "sys.comdb_verify(tbl)\n"
+        "local function main(tbl, mode, verbose)\n"
+        "    sys.comdb_verify(tbl, mode, verbose)\n"
         "end\n",
         NULL
     }

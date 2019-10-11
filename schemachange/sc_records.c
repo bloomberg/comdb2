@@ -55,7 +55,8 @@ static inline void decrease_max_threads(uint32_t *maxthreads)
 {
     if (*maxthreads <= 1) return;
     /* ADDING -1 */
-    if (ATOMIC_ADD32_PTR(maxthreads, -1) < 1) XCHANGE32((*maxthreads), 1);
+    if (ATOMIC_ADD32_PTR(maxthreads, -1) < 1)
+        XCHANGE32((*maxthreads), 1);
 }
 
 // increment number of rebuild threads in use
@@ -160,7 +161,8 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      * if this thread successful in setting, it can continue
      * to adjust num threads. If it failed, another thread is doing that work.
      */
-    bool res = CAS32(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
+    bool res =
+        CAS32(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
     if (!res) return;
 
     /* check lock waits -- there is no way to differentiate lock waits because

@@ -1513,10 +1513,8 @@ static char *sqlenginestate_tostr(int state)
 int replicant_can_retry(struct sqlclntstate *clnt)
 {
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           !clnt->verifyretry_off &&
-           !clnt->has_recording &&
-           !clnt->trans_has_sp;
+           clnt->dbtran.mode != TRANLEVEL_SERIAL && !clnt->verifyretry_off &&
+           !clnt->has_recording && !clnt->trans_has_sp;
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)

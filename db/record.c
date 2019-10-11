@@ -2735,7 +2735,7 @@ done:
     free(stuff);
 }
 
-int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int odhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     void *out;
     size_t len;
@@ -2770,7 +2770,7 @@ int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     return 0;
 }
 
-int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+int unodhfy_blob_buffer(const dbtable *db, blob_buffer_t *blob, int blobind)
 {
     int rc;
     void *out;
