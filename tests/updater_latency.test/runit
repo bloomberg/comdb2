@@ -46,7 +46,7 @@ function updater_thread
     write_prompt $func "Running $func"
     typeset thd=${1}
     typeset iterations=${2:-50000}
-    typeset thresholdms=${3:-500}
+    typeset thresholdms=${3:-2000}
     typeset updater=${TESTSBUILDDIR}/updater
     $updater -d $DBNAME -i $iterations -t $thresholdms -c $CDB2_CONFIG 2>&1 | gawk "{print \"[$func-$thd]\", \$0; fflush(); }"
     r=${PIPESTATUS[0]}
