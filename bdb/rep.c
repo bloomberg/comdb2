@@ -2359,40 +2359,38 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
 int gbl_catchup_window_trace = 0;
 extern int gbl_set_seqnum_trace;
 
-static inline int copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum,
-                              int node_ix)
+static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum,
+                              seqnum_type *last_seqnum)
 {
     int trace = bdb_state->attr->wait_for_seqnum_trace, now;
-    int last_generation = bdb_state->seqnum_info->seqnums[node_ix].generation;
     static int lastpr = 0;
 
-    if (seqnum->generation > last_generation) {
+    if (seqnum->generation > last_seqnum->generation) {
         return 1;
     }
 
-    if (seqnum->generation < last_generation) {
+    if (seqnum->generation < last_seqnum->generation) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
                    "seqnum-generation %d < last_generation %d, not"
                    " copying\n",
-                   seqnum->generation, last_generation);
+                   seqnum->generation, last_seqnum->generation);
             lastpr = now;
         }
         return 0;
     }
 
-    DB_LSN last_lsn = bdb_state->seqnum_info->seqnums[node_ix].lsn;
-    if (last_lsn.file == INT_MAX) {
+    if (last_seqnum->lsn.file == INT_MAX) {
         return 1;
     }
 
-    if (log_compare(&last_lsn, &seqnum->lsn) > 0) {
+    if (log_compare(&last_seqnum->lsn, &seqnum->lsn) > 0) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
                    "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not "
                    "copying\n",
-                   seqnum->lsn.file, seqnum->lsn.offset, last_lsn.file,
-                   last_lsn.offset);
+                   seqnum->lsn.file, seqnum->lsn.offset, last_seqnum->lsn.file,
+                   last_seqnum->lsn.offset);
             lastpr = now;
         }
         return 0;
@@ -2561,7 +2559,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                seqnum->commit_generation, mygen, change_coherency);
     }
 
-    if (copy_seqnum(bdb_state, seqnum, node_ix)) {
+    if (should_copy_seqnum(bdb_state, seqnum,
+                &bdb_state->seqnum_info->seqnums[node_ix])) {
         memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
                sizeof(seqnum_type));
     }
