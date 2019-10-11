@@ -282,15 +282,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_data = {0};
-    dbt_data.flags = DB_DBT_USERMEM;
-    dbt_data.ulen = sizeof(databuf);
-    dbt_data.data = databuf;
+    DBT dbt_data = { .flags = DB_DBT_USERMEM, .ulen = sizeof(databuf),
+                     .data = databuf};
 
-    DBT dbt_key = {0};
-    dbt_key.flags = DB_DBT_USERMEM;
-    dbt_key.ulen = sizeof(keybuf);
-    dbt_key.data = keybuf;
+    DBT dbt_key = { .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf),
+                    .data = keybuf};
 
     db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
@@ -389,13 +385,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                    record so a partial find
                    won't do.  I guess we could optimize for the more common
                    case of no headers/compression. */
-                DBT dbt_blob_key = {0};
-                dbt_blob_key.data = &blob_genid;
-                dbt_blob_key.size = sizeof(unsigned long long);
+                DBT dbt_blob_key = { .data = &blob_genid,
+                                     .size = sizeof(unsigned long long)};
 
-                DBT dbt_blob_data = {0};
-                dbt_blob_data.flags = DB_DBT_MALLOC;
-                dbt_blob_data.data = NULL;
+                DBT dbt_blob_data = { .flags = DB_DBT_MALLOC, .data = NULL};
 
                 rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key,
                                           &dbt_blob_data, &ver, DB_SET);
@@ -599,27 +592,19 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_key = {0};
-    dbt_key.data = keybuf;
-    dbt_key.ulen = sizeof(keybuf);
-    dbt_key.flags = DB_DBT_USERMEM;
+    DBT dbt_key = { .data = keybuf, .ulen = sizeof(keybuf),
+                    .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = {0};
-    dbt_data.data = databuf;
-    dbt_data.ulen = sizeof(databuf);
-    dbt_data.flags = DB_DBT_USERMEM;
+    DBT dbt_data = { .data = databuf, .ulen = sizeof(databuf),
+                     .flags = DB_DBT_USERMEM};
 
     unsigned long long genid;
-    DBT dbt_dta_check_key = {0};
-    dbt_dta_check_key.data = &genid;
-    dbt_dta_check_key.ulen = sizeof(unsigned long long);
-    dbt_dta_check_key.size = sizeof(unsigned long long);
-    dbt_dta_check_key.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_key = { .ulen = sizeof(unsigned long long),
+                              .size = sizeof(unsigned long long),
+                              .data = &genid, .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = {0};
-    dbt_dta_check_data.data = &verify_keybuf;
-    dbt_dta_check_data.ulen = sizeof(verify_keybuf);
-    dbt_dta_check_data.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_data = { .data = &verify_keybuf, .flags = DB_DBT_USERMEM,
+                               .ulen = sizeof(verify_keybuf)};
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
@@ -970,7 +955,6 @@ done:
 static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
                             unsigned int lid)
 {
-    DBC *cdata = NULL;
     DBC *cblob;
     int rc = 0;
 
@@ -996,30 +980,20 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = {0};
-    dbt_key.ulen = dbt_key.size = sizeof(unsigned long long);
-    dbt_key.data = &genid;
-    dbt_key.flags = DB_DBT_USERMEM;
+    DBT dbt_key = { .ulen = sizeof(unsigned long long),
+                    .size = sizeof(unsigned long long),
+                    .data = &genid, .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = {0};
-    dbt_data.data = &dumbuf;
-    dbt_data.ulen = 1;
-    dbt_data.doff = 0;
-    dbt_data.dlen = 0;
-    dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+    DBT dbt_data = { .data = &dumbuf, .ulen = 1,
+                     .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
-    DBT dbt_dta_check_key = {0};
-    dbt_dta_check_key.size = sizeof(unsigned long long);
-    dbt_dta_check_key.ulen = sizeof(int); // TODO: why sizeof int?
-    dbt_dta_check_key.data = &genid;
-    dbt_dta_check_key.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_key = { .size = sizeof(unsigned long long),
+                              .ulen = sizeof(int), // TODO: why sizeof int?
+                              .data = &genid, .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = {0};
-    dbt_dta_check_data.data = &dumbuf;
-    dbt_dta_check_data.ulen = 1;
-    dbt_dta_check_data.doff = 0;
-    dbt_dta_check_data.dlen = 0;
-    dbt_dta_check_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+    DBT dbt_dta_check_data = { .data = &dumbuf, .ulen = 1,
+                               .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
+
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
@@ -1058,6 +1032,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
                          genid_flipped, dtastripe, stripe);
         }
 
+        DBC *cdata;
         rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
             bdb_state->dbp_data[0][stripe], lid, &cdata, 0);
         if (rc) {
@@ -1066,6 +1041,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
             rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
             return;
         }
+
         rc = cdata->c_get(cdata, &dbt_dta_check_key, &dbt_dta_check_data,
                           DB_SET);
         if (rc == DB_NOTFOUND) {
