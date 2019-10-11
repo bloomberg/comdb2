@@ -797,6 +797,7 @@ inline int getkeyrecnums(const dbtable *tbl, int ixnum)
         return -1;
     return tbl->ix_recnums[ixnum] != 0;
 }
+
 inline int getkeysize(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
