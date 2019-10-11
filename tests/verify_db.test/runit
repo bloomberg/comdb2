@@ -106,14 +106,14 @@ function getmaster {
 
 #make sure verify behaves as we expect
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify1.out
-echo "Usage: verify(\"<table>\" [,\"parallel\"|\"data\"|\"blobs\"|\"indices\"])
-[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
 if ! diff verify1.out verify.exp ; then
     failexit "Verify did not fail correctly, see verify1.out"
 fi
 
 echo "Table \"nonexistent\" does not exist.
-[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed." > verify.exp
+[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify2.out
 if ! diff verify2.out verify.exp ; then
     failexit "Verify did not fail correctly, see verify2.out"
@@ -262,7 +262,7 @@ ix '2' key 'K2' foreign key table 'parent_t' key 'A' does not exist
 
 ix '3' key 'K3' foreign key table 'parent_t' key 'A' does not exist
 
-procedure sys.cmd.verify('child_t')] failed with rc -3 [sys.comdb_verify(tbl, mode)...]:2: Verify failed.
+procedure sys.cmd.verify('child_t')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 EOF
 
 if ! diff verify_child.out verify_child.expected ; then
