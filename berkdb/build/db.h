@@ -2482,7 +2482,9 @@ struct __db_env {
 	pthread_mutex_t recover_lk;
 	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
-	pthread_rwlock_t ser_lk;
+	pthread_mutex_t ser_lk;
+	pthread_cond_t ser_cond;
+	int ser_count;
 	int lsn_chain;
 
 	/* overrides for minwrite deadlock */
