@@ -174,7 +174,7 @@ void update(int iterations, int thresholdms)
 
 int main(int argc,char *argv[])
 {
-    int c, thresholdms=300, iterations=-1;
+    int c, thresholdms=1200, iterations=-1;
     argv0=argv[0];
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
