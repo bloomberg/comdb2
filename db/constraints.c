@@ -2210,3 +2210,45 @@ constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix)
     return NULL;
 }
 
+
+int convert_key_to_foreign_key(
+    constraint_t *ct, char *lcl_tag, char *lcl_key, char *tblname, 
+    bdb_state_type **r_state, int *ridx, int *rixlen, char *rkey, int *skip, int ri)
+{
+    int nulls;
+    int rc = 0;
+
+    struct dbtable *ruledb = get_dbtable_by_name(ct->table[ri]);
+    if (ruledb == NULL)
+        return 1;
+
+    if((rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], ridx)))
+        return rc;
+
+    char rtag[MAXTAGLEN];
+    snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", *ridx);
+
+    *r_state = ruledb->handle;
+
+    /* convert local Key -> foreign Key : local table -> referenced table */
+    *rixlen = rc = stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key,
+            ruledb->tablename, rtag, rkey,
+            &nulls, FK2PK);
+
+    if (-1 == rc)
+        return rc;
+
+    if (ruledb->ix_collattr[*ridx]) {
+        rc = extract_decimal_quantum(ruledb, *ridx, rkey, NULL, 0, NULL);
+        if (rc) {
+            abort(); /* called doesn't return error for these arguments,
+                        at least not now */
+        }
+    }
+
+    if (should_skip_constraint_for_index(ruledb, *ridx, nulls)) {
+        *skip = 1;
+    }
+    return 0;
+}
+

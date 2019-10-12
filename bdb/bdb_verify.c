@@ -52,6 +52,7 @@ extern void fsnapf(FILE *, void *, int);
 struct ireq; /* forward declare */
 extern struct ireq *get_fake_ireq();
 
+
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
         void *lua_params, char *fmt, ...)
@@ -324,8 +325,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         memcpy(&genid, dbt_key.data, sizeof(genid));
 
         /* why do we open a cursor for each record/blob?
-        1) cursors are cheap - berkeley opens one for every cursor
-          operation
+        1) cursors are cheap - berkeley opens one for every cursor operation
         2) we don't want to keep an active cursor to prevent
           locking up db operations
         */
@@ -463,9 +463,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             }
         }
 
-        unsigned long long has_keys;
-        has_keys = par->verify_indexes_callback(par->db_table, dbt_data.data,
-                                                blob_buf);
+        unsigned long long has_keys = par->verify_indexes_callback(
+            par->db_table, dbt_data.data, blob_buf);
+
         for (int ix = 0; ix < bdb_state->numix; ix++) {
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
                 bdb_state->dbp_ix[ix], lid, &ckey, 0);
@@ -493,6 +493,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
             /* set up key */
 
+            // AZ why not eliminate expected_keybuf totally, write directly data
             memcpy(dbt_key.data, expected_keybuf, keylen);
             dbt_key.size = keylen;
             if (bdb_keycontainsgenid(bdb_state, ix)) {
@@ -578,6 +579,69 @@ err:
     return rc;
 }
 
+int convert_key_to_foreign_key(
+    constraint_t *ct, char *lcl_tag, char *lcl_key, char *tblname, 
+    bdb_state_type **r_state, int *ridx, int *rixlen, char *rkey, int *skip, int ri);
+
+
+/* similar to check_single_key_constraint but uses a paired cursor/cget
+ * so we can release the lock at the end of this function
+ */
+static int verify_foreign_key_constraint(
+    constraint_t *ct, char *lcl_tag, char *lcl_key,
+    char *tblname, int lid, int *remote_ri)
+{
+    int rc = 0;
+    if (remote_ri)
+        *remote_ri = 0;
+    char rkey[MAXKEYLEN];
+    DBT dbt_key = { .flags = DB_DBT_USERMEM, .ulen = sizeof(rkey),
+                    .data = rkey};
+    DBC *ckey = NULL;
+
+    for (int ri = 0; ri < ct->nrules; ri++) {
+        int ridx;
+        int rixlen;
+        bdb_state_type *r_state;
+        int skip = 0;
+        rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, 
+                &r_state,  &ridx, &rixlen, rkey, &skip, ri);
+        if (rc)
+            return rc;
+        
+        if(!skip) {
+            DB *ix_state = r_state->dbp_ix[ridx];
+            rc = ix_state->paired_cursor_from_lid(ix_state, lid, &ckey, 0);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "unexpected rc opening cursor for ix %d: %d\n", ridx, rc);
+                continue; // so we continue to next
+            }
+
+            /* fetch the genid portion to verify existence */
+            unsigned long long verify_genid = 0;
+            DBT dbt_data = {
+                .data = &verify_genid, .dlen = sizeof(verify_genid),
+                .ulen = sizeof(verify_genid), .size = sizeof(verify_genid),
+                .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
+            //not needed, already there: memcpy(dbt_key.data, rkey, keylen);
+            dbt_key.size = rixlen;
+            rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET);
+            ckey->c_close(ckey);
+        }
+
+        if (rc != IX_FND && rc != IX_FNDMORE) {
+            if (remote_ri)
+                *remote_ri = ri;
+            goto done;
+        }
+    }
+done:
+    return rc;
+}
+
+
+
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
     DBC *cdata = NULL;
@@ -622,12 +686,10 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         return 0;
     }
 
-    struct ireq *ruleiq = NULL;
     char ix_tag[MAXTAGLEN];
     constraint_t *ix_constraint = get_constraint_for_ix(par->db_table, ix);
     if (ix_constraint) {
         snprintf(ix_tag, MAXTAGLEN, ".ONDISK_IX_%d", ix);
-        ruleiq = get_fake_ireq();
     }
 
     rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_FIRST);
@@ -922,11 +984,17 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         if (ix_constraint) {
             int ridx;
             /* TODO: Clarify whether we can pass NULL as transaction here as we raise the problem of an undetectable deadlock */
-            if (check_single_key_constraint(ruleiq, ix_constraint, ix_tag, dbt_key.data, bdb_state->name, NULL, &ridx)) {
+            rc = verify_foreign_key_constraint(ix_constraint, ix_tag, dbt_key.data, bdb_state->name, lid, &ridx);
+            if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
                          "!%016llx ix '%d' key '%s' foreign key table '%s' key '%s' does not exist\n",
                          genid, ix, ix_constraint->lclkeyname, ix_constraint->table[ridx], ix_constraint->keynm[ridx]);
+            } else if (rc) {
+                par->verify_status = 1;
+                locprint(par->sb, par->lua_callback, par->lua_params,
+                         "!%016llx ix '%d' key '%s' foreign key table '%s' key '%s' error loading rc = %d\n",
+                         genid, ix, ix_constraint->lclkeyname, ix_constraint->table[ridx], ix_constraint->keynm[ridx], rc);
             }
         }
 
@@ -948,8 +1016,6 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, ix, now - atstart);
 done:
-    if (ruleiq)
-        free(ruleiq);
 
     return rc;
 }
@@ -1197,9 +1263,10 @@ static inline void enqueue_work(td_processing_info_t *work,
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
+    verify_mode_t v_mode = par->verify_mode;
 #ifndef NDEBUG
     const char *tp = "";
-    switch (par->verify_mode) {
+    switch (v_mode) {
     case VERIFY_PARALLEL:
         break;
     case VERIFY_DATA:
@@ -1218,8 +1285,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 #endif
     par->last_reported = comdb2_time_epochms(); // initialize
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_DATA) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
         /* scan 1 - run through data, verify all the keys and blobs */
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
              dtastripe++) {
@@ -1231,8 +1297,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         }
     }
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_INDICES) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_INDICES) {
         /* scan 2: scan each key, verify data exists */
         for (int ix = 0; ix < par->bdb_state->numix; ix++) {
             td_processing_info_t *work = malloc(sizeof(*work));
@@ -1243,8 +1308,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         }
     }
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_BLOBS) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_BLOBS) {
         /* scan 3: scan each blob, verify data exists */
         int nblobs = get_numblobs(par->db_table);
         for (int blobno = 0; blobno < nblobs; blobno++) {
