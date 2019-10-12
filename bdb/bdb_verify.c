@@ -983,12 +983,12 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
         if (ix_constraint) {
             int ridx;
-            /* TODO: Clarify whether we can pass NULL as transaction here as we raise the problem of an undetectable deadlock */
-            rc = verify_foreign_key_constraint(ix_constraint, ix_tag, dbt_key.data, bdb_state->name, lid, &ridx);
+            rc = verify_foreign_key_constraint(ix_constraint, ix_tag, 
+                    dbt_key.data, bdb_state->name, lid, &ridx);
             if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
-                         "!%016llx ix '%d' key '%s' foreign key table '%s' key '%s' does not exist\n",
+                         "!%016llx ix '%d' key '%s': foreign key table '%s' key '%s' not found\n",
                          genid, ix, ix_constraint->lclkeyname, ix_constraint->table[ridx], ix_constraint->keynm[ridx]);
             } else if (rc) {
                 par->verify_status = 1;
