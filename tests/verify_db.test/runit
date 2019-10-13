@@ -256,11 +256,11 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('chi
 
 
 cat << EOF > verify_child.expected
-ix '1' key 'K1' foreign key table 'parent_t' key 'A' does not exist
+ix '1' key 'K1': foreign key table 'parent_t' key 'A' not found
 
-ix '2' key 'K2' foreign key table 'parent_t' key 'A' does not exist
+ix '2' key 'K2': foreign key table 'parent_t' key 'A' not found
 
-ix '3' key 'K3' foreign key table 'parent_t' key 'A' does not exist
+ix '3' key 'K3': foreign key table 'parent_t' key 'A' not found
 
 procedure sys.cmd.verify('child_t')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 EOF
