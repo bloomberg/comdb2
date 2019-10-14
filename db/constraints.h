@@ -49,6 +49,11 @@ struct ireq;
 
 int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls);
 int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
-        char *lcl_tag, char *lcl_key, char *tblname, void *trans, int *remote_ri);
+                                char *lcl_tag, char *lcl_key, char *tblname,
+                                void *trans, int *remote_ri);
 constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix);
+int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
+                               char *tblname, bdb_state_type **r_state,
+                               int *ridx, int *rixlen, char *rkey,
+                               int *skip, int ri);
 #endif

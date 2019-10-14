@@ -49,8 +49,6 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
-struct ireq; /* forward declare */
-extern struct ireq *get_fake_ireq();
 
 
 /* print to sb if available lua callback otherwise */
@@ -579,11 +577,6 @@ err:
     return rc;
 }
 
-int convert_key_to_foreign_key(
-    constraint_t *ct, char *lcl_tag, char *lcl_key, char *tblname, 
-    bdb_state_type **r_state, int *ridx, int *rixlen, char *rkey, int *skip, int ri);
-
-
 /* similar to check_single_key_constraint but uses a paired cursor/cget
  * so we can release the lock at the end of this function
  */
@@ -604,8 +597,8 @@ static int verify_foreign_key_constraint(
         int rixlen;
         bdb_state_type *r_state;
         int skip = 0;
-        rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, 
-                &r_state,  &ridx, &rixlen, rkey, &skip, ri);
+        rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, &r_state,
+                                        &ridx, &rixlen, rkey, &skip, ri);
         if (rc)
             return rc;
         
