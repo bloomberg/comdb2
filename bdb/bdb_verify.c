@@ -236,18 +236,20 @@ static inline int print_verify_progress(verify_common_t *par, int now)
     }
 
     int rc;
-    if (par->verify_mode == VERIFY_DEFAULT) {
+    if (par->verify_mode == VERIFY_SERIAL) {
         rc = locprint(par->sb, par->lua_callback, par->lua_params,
-                      "!%s, did %d records, %d per second\n", par->header,
+                      "!%s, did %d records, %d per second%s", par->header,
                       par->nrecs_progress,
-                      par->nrecs_progress / par->progress_report_seconds);
+                      par->nrecs_progress / par->progress_report_seconds,
+                      par->sb ? "\n" : "");
         par->nrecs_progress = 0;
     } else {
         unsigned long long delta = par->items_processed - par->saved_progress;
         rc = locprint(par->sb, par->lua_callback, par->lua_params,
-                      "!verify: processed %lld items, %lld per second\n",
+                      "!verify: processed %lld items, %lld per second%s",
                       par->items_processed,
-                      delta / par->progress_report_seconds);
+                      delta / par->progress_report_seconds,
+                      par->sb ? "\n" : "");
         par->saved_progress = par->items_processed;
     }
 

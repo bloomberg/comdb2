@@ -83,6 +83,7 @@ static int __dbenv_set_recovery_lsn __P((DB_ENV *, DB_LSN *));
 static void __dbenv_get_rep_verify_lsn __P((DB_ENV *, DB_LSN *, DB_LSN *));
 static void __dbenv_set_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t));
 static void __dbenv_get_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t *));
+static int __dbenv_replicant_generation __P((DB_ENV *, uint32_t *));
 static int __dbenv_blobmem_yield __P((DB_ENV *));
 static int __dbenv_set_comdb2_dirs __P((DB_ENV *, char *, char *, char *));
 static int __dbenv_set_is_tmp_tbl __P((DB_ENV *, int));
@@ -272,6 +273,7 @@ __dbenv_init(dbenv)
 		dbenv->get_rep_verify_lsn = __dbenv_get_rep_verify_lsn;
 		dbenv->set_durable_lsn = __dbenv_set_durable_lsn;
 		dbenv->get_durable_lsn = __dbenv_get_durable_lsn;
+		dbenv->replicant_generation = __dbenv_replicant_generation;
 
         dbenv->get_log_header_size = __dbenv_get_log_header_size;
         dbenv->rep_verify_match = __dbenv_rep_verify_match;
@@ -1345,6 +1347,15 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 
     Pthread_cond_broadcast(&gbl_durable_lsn_cond);
 	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+}
+
+static int
+__dbenv_replicant_generation(dbenv, generation)
+    DB_ENV *dbenv;
+    uint32_t *generation;
+{
+    *generation = dbenv->rep_gen;
+    return 0;
 }
 
 static void

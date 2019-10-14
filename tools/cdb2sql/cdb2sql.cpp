@@ -225,6 +225,25 @@ static char *level_one_generator(const char *text, const int state)
     return (NULL); // If no names matched, then return NULL.
 }
 
+
+const char *ls_words[] = { "tables", "systables", "views", NULL};
+static char *ls_generator(const char *text, const int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the length of text
+        list_index = 0;
+        len = strlen (text);
+    }
+    while ((name = ls_words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
+    }
+    return (NULL); // If no names matched, then return NULL.
+}
+
 static char *db_generator(const int state, const char *sql)
 {
     static char **db_words;
@@ -321,6 +340,21 @@ static char *tunables_generator(const char *text, const int state)
     return db_generator(state, sql);
 }
 
+static char *tables_generator(const char *text, const int state)
+{
+    char sql[256];
+    if (*text)
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+                "SELECT tablename FROM comdb2_tables "
+                "WHERE tablename LIKE '%s%%'",
+                text);
+    else
+        snprintf(sql, sizeof(sql), "SELECT tablename FROM comdb2_tables");
+
+    return db_generator(state, sql);
+}
+
 static char *generic_generator_no_systables(const char *text, const int state)
 {
     char sql[256];
@@ -381,11 +415,15 @@ static char **my_completion (const char *text, int start, int end)
     }
 
     // TODO: Detect if we are in multiline
+    
+    static char *(*generator)(const char *text, const int state) = NULL;
+
     if (endptr == bgn) { // we were in the middle of the first word
         if (*bgn == '@')
-            return rl_completion_matches(text, &char_atglyph_generator);
+            generator = &char_atglyph_generator;
         else
-            return rl_completion_matches(text, &level_one_generator);
+            generator = &level_one_generator;
+        return rl_completion_matches(text, generator);
     }
 
     // endptr points to a space, find end of previous word
@@ -399,11 +437,17 @@ static char **my_completion (const char *text, int start, int end)
     lastw++;
 
     if (strncasecmp(lastw, "TUNABLE", sizeof("TUNABLE") - 1) == 0)
-        return rl_completion_matches(text, &tunables_generator);
+        generator = &tunables_generator;
     else if (strncasecmp(lastw, "FROM", sizeof("FROM") - 1) == 0)
-        return rl_completion_matches(text, &generic_generator);
+        generator = &generic_generator;
+    else if (strncasecmp(lastw, "ls", sizeof("ls") - 1) == 0)
+        generator = &ls_generator;
+    else if (strncasecmp(lastw, "desc", sizeof("desc") - 1) == 0)
+        generator = &tables_generator;
     else
-        return rl_completion_matches(text, &generic_generator_no_systables);
+        generator = &generic_generator_no_systables;
+
+    return rl_completion_matches(text, generator);
 }
 
 static bool skip_history(const char *line)

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+
+export debug=1
+export fail_file=./updater_failed.txt
+
+[[ $debug == "1" ]] && set -x
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    write_prompt $func "Running $func"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    exit 1
+}
+
+function bulk_insert_records
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="bulk_insert_records"
+    write_prompt $func "Running $func"
+    typeset count=${1:-10000}
+    j=0
+
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "WITH RECURSIVE cnt(x) as (SELECT 1 UNION ALL SELECT x + 1 FROM cnt LIMIT $count) INSERT INTO sessions_index(applicationId, key, sessionIds, occToken) SELECT x, x, x, x'babababababababababababababababa' from cnt"
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    write_prompt $func "Running $func"
+    drop_table sessions_index
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "create table sessions_index { `cat sessions_index.csc2` }"
+}
+
+function updater_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="updater_thread"
+    write_prompt $func "Running $func"
+    typeset thd=${1}
+    typeset iterations=${2:-50000}
+    typeset thresholdms=${3:-2000}
+    typeset updater=${TESTSBUILDDIR}/updater
+    $updater -d $DBNAME -i $iterations -t $thresholdms -c $CDB2_CONFIG 2>&1 | gawk "{print \"[$func-$thd]\", \$0; fflush(); }"
+    r=${PIPESTATUS[0]}
+    if [[ $r != 0 ]]; then
+        touch $fail_file
+    fi
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "Running $func"
+    typeset updaters=3
+    bulk_insert_records
+    i=0
+    rm -f $fail_file
+    while [[ $i -lt $updaters ]]; do
+        updater_thread $i &
+        let i=i+1
+    done
+    wait
+    if [[ -f "$fail_file" ]]; then
+        failexit "Updater failed"
+    fi
+}
+
+setup
+run_test
+echo "Success"
