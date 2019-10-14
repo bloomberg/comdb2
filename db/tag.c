@@ -7132,6 +7132,8 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
     }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
     return 0;
 }
 
