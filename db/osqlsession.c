@@ -448,7 +448,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
         snprintf(rqid, sizeof(rqid), "%llx", sess->rqid);
 
     reqlog_logf(reqlog, REQL_INFO,
-                "rqid %s node %s time %dms rtrs %u queuetime=%dms \"%s\"\n",
+                "rqid %s node %s time %ldms rtrs %u queuetime=%dms \"%s\"\n",
                 sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, sess->offhost,
                 U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
                 U2M(reqlog_get_queue_time(reqlog)),

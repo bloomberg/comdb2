@@ -1136,15 +1136,10 @@ static const Mem *columnNullValue(void){
         /* .eSubtype   = */ (u8)0,
         /* .n          = */ (int)0,
         /* .z          = */ (char*)0,
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* .db         = */ (sqlite3*)0,
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* .zMalloc    = */ (char*)0,
         /* .szMalloc   = */ (int)0,
         /* .uTemp      = */ (u32)0,
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
         /* .db         = */ (sqlite3*)0,
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* .xDel       = */ (void(*)(void*))0,
 #ifdef SQLITE_DEBUG
         /* .pScopyFrom = */ (Mem*)0,
@@ -1974,7 +1969,11 @@ const char *sqlite3_normalized_sql(sqlite3_stmt *pStmt){
   if( p==0 ) return 0;
   if( p->zNormSql==0 && ALWAYS(p->zSql!=0) ){
     sqlite3_mutex_enter(p->db->mutex);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    p->zNormSql = sqlite3Normalize(p, p->zSql, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->zNormSql = sqlite3Normalize(p, p->zSql);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3_mutex_leave(p->db->mutex);
   }
   return p->zNormSql;

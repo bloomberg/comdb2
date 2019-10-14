@@ -148,7 +148,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     }
 
     if (*file == 0 && sql_query &&
-        (clnt->in_client_trans || clnt->is_hasql_retry) &&
+        (in_client_trans(clnt) || clnt->is_hasql_retry) &&
         clnt->snapshot_file) {
         sql_debug_logf(
             clnt, __func__, __LINE__,
@@ -1468,34 +1468,52 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
                 sqlstr = skipws(sqlstr);
-                clnt->dbtran.mode = TRANLEVEL_INVALID;
-                newsql_clr_high_availability(clnt);
-                if (strncasecmp(sqlstr, "read", 4) == 0) {
-                    sqlstr += 4;
+
+                if (strncasecmp(sqlstr, "chunk", 5) == 0) {
+                    int tmp;
+                    sqlstr += 5;
                     sqlstr = skipws(sqlstr);
-                    if (strncasecmp(sqlstr, "committed", 4) == 0) {
-                        clnt->dbtran.mode = TRANLEVEL_RECOM;
+
+                    if (!sqlstr || ((tmp = atoi(sqlstr)) <= 0)) {
+                        snprintf(err, sizeof(err),
+                                 "set transaction chunk N: missing chunk size "
+                                 "N \"%s\"",
+                                 sqlstr);
+                        rc = ii + 1;
+                    } else {
+                        clnt->dbtran.maxchunksize = tmp;
+                        /* in chunked mode, we disable verify retries */
+                        clnt->verifyretry_off = 1;
                     }
-                } else if (strncasecmp(sqlstr, "serial", 6) == 0) {
-                    clnt->dbtran.mode = TRANLEVEL_SERIAL;
-                    if (clnt->hasql_on == 1) {
-                        newsql_set_high_availability(clnt);
+                } else {
+                    clnt->dbtran.mode = TRANLEVEL_INVALID;
+                    newsql_clr_high_availability(clnt);
+                    if (strncasecmp(sqlstr, "read", 4) == 0) {
+                        sqlstr += 4;
+                        sqlstr = skipws(sqlstr);
+                        if (strncasecmp(sqlstr, "committed", 9) == 0) {
+                            clnt->dbtran.mode = TRANLEVEL_RECOM;
+                        }
+                    } else if (strncasecmp(sqlstr, "serial", 6) == 0) {
+                        clnt->dbtran.mode = TRANLEVEL_SERIAL;
+                        if (clnt->hasql_on == 1) {
+                            newsql_set_high_availability(clnt);
+                        }
+                    } else if (strncasecmp(sqlstr, "blocksql", 7) == 0) {
+                        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+                    } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
+                        sqlstr += 4;
+                        clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
+                        clnt->verify_retries = 0;
+                        if (clnt->hasql_on == 1) {
+                            newsql_set_high_availability(clnt);
+                            logmsg(LOGMSG_ERROR, "Enabling snapshot isolation "
+                                                 "high availability\n");
+                        }
                     }
-                } else if (strncasecmp(sqlstr, "blocksql", 7) == 0) {
-                    clnt->dbtran.mode = TRANLEVEL_SOSQL;
-                } else if (strncasecmp(sqlstr, "snap", 4) == 0) {
-                    sqlstr += 4;
-                    clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
-                    clnt->verify_retries = 0;
-                    if (clnt->hasql_on == 1) {
-                        newsql_set_high_availability(clnt);
-                        logmsg(
-                            LOGMSG_ERROR,
-                            "Enabling snapshot isolation high availability\n");
-                    }
+                    if (clnt->dbtran.mode == TRANLEVEL_INVALID)
+                        rc = ii + 1;
                 }
-                if (clnt->dbtran.mode == TRANLEVEL_INVALID)
-                    rc = ii + 1;
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
@@ -2131,6 +2149,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
     if (incoh_reject(arg->admin, dbenv->bdb_env)) {
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 
@@ -2146,6 +2167,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     */
     if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
         dbenv->master != gbl_mynode) {
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d td %u new query on replicant with sync none, dropping\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 
@@ -2260,15 +2284,21 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
-#if 0
-        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#ifndef NDEBUG
+#define MAXTOPRINT 200
+        int num = logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT,
+                         sql_query->sql_query);
+        if (num >= MAXTOPRINT)
+            logmsg(LOGMSG_DEBUG, "...'\n");
+        else
+            logmsg(LOGMSG_DEBUG, "'\n");
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
-        if (!clnt.in_client_trans) {
+        if (!in_client_trans(&clnt)) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
             clnt.had_errors = 0;
@@ -2360,7 +2390,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             /* tell blobmem that I want my priority back
                when the sql thread is done */
             comdb2bma_pass_priority_back(blobmem);
-            rc = dispatch_sql_query(&clnt);
+            rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
 
             if (clnt.had_errors && isCommitRollback) {
                 rc = -1;
@@ -2369,7 +2399,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt_change_state(&clnt, CONNECTION_IDLE);
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
-            if (clnt.trans_has_sp) {
+            if (clnt.dbtran.trans_has_sp) {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
             } else {
@@ -2390,7 +2420,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             }
         }
 
-        if (rc && !clnt.in_client_trans)
+        if (rc && !in_client_trans(&clnt))
             goto done;
 
         if (clnt.added_to_hist) {

@@ -1,0 +1,14 @@
+schema
+{
+    int         a
+    int         b
+    int         c
+    int         d
+}
+
+keys {
+    "PK"=a
+dup "Kba"=b+a
+dup "Kdca"=d+c+a
+dup "Kcba"=c+a+b
+}

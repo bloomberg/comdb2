@@ -70,8 +70,6 @@ function assertcnt
 function do_verify
 {
     tbl=$1
-    typeset cnt=0
-
     cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
 
     if ! grep succeeded verify.out > /dev/null ; then

@@ -198,9 +198,14 @@ static void free_sc(struct schema_change_type *s)
 {
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+
+    /* Bail out if we're in a time partition rollout otherwise
+       we may deadlock with a regular schema change. The time partition
+       rollout will invoke csc2_free_all() without holding views_lk. */
+    if (s->views_locked)
+        return;
+
     csc2_free_all();
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)

@@ -3183,9 +3183,6 @@ int osql_comm_blkout_node(const char *host)
     for (i = 0; i < len; i++) {
         if (host == blk->nds[i]) {
             blk->times[i] = time(NULL); /* refresh blackout */
-#ifdef OFFLOAD_TEST
-            fprintf(stderr, "BO %d %u\n", node, blk->times[i]);
-#endif
             break;
         }
     }
@@ -6518,8 +6515,6 @@ static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
     return ret;
 }
 
-enum { OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001 };
-
 static inline int is_write_request(int type)
 {
     switch (type) {
@@ -6923,6 +6918,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
+        /* IDEA: don't store the usedb in the defered_table, rather right before
+         * loading a new usedb, process the curret one,
+         * this way tmptbl key is 8 bytes smaller
+         *
+        if (gbl_reorder_on) {
+            process_defered_table(iq, ...);
+        }
+        */
+
         tablename =
             (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
@@ -7014,8 +7018,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             hash_add(iq->vfy_genid_hash, g);
         }
 
+        int locflags = RECFLAGS_DONT_LOCK_TBL;
+
         rc = del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode,
-                        &err->ixnum, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
+                        &err->ixnum, BLOCK2_DELKL, locflags);
 
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -7248,23 +7254,24 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 #endif
 
-        rc = upd_record(
-            iq, trans, NULL, rrn, genid, tag_name_ondisk,
-            tag_name_ondisk + tag_name_ondisk_len, /*tag*/
-            pData, pData + dt.nData,               /* rec */
-            NULL, NULL,                            /* vrec */
-            NULL,                                  /*nulls, no need as no
-                                                     ctag2stag is called */
-            *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
-            &err->errcode, &err->ixnum, BLOCK2_UPDKL, step,
+        int locflags =
             RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
-                RECFLAGS_DONT_SKIP_BLOBS /* because we only receive info about
-                                            blobs that should exist in the new
-                                            record, override the update
-                                            function's default behaviour and
-                                            have
-                                            it erase any blobs that haven't been
-                                            collected. */);
+            RECFLAGS_DONT_SKIP_BLOBS; /* because we only receive info about
+                                        blobs that should exist in the new
+                                        record, override the update
+                                        function's default behaviour and
+                                        have it erase any blobs that havent been
+                                        collected. */
+
+        rc = upd_record(iq, trans, NULL, rrn, genid, tag_name_ondisk,
+                        tag_name_ondisk + tag_name_ondisk_len, /*tag*/
+                        pData, pData + dt.nData,               /* rec */
+                        NULL, NULL,                            /* vrec */
+                        NULL, /*nulls, no need as no
+                                ctag2stag is called */
+                        *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys,
+                        dt.del_keys, &err->errcode, &err->ixnum, BLOCK2_UPDKL,
+                        step, locflags);
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
@@ -8604,7 +8611,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8639,7 +8646,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8674,7 +8681,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long geni
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);
@@ -8712,7 +8719,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int recle
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata->record);
@@ -8756,7 +8763,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
     comdb2uuidcpy(qdata->uuid, uuid);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+                         0, NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata->record);

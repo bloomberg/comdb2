@@ -15,7 +15,9 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include <stdint.h>
 #include <stdlib.h>
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
+#include <limits.h>
 
 #include <string.h>
 #include <pthread.h>

@@ -207,6 +207,9 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_random_thdpool_work_timeout;
+extern int gbl_thdpool_queue_only;
+extern int gbl_random_sql_work_delayed;
+extern int gbl_random_sql_work_rejected;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
@@ -311,11 +314,14 @@ extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
 
+extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int eventlog_nkeep;
+
+int gbl_page_order_table_scan = 0;
 
 /*
   =========================================================
@@ -705,7 +711,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
-
 static int netconndumptime_update(void *context, void *value)
 {
     int val = *(int *)value;
@@ -849,6 +854,20 @@ static int pbkdf2_iterations_update(void *context, void *value)
 {
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
+}
+
+static int page_order_table_scan_update(void *context, void *value)
+{
+    if ((*(int *)value) == 0) {
+        gbl_page_order_table_scan = 0;
+    } else {
+        gbl_page_order_table_scan = 1;
+    }
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN,
+                 gbl_page_order_table_scan);
+    logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
+           (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
 }
 
 /* Routines for the tunable system itself - tunable-specific

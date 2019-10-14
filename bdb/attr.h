@@ -224,6 +224,8 @@ DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "maximum database thrashing)")
 DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
          "Size of the verify thread stack.")
+DEF_ATTR(VERIFY_POOL_MAXT, verify_pool_maxt, QUANTITY, 8,
+         "Max Number of verify threads in the thrd pool.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
@@ -370,10 +372,10 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 60,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
          "On replicants, check this often for transaction status.")
 DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
          100, "On replicants, maximum deadlock recovered count allowed.")

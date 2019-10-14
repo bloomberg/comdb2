@@ -4189,7 +4189,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			}
 			rq->used = 0;
 			thdpool_enqueue(dbenv->recovery_workers, worker_thd, rq,
-				0, NULL, 0);
+				0, NULL, 0, PRIORITY_T_DEFAULT);
 			rq = listc_rtl(&queues);
 		}
 	}
@@ -4337,7 +4337,13 @@ err:
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
-		Pthread_rwlock_unlock(&dbenv->ser_lk);
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		dbenv->ser_count--;
+		assert(dbenv->ser_count >= 0);
+		if (dbenv->ser_count == 0) {
+			Pthread_cond_broadcast(&dbenv->ser_cond);
+		}
+		Pthread_mutex_unlock(&dbenv->ser_lk);
 	}
 
 	bdb_thread_done_rw();
@@ -5015,12 +5021,21 @@ wait_for_running_transactions(dbenv)
 	if (dbenv->lsn_chain) {
 		return wait_for_lsn_chain_lk(dbenv);
 	} else {
+		int count = 0;
 		/* Grab the writelock */
-		Pthread_rwlock_wrlock(&dbenv->ser_lk);
-
-		/* Release immediately: no one else is running */
-		Pthread_rwlock_unlock(&dbenv->ser_lk);
-
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		while(dbenv->ser_count > 0) {
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			ts.tv_sec++;
+			pthread_cond_timedwait(&dbenv->ser_cond, &dbenv->ser_lk, &ts);
+			count++;
+			if (count > 5) {
+				logmsg(LOGMSG_ERROR, "%s: waiting for processor threads to "
+						"complete\n", __func__);
+			}
+		}
+		Pthread_mutex_unlock(&dbenv->ser_lk);
 		return 0;
 	}
 }
@@ -5566,7 +5581,9 @@ bad_resize:	;
 		if (ret)
 			goto err;
 	} else {
-		Pthread_rwlock_rdlock(&dbenv->ser_lk);
+		Pthread_mutex_lock(&dbenv->ser_lk);
+		dbenv->ser_count++;
+		Pthread_mutex_unlock(&dbenv->ser_lk);
 	}
 
 	/* Dispatch to a processor thread. */
@@ -5592,7 +5609,7 @@ bad_resize:	;
 	listc_abl(&dbenv->inflight_transactions, rp);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
-	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
+	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0, PRIORITY_T_DEFAULT);
 
 	if (txn_args)
 		__os_free(dbenv, txn_args);
@@ -7552,6 +7569,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_CLR(rep, REP_F_READY);
 		goto errunlock;
 	}
+
+    dbenv->rep_gen = rep->gen;
 
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 		__func__, prevlsn.file, prevlsn.offset, trunclsn.file,

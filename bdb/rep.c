@@ -2359,6 +2359,46 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
 int gbl_catchup_window_trace = 0;
 extern int gbl_set_seqnum_trace;
 
+static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum,
+                              seqnum_type *last_seqnum)
+{
+    int trace = bdb_state->attr->wait_for_seqnum_trace, now;
+    static int lastpr = 0;
+
+    if (seqnum->generation > last_seqnum->generation) {
+        return 1;
+    }
+
+    if (seqnum->generation < last_seqnum->generation) {
+        if (trace && (now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_USER,
+                   "seqnum-generation %d < last_generation %d, not"
+                   " copying\n",
+                   seqnum->generation, last_seqnum->generation);
+            lastpr = now;
+        }
+        return 0;
+    }
+
+    if (last_seqnum->lsn.file == INT_MAX) {
+        return 1;
+    }
+
+    if (log_compare(&last_seqnum->lsn, &seqnum->lsn) > 0) {
+        if (trace && (now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_USER,
+                   "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not "
+                   "copying\n",
+                   seqnum->lsn.file, seqnum->lsn.offset, last_seqnum->lsn.file,
+                   last_seqnum->lsn.offset);
+            lastpr = now;
+        }
+        return 0;
+    }
+
+    return 1;
+}
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
                                      uint8_t is_tcp)
@@ -2376,6 +2416,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int now;
     int track_times;
     int node_ix = nodeix(host);
+    int seqnum_trace = bdb_state->attr->wait_for_seqnum_trace;
 
     track_times = bdb_state->attr->track_replication_times;
 
@@ -2397,16 +2438,29 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             static unsigned long long count = 0;
             count++;
 
-            if (bdb_state->attr->wait_for_seqnum_trace && (now = time(NULL)) > lastpr) {
-                logmsg(LOGMSG_USER, "%s: rejecting seqnum from %s because gen is "
-                                "%u, i want %u, count=%llu\n",
-                        __func__, host, seqnum->generation, mygen, count);
+            if (seqnum_trace && (now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_USER,
+                       "%s: rejecting seqnum from %s because gen is "
+                       "%u (low), i want %u, count=%llu\n",
+                       __func__, host, seqnum->generation, mygen, count);
                 lastpr = now;
             }
             return;
         }
 
         if (seqnum->generation > mygen) {
+            static unsigned long long count = 0;
+            static time_t lastpr = 0;
+            count++;
+
+            if (seqnum_trace && (now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_USER,
+                       "%s: rejecting seqnum from %s because gen is "
+                       "%u (high), i want %u, count=%llu\n",
+                       __func__, host, seqnum->generation, mygen, count);
+                lastpr = now;
+            }
+
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
                 call_for_election(bdb_state, __func__, __LINE__);
@@ -2504,8 +2558,12 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
                seqnum->commit_generation, mygen, change_coherency);
     }
-    memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
-           sizeof(seqnum_type));
+
+    if (should_copy_seqnum(bdb_state, seqnum,
+                &bdb_state->seqnum_info->seqnums[node_ix])) {
+        memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
+               sizeof(seqnum_type));
+    }
 
     if (gbl_set_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d\n", __func__,
@@ -2867,7 +2925,38 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     return 0;
 }
 
-/* returns -999 on timeout */
+static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
+{
+    switch (rc) {
+    case 1:
+    case -2:
+    case -10:
+    case -1:
+        return 1;
+        break;
+    default:
+        return 0;
+        break;
+    }
+}
+
+/*
+ * Return values:
+ *    GOOD RETURN CODE
+ *    0 - node has caught up
+ *
+ *    NORMAL TIMEOUT
+ *    -999 - the caller will mark incoherent
+ *
+ *    SPECIAL CASES: DON'T WAIT ANYMORE
+ *    1 - node is not coherent / newly online and catching up
+ *   -2 - node is rtcpu'd- marked incoherent inline
+ *  -10 - node generation is higher than what we are waiting on
+ *   -1 - node has been decommissioned
+ *
+ *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
+ *   we wait for.  This counts against durability.
+ */
 static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              seqnum_type *seqnum,
                                              const char *host, int timeoutms, int lineno)
@@ -3264,6 +3353,15 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
             }
 
+            if (wait_for_seqnum_remove_node(bdb_state, rc)) {
+                nodelist[i] = nodelist[numnodes - 1];
+                numnodes--;
+                if (numnodes <= 0)
+                    goto done_wait;
+                i--;
+                assert(rc != 0);
+            }
+
             if (rc == 0) {
                 base_node = nodelist[i];
                 num_successfully_acked++;
@@ -3602,6 +3700,15 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     if ((!bdb_state->caught_up) || (bdb_state->exiting)) {
         bzero(seqnum, sizeof(seqnum_type));
     } else {
+        uint32_t rep_gen;
+
+        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &rep_gen);
+        } else {
+            /* Replicant generation is updated after verify-match */
+            bdb_state->dbenv->replicant_generation(bdb_state->dbenv, &rep_gen);
+        }
+
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         int myhost_ix = nodeix(bdb_state->repinfo->myhost);
@@ -3609,6 +3716,7 @@ int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
                sizeof(seqnum_type));
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        seqnum->generation = rep_gen;
     }
     return (seqnum->lsn.file > 0);
 }
@@ -4134,7 +4242,10 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
         return 1;
     }
 
-    return (gettimeofday_ms() <= get_coherency_timestamp());
+    int ret = (gettimeofday_ms() <= get_coherency_timestamp());
+    if (!ret)
+        logmsg(LOGMSG_DEBUG, "%s returning INCOHERENT \n", __func__);
+    return ret;
 }
 
 int bdb_valid_lease(void *in_bdb_state)
@@ -4466,7 +4577,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
         memcpy(rcv->data, data, size);
 
         rc = thdpool_enqueue(gbl_pgcompact_thdpool, pg_compact_do_work_pp, rcv,
-                             0, NULL, 0);
+                             0, NULL, 0, PRIORITY_T_DEFAULT);
 
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s %d: failed to thdpool_enqueue rc = %d.\n",
@@ -4884,7 +4995,8 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     work->mpf = mpf;
     work->pgno = pgno;
     rc =
-        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
+        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0,
+                        PRIORITY_T_DEFAULT);
     return rc;
 }
 
@@ -4918,7 +5030,7 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     qdata->pgno = pgno;
 
     rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0,
-                         NULL, 0);
+                         NULL, 0, PRIORITY_T_DEFAULT);
 
     if (rc != 0) {
         free(qdata);

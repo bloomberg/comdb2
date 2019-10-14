@@ -8,6 +8,6 @@ fi
 
 for test in *.test; do
    export TESTCASE="$(echo $test | sed 's/.test$//g; s///g')"
-   export TESTDIR=$(pwd)/test_${TESTID}
+   export TESTDIR=${PWD}/test_${TESTID}
    DBNAME=${TESTCASE}${TESTID} ./unsetup
 done

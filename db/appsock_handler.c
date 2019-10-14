@@ -366,11 +366,11 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     uint32_t flags = admin ? THDPOOL_FORCE_DISPATCH : 0;
-    appsock_work_args_t *work = (appsock_work_args_t *)malloc(sizeof(*work));
+    appsock_work_args_t *work = malloc(sizeof(*work));
     work->admin = admin;
     work->sb = sb;
     if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
-                        flags) != 0) {
+                        flags, PRIORITY_T_DEFAULT) != 0) {
         total_appsock_rejections++;
         if ((now - last_thread_dump_time) > 10) {
             logmsg(LOGMSG_WARN, "Too many concurrent SQL connections:\n");

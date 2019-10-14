@@ -659,12 +659,9 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
 
 /* commit the transaction referenced by the tran handle.  return a
    seqnum that is guaranteed to be greater or equal to the seqnum
-   needed to have this commit reflected in your database */
-int bdb_tran_commit_with_seqnum(bdb_state_type *bdb_state, tran_type *tran,
-                                seqnum_type *seqnum, int *bdberr);
-
-/* same, but also return an estimate of the transaction size in unspecified
- * units */
+   needed to have this commit reflected in your database
+   also return an estimate of the transaction size in unspecified
+   units */
 int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
                                      seqnum_type *seqnum, uint64_t *out_txnsize,
                                      int *bdberr);
@@ -1688,23 +1685,6 @@ int bdb_user_password_set(tran_type *, char *user, char *passwd);
 int bdb_user_password_check(char *user, char *passwd, int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
-
-int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
-    int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
-                            void *keyout, int *keysz),
-    int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
-                                   int bloboffs[16], int *nblobs),
-    int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver),
-    int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,
-                                    int blobno),
-    void (*free_blob_buffer_callback)(void *parm),
-    unsigned long long (*verify_indexes_callback)(void *parm, void *dta,
-                                                  void *blob_parm),
-    void *callback_parm, 
-    int (*lua_callback)(void *, const char *), void *lua_params, 
-    void *callback_blob_buf, int progress_report_seconds,
-    int attempt_fix);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);

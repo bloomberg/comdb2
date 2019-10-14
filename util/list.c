@@ -15,6 +15,7 @@
  */
 
 /*______ LIST ROUTINES w/ counts ______*/
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -236,6 +237,17 @@ void *listc_add_before(listc_t *l, void *obj, void *beforeobj)
     listc_verify_count(l);
 #endif
     return obj;
+}
+
+void *listc_maybe_rfl(listc_t *l, void *obj)
+{
+    if (l->top == 0) {
+        assert(l->bot == 0);
+        return 0;
+    }
+    linkc_t *it = (linkc_t *)((intptr_t)obj + l->diff);
+    if (l->top != obj && it->prev == 0 && it->next == 0) return 0;
+    return listc_rfl(l, obj);
 }
 
 void *listc_rfl(listc_t *l, void *obj)

@@ -29,7 +29,7 @@ extern "C" {
 
 #include <stdio.h>
 #include <inttypes.h>
-#include "list.h"
+#include <priority_queue.h>
 
 struct thdpool;
 
@@ -65,6 +65,7 @@ struct workitem {
     LINKC_T(struct workitem) linkv;
     int available;
     char *persistent_info;
+    priority_t priority;
 };
 
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
@@ -99,10 +100,12 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 enum {
     THDPOOL_ENQUEUE_FRONT = 0x1,
     THDPOOL_FORCE_DISPATCH = 0x2,
-    THDPOOL_FORCE_QUEUE = 0x4
+    THDPOOL_FORCE_QUEUE = 0x4,
+    THDPOOL_QUEUE_ONLY = 0x8
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags);
+                    int queue_override, char *persistent_info, uint32_t flags,
+                    priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);
@@ -110,6 +113,7 @@ void thdpool_set_wait(struct thdpool *pool, int wait);
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);
 char *thdpool_get_name(struct thdpool *pool);
+priority_t thdpool_get_highest_priority(struct thdpool *pool);
 int thdpool_get_status(struct thdpool *pool);
 int thdpool_get_nthds(struct thdpool *pool);
 int thdpool_get_nfreethds(struct thdpool *pool);

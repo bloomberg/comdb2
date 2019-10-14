@@ -66,9 +66,11 @@ SQLITE_EXTENSION_INIT1
 ** this file to prevent name collisions with C-library functions of the
 ** same name.
 */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 #define re_match   sqlite3re_match
 #define re_compile sqlite3re_compile
 #define re_free    sqlite3re_free
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* The end-of-input character */
 #define RE_EOF            0    /* End of input */
@@ -194,7 +196,11 @@ static int re_space_char(int c){
 /* Run a compiled regular expression on the zero-terminated input
 ** string zIn[].  Return true on a match and false if there is no match.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int re_match(ReCompiled *pRe, const unsigned char *zIn, int nIn){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static int re_match(ReCompiled *pRe, const unsigned char *zIn, int nIn){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ReStateSet aStateSet[2], *pThis, *pNext;
   ReStateNumber aSpace[100];
   ReStateNumber *pToFree;
@@ -610,7 +616,11 @@ static const char *re_subcompile_string(ReCompiled *p){
 ** regular expression.  Applications should invoke this routine once
 ** for every call to re_compile() to avoid memory leaks.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 void re_free(ReCompiled *pRe){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+void re_free(ReCompiled *pRe){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pRe ){
     sqlite3_free(pRe->aOp);
     sqlite3_free(pRe->aArg);
@@ -624,7 +634,11 @@ void re_free(ReCompiled *pRe){
 ** compiled regular expression in *ppRe.  Return NULL on success or an
 ** error message if something goes wrong.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 const char *re_compile(ReCompiled **ppRe, const char *zIn, int noCase){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+const char *re_compile(ReCompiled **ppRe, const char *zIn, int noCase){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ReCompiled *pRe;
   const char *zErr;
   int i, j;

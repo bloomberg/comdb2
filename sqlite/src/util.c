@@ -298,10 +298,28 @@ void sqlite3DequoteExpr(Expr *p){
  */
 int sqlite3IsCorrectlyQuoted(char *z){
   char quote = z[0];
-  if(!sqlite3Isquote(quote)) return 1;
   int i = 1;
-  while (z[i] != '\0') i++;
-  if( i > 1) return z[i-1] == quote;
+  if( !sqlite3Isquote(quote) ) return 1;
+  while( z[i]!='\0' ) i++;
+  if( i>1 ) return z[i-1]==quote;
+  return 0;
+}
+int sqlite3IsCorrectlyBraced(char *z){
+  int i = 1;
+  int q = 0;
+  if( z[0]=='\0' ) return 0; /* empty string? */
+  while( z[i]!='\0' ){
+    if( z[i]=='{' || (z[i]=='}' && z[i+1]!='\0') ){ q++; }
+    i++;
+  }
+  if( q>0 ) return 0; /* braces inside content? */
+  if( i>1 ){
+    if( z[0]=='{' && z[i-1]=='}' ){
+      return 1;
+    }else if( z[0]!='{' && z[0]!='}' && z[i-1]!='{' && z[i-1]!='}' ){
+      return 1;
+    }
+  }
   return 0;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
