@@ -26,6 +26,13 @@ else()
   add_definitions(-DWITH_SSL=0)
 endif()
 
+option(WITH_TCL "Turn ON to compile with Tcl bindings" OFF)
+if(WITH_TCL)
+  add_definitions(-DWITH_TCL=1)
+else()
+  add_definitions(-DWITH_TCL=0)
+endif()
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH

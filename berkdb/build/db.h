@@ -2482,7 +2482,9 @@ struct __db_env {
 	pthread_mutex_t recover_lk;
 	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
-	pthread_rwlock_t ser_lk;
+	pthread_mutex_t ser_lk;
+	pthread_cond_t ser_cond;
+	int ser_count;
 	int lsn_chain;
 
 	/* overrides for minwrite deadlock */
@@ -2542,10 +2544,11 @@ struct __db_env {
 	/* Stable LSN: must be acked by majority of cluster. */
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
+    uint32_t rep_gen;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
-
+    int (*replicant_generation) __P((DB_ENV *, uint32_t *));
 	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
