@@ -69,6 +69,7 @@
 #include "comdb2uuid.h"
 #include "strbuf.h"
 #include "roll_file.h"
+#include "openclose.h"
 
 #include "eventlog.h"
 #include "reqlog_int.h"
@@ -370,7 +371,7 @@ static struct output *get_output_ll(const char *filename)
             return out;
         }
     }
-    fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, 0666);
+    fd = comdb2_open(filename, O_WRONLY | O_APPEND | O_CREAT, 0666);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "error opening '%s' for logging: %d %s\n",
                filename, errno, strerror(errno));
@@ -381,7 +382,7 @@ static struct output *get_output_ll(const char *filename)
     out = calloc(offsetof(struct output, filename) + len + 1, 1);
     if (!out) {
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
-        close(fd);
+        comdb2_close(fd);
         default_out->refcount++;
         return default_out;
     }
@@ -400,7 +401,7 @@ static void deref_output_ll(struct output *out)
 {
     out->refcount--;
     if (out->refcount <= 0 && out->fd > 2) {
-        close(out->fd);
+        comdb2_close(out->fd);
         logmsg(LOGMSG_INFO, "closed request log file %s\n", out->filename);
         listc_rfl(&outputs, out);
         free(out);

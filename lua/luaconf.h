@@ -645,11 +645,12 @@ union luai_Cast { double l_d; long l_l; };
 
 #if defined(LUA_USE_MKSTEMP)
 #include <unistd.h>
+#include "openclose.h"
 #define LUA_TMPNAMBUFSIZE	32
 #define lua_tmpnam(b,e)	{ \
 	strcpy(b, "/tmp/lua_XXXXXX"); \
 	e = mkstemp(b); \
-	if (e != -1) close(e); \
+	if (e != -1) comdb2_close(e); \
 	e = (e == -1); }
 
 #else

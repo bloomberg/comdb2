@@ -98,6 +98,7 @@
 #include "logmsg.h"
 #include "locks.h"
 #include "eventlog.h"
+#include "openclose.h"
 
 #include "str0.h"
 #include "comdb2_atomic.h"
@@ -10831,7 +10832,7 @@ sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
         logmsg(LOGMSG_ERROR, "%s: failed to open sbuf\n", __func__);
-        close(sockfd);
+        comdb2_close(sockfd);
         return NULL;
     }
 

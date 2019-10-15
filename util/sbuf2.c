@@ -31,6 +31,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "locks_wrap.h"
+#include "openclose.h"
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE
@@ -152,7 +153,7 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 #endif
 
     if (!(sb->flags & SBUF2_NO_CLOSE_FD))
-        close(sb->fd);
+        comdb2_close(sb->fd);
 
     return sbuf2free(sb);
 }

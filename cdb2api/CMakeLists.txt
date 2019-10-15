@@ -1,5 +1,6 @@
 set(src
   cdb2api.c
+  ${PROJECT_SOURCE_DIR}/util/openclose.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
@@ -21,6 +22,7 @@ set_source_files_properties(
 include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/util
   ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )

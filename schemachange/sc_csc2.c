@@ -21,6 +21,7 @@
 #include "schemachange.h"
 #include "sc_csc2.h"
 #include "debug_switches.h"
+#include "openclose.h"
 #include "logmsg.h"
 
 int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
@@ -240,7 +241,7 @@ int write_csc2_file_fname(const char *fname, const char *csc2text)
     }
 
     /* Dump new csc2 text into file. */
-    fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    fd = comdb2_open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR,
                "write_csc2_file_fname: error opening %s for writing: %d %s\n",

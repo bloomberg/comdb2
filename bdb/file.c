@@ -100,6 +100,7 @@
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 #include <rep_qstat.h>
+#include "openclose.h"
 
 #include <bdb_queuedb.h>
 
@@ -1379,10 +1380,10 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
 {
     int rc, fd;
     SBUF2 *s;
-    if ((fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
+    if ((fd = comdb2_open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
         (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
-            close(fd);
+            comdb2_close(fd);
         logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
                errno);
         return -1;
@@ -1396,9 +1397,9 @@ int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
 {
     int rc, fd;
     SBUF2 *s;
-    if ((fd = open(file, O_RDONLY, 0)) < 0 || (s = sbuf2open(fd, 0)) == NULL) {
+    if ((fd = comdb2_open(file, O_RDONLY, 0)) < 0 || (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
-            close(fd);
+            comdb2_close(fd);
         return -1;
     }
     rc = bdb_state->dbenv->memp_load(bdb_state->dbenv, s);
@@ -8322,7 +8323,7 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     if (use_directio)
         flags |= O_DIRECT;
 #endif
-    fd = open(path, flags, 0666);
+    fd = comdb2_open(path, flags, 0666);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "Can't open/create %s: %d %s\n", path, errno,
                 strerror(errno));
@@ -8375,7 +8376,7 @@ done:
         free(path);
     }
     if (fd != -1)
-        close(fd);
+        comdb2_close(fd);
     os_free(buf);
 
     return rc;

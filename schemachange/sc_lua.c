@@ -7,6 +7,7 @@
 #include "translistener.h"
 
 #include "logmsg.h"
+#include "openclose.h"
 
 struct sp_file_t {
     char name[128]; // MAX_SPNAME
@@ -40,7 +41,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
             /* Open the file to store stored procedures. */
             has_sp = 1;
             logmsg(LOGMSG_USER, "FILE : %s\n", file);
-            fd_out = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            fd_out = comdb2_open(file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (fd_out == -1) {
                 logmsg(LOGMSG_USER, "%s: cannot open '%s' for writing %d %s\n",
                        __func__, file, errno, strerror(errno));
@@ -49,7 +50,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
 
             sb_out = sbuf2open(fd_out, 0);
             if (!sb_out) {
-                close(fd_out);
+                comdb2_close(fd_out);
                 return 0;
             }
         }
@@ -92,14 +93,14 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
 int read_spfile(char *file)
 {
     int bdberr;
-    int fd_in = open(file, O_RDONLY);
+    int fd_in = comdb2_open(file, O_RDONLY, 0);
     if (fd_in == -1) {
         return -1;
     }
 
     SBUF2 *sb_in = sbuf2open(fd_in, 0);
     if (!sb_in) {
-        close(fd_in);
+        comdb2_close(fd_in);
         return -1;
     }
 

@@ -33,6 +33,7 @@
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <openclose.h>
 
 #include "cdb2api.h"
 
@@ -317,10 +318,10 @@ static SBUF2 *sbuf2openread(const char *filename)
     int fd;
     SBUF2 *s;
 
-    if ((fd = open(filename, O_RDONLY, 0)) < 0 ||
+    if ((fd = comdb2_open(filename, O_RDONLY, 0)) < 0 ||
         (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
-            close(fd);
+            comdb2_close(fd);
         return NULL;
     }
     return s;
@@ -549,7 +550,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
             }
             recvfd = *((int *)CMSG_DATA(cmsgptr));
             if (*fd_recvd != -1) {
-                if (close(recvfd) == -1) {
+                if (comdb2_close(recvfd) == -1) {
                     fprintf(stderr, "%s: error closing second fd %d: %d %s\n",
                             __func__, recvfd, errno, strerror(errno));
                 }
@@ -564,7 +565,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
 #else
         if (msg.msg_accrightslen == sizeof(int)) {
             if (*fd_recvd != -1) {
-                if (close(recvfd) == -1) {
+                if (comdb2_close(recvfd) == -1) {
                     fprintf(stderr, "%s: error closing second fd %d: %d %s\n",
                             __func__, recvfd, errno, strerror(errno));
                 }
@@ -578,7 +579,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
     return PASSFD_SUCCESS;
 }
 
-/* This wrapper ensures that on error we close any file descriptor that we
+/* This wrapper ensures that on error we comdb2_close any file descriptor that we
  * may have received before the error occured.  Alse we make sure that we
  * preserve the value of errno which may be needed if the error was
  * PASSFD_RECVMSG. */
@@ -588,8 +589,8 @@ static int recv_fd(int sockfd, void *data, size_t nbytes, int *fd_recvd)
     rc = recv_fd_int(sockfd, data, nbytes, fd_recvd);
     if (rc != 0 && *fd_recvd != -1) {
         int errno_save = errno;
-        if (close(*fd_recvd) == -1) {
-            fprintf(stderr, "%s: close(%d) error: %d %s\n", __func__, *fd_recvd,
+        if (comdb2_close(*fd_recvd) == -1) {
+            fprintf(stderr, "%s: comdb2_close(%d) error: %d %s\n", __func__, *fd_recvd,
                     errno, strerror(errno));
         }
         *fd_recvd = -1;
@@ -815,7 +816,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
  	sizeof sendbuff ) < 0)
  	{
  		fprintf(stderr,"tcpconnect_to: setsockopt failure\n" );
- 		close( sockfd );
+ 		comdb2_close( sockfd );
  		return -1;
  	}
 #endif
@@ -823,7 +824,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
     if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&sendbuff,
                    sizeof sendbuff) < 0) {
         fprintf(stderr, "tcpconnect_to: setsockopt failure\n");
-        close(sockfd);
+        comdb2_close(sockfd);
         return -1;
     }
     struct linger ling;
@@ -833,7 +834,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
         0) {
         fprintf(stderr, "tcpconnect_to: setsockopt failure:%s",
                 strerror(errno));
-        close(sockfd);
+        comdb2_close(sockfd);
         return -1;
     }
 
@@ -843,7 +844,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
                        sizeof(tcpbufsz)) < 0) {
             fprintf(stderr, "tcpconnect_to: setsockopt failure:%s",
                     strerror(errno));
-            close(sockfd);
+            comdb2_close(sockfd);
             return -1;
         }
     }
@@ -856,7 +857,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
         if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
             fprintf(stderr, "tcpconnect_to: bind failed on local port %d: %s",
                     myport, strerror(errno));
-            close(sockfd);
+            comdb2_close(sockfd);
             return -1;
         }
     }
@@ -865,7 +866,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
                  timeoutms);
 
     if (rc < 0) {
-        close(sockfd);
+        comdb2_close(sockfd);
         return rc;
     }
     return (sockfd); /* all OK */
@@ -1684,7 +1685,7 @@ static int open_sockpool_ll(void)
         strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
 
@@ -1702,11 +1703,11 @@ static int open_sockpool_ll(void)
         if (nbytes == -1) {
             fprintf(stderr, "%s:error writing hello: %d %s\n", __func__, errno,
                     strerror(errno));
-            close(fd);
+            comdb2_close(fd);
             return -1;
         } else if (nbytes == 0) {
             fprintf(stderr, "%s:unexpected eof writing hello\n", __func__);
-            close(fd);
+            comdb2_close(fd);
             return -1;
         }
         bytesleft -= nbytes;
@@ -1726,14 +1727,14 @@ void cdb2_enable_sockpool()
 static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
-    /* Close sockpool fd */
+    /* comdb2_Close sockpool fd */
     if (forceClose || (sockpool_enabled != -1)) {
         sockpool_generation++;
         for (int i = 0; i < sockpool_fd_count; i++) {
             struct sockpool_fd_list *sp = &sockpool_fds[i];
             if (sp->in_use == 0) {
                 if (sp->sockpool_fd > -1)
-                    close(sp->sockpool_fd);
+                    comdb2_close(sp->sockpool_fd);
                 sp->sockpool_fd = -1;
             }
         }
@@ -1742,7 +1743,7 @@ static void cdb2_maybe_disable_sockpool(int forceClose, int enabled)
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-/* Disable sockpool and close sockpool socket */
+/* Disable sockpool and comdb2_close sockpool socket */
 void cdb2_disable_sockpool()
 {
     cdb2_maybe_disable_sockpool(0, -1);
@@ -1872,7 +1873,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
         pthread_mutex_unlock(&cdb2_sockpool_mutex);
         if (closeit)
-            close(sockpool_fd);
+            comdb2_close(sockpool_fd);
         return -1;
     }
     /* Please may I have a file descriptor */
@@ -1888,7 +1889,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         pthread_mutex_lock(&cdb2_sockpool_mutex);
         sockpool_remove_fd(sockpool_fd);
         pthread_mutex_unlock(&cdb2_sockpool_mutex);
-        close(sockpool_fd);
+        comdb2_close(sockpool_fd);
         sockpool_fd = -1;
         return -1;
     }
@@ -1903,7 +1904,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         pthread_mutex_lock(&cdb2_sockpool_mutex);
         sockpool_remove_fd(sockpool_fd);
         pthread_mutex_unlock(&cdb2_sockpool_mutex);
-        close(sockpool_fd);
+        comdb2_close(sockpool_fd);
         sockpool_fd = -1;
         fd = -1;
     }
@@ -1925,7 +1926,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
         pthread_mutex_unlock(&cdb2_sockpool_mutex);
         if (closeit)
-            close(sockpool_fd);
+            comdb2_close(sockpool_fd);
     }
     return fd;
 }
@@ -1986,7 +1987,7 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
                 pthread_mutex_lock(&cdb2_sockpool_mutex);
                 sockpool_remove_fd(sockpool_fd);
                 pthread_mutex_unlock(&cdb2_sockpool_mutex);
-                close(sockpool_fd);
+                comdb2_close(sockpool_fd);
                 sockpool_fd = -1;
             }
         }
@@ -2003,13 +2004,13 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
             if (closeit)
-                close(sockpool_fd);
+                comdb2_close(sockpool_fd);
             sockpool_fd = -1;
         }
     }
 
-    if (close(fd) == -1) {
-        fprintf(stderr, "%s: close error for '%s' fd %d: %d %s\n", __func__,
+    if (comdb2_close(fd) == -1) {
+        fprintf(stderr, "%s: comdb2_close error for '%s' fd %d: %d %s\n", __func__,
                 typestr, fd, errno, strerror(errno));
     }
 }
@@ -2228,7 +2229,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
         return -1;
     ss = sbuf2open(fd, 0);
     if (ss == 0) {
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
     sbuf2printf(ss, "rte %s\n", name);
@@ -2290,7 +2291,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
            (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
                                       NULL)) > 0) {
         if ((sb = sbuf2open(fd, 0)) == 0) {
-            close(fd);
+            comdb2_close(fd);
             return -1;
         }
         if (send_reset(sb) == 0) {
@@ -2312,7 +2313,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
             return -1;
 
         if ((sb = sbuf2open(fd, 0)) == 0) {
-            close(fd);
+            comdb2_close(fd);
             return -1;
         }
         if (hndl->is_admin)
@@ -2416,7 +2417,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     if (ss == 0) {
         snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n",
                  __func__, __LINE__);
-        close(fd);
+        comdb2_close(fd);
         debugprint("sbuf2open returned 0\n");
         port = -1;
         goto after_callback;
@@ -5141,7 +5142,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
     SBUF2 *ss = sbuf2open(fd, 0);
     if (ss == 0) {
-        close(fd);
+        comdb2_close(fd);
         i = 0;
         for (i = 0; i < n_bindvars; i++) {
             free(bindvars[i]);
@@ -5328,7 +5329,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         if (sb == 0) {
             snprintf(hndl->errstr, sizeof(hndl->errstr),
                      "%s:%d out of memory\n", __func__, __LINE__);
-            close(fd);
+            comdb2_close(fd);
             rc = -1;
             goto after_callback;
         }
@@ -5341,7 +5342,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         if (sb == 0) {
             snprintf(hndl->errstr, sizeof(hndl->errstr),
                      "%s:%d out of memory\n", __func__, __LINE__);
-            close(fd);
+            comdb2_close(fd);
             rc = -1;
             goto after_callback;
         }

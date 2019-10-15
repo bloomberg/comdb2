@@ -40,6 +40,8 @@
 #include <logmsg.h>
 #include "str0.h"
 
+#include "openclose.h"
+
 struct javasp_trans_state {
     /* Which events we are subscribed for. */
     int events;
@@ -1197,7 +1199,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
             goto done;
         }
 
-        fd = open(resource, O_RDONLY);
+        fd = comdb2_open(resource, O_RDONLY, 0);
         if (fd == -1) {
             logmsg(LOGMSG_ERROR, "Can't load comdb2translisten configuration from "
                             "\"%s\" for stored procedure \"%s\" %d %s\n",

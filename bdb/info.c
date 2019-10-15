@@ -43,6 +43,7 @@
 #include "logmsg.h"
 #include "thread_stats.h"
 #include <compat.h>
+#include "openclose.h"
 
 extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
@@ -1148,7 +1149,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
                 if (bdb_get_data_filename(bdb_state, stripe, blobno, tmpname,
                                           sizeof(tmpname), &bdberr) == 0) {
                     bdb_trans(tmpname, fname);
-                    fd = open(fname, O_RDONLY);
+                    fd = comdb2_open(fname, O_RDONLY, 0);
                     if (fd == -1) {
                         logmsg(LOGMSG_ERROR, "open(\"%s\") => %d %s\n", fname, errno,
                                strerror(errno));
@@ -1157,7 +1158,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 
                     npages = __berkdb_count_freepages(fd);
                     total_npages += npages;
-                    close(fd);
+                    comdb2_close(fd);
                     if (count_freepages_abort)
                         return 0;
                     if (blobno == 0)
@@ -1174,7 +1175,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
         if (bdb_get_index_filename(bdb_state, ix, tmpname, sizeof(tmpname),
                                    &bdberr) == 0) {
             bdb_trans(tmpname, fname);
-            fd = open(fname, O_RDONLY);
+            fd = comdb2_open(fname, O_RDONLY, 0);
             if (fd == -1) {
                 logmsg(LOGMSG_ERROR, "open(\"%s\") => %d %s\n", fname, errno,
                        strerror(errno));
@@ -1183,7 +1184,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 
             npages = __berkdb_count_freepages(fd);
             total_npages += npages;
-            close(fd);
+            comdb2_close(fd);
             if (count_freepages_abort)
                 return 0;
             logmsg(LOGMSG_USER, "  %s ix %d   => %u\n", bdb_state->name, ix, npages);

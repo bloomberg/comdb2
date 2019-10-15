@@ -18,6 +18,7 @@ static const char revid[] = "$Id: os_handle.c,v 11.32 2003/02/16 15:54:03 bostic
 #include <string.h>
 #include <unistd.h>
 #endif
+#include <openclose.h>
 
 #include "db_int.h"
 
@@ -134,7 +135,7 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 		if (LF_ISSET(O_CREAT)) {
 			DB_BEGIN_SINGLE_THREAD;
 			newflags = flags & ~(O_CREAT | O_EXCL);
-			if ((fhp->fd = open(name, newflags, mode)) != -1) {
+			if ((fhp->fd = comdb2_open(name, newflags, mode)) != -1) {
 				if (LF_ISSET(O_EXCL)) {
 					/*
 					 * If we get here, want O_EXCL create,
@@ -172,9 +173,9 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 			 * existing DB regions.
 			 */
 			fhp->fd =
-			    open(name, flags, mode, "shr=get,put,upd,del,upi");
+			    comdb2_open(name, flags, mode, "shr=get,put,upd,del,upi");
 #else
-			fhp->fd = open(name, flags, mode);
+			fhp->fd = comdb2_open(name, flags, mode);
 #if 0
 		{
 			char o_flags[512];

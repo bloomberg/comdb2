@@ -101,6 +101,7 @@
 
 #include "debug_switches.h"
 #include "perf.h"
+#include "openclose.h"
 
 #include <crc32c.h>
 
@@ -493,7 +494,7 @@ static void shutdown_hostnode_socket(host_node_type *host_node_ptr)
  * threads (if any) to error out of any blocking io and exit.
  *
  * If there are no reader or writer threads left then this will properly
- * close the socket and sbuf.
+ * comdb2_close the socket and sbuf.
  */
 static void close_hostnode_ll(host_node_type *host_node_ptr)
 {
@@ -521,7 +522,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
     }
 
     /* If we have an fd or sbuf, and no reader or writer thread, then
-     * close the socket properly */
+     * comdb2_close the socket properly */
     if (host_node_ptr->have_reader_thread == 0 &&
         host_node_ptr->have_writer_thread == 0 &&
         host_node_ptr->really_closed == 0
@@ -539,10 +540,10 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         }
         if (host_node_ptr->fd >= 0) {
             if (gbl_verbose_net)
-                host_node_printf(LOGMSG_DEBUG, host_node_ptr, "close fd %d\n",
+                host_node_printf(LOGMSG_DEBUG, host_node_ptr, "comdb2_close fd %d\n",
                                  host_node_ptr->fd);
-            if (close(host_node_ptr->fd) != 0)
-                host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s close fd %d errno %d %s\n",
+            if (comdb2_close(host_node_ptr->fd) != 0)
+                host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s comdb2_close fd %d errno %d %s\n",
                                __func__, host_node_ptr->fd, errno,
                                strerror(errno));
             host_node_ptr->fd = -1;
@@ -4711,6 +4712,7 @@ static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
+    socklen_t len;
     int fd;
     int rc;
     int flag = 1;
@@ -4718,8 +4720,6 @@ static void *connect_thread(void *arg)
 
     thread_started("connect thread");
     THREAD_TYPE(__func__);
-
-    socklen_t len;
 
     int flags;
     struct pollfd pfd;
@@ -4835,8 +4835,9 @@ static void *connect_thread(void *arg)
 
 #ifdef NODELAY
         flag = 1;
+        len = sizeof(flag);
         rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        sizeof(int));
+                        len);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
                     __func__, fd, errno, strerror(errno));
@@ -4846,8 +4847,9 @@ static void *connect_thread(void *arg)
 
 #if !defined(_SUN_SOURCE)
         flag = 1;
+        len = sizeof(flag);
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
-                        sizeof(int));
+                        len);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, 
                     "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
@@ -4870,7 +4872,7 @@ static void *connect_thread(void *arg)
                 /*timeout*/
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "%s: connect timed out\n",
                                  __func__);
-                close(fd);
+                comdb2_close(fd);
                 goto again;
             }
             if (rc != 1) {
@@ -4878,7 +4880,7 @@ static void *connect_thread(void *arg)
                 host_node_printf(LOGMSG_ERROR, host_node_ptr,
                                  "%s: poll on connect failed %d %s\n", __func__,
                                  errno, strerror(errno));
-                close(fd);
+                comdb2_close(fd);
                 goto again;
             }
             if ((pfd.revents & POLLOUT) == 0) {
@@ -4892,7 +4894,7 @@ static void *connect_thread(void *arg)
                 host_node_printf(LOGMSG_ERROR, host_node_ptr,
                                  "%s: poll returned wrong event\n", __func__);
 #endif
-                close(fd);
+                comdb2_close(fd);
                 goto again;
             }
 
@@ -4904,7 +4906,7 @@ static void *connect_thread(void *arg)
             if (gbl_verbose_net)
                 host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connect error %d %s\n",
                                  __func__, errno, strerror(errno));
-            close(fd);
+            comdb2_close(fd);
             goto again;
         } else {
             if (gbl_verbose_net)
@@ -4932,7 +4934,7 @@ static void *connect_thread(void *arg)
         host_node_ptr->sb = sbuf2open(fd, SBUF2_NO_CLOSE_FD | SBUF2_NO_FLUSH);
         if (host_node_ptr->sb == NULL) {
             host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: sbuf2open failed\n", __func__);
-            close(fd);
+            comdb2_close(fd);
             goto again;
         }
 
@@ -5010,7 +5012,7 @@ static void *connect_thread(void *arg)
     else
         host_node_printf(LOGMSG_INFO, host_node_ptr, "connect_thread: netinfo->exiting\n");
 
-    /* close the file-descriptor, wait for reader / writer threads
+    /* comdb2_close the file-descriptor, wait for reader / writer threads
        to exit, free host_node_ptr, then exit */
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
@@ -5151,7 +5153,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         return;
     }
 
-    /* see if we already have an entry.  if we do, CLOSE the socket.
+    /* see if we already have an entry.  if we do, comdb2_CLOSE the socket.
        if we dont, create a reader_thread */
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
@@ -5166,7 +5168,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         /* failed to add .. sbuf has NO_CLOSE_FD set */
         if (host_node_ptr == NULL) {
             sbuf2close(sb);
-            close(new_fd);
+            comdb2_close(new_fd);
             return;
         }
 
@@ -5179,7 +5181,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         /* removed from under us .. */
         if (host_node_ptr == NULL) {
             sbuf2close(sb);
-            close(new_fd);
+            comdb2_close(new_fd);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return;
         }
@@ -5202,7 +5204,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     while (1) {
         if (netinfo_ptr->exiting || host_node_ptr->decom_flag) {
             sbuf2close(sb);
-            close(new_fd);
+            comdb2_close(new_fd);
             Pthread_mutex_unlock(&(host_node_ptr->lock));
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return;
@@ -5460,6 +5462,7 @@ static void *accept_thread(void *arg)
     pthread_t tid;
     char paddr[64];
     socklen_t clilen;
+    socklen_t len;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
@@ -5530,13 +5533,13 @@ static void *accept_thread(void *arg)
                 logmsg(LOGMSG_ERROR,
                        "Failed to get peer address, error: %d %s\n", errno,
                        strerror(errno));
-                close(new_fd);
+                comdb2_close(new_fd);
                 continue;
             }
         }
 
         if (netinfo_ptr->exiting) {
-            close(new_fd);
+            comdb2_close(new_fd);
             break;
         }
 
@@ -5544,8 +5547,9 @@ static void *accept_thread(void *arg)
         /* We've seen unexplained EINVAL errors here.  Be extremely defensive
          * and always reset flag to 1 before calling this function. */
         flag = 1;
+        len = sizeof(int);
         rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        sizeof(int));
+                        len);
         /* Note: don't complain on EINVAL.  There's a legitimate condition where
            the requester drops the socket according to manpages. */
         if (rc != 0 && errno != EINVAL) {
@@ -5553,15 +5557,16 @@ static void *accept_thread(void *arg)
                     "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
                     "%s\n",
                     __func__, new_fd, flag, errno, strerror(errno));
-            close(new_fd);
+            comdb2_close(new_fd);
             continue;
         }
 #endif
 
 #if !defined(_SUN_SOURCE)
         flag = 1;
+        len = sizeof(int);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
-                        sizeof(int));
+                        len);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
@@ -5571,8 +5576,9 @@ static void *accept_thread(void *arg)
 
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
+        len = tcpbfsz;
         rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz,
-                        sizeof(tcpbfsz));
+                        len);
         if (rc < 0) {
             logmsg(LOGMSG_FATAL, "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
@@ -5580,8 +5586,9 @@ static void *accept_thread(void *arg)
         }
 
         tcpbfsz = (8 * 1024 * 1024);
+        len = tcpbfsz;
         rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz,
-                        sizeof(tcpbfsz));
+                        len);
         if (rc < 0) {
             logmsg(LOGMSG_FATAL, 
                     "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
@@ -5593,11 +5600,12 @@ static void *accept_thread(void *arg)
 #ifdef NOLINGER
         linger_data.l_onoff = 0;
         linger_data.l_linger = 1;
+        len = sizeof(linger_data);
         if (setsockopt(new_fd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                       sizeof(linger_data)) != 0) {
+                       len) != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off linger on new_fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            close(new_fd);
+            comdb2_close(new_fd);
             continue;
         }
 #endif
@@ -5771,7 +5779,7 @@ static void *accept_thread(void *arg)
         }
     }
 
-    close(listenfd);
+    comdb2_close(listenfd);
 
 #ifdef NOTREACHED
     if (netinfo_ptr->stop_thread_callback)
@@ -6290,7 +6298,7 @@ static int net_portmux_hello(void *p)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)p;
     if (netinfo_ptr->hellofd != -1) {
-        close(netinfo_ptr->hellofd);
+        comdb2_close(netinfo_ptr->hellofd);
         netinfo_ptr->hellofd = -1;
     }
     char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
@@ -6623,6 +6631,7 @@ int net_listen(int port)
     int listenfd;
     int tcpbfsz;
     int reuse_addr;
+    socklen_t len;
     struct linger linger_data;
     int keep_alive;
     int flag;
@@ -6644,8 +6653,9 @@ int net_listen(int port)
 
 #ifdef NODELAY
     flag = 1;
+    len = sizeof(int);
     rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                    sizeof(int));
+                    len);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on listenfd %d: %d %s\n",
                 __func__, listenfd, errno, strerror(errno));
@@ -6655,7 +6665,8 @@ int net_listen(int port)
 
 #ifdef TCPBUFSZ
     tcpbfsz = (8 * 1024 * 1024);
-    rc = setsockopt(listenfd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, sizeof(tcpbfsz));
+    len = sizeof(tcpbfsz);
+    rc = setsockopt(listenfd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, 
                 "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
@@ -6664,7 +6675,8 @@ int net_listen(int port)
     }
 
     tcpbfsz = (8 * 1024 * 1024);
-    rc = setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, sizeof(tcpbfsz));
+    len = sizeof(tcpbfsz);
+    rc = setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, 
                 "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
@@ -6675,8 +6687,9 @@ int net_listen(int port)
 
     /* allow reuse of local addresses */
     reuse_addr = 1;
+    len = sizeof(reuse_addr);
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse_addr,
-                   sizeof(reuse_addr)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set reuseaddr %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
@@ -6685,8 +6698,9 @@ int net_listen(int port)
 #ifdef NOLINGER
     linger_data.l_onoff = 0;
     linger_data.l_linger = 1;
+    len = sizeof(linger_data);
     if (setsockopt(listenfd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                   sizeof(linger_data)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
@@ -6696,8 +6710,9 @@ int net_listen(int port)
 #if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
     keep_alive = 1;
+    len = sizeof(keep_alive);
     if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
-                   sizeof(keep_alive)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;

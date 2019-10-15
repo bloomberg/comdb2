@@ -19,6 +19,7 @@ add_executable(comdb2ar
   tar_header.cpp
   util.cpp
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
+  ${PROJECT_SOURCE_DIR}/util/openclose.c
 )
 include_directories(
   ${PROJECT_SOURCE_DIR}/util

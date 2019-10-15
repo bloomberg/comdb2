@@ -24,6 +24,7 @@ static const char revid[] = "$Id: os_region.c,v 11.17 2003/07/13 17:45:23 bostic
 #include "db_int.h"
 #include <cdb2_constants.h>
 #include "logmsg.h"
+#include "openclose.h"
 
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_largepages;
@@ -126,7 +127,7 @@ __os_r_attach(dbenv, infop, rp)
 		char name[MAXPATHLEN];
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
 			 gbl_dbname, infop->id);
-		infop->fd = open(name, O_CREAT | O_RDWR | O_TRUNC, 0755);
+		infop->fd = comdb2_open(name, O_CREAT | O_RDWR | O_TRUNC, 0755);
 		if (infop->fd < 0) {
 			logmsgperror("open hugepage");
 			exit(1);

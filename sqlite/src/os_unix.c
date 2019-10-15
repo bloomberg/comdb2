@@ -50,6 +50,7 @@
 #ifdef SQLITE_UNIX_THREADS
 #include <pthread.h>
 #endif
+#include "openclose.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -360,7 +361,7 @@ static pid_t randomnessPid = 0;
 ** which always has the same well-defined interface.
 */
 static int posixOpen(const char *zFile, int flags, int mode){
-  return open(zFile, flags, mode);
+  return comdb2_open(zFile, flags, mode);
 }
 
 /* Forward reference */

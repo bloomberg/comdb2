@@ -32,6 +32,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <pool.h>
 #include <logmsg.h>
 #include <locks_wrap.h>
+#include "openclose.h"
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
@@ -2332,7 +2333,7 @@ __memp_load_default(dbenv)
 	logmsg(LOGMSG_USER, "%s line %d opening %s\n", __func__, __LINE__,
 			rpath);
 #endif
-	if ((fd = open(rpath, O_RDONLY, 0666)) < 0 ||
+	if ((fd = comdb2_open(rpath, O_RDONLY, 0666)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,
@@ -2409,7 +2410,7 @@ __memp_dump_default(dbenv, force)
 	snprintf(tmppath, sizeof(tmppath), "%s/%s", dbenv->db_home,
 			PAGELISTTEMP);
 	rtmppath = bdb_trans(tmppath, tmppathbuf);
-	if ((fd = open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
+	if ((fd = comdb2_open(rtmppath, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
 			(s = sbuf2open(fd, 0)) == NULL) {
 #if PAGELIST_DEBUG
 		logmsg(LOGMSG_ERROR, "%s line %d error opening %s, %d\n", __func__,

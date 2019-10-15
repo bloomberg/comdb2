@@ -47,6 +47,7 @@
 #include "intern_strings.h"
 #include "logmsg.h"
 #include <poll.h>
+#include "openclose.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -1241,13 +1242,13 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
 
         snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
 
-        ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        ffile = comdb2_open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
         if (ffile == -1) {
             logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
         } else {
             iq->sorese.osqllog = sbuf2open(ffile, 0);
             if (!iq->sorese.osqllog) {
-                close(ffile);
+                comdb2_close(ffile);
             }
         }
     }

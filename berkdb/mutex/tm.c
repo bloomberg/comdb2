@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <openclose.h>
 
 #if defined(MUTEX_THREAD_TEST)
 #include <pthread.h>
@@ -189,7 +190,7 @@ main(argc, argv)
 		}
 
 	/* Signal wakeup thread to exit. */
-	if ((fd = open(MT_FILE_QUIT, O_WRONLY | O_CREAT, 0664)) == -1) {
+	if ((fd = comdb2_open(MT_FILE_QUIT, O_WRONLY | O_CREAT, 0664)) == -1) {
 		fprintf(stderr, "tm: %s\n", strerror(errno));
 		status = EXIT_FAILURE;
 	}

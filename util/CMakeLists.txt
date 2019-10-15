@@ -9,6 +9,7 @@ set(src
   bb_oscompat.c
   bbhrtime.c
   cheapstub.c
+  openclose.c
   comdb2_pthread_create.c
   comdb2file.c
   compat.c

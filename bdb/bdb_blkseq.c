@@ -35,6 +35,7 @@
 #include "util.h"
 #include "locks_wrap.h"
 #include "tohex.h"
+#include "openclose.h"
 
 extern int blkseq_get_rcode(void *data, int datalen);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
@@ -66,7 +67,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     }
     rc = fchmod(fd, 0666);
     if (rc) {
-        close(fd);
+        comdb2_close(fd);
         logmsg(LOGMSG_ERROR, "fchmod rc %d %s\n", errno, strerror(errno));
         return NULL;
     }
@@ -74,7 +75,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     rc = db->open(db, NULL, fname, NULL, DB_BTREE, DB_CREATE | DB_TRUNCATE,
                   0666);
     /* we don't need the descriptor mkstemp creates, just need a unique name */
-    close(fd);
+    comdb2_close(fd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "blkseq->open rc %d\n", rc);
         return NULL;

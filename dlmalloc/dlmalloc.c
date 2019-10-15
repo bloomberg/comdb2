@@ -583,6 +583,7 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 #endif
 
 #include "dlmalloc_config.h"
+#include "openclose.h"
 
 /*
   mallopt tuning options.  SVID/XPG defines four standard parameter
@@ -1331,7 +1332,7 @@ extern void*     sbrk(ptrdiff_t);
 #define MMAP_FLAGS           (MAP_PRIVATE)
 static int dev_zero_fd = -1; /* Cached file descriptor for /dev/zero. */
 #define CALL_MMAP(s) ((dev_zero_fd < 0) ? \
-           (dev_zero_fd = open("/dev/zero", O_RDWR), \
+           (dev_zero_fd = comdb2_open("/dev/zero", O_RDWR), \
             mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0)) : \
             mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0))
 #endif /* MAP_ANONYMOUS */
@@ -2512,10 +2513,10 @@ static int init_mparams(void) {
       int fd;
       unsigned char buf[sizeof(size_t)];
       /* Try to use /dev/urandom, else fall back on using time */
-      if ((fd = open("/dev/urandom", O_RDONLY)) >= 0 &&
+      if ((fd = comdb2_open("/dev/urandom", O_RDONLY)) >= 0 &&
           read(fd, buf, sizeof(buf)) == sizeof(buf)) {
         s = *((size_t *) buf);
-        close(fd);
+        comdb2_close(fd);
       }
       else
 #endif /* USE_DEV_RANDOM */

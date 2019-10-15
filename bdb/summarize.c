@@ -72,6 +72,7 @@
 #include "flibc.h"
 #include "logmsg.h"
 #include "analyze.h"
+#include "openclose.h"
 
 extern volatile int gbl_schema_change_in_progress;
 static double analyze_headroom = 6;
@@ -332,7 +333,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     bdb_trans(tmpname, tran_tmpname);
     logmsg(LOGMSG_DEBUG, "open %s\n", tran_tmpname);
 
-    fd = open(tran_tmpname, O_RDONLY);
+    fd = comdb2_open(tran_tmpname, O_RDONLY, 0);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "can't open input db???: %d %s\n", errno,
                 strerror(errno));

@@ -25,6 +25,7 @@
 #include "logmsg.h"
 #include "sbuf2.h"
 #include "tohex.h"
+#include "openclose.h"
 
 #define RULESET_MIN_BUF   (100)
 #define RULESET_MAX_BUF   (8192)
@@ -1042,7 +1043,7 @@ int comdb2_load_ruleset(
              zFileName, lineNo, sizeof(struct ruleset));
     goto failure;
   }
-  fd = open(zFileName, O_RDONLY);
+  fd = comdb2_open(zFileName, O_RDONLY, 0);
   if( fd==-1 ){
     snprintf(zError, sizeof(zError), "%s:%d, open (read) failed errno=%d",
              zFileName, lineNo, errno);
@@ -1344,7 +1345,6 @@ failure:
 
 done:
   if( sb!=NULL ) sbuf2close(sb);
-  if( fd!=-1 ) close(fd);
   return rc;
 }
 
@@ -1364,7 +1364,7 @@ int comdb2_save_ruleset(
              zFileName);
     goto failure;
   }
-  fd = open(zFileName, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  fd = comdb2_open(zFileName, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if( fd==-1 ){
     snprintf(zError, sizeof(zError), "%s, open (write) failed errno=%d",
              zFileName, errno);
@@ -1446,6 +1446,5 @@ failure:
 
 done:
   if( sb!=NULL ) sbuf2close(sb);
-  if( fd!=-1 ) close(fd);
   return rc;
 }

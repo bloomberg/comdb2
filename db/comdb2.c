@@ -132,6 +132,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "time_accounting.h"
 #include <build/db.h>
 #include "comdb2_ruleset.h"
+#include "openclose.h"
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -929,7 +930,7 @@ int get_max_reclen(struct dbenv *dbenv)
     }
 
     /* open file */
-    file = open(fname, O_RDONLY);
+    file = comdb2_open(fname, O_RDONLY, 0);
     if (file == -1) {
         logmsg(LOGMSG_ERROR, "get_max_reclen: failed to open %s for writing\n",
                 fname);
@@ -941,7 +942,7 @@ int get_max_reclen(struct dbenv *dbenv)
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "get_max_reclen: failed to open sbuf2\n");
-        close(file);
+        comdb2_close(file);
         return -1;
     }
 
@@ -2406,7 +2407,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
     }
 
     /* open file */
-    file = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    file = comdb2_open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     free(fname);
     if (file == -1) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open %s for writing\n",
@@ -2416,7 +2417,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open sbuf2\n");
-        close(file);
+        comdb2_close(file);
         return -1;
     }
 
@@ -5300,13 +5301,13 @@ void create_marker_file()
                 comdb2_location("marker", "%s.trap", thedb->dbs[ii]->tablename);
             tmpfd = creat(marker_file, 0666);
             free(marker_file);
-            if (tmpfd != -1) close(tmpfd);
+            if (tmpfd != -1) comdb2_close(tmpfd);
         }
     }
     marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
     tmpfd = creat(marker_file, 0666);
     free(marker_file);
-    if (tmpfd != -1) close(tmpfd);
+    if (tmpfd != -1) comdb2_close(tmpfd);
 }
 
 static void handle_resume_sc()

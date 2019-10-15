@@ -38,6 +38,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include "openclose.h"
 
 #include <bb_oscompat.h>
 #include <logmsg.h>
@@ -100,7 +101,7 @@ int tcplisten(int port)
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse_addr,
                    sizeof(reuse_addr)) != 0) {
         logmsgperror("tcplisten:setsockopt: SO_REUSEADDR");
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
     if ((sndrcvbufsize = get_sndrcv_bufsize())) {
@@ -120,7 +121,7 @@ int tcplisten(int port)
         (char *) &linger_data, sizeof (linger_data)) != 0)
         {
                 perror ("tcplisten:setsockopt: SO_LINGER");
-                    close(fd);
+                    comdb2_close(fd);
                 return -1;
         }
     */
@@ -128,7 +129,7 @@ int tcplisten(int port)
     if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
                    sizeof(keep_alive)) != 0) {
         logmsgperror("tcplisten:setsockopt: SO_KEEPALIVE");
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
     /*
@@ -136,14 +137,14 @@ int tcplisten(int port)
     */
     if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
         logmsgperror("tcplisten:bind");
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
 
     somaxconn = get_somaxconn();
     if (listen(fd, somaxconn) < 0) {
         logmsgperror("tcplisten:listen");
-        close(fd);
+        comdb2_close(fd);
         return -1;
     }
     return fd;
@@ -354,7 +355,7 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
         {
                 fprintf(stderr,"tcpconnect_to: setsockopt failure:%s",
                 strerror(errno) );
-                close( sockfd );
+                comdb2_close( sockfd );
                 return -1;
         }
     */
@@ -364,7 +365,7 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&sendbuff,
                        sizeof sendbuff) < 0) {
             logmsgperror("do_tcpconnect: setsockopt failure");
-            close(sockfd);
+            comdb2_close(sockfd);
             return -1;
         }
 
@@ -376,7 +377,7 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
         if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
             logmsg(LOGMSG_ERROR, "do_tcpconnect: bind failed on local port %d: %s",
                     myport, strerror(errno));
-            close(sockfd);
+            comdb2_close(sockfd);
             return -1;
         }
     }
@@ -394,7 +395,7 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
                      sizeof(tcp_srv_addr), timeoutms);
 
     if (rc < 0) {
-        close(sockfd);
+        comdb2_close(sockfd);
         return rc;
     }
     return (sockfd); /* all OK */
@@ -455,21 +456,21 @@ int tcpfdopen(int insd, FILE **ainfil, char *inbuf, int linbuf, int ibtyp,
     FILE *infil, *outfil;
     if ((outsd = dup(insd)) < 0) {
         logmsgperror("emsg:tcpfdopen:failed dup insd");
-        close(insd);
+        comdb2_close(insd);
         return -1;
     }
     infil = fdopen(insd, "r");
     if (infil == 0) {
         logmsgperror("emsg:tcpfdopen:failed fdopen r");
-        close(insd);
-        close(outsd);
+        comdb2_close(insd);
+        comdb2_close(outsd);
         return -2;
     }
     outfil = fdopen(outsd, "w");
     if (outfil == 0) {
         logmsgperror("emsg:tcpfdopen:failed fdopen w");
         fclose(infil);
-        close(outsd);
+        comdb2_close(outsd);
         return -3;
     }
     if ((rc = setvbuf(infil, inbuf, ibtyp, linbuf)) != 0) {

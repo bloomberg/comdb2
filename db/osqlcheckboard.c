@@ -35,6 +35,7 @@
 #include "bdb_api.h"
 #include "comdb2uuid.h"
 #include <net_types.h>
+#include "openclose.h"
 #include <logmsg.h>
 
 /* delete this after comdb2_api.h changes makes it through */
@@ -191,7 +192,7 @@ retry:
         snprintf(filename, sizeof(filename), "m_%s_%u_%llu_%s.log",
                  clnt->osql.host, type, clnt->osql.rqid,
                  comdb2uuidstr(clnt->osql.uuid, us));
-        fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        fd = comdb2_open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
         if (!fd) {
             logmsg(LOGMSG_ERROR, "Error opening log file %s\n", filename);
         } else {
@@ -199,7 +200,7 @@ retry:
             if (!clnt->osql.logsb) {
                 logmsg(LOGMSG_ERROR, "Error opening sbuf2 for file %s, fd %d\n",
                         filename, fd);
-                close(fd);
+                comdb2_close(fd);
             }
         }
     }

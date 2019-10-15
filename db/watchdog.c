@@ -81,6 +81,7 @@
 #include "bdb_access.h"
 #include "views.h"
 #include <logmsg.h>
+#include "openclose.h"
 
 extern int gbl_watcher_thread_ran;
 
@@ -190,13 +191,13 @@ static void *watchdog_thread(void *arg)
             free(ptr);
 
             /* try to get a file descriptor */
-            fd = open("/", O_RDONLY);
+            fd = comdb2_open("/", O_RDONLY, 0);
             if (fd == -1) {
                 logmsg(LOGMSG_WARN, "watchdog: Can't open file\n");
                 its_bad = 1;
             }
 
-            rc = close(fd);
+            rc = comdb2_close(fd);
             if (rc) {
                 logmsg(LOGMSG_WARN, "watchdog: Can't close file\n");
                 its_bad = 1;
