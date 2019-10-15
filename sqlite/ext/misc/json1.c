@@ -1091,6 +1091,7 @@ static JsonNode *jsonLookupStep(
   const char *zKey;
   JsonNode *pRoot = &pParse->aNode[iRoot];
   if( zPath[0]==0 ) return pRoot;
+  if( pRoot->jnFlags & JNODE_REPLACE ) return 0;
   if( zPath[0]=='.' ){
     if( pRoot->eType!=JSON_OBJECT ) return 0;
     zPath++;
@@ -1131,7 +1132,7 @@ static JsonNode *jsonLookupStep(
       u32 iStart, iLabel;
       JsonNode *pNode;
       iStart = jsonParseAddNode(pParse, JSON_OBJECT, 2, 0);
-      iLabel = jsonParseAddNode(pParse, JSON_STRING, i, zPath);
+      iLabel = jsonParseAddNode(pParse, JSON_STRING, nKey, zKey);
       zPath += i;
       pNode = jsonLookupAppend(pParse, zPath, pApnd, pzErr);
       if( pParse->oom ) return 0;
@@ -1827,7 +1828,7 @@ static void jsonArrayStep(
     if( pStr->zBuf==0 ){
       jsonInit(pStr, ctx);
       jsonAppendChar(pStr, '[');
-    }else{
+    }else if( pStr->nUsed>1 ){
       jsonAppendChar(pStr, ',');
       pStr->pCtx = ctx;
     }
@@ -1875,9 +1876,11 @@ static void jsonGroupInverse(
   int argc,
   sqlite3_value **argv
 ){
-  int i;
+  unsigned int i;
   int inStr = 0;
+  int nNest = 0;
   char *z;
+  char c;
   JsonString *pStr;
   UNUSED_PARAM(argc);
   UNUSED_PARAM(argv);
@@ -1888,12 +1891,18 @@ static void jsonGroupInverse(
   if( NEVER(!pStr) ) return;
 #endif
   z = pStr->zBuf;
-  for(i=1; z[i]!=',' || inStr; i++){
-    assert( i<pStr->nUsed );
-    if( z[i]=='"' ){
+  for(i=1; (c = z[i])!=',' || inStr || nNest; i++){
+    if( i>=pStr->nUsed ){
+      pStr->nUsed = 1;
+      return;
+    }
+    if( c=='"' ){
       inStr = !inStr;
-    }else if( z[i]=='\\' ){
+    }else if( c=='\\' ){
       i++;
+    }else if( !inStr ){
+      if( c=='{' || c=='[' ) nNest++;
+      if( c=='}' || c==']' ) nNest--;
     }
   }
   pStr->nUsed -= i;      
@@ -1923,7 +1932,7 @@ static void jsonObjectStep(
     if( pStr->zBuf==0 ){
       jsonInit(pStr, ctx);
       jsonAppendChar(pStr, '{');
-    }else{
+    }else if( pStr->nUsed>1 ){
       jsonAppendChar(pStr, ',');
       pStr->pCtx = ctx;
     }
@@ -2511,14 +2520,14 @@ int sqlite3Json1Init(sqlite3 *db){
 #endif
   for(i=0; i<sizeof(aFunc)/sizeof(aFunc[0]) && rc==SQLITE_OK; i++){
     rc = sqlite3_create_function(db, aFunc[i].zName, aFunc[i].nArg,
-                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC, 
+                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC,
                                  (void*)&aFunc[i].flag,
                                  aFunc[i].xFunc, 0, 0);
   }
 #ifndef SQLITE_OMIT_WINDOWFUNC
   for(i=0; i<sizeof(aAgg)/sizeof(aAgg[0]) && rc==SQLITE_OK; i++){
     rc = sqlite3_create_window_function(db, aAgg[i].zName, aAgg[i].nArg,
-                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
+                SQLITE_SUBTYPE | SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
                                  aAgg[i].xStep, aAgg[i].xFinal,
                                  aAgg[i].xValue, jsonGroupInverse, 0);
   }

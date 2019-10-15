@@ -619,7 +619,7 @@ static const char *re_subcompile_string(ReCompiled *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void re_free(ReCompiled *pRe){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-void re_free(ReCompiled *pRe){
+static void re_free(ReCompiled *pRe){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pRe ){
     sqlite3_free(pRe->aOp);
@@ -637,7 +637,7 @@ void re_free(ReCompiled *pRe){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 const char *re_compile(ReCompiled **ppRe, const char *zIn, int noCase){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-const char *re_compile(ReCompiled **ppRe, const char *zIn, int noCase){
+static const char *re_compile(ReCompiled **ppRe, const char *zIn, int noCase){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ReCompiled *pRe;
   const char *zErr;
