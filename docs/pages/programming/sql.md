@@ -37,12 +37,20 @@ without the use of long term read locks through the use of Multi Version Concurr
 also guarantees lack of phantoms. Before using snapshot isolation, you must add enable_snapshot_isolation 
 to your lrl file.
 
-**NOTE**: if any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application 
-needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests.  A 
+The optional ```AS OF DATETIME``` clause begins a transaction with a snapshot of the database as
+it existed as of the given time. The snapshot only has the effects of transactions that committed
+before that time. Using ```AS OF DATETIME``` requires the transaction being in ```SNAPSHOT ISOLATION```
+mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```SNAPSHOT ISOLATION```
+requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
+isolation was enabled will not work. A snapshot is only available if enough transaction logs are
+online to find commits before the specified time. The time provided must unquoted date in ISO 8601
+format or Unix time.
+
+**NOTE**: If any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application
+needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests. A
 transaction that calls ```COMMIT``` or ```ROLLBACK``` is considered complete, regardless of any errors returned.
 The next statement that runs on the same connection will be in a new transaction.
 
-The optional AS OF DATETIME clause begins a transaction with a snapshot of the database as it existing as of the given time. The snapshot only has the effects of transactions that committed before that time. Using AS OF DATETIME requires the transaction being in SNAPSHOT ISOLATION mode (set with SET TRANSACTION SNAPSHOT ISOLATION). Note that enabling SNAPSHOT ISOLATION requires the enable_snapshot_isolation lrl tunable. Snapshots requested from before snapshot isolation was enabled will not work. A snapshot is only available if enough transaction logs are online to find commits before the specified time.
 
 
 ### COMMIT
