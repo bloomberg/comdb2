@@ -4843,6 +4843,8 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 #endif
+
+#if !defined(_SUN_SOURCE)
         flag = 1;
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
                         sizeof(int));
@@ -4852,6 +4854,7 @@ static void *connect_thread(void *arg)
                     __func__, fd, errno, strerror(errno));
             exit(1);
         }
+#endif
 
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
         if (rc == -1 && errno == EINPROGRESS) {
@@ -5555,6 +5558,7 @@ static void *accept_thread(void *arg)
         }
 #endif
 
+#if !defined(_SUN_SOURCE)
         flag = 1;
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
                         sizeof(int));
@@ -5563,6 +5567,7 @@ static void *accept_thread(void *arg)
                     __func__, new_fd, errno, strerror(errno));
             exit(1);
         }
+#endif
 
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
@@ -6688,6 +6693,7 @@ int net_listen(int port)
     }
 #endif
 
+#if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
     keep_alive = 1;
     if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
@@ -6696,6 +6702,7 @@ int net_listen(int port)
                 strerror(errno));
         return -1;
     }
+#endif
 
     /* bind an address to the socket */
     if (bind(listenfd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
