@@ -73,8 +73,10 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags);
 #define sbuf2open SBUF2_FUNC(sbuf2open)
 
 /* flush output, close fd, and free SBUF2. 0==success */
-int SBUF2_FUNC(sbuf2close)(SBUF2 *sb);
-#define sbuf2close SBUF2_FUNC(sbuf2close)
+int SBUF2_FUNC(sbuf2close_impl)(SBUF2 *sb, const char *func, int line);
+#define sbuf2close_impl SBUF2_FUNC(sbuf2close_impl)
+
+#define sbuf2close(sb) sbuf2close_impl(sb, __func__, __LINE__)
 
 /* flush output, close fd, and free SBUF2.*/
 int SBUF2_FUNC(sbuf2free)(SBUF2 *sb);

@@ -115,6 +115,7 @@ static int curr_udp_cnt = 0;
 extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
+extern int gbl_track_open;
 
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
@@ -3107,7 +3108,7 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
 #ifdef DEBUG
     Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 1024);
 #else
-    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 256);
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 512);
 #endif
 
     Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
@@ -4818,6 +4819,10 @@ static void *connect_thread(void *arg)
             goto again;
         }
 
+        if (gbl_track_open) {
+            logmsg(LOGMSG_USER, "%s socket returned fd %d\n", __func__, fd);
+        }
+
         if (gbl_verbose_net)
             host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connecting on ip=%s port=%d\n",
                              __func__, inet_ntoa(sin.sin_addr),
@@ -4833,6 +4838,18 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
+        flag = 1;
+        len = sizeof(flag);
+        int on = 1;
+        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on,
+                        sizeof(on));
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, 
+                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                    __func__, fd, errno, strerror(errno));
+            exit(1);
+        }
+
 #ifdef NODELAY
         flag = 1;
         len = sizeof(flag);
@@ -4844,20 +4861,6 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 #endif
-
-#if !defined(_SUN_SOURCE)
-        flag = 1;
-        len = sizeof(flag);
-        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
-                        len);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, 
-                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, fd, errno, strerror(errno));
-            exit(1);
-        }
-#endif
-
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
         if (rc == -1 && errno == EINPROGRESS) {
             /*wait for connect event */
@@ -5517,6 +5520,11 @@ static void *accept_thread(void *arg)
         } else {
             new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
         }
+
+        if (gbl_track_open) {
+            logmsg(LOGMSG_USER, "%s accept returned fd %d\n", __func__, new_fd);
+        }
+
         if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
             logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
         }
@@ -5562,7 +5570,6 @@ static void *accept_thread(void *arg)
         }
 #endif
 
-#if !defined(_SUN_SOURCE)
         flag = 1;
         len = sizeof(int);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
@@ -5572,7 +5579,6 @@ static void *accept_thread(void *arg)
                     __func__, new_fd, errno, strerror(errno));
             exit(1);
         }
-#endif
 
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
@@ -5609,6 +5615,17 @@ static void *accept_thread(void *arg)
             continue;
         }
 #endif
+
+        flag = 1;
+        int on = 1;
+        len = sizeof(int);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, &on,
+                        sizeof(on));
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                    __func__, new_fd, errno, strerror(errno));
+            exit(1);
+        }
 
         /* get a buffered pointer to the socket */
         sb = sbuf2open(new_fd, 0); /* no flags yet... */
@@ -6649,6 +6666,10 @@ int net_listen(int port)
         logmsg(LOGMSG_ERROR, "%s: socket rc %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
+    }
+
+    if (gbl_track_open) {
+        logmsg(LOGMSG_USER, "%s socket returned fd %d\n", __func__, listenfd);
     }
 
 #ifdef NODELAY

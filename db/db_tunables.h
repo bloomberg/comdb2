@@ -1848,4 +1848,12 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("track_open", "Print information every time a file is opened."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_track_open, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("track_close", "Print information every time a file is closed."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_track_close, 0, NULL,
+                 NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

@@ -358,6 +358,11 @@ static void udp_bind(repinfo_type *repinfo)
         exit(1);
     }
 
+    extern int gbl_track_open;
+    if (gbl_track_open) {
+        logmsg(LOGMSG_USER, "%s socket returned fd %d\n", __func__, repinfo->udp_fd);
+    }
+
     repinfo->udp_addr = addr = calloc(1, socklen);
     addr->sin_addr.s_addr = htonl(INADDR_ANY);
     addr->sin_port = htons(get_host_port(repinfo->netinfo));

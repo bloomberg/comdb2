@@ -136,7 +136,7 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
 }
 
 /* flush output, close fd, and free SBUF2.*/
-int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
+int SBUF2_FUNC(sbuf2close_impl)(SBUF2 *sb, const char *func, int line)
 {
     if (sb == 0)
         return -1;
@@ -146,14 +146,20 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
     if (!(sb->flags & SBUF2_NO_FLUSH))
         sbuf2flush(sb);
 
+
 #if WITH_SSL
     /* We need to send "close notify" alert
        before closing the underlying fd. */
     sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
 #endif
 
-    if (!(sb->flags & SBUF2_NO_CLOSE_FD))
-        comdb2_close(sb->fd);
+    if (!(sb->flags & SBUF2_NO_CLOSE_FD)) {
+        extern int gbl_track_close;
+        if (gbl_track_close) {
+            fprintf(stderr, "Closing fd %d at %s line %d\n", sb->fd, func, line);
+        }
+        close(sb->fd);
+    }
 
     return sbuf2free(sb);
 }
