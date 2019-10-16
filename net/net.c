@@ -4844,7 +4844,7 @@ static void *connect_thread(void *arg)
         }
 #endif
 
-#if !defined (_SUN_SOURCE)
+#if !defined(_SUN_SOURCE)
         flag = 1;
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
                         sizeof(int));
@@ -5558,7 +5558,7 @@ static void *accept_thread(void *arg)
         }
 #endif
 
-#if !defined (_SUN_SOURCE)
+#if !defined(_SUN_SOURCE)
         flag = 1;
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
                         sizeof(int));
@@ -6693,7 +6693,7 @@ int net_listen(int port)
     }
 #endif
 
-#if !defined (_SUN_SOURCE)
+#if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
     keep_alive = 1;
     if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
