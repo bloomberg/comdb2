@@ -35,6 +35,7 @@
 #include "tohex.h"
 #include "blob_buffer.h"
 #include "comdb2_atomic.h"
+#include "constraints.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -44,6 +45,7 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
+
 
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
@@ -277,15 +279,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_data = {0};
-    dbt_data.flags = DB_DBT_USERMEM;
-    dbt_data.ulen = sizeof(databuf);
-    dbt_data.data = databuf;
+    DBT dbt_data = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(databuf), .data = databuf};
 
-    DBT dbt_key = {0};
-    dbt_key.flags = DB_DBT_USERMEM;
-    dbt_key.ulen = sizeof(keybuf);
-    dbt_key.data = keybuf;
+    DBT dbt_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf), .data = keybuf};
 
     db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
@@ -321,8 +319,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         memcpy(&genid, dbt_key.data, sizeof(genid));
 
         /* why do we open a cursor for each record/blob?
-        1) cursors are cheap - berkeley opens one for every cursor
-          operation
+        1) cursors are cheap - berkeley opens one for every cursor operation
         2) we don't want to keep an active cursor to prevent
           locking up db operations
         */
@@ -384,13 +381,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                    record so a partial find
                    won't do.  I guess we could optimize for the more common
                    case of no headers/compression. */
-                DBT dbt_blob_key = {0};
-                dbt_blob_key.data = &blob_genid;
-                dbt_blob_key.size = sizeof(unsigned long long);
+                DBT dbt_blob_key = {.data = &blob_genid,
+                                    .size = sizeof(unsigned long long)};
 
-                DBT dbt_blob_data = {0};
-                dbt_blob_data.flags = DB_DBT_MALLOC;
-                dbt_blob_data.data = NULL;
+                DBT dbt_blob_data = {.flags = DB_DBT_MALLOC, .data = NULL};
 
                 rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key,
                                           &dbt_blob_data, &ver, DB_SET);
@@ -463,9 +457,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             }
         }
 
-        unsigned long long has_keys;
-        has_keys = par->verify_indexes_callback(par->db_table, dbt_data.data,
-                                                blob_buf);
+        unsigned long long has_keys = par->verify_indexes_callback(
+            par->db_table, dbt_data.data, blob_buf);
+
         for (int ix = 0; ix < bdb_state->numix; ix++) {
             rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(
                 bdb_state->dbp_ix[ix], lid, &ckey, 0);
@@ -492,6 +486,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
             /* set up key */
 
+            // AZ why not eliminate expected_keybuf totally, write directly data
             memcpy(dbt_key.data, expected_keybuf, keylen);
             dbt_key.size = keylen;
             if (bdb_keycontainsgenid(bdb_state, ix)) {
@@ -513,10 +508,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             unsigned long long verify_genid = 0;
             dbt_data.data = &verify_genid;
             dbt_data.size = sizeof(unsigned long long);
-            dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
             dbt_data.ulen = sizeof(unsigned long long);
-            dbt_data.doff = 0;
             dbt_data.dlen = sizeof(unsigned long long);
+            dbt_data.doff = 0;
+            dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
 
             rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET);
             if (!(has_keys & (1ULL << ix))) {
@@ -576,11 +571,67 @@ err:
     return rc;
 }
 
+/* similar to check_single_key_constraint but uses a paired cursor/cget
+ * so we can release the lock at the end of this function
+ */
+static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
+                                         char *lcl_key, char *tblname, int lid,
+                                         int *remote_ri)
+{
+    int rc = 0;
+    if (remote_ri)
+        *remote_ri = 0;
+    char rkey[BDB_RECORD_MAX + sizeof(unsigned long long)];
+    DBT dbt_key = {.flags = DB_DBT_USERMEM, .ulen = sizeof(rkey), .data = rkey};
+    DBC *ckey = NULL;
+
+    for (int ri = 0; ri < ct->nrules; ri++) {
+        int ridx;
+        int rixlen;
+        bdb_state_type *r_state;
+        int skip = 0;
+        rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, &r_state,
+                                        &ridx, &rixlen, rkey, &skip, ri);
+        if (rc)
+            return rc;
+        
+        if (!skip) {
+            DB *ix_state = r_state->dbp_ix[ridx];
+            rc = ix_state->paired_cursor_from_lid(ix_state, lid, &ckey, 0);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
+                       ridx, rc);
+                continue; // so we continue to next
+            }
+
+            /* fetch the genid portion to verify existence */
+            unsigned long long verify_genid = 0;
+            DBT dbt_data = {.data = &verify_genid,
+                            .dlen = sizeof(verify_genid),
+                            .ulen = sizeof(verify_genid),
+                            .size = sizeof(verify_genid),
+                            .doff = 0,
+                            .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
+            dbt_key.size = rixlen;
+
+            rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
+            ckey->c_close(ckey);
+        }
+
+        if (rc != IX_FND && rc != IX_FNDMORE) {
+            if (remote_ri)
+                *remote_ri = ri;
+            goto done;
+        }
+    }
+done:
+    return rc;
+}
+
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
-    DB *db;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
     unsigned char expected_keybuf[18 * 1024];
@@ -593,27 +644,21 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_key = {0};
-    dbt_key.data = keybuf;
-    dbt_key.ulen = sizeof(keybuf);
-    dbt_key.flags = DB_DBT_USERMEM;
+    DBT dbt_key = {
+        .data = keybuf, .ulen = sizeof(keybuf), .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = {0};
-    dbt_data.data = databuf;
-    dbt_data.ulen = sizeof(databuf);
-    dbt_data.flags = DB_DBT_USERMEM;
+    DBT dbt_data = {
+        .data = databuf, .ulen = sizeof(databuf), .flags = DB_DBT_USERMEM};
 
     unsigned long long genid;
-    DBT dbt_dta_check_key = {0};
-    dbt_dta_check_key.data = &genid;
-    dbt_dta_check_key.ulen = sizeof(unsigned long long);
-    dbt_dta_check_key.size = sizeof(unsigned long long);
-    dbt_dta_check_key.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_key = {.ulen = sizeof(unsigned long long),
+                             .size = sizeof(unsigned long long),
+                             .data = &genid,
+                             .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = {0};
-    dbt_dta_check_data.data = &verify_keybuf;
-    dbt_dta_check_data.ulen = sizeof(verify_keybuf);
-    dbt_dta_check_data.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_data = {.data = &verify_keybuf,
+                              .flags = DB_DBT_USERMEM,
+                              .ulen = sizeof(verify_keybuf)};
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
@@ -628,6 +673,13 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                  "!ix %d cursor rc %d", ix, rc);
         return 0;
     }
+
+    char ix_tag[MAXTAGLEN];
+    constraint_t *ix_constraint = get_constraint_for_ix(par->db_table, ix);
+    if (ix_constraint) {
+        snprintf(ix_tag, MAXTAGLEN, ".ONDISK_IX_%d", ix);
+    }
+
     rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_FIRST);
     if (rc && rc != DB_NOTFOUND) {
         par->verify_status = 1;
@@ -661,7 +713,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 #endif
 
         /* make sure the data entry exists: */
-        db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
+        DB *db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
         rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
         if (rc) {
             par->verify_status = 1;
@@ -784,7 +836,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                 blob_buf, dbt_blob_data.data,
                                 dbt_blob_data.size, blobno);
                             if (rc)
-                                return rc;
+                                goto done;
                         }
 
                         free(dbt_blob_data.data);
@@ -911,6 +963,30 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                      genid_right, ix, genid);
         }
 
+        if (ix_constraint) {
+            int ridx;
+            rc = verify_foreign_key_constraint(ix_constraint, ix_tag,
+                                               dbt_key.data, bdb_state->name,
+                                               lid, &ridx);
+            if (rc == DB_NOTFOUND) {
+                par->verify_status = 1;
+                locprint(par->sb, par->lua_callback, par->lua_params,
+                         "!%016llx ix '%d' key '%s': foreign key table '%s' "
+                         "key '%s' not found\n",
+                         genid, ix, ix_constraint->lclkeyname,
+                         ix_constraint->table[ridx],
+                         ix_constraint->keynm[ridx]);
+            } else if (rc) {
+                par->verify_status = 1;
+                locprint(par->sb, par->lua_callback, par->lua_params,
+                         "!%016llx ix '%d' key '%s' foreign key table '%s' key "
+                         "'%s' error loading rc = %d\n",
+                         genid, ix, ix_constraint->lclkeyname,
+                         ix_constraint->table[ridx], ix_constraint->keynm[ridx],
+                         rc);
+            }
+        }
+
     next_key:
         rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_NEXT);
     }
@@ -928,13 +1004,14 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, ix, now - atstart);
-    return 0;
+done:
+
+    return rc;
 }
 
 static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
                             unsigned int lid)
 {
-    DBC *cdata = NULL;
     DBC *cblob;
     int rc = 0;
 
@@ -960,30 +1037,21 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = {0};
-    dbt_key.ulen = dbt_key.size = sizeof(unsigned long long);
-    dbt_key.data = &genid;
-    dbt_key.flags = DB_DBT_USERMEM;
+    DBT dbt_key = {.ulen = sizeof(unsigned long long),
+                   .size = sizeof(unsigned long long),
+                   .data = &genid,
+                   .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = {0};
-    dbt_data.data = &dumbuf;
-    dbt_data.ulen = 1;
-    dbt_data.doff = 0;
-    dbt_data.dlen = 0;
-    dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+    DBT dbt_data = {
+        .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
-    DBT dbt_dta_check_key = {0};
-    dbt_dta_check_key.size = sizeof(unsigned long long);
-    dbt_dta_check_key.ulen = sizeof(int); // TODO: why sizeof int?
-    dbt_dta_check_key.data = &genid;
-    dbt_dta_check_key.flags = DB_DBT_USERMEM;
+    DBT dbt_dta_check_key = {.size = sizeof(unsigned long long),
+                             .ulen = sizeof(int), // TODO: why sizeof int?
+                             .data = &genid,
+                             .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = {0};
-    dbt_dta_check_data.data = &dumbuf;
-    dbt_dta_check_data.ulen = 1;
-    dbt_dta_check_data.doff = 0;
-    dbt_dta_check_data.dlen = 0;
-    dbt_dta_check_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+    DBT dbt_dta_check_data = {
+        .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
@@ -1022,6 +1090,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
                          genid_flipped, dtastripe, stripe);
         }
 
+        DBC *cdata;
         rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
             bdb_state->dbp_data[0][stripe], lid, &cdata, 0);
         if (rc) {
@@ -1030,6 +1099,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
             rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
             return;
         }
+
         rc = cdata->c_get(cdata, &dbt_dta_check_key, &dbt_dta_check_data,
                           DB_SET);
         if (rc == DB_NOTFOUND) {
@@ -1183,9 +1253,10 @@ static inline void enqueue_work(td_processing_info_t *work,
 int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
+    verify_mode_t v_mode = par->verify_mode;
 #ifndef NDEBUG
     const char *tp = "";
-    switch (par->verify_mode) {
+    switch (v_mode) {
     case VERIFY_PARALLEL:
         break;
     case VERIFY_DATA:
@@ -1204,8 +1275,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 #endif
     par->last_reported = comdb2_time_epochms(); // initialize
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_DATA) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
         /* scan 1 - run through data, verify all the keys and blobs */
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
              dtastripe++) {
@@ -1217,8 +1287,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         }
     }
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_INDICES) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_INDICES) {
         /* scan 2: scan each key, verify data exists */
         for (int ix = 0; ix < par->bdb_state->numix; ix++) {
             td_processing_info_t *work = malloc(sizeof(*work));
@@ -1229,8 +1298,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         }
     }
 
-    if (par->verify_mode == VERIFY_PARALLEL ||
-        par->verify_mode == VERIFY_BLOBS) {
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_BLOBS) {
         /* scan 3: scan each blob, verify data exists */
         int nblobs = get_numblobs(par->db_table);
         for (int blobno = 0; blobno < nblobs; blobno++) {

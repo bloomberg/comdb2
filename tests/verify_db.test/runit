@@ -62,15 +62,6 @@ assert_schema()
     fi
 }
 
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 
 nout=0
 insert_records()
@@ -114,23 +105,23 @@ function getmaster {
 
 
 #make sure verify behaves as we expect
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify1.out
 echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])
 [exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
-if ! diff verify.out verify.exp ; then
-    failexit "Verify did not fail correctly, see verify.out"
+if ! diff verify1.out verify.exp ; then
+    failexit "Verify did not fail correctly, see verify1.out"
 fi
 
 echo "Table \"nonexistent\" does not exist.
 [exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed." > verify.exp
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
-if ! diff verify.out verify.exp ; then
-    failexit "Verify did not fail correctly, see verify.out"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify2.out
+if ! diff verify2.out verify.exp ; then
+    failexit "Verify did not fail correctly, see verify2.out"
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-if ! grep succeeded verify.out > /dev/null ; then
-    failexit "Verify did not succeed, see verify.out"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify3.out
+if ! grep succeeded verify3.out > /dev/null ; then
+    failexit "Verify did not succeed, see verify3.out"
 fi
 
 
@@ -158,7 +149,7 @@ fi
 eval $VERIFY_CMD > verify_nodta.tmp
 grep 0000000 verify_nodta.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_nodta.out
 
-echo "checking for nodta verify out"
+echo "checking for nodta verify"
 if ! diff verify_nodta.out verify_nodta.expected ; then
     failexit "diff ${PWD}/{verify_nodta.out,verify_nodta.expected}"
 fi
@@ -178,7 +169,7 @@ assertcnt t1 $NEWNUMREC
 eval $VERIFY_CMD > verify_noidx.tmp
 grep 0000000 verify_noidx.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noidx.out
 
-echo "checking for idx verify out"
+echo "checking for idx verify"
 if ! diff verify_noidx.out verify_noidx.expected ; then
     failexit "diff ${PWD}/{verify_noidx.out,verify_noidx.expected}"
 fi
@@ -199,7 +190,7 @@ assertcnt t1 $((NEWNUMREC*2))
 eval $VERIFY_CMD > verify_noblob.tmp
 grep 0000000 verify_noblob.tmp | sed 's/0000000[^ ]*//g' | sort &> verify_noblob.out
 
-echo "checking for blob verify out"
+echo "checking for blob verify"
 if ! diff verify_noblob.out verify_noblob.expected ; then
     failexit "diff ${PWD}/{verify_noblob.out,verify_noblob.expected}"
 fi
@@ -209,6 +200,89 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 insert_records 1 $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
+
+# insert into child table, violating parent constraint, verify should catch that
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'create table parent_t 
+{
+schema
+{
+    int a
+}
+keys
+{
+    "A" = a
+}
+}'
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'create table child_t 
+{
+schema
+{
+    int a
+    int b
+    blob blb null=yes
+}
+keys
+{
+    "B" = b
+    dup "K1" = a
+    dup "K2" = (int)"a * 1"
+    dup "K3" = (int)"length(blb)" {where length(blb) < 5}
+}
+constraints
+{
+    "t10fk1" = "K1" -> <"parent_t":"A">
+    "t10fk2" = "K2" -> <"parent_t":"A">
+    "t10fk3" = "K3" -> <"parent_t":"A">
+}
+}'
+
+# will fail, constraint violation
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (1, 1, x'aa')" &> err_fk.out
+echo "[insert into child_t(a,b,blb) values (1, 1, x'aa')] failed with rc 3 verify key constraint cannot resolve constraint table 'child_t' key 'K1' -> table 'parent_t' index '0' key 'A'" > err_fk.expected
+if ! diff err_fk.out err_fk.expected ; then
+    failexit "diff ${PWD}/{err_fk.out,err_fk.expected}"
+fi
+
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.skip_constraintscheck_on_insert' 1"
+
+# will succeed
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (1, 1, x'aa')"
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "put tunable 'debug.skip_constraintscheck_on_insert' 0"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('child_t')" 2>&1 | awk '{for (i=2; i <=NF; i++) printf("%s", (i>2 ? OFS : "") $i); print "";}' > verify_child.out
+
+
+cat << EOF > verify_child.expected
+ix '1' key 'K1': foreign key table 'parent_t' key 'A' not found
+
+ix '2' key 'K2': foreign key table 'parent_t' key 'A' not found
+
+ix '3' key 'K3': foreign key table 'parent_t' key 'A' not found
+
+procedure sys.cmd.verify('child_t')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
+EOF
+
+if ! diff verify_child.out verify_child.expected ; then
+    failexit "diff ${PWD}/{verify_child.out,verify_child.expected}"
+fi
+
+# insert good data to parent to make sure constraint actually works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into parent_t values (2)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (2, 2, x'bb')" &> err_fk2.out 
+
+# constraint 3 still not satisfied
+echo "[insert into child_t(a,b,blb) values (2, 2, x'bb')] failed with rc 3 verify key constraint cannot resolve constraint table 'child_t' key 'K3' -> table 'parent_t' index '0' key 'A'" > err_fk2.expected
+if ! diff err_fk2.out err_fk2.expected ; then
+    failexit "diff ${PWD}/{err_fk2.out,err_fk2.expected}"
+fi
+
+set -e
+#now we should be good
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into parent_t values (1)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (2, 2, x'bb')"
 
 tables=$(timeout 1m cdb2sql --tabs $dbnm --host $master 'select * from comdb2_tables')
 for t in $tables ; do

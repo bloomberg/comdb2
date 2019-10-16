@@ -8918,6 +8918,11 @@ char *sqlite3BtreeGetTblName(BtCursor *pCur)
     return pCur->db->tablename;
 }
 
+char *get_dbtable_name(struct dbtable *tbl)
+{
+    return tbl->tablename;
+}
+
 void cancel_sql_statement(int id)
 {
     int found = 0;
