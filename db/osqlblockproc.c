@@ -663,16 +663,14 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        const char *tablename = get_tablename_from_rpl(rqid, rpl, NULL);
-        assert(tablename); // table or queue name
-        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
-            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
+        if (sess->tablename &&
+            !is_tablename_queue(sess->tablename, strlen(sess->tablename))) {
+            sess->tbl_idx = get_dbtable_idx_by_name(sess->tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
 #if DEBUG_REORDER
-            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename,
-                   sess->tbl_idx);
+            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n",
+                   sess->tablename, sess->tbl_idx);
 #endif
         }
         break;
@@ -842,9 +840,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_USEDB &&
         (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
         int tableversion = 0;
-        const char *tablename =
-            get_tablename_from_rpl(rqid, rpl, &tableversion);
-        sess->table = intern(tablename);
+        const char *tblname = get_tablename_from_rpl(rqid, rpl, &tableversion);
+        assert(tblname); // table or queue name
+        sess->tablename = intern(tblname);
         sess->tableversion = tableversion;
     }
 
