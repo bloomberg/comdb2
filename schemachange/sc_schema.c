@@ -54,7 +54,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         }
         rc = stag_to_stag_buf(db->tablename, from, old_dta, ".NEW..ONDISK",
                               new_dta, &reason);
-        if (rc) { 
+        if (rc) {
             rc = ERR_CONSTR;
             goto done;
         }
@@ -106,14 +106,14 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         }
 
         int ri;
-        rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key, db->tablename, trans, &ri);
+        rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key,
+                                         db->tablename, trans, &ri);
         if (rc == RC_INTERNAL_RETRY) {
             break;
         } else if (rc && rc != ERR_CONSTR) {
-            logmsg(LOGMSG_ERROR,
-                   "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
-                   ct->lclkeyname, db->tablename, ct->keynm[ri],
-                   ct->table[ri], rc);
+            logmsg(LOGMSG_ERROR, "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
+                   ct->lclkeyname, db->tablename, ct->keynm[ri], ct->table[ri],
+                   rc);
             fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
             logmsg(LOGMSG_ERROR, "\n");
             rc = ERR_CONSTR;

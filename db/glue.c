@@ -6098,5 +6098,3 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     }
     return SQLITE_OK;
 }
-
-

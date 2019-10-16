@@ -283,11 +283,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_data = { .flags = DB_DBT_USERMEM, .ulen = sizeof(databuf),
-                     .data = databuf};
+    DBT dbt_data = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(databuf), .data = databuf};
 
-    DBT dbt_key = { .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf),
-                    .data = keybuf};
+    DBT dbt_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf), .data = keybuf};
 
     db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
@@ -385,10 +385,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                    record so a partial find
                    won't do.  I guess we could optimize for the more common
                    case of no headers/compression. */
-                DBT dbt_blob_key = { .data = &blob_genid,
-                                     .size = sizeof(unsigned long long)};
+                DBT dbt_blob_key = {.data = &blob_genid,
+                                    .size = sizeof(unsigned long long)};
 
-                DBT dbt_blob_data = { .flags = DB_DBT_MALLOC, .data = NULL};
+                DBT dbt_blob_data = {.flags = DB_DBT_MALLOC, .data = NULL};
 
                 rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key,
                                           &dbt_blob_data, &ver, DB_SET);
@@ -580,16 +580,15 @@ err:
 /* similar to check_single_key_constraint but uses a paired cursor/cget
  * so we can release the lock at the end of this function
  */
-static int verify_foreign_key_constraint(
-    constraint_t *ct, char *lcl_tag, char *lcl_key,
-    char *tblname, int lid, int *remote_ri)
+static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
+                                         char *lcl_key, char *tblname, int lid,
+                                         int *remote_ri)
 {
     int rc = 0;
     if (remote_ri)
         *remote_ri = 0;
     char rkey[BDB_RECORD_MAX + sizeof(unsigned long long)];
-    DBT dbt_key = { .flags = DB_DBT_USERMEM, .ulen = sizeof(rkey),
-                    .data = rkey};
+    DBT dbt_key = {.flags = DB_DBT_USERMEM, .ulen = sizeof(rkey), .data = rkey};
     DBC *ckey = NULL;
 
     for (int ri = 0; ri < ct->nrules; ri++) {
@@ -602,22 +601,23 @@ static int verify_foreign_key_constraint(
         if (rc)
             return rc;
         
-        if(!skip) {
+        if (!skip) {
             DB *ix_state = r_state->dbp_ix[ridx];
             rc = ix_state->paired_cursor_from_lid(ix_state, lid, &ckey, 0);
             if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "unexpected rc opening cursor for ix %d: %d\n", ridx, rc);
+                logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
+                       ridx, rc);
                 continue; // so we continue to next
             }
 
             /* fetch the genid portion to verify existence */
             unsigned long long verify_genid = 0;
-            DBT dbt_data = {
-                .data = &verify_genid, .dlen = sizeof(verify_genid),
-                .ulen = sizeof(verify_genid), .size = sizeof(verify_genid),
-                .doff = 0, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
-            //not needed, already there: memcpy(dbt_key.data, rkey, keylen);
+            DBT dbt_data = {.data = &verify_genid,
+                            .dlen = sizeof(verify_genid),
+                            .ulen = sizeof(verify_genid),
+                            .size = sizeof(verify_genid),
+                            .doff = 0,
+                            .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
             dbt_key.size = rixlen;
 
             rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
@@ -633,8 +633,6 @@ static int verify_foreign_key_constraint(
 done:
     return rc;
 }
-
-
 
 static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 {
@@ -652,19 +650,21 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     bdb_state_type *bdb_state = par->bdb_state;
 
-    DBT dbt_key = { .data = keybuf, .ulen = sizeof(keybuf),
-                    .flags = DB_DBT_USERMEM};
+    DBT dbt_key = {
+        .data = keybuf, .ulen = sizeof(keybuf), .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = { .data = databuf, .ulen = sizeof(databuf),
-                     .flags = DB_DBT_USERMEM};
+    DBT dbt_data = {
+        .data = databuf, .ulen = sizeof(databuf), .flags = DB_DBT_USERMEM};
 
     unsigned long long genid;
-    DBT dbt_dta_check_key = { .ulen = sizeof(unsigned long long),
-                              .size = sizeof(unsigned long long),
-                              .data = &genid, .flags = DB_DBT_USERMEM};
+    DBT dbt_dta_check_key = {.ulen = sizeof(unsigned long long),
+                             .size = sizeof(unsigned long long),
+                             .data = &genid,
+                             .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = { .data = &verify_keybuf, .flags = DB_DBT_USERMEM,
-                               .ulen = sizeof(verify_keybuf)};
+    DBT dbt_dta_check_data = {.data = &verify_keybuf,
+                              .flags = DB_DBT_USERMEM,
+                              .ulen = sizeof(verify_keybuf)};
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
@@ -974,21 +974,27 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                      genid_right, ix, genid);
         }
 
-
         if (ix_constraint) {
             int ridx;
-            rc = verify_foreign_key_constraint(ix_constraint, ix_tag, 
-                    dbt_key.data, bdb_state->name, lid, &ridx);
+            rc = verify_foreign_key_constraint(ix_constraint, ix_tag,
+                                               dbt_key.data, bdb_state->name,
+                                               lid, &ridx);
             if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
-                         "!%016llx ix '%d' key '%s': foreign key table '%s' key '%s' not found\n",
-                         genid, ix, ix_constraint->lclkeyname, ix_constraint->table[ridx], ix_constraint->keynm[ridx]);
+                         "!%016llx ix '%d' key '%s': foreign key table '%s' "
+                         "key '%s' not found\n",
+                         genid, ix, ix_constraint->lclkeyname,
+                         ix_constraint->table[ridx],
+                         ix_constraint->keynm[ridx]);
             } else if (rc) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
-                         "!%016llx ix '%d' key '%s' foreign key table '%s' key '%s' error loading rc = %d\n",
-                         genid, ix, ix_constraint->lclkeyname, ix_constraint->table[ridx], ix_constraint->keynm[ridx], rc);
+                         "!%016llx ix '%d' key '%s' foreign key table '%s' key "
+                         "'%s' error loading rc = %d\n",
+                         genid, ix, ix_constraint->lclkeyname,
+                         ix_constraint->table[ridx], ix_constraint->keynm[ridx],
+                         rc);
             }
         }
 
@@ -1042,20 +1048,21 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = { .ulen = sizeof(unsigned long long),
-                    .size = sizeof(unsigned long long),
-                    .data = &genid, .flags = DB_DBT_USERMEM};
+    DBT dbt_key = {.ulen = sizeof(unsigned long long),
+                   .size = sizeof(unsigned long long),
+                   .data = &genid,
+                   .flags = DB_DBT_USERMEM};
 
-    DBT dbt_data = { .data = &dumbuf, .ulen = 1,
-                     .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
+    DBT dbt_data = {
+        .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
-    DBT dbt_dta_check_key = { .size = sizeof(unsigned long long),
-                              .ulen = sizeof(int), // TODO: why sizeof int?
-                              .data = &genid, .flags = DB_DBT_USERMEM};
+    DBT dbt_dta_check_key = {.size = sizeof(unsigned long long),
+                             .ulen = sizeof(int), // TODO: why sizeof int?
+                             .data = &genid,
+                             .flags = DB_DBT_USERMEM};
 
-    DBT dbt_dta_check_data = { .data = &dumbuf, .ulen = 1,
-                               .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
-
+    DBT dbt_dta_check_data = {
+        .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
     int atstart = comdb2_time_epochms();
     int now = atstart;

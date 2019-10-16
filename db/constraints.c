@@ -339,11 +339,11 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     return 0;
 }
 
-inline int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls)
+inline int should_skip_constraint_for_index(struct dbtable *db, int ixnum,
+                                            int nulls)
 {
     return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
 }
-
 
 /* rec_dta is in .ONDISK format..we have it from 'delete' operation in block
  * loop */
@@ -1498,7 +1498,8 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                     char fkey[MAXKEYLEN];
                     char fondisk_tag[MAXTAGLEN];
 
-                    struct dbtable *ftable = get_dbtable_by_name(ct->table[ridx]);
+                    struct dbtable *ftable =
+                        get_dbtable_by_name(ct->table[ridx]);
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
@@ -1570,7 +1571,8 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                     currdb = iq->usedb;
                     iq->usedb = ftable;
 
-                    if (should_skip_constraint_for_index(iq->usedb, fixnum, nulls))
+                    if (should_skip_constraint_for_index(iq->usedb, fixnum,
+                                                         nulls))
                         rc = IX_FND;
                     else
                         rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
@@ -2134,7 +2136,8 @@ int populate_reverse_constraints(struct dbtable *db)
 }
 
 int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
-        char *lcl_tag, char *lcl_key, char *tblname, void *trans, int *remote_ri)
+                                char *lcl_tag, char *lcl_key, char *tblname,
+                                void *trans, int *remote_ri)
 {
     int rc = 0;
     if (remote_ri)
@@ -2156,9 +2159,9 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
         snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
 
         /* Key -> Key : local table -> referenced table */
-        rixlen = rc = stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key,
-                                            ruledb->tablename, rtag, rkey,
-                                            &nulls, FK2PK);
+        rixlen = rc =
+            stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+                                  rtag, rkey, &nulls, FK2PK);
 
         if (-1 == rc)
             return ERR_CONSTR;
@@ -2177,8 +2180,8 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
             ruleiq->usedb = ruledb;
             unsigned long long genid;
             int fndrrn;
-            rc = ix_find_by_key_tran(ruleiq, rkey, rixlen, ridx, NULL,
-                                     &fndrrn, &genid, NULL, NULL, 0, trans);
+            rc = ix_find_by_key_tran(ruleiq, rkey, rixlen, ridx, NULL, &fndrrn,
+                                     &genid, NULL, NULL, 0, trans);
         }
 
         if (rc != IX_FND && rc != IX_FNDMORE) {
@@ -2189,7 +2192,6 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
     }
     return 0;
 }
-
 
 /* go through the constraint list of db_table and find if ix has any constraints
  */
@@ -2215,8 +2217,8 @@ constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix)
  */
 int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
                                char *tblname, bdb_state_type **r_state,
-                               int *ridx, int *rixlen, char *rkey,
-                               int *skip, int ri)
+                               int *ridx, int *rixlen, char *rkey, int *skip,
+                               int ri)
 {
     int nulls;
     int rc = 0;
@@ -2225,7 +2227,7 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
     if (ruledb == NULL)
         return 1;
 
-    if((rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], ridx)))
+    if ((rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], ridx)))
         return rc;
 
     char rtag[MAXTAGLEN];
@@ -2234,9 +2236,9 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
     *r_state = ruledb->handle;
 
     /* convert local Key -> foreign Key : local table -> referenced table */
-    *rixlen = rc = stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key,
-            ruledb->tablename, rtag, rkey,
-            &nulls, FK2PK);
+    *rixlen = rc =
+        stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+                              rtag, rkey, &nulls, FK2PK);
 
     if (-1 == rc)
         return rc;
@@ -2254,4 +2256,3 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
     }
     return 0;
 }
-
