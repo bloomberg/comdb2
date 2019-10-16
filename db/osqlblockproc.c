@@ -663,7 +663,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        if (sess->tablename && 
+        if (sess->tablename &&
             !is_tablename_queue(sess->tablename, strlen(sess->tablename))) {
             sess->tbl_idx = get_dbtable_idx_by_name(sess->tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
