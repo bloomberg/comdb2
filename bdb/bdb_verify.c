@@ -55,12 +55,11 @@ static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *),
     int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
 
-    if(sb) {
+    if (sb) {
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
         return sbuf2printf(sb, lbuf) >= 0 ? 0 : -1;
-    }
-    else if(lua_callback)
+    } else if (lua_callback)
         return lua_callback(lua_params, lbuf);
     return -1;
 }
@@ -373,8 +372,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                 if (rc) {
                     par->verify_status = 1;
                     locprint(par->sb, par->lua_callback, par->lua_params,
-                             "!%016llx cursor on blob %d rc %d",
-                             genid_flipped, blobno, rc);
+                             "!%016llx cursor on blob %d rc %d", genid_flipped,
+                             blobno, rc);
                     rc = 0;
                     goto next_record;
                 }
@@ -484,8 +483,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             if (rc) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
-                         "!%016llx ix %d formkey rc %d", genid_flipped, ix,
-                         rc);
+                         "!%016llx ix %d formkey rc %d", genid_flipped, ix, rc);
                 ckey->c_close(ckey);
                 ckey = NULL;
                 rc = 0;
@@ -524,10 +522,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             if (!(has_keys & (1ULL << ix))) {
                 if (!rc && (bdb_state->ixdups[ix] || genid == verify_genid)) {
                     par->verify_status = 1;
-                    locprint(
-                        par->sb, par->lua_callback, par->lua_params,
-                        "!%016llx ix %d expect notfound but got an index",
-                        genid_flipped, ix);
+                    locprint(par->sb, par->lua_callback, par->lua_params,
+                             "!%016llx ix %d expect notfound but got an index",
+                             genid_flipped, ix);
                 }
             } else if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
@@ -540,8 +537,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             } else if (genid != verify_genid) {
                 par->verify_status = 1;
                 locprint(par->sb, par->lua_callback, par->lua_params,
-                         "!%016llx ix %d genid mismatch %016llx",
-                         genid_flipped, ix, verify_genid);
+                         "!%016llx ix %d genid mismatch %016llx", genid_flipped,
+                         ix, verify_genid);
             }
 
             ckey->c_close(ckey);
@@ -725,8 +722,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
                     rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                     if (rc) {
-                        sbuf2printf(par->sb,
-                                    "!%016llx cursor on blob %d rc %d",
+                        sbuf2printf(par->sb, "!%016llx cursor on blob %d rc %d",
                                     genid_flipped, blobno, rc);
                         goto next_key;
                     }
@@ -765,10 +761,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     if (rc == 0) {
                         realblobsz[blobno] = dbt_blob_data.size;
                         if (blobsizes[blobno] == -1) {
-                            sbuf2printf(
-                                par->sb,
-                                "!%016llx blob %d null but found blob",
-                                genid_flipped, blobno);
+                            sbuf2printf(par->sb,
+                                        "!%016llx blob %d null but found blob",
+                                        genid_flipped, blobno);
                         } else if (blobsizes[blobno] == -2) {
                             sbuf2printf(par->sb,
                                         "!%016llx blob %d size %d expected "
@@ -888,10 +883,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         } else {
             if (dbt_data.size != sizeof(unsigned long long)) {
                 par->verify_status = 1;
-                locprint(
-                    par->sb, par->lua_callback, par->lua_params,
-                    "!%016llx ix %d payload wrong size expected 8 got %d",
-                    genid_flipped, ix, dbt_data.size);
+                locprint(par->sb, par->lua_callback, par->lua_params,
+                         "!%016llx ix %d payload wrong size expected 8 got %d",
+                         genid_flipped, ix, dbt_data.size);
                 goto next_key;
             }
             memcpy(&genid_right, (uint8_t *)dbt_data.data, sizeof(genid));
