@@ -247,13 +247,6 @@ void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
     iq->use_handle = get_bdb_handle_ireq(iq, auxdb);
 }
 
-struct ireq *get_fake_ireq()
-{
-    struct ireq *iq = calloc(sizeof(struct ireq), 1);
-    init_fake_ireq(thedb, iq);
-    return iq;
-}
-
 void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 {
     /* region 1 */
