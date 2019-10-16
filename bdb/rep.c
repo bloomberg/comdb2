@@ -2361,8 +2361,9 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
 int gbl_catchup_window_trace = 0;
 extern int gbl_set_seqnum_trace;
 
-static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum,
-                              seqnum_type *last_seqnum)
+static inline int should_copy_seqnum(bdb_state_type *bdb_state,
+                                     seqnum_type *seqnum,
+                                     seqnum_type *last_seqnum)
 {
     int trace = bdb_state->attr->wait_for_seqnum_trace, now;
     static int lastpr = 0;
@@ -2547,10 +2548,10 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                seqnum->commit_generation, mygen, change_coherency);
     }
 
-    if (should_copy_seqnum(bdb_state, seqnum, 
-                &bdb_state->seqnum_info->seqnums[nodeix(host)])) {
+    if (should_copy_seqnum(bdb_state, seqnum,
+                           &bdb_state->seqnum_info->seqnums[nodeix(host)])) {
         memcpy(&(bdb_state->seqnum_info->seqnums[nodeix(host)]), seqnum,
-                sizeof(seqnum_type));
+               sizeof(seqnum_type));
     }
 
     if (gbl_set_seqnum_trace) {
