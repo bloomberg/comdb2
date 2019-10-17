@@ -4935,6 +4935,7 @@ clipper_usage:
         int fpcount = clear_fingerprints();
         logmsg(LOGMSG_USER, "Cleared %d fingerprints\n", fpcount);
     } else if (tokcmp(tok, ltok, "max_query_fingerprints") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR,
                    "Expected max query fingerprints, current %d\n",
