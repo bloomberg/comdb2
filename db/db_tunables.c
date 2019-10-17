@@ -320,6 +320,7 @@ extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int eventlog_nkeep;
+extern size_t gbl_max_inmem_array_size;
 
 int gbl_page_order_table_scan = 0;
 

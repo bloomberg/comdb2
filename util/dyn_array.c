@@ -24,6 +24,7 @@
 #include "temptable.h"
 #include "ix_return_codes.h"
 
+size_t gbl_max_inmem_array_size = MAX_ARR_SZ;
 
 
 static int
@@ -89,8 +90,11 @@ int dyn_array_sort(dyn_array_t *arr)
 {
     if (arr->using_temp_table)
         return 0; // already sorted
-    if (arr->capacity == 0) {
+    if (arr->capacity <= 1) {
         assert(arr->items == 0);
+        return 0; // nothing to sort
+    }
+    if (arr->items <= 1) {
         return 0; // nothing to sort
     }
 
@@ -220,7 +224,8 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
 
 int dyn_array_append(dyn_array_t *arr, void *key, int keylen, void *data, int datalen)
 {
-    if (arr->buffer_curr_offset + keylen + datalen > MAX_ARR_SZ && arr->bdb_env) {
+    if (arr->buffer_curr_offset + keylen + datalen > gbl_max_inmem_array_size &&
+        arr->bdb_env) {
         int rc = do_transfer(arr);
         if (rc) return rc;
     }
@@ -252,7 +257,8 @@ int dyn_array_first(dyn_array_t *arr)
         int err;
         return bdb_temp_table_first(arr->bdb_env, arr->temp_table_cur, &err);
     }
-    if (arr->items < 1) return IX_EMPTY;
+    if (arr->items < 1)
+        return IX_EMPTY;
     arr->cursor = 0;
     return IX_OK;
 }

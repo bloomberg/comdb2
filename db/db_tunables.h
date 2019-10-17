@@ -1843,4 +1843,7 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("max_inmem_array_size", "Max in memory size for dynamic array",
+                 TUNABLE_INTEGER, &gbl_max_inmem_array_size, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
