@@ -46,6 +46,9 @@ int clear_fingerprints(void) {
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
     hash_for(gbl_fingerprint_hash, free_fingerprint, NULL);
+    hash_clear(gbl_fingerprint_hash);
+    hash_free(gbl_fingerprint_hash);
+    gbl_fingerprint_hash = NULL;
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
     return count;
 }
