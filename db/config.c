@@ -792,7 +792,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         if (tokcmp(tok, ltok, "all") == 0) {
             logmsg(LOGMSG_ERROR, "Need to specify size for all\n");
             return -1;
-#if 0
+#if 0 
             NOT SURE WHY THE SHORTEN PATH, but commenting out to
                 remove compiler warning
                 ii=toknum(tok,ltok);

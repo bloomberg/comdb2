@@ -32,7 +32,8 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
 
-static void free_fingerprint(struct fingerprint_track *t){
+static int free_fingerprint(void *obj, void *arg){
+  struct fingerprint_track *t = (struct fingerprint_track *)obj;
   if (t == NULL) return;
   free(t->zNormSql);
   free(t);
