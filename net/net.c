@@ -4861,11 +4861,10 @@ static void *connect_thread(void *arg)
 
         wait_alive(fd);
 
-        flag = 1;
-        len = sizeof(flag);
         socklen_t on = 1;
+        len = sizeof(on);
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
-                        sizeof(on));
+                        len);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, 
                     "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
@@ -5490,7 +5489,7 @@ static void *accept_thread(void *arg)
     socklen_t clilen;
     socklen_t len;
     int new_fd;
-    int flag = 1;
+    socklen_t flag = 1;
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
     watchlist_node_type *watchlist_node;
@@ -5580,7 +5579,7 @@ static void *accept_thread(void *arg)
         /* We've seen unexplained EINVAL errors here.  Be extremely defensive
          * and always reset flag to 1 before calling this function. */
         flag = 1;
-        len = sizeof(int);
+        len = sizeof(flag);
         rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
                         len);
         /* Note: don't complain on EINVAL.  There's a legitimate condition where
@@ -5602,6 +5601,8 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR, "%s: sizeof socklen_t is %d\n", __func__,
+                    sizeof(socklen_t));
             exit(1);
         }
 
@@ -6660,11 +6661,11 @@ int net_listen(int port)
 {
     struct sockaddr_in sin;
     int listenfd;
-    int tcpbfsz;
-    int reuse_addr;
+    socklen_t tcpbfsz;
+    socklen_t reuse_addr;
     socklen_t len;
     struct linger linger_data;
-    int flag;
+    socklen_t flag;
     int rc;
 
     memset(&sin, 0, sizeof(sin));
@@ -6689,7 +6690,7 @@ int net_listen(int port)
 
 #ifdef NODELAY
     flag = 1;
-    len = sizeof(int);
+    len = sizeof(flag);
     rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
                     len);
     if (rc != 0) {
@@ -6746,8 +6747,9 @@ int net_listen(int port)
 #if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
     socklen_t on = 1;
+    len = sizeof(on);
     if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
-                   sizeof(on)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
