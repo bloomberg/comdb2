@@ -5601,8 +5601,6 @@ static void *accept_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            logmsg(LOGMSG_ERROR, "%s: sizeof socklen_t is %d\n", __func__,
-                    sizeof(socklen_t));
             exit(1);
         }
 
