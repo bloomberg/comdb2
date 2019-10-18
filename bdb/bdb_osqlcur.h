@@ -124,4 +124,14 @@ struct bdb_osql_log *bdb_osql_shadow_get_lastlog(bdb_cursor_ifn_t *cur,
  */
 int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *cur, struct bdb_osql_log *log,
                                 int *bdberr);
+
+/**
+ * Clear any cached pointers to existing transactions
+ * Set the shadow transaction to a reset cursor
+ *
+ */
+int bdb_osql_cursor_reset(bdb_state_type *bdb_state,
+                          bdb_cursor_ifn_t *pcur_ifn);
+void bdb_osql_cursor_set(bdb_cursor_ifn_t *pcur_ifn, tran_type *shadow_tran);
+
 #endif
