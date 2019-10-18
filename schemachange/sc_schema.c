@@ -27,17 +27,12 @@
 
 extern int gbl_partial_indexes;
 
-static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls)
-{
-    return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
-}
-
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
-    int rc;
+    int rc = 0;
     const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
@@ -54,11 +49,15 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         new_dta = malloc(db->lrl);
         if (new_dta == NULL) {
             logmsg(LOGMSG_ERROR, "%s() malloc failed\n", __func__);
-            goto bad;
+            rc = ERR_CONSTR;
+            goto done;
         }
         rc = stag_to_stag_buf(db->tablename, from, old_dta, ".NEW..ONDISK",
                               new_dta, &reason);
-        if (rc) goto bad;
+        if (rc) {
+            rc = ERR_CONSTR;
+            goto done;
+        }
         od_dta = new_dta;
         from = ".NEW..ONDISK";
     }
@@ -80,7 +79,8 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         rc = getidxnumbyname(db->tablename, lcl_tag, &lcl_idx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "could not get index for %s\n", lcl_tag);
-            goto bad;
+            rc = ERR_CONSTR;
+            break;
         }
         if (gbl_partial_indexes && db->ix_partial &&
             !(ins_keys & (1ULL << lcl_idx))) {
@@ -94,71 +94,36 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         else
             rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
                                         lcl_key, NULL, blobs, maxblobs, 0);
-        if (rc) goto bad;
+        if (rc) {
+            rc = ERR_CONSTR;
+            break;
+        }
 
         lcl_len = getkeysize(db, lcl_idx);
-        if (lcl_len < 0) goto bad;
+        if (lcl_len < 0) {
+            rc = ERR_CONSTR;
+            break;
+        }
 
-        for (int ri = 0; ri < ct->nrules; ri++) {
-            int ridx;
-            int rixlen;
-            char rkey[MAXKEYLEN];
-            char rtag[MAXTAGLEN];
-            struct dbtable *ruledb;
-            int fndrrn;
-            unsigned long long genid;
-            int nulls;
-
-            ruledb = get_dbtable_by_name(ct->table[ri]);
-            if (ruledb == NULL) goto bad;
-
-            rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
-            if (rc != 0) goto bad;
-            snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
-
-            /* Key -> Key : local table -> referenced table */
-            rixlen = rc = stag_to_stag_buf_ckey(db->tablename, lcl_tag, lcl_key,
-                                                ruledb->tablename, rtag, rkey,
-                                                &nulls, FK2PK);
-
-            if (-1 == rc) goto bad;
-
-            if (ruledb->ix_collattr[ridx]) {
-                rc = extract_decimal_quantum(ruledb, ridx, rkey, NULL, 0, NULL);
-                if (rc) {
-                    abort(); /* called doesn't return error for these arguments,
-                                at least not now */
-                }
-            }
-
-            if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
-                rc = IX_FND;
-            } else {
-                ruleiq.usedb = ruledb;
-                rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, ridx, NULL,
-                                         &fndrrn, &genid, NULL, NULL, 0, trans);
-            }
-
-            if (rc == RC_INTERNAL_RETRY) {
-                if (new_dta) free(new_dta);
-                return rc;
-            } else if (rc != IX_FND && rc != IX_FNDMORE) {
-                logmsg(LOGMSG_ERROR,
-                       "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
-                       ct->lclkeyname, db->tablename, ct->keynm[ri],
-                       ct->table[ri], rc);
-                fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
-                logmsg(LOGMSG_ERROR, "\n");
-                goto bad;
-            }
+        int ri;
+        rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key,
+                                         db->tablename, trans, &ri);
+        if (rc == RC_INTERNAL_RETRY) {
+            break;
+        } else if (rc && rc != ERR_CONSTR) {
+            logmsg(LOGMSG_ERROR, "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
+                   ct->lclkeyname, db->tablename, ct->keynm[ri], ct->table[ri],
+                   rc);
+            fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
+            logmsg(LOGMSG_ERROR, "\n");
+            rc = ERR_CONSTR;
+            break;
         }
     }
-    if (new_dta) free(new_dta);
-    return 0;
 
-bad:
+done:
     if (new_dta) free(new_dta);
-    return ERR_CONSTR;
+    return rc;
 }
 
 int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
