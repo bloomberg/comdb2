@@ -1856,4 +1856,10 @@ REGISTER_TUNABLE("track_close", "Print information every time a file is closed."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_track_close, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("waitalive_iterations", "Wait this many iterations for a "
+                 "socket to be usable.  (Default: 10)", TUNABLE_INTEGER, 
+                 &gbl_waitalive_iterations, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

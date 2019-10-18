@@ -4709,6 +4709,27 @@ int net_get_port_by_service(const char *dbname)
     return ntohs(port);
 }
 
+int gbl_waitalive_iterations = 10;
+
+void wait_alive(int fd)
+{
+    int iter = gbl_waitalive_iterations, i;
+    for (i = 0; i < iter; i++) {
+        int error = 0;
+        socklen_t len = sizeof(error);
+        int retval = getsockopt(fd, SOL_SOCKET, SO_ERROR, &error,
+                &len);
+        if (retval == 0 && error == 0) {
+            if (i > 0) {
+                logmsg(LOGMSG_ERROR, "%s returning after %d iterations %dms\n",
+                        __func__, i, i * 10);
+            }
+            return;
+        }
+        poll(NULL, 0, 10);
+    }
+}
+
 static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
@@ -4838,10 +4859,12 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
+        wait_alive(fd);
+
         flag = 1;
         len = sizeof(flag);
-        int on = 1;
-        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on,
+        socklen_t on = 1;
+        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
                         sizeof(on));
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, 
@@ -5535,6 +5558,8 @@ static void *accept_thread(void *arg)
             continue;
         }
 
+        wait_alive(new_fd);
+
         if(portmux_fds) {
             rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
             if (rc) {
@@ -5570,9 +5595,9 @@ static void *accept_thread(void *arg)
         }
 #endif
 
-        flag = 1;
-        len = sizeof(int);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
+        socklen_t on = 1;
+        len = sizeof(on);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
                         len);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
@@ -5615,17 +5640,6 @@ static void *accept_thread(void *arg)
             continue;
         }
 #endif
-
-        flag = 1;
-        int on = 1;
-        len = sizeof(int);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, &on,
-                        sizeof(on));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
-            exit(1);
-        }
 
         /* get a buffered pointer to the socket */
         sb = sbuf2open(new_fd, 0); /* no flags yet... */
@@ -6650,7 +6664,6 @@ int net_listen(int port)
     int reuse_addr;
     socklen_t len;
     struct linger linger_data;
-    int keep_alive;
     int flag;
     int rc;
 
@@ -6671,6 +6684,8 @@ int net_listen(int port)
     if (gbl_track_open) {
         logmsg(LOGMSG_USER, "%s socket returned fd %d\n", __func__, listenfd);
     }
+
+    wait_alive(listenfd);
 
 #ifdef NODELAY
     flag = 1;
@@ -6730,10 +6745,9 @@ int net_listen(int port)
 
 #if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
-    keep_alive = 1;
-    len = sizeof(keep_alive);
-    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
-                   len) != 0) {
+    socklen_t on = 1;
+    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
+                   sizeof(on)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;

@@ -37,6 +37,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_waitalive_iterations;
 extern int gbl_track_close;
 extern int gbl_track_open;
 extern int gbl_allow_lua_print;
