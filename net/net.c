@@ -5583,15 +5583,11 @@ static void *accept_thread(void *arg)
         }
 
 #ifdef NODELAY
-        /* We've seen unexplained EINVAL errors here.  Be extremely defensive
-         * and always reset flag to 1 before calling this function. */
         flag = 1;
         len = sizeof(flag);
         rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
                         len);
-        /* Note: don't complain on EINVAL.  There's a legitimate condition where
-           the requester drops the socket according to manpages. */
-        if (rc != 0 && errno != EINVAL) {
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                     "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
                     "%s\n",
