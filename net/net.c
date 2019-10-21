@@ -3108,7 +3108,7 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
 #ifdef DEBUG
     Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 1024);
 #else
-    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 512);
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 256);
 #endif
 
     Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
@@ -4709,7 +4709,7 @@ int net_get_port_by_service(const char *dbname)
     return ntohs(port);
 }
 
-int gbl_waitalive_iterations = 10;
+int gbl_waitalive_iterations = 3;
 
 void wait_alive(int fd)
 {
@@ -5181,7 +5181,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         return;
     }
 
-    /* see if we already have an entry.  if we do, comdb2_CLOSE the socket.
+    /* see if we already have an entry.  if we do, CLOSE the socket.
        if we dont, create a reader_thread */
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
