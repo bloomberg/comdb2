@@ -4866,7 +4866,7 @@ static void *connect_thread(void *arg)
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
                         len);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, 
+            logmsg(LOGMSG_ERROR, 
                     "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, fd, errno, strerror(errno));
 
