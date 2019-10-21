@@ -4869,7 +4869,9 @@ static void *connect_thread(void *arg)
             logmsg(LOGMSG_FATAL, 
                     "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, fd, errno, strerror(errno));
-            exit(1);
+
+            comdb2_close(fd);
+            goto again;
         }
 
 #ifdef NODELAY
@@ -4880,7 +4882,8 @@ static void *connect_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
                     __func__, fd, errno, strerror(errno));
-            exit(1);
+            comdb2_close(fd);
+            goto again;
         }
 #endif
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
@@ -5528,6 +5531,10 @@ static void *accept_thread(void *arg)
             listenfd = netinfo_ptr->myfd;
         else
             listenfd = netinfo_ptr->myfd = net_listen(netinfo_ptr->myport);
+        if (listenfd < 0) {
+            logmsg(LOGMSG_FATAL, "Could not get listenfd\n");
+            exit(1);
+        }
     }
 
     netinfo_ptr->accept_thread_created = 1;
@@ -5599,9 +5606,10 @@ static void *accept_thread(void *arg)
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
                         len);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+            logmsg(LOGMSG_ERROR, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            comdb2_close(new_fd);
+            continue;
         }
 
 #ifdef TCPBUFSZ
@@ -5610,9 +5618,10 @@ static void *accept_thread(void *arg)
         rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz,
                         len);
         if (rc < 0) {
-            logmsg(LOGMSG_FATAL, "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
+            logmsg(LOGMSG_ERROR, "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            comdb2_close(new_fd);
+            continue;
         }
 
         tcpbfsz = (8 * 1024 * 1024);
@@ -5620,10 +5629,11 @@ static void *accept_thread(void *arg)
         rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz,
                         len);
         if (rc < 0) {
-            logmsg(LOGMSG_FATAL, 
+            logmsg(LOGMSG_ERROR, 
                     "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            comdb2_close(new_fd);
+            continue;
         }
 #endif
 
