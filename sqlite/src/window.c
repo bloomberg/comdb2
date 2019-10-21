@@ -1235,7 +1235,13 @@ void sqlite3WindowCodeInit(Parse *pParse, Window *pMWin){
   }
 
   pMWin->regOne = ++pParse->nMem;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* In Comdb2, rowid of temp tables start with 2 (bdb_temp_table_reset()). */
+  sqlite3VdbeAddOp2(v, OP_Integer, 3, pMWin->regOne);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3VdbeAddOp2(v, OP_Integer, 1, pMWin->regOne);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   if( pMWin->eExclude ){
     pMWin->regStartRowid = ++pParse->nMem;
