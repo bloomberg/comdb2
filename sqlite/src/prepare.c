@@ -541,20 +541,7 @@ done_with_init:
 */
 int sqlite3Init(sqlite3 *db, char **pzErrMsg)
 {
-   int rc;
-
-#ifdef DEBUG_SQLITE_MEMORY
-   extern void sqlite_init_start(void);
-   sqlite_init_start();
-#endif
-
-   rc = sqlite3InitTable(db, pzErrMsg, NULL);
-
-#ifdef DEBUG_SQLITE_MEMORY
-   extern void sqlite_init_end(void);
-   sqlite_init_end();
-#endif
-   return rc;
+   return sqlite3InitTable(db, pzErrMsg, NULL);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

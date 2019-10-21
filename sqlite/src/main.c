@@ -3462,22 +3462,8 @@ int sqlite3_open(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int rc;
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_start(void);
-  sqlite_init_start();
-#endif
-
-  rc = openDatabase(zFilename, ppDb,
+  return openDatabase(zFilename, ppDb,
                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0, thd);
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_end(void);
-  sqlite_init_end();
-#endif
-
-  return rc;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return openDatabase(zFilename, ppDb,
                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0);
