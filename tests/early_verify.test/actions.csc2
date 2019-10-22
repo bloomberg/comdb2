@@ -1,0 +1,10 @@
+tag ondisk {
+    longlong id
+    cstring  status[8]
+}
+
+keys {
+      "ID"      = id
+      "STATUS"  = status + id
+}
+
