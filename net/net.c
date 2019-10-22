@@ -4715,12 +4715,11 @@ void wait_alive(int fd)
     for (i = 0; i < iter; i++) {
         int error = 0;
         socklen_t len = sizeof(error);
-        int retval = getsockopt(fd, SOL_SOCKET, SO_ERROR, &error,
-                &len);
+        int retval = getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len);
         if (retval == 0 && error == 0) {
             if (i > 0) {
                 logmsg(LOGMSG_ERROR, "%s returning after %d iterations %dms\n",
-                        __func__, i, i * 10);
+                       __func__, i, i * 10);
             }
             return;
         }
@@ -4857,12 +4856,11 @@ static void *connect_thread(void *arg)
 
         socklen_t on = 1;
         len = sizeof(on);
-        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
-                        len);
+        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                   __func__, fd, errno, strerror(errno));
 
             close(fd);
             goto again;
@@ -4871,8 +4869,7 @@ static void *connect_thread(void *arg)
 #ifdef NODELAY
         flag = 1;
         len = sizeof(flag);
-        rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        len);
+        rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
                     __func__, fd, errno, strerror(errno));
@@ -5574,8 +5571,7 @@ static void *accept_thread(void *arg)
 #ifdef NODELAY
         flag = 1;
         len = sizeof(flag);
-        rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        len);
+        rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                     "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
@@ -5588,11 +5584,11 @@ static void *accept_thread(void *arg)
 
         socklen_t on = 1;
         len = sizeof(on);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
-                        len);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
             close(new_fd);
             continue;
         }
@@ -5600,23 +5596,22 @@ static void *accept_thread(void *arg)
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
         len = tcpbfsz;
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz,
-                        len);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
         if (rc < 0) {
-            logmsg(LOGMSG_ERROR, "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
             close(new_fd);
             continue;
         }
 
         tcpbfsz = (8 * 1024 * 1024);
         len = tcpbfsz;
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz,
-                        len);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
         if (rc < 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
             close(new_fd);
             continue;
         }
@@ -6679,8 +6674,7 @@ int net_listen(int port)
 #ifdef NODELAY
     flag = 1;
     len = sizeof(flag);
-    rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                    len);
+    rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on listenfd %d: %d %s\n",
                 __func__, listenfd, errno, strerror(errno));
@@ -6736,8 +6730,7 @@ int net_listen(int port)
     /* enable keepalive timer. */
     socklen_t on = 1;
     len = sizeof(on);
-    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on,
-                   len) != 0) {
+    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
