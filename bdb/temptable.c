@@ -481,7 +481,8 @@ done:
     return rc;
 }
 
-static void bdb_temp_table_reset(struct temp_table *tbl) {
+static void bdb_temp_table_reset(struct temp_table *tbl)
+{
     /* Start with rowid 2 */
     tbl->rowid = 2;
     tbl->num_mem_entries = 0;
