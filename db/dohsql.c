@@ -387,7 +387,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     oldrow = queue_next(conn->que_free);
     if (oldrow && gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx %s retrieved older row\n", pthread_self(),
-                __func__);
+               __func__);
     Pthread_mutex_unlock(&conn->mtx);
 
     if (oldrow)
