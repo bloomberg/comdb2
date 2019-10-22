@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+# Make sure that all queries go to the same node.
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+echo "target machine is $mach"
+
+# Create dummy SP-s;
+for i in `seq 1 100`; do
+  cdb2sql -s --host $mach $dbnm "create procedure sp$i { local function main (e) end }" >/dev/null
+done
+
+# Warm up
+yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s --host $mach $dbnm ->/dev/null
+
+# Get memory snapshot
+cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat bdb")' >expected
+
+# Run the leak reproducer
+yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s --host $mach $dbnm ->/dev/null
+
+# Get memory snapshot again
+cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat bdb")' >actual
+
+# Should have the same memory snapshot as before
+diff actual expected

@@ -340,6 +340,7 @@ int gbl_debug_verify_tran = 0;
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
+int gbl_debug_skip_constraintscheck_on_insert;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -653,6 +654,7 @@ int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
 int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 
@@ -796,6 +798,7 @@ inline int getkeyrecnums(const dbtable *tbl, int ixnum)
         return -1;
     return tbl->ix_recnums[ixnum] != 0;
 }
+
 inline int getkeysize(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)

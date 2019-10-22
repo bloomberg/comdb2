@@ -62,6 +62,8 @@ enum {
     OSQL_FLAGS_SCDONE = 0x00000040,
     /* indicates if blkseq reordering is turned on */
     OSQL_FLAGS_REORDER_ON = 0x00000080,
+    /* indicates if index reordering is turned on */
+    OSQL_FLAGS_REORDER_IDX_ON = 0x00000100,
 };
 
 int osql_open(struct dbenv *dbenv);
@@ -102,4 +104,7 @@ int selectv_range_commit(struct sqlclntstate *clnt);
 
 void osql_postcommit_handle(struct ireq *iq);
 void osql_postabort_handle(struct ireq *iq);
+
+bool osql_is_index_reorder_on(int osql_flags);
+void osql_unset_index_reorder_bit(int *osql_flags);
 #endif

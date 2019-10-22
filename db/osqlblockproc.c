@@ -71,6 +71,7 @@
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
+extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
@@ -662,16 +663,14 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        const char *tablename = get_tablename_from_rpl(rqid, rpl, NULL);
-        assert(tablename); // table or queue name
-        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            strncpy0(sess->tablename, tablename, sizeof(sess->tablename));
-            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
+        if (sess->tablename &&
+            !is_tablename_queue(sess->tablename, strlen(sess->tablename))) {
+            sess->tbl_idx = get_dbtable_idx_by_name(sess->tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
 #if DEBUG_REORDER
-            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename,
-                   sess->tbl_idx);
+            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n",
+                   sess->tablename, sess->tbl_idx);
 #endif
         }
         break;
@@ -734,10 +733,12 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     case OSQL_UPDREC:
     case OSQL_DELREC:
         sess->last_is_ins = 0;
+        sess->tran_rows++;
         break;
     case OSQL_INSERT:
     case OSQL_INSREC:
         sess->last_is_ins = 1;
+        sess->tran_rows++;
         break;
     default:
         sess->last_is_ins = 0;
@@ -839,9 +840,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_USEDB &&
         (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
         int tableversion = 0;
-        const char *tablename =
-            get_tablename_from_rpl(rqid, rpl, &tableversion);
-        sess->table = intern(tablename);
+        const char *tblname = get_tablename_from_rpl(rqid, rpl, &tableversion);
+        assert(tblname); // table or queue name
+        sess->tablename = intern(tblname);
         sess->tableversion = tableversion;
     }
 
@@ -1359,12 +1360,15 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
-                                   tmpcursor_t * cur);
-    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
-    if (dbc_ins)
-        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+                                   tmpcursor_t * cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc, LOGMSG_DEBUG);
+    if (dbc_ins) {
+        logmsg(LOGMSG_DEBUG, "INS ");
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins, LOGMSG_DEBUG);
+    }
 #endif
 
     /* go through each record */
@@ -1391,6 +1395,14 @@ static int process_this_session(
     if (rc)
         return rc;
 
+    /* only reorder indices if more than one row add/upd/dels
+     * NB: the idea is that single row transactions can not deadlock but
+     * update can have a del/ins index component and can deadlock -- in future 
+     * consider reordering for single upd stmts (only if performance 
+     * improves so this requires a solid test). */
+    if (sess->tran_rows > 1 && gbl_reorder_idx_writes)
+        iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
+
     while (!rc && !rc_out) {
         char *data = NULL;
         int datalen = 0;
@@ -1412,7 +1424,8 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        /* this locks pages */
+        /* This call locks pages:
+         * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
         free(data);

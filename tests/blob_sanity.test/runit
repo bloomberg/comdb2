@@ -4,17 +4,11 @@ bash -n "$0" | exit 1
 # Grab my database name.
 dbnm=$1
 
-# Fastinit
-cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
-
-# Insert
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
-
-if [[ $? != 0 ]]; then
-    echo "failed tagged test"
-    echo "$x"
-    exit 1
-fi
+#cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+#for node in $cluster; do
+#cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('debg 100')"
+#cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('ndebg 100')"
+#done
 
 # Fastinit
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
@@ -22,16 +16,12 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 # Insert
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
-# Fastinit
-cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+failexit()
+{
+    echo "Failed $1"
+    exit -1
 
-# Insert
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
-
-# Test 1
-for i in $(seq 0 4095) ; do
-    echo "update t1 set a=1 where a = 1" 
-done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> /dev/null
+}
 
 function do_verify
 {
@@ -42,6 +32,41 @@ function do_verify
         failexit "Verify"
     fi
 }
+
+if [[ $? != 0 ]]; then
+    failexit "failed tagged test $x"
+fi
+
+# Fastinit
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
+# Insert
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
+do_verify t1
+
+# Fastinit
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
+# Insert
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
+do_verify t1
+
+# Test 0 force ipu: cdb2sql ${CDB2_OPTIONS} $dbnm default "@send setipu t1 off"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 options rebuild, ipu off { `cat t1.csc2` }"
+
+# Test 1
+for i in $(seq 0 5) ; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set a=1 where a = 1"  &>> update.out
+    do_verify t1
+done 
+
+#turn ipu on now: cdb2sql ${CDB2_OPTIONS} $dbnm default "@send setipu t1 on"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 options rebuild { `cat t1.csc2` }"
+
+# Test 1 update 4096 times
+for i in $(seq 0 4095) ; do
+    echo "update t1 set a=1 where a = 1" 
+done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> update.out
 
 do_verify t1
 

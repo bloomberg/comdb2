@@ -724,7 +724,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t1.txt select_t1_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t1.txt select_t1_final.txt}' to see the error."
 
     exit 1
 
@@ -747,7 +747,7 @@ if [[ "0" != "$wr" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t2 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t2.txt select_t2_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t2.txt select_t2_final.txt}' to see the error."
 
     exit 1
 
@@ -770,7 +770,7 @@ if [[ "0" != "$wr" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t3 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t3.txt select_t3_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t3.txt select_t3_final.txt}' to see the error."
 
     exit 1
 

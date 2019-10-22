@@ -597,6 +597,97 @@ Parameters:
 none
 
 
+### dbstmt:column_count
+
+```
+num = dbstmt:column_count()
+```
+
+Description:
+
+This method returns the number of columns in the result set (`dbrow`) returned by the dbstmt.
+
+Return Values:
+
+|Name                | Description
+|--------------------| -----------------------------------
+|*num*        | number of columns returned by dbstmt
+
+Parameters:
+none
+
+
+### dbstmt:column_name
+
+```
+name = dbstmt:column_name(col)
+```
+
+Description:
+
+This method returns the name assigned to a particular column in the result set of a dbstmt.
+
+Return Values:
+
+|Name                | Description
+|--------------------| -----------------------------------
+|*name*        | name of column returned by dbstmt
+
+Parameters:
+
+|  Name               |  Description
+|---------------------|---------------------------------------
+|  *col*        |  column number (leftmost column number is 1)
+
+
+### dbstmt:column_origin_name
+
+```
+name = dbstmt:column_origin_name(col)
+```
+
+Description:
+
+This method returns the table column that is the origin of a particular column in dbstmt. This does not work if column is an expression or a function.
+
+Return Values:
+
+|Name                | Description
+|--------------------| -----------------------------------
+|*name*        | Originating table-column of column returned by dbstmt
+
+Parameters:
+
+|  Name               |  Description
+|---------------------|---------------------------------------
+|  *col*        |  column number (leftmost column number is 1)
+
+
+### dbstmt:column_table_name
+
+```
+name = dbstmt:column_table_name(col)
+```
+
+Description:
+
+This method returns the table that is the origin of a particular column in dbstmt. This does not work if column is an expression or a function.
+
+Return Values:
+
+|Name                | Description
+|--------------------| -----------------------------------
+|*name*        | Originating table-name of column returned by dbstmt
+
+Parameters:
+
+|  Name               |  Description
+|---------------------|---------------------------------------
+|  *col*        |  column number (leftmost column number is 1)
+
+
+## Operating on a dbtable
+
 ### db:table with name
 
 ```

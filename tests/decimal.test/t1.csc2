@@ -6,14 +6,6 @@ schema
    decimal128  d128  null=yes
 }
 
-tag "frecord"
-{
-   int         id
-   decimal32   d32
-   decimal64   d64
-   decimal128  d128
-}
-
 keys
 {
    "ID"         = id

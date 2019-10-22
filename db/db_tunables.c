@@ -314,10 +314,12 @@ extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
 
+extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
 
 int gbl_page_order_table_scan = 0;
