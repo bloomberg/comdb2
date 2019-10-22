@@ -70,6 +70,9 @@
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
+size_t gbl_osql_temp_array_cachesz = 32000000;
+size_t gbl_osql_temp_array_maxentries = 100000;
+
 extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
 
@@ -109,8 +112,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(unsigned long long rqid,
                                           const char *rpl, int *tableversion);
-extern void bdb_temp_array_set_cachesz(struct temp_table *tmp_arr, unsigned long long sz);
-extern void bdb_temp_array_set_max_mem_entries(struct temp_table *tmp_arr, int cnt);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -225,10 +226,9 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         free(tran);
         return -1;
     }
-
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
-    bdb_temp_array_set_cachesz(tran->db, 100000000);
-    bdb_temp_array_set_max_mem_entries(tran->db, 1000000);
+    bdb_temp_array_set_cachesz(tran->db, gbl_osql_temp_array_cachesz);
+    bdb_temp_array_set_max_mem_entries(tran->db, gbl_osql_temp_array_maxentries);
 
     if (sess->is_reorder_on) {
         tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);

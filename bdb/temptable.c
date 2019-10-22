@@ -214,13 +214,13 @@ struct temp_table {
     unsigned long long rowid;
     char *sql;
 
-    unsigned long long num_mem_entries;
-    unsigned long long max_mem_entries;
+    size_t num_mem_entries;
+    size_t max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
 
-    unsigned long long inmemsz;
-    unsigned long long cachesz;
+    size_t inmemsz;
+    size_t cachesz;
     arr_elem_t *elements;
     /* Keep track of the max key length and data length.
        We allocate that much for a tempcursor such that
@@ -312,7 +312,7 @@ static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     rc = dbenv_temp->set_cachesize(dbenv_temp, 0, tbl->cachesz, 1);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: bytes %llu\n",
+        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: bytes %zu\n",
                tbl->cachesz);
         goto error;
     }
@@ -806,16 +806,25 @@ inline struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state, int *
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_ARRAY, bdberr);
 }
 
-void bdb_temp_array_set_cachesz(struct temp_table *tmp_arr, unsigned long long sz)
+inline void bdb_temp_array_set_cachesz(struct temp_table *tmp_arr, size_t sz)
 {
     if (tmp_arr->temp_table_type == TEMP_TABLE_TYPE_ARRAY)
         tmp_arr->cachesz = sz;
 }
 
-void bdb_temp_array_set_max_mem_entries(struct temp_table *tmp_arr, unsigned long long cnt)
+inline void bdb_temp_array_set_max_mem_entries(struct temp_table *tmp_arr, size_t cnt)
 {
-    if (tmp_arr->temp_table_type == TEMP_TABLE_TYPE_ARRAY)
-        tmp_arr->max_mem_entries = cnt;
+    if (tmp_arr->temp_table_type != TEMP_TABLE_TYPE_ARRAY)
+        return;
+    if (tmp_arr->max_mem_entries > cnt)
+        return;
+
+    size_t old = tmp_arr->max_mem_entries;
+    tmp_arr->max_mem_entries = cnt;
+    tmp_arr->elements = realloc(
+        tmp_arr->elements, tmp_arr->max_mem_entries * sizeof(arr_elem_t));
+    memset(&tmp_arr->elements[old], 0, 
+           (cnt - tmp_arr->max_mem_entries) * sizeof(arr_elem_t));
 }
 
 
@@ -2397,11 +2406,12 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         ++tbl->num_mem_entries;
         tbl->inmemsz += (keylen + dtalen);
 
-        if (tbl->num_mem_entries == tbl->max_mem_entries ||
+        if (tbl->num_mem_entries >= tbl->max_mem_entries ||
             tbl->inmemsz > tbl->cachesz) {
             logmsg(LOGMSG_DEBUG, "spilling memarray to btree: size "
-                   "%llu vs %llu items %llu vs %llu\n", tbl->inmemsz, 
-                   tbl->cachesz, tbl->num_mem_entries, tbl->max_mem_entries);
+                   "%zu vs %zu items %zu vs %zu\n", tbl->inmemsz, 
+                   tbl->cachesz, tbl->num_mem_entries,
+                   tbl->max_mem_entries);
             gbl_temptable_spills++;
             rc = bdb_array_copy_to_temp_db(bdb_state, tbl, bdberr);
             if (unlikely(rc)) {

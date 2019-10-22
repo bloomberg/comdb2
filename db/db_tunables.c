@@ -321,8 +321,11 @@ extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
+extern size_t gbl_osql_temp_array_cachesz;
+extern size_t gbl_osql_temp_array_maxentries;
 
 int gbl_page_order_table_scan = 0;
+
 
 /*
   =========================================================

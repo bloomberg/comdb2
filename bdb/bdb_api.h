@@ -2154,4 +2154,8 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
  * Otherwise unpack the payload into heap memory. */
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
+
+void bdb_temp_array_set_cachesz(struct temp_table *tmp_arr, size_t sz);
+void bdb_temp_array_set_max_mem_entries(struct temp_table *tmp_arr, size_t cnt);
+
 #endif
