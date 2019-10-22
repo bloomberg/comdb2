@@ -22,4 +22,3 @@ done
 for i in `seq 1 20`; do
   cdb2sql ${CDB2_OPTIONS} $dbnm default "$sql" >/dev/null
 done
-exit 1
