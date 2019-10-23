@@ -600,56 +600,6 @@ int toggle_case_sensitive_like(sqlite3 *db, int enable)
     return rc;
 }
 
-#ifdef DEBUG_SQLITE_MEMORY
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#endif
-
-#include <execinfo.h>
-
-#define MAX_DEBUG_FRAMES 50
-
-struct blk {
-    int nframes;
-    void *frames[MAX_DEBUG_FRAMES];
-    int in_init;
-    size_t sz;
-    void *p;
-};
-
-static __thread hash_t *sql_blocks;
-
-static int dump_block(void *obj, void *arg)
-{
-    struct blk *b = (struct blk *)obj;
-    int *had_blocks = (int *)arg;
-
-    if (!b->in_init) {
-        if (!*had_blocks) {
-            logmsg(LOGMSG_USER, "outstanding blocks:\n");
-            *had_blocks = 1;
-        }
-        logmsg(LOGMSG_USER, "%zu %p ", b->sz, b->p);
-        for (int i = 0; i < b->nframes; i++)
-            logmsg(LOGMSG_USER, "%p ", b->frames[i]);
-        logmsg(LOGMSG_USER, "\n");
-    }
-
-    return 0;
-}
-
-static __thread int in_init = 0;
-
-void sqlite_init_start(void) { in_init = 1; }
-
-void sqlite_init_end(void) { in_init = 0; }
-
-#endif // DEBUG_SQLITE_MEMORY
-
 static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
 extern pthread_mutex_t appsock_conn_lk;
 
@@ -675,10 +625,6 @@ int sql_mem_init(void *arg)
         exit(1);
     }
 
-#ifdef DEBUG_SQLITE_MEMORY
-    sql_blocks = hash_init_o(offsetof(struct blk, p), sizeof(void));
-#endif
-
     return 0;
 }
 
@@ -695,39 +641,11 @@ static void *sql_mem_malloc(int size)
     if (unlikely(sql_mspace == NULL))
         sql_mem_init(NULL);
 
-    void *out = comdb2_malloc(sql_mspace, size);
-
-#ifdef DEBUG_SQLITE_MEMORY
-    struct blk *b = malloc(sizeof(struct blk));
-    b->p = out;
-    b->sz = size;
-    b->nframes = backtrace(b->frames, MAX_DEBUG_FRAMES);
-    b->in_init = in_init;
-    if (!in_init) {
-        fprintf(stderr, "allocated %d bytes in non-init\n", size);
-    }
-    if (b->nframes <= 0)
-        free(b);
-    else {
-        hash_add(sql_blocks, b);
-    }
-#endif
-
-    return out;
+    return comdb2_malloc(sql_mspace, size);
 }
 
 static void sql_mem_free(void *mem)
 {
-#ifdef DEBUG_SQLITE_MEMORY
-    struct blk *b;
-    b = hash_find(sql_blocks, &mem);
-    if (!b) {
-        fprintf(stderr, "no block associated with %p\n", mem);
-        abort();
-    }
-    hash_del(sql_blocks, b);
-    free(b);
-#endif
     comdb2_free(mem);
 }
 
@@ -736,28 +654,7 @@ static void *sql_mem_realloc(void *mem, int size)
     if (unlikely(sql_mspace == NULL))
         sql_mem_init(NULL);
 
-    void *out = comdb2_realloc(sql_mspace, mem, size);
-
-#ifdef DEBUG_SQLITE_MEMORY
-    struct blk *b;
-    b = hash_find(sql_blocks, &mem);
-    if (!b) {
-        fprintf(stderr, "no block associated with %p\n", mem);
-        abort();
-    }
-    hash_del(sql_blocks, b);
-    b->nframes = backtrace(b->frames, MAX_DEBUG_FRAMES);
-    b->p = out;
-    b->sz = size;
-    b->in_init = in_init;
-    if (b->nframes <= 0)
-        free(b);
-    else {
-        hash_add(sql_blocks, b);
-    }
-#endif
-
-    return out;
+    return comdb2_realloc(sql_mspace, mem, size);
 }
 
 static int sql_mem_size(void *mem) { return comdb2_malloc_usable_size(mem); }
@@ -4154,13 +4051,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
-
-#ifdef DEBUG_SQLITE_MEMORY
-    int had_blocks = 0;
-    hash_for(sql_blocks, dump_block, &had_blocks);
-    if (had_blocks)
-        printf("end of blocks\n");
-#endif
 
     /* the ethereal sqlite objects insert into clnt->...Ddl fields
        we need to clear them out after the statement is done, or else
