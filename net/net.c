@@ -4852,7 +4852,9 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
+#if defined _SUN_SOURCE
         wait_alive(fd);
+#endif
 
         int on = 1;
         len = sizeof(on);
@@ -5550,7 +5552,9 @@ static void *accept_thread(void *arg)
             continue;
         }
 
+#if defined _SUN_SOURCE
         wait_alive(new_fd);
+#endif
 
         if(portmux_fds) {
             rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
@@ -6670,7 +6674,9 @@ int net_listen(int port)
         return -1;
     }
 
+#if defined _SUN_SOURCE
     wait_alive(listenfd);
+#endif
 #ifdef NODELAY
     flag = 1;
     len = sizeof(flag);
