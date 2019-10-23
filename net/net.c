@@ -4854,7 +4854,7 @@ static void *connect_thread(void *arg)
 
         wait_alive(fd);
 
-        socklen_t on = 1;
+        int on = 1;
         len = sizeof(on);
         rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
@@ -5483,7 +5483,7 @@ static void *accept_thread(void *arg)
     socklen_t clilen;
     socklen_t len;
     int new_fd;
-    socklen_t flag = 1;
+    int flag = 1;
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
     watchlist_node_type *watchlist_node;
@@ -5582,7 +5582,7 @@ static void *accept_thread(void *arg)
         }
 #endif
 
-        socklen_t on = 1;
+        int on = 1;
         len = sizeof(on);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
@@ -5595,7 +5595,7 @@ static void *accept_thread(void *arg)
 
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
-        len = tcpbfsz;
+        len = sizeof(tcpbfsz);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
         if (rc < 0) {
             logmsg(LOGMSG_ERROR,
@@ -5606,7 +5606,7 @@ static void *accept_thread(void *arg)
         }
 
         tcpbfsz = (8 * 1024 * 1024);
-        len = tcpbfsz;
+        len = sizeof(tcpbfsz);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
         if (rc < 0) {
             logmsg(LOGMSG_ERROR,
@@ -6649,11 +6649,11 @@ int net_listen(int port)
 {
     struct sockaddr_in sin;
     int listenfd;
-    socklen_t tcpbfsz;
-    socklen_t reuse_addr;
+    int tcpbfsz;
+    int reuse_addr;
     socklen_t len;
     struct linger linger_data;
-    socklen_t flag;
+    int flag;
     int rc;
 
     memset(&sin, 0, sizeof(sin));
@@ -6728,7 +6728,7 @@ int net_listen(int port)
 
 #if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
-    socklen_t on = 1;
+    int on = 1;
     len = sizeof(on);
     if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
