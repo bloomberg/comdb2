@@ -178,7 +178,34 @@ function run_test_two
     mv insert.out insert2.out
 }
 
+# alter table several times adding vutf8 fields, we should only 
+# be able to add a max of 15 vutf8 fields
+function run_test_three
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "create table t2 (i int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "insert into t2 values(1)"
+    let i=1
 
+    > add_vutf8.out
+    echo 'i' > add_vutf8.expected
+
+    while [ $i -lt 16 ]; do 
+        $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
+        echo "v$i" >> add_vutf8.expected
+        let i=i+1
+    done
+
+    # adding the 16th vutf8 field will fail
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbnm default 'select columnname from comdb2_columns where tablename = "t2"' >> add_vutf8.out
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
+    echo "[alter table t2 add v$i vutf8] failed with rc 240 " >> add_vutf8.expected
+
+    if ! diff add_vutf8.out add_vutf8.expected ; then
+        echo "diff $PWD/{add_vutf8.out,add_vutf8.expected}"
+        echo "Failed"
+        exit 1
+    fi
+}
 
 
 echo "running test in machine $(hostname):${PWD}"
@@ -203,5 +230,8 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 run_test_two
 
 cleanup
+
+run_test_three
+
 
 echo "Success"
