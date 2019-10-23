@@ -6733,7 +6733,6 @@ int net_listen(int port)
     }
 #endif
 
-#if !defined(_SUN_SOURCE)
     /* enable keepalive timer. */
     int on = 1;
     len = sizeof(on);
@@ -6742,7 +6741,6 @@ int net_listen(int port)
                 strerror(errno));
         return -1;
     }
-#endif
 
     /* bind an address to the socket */
     if (bind(listenfd, (struct sockaddr *)&sin, sizeof(sin)) == -1) {
