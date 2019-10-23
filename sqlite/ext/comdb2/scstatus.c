@@ -64,6 +64,7 @@ int get_status(void **data, int *npoints)
     for (int i = 0; i < nkeys; i++) {
         dttz_t d;
 
+        init_schemachange_type(&sc);
         rc = unpack_schema_change_type(&sc, sc_data[i], status[i]->sc_data_len);
         if (rc) {
             free(sc_status_ents);
