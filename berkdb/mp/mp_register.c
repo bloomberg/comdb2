@@ -64,40 +64,7 @@ __memp_register(dbenv, ftype, pgin, pgout)
 	int (*pgin) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 {
-	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
-	int ret;
-
-	dbmp = dbenv->mp_handle;
-
-	/*
-	 * Chances are good that the item has already been registered, as the
-	 * DB access methods are the folks that call this routine.  If already
-	 * registered, just update the entry, although it's probably unchanged.
-	 */
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q))
-		if (mpreg->ftype == ftype) {
-			mpreg->pgin = pgin;
-			mpreg->pgout = pgout;
-			break;
-		}
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-	if (mpreg != NULL)
-		return (0);
-
-	/* New entry. */
-	if ((ret = __os_malloc(dbenv, sizeof(DB_MPREG), &mpreg)) != 0)
-		return (ret);
-
-	mpreg->ftype = ftype;
-	mpreg->pgin = pgin;
-	mpreg->pgout = pgout;
-
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	LIST_INSERT_HEAD(&dbmp->dbregq, mpreg, q);
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-
+    dbenv->pgin[ftype] = pgin;
+    dbenv->pgout[ftype] = pgout;
 	return (0);
 }

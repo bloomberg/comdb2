@@ -2575,6 +2575,9 @@ struct __db_env {
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+
+    int (*pgin[DB_UNKNOWN]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+    int (*pgout[DB_UNKNOWN]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 };
 
 #ifndef DB_DBM_HSEARCH

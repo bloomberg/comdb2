@@ -70,19 +70,6 @@ struct __db_mpool {
 };
 
 /*
- * DB_MPREG --
- *	DB_MPOOL registry of pgin/pgout functions.
- */
-struct __db_mpreg {
-	LIST_ENTRY(__db_mpreg) q;	/* Linked list. */
-
-	int32_t ftype;			/* File type. */
-					/* Pgin, pgout routines. */
-	int (*pgin) __P((DB_ENV *, db_pgno_t, void *, DBT *));
-	int (*pgout) __P((DB_ENV *, db_pgno_t, void *, DBT *));
-};
-
-/*
  * NCACHE --
  *	Select a cache based on the file and the page number.  Assumes accesses
  *	are uniform across pages, which is probably OK.  What we really want to

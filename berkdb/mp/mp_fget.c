@@ -887,7 +887,6 @@ __memp_read_recovery_pages(dbmfp)
 	DB_ENV *dbenv;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
 	int ret, free_buf, ftype, i;
@@ -916,19 +915,10 @@ __memp_read_recovery_pages(dbmfp)
 		free_buf = 1;
 	}
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
-	/* Get the page-cookie for data format. */
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len > 0) {
-			pginfo = (DB_PGINFO *)
-			    R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-		}
-		break;
-	}
+    if (mfp->pgcookie_len > 0) {
+        pginfo = (DB_PGINFO *)
+            R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
+    }
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 

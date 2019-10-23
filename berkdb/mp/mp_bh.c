@@ -87,7 +87,6 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 {
 	DB_ENV *dbenv;
 	DB_MPOOLFILE *dbmfp;
-	DB_MPREG *mpreg;
 	int ret;
 
 	dbenv = dbmp->dbenv;
@@ -175,23 +174,6 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 	 */
 	if (F_ISSET(mfp, MP_TEMP))
 		return (EPERM);
-
-	/*
-	 * It's not a page from a file we've opened.  If the file requires
-	 * input/output processing, see if this process has ever registered
-	 * information as to how to write this type of file.  If not, there's
-	 * nothing we can do.
-	 */
-	if (mfp->ftype != 0) {
-		MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-		for (mpreg = LIST_FIRST(&dbmp->dbregq);
-		    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q))
-			if (mpreg->ftype == mfp->ftype)
-				break;
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-		if (mpreg == NULL)
-			return (EPERM);
-	}
 
 	/*
 	 * Try and open the file, attaching to the underlying shared area.
@@ -307,7 +289,6 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 
 	DB_ENV *dbenv;
 	DB_LSN page_lsn, largest_lsn;
-	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
 	MPOOL *c_mp;
@@ -339,17 +320,10 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 
-	/* Get the page-cookie. */
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len > 0) {
-			pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,
-			    mfp->pgcookie_off);
-		}
-		break;
-	}
+    if (mfp->pgcookie_len > 0) {
+        pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,
+                mfp->pgcookie_off);
+    }
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
@@ -1160,7 +1134,6 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	DBT dbt, *dbtp;
 	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
@@ -1173,35 +1146,23 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
 		start_time_us = bb_berkdb_fasttime();
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
 	ftype = mfp->ftype;
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len == 0)
-			dbtp = NULL;
-		else {
-			dbt.size = mfp->pgcookie_len;
-			dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-			dbtp = &dbt;
-		}
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-
-		if (is_pgin) {
-			if (mpreg->pgin != NULL &&
-			    (ret = mpreg->pgin(dbenv, pgno, buf, dbtp)) != 0)
-				goto err;
-		} else
-		    if (mpreg->pgout != NULL &&
-		    (ret = mpreg->pgout(dbenv, pgno, buf, dbtp)) != 0)
-			goto err;
-		break;
-	}
-
-	if (mpreg == NULL)
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+    if (mfp->pgcookie_len == 0)
+        dbtp = NULL;
+    else {
+        dbt.size = mfp->pgcookie_len;
+        dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
+        dbtp = &dbt;
+    }
+    if (is_pgin) {
+        if (dbmp->dbenv->pgin[mfp->ftype] != NULL &&
+                (ret = dbmp->dbenv->pgin[mfp->ftype](dbenv, pgno, buf, dbtp)) != 0)
+            goto err;
+    } else {
+        if (dbmp->dbenv->pgout[mfp->ftype] != NULL &&
+                (ret = dbmp->dbenv->pgout[mfp->ftype](dbenv, pgno, buf, dbtp)) != 0)
+            goto err;
+    }
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
 		bb_memp_pg_hit(start_time_us);

@@ -306,12 +306,6 @@ __memp_dbenv_refresh(dbenv)
 	ret = 0;
 	dbmp = dbenv->mp_handle;
 
-	/* Discard DB_MPREGs. */
-	while ((mpreg = LIST_FIRST(&dbmp->dbregq)) != NULL) {
-		LIST_REMOVE(mpreg, q);
-		__os_free(dbenv, mpreg);
-	}
-
 	/* Discard DB_MPOOLFILEs. */
 	while ((dbmfp = TAILQ_FIRST(&dbmp->dbmfq)) != NULL)
 		if ((t_ret = __memp_fclose(dbmfp, 0)) != 0 && ret == 0)
