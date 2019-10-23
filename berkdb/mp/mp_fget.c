@@ -920,9 +920,6 @@ __memp_read_recovery_pages(dbmfp)
             R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
     }
 
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-
-
 	/* Scan in each of the recovery pages. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
 		/* Lock out other threads */

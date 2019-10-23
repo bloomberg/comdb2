@@ -318,14 +318,10 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	pginfo = &duminfo;
 	ftype = mfp->ftype;
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
     if (mfp->pgcookie_len > 0) {
         pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,
                 mfp->pgcookie_off);
     }
-
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	/* Create a temporary pagecache. */
 	if (pagesize <= 4096) {
