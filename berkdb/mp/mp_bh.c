@@ -1164,7 +1164,7 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 		bb_memp_pg_hit(start_time_us);
 	return (0);
 
-err:	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+err:
 	__db_err(dbenv, "%s: %s failed for page %lu",
 	    __memp_fn(dbmfp), is_pgin ? "pgin" : "pgout", (u_long) pgno);
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
