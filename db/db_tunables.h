@@ -1848,4 +1848,10 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("waitalive_iterations",
+                 "Wait this many iterations for a "
+                 "socket to be usable.  (Default: 3)",
+                 TUNABLE_INTEGER, &gbl_waitalive_iterations,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
