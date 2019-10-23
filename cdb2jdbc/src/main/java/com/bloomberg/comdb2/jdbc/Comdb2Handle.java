@@ -955,11 +955,10 @@ public class Comdb2Handle extends AbstractConnection {
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
-            Iterator<String> iter = sets.iterator();
-            while(iter.hasNext()) {
-                if (iter.next().toLowerCase().equals(lowerSql)) {
-                    return 0;
-                }
+            int ii = nSetsSent, len = sets.size();
+            for (; ii < len; ++ii) {
+                if (sets.get(ii).toLowerCase().equals(lowerSql))
+                    break;
             }
 
             if (isClientOnlySetCommand(lowerSql)) {
