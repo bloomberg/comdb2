@@ -124,6 +124,8 @@ int __os_exists(DB_ENV *dbenv, const char *path, int *isdirp)
 }
 #endif
 
+extern int gbl_file_permissions;
+
 int ___os_open(DB_ENV *dbenv, const char *name, u_int32_t flags, int mode,
                DB_FH **fhpp);
 int __os_open(DB_ENV *dbenv, const char *name, u_int32_t flags, int mode,
@@ -131,7 +133,7 @@ int __os_open(DB_ENV *dbenv, const char *name, u_int32_t flags, int mode,
 {
     char buf[PATH_MAX];
     const char *pbuf = bdb_trans(name, buf);
-    int rc = ___os_open(dbenv, pbuf, flags, 0664, fhpp);
+    int rc = ___os_open(dbenv, pbuf, flags, gbl_file_permissions, fhpp);
     clogf("___os_open(%s:%s) = %d\n", name, pbuf, rc);
     return rc;
 }
@@ -147,7 +149,7 @@ int __os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t log_size,
     char buf[PATH_MAX];
     const char *pbuf = bdb_trans(name, buf);
     int rc =
-        ___os_open_extend(dbenv, pbuf, log_size, page_size, flags, 0664, fhpp);
+        ___os_open_extend(dbenv, pbuf, log_size, page_size, flags, gbl_file_permissions, fhpp);
     clogf("___os_open_extend(%s:%s) = %d\n", name, pbuf, rc);
     return rc;
 }
@@ -161,7 +163,7 @@ int __os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t page_size,
 {
     char buf[PATH_MAX];
     const char *pbuf = bdb_trans(name, buf);
-    int rc = ___os_open_extend(dbenv, pbuf, page_size, flags, 0664, fhpp);
+    int rc = ___os_open_extend(dbenv, pbuf, page_size, flags, gbl_file_permissions, fhpp);
     clogf("___os_open_extend(%s:%s) = %d\n", name, pbuf, rc);
     return rc;
 }
