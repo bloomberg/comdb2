@@ -4873,8 +4873,9 @@ static void *connect_thread(void *arg)
         len = sizeof(flag);
         rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
-                    __func__, fd, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn off nagel on new fd %d: %d %s\n", __func__,
+                   fd, errno, strerror(errno));
             close(fd);
             goto again;
         }
