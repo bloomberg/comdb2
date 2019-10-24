@@ -9530,14 +9530,19 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             if (!cur->bt->is_remote && cur->db) {
                 if (cur->tableversion != cur->db->tableversion) {
                     Pthread_mutex_unlock(&thd->lk);
-                    logmsg(LOGMSG_ERROR, "%s: table version for %s changed from %d to %lld\n", __func__, cur->db->tablename, cur->tableversion, cur->db->tableversion);
+                    logmsg(LOGMSG_ERROR,
+                           "%s: table version for %s changed from %d to %lld\n",
+                           __func__, cur->db->tablename, cur->tableversion,
+                           cur->db->tableversion);
                     sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
-                    sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed", cur->db->tablename);
+                    sqlite3VdbeError(cur->vdbe,
+                                     "table \"%s\" was schema changed",
+                                     cur->db->tablename);
                     sqlite3VdbeTransferError(cur->vdbe);
                     sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
                     sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
                     return SQLITE_COMDB2SCHEMA;
-                } 
+                }
 
                 if (cur->ixnum == -1)
                     cur->sc = cur->db->schema;
