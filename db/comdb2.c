@@ -3374,7 +3374,7 @@ static int init(int argc, char **argv)
     int stripes, blobstripe;
 
     if (argc < 2) {
-        print_usage_and_exit();
+        print_usage_and_exit(1);
     }
 
     dyns_allow_bools();

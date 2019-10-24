@@ -76,30 +76,24 @@ static struct option long_options[] = {
     {"version", no_argument, NULL, 'v'},
     {NULL, 0, NULL, 0}};
 
-static const char *help_text = {
-    "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
-    "              [--recovertolsn FILE:OFFSET]\n"
-    "              [--tunable STRING]\n"
-    "              [--fullrecovery] NAME\n"
+static const char *help_text =
+    "Usage: comdb2 [OPTION]... NAME\n"
     "\n"
-    "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
+    "  --create                     creates a new database\n"
+    "  --dir PATH                   specify path to database directory\n"
+    "  --fullrecovery               runs full recovery after a hot copy\n"
+    "  --help                       displays this help text and exit\n"
+    "  --lrl PATH                   specify path to alternate lrl file\n"
+    "  --recovertolsn FILE:OFFSET   recovers database to FILE:OFFSET\n"
+    "  --recovertotime EPOCH        recovers database to EPOCH\n"
+    "  --tunable STRING             override tunable\n"
+    "  --version                    displays version information and exit\n"
     "\n"
-    "        --lrl                      specify alternate lrl file\n"
-    "        --fullrecovery             runs full recovery after a hot copy\n"
-    "        --recovertolsn             recovers database to file:offset\n"
-    "        --recovertotime            recovers database to epochtime\n"
-    "        --create                   creates a new database\n"
-    "        --dir                      specify path to database directory\n"
-    "        --tunable                  override tunable\n"
-    "        --help                     displays this help text and exit\n"
-    "        --version                  displays version information and exit\n"
-    "\n"
-    "        NAME                       database name\n"
-    "        LRLFILE                    lrl configuration file\n"
-    "        FILE                       ID of a database file\n"
-    "        OFFSET                     offset within FILE\n"
-    "        EPOCH                      time in seconds since 1970\n"
-    "        PATH                       path to database directory\n"};
+    "Examples:\n"
+    "  comdb2 name                  start database:name from default location\n"
+    "  comdb2 --create name         create database:name at default location\n"
+    "  comdb2 --dir /db name        start database:name at location:/db\n"
+    ;
 
 struct read_lrl_option_type {
     int lineno;
@@ -115,10 +109,10 @@ void print_version_and_exit()
     exit(2);
 }
 
-void print_usage_and_exit()
+void print_usage_and_exit(int rc)
 {
-    logmsg(LOGMSG_WARN, "%s\n", help_text);
-    exit(1);
+    logmsg(LOGMSG_USER, "%s", help_text);
+    exit(rc);
 }
 
 static int write_pidfile(const char *pidfile)
@@ -204,7 +198,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
 
     while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
-        if (c == 'h') print_usage_and_exit();
+        if (c == 'h') print_usage_and_exit(0);
         if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
 
