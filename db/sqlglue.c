@@ -7460,7 +7460,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
 
         bdb_lock_table_read_fromlid(
-            db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+            db->handle, db->tablename, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
 
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||

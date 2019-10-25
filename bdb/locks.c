@@ -679,15 +679,15 @@ int bdb_lock_stripe_write(bdb_state_type *bdb_state, int stripe,
     return bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_WRITE);
 }
 
-int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
+int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, const char *name, int lid)
 {
-    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+    return bdb_lock_table_int(bdb_state->dbenv, name, lid,
                               BDB_LOCK_READ);
 }
 
-int bdb_lock_table_write_fromlid(bdb_state_type *bdb_state, int lid)
+int bdb_lock_table_write_fromlid(bdb_state_type *bdb_state, const char *name, int lid)
 {
-    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+    return bdb_lock_table_int(bdb_state->dbenv, name, lid,
                               BDB_LOCK_WRITE);
 }
 
