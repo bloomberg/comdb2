@@ -1725,7 +1725,7 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  NULL, NULL);
 
 REGISTER_TUNABLE("libevent",
-                 "Use libevent in net library. (Default: off)",
+                 "Use libevent in net library. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_libevent, 0, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("abort_on_missing_osql_session",

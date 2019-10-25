@@ -89,7 +89,7 @@
 #define hprintf0(a) distress_logmsg(hprintf_format(a))
 #define HOST_NODE_PTR(x) (x)->host_node_ptr
 
-int gbl_libevent = 0;
+int gbl_libevent = 1;
 
 extern int gbl_exit;
 extern int gbl_create_mode;
