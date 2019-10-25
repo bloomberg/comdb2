@@ -2,7 +2,6 @@
 bash -n "$0" | exit 1
 
 set -e
-set -x
 
 if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
     CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 

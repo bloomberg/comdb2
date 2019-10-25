@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-debug=1
-[[ "$debug" == 1 ]] && set -x
+debug=0
+[[ $debug -gt 1 ]] && set -x
 
 export COMDB2_PMUX_PORT=19900
 export pmux_pid=0
 export start_iters=10
-export start_sleep=5
+export start_sleep=1
+export start_timeout=10
 export CDB2_CONFIG=./cdb2config.cfg
 export dbpidfile=./database.pid
 
@@ -46,7 +47,7 @@ EOF
 
 empty_used_list_crash()
 {
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}"
     echo "del pmux" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
     echo "used" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
     sleep 1
@@ -79,13 +80,10 @@ start_database()
 
 verify_hello_reuse()
 {
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}"
     iters=20
-    start_timeout=30
 
     # Create a db
-    DBDIR=$TESTDIR/$DBNAME
-    mkdir $DBDIR
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
     # Create config file
@@ -107,7 +105,6 @@ verify_hello_reuse()
     while [[ $i -lt $iters ]]; do
         start_database $DBLRL
         dbpid=$(cat $dbpidfile)
-
         t=0
         started=0
         while [[ $t -lt $start_timeout ]] && [[ $started -eq 0 ]]; do
@@ -147,7 +144,6 @@ active                  : list active connections
 del service             : forget port assignment for service
 exit                    : shutdown pmux (may be restarted by system)
 get [/echo] service     : discover port for service
-hello service           : keep active connection
 help                    : this help message
 range                   : print port range which this pmux can assign
 reg service             : obtain/discover port for new service
@@ -422,12 +418,9 @@ EOF
 test_comdb2_without_pmux()
 {
     echo start comdb2 without pmux running on designated port
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
-    start_timeout=30
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}"
 
     # Create a db
-    DBDIR=$TESTDIR/$DBNAME
-    mkdir $DBDIR
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
     NONEXISTENTPMUXPORT=49999
@@ -444,7 +437,7 @@ test_comdb2_without_pmux()
     echo "port localhost $((PMUXPORTSTART-1))" >> $DBLRL
     #this also stops checking on pmux returned port: echo "net_portmux_register_interval 0" >> $DBLRL
     echo "dir $DBDIR " >> $DBLRL
-    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" > /dev/null && echo "setattr directio 0" >> ${DBLRL}
     ${COMDB2_EXE} $DBNAME --create --lrl $DBLRL
 
     # Start the test
@@ -478,12 +471,9 @@ test_comdb2_without_pmux()
 test_comdb2_with_port()
 {
     echo start comdb2 with_port
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
-    start_timeout=30
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}"
 
     # Create a db
-    DBDIR=$TESTDIR/$DBNAME
-    mkdir $DBDIR
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
     # Create config file
@@ -542,7 +532,7 @@ test_comdb2_with_port()
 
 runtest()
 {
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}"
 
     echo Send exit in case previous pmux still running
     ${TESTSROOTDIR}/tools/send_msg_port.sh "exit" ${COMDB2_PMUX_PORT}
@@ -587,6 +577,8 @@ runtest()
     rm /tmp/pmux.${COMDB2_PMUX_PORT}
 }
 
+DBDIR=$TESTDIR/$DBNAME
+mkdir $DBDIR
 runtest
 
 
