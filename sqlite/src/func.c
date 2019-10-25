@@ -2259,11 +2259,6 @@ static void groupConcatStep(
 
     pAccum->mxAlloc = (clnt && clnt->group_concat_mem_limit != 0) ?
       clnt->group_concat_mem_limit : db->aLimit[SQLITE_LIMIT_LENGTH];
-
-    // Forbid exponential allocations
-    if( pAccum->mxAlloc!=0 ){
-      pAccum->noExtraAlloc = 1;
-    }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pAccum->mxAlloc = db->aLimit[SQLITE_LIMIT_LENGTH];
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

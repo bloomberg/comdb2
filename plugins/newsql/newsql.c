@@ -468,8 +468,9 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
     appdata->count = ncols;
     return appdata;
 oom:
-    logmsg(LOGMSG_ERROR, "%s:%d failed to (re)alloc %lu bytes\n", __func__,
-           __LINE__, alloc_sz);
+    logmsg(LOGMSG_ERROR,
+           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           __func__, __LINE__, alloc_sz, errno, strerror(errno));
     return NULL;
 }
 

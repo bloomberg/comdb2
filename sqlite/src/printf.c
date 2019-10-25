@@ -893,14 +893,28 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
     char *zOld = isMalloced(p) ? p->zText : 0;
     i64 szNew = p->nChar;
     szNew += N + 1;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( (p->noExtraAlloc==0) && (szNew+p->nChar<=p->mxAlloc) ){
-#else
     if( szNew+p->nChar<=p->mxAlloc ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       /* Force exponential buffer size growth as long as it does not overflow,
       ** to avoid having to call this routine too often */
       szNew += p->nChar;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    } else {
+      /* It is now impossible to grow the buffer further exponentially.
+      ** However, we could still have some room left to grow during this last
+      ** leg of expansion. We do that by setting new size to maximum allowed
+      ** size. One more thing to notice is that in the previous iteration, the
+      ** sqlite memory allocator could have allocated more that the requested
+      ** size (due to roundup) and the current buffer size (p->nAlloc) could
+      ** have already exceeded the maximum allowed limit (p->mxAlloc). Let us
+      ** bail out if we are already past the limit.
+      **/
+      if( p->nAlloc >= p->mxAlloc ){
+        sqlite3_str_reset(p);
+        setStrAccumError(p, SQLITE_TOOBIG);
+        return 0;
+      }
+      szNew = p->mxAlloc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     if( szNew > p->mxAlloc ){
       sqlite3_str_reset(p);
