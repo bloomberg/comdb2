@@ -151,8 +151,8 @@ do_reads() {
     out=sel_$i.out 
     > $out
     while [ ! -f can_stop_now.txt ] ; do 
-        echo "select * from t" ; 
-    done | cdb2sql ${CDB2_OPTIONS} $DBNAME default &>> $out
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "select * from t" ; 
+    done &>> $out
 }
 
 do_updates() {
@@ -160,8 +160,8 @@ do_updates() {
     out=upd_$i.out 
     > $out
     while [ ! -f can_stop_now.txt ] ; do 
-        echo "update t set a=a+1 where a > 3000 limit 100" ; 
-    done | cdb2sql ${CDB2_OPTIONS} $DBNAME default &>> $out
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t set a=a+1 where a > 3000 limit 100" ; 
+    done &>> $out
 }
 
 do_deletes() {
@@ -169,8 +169,8 @@ do_deletes() {
     out=del_$i.out 
     > $out
     while [ ! -f can_stop_now.txt ] ; do 
-        echo "delete from t where a < 3000 limit 10" ; 
-    done | cdb2sql ${CDB2_OPTIONS} $DBNAME default &>> $out
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "delete from t where a < 3000 limit 10" ; 
+    done &>> $out
 }
 
 # test selects updates deletes against a tbl which is being dropped
