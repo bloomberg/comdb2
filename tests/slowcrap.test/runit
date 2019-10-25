@@ -217,16 +217,34 @@ assertres ()
     fi
 }
 
+sequential() {
+CNT=5000
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t5 (i int unique, j int, k int)"
+for j in `seq 1 $CNT` ; do 
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t5 (i,j,k) VALUES($j,$j,$j)"
+done
+assertcnt t5 $CNT
+}
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
 CNT=9000
-echo -n "insert into t6 values(1,1,1)" > gg.in
-for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
 
 for j in `seq 1 100` ; do 
-cdb2sql ${CDB2_OPTIONS} $dbnm default -f gg.in
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t6 (i,j,k) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < ${CNT}) SELECT x,(x+1)%100,(x+2)%100 FROM i"
 assertcnt t6 $CNT
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
 done
+
+
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
+#CNT=9000
+#echo -n "insert into t6 values(1,1,1)" > gg.in
+#for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
+#
+#for j in `seq 1 100` ; do 
+#cdb2sql ${CDB2_OPTIONS} $dbnm default -f gg.in
+#assertcnt t6 $CNT
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
+#done
 
 echo "Success"
