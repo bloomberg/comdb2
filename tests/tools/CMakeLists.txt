@@ -59,6 +59,7 @@ add_exe(selectv_deadlock selectv_deadlock.c)
 add_exe(selectv_rcode selectv_rcode.c)
 add_exe(api_libs api_libs.c)
 add_exe(test_threadpool test_threadpool.c)
+add_exe(updater updater.c testutil.c)
 
 target_link_libraries(stepper util mem dlmalloc util)
 target_link_libraries(test_threadpool util mem dlmalloc util)

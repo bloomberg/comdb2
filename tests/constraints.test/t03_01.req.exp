@@ -6,7 +6,7 @@
 [insert into t1 values (1321, 1321, 1234, null) -- Non default, no NULL contraint.] rc 0
 (rows inserted=1)
 [insert into t2 values (1234, 1121)] rc 0
-[insert into t2 values (1534, 1121) ---  Foreign key constraint, 1534 does not exists in t1.] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'UUID'
+[insert into t2 values (1534, 1121) ---  Foreign key constraint, 1534 does not exists in t1.] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key 'UUID1' -> table 't1' index '0' key 'UUID'
 (rows deleted=1)
 [delete from t1 where uuid = 1321] rc 0
 [delete from t1 where value = 1234 -- Foreign key contraint, can't delete.] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '0' key 'UUID' -> table 't2' index '0' 

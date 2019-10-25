@@ -1,0 +1,13 @@
+drop table if exists t5
+create table t5 {
+    schema {
+        int id
+        decimal32 dec
+        double num
+    }
+    keys {
+        "ID" = id + dec
+    }
+}$$
+insert into t5 values(1, 5, 10)
+select * from t5

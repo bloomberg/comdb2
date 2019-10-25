@@ -167,6 +167,9 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur);
 
 enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 
+static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
+                             struct sql_thread *thd);
+
 CurRange *currange_new()
 {
     CurRange *rc = (CurRange *)malloc(sizeof(CurRange));
@@ -3656,6 +3659,14 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 #endif
         }
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
+
+            if (clnt->dbtran.maxchunksize > 0 &&
+                clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+                clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
+                    goto done;
+            }
+
             if (is_sqlite_stat(pCur->db->tablename)) {
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
@@ -5373,7 +5384,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
     /* verification error if not found */
-    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound || bias == OP_IfNoHope) &&
+    if (gbl_early_verify &&
+        (bias == OP_NotExists || bias == OP_SeekRowid || bias == OP_NotFound ||
+         bias == OP_IfNoHope) &&
         *pRes != 0) {
         verify = 1;
         *pRes = 0;
@@ -7416,7 +7429,13 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            version = table_version_select(db, NULL);
+            rc = bdb_table_version_select_verbose(db->tablename, NULL, &version,
+                                                  &bdberr, 0);
+            if (rc || bdberr) {
+                logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n",
+                       __func__, version, rc, bdberr);
+                version = -1ULL;
+            }
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
@@ -8230,6 +8249,90 @@ int sqlite3BtreeBeginStmt(Btree *pBt, int iStatement)
     sqlite3VdbeError(vdbe, "%s", errstr);                                      \
     sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
 
+static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
+                             struct sql_thread *thd)
+{
+    BtCursor *cur = NULL;
+    int rc = SQLITE_OK;
+    int commit_rc = SQLITE_OK;
+    int bdberr = 0;
+
+    if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
+
+        /* commit current transaction and reopen another one */
+
+        /* disconnect berkeley db cursors */
+        unlock_bdb_cursors(thd, NULL, &bdberr);
+        if (bdberr) {
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                                    "Failed to disconnect berkeleydb cursors");
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+
+        /* need to reset shadow table fast point in cursors */
+        if (thd->bt) {
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                cur->shadtbl = NULL;
+                if (cur->bdbcur)
+                    bdb_osql_cursor_reset(thedb->bdb_env, cur->bdbcur);
+            }
+        }
+
+        /* commit current transaction */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
+        rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
+        if (rc) {
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                                    errstat_get_str(&clnt->osql.xerr));
+            logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
+            commit_rc = SQLITE_ABORT;
+            /* we need to recreate the transaction in any case
+               goto done;
+             */
+        }
+
+        /* restart a new transaction */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_PRE_STRT_STATE);
+        rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
+        if (rc && !commit_rc) {
+            comdb2_sqlite3VdbeError(pCur->vdbe, "Failed to start a new chunk");
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+
+        rc = _start_new_transaction(clnt, thd);
+
+        if (thd->bt) {
+            LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
+            {
+                if (cur->bdbcur)
+                    bdb_osql_cursor_set(cur->bdbcur, clnt->dbtran.shadow_tran);
+            }
+        }
+
+        if (rc && !commit_rc) {
+            comdb2_sqlite3VdbeError(pCur->vdbe,
+                                    "Failed to initialize new transaction");
+
+            rc = SQLITE_ERROR;
+            goto done;
+        }
+        rc = commit_rc;
+
+        clnt->dbtran.crtchunksize = 1;
+        if (rc != SQLITE_OK)
+            goto done;
+
+    } else {
+        clnt->dbtran.crtchunksize++;
+    }
+done:
+    return rc;
+}
+
 /*
  ** Insert a new record into the BTree.  The key is given by (pKey,nKey)
  ** and the data is given by (pData,nData).  The cursor is used only to
@@ -8260,7 +8363,6 @@ int sqlite3BtreeInsert(
     blob_buffer_t blobs[MAXBLOBS];
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
-    int commit_rc = 0;
 
     if (thd && pCur->db == NULL) {
         thd->nwrite++;
@@ -8395,73 +8497,10 @@ int sqlite3BtreeInsert(
         }
 
         if (clnt->dbtran.maxchunksize > 0 &&
+            clnt->dbtran.mode == TRANLEVEL_SOSQL &&
             clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-            if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
-
-                /* commit current transaction and reopen another one */
-
-                /* disconnect berkeley db cursors */
-                bdberr = 0;
-                unlock_bdb_cursors(thd, NULL, &bdberr);
-                if (bdberr) {
-                    comdb2_sqlite3VdbeError(
-                        pCur->vdbe, "Failed to disconnect berkeleydb cursors");
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-
-                /* commit current transaction */
-                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                        SQLENG_FNSH_STATE);
-                rc = handle_sql_commitrollback(clnt->thd, clnt,
-                                               TRANS_CLNTCOMM_CHUNK);
-                if (rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                                            errstat_get_str(&clnt->osql.xerr));
-                    logmsg(LOGMSG_ERROR, "Failed to commit chunk\n");
-                    commit_rc = SQLITE_ABORT;
-                    /* we need to recreate the transaction in any case
-                    goto done;
-                    */
-                }
-
-                /* need to reset shadow table fast point in cursors */
-                if (thd->bt) {
-                    BtCursor *cur = NULL;
-                    LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
-                    {
-                        cur->shadtbl = NULL;
-                    }
-                }
-
-                /* restart a new transaction */
-                sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                        SQLENG_PRE_STRT_STATE);
-                rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
-                if (rc && !commit_rc) {
-                    comdb2_sqlite3VdbeError(pCur->vdbe,
-                                            "Failed to start a new chunk");
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-
-                rc = _start_new_transaction(clnt, thd);
-                if (rc && !commit_rc) {
-                    comdb2_sqlite3VdbeError(
-                        pCur->vdbe, "Failed to initialize new transaction");
-
-                    rc = SQLITE_ERROR;
-                    goto done;
-                }
-                rc = commit_rc;
-
-                clnt->dbtran.crtchunksize = 1;
-                if (rc != SQLITE_OK)
-                    goto done;
-
-            } else {
-                clnt->dbtran.crtchunksize++;
-            }
+            if ((rc = chunk_transaction(pCur, clnt, thd)) != SQLITE_OK)
+                goto done;
         }
 
         /* We ignore keys on insert but save dirty keys.
@@ -8916,6 +8955,11 @@ i64 sqlite3BtreeNewRowid(BtCursor *pCur)
 char *sqlite3BtreeGetTblName(BtCursor *pCur)
 {
     return pCur->db->tablename;
+}
+
+char *get_dbtable_name(struct dbtable *tbl)
+{
+    return tbl->tablename;
 }
 
 void cancel_sql_statement(int id)
@@ -9488,21 +9532,24 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     return -700;
                 }
             }
-            if (!cur->bt->is_remote &&
-                cur->tableversion != cur->db->tableversion) {
-                Pthread_mutex_unlock(&thd->lk);
-                logmsg(LOGMSG_ERROR,
-                       "%s: table version for %s changed from %d to %lld\n",
-                       __func__, cur->db->tablename, cur->tableversion,
-                       cur->db->tableversion);
-                sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
-                sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
-                                 cur->db->tablename);
-                sqlite3VdbeTransferError(cur->vdbe);
-                sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
-                sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
-                return SQLITE_COMDB2SCHEMA;
-            } else if (!cur->bt->is_remote && cur->db) {
+
+            if (!cur->bt->is_remote && cur->db) {
+                if (cur->tableversion != cur->db->tableversion) {
+                    Pthread_mutex_unlock(&thd->lk);
+                    logmsg(LOGMSG_ERROR,
+                           "%s: table version for %s changed from %d to %lld\n",
+                           __func__, cur->db->tablename, cur->tableversion,
+                           cur->db->tableversion);
+                    sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
+                    sqlite3VdbeError(cur->vdbe,
+                                     "table \"%s\" was schema changed",
+                                     cur->db->tablename);
+                    sqlite3VdbeTransferError(cur->vdbe);
+                    sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
+                    sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
+                    return SQLITE_COMDB2SCHEMA;
+                }
+
                 if (cur->ixnum == -1)
                     cur->sc = cur->db->schema;
                 else

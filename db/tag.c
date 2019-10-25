@@ -7132,6 +7132,8 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
     }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
     return 0;
 }
 
@@ -7429,7 +7431,8 @@ int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf,
 
     decimals = 0;
     for (i = 0; i < s->nmembers; i++) {
-        decimals++;
+        if (s->member[i].type == SERVER_DECIMAL)
+            decimals++;
     }
 
     if (outbuf && outlen && (outbuf_max < 4 * decimals)) {

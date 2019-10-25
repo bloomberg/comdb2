@@ -1,3 +1,9 @@
+SELECT '---------------------------------- PART #00 ----------------------------------' AS part;
+CREATE TABLE t1(i INT) $$
+DROP TABLE t1;
+# a quick test to check selecting from comdb2_sc_status does not hang
+SELECT COUNT(*) > 0 FROM comdb2_sc_status;
+
 SELECT '---------------------------------- PART #01 ----------------------------------' AS part;
 CREATE TABLE t1(i INT) $$
 CREATE TABLE t1(i INT) $$

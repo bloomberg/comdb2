@@ -560,42 +560,42 @@ public class Comdb2ResultSet implements ResultSet {
 
     @Override
     public boolean isBeforeFirst() throws SQLException {
-        return false;
+        return ((Comdb2Handle)hndl).isBeforeFirst;
     }
 
     @Override
     public boolean isAfterLast() throws SQLException {
-        return false;
+        return ((Comdb2Handle)hndl).isAfterLast;
     }
 
     @Override
     public boolean isFirst() throws SQLException {
-        return false;
+        return ((Comdb2Handle)hndl).isFirst;
     }
 
     @Override
     public boolean isLast() throws SQLException {
-        return false;
+        throw new SQLFeatureNotSupportedException();
     }
 
     @Override
     public void beforeFirst() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public void afterLast() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public boolean first() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public boolean last() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
@@ -605,22 +605,23 @@ public class Comdb2ResultSet implements ResultSet {
 
     @Override
     public boolean absolute(int row) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public boolean relative(int rows) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public boolean previous() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override
     public void setFetchDirection(int direction) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        if (direction != ResultSet.FETCH_FORWARD)
+            throw new SQLException("The fetch direction of a TYPE_FORWARD_ONLY resultset can only be set to FETCH_FORWARD");
     }
 
     @Override
@@ -870,7 +871,7 @@ public class Comdb2ResultSet implements ResultSet {
 
     @Override
     public void refreshRow() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        throw new SQLException("The method should not be called on a TYPE_FORWARD_ONLY resultset");
     }
 
     @Override

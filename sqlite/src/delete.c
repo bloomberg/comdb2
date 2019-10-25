@@ -579,6 +579,9 @@ void sqlite3DeleteFrom(
       if( !IsVirtual(pTab) && aToOpen[iDataCur-iTabCur] ){
         assert( pPk!=0 || pTab->pSelect!=0 );
         sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, addrBypass, iKey, nKey);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        sqlite3VdbeChangeP5(v, 1);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         VdbeCoverage(v);
       }
     }else if( pPk ){

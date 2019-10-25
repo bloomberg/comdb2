@@ -1256,6 +1256,7 @@ void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
 void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
 void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 
+int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,

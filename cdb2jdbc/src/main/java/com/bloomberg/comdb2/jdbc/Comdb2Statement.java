@@ -106,27 +106,26 @@ public class Comdb2Statement implements Statement {
             }
         }
 
-        if (!conn.getAutoCommit() && !conn.isInTxn()) {
+        if (!conn.isInTxn()) {
             if (conn.isTxnModeChanged()) {
                 String txnMode = conn.getComdb2TxnMode();
                 if (txnMode != null) {
-                    /**
-                     * set transaction mode implicitly
-                     */
+                    /* set transaction mode implicitly */
                     if ( (rc = hndl.runStatement("set transaction " + txnMode)) != 0 )
                         throw Comdb2Connection.createSQLException(
                                 hndl.errorString(), rc, sql, hndl.getLastThrowable());
                 }
+                conn.setTxnModeChanged(false);
             }
-            /**
-             * send `begin' implicitly
-             */
-            if (!locase.startsWith("set ")) { /* just a set. don't begin yet. */
-                if ( (rc = hndl.runStatement("begin")) != 0)
-                    throw Comdb2Connection.createSQLException(
-                            hndl.errorString(), rc, sql, hndl.getLastThrowable());
-                /* mark connection in trans */
-                conn.setInTxn(true);
+            if (!conn.getAutoCommit()) {
+                /* send `begin' implicitly */
+                if (!locase.startsWith("set ")) { /* just a set. don't begin yet. */
+                    if ( (rc = hndl.runStatement("begin")) != 0)
+                        throw Comdb2Connection.createSQLException(
+                                hndl.errorString(), rc, sql, hndl.getLastThrowable());
+                    /* mark connection in trans */
+                    conn.setInTxn(true);
+                }
             }
         }
 

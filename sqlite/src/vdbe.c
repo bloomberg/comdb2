@@ -3100,7 +3100,9 @@ cooked_access:
       pC->aRow = sqlite3BtreePayloadFetch(pCrsr, &pC->szRow);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pC->szRow<=pC->payloadSize );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       assert( pC->szRow<=65536 );  /* Maximum page size is 64KiB */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( pC->payloadSize > (u32)db->aLimit[SQLITE_LIMIT_LENGTH] ){
         goto too_big;
       }

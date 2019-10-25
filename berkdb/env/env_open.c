@@ -313,8 +313,6 @@ __dbenv_open(dbenv, db_home, flags, mode)
     Pthread_rwlock_init(&dbenv->dbreglk, NULL);
     Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
-    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
-
 	/*
 	 * Initialize the subsystems.
 	 *
@@ -607,7 +605,9 @@ foundlsn:
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
 		Pthread_mutex_init(&dbenv->recover_lk, NULL);
 		Pthread_cond_init(&dbenv->recover_cond, NULL);
-		Pthread_rwlock_init(&dbenv->ser_lk, NULL);
+		Pthread_mutex_init(&dbenv->ser_lk, NULL);
+		Pthread_cond_init(&dbenv->ser_cond, NULL);
+		dbenv->ser_count = 0;
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		listc_init(&dbenv->inactive_transactions,
