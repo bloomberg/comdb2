@@ -39,8 +39,7 @@ dyn_array_keyval_cmpr_asc(const void *p1, const void *p2, void *p3)
     void *key2 = &buffer[kv2->key_start];
     if (arr->compar) {
         res = arr->compar(NULL, kv1->key_len, key1, kv2->key_len, key2);
-    }
-    else {
+    } else {
         res = memcmp(key1, key2, kv1->key_len < kv2->key_len ? kv1->key_len : kv2->key_len);
     }
     return res;
@@ -48,6 +47,9 @@ dyn_array_keyval_cmpr_asc(const void *p1, const void *p2, void *p3)
 
 void dyn_array_close(dyn_array_t *arr)
 {
+    if (!arr->is_initialized)
+        return;
+
     if (arr->using_temp_table) {
         int bdberr;
         int rc;
@@ -55,8 +57,7 @@ void dyn_array_close(dyn_array_t *arr)
         if (rc) abort();
         rc = bdb_temp_table_close(arr->bdb_env, arr->temp_table, &bdberr);
         if (rc) abort();
-    }
-    else {
+    } else {
         if (arr->kv) {
             assert(arr->capacity > 0);
             free(arr->kv);
@@ -73,9 +74,9 @@ void dyn_array_close(dyn_array_t *arr)
  * if you want this to spill to a temptable */
 void dyn_array_init(dyn_array_t *arr, void *bdb_env)
 {
-    if (arr->capacity > 0 || arr->using_temp_table)
-        dyn_array_close(arr);
+    memset(arr, 0, sizeof(dyn_array_t));
     arr->bdb_env = bdb_env;
+    arr->is_initialized = 1;
 }
 
 void dyn_array_set_cmpr(dyn_array_t *arr,
@@ -88,6 +89,7 @@ void dyn_array_set_cmpr(dyn_array_t *arr,
 
 int dyn_array_sort(dyn_array_t *arr)
 {
+    assert(arr->is_initialized);
     if (arr->using_temp_table)
         return 0; // already sorted
     if (arr->capacity <= 1) {
@@ -161,6 +163,12 @@ static inline int do_transfer(dyn_array_t *arr)
     return 0;
 }
 
+
+/* a dynamic array element consists of a key_val_t element which
+ * stores the key length and start position in the buffer array
+ * and data length and start position in the buffer array 
+ * (start position is redundant because it is = key_start + key_len)
+ */
 static inline int init_internal_buffers(dyn_array_t *arr)
 {
     arr->capacity = 512;
@@ -169,13 +177,19 @@ static inline int init_internal_buffers(dyn_array_t *arr)
         return 1;
     arr->buffer_capacity = 16*1024;
     arr->buffer = malloc(arr->buffer_capacity);
-    if (!arr->buffer)
+    if (!arr->buffer) {
+        free(arr->kv);
+        arr->kv = NULL;
         return 1;
+    }
     return 0;
 }
 
 static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void *data, int datalen)
 {
+    if (arr->using_temp_table) {
+        abort();
+    }
     if (arr->capacity == 0) {
         assert(arr->items == 0);
         if(init_internal_buffers(arr))
@@ -197,7 +211,7 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
         arr->buffer = n;
     }
 
-    // assert(arr->buffer_capacity <= new_offset);
+    // assert(arr->buffer_capacity > new_offset);
     if (arr->buffer_capacity <= new_offset)
         abort();
 
@@ -224,8 +238,10 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
 
 int dyn_array_append(dyn_array_t *arr, void *key, int keylen, void *data, int datalen)
 {
-    if (arr->buffer_curr_offset + keylen + datalen > gbl_max_inmem_array_size &&
-        arr->bdb_env) {
+    assert(arr->is_initialized);
+    if (!arr->using_temp_table && 
+        arr->buffer_curr_offset + keylen + datalen > gbl_max_inmem_array_size &&
+        arr->bdb_env) { // if no bdb_env we keep appending to memory
         int rc = do_transfer(arr);
         if (rc) return rc;
     }
@@ -239,6 +255,7 @@ int dyn_array_append(dyn_array_t *arr, void *key, int keylen, void *data, int da
 
 void dyn_array_dump(dyn_array_t *arr)
 {
+    assert(arr->is_initialized);
     for (int i = 0; i < arr->items; i++) {
         //logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
         char *buffer = arr->buffer;
@@ -253,6 +270,7 @@ void dyn_array_dump(dyn_array_t *arr)
 
 int dyn_array_first(dyn_array_t *arr)
 {
+    assert(arr->is_initialized);
     if (arr->using_temp_table) {
         int err;
         return bdb_temp_table_first(arr->bdb_env, arr->temp_table_cur, &err);
@@ -265,6 +283,7 @@ int dyn_array_first(dyn_array_t *arr)
 
 int dyn_array_next(dyn_array_t *arr)
 {
+    assert(arr->is_initialized);
     if (arr->using_temp_table) {
         int err;
         return bdb_temp_table_next(arr->bdb_env, arr->temp_table_cur, &err);
@@ -276,6 +295,7 @@ int dyn_array_next(dyn_array_t *arr)
 
 void dyn_array_get_key(dyn_array_t *arr, void **key)
 {
+    assert(arr->is_initialized);
     if (arr->using_temp_table) {
         *key = bdb_temp_table_key(arr->temp_table_cur);
         return;
@@ -289,6 +309,7 @@ void dyn_array_get_key(dyn_array_t *arr, void **key)
 
 void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen)
 {
+    assert(arr->is_initialized);
     if (arr->using_temp_table) {
         *key = bdb_temp_table_key(arr->temp_table_cur);
         *data = bdb_temp_table_data(arr->temp_table_cur);
@@ -310,6 +331,7 @@ void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen)
 int test_dyn_array()
 {
     dyn_array_t arr = {0};
+    dyn_array_init(&arr, NULL);
     for (int i = 10; i > 1; i--)
         dyn_array_append(&arr, &i, sizeof(i), NULL, 0);
 

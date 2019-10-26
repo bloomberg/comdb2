@@ -102,7 +102,7 @@ void truncate_defered_index_array()
 }
 
 
-void truncate_defered_index_tbl() 
+inline void truncate_defered_index_tbl() 
 {
     truncate_defered_index_array();
 }
@@ -110,7 +110,7 @@ void truncate_defered_index_tbl()
 
 /* delete tbl and cursor
  * called from handle_buf.c to cleanup defered tbl */
-void delete_defered_index_tbl() 
+inline void delete_defered_index_tbl() 
 {
     truncate_defered_index_array();
 }

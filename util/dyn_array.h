@@ -49,8 +49,8 @@ typedef struct {
     int capacity;
     int items;
     int buffer_capacity;
-    int buffer_curr_offset; //also serves as size used
-    int cursor;
+    int buffer_curr_offset; // also serves as size used
+    int cursor;             // object itself maintains this cursor
     //comparator function, if not set will use memcmp
     int (*compar)(void *usermem, int key1len,
                                  const void *key1, int key2len,
@@ -58,7 +58,8 @@ typedef struct {
     void *temp_table;
     void *temp_table_cur;
     bdb_state_type *bdb_env; // needed to spill to temptables
-    bool using_temp_table;
+    bool using_temp_table:1;
+    bool is_initialized:1;
 } dyn_array_t;
 
 
