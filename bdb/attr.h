@@ -242,10 +242,10 @@ DEF_ATTR(SKIPDELAYBASE, skipdelaybase, MSECS, 100, "Delay commits by at least "
 DEF_ATTR(REPMETHODMAXSLEEP, repmethodmaxsleep, SECS, 300,
          "Delay commits by at most this much if forced to delay by incoherent "
          "nodes.")
-DEF_ATTR(TEMPTABLE_MEM_THRESHOLD, temptable_mem_threshold, QUANTITY, 512,
+DEF_ATTR(TEMPTABLE_MEM_THRESHOLD, temptable_mem_threshold, QUANTITY, 10000,
          "If in-memory temp tables contain more than this many entries, spill "
          "them to disk.")
-DEF_ATTR(TEMPTABLE_CACHESZ, temptable_cachesz, BYTES, 262144,
+DEF_ATTR(TEMPTABLE_CACHESZ, temptable_cachesz, BYTES, 22262144,
          "Cache size for temporary tables. Temp tables do not share the "
          "database's main buffer pool.")
 DEF_ATTR(PARTICIPANTID_BITS, participantid_bits, QUANTITY, 0,

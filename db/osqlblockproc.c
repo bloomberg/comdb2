@@ -227,8 +227,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         return -1;
     }
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
-    bdb_temp_array_set_cachesz(tran->db, gbl_osql_temp_array_cachesz);
-    bdb_temp_array_set_max_mem_entries(tran->db, gbl_osql_temp_array_maxentries);
+    //bdb_temp_array_set_cachesz(tran->db, gbl_osql_temp_array_cachesz);
+    //bdb_temp_array_set_max_mem_entries(tran->db, gbl_osql_temp_array_maxentries);
 
     if (sess->is_reorder_on) {
         tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
