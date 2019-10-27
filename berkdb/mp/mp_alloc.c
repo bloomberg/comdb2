@@ -90,7 +90,7 @@ __memp_dump_bufferpool_info(dbenv, f)
 
 			do {
 				bufcnt++;
-				logmsgf(LOGMSG_USER, f, " (%d:%d:%d)", bhp->mf_offset,
+				logmsgf(LOGMSG_USER, f, " (%d:%d:%d)", (int)bhp->mf_offset,
 				    bhp->pgno, bhp->priority);
 				bhp = SH_TAILQ_NEXT(bhp, hq, __bh);
 			}

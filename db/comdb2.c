@@ -2439,7 +2439,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
         }
 
         sbuf2printf(sbfile,
-                    "table %s %d\n\tdata files: %016llx\n\tblob files\n",
+                    "table %s %d\n\tdata files: %016"PRIx64"\n\tblob files\n",
                     dbenv->dbs[i]->tablename, dbenv->dbs[i]->lrl,
                     flibc_htonll(version_num));
 
@@ -2457,7 +2457,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tblob num %d: %016llx\n", j,
+            sbuf2printf(sbfile, "\t\tblob num %d: %016"PRIx64"\n", j,
                         flibc_htonll(version_num));
         }
 
@@ -2476,7 +2476,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tindex num %d: %016llx\n", j,
+            sbuf2printf(sbfile, "\t\tindex num %d: %016"PRIx64"\n", j,
                         flibc_htonll(version_num));
         }
     }
@@ -2520,12 +2520,12 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016"PRIx64"\n\tblob files\n",
                p_db->tablename, flibc_htonll(version_num));
     else
-        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
+        ctrace("table %s\n\tdata files: %016"PRIx64"\n\tblob files\n",
                p_db->tablename,
-               (long long unsigned int)flibc_htonll(version_num));
+               flibc_htonll(version_num));
 
     /* print the blobs' version numbers */
     for (i = 1; i <= p_db->numblobs; ++i) {
@@ -2544,11 +2544,11 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016"PRIx64"\n", i,
                    flibc_htonll(version_num));
         else
-            ctrace("\t\tblob num %d: %016llx\n", i,
-                   (long long unsigned int)flibc_htonll(version_num));
+            ctrace("\t\tblob num %d: %016"PRIx64"\n", i,
+                   flibc_htonll(version_num));
     }
 
     /* print the indicies' version numbers */
@@ -2570,11 +2570,11 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016"PRIx64"\n", i,
                    flibc_htonll(version_num));
         else
-            ctrace("\t\tindex num %d: %016llx\n", i,
-                   (long long unsigned int)flibc_htonll(version_num));
+            ctrace("\t\tindex num %d: %016"PRIx64"\n", i,
+                   flibc_htonll(version_num));
     }
 
     return 0;

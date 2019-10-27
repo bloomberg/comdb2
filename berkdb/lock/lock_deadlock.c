@@ -1295,7 +1295,7 @@ obj_loop:
 					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
 						lockerp, lockerp->id, lockerp->dd_id,
 						dd_id_array[lockerp->dd_id].count,
-						(has_master)? lockerp->master_locker : 0);
+						(unsigned int)((has_master)? lockerp->master_locker : 0));
 
 			/*
 			 * If the holder has already been aborted, then
@@ -1363,7 +1363,7 @@ look_waiters:
 				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
 					lockerp, lockerp->id, lockerp->dd_id,
 					dd_id_array[lockerp->dd_id].count,
-					(has_master)? lockerp->master_locker : 0);
+					(unsigned int)((has_master)? lockerp->master_locker : 0));
 
 			/*
 			 * If the transaction is pending abortion, then
@@ -1842,7 +1842,7 @@ __dd_abort(dbenv, info)
 			pthread_self(), __FILE__, __LINE__, lockerp->id,
 			info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
 			lockerp->npagelocks, lockerp->nwrites,
-			lockerp->master_locker, lockerp->parent_locker);
+			(unsigned int)lockerp->master_locker, (unsigned int)lockerp->parent_locker);
 	lockerp->nretries = info->count;
 
 	sh_obj = lockp->lockobj;
