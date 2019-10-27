@@ -2406,7 +2406,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         ++tbl->num_mem_entries;
         tbl->inmemsz += (keylen + dtalen);
 
-        if (tbl->num_mem_entries >= tbl->max_mem_entries ||
+        if (tbl->num_mem_entries == tbl->max_mem_entries ||
             tbl->inmemsz > tbl->cachesz) {
             logmsg(LOGMSG_DEBUG, "spilling memarray to btree: size "
                    "%zu vs %zu items %zu vs %zu\n", tbl->inmemsz, 
