@@ -6679,7 +6679,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
 											"break-loop because timestamp "
-											"(%lu) < epoch (%d)\n",
+											"(%"PRIu64") < epoch (%d)\n",
 							   (uint32_t)pthread_self(), __func__, __LINE__,
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
@@ -6748,7 +6748,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						if (gbl_extended_sql_debug_trace) {
 							logmsg(LOGMSG_USER, "td %lu %s line %d lsn %d:%d "
 												"break-loop because timestamp "
-												"(%ld) < epoch (%d)\n",
+												"(%"PRId64") < epoch (%d)\n",
 								   pthread_self(), __func__, __LINE__,
 								   lsn.file, lsn.offset,
 								   txn_gen_args->timestamp, epoch);

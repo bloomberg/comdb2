@@ -586,7 +586,7 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                 rc = decompressComdb2RLE(&rle);
                 if (rc || rle.outsz != odh->length) {
                     logmsg(LOGMSG_ERROR, "%s:ERROR decompressComdb2RLE rc: %d "
-                                    "outsz: %lu expected: %u\n",
+                                    "outsz: %zu expected: %u\n",
                             __func__, rc, rle.outsz, odh->length);
                     goto err;
                 }

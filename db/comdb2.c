@@ -2520,7 +2520,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
                p_db->tablename, flibc_htonll(version_num));
     else
         ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
@@ -2544,7 +2544,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
                    flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
@@ -2570,7 +2570,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
                    flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
@@ -4478,9 +4478,9 @@ void *statthd(void *p)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
                            (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %"PRIu64, diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %"PRIu64, diff_bpool_misses);
                 if (diff_conns)
                     logmsg(LOGMSG_USER, " connects %"PRId64, diff_conns);
                 if (diff_curr_conns)

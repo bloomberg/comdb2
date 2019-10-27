@@ -677,7 +677,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         if (rollat == 0)
             logmsg(LOGMSG_USER, "Turned off rolling\n");
         else {
-            logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
+            logmsg(LOGMSG_USER, "Rolling logs after %d bytes\n", (int)rollat);
         }
         eventlog_rollat = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {

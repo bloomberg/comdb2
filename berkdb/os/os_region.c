@@ -133,10 +133,10 @@ __os_r_attach(dbenv, infop, rp)
 		}
 		size_t less = rp->size % MB_2;
 		if (less) {
-			logmsg(LOGMSG_INFO, "os_r_attach: increasing size from %ld ",
+			logmsg(LOGMSG_INFO, "os_r_attach: increasing size from %zu ",
 				rp->size);
 			rp->size += (MB_2 - less);
-			logmsg(LOGMSG_INFO, "to %ld\n", rp->size);
+			logmsg(LOGMSG_INFO, "to %zu\n", rp->size);
 		}
 		infop->addr =
 			mmap(NULL, rp->size, PROT_READ | PROT_WRITE, MAP_SHARED,
@@ -147,7 +147,7 @@ __os_r_attach(dbenv, infop, rp)
 			unlink(name);
 			exit(1);
 		}
-		logmsg(LOGMSG_INFO, "os_r_attach: mmaped %s (size: %ld) at %p\n",
+		logmsg(LOGMSG_INFO, "os_r_attach: mmaped %s (size: %zu) at %p\n",
 			name, rp->size, infop->addr);
 		ret = 0;
 	}

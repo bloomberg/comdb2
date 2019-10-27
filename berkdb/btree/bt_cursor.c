@@ -884,7 +884,7 @@ __bam_pgorder_next(dbc, pgno)
 	static int lastpr=0;
 	if (gbl_enable_pageorder_trace && time(NULL) > lastpr + 1) {
 		logmsg(LOGMSG_USER, "Berkdb cursor %p page-order next to page"
-			"%d, skip=%lu next=%lu\n",
+			"%d, skip=%"PRIu64" next=%"PRIu64"\n",
 			dbc, pgno + 1, dbc->skipcount, dbc->nextcount);
 		lastpr=time(NULL);
 	}
