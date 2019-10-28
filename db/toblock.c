@@ -2053,7 +2053,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             }
         } else {
             logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
-                    __LINE__, irc);
+                   __LINE__, irc);
             return irc;
         }
     } else if (!gbl_rowlocks) {
@@ -5586,8 +5586,8 @@ add_blkseq:
                     }
                     if (iq->sc_logical_tran)
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                gbl_mynode, 0, 1, NULL, 0, NULL,
-                                0);
+                                                   gbl_mynode, 0, 1, NULL, 0,
+                                                   NULL, 0);
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
