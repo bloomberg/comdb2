@@ -5384,7 +5384,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
     /* verification error if not found */
-    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound || bias == OP_IfNoHope) &&
+    if (gbl_early_verify &&
+        (bias == OP_NotExists || bias == OP_SeekRowid || bias == OP_NotFound ||
+         bias == OP_IfNoHope) &&
         *pRes != 0) {
         verify = 1;
         *pRes = 0;
@@ -7427,7 +7429,13 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            version = table_version_select(db, NULL);
+            rc = bdb_table_version_select_verbose(db->tablename, NULL, &version,
+                                                  &bdberr, 0);
+            if (rc || bdberr) {
+                logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n",
+                       __func__, version, rc, bdberr);
+                version = -1ULL;
+            }
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
@@ -9524,21 +9532,24 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     return -700;
                 }
             }
-            if (!cur->bt->is_remote &&
-                cur->tableversion != cur->db->tableversion) {
-                Pthread_mutex_unlock(&thd->lk);
-                logmsg(LOGMSG_ERROR,
-                       "%s: table version for %s changed from %d to %lld\n",
-                       __func__, cur->db->tablename, cur->tableversion,
-                       cur->db->tableversion);
-                sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
-                sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
-                                 cur->db->tablename);
-                sqlite3VdbeTransferError(cur->vdbe);
-                sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
-                sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
-                return SQLITE_COMDB2SCHEMA;
-            } else if (!cur->bt->is_remote && cur->db) {
+
+            if (!cur->bt->is_remote && cur->db) {
+                if (cur->tableversion != cur->db->tableversion) {
+                    Pthread_mutex_unlock(&thd->lk);
+                    logmsg(LOGMSG_ERROR,
+                           "%s: table version for %s changed from %d to %lld\n",
+                           __func__, cur->db->tablename, cur->tableversion,
+                           cur->db->tableversion);
+                    sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
+                    sqlite3VdbeError(cur->vdbe,
+                                     "table \"%s\" was schema changed",
+                                     cur->db->tablename);
+                    sqlite3VdbeTransferError(cur->vdbe);
+                    sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
+                    sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
+                    return SQLITE_COMDB2SCHEMA;
+                }
+
                 if (cur->ixnum == -1)
                     cur->sc = cur->db->schema;
                 else

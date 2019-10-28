@@ -351,6 +351,7 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
             free(node->params->params);
             free(node->params);
         }
+        free(node->order_dir);
         free(node);
         node = NULL;
     }

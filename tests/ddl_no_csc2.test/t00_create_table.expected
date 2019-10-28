@@ -1,3 +1,5 @@
+(part='---------------------------------- PART #00 ----------------------------------')
+(COUNT(*) > 0=1)
 (part='---------------------------------- PART #01 ----------------------------------')
 [CREATE TABLE t1(i INT)] failed with rc -3 Table already exists
 [CREATE TABLE T1(i INT)] failed with rc -3 Table already exists
