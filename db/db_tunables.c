@@ -226,6 +226,7 @@ extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
+extern int gbl_disable_ckp;
 
 extern long long sampling_threshold;
 

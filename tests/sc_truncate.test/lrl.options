@@ -1,0 +1,15 @@
+nowatch
+logmsg level info
+enable_new_snapshot
+enable_snapshot_isolation
+berkattr abort_on_replicant_log_write 1
+init_with_genid48
+#logdelete_lock_trace
+verbose_set_sc_in_progress on
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+cache 512 mb
+on logical_live_sc
+#Do this in the test
+#sc_logical_pause_seconds 20
+dtastripe   1
