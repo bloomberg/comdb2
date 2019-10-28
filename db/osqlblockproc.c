@@ -1785,6 +1785,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
                __LINE__);
         abort();
     }
+    iq.sc_logical_tran = NULL;
 
     osql_postcommit_handle(&iq);
 

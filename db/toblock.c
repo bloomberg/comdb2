@@ -2051,6 +2051,10 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
                 irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
             }
+        } else {
+            logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
+                    __LINE__, irc);
+            return irc;
         }
     } else if (!gbl_rowlocks) {
         /* start parent transaction */
