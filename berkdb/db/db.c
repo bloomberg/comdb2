@@ -537,9 +537,6 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 						sizeof(DB *));
 				dbp->revpeer[dbp->revpeer_count-1] = lldbp;
 			} else {
-#if defined BTHASH_REPRODUCE_BUG
-				dbp->peer = lldbp->peer;
-#else
 				if (lldbp->peer && F_ISSET(lldbp->peer, DB_AM_HASH)) {
 					dbp->peer = lldbp->peer;
 					lldbp->peer->revpeer_count++;
@@ -547,7 +544,6 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 							lldbp->peer->revpeer_count * sizeof(DB *));
 					lldbp->peer->revpeer[lldbp->peer->revpeer_count-1] = dbp;
 				}
-#endif
 				break;
 			}
 		}
@@ -790,7 +786,6 @@ __db_close(dbp, txn, flags)
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 	db_ref = --dbenv->db_ref;
 
-#if !defined BTHASH_REPRODUCE_BUG
 	if (dbp->peer) {
 		for (int i = 0; i < dbp->peer->revpeer_count; i++) {
 			if (dbp->peer->revpeer[i] == dbp)
@@ -803,7 +798,6 @@ __db_close(dbp, txn, flags)
 		if (lldbp != NULL)
 			lldbp->peer = NULL;
 	}
-#endif
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 	if (F_ISSET(dbenv, DB_ENV_DBLOCAL) && db_ref == 0 &&
 		(t_ret = __dbenv_close(dbenv, 0)) != 0 && ret == 0)
@@ -812,23 +806,16 @@ __db_close(dbp, txn, flags)
 	/* Free bthash. */
 	if (F_ISSET(dbp, DB_AM_HASH) && dbp->pg_hash) {
 		genid_hash_free(dbenv, dbp->pg_hash);
-#if !defined BTHASH_REPRODUCE_BUG
 		if (dbp->revpeer) {
 			free(dbp->revpeer);
 			dbp->revpeer = NULL;
 		}
 		dbp->pg_hash = NULL;
-#endif
 	}
 
 	/* Free the database handle. */
 	memset(dbp, CLEAR_BYTE, sizeof(*dbp));
 	dbp->is_free = 1;
-
-#if defined BTHASH_REPRODUCE_BUG
-	F_SET(dbp, DB_AM_HASH);
-	F_CLR(dbp, DB_AM_RECOVER);
-#endif
 	__os_free(dbenv, dbp);
 
 	return (ret);
