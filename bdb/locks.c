@@ -511,7 +511,6 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
     }
 
     rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
-
 #ifdef DEBUG_LOCKS
     fprintf(stderr, "%p:%s: mode %d, name %s, lid=%x\n", (void *)pthread_self(),
             __func__, how, name, lid);
