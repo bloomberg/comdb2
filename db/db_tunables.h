@@ -1848,9 +1848,5 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("osql_temp_array_cachesz", "Cacesize for osql temp tables",
-                 TUNABLE_INTEGER, &gbl_osql_temp_array_cachesz, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osql_temp_array_maxentries", "Max entries for osql temp tables",
-                 TUNABLE_INTEGER, &gbl_osql_temp_array_maxentries, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
