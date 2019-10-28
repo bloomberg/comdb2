@@ -2126,6 +2126,9 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 /* Configure txn_checkpoint() to sleep this much time before memp_sync() */
 int gbl_ckp_sleep_before_sync = 0;
 
+/* Don't actually write a checkpoint */
+int gbl_disable_ckp = 0;
+
 /*
  * __txn_checkpoint --
  *	DB_ENV->txn_checkpoint.
@@ -2168,6 +2171,9 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 
 	mgr = dbenv->tx_handle;
 	region = mgr->reginfo.primary;
+
+	if (gbl_disable_ckp)
+		return 0;
 
 	/*
 	 * The checkpoint LSN is an LSN such that all transactions begun before
