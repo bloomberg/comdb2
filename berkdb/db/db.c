@@ -537,6 +537,9 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 						sizeof(DB *));
 				dbp->revpeer[dbp->revpeer_count-1] = lldbp;
 			} else {
+#if defined BTHASH_REPRODUCE_BUG
+				dbp->peer = lldbp->peer;
+#else
 				if (lldbp->peer && F_ISSET(lldbp->peer, DB_AM_HASH)) {
 					dbp->peer = lldbp->peer;
 					lldbp->peer->revpeer_count++;
@@ -544,6 +547,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 							lldbp->peer->revpeer_count * sizeof(DB *));
 					lldbp->peer->revpeer[lldbp->peer->revpeer_count-1] = dbp;
 				}
+#endif
 				break;
 			}
 		}
