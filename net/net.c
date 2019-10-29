@@ -6198,11 +6198,6 @@ int net_init(netinfo_type *netinfo_ptr)
     /* block SIGPIPE */
     sighold(SIGPIPE);
 
-    extern int gbl_create_mode;
-    if (gbl_create_mode) {
-        add_host(NULL);
-    }
-
     /* do nothing if we have a fake netinfo */
     if (netinfo_ptr->fake)
         return 0;
@@ -6213,13 +6208,9 @@ int net_init(netinfo_type *netinfo_ptr)
         add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host,
                                  host_node_ptr->port);
         host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
+        add_host(host_node_ptr);
     }
-
     if (gbl_libevent) {
-        for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
-             host_node_ptr = host_node_ptr->next) {
-            add_host(host_node_ptr);
-        }
         return 0;
     }
 

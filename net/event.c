@@ -93,6 +93,7 @@ int gbl_libevent = 0;
 
 extern int gbl_exit;
 extern int gbl_create_mode;
+extern int gbl_fullrecovery;
 extern char *gbl_myhostname;
 extern int gbl_pmux_route_enabled;
 
@@ -958,7 +959,7 @@ static void stop_user_msg_qs()
     }
 }
 
-static int net_stop = 0;
+static int net_stop = 1;
 static void exit_once_func(void)
 {
     net_stop = 1;
@@ -2353,6 +2354,7 @@ static void init_event_net(netinfo_type *netinfo_ptr)
     start_callback = netinfo_ptr->start_thread_callback;
     stop_callback = netinfo_ptr->stop_thread_callback;
     init_base();
+    net_stop = 0;
 }
 
 static void net_send_one(struct event_info *e, struct net_msg *msg)
@@ -2424,6 +2426,9 @@ static int write_list_int(host_node_type *host_node_ptr,
 
 static void add_event(int fd, event_callback_fn func, void *data)
 {
+    if (net_stop) {
+        return;
+    }
     struct user_event_info *info = malloc(sizeof(struct user_event_info));
     LIST_INSERT_HEAD(&user_event_list, info, entry);
     info->func = func;
@@ -2438,25 +2443,19 @@ static void add_event(int fd, event_callback_fn func, void *data)
 
 void add_tcp_event(int fd, event_callback_fn func, void *data)
 {
-    if (gbl_create_mode) {
-        return;
-    }
     make_socket_nonblocking(fd);
     add_event(fd, func, data);
 }
 
 void add_udp_event(int fd, event_callback_fn func, void *data)
 {
-    if (gbl_create_mode) {
-        return;
-    }
     evutil_make_socket_nonblocking(fd);
     add_event(fd, func, data);
 }
 
 void add_timer_event(event_callback_fn func, void *data, int ms)
 {
-    if (gbl_create_mode) {
+    if (net_stop) {
         return;
     }
     struct user_event_info *info = malloc(sizeof(struct user_event_info));
@@ -2470,11 +2469,11 @@ void add_timer_event(event_callback_fn func, void *data, int ms)
 
 void add_host(host_node_type *host_node_ptr)
 {
-    if (gbl_create_mode) {
-        net_stop = 1;
+    netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
+    int fake = netinfo_ptr->fake;
+    if (gbl_create_mode || gbl_fullrecovery || fake || !gbl_libevent) {
         return;
     }
-    netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
     init_event_net(netinfo_ptr);
     event_once(base, do_add_host, host_node_ptr);
 }
