@@ -786,6 +786,7 @@ __db_close(dbp, txn, flags)
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 	db_ref = --dbenv->db_ref;
 
+    /* Nullify references to this dbp */
 	if (dbp->peer) {
 		for (int i = 0; i < dbp->peer->revpeer_count; i++) {
 			if (dbp->peer->revpeer[i] == dbp)
