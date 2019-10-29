@@ -8868,6 +8868,7 @@ int sqlite3BtreeGetGenId(
       return SQLITE_NOMEM;
     }
     snprintf(zGenId, nGenId, "2:%llu", prgenid);
+    nGenId = strlen(zGenId); /* BUGFIX: Need actual len for OP_Ne, etc. */
     assert( *pzGenId==0 );
     *pzGenId = zGenId;
     assert( *pnGenId==0 );
