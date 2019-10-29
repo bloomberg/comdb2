@@ -71,6 +71,13 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
 }
 
 /*
+** Return the Parse object that owns a Vdbe object.
+*/
+Parse *sqlite3VdbeParser(Vdbe *p){
+  return p->pParse;
+}
+
+/*
 ** Change the error string stored in Vdbe.zErrMsg
 */
 void sqlite3VdbeError(Vdbe *p, const char *zFormat, ...){
@@ -1153,6 +1160,13 @@ static void vdbeFreeOpArray(sqlite3 *db, Op *aOp, int nOp){
 void sqlite3VdbeLinkSubProgram(Vdbe *pVdbe, SubProgram *p){
   p->pNext = pVdbe->pProgram;
   pVdbe->pProgram = p;
+}
+
+/*
+** Return true if the given Vdbe has any SubPrograms.
+*/
+int sqlite3VdbeHasSubProgram(Vdbe *pVdbe){
+  return pVdbe->pProgram!=0;
 }
 
 /*
@@ -2357,8 +2371,26 @@ void sqlite3VdbeMakeReady(
 
   resolveP2Values(p, &nArg);
   p->usesStmtJournal = (u8)(pParse->isMultiWrite && pParse->mayAbort);
-  if( pParse->explain && nMem<10 ){
-    nMem = 10;
+  if( pParse->explain ){
+    static const char * const azColName[] = {
+       "addr", "opcode", "p1", "p2", "p3", "p4", "p5", "comment",
+       "id", "parent", "notused", "detail"
+    };
+    int iFirst, mx, i;
+    if( nMem<10 ) nMem = 10;
+    if( pParse->explain==2 ){
+      sqlite3VdbeSetNumCols(p, 4);
+      iFirst = 8;
+      mx = 12;
+    }else{
+      sqlite3VdbeSetNumCols(p, 8);
+      iFirst = 0;
+      mx = 8;
+    }
+    for(i=iFirst; i<mx; i++){
+      sqlite3VdbeSetColName(p, i-iFirst, COLNAME_NAME,
+                            azColName[i], SQLITE_STATIC);
+    }
   }
   p->expired = 0;
 

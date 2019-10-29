@@ -1463,7 +1463,7 @@ static void analyzeOneTable(
       int j, k, regKey;
       regKey = sqlite3GetTempRange(pParse, pPk->nKeyCol);
       for(j=0; j<pPk->nKeyCol; j++){
-        k = sqlite3ColumnOfIndex(pIdx, pPk->aiColumn[j]);
+        k = sqlite3TableColumnToIndex(pIdx, pPk->aiColumn[j]);
         assert( k>=0 && k<pIdx->nColumn );
         sqlite3VdbeAddOp3(v, OP_Column, iIdxCur, k, regKey+j);
         VdbeComment((v, "%s", pTab->aCol[pPk->aiColumn[j]].zName));
@@ -2446,9 +2446,9 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   /* Load the statistics from the sqlite_stat4 table. */
 #ifdef SQLITE_ENABLE_STAT4
   if( rc==SQLITE_OK ){
-    db->lookaside.bDisable++;
+    DisableLookaside;
     rc = loadStat4(db, sInfo.zDatabase);
-    db->lookaside.bDisable--;
+    EnableLookaside;
   }
   for(i=sqliteHashFirst(&pSchema->idxHash); i; i=sqliteHashNext(i)){
     Index *pIdx = sqliteHashData(i);

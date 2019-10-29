@@ -215,6 +215,7 @@ typedef struct VdbeOpList VdbeOpList;
 ** for a description of what each of these routines does.
 */
 Vdbe *sqlite3VdbeCreate(Parse*);
+Parse *sqlite3VdbeParser(Vdbe*);
 int sqlite3VdbeAddOp0(Vdbe*,int);
 int sqlite3VdbeAddOp1(Vdbe*,int,int);
 int sqlite3VdbeAddOp2(Vdbe*,int,int,int);
@@ -336,9 +337,8 @@ UnpackedRecord *sqlite3VdbeAllocUnpackedRecord(KeyInfo*);
 typedef int (*RecordCompare)(int,const void*,UnpackedRecord*);
 RecordCompare sqlite3VdbeFindCompare(UnpackedRecord*);
 
-#ifndef SQLITE_OMIT_TRIGGER
 void sqlite3VdbeLinkSubProgram(Vdbe *, SubProgram *);
-#endif
+int sqlite3VdbeHasSubProgram(Vdbe*);
 
 int sqlite3NotPureFunc(sqlite3_context*);
 

@@ -690,6 +690,7 @@ static void pushOntoSorter(
     testcase( pKI->nAllField > pKI->nKeyField+2 );
     pOp->p4.pKeyInfo = sqlite3KeyInfoFromExprList(pParse,pSort->pOrderBy,nOBSat,
                                            pKI->nAllField-pKI->nKeyField-1);
+    pOp = 0; /* Ensure pOp not used after sqltie3VdbeAddOp3() */
     addrJmp = sqlite3VdbeCurrentAddr(v);
     sqlite3VdbeAddOp3(v, OP_Jump, addrJmp+1, 0, addrJmp+1); VdbeCoverage(v);
     pSort->labelBkOut = sqlite3VdbeMakeLabel(pParse);
@@ -1052,6 +1053,7 @@ static void selectInnerLoop(
         pOp->opcode = OP_Null;
         pOp->p1 = 1;
         pOp->p2 = regPrev;
+        pOp = 0;  /* Ensure pOp is not used after sqlite3VdbeAddOp() */
 
         iJump = sqlite3VdbeCurrentAddr(v) + nResultCol;
         for(i=0; i<nResultCol; i++){
@@ -4260,14 +4262,14 @@ static void findConstInWhere(WhereConst *pConst, Expr *pExpr){
   if( pRight->op==TK_COLUMN
    && !ExprHasProperty(pRight, EP_FixedCol)
    && sqlite3ExprIsConstant(pLeft)
-   && sqlite3IsBinary(sqlite3BinaryCompareCollSeq(pConst->pParse,pLeft,pRight))
+   && sqlite3IsBinary(sqlite3ExprCompareCollSeq(pConst->pParse,pExpr))
   ){
     constInsert(pConst, pRight, pLeft);
   }else
   if( pLeft->op==TK_COLUMN
    && !ExprHasProperty(pLeft, EP_FixedCol)
    && sqlite3ExprIsConstant(pRight)
-   && sqlite3IsBinary(sqlite3BinaryCompareCollSeq(pConst->pParse,pLeft,pRight))
+   && sqlite3IsBinary(sqlite3ExprCompareCollSeq(pConst->pParse,pExpr))
   ){
     constInsert(pConst, pLeft, pRight);
   }
@@ -5854,7 +5856,7 @@ int sqlite3Select(
     goto select_end;
   }
 #if SELECTTRACE_ENABLED
-  if( sqlite3SelectTrace & 0x108 ){
+  if( p->pWin && (sqlite3SelectTrace & 0x108)!=0 ){
     SELECTTRACE(0x104,pParse,p, ("after window rewrite:\n"));
     sqlite3TreeViewSelect(0, p, 0);
   }

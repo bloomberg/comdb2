@@ -168,6 +168,7 @@ static Keyword aKeywordTable[] = {
   { "AFTER",            "TK_AFTER",        TRIGGER                },
   { "ALL",              "TK_ALL",          ALWAYS                 },
   { "ALTER",            "TK_ALTER",        ALTER                  },
+  { "ALWAYS",           "TK_ALWAYS",       ALWAYS                 },
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   { "ANALYZE",          "TK_ANALYZE",      ALWAYS                 },
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -228,6 +229,7 @@ static Keyword aKeywordTable[] = {
   { "FOREIGN",          "TK_FOREIGN",      FKEY                   },
   { "FROM",             "TK_FROM",         ALWAYS                 },
   { "FULL",             "TK_JOIN_KW",      ALWAYS                 },
+  { "GENERATED",        "TK_GENERATED",    ALWAYS                 },
   { "GLOB",             "TK_LIKE_KW",      ALWAYS                 },
   { "GROUP",            "TK_GROUP",        ALWAYS                 },
   { "GROUPS",           "TK_GROUPS",       WINDOWFUNC             },
