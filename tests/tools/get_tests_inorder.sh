@@ -18,4 +18,4 @@ generated=$(for j in `ls */*.testopts` ; do
     echo $gen $time
 done )
 
-echo -e "${custom_times[*]} \n${default_times[*]} \n${generated[*]}" | awk '{print $2,$1}'| sort -n | awk '{print $2}'
+echo -e "${custom_times[*]} \n${default_times[*]} \n${generated[*]}" | awk '{print $2,$1}'| sort -nr | awk '{print $2}'
