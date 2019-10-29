@@ -31,7 +31,7 @@ constraints
     //Need to add tbl first then alter with this line : "UUID5" -> "t5":"UUID6"
 }
 }] rc 0
-[insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,1,1,1,1,1,1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' index 'UUID1'
+[insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,1,1,1,1,1,1)] failed with rc 3 verify key constraint cannot resolve constraint table 't5' key 'UUID1' -> table 't2' index '0' key 'UUID1'
 (rows inserted=1)
 [insert into t2(uuid, value) values(1,1)] rc 0
 (rows inserted=1)
@@ -39,7 +39,7 @@ constraints
 [insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,2,1,1,1,1,1)] failed with rc 299 add key constraint duplicate key 'UUID1' on table 't5' index 0
 (rows deleted=1)
 [delete from t5 where uuid = 1] rc 0
-[insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,2,1,1,1,1,1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' index 'UUID1'
+[insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,2,1,1,1,1,1)] failed with rc 3 verify key constraint cannot resolve constraint table 't5' key 'UUID2' -> table 't2' index '0' key 'UUID1'
 [create table t6  { schema
 {
   int uuid

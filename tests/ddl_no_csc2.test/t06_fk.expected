@@ -304,7 +304,7 @@ constraints
 ')
 ("drop self-referenced table"='drop self-referenced table')
 ("tests for nullfkey (enabled by default)"='tests for nullfkey (enabled by default)')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '$KEY_877B2989'
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key '$KEY_877B2989'
 (rows inserted=1)
 (rows inserted=1)
 [delete from t1 where i=1] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '0' key '$KEY_877B2989' -> table 't2' index '0' 

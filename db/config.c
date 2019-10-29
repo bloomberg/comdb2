@@ -47,6 +47,7 @@ extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
+extern int gbl_fingerprint_max_queries;
 
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
@@ -1356,6 +1357,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                gbl_deferred_phys_update);
         free(wait);
 
+    } else if (tokcmp(tok, ltok, "max_query_fingerprints") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected max query fingerprints\n");
+            return -1;
+        }
+        gbl_fingerprint_max_queries = toknum(tok, ltok);
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;

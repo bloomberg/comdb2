@@ -39,7 +39,9 @@ static char *get_temp_ct_dbname(long long *);
 static int is_update_op(int op);
 static int is_delete_op(int op);
 
+extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
+extern int gbl_debug_skip_constraintscheck_on_insert;
 
 /**
  * Checks to see if there are any cascading deleletes/updates pointing to this
@@ -118,7 +120,6 @@ out:
     return rc;
 }
 
-void free_cached_idx(uint8_t **cached_idx);
 static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
 {
     char key[MAXKEYLEN];
@@ -338,9 +339,10 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     return 0;
 }
 
-static int should_skip_constraint_for_index(struct ireq *iq, int ixnum, int nulls)
+inline int should_skip_constraint_for_index(struct dbtable *db, int ixnum,
+                                            int nulls)
 {
-    return (nulls && (gbl_nullfkey || iq->usedb->ix_nullsallowed[ixnum]));
+    return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
 }
 
 /* rec_dta is in .ONDISK format..we have it from 'delete' operation in block
@@ -504,7 +506,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 continue; /* just move on, there should be nothing to check */
             }
 
-            if (should_skip_constraint_for_index(iq, rixnum, nulls)) {
+            if (should_skip_constraint_for_index(iq->usedb, rixnum, nulls)) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
@@ -737,7 +739,7 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
         }
 
         /* Ignore records with null columns if nullfkey is set */
-        if (should_skip_constraint_for_index(iq, bct->sixnum, nullck)) {
+        if (should_skip_constraint_for_index(iq->usedb, bct->sixnum, nullck)) {
             if (iq->debug) {
                 reqprintf(iq,
                           "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
@@ -1281,6 +1283,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
+    if (gbl_debug_skip_constraintscheck_on_insert)
+        return 0;
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
@@ -1488,13 +1492,14 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                 }
 
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
-                    struct dbtable *ftable = NULL, *currdb = NULL;
+                    struct dbtable *currdb = NULL;
                     int fixnum = 0;
                     int fixlen = 0;
                     char fkey[MAXKEYLEN];
                     char fondisk_tag[MAXTAGLEN];
 
-                    ftable = get_dbtable_by_name(ct->table[ridx]);
+                    struct dbtable *ftable =
+                        get_dbtable_by_name(ct->table[ridx]);
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
@@ -1566,7 +1571,8 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                     currdb = iq->usedb;
                     iq->usedb = ftable;
 
-                    if (should_skip_constraint_for_index(iq, fixnum, nulls))
+                    if (should_skip_constraint_for_index(iq->usedb, fixnum,
+                                                         nulls))
                         rc = IX_FND;
                     else
                         rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
@@ -1592,8 +1598,10 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                         }
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint cannot resolve "
-                                  "constraint table '%s' index '%s'",
-                                  ftable->tablename, ct->keynm[ridx]);
+                                  "constraint table '%s' key '%s' -> "
+                                  "table '%s' index '%d' key '%s'",
+                                  ct->lcltable->tablename, ct->lclkeyname,
+                                  ftable->tablename, ridx, ct->keynm[ridx]);
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -2125,4 +2133,126 @@ int populate_reverse_constraints(struct dbtable *db)
     }
 
     return n_errors;
+}
+
+int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
+                                char *lcl_tag, char *lcl_key, char *tblname,
+                                void *trans, int *remote_ri)
+{
+    int rc = 0;
+    if (remote_ri)
+        *remote_ri = 0;
+    for (int ri = 0; ri < ct->nrules; ri++) {
+        int ridx;
+        int rixlen;
+        char rkey[MAXKEYLEN];
+        char rtag[MAXTAGLEN];
+        int nulls;
+
+        struct dbtable *ruledb = get_dbtable_by_name(ct->table[ri]);
+        if (ruledb == NULL)
+            return ERR_CONSTR;
+
+        rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
+        if (rc != 0)
+            return ERR_CONSTR;
+        snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
+
+        /* Key -> Key : local table -> referenced table */
+        rixlen = rc =
+            stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+                                  rtag, rkey, &nulls, FK2PK);
+
+        if (-1 == rc)
+            return ERR_CONSTR;
+
+        if (ruledb->ix_collattr[ridx]) {
+            rc = extract_decimal_quantum(ruledb, ridx, rkey, NULL, 0, NULL);
+            if (rc) {
+                abort(); /* called doesn't return error for these arguments,
+                            at least not now */
+            }
+        }
+
+        if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
+            rc = IX_FND;
+        } else {
+            ruleiq->usedb = ruledb;
+            unsigned long long genid;
+            int fndrrn;
+            rc = ix_find_by_key_tran(ruleiq, rkey, rixlen, ridx, NULL, &fndrrn,
+                                     &genid, NULL, NULL, 0, trans);
+        }
+
+        if (rc != IX_FND && rc != IX_FNDMORE) {
+            if (remote_ri)
+                *remote_ri = ri;
+            return rc;
+        }
+    }
+    return 0;
+}
+
+/* go through the constraint list of db_table and find if ix has any constraints
+ */
+constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix)
+{
+    for (int ci = 0; ci < db_table->n_constraints; ci++) {
+        constraint_t *ct = &(db_table->constraints[ci]);
+        int lcl_idx;
+        int rc = getidxnumbyname(db_table->tablename, ct->lclkeyname, &lcl_idx);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "could not get index for key %d\n", ix);
+            return NULL;
+        }
+        if (lcl_idx == ix) {
+            return ct;
+        }
+    }
+    return NULL;
+}
+
+
+/* helper method to convert from this tbl key to a foreign key
+ */
+int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
+                               char *tblname, bdb_state_type **r_state,
+                               int *ridx, int *rixlen, char *rkey, int *skip,
+                               int ri)
+{
+    int nulls;
+    int rc = 0;
+
+    struct dbtable *ruledb = get_dbtable_by_name(ct->table[ri]);
+    if (ruledb == NULL)
+        return 1;
+
+    if ((rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], ridx)))
+        return rc;
+
+    char rtag[MAXTAGLEN];
+    snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", *ridx);
+
+    *r_state = ruledb->handle;
+
+    /* convert local Key -> foreign Key : local table -> referenced table */
+    *rixlen = rc =
+        stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+                              rtag, rkey, &nulls, FK2PK);
+
+    if (-1 == rc)
+        return rc;
+
+    if (ruledb->ix_collattr[*ridx]) {
+        rc = extract_decimal_quantum(ruledb, *ridx, rkey, NULL, 0, NULL);
+        if (rc) {
+            abort(); /* called doesn't return error for these arguments,
+                        at least not now */
+        }
+    }
+
+    if (should_skip_constraint_for_index(ruledb, *ridx, nulls)) {
+        *skip = 1;
+    }
+    return 0;
 }

@@ -126,6 +126,20 @@ pthread_mutex_t dohsql_stats_mtx = PTHREAD_MUTEX_INITIALIZER;
 dohsql_stats_t gbl_dohsql_stats;       /* updated only on request completion */
 dohsql_stats_t gbl_dohsql_stats_dirty; /* updated dynamically, unlocked */
 
+/* An SQlite engine's mspace isn't thread-safe because it's supposed to
+   be accessed by the engine only. DOHSQL breaks the assumption:
+   While the master engine is casting a Mem object which needs to reallocate
+   zMalloc from its mspace, a child engine may decide to reuse or discard a
+   cached Mem object and therefore free zMalloc in the Mem object which is
+   also allocated from the master's mspace. They can race with each other.
+
+   An obvious fix to this is to make an SQL mspace thread-safe. However
+   this would incur unnecessary locking overhead for non-parallelizable
+   queries. Instead we use a mutex to guard the Mem objects. We just need to
+   ensure that we always hold the mutex whenever casting, reusing or discarding
+   a Mem object inside the DOHSQL subsystem. */
+pthread_mutex_t master_mem_mtx = PTHREAD_MUTEX_INITIALIZER;
+
 static int gbl_plugin_api_debug = 0;
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
@@ -272,7 +286,10 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que,
                    limit);
+
+        Pthread_mutex_lock(&master_mem_mtx);
         sqlite3CloneResultFree(stmt, &row, &row_size);
+        Pthread_mutex_unlock(&master_mem_mtx);
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
@@ -367,15 +384,18 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     }
 
     /* try to steal an old row */
-    if (queue_count(conn->que_free) > 0) {
-        if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_DEBUG, "%lx %s retrieved older row\n", pthread_self(),
-                   __func__);
-        oldrow = queue_next(conn->que_free);
-    }
+    oldrow = queue_next(conn->que_free);
+    if (oldrow && gbl_dohsql_verbose)
+        logmsg(LOGMSG_DEBUG, "%lx %s retrieved older row\n", pthread_self(),
+               __func__);
     Pthread_mutex_unlock(&conn->mtx);
 
+    if (oldrow)
+        Pthread_mutex_lock(&master_mem_mtx);
     row = sqlite3CloneResult(stmt, oldrow, &row_size);
+    if (oldrow)
+        Pthread_mutex_unlock(&master_mem_mtx);
+
     if (!row)
         return SHARD_ERR_GENERIC;
 
@@ -412,14 +432,20 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
     return clnt->conns->ncols;
 }
 
+/* Typecasting may reallocate zMalloc. So do it while holding master_mem_mtx. */
 #define FUNC_COLUMN_TYPE(ret, type)                                            \
     static ret dohsql_dist_column_##type(struct sqlclntstate *clnt,            \
                                          sqlite3_stmt *stmt, int iCol)         \
     {                                                                          \
+        ret rv;                                                                \
         dohsql_t *conns = clnt->conns;                                         \
+        Pthread_mutex_lock(&master_mem_mtx);                                   \
         if (conns->row_src == 0)                                               \
-            return sqlite3_column_##type(stmt, iCol);                          \
-        return sqlite3_value_##type(&conns->row[iCol]);                        \
+            rv = sqlite3_column_##type(stmt, iCol);                            \
+        else                                                                   \
+            rv = sqlite3_value_##type(&conns->row[iCol]);                      \
+        Pthread_mutex_unlock(&master_mem_mtx);                                 \
+        return rv;                                                             \
     }
 
 FUNC_COLUMN_TYPE(int, type)
@@ -434,21 +460,29 @@ static const intv_t *dohsql_dist_column_interval(struct sqlclntstate *clnt,
                                                  sqlite3_stmt *stmt, int iCol,
                                                  int type)
 {
+    const intv_t *rv;
     dohsql_t *conns = clnt->conns;
+    Pthread_mutex_lock(&master_mem_mtx);
     if (conns->row_src == 0)
-        return sqlite3_column_interval(stmt, iCol, type);
-    return sqlite3_value_interval(&conns->row[iCol], type);
+        rv = sqlite3_column_interval(stmt, iCol, type);
+    else
+        rv = sqlite3_value_interval(&conns->row[iCol], type);
+    Pthread_mutex_unlock(&master_mem_mtx);
+    return rv;
 }
 
 static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
                                                sqlite3_stmt *stmt, int i)
 {
+    sqlite3_value *rv;
     dohsql_t *conns = clnt->conns;
-
+    Pthread_mutex_lock(&master_mem_mtx);
     if (conns->row_src == 0)
-        return sqlite3_column_value(stmt, i);
-
-    return &conns->row[i];
+        rv = sqlite3_column_value(stmt, i);
+    else
+        rv = &conns->row[i];
+    Pthread_mutex_unlock(&master_mem_mtx);
+    return rv;
 }
 
 #define Q_LOCK(x) Pthread_mutex_lock(&conns->conns[x].mtx)
@@ -566,8 +600,8 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
             return rc;
         }
         rc = SQLITE_OK;
-        if (queue_count(conns->conns[child_num].que) > 0) {
-            *prow = queue_next(conns->conns[child_num].que);
+        *prow = queue_next(conns->conns[child_num].que);
+        if (*prow != NULL) {
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "XXX: %p retrieved row\n",
                        &conns->conns[child_num]);
