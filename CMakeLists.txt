@@ -55,7 +55,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
 endif()
 
-option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" OFF)
+option(WITH_RDKAFKA "Turn ON to compile with Kafka Publish" ON)
 if(WITH_RDKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_RDKAFKA)
