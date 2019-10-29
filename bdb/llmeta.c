@@ -7888,8 +7888,9 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(const char *tblname, tran_type *tran,
-                             unsigned long long *version, int *bdberr)
+int bdb_table_version_select_verbose(const char *tblname, tran_type *tran,
+                                     unsigned long long *version, int *bdberr,
+                                     int verbose)
 {
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
@@ -7981,10 +7982,18 @@ retry:
     *version = *((unsigned long long *)fnddata);
     *version = flibc_ntohll(*version);
 
-    logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version, tblname);
+    if (verbose)
+        logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version,
+               tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_table_version_select(const char *tblname, tran_type *tran,
+                             unsigned long long *version, int *bdberr)
+{
+    return bdb_table_version_select_verbose(tblname, tran, version, bdberr, 1);
 }
 
 /* caller is responsible to free the memory

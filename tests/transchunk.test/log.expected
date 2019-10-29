@@ -35,3 +35,8 @@ Failure tests
 (a=123456789)
 (count(*)=7)
 (out='    OSQL_DONE            5060')
+(rows inserted=994)
+(out='    OSQL_DONE            5560')
+(count(*)=502)
+(out='    OSQL_DONE            5611')
+(count(*)=0)

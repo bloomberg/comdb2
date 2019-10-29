@@ -37,6 +37,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_waitalive_iterations;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
@@ -319,6 +320,7 @@ extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
 
 int gbl_page_order_table_scan = 0;

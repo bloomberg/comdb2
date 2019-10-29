@@ -93,17 +93,15 @@ struct osql_sess {
     unsigned int tran_rows; /* number of rows that are actual ADD/UPD/DEL */
 
     int queryid;
-    char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
+    int tableversion;
+    char *tablename; // remember tablename in saveop for reordering
+    hash_t *selectv_genids;
     unsigned long long last_genid; // remember updrec/insrec genid for qblobs
-    unsigned long long
-        ins_seq; // remember key seq for inserts into ins tmp table
+    unsigned long long ins_seq; // remember key seq for inserts into ins tmptbl
     uint16_t tbl_idx;
     bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
     bool is_reorder_on : 1;
     bool selectv_writelock_on_update : 1;
-    hash_t *selectv_genids;
-    char *table; // intern'd usedb
-    int tableversion;
 };
 
 enum {

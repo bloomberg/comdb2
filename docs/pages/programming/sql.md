@@ -348,10 +348,10 @@ named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
 
 Comdb2 allows creation of indexes only on fields with fixed-sized types. For
 instance, an attempt to create index on a blob or vutf8 field would result in
-error. In termns of syntax, ```indexes on expressions``` need a little extra
+error. In terms of syntax, ```indexes on expressions``` need a little extra
 care in Comdb2. The expression *must* be casted to a fixed-sized type.
 
-```
+```sql
 CREATE TABLE t1(`json` VUTF8(128),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
@@ -493,8 +493,12 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version `7.0`. Indexes on
-expression cannot be currently created via this command.
+table. The support for ```CREATE INDEX``` was added in version `7.0`.
+
+```sql
+CREATE INDEX idx ON t1(CAST(UPPER(c) AS cstring(100)));
+CREATE UNIQUE INDEX idx ON t2(CAST(i+j AS int));
+```
 
 ### DROP INDEX
 
@@ -694,8 +698,8 @@ This sets the current connection's transaction level.  See
 
 This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
 the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
-as a sequence of small lock-footprint transactions.  Currently only supported for bulk inserts in a client specified 
-```BEGIN ... COMMIT``` transaction.
+as a sequence of small lock-footprint transactions.  Another common use-case is periodic data-set clean-up, replacing 
+the legacy comdb2del tool.  Currently requires a client specified ```BEGIN ... COMMIT``` transaction.
 
 ### SET TIMEZONE
 

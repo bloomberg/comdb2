@@ -313,8 +313,6 @@ __dbenv_open(dbenv, db_home, flags, mode)
     Pthread_rwlock_init(&dbenv->dbreglk, NULL);
     Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
-    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
-
 	/*
 	 * Initialize the subsystems.
 	 *

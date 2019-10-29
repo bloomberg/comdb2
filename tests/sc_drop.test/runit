@@ -8,6 +8,7 @@ trap 'kill $(jobs -pr)' SIGINT SIGTERM EXIT
 
 # Number of records I will add.
 nrecs=100
+max_iter=10
 
 # Max number of schema changes
 max_nusc=100
@@ -145,15 +146,86 @@ test_update_delay_usedb() {
 
 }
 
+do_reads() {
+    i=$1
+    out=sel_$i.out 
+    > $out
+    while [ ! -f can_stop_now.txt ] ; do 
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "select * from t" ; 
+    done &>> $out
+}
+
+do_updates() {
+    i=$1
+    out=upd_$i.out 
+    > $out
+    while [ ! -f can_stop_now.txt ] ; do 
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t set a=a+1 where a > 3000 limit 100" ; 
+    done &>> $out
+}
+
+do_deletes() {
+    i=$1
+    out=del_$i.out 
+    > $out
+    while [ ! -f can_stop_now.txt ] ; do 
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "delete from t where a < 3000 limit 10" ; 
+    done &>> $out
+}
+
+# test selects updates deletes against a tbl which is being dropped
+# db should not crash for access to bad/old table pointers
+test_sel_upd_del() {
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default << EOF
+drop table t;
+create table t(a int);\$\$
+insert into t select value from generate_series(1, 5000);
+insert into t select value from generate_series(1, 5000);
+insert into t select value from generate_series(1, 5000);
+insert into t select value from generate_series(1, 5000);
+insert into t select value from generate_series(1, 5000);
+EOF
+    assertcnt t 25000
+
+    for i in $(seq 1 5); do
+        do_reads $i &
+        do_updates $i &
+        do_deletes $i &
+    done
+    sleep 5
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t"
+
+    touch can_stop_now.txt
+    wait
+    rm can_stop_now.txt
+
+    set -e
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 1"
+    set +e
+}
 
 
+# here is where we begin the test
+cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+if [ "x$cluster" == "x" ] ; then
+    failexit "cluster variable is empty"
+fi
+
+
+t=0
+while [ $t -lt ${max_iter} ] ; do
+    test_sel_upd_del
+    set -e
+    send_to_all_nodes "stat"
+    set +e
+    let t=t+1
+done
 
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1 (i int)"
 
 insert_into_t1 &
 ins1=$!
 
-max_iter=10
 t=0
 while [ $t -lt ${max_iter} ] ; do
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2 (i int)"
@@ -175,10 +247,6 @@ if ! diff upd0.out upd0.exp ; then
     failexit "upd0.out upd0.exp differ"
 fi
 
-cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
-if [ "x$cluster" == "x" ] ; then
-    failexit "cluster variable is empty"
-fi
 send_to_all_nodes "debg 600"
 send_to_all_nodes "ndebg 600"
 
@@ -199,6 +267,8 @@ while [ $t -lt ${max_iter} ] ; do
     test_update_delay_usedb
     let t=t+1
 done
+
+
 
 #remove trap
 trap - INT TERM EXIT

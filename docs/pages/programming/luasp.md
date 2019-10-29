@@ -605,7 +605,7 @@ num = dbstmt:column_count()
 
 Description:
 
-This method returns the number of columns returned by the dbstmt.
+This method returns the number of columns in the result set (`dbrow`) returned by the dbstmt.
 
 Return Values:
 
@@ -625,7 +625,7 @@ name = dbstmt:column_name(col)
 
 Description:
 
-This method return the name assigned to a particular column in the result set of a dbstmt.
+This method returns the name assigned to a particular column in the result set of a dbstmt.
 
 Return Values:
 
@@ -685,6 +685,8 @@ Parameters:
 |---------------------|---------------------------------------
 |  *col*        |  column number (leftmost column number is 1)
 
+
+## Operating on a dbtable
 
 ### db:table with name
 

@@ -174,6 +174,29 @@ $rt "select count(*) from t" >> $outlog
 
 check_done
 
+$r >> $outlog 2>&1 << "EOF"
+insert into t select value from generate_series(7, 1000)
+set transaction chunk 1
+begin
+delete from t where a <500
+commit
+EOF
+
+check_done
+
+$rt "select count(*) from t" >> $outlog
+
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 10
+begin
+delete from t where 1
+commit
+EOF
+
+check_done
+
+$rt "select count(*) from t" >> $outlog
+
 # get testcase output
 testcase_output=$(cat $outlog)
 

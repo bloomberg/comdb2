@@ -1236,6 +1236,11 @@ REGISTER_TUNABLE("debug.omit_blob_write",
                  "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE(
+    "debug.skip_constraintscheck_on_insert",
+    "Deliberately allow insertion without constraint check to debug db_verify",
+    TUNABLE_BOOLEAN, &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL,
+    NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1842,5 +1847,11 @@ REGISTER_TUNABLE("strict_double_quotes",
 
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("waitalive_iterations",
+                 "Wait this many iterations for a "
+                 "socket to be usable.  (Default: 3)",
+                 TUNABLE_INTEGER, &gbl_waitalive_iterations,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

@@ -313,7 +313,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                     }
                 }
 
-                int type = tran2netreq(clnt->dbtran.mode);
+                int type = tran2req(clnt->dbtran.mode);
                 osql_sock_abort(clnt, type);
             }
             break;

@@ -3387,7 +3387,7 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
     case OSQL_STARTGEN:
         break;
     case OSQL_DONE_SNAP:
-        /* iq is passed in from bplog_saveop */
+        /* iq is passed in from osql_bplog_saveop */
         if (iq) {
             const uint8_t *p_buf =
                 (uint8_t *)rpl + sizeof(osql_done_t) +
