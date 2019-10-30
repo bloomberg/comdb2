@@ -40,7 +40,7 @@ extern int gbl_partial_indexes;
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
-static inline void increase_max_threads(int *maxthreads, int sc_threads)
+static inline void increase_max_threads(uint32_t *maxthreads, int sc_threads)
 {
     if (*maxthreads >= sc_threads) return;
     ATOMIC_ADD32_PTR(maxthreads, 1);
@@ -50,7 +50,7 @@ static inline void increase_max_threads(int *maxthreads, int sc_threads)
 // Used to backoff SC by having fewer threads running, decreasing contention
 // We use atomic add here, since it may be called from multiple threads at once
 // We also make certain that maxthreads does not go less than 1
-static inline void decrease_max_threads(int *maxthreads)
+static inline void decrease_max_threads(uint32_t *maxthreads)
 {
     if (*maxthreads <= 1) return;
     /* ADDING -1 */
@@ -60,7 +60,7 @@ static inline void decrease_max_threads(int *maxthreads)
 // increment number of rebuild threads in use
 // if we are at capacity, then return 1 for failure
 // if we were successful we return 0
-static inline int use_rebuild_thr(int *thrcount, int *maxthreads)
+static inline int use_rebuild_thr(uint32_t *thrcount, uint32_t *maxthreads)
 {
     if (*thrcount >= *maxthreads) return 1;
     ATOMIC_ADD32_PTR(thrcount, 1);
@@ -68,7 +68,7 @@ static inline int use_rebuild_thr(int *thrcount, int *maxthreads)
 }
 
 // decrement number of rebuild threads in use
-static inline void release_rebuild_thr(int *thrcount)
+static inline void release_rebuild_thr(uint32_t *thrcount)
 {
     assert(*thrcount >= 1);
     /* ADDING -1 */
@@ -105,7 +105,7 @@ static inline void print_final_sc_stat(struct convert_record_data *data)
 static inline int print_aggregate_sc_stat(struct convert_record_data *data,
                                           int now, int sc_report_freq)
 {
-    int copy_total_lasttime = data->cmembers->total_lasttime;
+    uint32_t copy_total_lasttime = data->cmembers->total_lasttime;
 
     /* Do work without locking */
     if (now < copy_total_lasttime + sc_report_freq) return 0;
@@ -149,7 +149,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
 
 static inline void lkcounter_check(struct convert_record_data *data, int now)
 {
-    int copy_lasttime = data->cmembers->lkcountercheck_lasttime;
+    uint32_t copy_lasttime = data->cmembers->lkcountercheck_lasttime;
     int lkcounter_freq = bdb_attr_get(data->from->dbenv->bdb_attr,
                                       BDB_ATTR_SC_CHECK_LOCKWAITS_SEC);
     /* Do work without locking */
