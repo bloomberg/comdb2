@@ -446,21 +446,32 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
                                                  int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    size_t alloc_sz;
     if (appdata == NULL) {
-        size_t types_sz = ncols * sizeof(appdata->type[0]);
-        appdata = calloc(1, sizeof(struct newsql_appdata) + types_sz);
+        alloc_sz =
+            sizeof(struct newsql_appdata) + ncols * sizeof(appdata->type[0]);
+        appdata = calloc(1, alloc_sz);
         clnt->appdata = appdata;
+        if (!appdata)
+            goto oom;
         appdata->capacity = ncols;
         appdata->send_intrans_response = 1;
     } else if (appdata->capacity < ncols) {
         size_t n = ncols + 32;
-        size_t types_sz = n * sizeof(appdata->type[0]);
-        appdata = realloc(appdata, sizeof(struct newsql_appdata) + types_sz);
+        alloc_sz = sizeof(struct newsql_appdata) + n * sizeof(appdata->type[0]);
+        appdata = realloc(appdata, alloc_sz);
         clnt->appdata = appdata;
+        if (!appdata)
+            goto oom;
         appdata->capacity = n;
     }
     appdata->count = ncols;
     return appdata;
+oom:
+    logmsg(LOGMSG_ERROR,
+           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           __func__, __LINE__, alloc_sz, errno, strerror(errno));
+    return NULL;
 }
 
 static void free_newsql_appdata(struct sqlclntstate *clnt)
@@ -1754,6 +1765,20 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
 #ifdef DEBUG
                 printf("setting clnt->osql_max_trans to %d\n",
                        clnt->osql_max_trans);
+#endif
+            } else if (strncasecmp(sqlstr, "groupconcatmemlimit",
+                                   sizeof("groupconcatmemlimit") - 1) == 0) {
+                sqlstr += sizeof("groupconcatmemlimit");
+                int sz = strtol(sqlstr, &endp, 10);
+                if (endp != sqlstr && sz >= 0)
+                    clnt->group_concat_mem_limit = sz;
+                else
+                    logmsg(LOGMSG_ERROR,
+                           "Error: bad value for groupconcatmemlimit %s\n",
+                           sqlstr);
+#ifdef DEBUG
+                printf("setting clnt->group_concat_mem_limit to %d\n",
+                       clnt->group_concat_mem_limit);
 #endif
             } else if (strncasecmp(sqlstr, "plannereffort", 13) == 0) {
                 sqlstr += 13;

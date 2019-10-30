@@ -328,6 +328,7 @@
 (name='genids', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='gofast', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='goslow', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='group_concat_memory_limit', description='Restrict GROUP_CONCAT from using more than this amount of memory; 0 implies SQLITE_MAX_LENGTH, the limit imposed by sqlite. (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='heartbeat_check_time', description='Raise an error if no heartbeat for this amount of time (in secs). (Default: 10 secs)', type='INTEGER', value='0', read_only='Y')
 (name='heartbeat_send_time', description='Send heartbeats this often. (Default: 5secs)', type='INTEGER', value='0', read_only='Y')
 (name='hostile_takeover_retries', description='Attempt to take over mastership if the master machine is marked offline, and the current machine is online.', type='INTEGER', value='0', read_only='N')

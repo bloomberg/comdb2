@@ -474,6 +474,12 @@ REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("gofast", NULL, TUNABLE_BOOLEAN, &gbl_goslow,
                  INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "group_concat_memory_limit",
+    "Restrict GROUP_CONCAT from using more than this amount of memory; 0 "
+    "implies SQLITE_MAX_LENGTH, the limit imposed by sqlite. (Default: 0)",
+    TUNABLE_INTEGER, &gbl_group_concat_mem_limit, READONLY, NULL, NULL, NULL,
+    NULL);
 REGISTER_TUNABLE("heartbeat_check_time",
                  "Raise an error if no heartbeat for this amount of time (in "
                  "secs). (Default: 10 secs)",

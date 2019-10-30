@@ -314,6 +314,8 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
 
 extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;

@@ -2254,7 +2254,15 @@ static void groupConcatStep(
   if( pAccum ){
     sqlite3 *db = sqlite3_context_db_handle(context);
     int firstTerm = pAccum->mxAlloc==0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    struct sqlclntstate *clnt = get_sql_clnt();
+
+    pAccum->mxAlloc = (clnt && clnt->group_concat_mem_limit != 0) ?
+      clnt->group_concat_mem_limit : db->aLimit[SQLITE_LIMIT_LENGTH];
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pAccum->mxAlloc = db->aLimit[SQLITE_LIMIT_LENGTH];
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
     if( !firstTerm ){
       if( argc==2 ){
         zSep = (char*)sqlite3_value_text(argv[1]);
@@ -2268,6 +2276,15 @@ static void groupConcatStep(
     zVal = (char*)sqlite3_value_text(argv[0]);
     nVal = sqlite3_value_bytes(argv[0]);
     if( zVal ) sqlite3_str_append(pAccum, zVal, nVal);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    // NC: Attach an error message here as we do not want client to see the
+    // default error message 'transaction too big' emitted for ERR_TRAN_TOO_BIG,
+    // which SQLITE_TOOBIG later gets translated to.
+    if( clnt && pAccum->accError==SQLITE_TOOBIG ){
+      clnt->sqlite_errstr = "string or blob too big";
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 }
 #ifndef SQLITE_OMIT_WINDOWFUNC
