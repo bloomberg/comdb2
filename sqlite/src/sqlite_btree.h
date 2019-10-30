@@ -319,7 +319,7 @@ int sqlite3BtreeGetGenId(BtCursor *,
                          char **,
                          int* /* sizeof buf if already allocated */);
 
-char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
+char *sqlite3BtreeIntegrityCheck(sqlite3*,Btree*,int*,int,int,int*);
 struct Pager *sqlite3BtreePager(Btree*);
 i64 sqlite3BtreeRowCountEst(BtCursor*);
 
@@ -343,7 +343,7 @@ int sqlite3BtreeCursorIsValid(BtCursor*);
 int sqlite3BtreeCursorIsValidNN(BtCursor*);
 
 #ifndef SQLITE_OMIT_BTREECOUNT
-int sqlite3BtreeCount(BtCursor *, i64 *);
+int sqlite3BtreeCount(sqlite3*, BtCursor*, i64*);
 #endif
 
 #ifdef SQLITE_TEST

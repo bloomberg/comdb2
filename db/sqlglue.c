@@ -8831,8 +8831,8 @@ int sqlite3BtreeData(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
  ** and a pointer to that error message is returned.  The calling function
  ** is responsible for freeing the error message when it is done.
  */
-char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
-                                 int *pnErr)
+char *sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, int *aRoot, int nRoot,
+                                 int mxErr, int *pnErr)
 {
     int rc = SQLITE_OK;
     int i;
@@ -10313,7 +10313,7 @@ int gbl_direct_count = 1;
  ** Otherwise, if an error is encountered (i.e. an IO error or database
  ** corruption) an SQLite error code is returned.
  */
-int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
+int sqlite3BtreeCount(sqlite3 *db, BtCursor *pCur, i64 *pnEntry)
 {
     struct sql_thread *thd = pCur->thd;
     int rc;
