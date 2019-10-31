@@ -238,6 +238,7 @@ extern int gbl_load_cache_max_pages;
 extern int gbl_dump_cache_max_pages;
 extern int gbl_max_pages_per_cache_thread;
 extern int gbl_memp_dump_cache_threshold;
+extern int gbl_disable_ckp;
 
 extern long long sampling_threshold;
 
@@ -314,6 +315,8 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
 
 extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
@@ -808,8 +811,6 @@ int ctrace_set_rollat(void *unused, void *value);
 static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
-    case SQL_TDEF_COMDB2: return "COMDB2";
-    case SQL_TDEF_BLOCK: return "BLOCK";
     case SQL_TDEF_SOCK: return "BLOCKSOCK";
     case SQL_TDEF_RECOM: return "RECOM";
     case SQL_TDEF_SNAPISOL: return "SNAPSHOT ISOLATION";
@@ -833,6 +834,10 @@ static int sql_tranlevel_default_update(void *context, void *value)
     if (tok == NULL) {
         logmsg(LOGMSG_USER, "expected transaction level\n");
         return 1;
+    } else if (tokcmp(tok, ltok, "comdb2") == 0 ||
+               tokcmp(tok, ltok, "block") == 0 ||
+               tokcmp(tok, ltok, "prefer_blocksock") == 0) {
+        return 0; /* nop */
     } else if (tokcmp(tok, ltok, "blocksock") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
@@ -842,12 +847,11 @@ static int sql_tranlevel_default_update(void *context, void *value)
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
-        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+        logmsg(LOGMSG_ERROR, "bad transaction level:%s\n", tok);
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-    logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
+    logmsg(LOGMSG_USER, "default transaction level:%s\n",
            (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
