@@ -198,6 +198,7 @@ static void openStatTable(
 #else
     { "sqlite_stat4", 0 },
 #endif
+    { "sqlite_stat3", 0 },
   };
   int i;
   sqlite3 *db = pParse->db;
@@ -270,14 +271,14 @@ static void openStatTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3NestedParse(pParse, "DELETE FROM %Q.%s", pDb->zDbSName, zTab);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        /* The sqlite_stat[14] table already exists.  Delete all rows. */
+        /* The sqlite_stat[134] table already exists.  Delete all rows. */
         sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
   }
 
-  /* Open the sqlite_stat[14] tables for writing. */
+  /* Open the sqlite_stat[134] tables for writing. */
   for(i=0; aTable[i].zCols; i++){
     assert( i<ArraySize(aTable) );
     sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
@@ -1156,18 +1157,17 @@ static const FuncDef statGetFuncdef = {
   {0}
 };
 
-static void callStatGet(Vdbe *v, int regStat4, int iParam, int regOut){
-  assert( regOut!=regStat4 && regOut!=regStat4+1 );
+static void callStatGet(Parse *pParse, int regStat4, int iParam, int regOut){
 #ifdef SQLITE_ENABLE_STAT4
-  sqlite3VdbeAddOp2(v, OP_Integer, iParam, regStat4+1);
+  sqlite3VdbeAddOp2(pParse->pVdbe, OP_Integer, iParam, regStat4+1);
 #elif SQLITE_DEBUG
   assert( iParam==STAT_GET_STAT1 );
 #else
   UNUSED_PARAMETER( iParam );
 #endif
-  sqlite3VdbeAddOp4(v, OP_Function0, 0, regStat4, regOut,
-                    (char*)&statGetFuncdef, P4_FUNCDEF);
-  sqlite3VdbeChangeP5(v, 1 + IsStat4);
+  assert( regOut!=regStat4 && regOut!=regStat4+1 );
+  sqlite3VdbeAddFunctionCall(pParse, 0, regStat4, regOut, 1+IsStat4,
+                             &statGetFuncdef, 0);
 }
 
 /*
@@ -1375,9 +1375,8 @@ static void analyzeOneTable(
     sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat4+1);
     sqlite3VdbeAddOp2(v, OP_Integer, pIdx->nKeyCol, regStat4+2);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    sqlite3VdbeAddOp4(v, OP_Function0, 0, regStat4+1, regStat4,
-                     (char*)&statInitFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat4);
+    sqlite3VdbeAddFunctionCall(pParse, 0, regStat4+1, regStat4, 2+IsStat4,
+                               &statInitFuncdef, 0);
 
     /* Implementation of the following:
     **
@@ -1480,9 +1479,8 @@ static void analyzeOneTable(
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regPrev, nCol, regSampleRow);
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    sqlite3VdbeAddOp4(v, OP_Function0, 1, regStat4, regTemp,
-                     (char*)&statPushFuncdef, P4_FUNCDEF);
-    sqlite3VdbeChangeP5(v, 2+IsStat4);
+    sqlite3VdbeAddFunctionCall(pParse, 1, regStat4, regTemp, 2+IsStat4,
+                               &statPushFuncdef, 0);
     sqlite3VdbeAddOp2(v, OP_Next, iIdxCur, addrNextRow); VdbeCoverage(v);
 
     /* Add the entry to the stat1 table. */
@@ -1491,7 +1489,7 @@ static void analyzeOneTable(
       sqlite3VdbeJumpHere(v, addrRewind);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    callStatGet(v, regStat4, STAT_GET_STAT1, regStat1);
+    callStatGet(pParse, regStat4, STAT_GET_STAT1, regStat1);
     assert( "BBB"[0]==SQLITE_AFF_TEXT );
     sqlite3VdbeAddOp4(v, OP_MakeRecord, regTabname, 3, regTemp, "BBB", 0);
     sqlite3VdbeAddOp2(v, OP_NewRowid, iStatCur, regNewRowid);
@@ -1532,17 +1530,18 @@ static void analyzeOneTable(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       addrNext = sqlite3VdbeCurrentAddr(v);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
-      callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);
+      callStatGet(pParse, regStat4, STAT_GET_ROWID, regSampleRowid);
       addrIsNull = sqlite3VdbeAddOp1(v, OP_IsNull, regSampleRowid);
       VdbeCoverage(v);
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-      callStatGet(v, regStat4, STAT_GET_NEQ, regEq);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      callStatGet(pParse, regStat4, STAT_GET_NEQ, regEq);
       addrIsNull = sqlite3VdbeAddOp1(v, OP_IsNull, regEq);
       VdbeCoverage(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      callStatGet(v, regStat4, STAT_GET_NLT, regLt);
-      callStatGet(v, regStat4, STAT_GET_NDLT, regDLt);
+      callStatGet(pParse, regStat4, STAT_GET_NEQ, regEq);
+      callStatGet(pParse, regStat4, STAT_GET_NLT, regLt);
+      callStatGet(pParse, regStat4, STAT_GET_NDLT, regDLt);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROW, regSample);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
