@@ -623,6 +623,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_CollSeq:
         strbuf_appendf(out, "Using collation sequence %s", op->p4.pColl->zName);
         break;
+    case OP_PureFunc0:
+    case OP_PureFunc:
     case OP_Function0:
     case OP_Function:
         if (op->p5 > 1) {
