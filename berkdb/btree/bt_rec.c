@@ -371,10 +371,18 @@ lrundo:		if ((rootsplit && lp != NULL) || rp != NULL) {
 done:	*lsnp = argp->prev_lsn;
 	ret = 0;
 
+	if (dbp && dbp->is_free) {
+		logmsg(LOGMSG_FATAL, "%s line %d file_dbp=%p freed-dbp=%p AM_RECOVER=%d"
+				" AM_HASH=%d HASH=%p rootsplit=%d\n", __func__, __LINE__,
+				file_dbp, dbp, dbp ? F_ISSET(dbp, DB_AM_RECOVER) : 0, dbp ?
+				F_ISSET(dbp, DB_AM_HASH) : 0, dbp ? dbp->pg_hash : NULL,
+				rootsplit);
+		abort();
+	}
 	if (file_dbp && dbp &&
-	    !F_ISSET(dbp, DB_AM_RECOVER) &&
-	    F_ISSET(dbp, DB_AM_HASH) &&
-	    (hash = dbp->pg_hash) != NULL &&!rootsplit) {
+		!F_ISSET(dbp, DB_AM_RECOVER) &&
+		F_ISSET(dbp, DB_AM_HASH) &&
+		(hash = dbp->pg_hash) != NULL &&!rootsplit) {
 		argp_lp = argp->pg.data;
 		// Update the page numbers in the genid-pg hash
 		for (off = argp->indx; off < NUM_ENT(argp_lp); off += P_INDX) {
@@ -384,21 +392,21 @@ done:	*lsnp = argp->prev_lsn;
 				memset(&split_key, 0, sizeof(split_key));
 				split_key.data = tmp_bk->data;
 				ASSIGN_ALIGN_DIFF(u_int32_t, split_key.size,
-				    db_indx_t, tmp_bk->len);
+					db_indx_t, tmp_bk->len);
 				hashtbl = hash->tbl;
 				hh = hash_fixedwidth((unsigned char
 					*)(split_key.data)) % (hash->ntbl);
 				if (split_key.size == GENID_SIZE &&
-				    genidcmp(hashtbl[hh].genid,
+					genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-                    Pthread_mutex_lock(&(hash->mutex));
+					Pthread_mutex_lock(&(hash->mutex));
 					// update new page
 					genidsetzero(hashtbl[hh].genid);
 					hashtbl[hh].pgno = argp->right;
 					genidcpy(hashtbl[hh].genid,
-					    split_key.data);
-                    Pthread_mutex_unlock(&(hash->mutex));
+						split_key.data);
+					Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

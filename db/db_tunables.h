@@ -1860,4 +1860,8 @@ REGISTER_TUNABLE("waitalive_iterations",
                  TUNABLE_INTEGER, &gbl_waitalive_iterations,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
