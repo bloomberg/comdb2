@@ -1143,6 +1143,9 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 		start_time_us = bb_berkdb_fasttime();
 
 	ftype = mfp->ftype;
+    if (ftype == DB_FTYPE_SET)
+        ftype =  DB_UNKNOWN;
+
     if (mfp->pgcookie_len == 0)
         dbtp = NULL;
     else {
@@ -1151,12 +1154,12 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
         dbtp = &dbt;
     }
     if (is_pgin) {
-        if (dbmp->dbenv->pgin[mfp->ftype] != NULL &&
-                (ret = dbmp->dbenv->pgin[mfp->ftype](dbenv, pgno, buf, dbtp)) != 0)
+        if (dbmp->dbenv->pgin[ftype] != NULL &&
+                (ret = dbmp->dbenv->pgin[ftype](dbenv, pgno, buf, dbtp)) != 0)
             goto err;
     } else {
-        if (dbmp->dbenv->pgout[mfp->ftype] != NULL &&
-                (ret = dbmp->dbenv->pgout[mfp->ftype](dbenv, pgno, buf, dbtp)) != 0)
+        if (dbmp->dbenv->pgout[ftype] != NULL &&
+                (ret = dbmp->dbenv->pgout[ftype](dbenv, pgno, buf, dbtp)) != 0)
             goto err;
     }
 
