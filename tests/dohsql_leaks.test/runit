@@ -78,3 +78,9 @@ if [ $ratio -gt 1 ]; then
   echo "ratio is $ratio" >&2
   exit 1
 fi
+
+# We double free dohsql_node_t.order_dir if any column after the first one
+# in the order-by cluase refers to a subquery (Thanks Mike!).
+# For instance, in the query below, the 2nd column in the order-by clause
+# is 'SELECT 1', and it would crash the database.
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT i, (SELECT 1) FROM t0 ORDER BY 1, 2'
