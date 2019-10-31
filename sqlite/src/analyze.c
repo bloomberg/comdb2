@@ -1543,7 +1543,7 @@ static void analyzeOneTable(
       callStatGet(pParse, regStat4, STAT_GET_NLT, regLt);
       callStatGet(pParse, regStat4, STAT_GET_NDLT, regDLt);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      callStatGet(v, regStat4, STAT_GET_ROW, regSample);
+      callStatGet(pParse, regStat4, STAT_GET_ROW, regSample);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp4Int(v, seekOp, iTabCur, addrNext, regSampleRowid, 0);
       VdbeCoverage(v);
