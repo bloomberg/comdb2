@@ -81,11 +81,11 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=215)
+(KEYWORDS_COUNT=217)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
 (RESERVED_KW=65)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=150)
+(NONRESERVED_KW=152)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
@@ -159,6 +159,7 @@
 (name='AFTER', reserved='N')
 (name='AGGREGATE', reserved='N')
 (name='ALIAS', reserved='N')
+(name='ALWAYS', reserved='N')
 (name='ANALYZE', reserved='N')
 (name='ANALYZEEXPERT', reserved='N')
 (name='ANALYZESQLITE', reserved='N')
@@ -212,6 +213,7 @@
 (name='FOLLOWING', reserved='N')
 (name='FOR', reserved='N')
 (name='FUNCTION', reserved='N')
+(name='GENERATED', reserved='N')
 (name='GENID48', reserved='N')
 (name='GET', reserved='N')
 (name='GLOB', reserved='N')
