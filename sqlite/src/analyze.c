@@ -198,6 +198,7 @@ static void openStatTable(
 #else
     { "sqlite_stat4", 0 },
 #endif
+    { "sqlite_stat3", 0 },
   };
   int i;
   sqlite3 *db = pParse->db;
@@ -270,14 +271,14 @@ static void openStatTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3NestedParse(pParse, "DELETE FROM %Q.%s", pDb->zDbSName, zTab);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        /* The sqlite_stat[14] table already exists.  Delete all rows. */
+        /* The sqlite_stat[134] table already exists.  Delete all rows. */
         sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
   }
 
-  /* Open the sqlite_stat[14] tables for writing. */
+  /* Open the sqlite_stat[134] tables for writing. */
   for(i=0; aTable[i].zCols; i++){
     assert( i<ArraySize(aTable) );
     sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
