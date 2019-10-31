@@ -5264,25 +5264,26 @@ static int zipfileDeflate(
   u8 **ppOut, int *pnOut,         /* Output */
   char **pzErr                    /* OUT: Error message */
 ){
-  sqlite3_int64 nAlloc = compressBound(nIn);
-  u8 *aOut;
   int rc = SQLITE_OK;
+  sqlite3_int64 nAlloc;
+  z_stream str;
+  u8 *aOut;
 
+  memset(&str, 0, sizeof(str));
+  str.next_in = (Bytef*)aIn;
+  str.avail_in = nIn;
+  deflateInit2(&str, 9, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
+
+  nAlloc = deflateBound(&str, nIn);
   aOut = (u8*)sqlite3_malloc64(nAlloc);
   if( aOut==0 ){
     rc = SQLITE_NOMEM;
   }else{
     int res;
-    z_stream str;
-    memset(&str, 0, sizeof(str));
-    str.next_in = (Bytef*)aIn;
-    str.avail_in = nIn;
     str.next_out = aOut;
     str.avail_out = nAlloc;
-
     deflateInit2(&str, 9, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
     res = deflate(&str, Z_FINISH);
-
     if( res==Z_STREAM_END ){
       *ppOut = aOut;
       *pnOut = (int)str.total_out;
@@ -10555,19 +10556,22 @@ static int shell_callback(
       const int *colWidth;
       int showHdr;
       char *rowSep;
+      int nWidth;
       if( p->cMode==MODE_Column ){
         colWidth = p->colWidth;
+        nWidth = ArraySize(p->colWidth);
         showHdr = p->showHeader;
         rowSep = p->rowSeparator;
       }else{
         colWidth = aExplainWidths;
+        nWidth = ArraySize(aExplainWidths);
         showHdr = 1;
         rowSep = SEP_Row;
       }
       if( p->cnt++==0 ){
         for(i=0; i<nArg; i++){
           int w, n;
-          if( i<ArraySize(p->colWidth) ){
+          if( i<nWidth ){
             w = colWidth[i];
           }else{
             w = 0;
@@ -15868,6 +15872,7 @@ static int do_meta_command(char *zLine, ShellState *p){
         { "legacy_alter_table", SQLITE_DBCONFIG_LEGACY_ALTER_TABLE    },
         { "dqs_dml",            SQLITE_DBCONFIG_DQS_DML               },
         { "dqs_ddl",            SQLITE_DBCONFIG_DQS_DDL               },
+        { "legacy_file_format", SQLITE_DBCONFIG_LEGACY_FILE_FORMAT    },
     };
     int ii, v;
     open_db(p, 0);
@@ -16458,10 +16463,19 @@ static int do_meta_command(char *zLine, ShellState *p){
     char *zCollist = 0;
     sqlite3_stmt *pStmt;
     int tnum = 0;
+    int isWO = 0;  /* True if making an imposter of a WITHOUT ROWID table */
+    int lenPK = 0; /* Length of the PRIMARY KEY string for isWO tables */
     int i;
     if( !(nArg==3 || (nArg==2 && sqlite3_stricmp(azArg[1],"off")==0)) ){
       utf8_printf(stderr, "Usage: .imposter INDEX IMPOSTER\n"
                           "       .imposter off\n");
+      /* Also allowed, but not documented:
+      **
+      **    .imposter TABLE IMPOSTER
+      **
+      ** where TABLE is a WITHOUT ROWID table.  In that case, the
+      ** imposter is another WITHOUT ROWID table with the columns in
+      ** storage order. */
       rc = 1;
       goto meta_command_exit;
     }
@@ -16470,19 +16484,22 @@ static int do_meta_command(char *zLine, ShellState *p){
       sqlite3_test_control(SQLITE_TESTCTRL_IMPOSTER, p->db, "main", 0, 1);
       goto meta_command_exit;
     }
-    zSql = sqlite3_mprintf("SELECT rootpage FROM sqlite_master"
-                           " WHERE name='%q' AND type='index'", azArg[1]);
+    zSql = sqlite3_mprintf(
+      "SELECT rootpage, 0 FROM sqlite_master"
+      " WHERE name='%q' AND type='index'"
+      "UNION ALL "
+      "SELECT rootpage, 1 FROM sqlite_master"
+      " WHERE name='%q' AND type='table'"
+      "   AND sql LIKE '%%without%%rowid%%'",
+      azArg[1], azArg[1]
+    );
     sqlite3_prepare_v2(p->db, zSql, -1, &pStmt, 0);
     sqlite3_free(zSql);
     if( sqlite3_step(pStmt)==SQLITE_ROW ){
       tnum = sqlite3_column_int(pStmt, 0);
+      isWO = sqlite3_column_int(pStmt, 1);
     }
     sqlite3_finalize(pStmt);
-    if( tnum==0 ){
-      utf8_printf(stderr, "no such index: \"%s\"\n", azArg[1]);
-      rc = 1;
-      goto meta_command_exit;
-    }
     zSql = sqlite3_mprintf("PRAGMA index_xinfo='%q'", azArg[1]);
     rc = sqlite3_prepare_v2(p->db, zSql, -1, &pStmt, 0);
     sqlite3_free(zSql);
@@ -16499,6 +16516,9 @@ static int do_meta_command(char *zLine, ShellState *p){
           zCol = zLabel;
         }
       }
+      if( isWO && lenPK==0 && sqlite3_column_int(pStmt,5)==0 && zCollist ){
+        lenPK = (int)strlen(zCollist);
+      }
       if( zCollist==0 ){
         zCollist = sqlite3_mprintf("\"%w\"", zCol);
       }else{
@@ -16506,9 +16526,16 @@ static int do_meta_command(char *zLine, ShellState *p){
       }
     }
     sqlite3_finalize(pStmt);
+    if( i==0 || tnum==0 ){
+      utf8_printf(stderr, "no such index: \"%s\"\n", azArg[1]);
+      rc = 1;
+      sqlite3_free(zCollist);
+      goto meta_command_exit;
+    }
+    if( lenPK==0 ) lenPK = 100000;
     zSql = sqlite3_mprintf(
-          "CREATE TABLE \"%w\"(%s,PRIMARY KEY(%s))WITHOUT ROWID",
-          azArg[2], zCollist, zCollist);
+          "CREATE TABLE \"%w\"(%s,PRIMARY KEY(%.*s))WITHOUT ROWID",
+          azArg[2], zCollist, lenPK, zCollist);
     sqlite3_free(zCollist);
     rc = sqlite3_test_control(SQLITE_TESTCTRL_IMPOSTER, p->db, "main", 1, tnum);
     if( rc==SQLITE_OK ){
@@ -16519,7 +16546,8 @@ static int do_meta_command(char *zLine, ShellState *p){
       }else{
         utf8_printf(stdout, "%s;\n", zSql);
         raw_printf(stdout,
-           "WARNING: writing to an imposter table will corrupt the index!\n"
+          "WARNING: writing to an imposter table will corrupt the \"%s\" %s!\n",
+          azArg[1], isWO ? "table" : "index"
         );
       }
     }else{

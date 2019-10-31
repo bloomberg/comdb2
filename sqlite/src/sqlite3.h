@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.30.1"
-#define SQLITE_VERSION_NUMBER 3030001
-#define SQLITE_SOURCE_ID      "2019-10-10 21:30:23 9fcc10a10b70d7d1835f7fc5353b127d8a2fefecf6951a603c6257d895c2417f"
+#define SQLITE_VERSION        "3.31.0"
+#define SQLITE_VERSION_NUMBER 3031000
+#define SQLITE_SOURCE_ID      "2019-10-31 21:17:43 beb40121f0ff7f4f9aadab85ce5ca4f4aee2a385950da5e84b4d3d292ddf9ad2"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -2287,6 +2287,28 @@ struct sqlite3_mem_methods {
 ** default value of this setting is determined by the [-DSQLITE_DQS]
 ** compile-time option.
 ** </dd>
+**
+** [[SQLITE_DBCONFIG_LEGACY_FILE_FORMAT]]
+** <dt>SQLITE_DBCONFIG_LEGACY_FILE_FORMAT</td>
+** <dd>The SQLITE_DBCONFIG_LEGACY_FILE_FORMAT option activates or deactivates
+** the legacy file format flag.  When activated, this flag causes all newly
+** created database file to have a schema format version number (the 4-byte
+** integer found at offset 44 into the database header) of 1.  This in turn
+** means that the resulting database file will be readable and writable by
+** any SQLite version back to 3.0.0 ([dateof:3.0.0]).  Without this setting,
+** newly created databases are generally not understandable by SQLite versions
+** prior to 3.3.0 ([dateof:3.3.0]).  As these words are written, there
+** is now scarcely any need to generated database files that are compatible 
+** all the way back to version 3.0.0, and so this setting is of little
+** practical use, but is provided so that SQLite can continue to claim the
+** ability to generate new database files that are compatible with  version
+** 3.0.0.
+** <p>Note that when the SQLITE_DBCONFIG_LEGACY_FILE_FORMAT setting is on,
+** the [VACUUM] command will fail with an obscure error when attempting to
+** process a table with generated columns and a descending index.  This is
+** not considered a bug since SQLite versions 3.3.0 and earlier do not support
+** either generated columns or decending indexes.
+** </dd>
 ** </dl>
 */
 #define SQLITE_DBCONFIG_MAINDBNAME            1000 /* const char* */
@@ -2305,7 +2327,8 @@ struct sqlite3_mem_methods {
 #define SQLITE_DBCONFIG_DQS_DML               1013 /* int int* */
 #define SQLITE_DBCONFIG_DQS_DDL               1014 /* int int* */
 #define SQLITE_DBCONFIG_ENABLE_VIEW           1015 /* int int* */
-#define SQLITE_DBCONFIG_MAX                   1015 /* Largest DBCONFIG */
+#define SQLITE_DBCONFIG_LEGACY_FILE_FORMAT    1016 /* int int* */
+#define SQLITE_DBCONFIG_MAX                   1016 /* Largest DBCONFIG */
 
 /*
 ** CAPI3REF: Enable Or Disable Extended Result Codes
