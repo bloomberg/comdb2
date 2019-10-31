@@ -99,8 +99,8 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         newterm = sqlite3ExprDescribeParams(v, lst->a[i].pExpr, pParamsOut);
         if (!newterm) {
             sqlite3_free(ret);
-            if (*order_dir)
-                free(*order_dir);
+            free(*order_dir);
+            *order_dir = NULL;
             return NULL;
         }
         tmp = sqlite3_mprintf(

@@ -11,6 +11,15 @@ function drop_table
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "drop table $table"
 }
 
+function truncate_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="truncate_table"
+    write_prompt $func "Running $func"
+    typeset table=${1:-t1}
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "truncate table $table"
+}
+
 function create_table
 {
     [[ $debug == "1" ]] && set -x
