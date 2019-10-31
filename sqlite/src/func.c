@@ -2262,7 +2262,6 @@ static void groupConcatStep(
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pAccum->mxAlloc = db->aLimit[SQLITE_LIMIT_LENGTH];
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     if( !firstTerm ){
       if( argc==2 ){
         zSep = (char*)sqlite3_value_text(argv[1]);
@@ -2276,7 +2275,6 @@ static void groupConcatStep(
     zVal = (char*)sqlite3_value_text(argv[0]);
     nVal = sqlite3_value_bytes(argv[0]);
     if( zVal ) sqlite3_str_append(pAccum, zVal, nVal);
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     // NC: Attach an error message here as we do not want client to see the
     // default error message 'transaction too big' emitted for ERR_TRAN_TOO_BIG,
