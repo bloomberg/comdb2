@@ -663,7 +663,7 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)buflen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(buf, &odh);
@@ -689,7 +689,7 @@ int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)fromlen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(from, &odh_in);
