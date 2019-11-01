@@ -102,6 +102,7 @@
 #include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
+#include <schema_lk.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -4082,6 +4083,9 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
+    /* This call should be protected by the schema lock */
+    assert_wrlock_schema_lk();
+
 deadlock_again:
     tmp_tid = 0;
 
@@ -4594,14 +4598,11 @@ deadlock_again:
     return 0;
 }
 
-static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
                           int create, DB_TXN *tid, uint32_t flags)
 {
     int rc = 0;
-    Pthread_mutex_lock(&open_dbs_mtx);
     rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags);
-    Pthread_mutex_unlock(&open_dbs_mtx);
     return rc;
 }
 
