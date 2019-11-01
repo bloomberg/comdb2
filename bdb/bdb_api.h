@@ -330,7 +330,8 @@ typedef int (*GETROOMFP)(bdb_state_type *bdb_handle, const char *host);
   updates directed elesewhere if you learned of a new master.
   do NOT call back into the bdb library from this routine.
 */
-typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host);
+typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host,
+                             int assert_sc_clear);
 
 /*
   pass in a routine that will be called when the replication
@@ -517,7 +518,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
 int bdb_handle_reset(bdb_state_type *);
-int bdb_handle_reset_tran(bdb_state_type *, tran_type *);
+int bdb_handle_reset_tran(bdb_state_type *, tran_type *, tran_type *);
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb);
 int bdb_handle_dbp_drop_hash(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);
@@ -2138,7 +2139,7 @@ int bdb_clear_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_build_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_print_mintruncate_min(bdb_state_type *bdb_state);
 
-void wait_for_sc_to_stop(const char *operation);
+void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run(void);
 
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
@@ -2159,4 +2160,12 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
  * Otherwise unpack the payload into heap memory. */
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
+/* Abort if this thread has an open transaction */
+void bdb_assert_notran(bdb_state_type *bdb_state);
+
+int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
+
+/* Return 1 if this node is master, 0 otherwise */
+int bdb_iam_master(bdb_state_type *bdb_state);
+
 #endif

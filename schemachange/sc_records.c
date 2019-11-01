@@ -1179,7 +1179,7 @@ void *convert_records_thd(struct convert_record_data *data)
         if (data->cmembers->is_decrease_thrds)
             release_rebuild_thr(&data->cmembers->thrcount);
 
-        if (stopsc) { // set from downgrade
+        if (get_stopsc(__func__, __LINE__)) { // set from downgrade
             data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
@@ -1849,7 +1849,7 @@ static void *upgrade_records_thd(void *vdata)
     }
 
     while ((rc = upgrade_records(data)) > 0) {
-        if (stopsc) {
+        if (get_stopsc(__func__, __LINE__)) {
             if (data->isThread)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
             return NULL;
@@ -3219,7 +3219,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     s->tablename);
             goto cleanup;
         }
-        if (stopsc) {
+        if (get_stopsc(__func__, __LINE__)) {
             sc_errf(s, "[%s] %s stopping due to master swings\n", s->tablename,
                     __func__);
             goto cleanup;

@@ -101,6 +101,7 @@
 
 #include "str0.h"
 #include "comdb2_atomic.h"
+#include "sc_util.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -145,7 +146,6 @@ extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
 extern int gbl_fdb_track;
 extern int gbl_selectv_rangechk;
-extern volatile int gbl_schema_change_in_progress;
 
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
@@ -2235,9 +2235,11 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
         }
     }
 
+    int inprogress;
     if (thd->clnt->is_analyze &&
-        (gbl_schema_change_in_progress || get_analyze_abort_requested())) {
-        if (gbl_schema_change_in_progress)
+        (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
+                      get_analyze_abort_requested())) {
+        if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
                     __func__);
@@ -9350,9 +9352,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     int rc = 0;
     uint32_t curtran_flags;
     int bdberr;
-#if 0
-   char buf[160];
-#endif
+
+    assert_no_schema_lk();
+
     if (clnt->recover_deadlock_rcode) {
         assert(bdb_lockref() == 0);
         return clnt->recover_deadlock_rcode;
@@ -9391,10 +9393,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             return -300;
         }
     }
-#if 0
-   sprintf(buf, "recover_deadlock put curtran tid %d\n", pthread_self());
-   bdb_bdblock_print(thedb->bdb_env, buf);
-#endif
 
     if (unlikely(gbl_sql_random_release_interval)) {
         logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
