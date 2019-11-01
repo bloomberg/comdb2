@@ -1537,7 +1537,7 @@ static int bdb_osql_log_applicable(bdb_cursor_impl_t *cur,
 extern int gbl_rowlocks;
 int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                            bdb_osql_log_t *log, bdb_osql_trn_t *trn, int *dirty,
-                           enum log_ops log_op, int trak, int *bdberr)
+                           log_ops_t log_op, int trak, int *bdberr)
 {
     bdb_osql_log_rec_t *rec = NULL;
     int rc = 0;
