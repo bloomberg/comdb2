@@ -8725,31 +8725,21 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
 
 /* obtain comdb2_rowid and optionally print it as a decimal string */
 int sqlite3BtreeGetGenId(
-  BtCursor *pCur,             /* IN: The BtCursor object being used. */
   unsigned long long rowId,   /* IN: Original rowId (from the BtCursor). */
   unsigned long long *pGenId, /* OUT, OPT: The genId, if requested. */
   char **pzGenId,             /* OUT, OPT: Modified genId as decimal string. */
   int *pnGenId                /* OUT, OPT: Size of string buffer. */
 ){
   unsigned long long prgenid; /* always printed & returned in big-endian */
-  assert( pCur );
-  assert( sizeof(pCur->rrn)<=sizeof(int) );
-  assert( sizeof(pCur->genid)<=sizeof(unsigned long long) );
   prgenid = flibc_htonll(rowId);
   if( pGenId ) *pGenId = prgenid;
   if( pzGenId && pnGenId ){
-    char *zGenId;
-    int nGenId = 25; /* "+2:+18446744073709551615\0" */
-    assert( ULLONG_MAX<=18446744073709551615ULL );
-    zGenId = sqlite3Malloc(nGenId);
-    if( zGenId==0 ){
+    char *zGenId = sqlite3_mprintf("2:%llu", prgenid);
+    if( zGenId==NULL ){
       return SQLITE_NOMEM;
     }
-    snprintf(zGenId, nGenId, "2:%llu", prgenid);
-    assert( *pzGenId==0 );
     *pzGenId = zGenId;
-    assert( *pnGenId==0 );
-    *pnGenId = nGenId;
+    *pnGenId = strlen(zGenId); /* BUGFIX: Need actual len for OP_Ne, etc. */
   }
   return SQLITE_OK;
 }
@@ -9403,21 +9393,24 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     return -700;
                 }
             }
-            if (!cur->bt->is_remote &&
-                cur->tableversion != cur->db->tableversion) {
-                Pthread_mutex_unlock(&thd->lk);
-                logmsg(LOGMSG_ERROR,
-                       "%s: table version for %s changed from %d to %lld\n",
-                       __func__, cur->db->tablename, cur->tableversion,
-                       cur->db->tableversion);
-                sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
-                sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
-                                 cur->db->tablename);
-                sqlite3VdbeTransferError(cur->vdbe);
-                sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
-                sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
-                return SQLITE_COMDB2SCHEMA;
-            } else if (!cur->bt->is_remote && cur->db) {
+
+            if (!cur->bt->is_remote && cur->db) {
+                if (cur->tableversion != cur->db->tableversion) {
+                    Pthread_mutex_unlock(&thd->lk);
+                    logmsg(LOGMSG_ERROR,
+                           "%s: table version for %s changed from %d to %lld\n",
+                           __func__, cur->db->tablename, cur->tableversion,
+                           cur->db->tableversion);
+                    sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
+                    sqlite3VdbeError(cur->vdbe,
+                                     "table \"%s\" was schema changed",
+                                     cur->db->tablename);
+                    sqlite3VdbeTransferError(cur->vdbe);
+                    sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
+                    sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
+                    return SQLITE_COMDB2SCHEMA;
+                }
+
                 if (cur->ixnum == -1)
                     cur->sc = cur->db->schema;
                 else

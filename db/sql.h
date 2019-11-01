@@ -1189,6 +1189,9 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+
+int clear_fingerprints(void);
+
 void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
                      struct reqlogger *logger, unsigned char *fingerprint_out);
 
