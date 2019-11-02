@@ -401,11 +401,13 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
+    wrlock_schema_lk();
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        unlock_schema_lk();
         return rc;
     }
 
@@ -415,6 +417,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Internal error\n");
+        unlock_schema_lk();
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
@@ -427,6 +430,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Failed to process schema!\n");
+        unlock_schema_lk();
         return -1;
     }
 
@@ -501,8 +505,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                        "the new master can sort it out\n");
         }
 
+        unlock_schema_lk();
         clean_exit();
     }
+
+    unlock_schema_lk();
 
     /* we can resume sql threads at this point */
 
