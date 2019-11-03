@@ -110,9 +110,8 @@ cleanup_cluster() {
             scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
             ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} $TMPDIR/${DBNAME}" < /dev/null &
-#ssh -o StrictHostKeyChecking=no $node "rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
             if [ "$CLEANUPDBDIR" == "2" ] ; then 
-                ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${DBNAME}.db ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*" < /dev/null &
+                ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${DBNAME}.db ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
             fi
         fi
     done
@@ -121,9 +120,9 @@ cleanup_cluster() {
     # the local node always has a copy of DBDIR even if not part of cluster
     if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
         rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
-#rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
         if [ "$CLEANUPDBDIR" == "2" ] ; then
-            rm -f $TESTDIR/logs/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f $TESTDIR/logs/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            #rm -f ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null
             #if DBCLEANUP is 2 then we cleanup the logs/${DBNAME}.testcase, remark so we know
             echo '$CLEANUPDBDIR == 2 and test was successful so we cleaned up all files related to this test' >> $TESTDIR/logs/${DBNAME}.testcase
