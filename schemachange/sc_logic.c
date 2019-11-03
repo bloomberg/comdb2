@@ -415,11 +415,9 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         s->finalize = 0;
         rc = SC_COMMIT_PENDING;
     } else if (s->finalize) {
-        /* Lock but dont set flag */
         if (!iq->sc_locked)
             wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
-        /* Unlock if we locked above */
         if (!iq->sc_locked)
             unlock_schema_lk();
         if (type == fastinit && gbl_replicate_local)
