@@ -71,21 +71,21 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
 }
 
 inline void assert_wrlock_schema_int(const char *file, const char *func,
-        int line)
+                                     int line)
 {
     if (have_writelock == 0) {
         logmsg(LOGMSG_FATAL, "%p:ASSERT-WRLOCK %s:%d\n", (void *)pthread_self(),
-                func, line);
+               func, line);
         abort();
     }
 }
 
 inline void assert_rdlock_schema_int(const char *file, const char *func,
-        int line)
+                                     int line)
 {
     if (have_readlock == 0) {
         logmsg(LOGMSG_FATAL, "%p:ASSERT-RDLOCK %s:%d\n", (void *)pthread_self(),
-                func, line);
+               func, line);
         abort();
     }
 }
