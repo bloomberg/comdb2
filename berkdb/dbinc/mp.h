@@ -15,8 +15,6 @@ struct __bh;
 typedef struct __bh BH;
 struct __db_mpool_hash;
 typedef struct __db_mpool_hash DB_MPOOL_HASH;
-struct __db_mpreg;
-typedef struct __db_mpreg DB_MPREG;
 struct __mpool;
 typedef struct __mpool MPOOL;
 
@@ -51,9 +49,6 @@ typedef enum {
 struct __db_mpool {
 	/* These fields need to be protected for multi-threaded support. */
 	DB_MUTEX   *mutexp;		/* Structure thread lock. */
-
-					/* List of pgin/pgout routines. */
-	LIST_HEAD(__db_mpregh, __db_mpreg) dbregq;
 
 					/* List of DB_MPOOLFILE's. */
 	TAILQ_HEAD(__db_mpoolfileh, __db_mpoolfile) dbmfq;

@@ -72,7 +72,6 @@ __memp_open(dbenv)
 	/* Create and initialize the DB_MPOOL structure. */
 	if ((ret = __os_calloc(dbenv, 1, sizeof(*dbmp), &dbmp)) != 0)
 		return (ret);
-	LIST_INIT(&dbmp->dbregq);
 	TAILQ_INIT(&dbmp->dbmfq);
 	dbmp->dbenv = dbenv;
 
@@ -299,7 +298,6 @@ __memp_dbenv_refresh(dbenv)
 {
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *dbmfp;
-	DB_MPREG *mpreg;
 	u_int32_t i;
 	int ret, t_ret;
 

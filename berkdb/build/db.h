@@ -141,7 +141,7 @@ struct __db_ltran; typedef struct __db_ltran DB_LTRAN;
 struct __db_mpool;	typedef struct __db_mpool DB_MPOOL;
 struct __db_mpool_fstat;typedef struct __db_mpool_fstat DB_MPOOL_FSTAT;
 struct __db_mpool_stat;	typedef struct __db_mpool_stat DB_MPOOL_STAT;
-struct __db_mpoolfile;	typedef struct __db_mpoolfile DB_MPOOLFILE;
+//struct __db_mpoolfile;	typedef struct __db_mpoolfile DB_MPOOLFILE;
 struct __db_preplist;	typedef struct __db_preplist DB_PREPLIST;
 struct __db_qam_stat;	typedef struct __db_qam_stat DB_QUEUE_STAT;
 struct __db_rep;	typedef struct __db_rep DB_REP;
