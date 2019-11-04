@@ -75,7 +75,7 @@ struct __db_mpool {
  *	more frequent than a random data page.
  */
 #define	NCACHE(mp, mf_offset, pgno)					\
-	(((pgno) ^ ((mf_offset) >> 3)) % ((MPOOL *)mp)->nreg)
+	(((pgno) ^ (((uintptr_t) mf_offset) >> 3)) % ((MPOOL *)mp)->nreg)
 
 /*
  * NBUCKET --
@@ -90,7 +90,7 @@ struct __db_mpool {
  *	 good hashing.
  */
 #define	NBUCKET(mc, mf_offset, pgno)					\
-	(((pgno) ^ ((mf_offset) << 9)) % (mc)->htab_buckets)
+	(((pgno) ^ (((intptr_t)mf_offset) << 9)) % (mc)->htab_buckets)
 
 /*
  * MPOOL --
@@ -318,7 +318,7 @@ struct __bh {
 	SH_TAILQ_ENTRY(__bh) hq;	/* MPOOL hash bucket queue. */
 
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */
-	roff_t	  mf_offset;		/* Associated MPOOLFILE offset. */
+    MPOOLFILE *mpf;
 
 	/* The begin LSN of the transaction that
 	   marked the page from clean to dirty. */
