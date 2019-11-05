@@ -102,16 +102,17 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 					     bhps, numpages, 1));
 
 	/*
-	 * Walk the process' DB_MPOOLFILE list and find a file descriptor for
+	 * Walk the MPOOLFILE's list and find a file descriptor for
 	 * the file.  We also check that the descriptor is open for writing.
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
-	    dbmfp != NULL; dbmfp = TAILQ_NEXT(dbmfp, q))
+	for (dbmfp = LIST_FIRST(&mfp->dbmpf_list);
+	    dbmfp != NULL; dbmfp = LIST_NEXT(dbmfp, mpfq)) {
 		if (dbmfp->mfp == mfp && !F_ISSET(dbmfp, MP_READONLY)) {
 			++dbmfp->ref;
 			break;
 		}
+    }
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (dbmfp != NULL) {

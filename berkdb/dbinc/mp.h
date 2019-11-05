@@ -221,6 +221,8 @@ struct __mpoolfile {
 	db_pgno_t alloc_pgno;           /* Last page alloced on disk. */
 	db_pgno_t maxpgno;		/* Maximum page number. */
 
+    LIST_HEAD(, __db_mpoolfile) dbmpf_list;
+
 	/*
 	 * None of the following fields are thread protected.
 	 *

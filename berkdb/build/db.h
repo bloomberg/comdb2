@@ -757,6 +757,12 @@ struct __db_mpoolfile {
 	DB_FH	  *fhp;		/* Underlying file handle. */
 	DB_FH     *recp;        /* Recovery page file handle. */
 
+    /* Protected by mpoolfile mutex */
+    struct {								\
+        DB_MPOOLFILE *le_next;	/* next element */			\
+        DB_MPOOLFILE **le_prev;	/* address of previous next element */	\
+    } mpfq;
+
 	/* Lock-array for recovery pages. */
 	pthread_mutex_t *recp_lk_array;
 	int       rec_idx;      /* Current index for recover pages. */
