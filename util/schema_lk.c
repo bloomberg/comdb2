@@ -89,3 +89,23 @@ inline void assert_rdlock_schema_int(const char *file, const char *func,
         abort();
     }
 }
+
+inline void assert_lock_schema_int(const char *file, const char *func,
+                                     int line)
+{
+    if (have_readlock == 0 && have_writelock == 0) {
+        logmsg(LOGMSG_FATAL, "%p:ASSERT-RDLOCK %s:%d\n", (void *)pthread_self(),
+               func, line);
+        abort();
+    }
+}
+
+inline void assert_no_schema_lock_int(const char *file, const char *func,
+                                      int line)
+{
+    if (have_readlock != 0 || have_writelock != 0) {
+        logmsg(LOGMSG_FATAL, "%p:ASSERT-NOLOCK %s:%d\n", (void *)pthread_self(),
+               func, line);
+        abort();
+    }
+}

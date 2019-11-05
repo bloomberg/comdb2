@@ -7352,6 +7352,8 @@ static int rootpcompare(const void *p1, const void *p2)
 
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
+    // assert_lock_schema_lk();
+
     if (pStmt == NULL)
         return 0;
 
@@ -9363,6 +9365,10 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
 #if 0
    char buf[160];
 #endif
+
+    /* Should never have schema lock here */
+   assert_no_schema_lk();
+
     if (clnt->recover_deadlock_rcode) {
         assert(bdb_lockref() == 0);
         return clnt->recover_deadlock_rcode;
