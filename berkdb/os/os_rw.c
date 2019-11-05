@@ -176,8 +176,8 @@ again:
 		if (rc == -1) {
             int err = errno;
 			logmsg(LOGMSG_ERROR, 
-				"pwrite fd %d sz %zu off %u retry %d %d %s\n", fd,
-				bufsz, (unsigned int)offset, nretries, err, strerror(err));
+				"pwrite fd %d sz %zu off %"PRIu64" retry %d %d %s\n", fd,
+				bufsz, (uint64_t)offset, nretries, err, strerror(err));
 			if (err != EINTR && err != EBUSY)
 				poll(NULL, 0, 10);
 	    }
@@ -725,8 +725,8 @@ retry:
 				else {
 					/* We got positioned into the limbo somewhere (how?)
 					 * so it's not safe to proceed. */
-					__db_err(dbenv, "lseek: fd %d off %u, wanted %u\n", fhp->fd,
-							(unsigned int)rc, (unsigned int)off);
+					__db_err(dbenv, "lseek: fd %d off %"PRIu64", wanted %"PRIu64"\n", fhp->fd,
+							(uint64_t)rc, (uint64_t)off);
 					return errno;
 				}
 			}
@@ -795,8 +795,8 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 		rc = pwrite(fd, abuf, nobufs * pagesize, offset);
 		int err = errno;
 		if (rc == -1) {
-			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %u retry %d error %d %s\n",
-			    fd, (int)(nobufs * pagesize), (unsigned int)offset, nretries, err, strerror(err));
+			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %"PRIu64" retry %d error %d %s\n",
+			    fd, (int)(nobufs * pagesize), (uint64_t)offset, nretries, err, strerror(err));
 				if (err != EINTR && err != EBUSY)
 						poll(NULL, 0, 10);
 		}

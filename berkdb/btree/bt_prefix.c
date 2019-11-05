@@ -87,11 +87,11 @@ inspect_page_hdr(DB *dbp, PAGE *h)
 {
 	logmsg(LOGMSG_USER, "file:%s leaf:%s\n"
 	    "lsn:%d-%d\t" "pgno:%d\t" "prev:%d\t" "next:%d\n"
-	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%u\t" "entries:%d\n"
+	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%"PRIu64"\t" "entries:%d\n"
 	    "chksum:%s\t" "crypto:%s\t" "\n",
 	    dbp->fname, YESNO(ISLEAF(h)),
 	    LSN(h).file, LSN(h).offset, PGNO(h), PREV_PGNO(h), NEXT_PGNO(h),
-	    HOFFSET(h), TYPE(h), PGTYPE(h), (unsigned int)P_FREESPACE(dbp, h), NUM_ENT(h),
+	    HOFFSET(h), TYPE(h), PGTYPE(h), (uint64_t)P_FREESPACE(dbp, h), NUM_ENT(h),
 	    YESNO(F_ISSET((dbp), DB_AM_CHKSUM)), YESNO(F_ISSET((dbp),
 		    DB_AM_ENCRYPT)));
 
