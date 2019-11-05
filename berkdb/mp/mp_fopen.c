@@ -892,7 +892,7 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 	mfp->clear_len = dbmfp->clear_len;
 	mfp->priority = dbmfp->priority;
 	mfp->flushed = 0;
-    LIST_INIT(&mfp->dbmpf_list);
+	LIST_INIT(&mfp->dbmpf_list);
 
 	if (dbmfp->gbytes != 0 || dbmfp->bytes != 0) {
 		mfp->maxpgno =
@@ -1122,7 +1122,7 @@ check_map:
 		}
 
 	TAILQ_INSERT_TAIL(&dbmp->dbmfq, dbmfp, q);
-    LIST_INSERT_HEAD(&mfp->dbmpf_list, dbmfp, mpfq);
+	LIST_INSERT_HEAD(&mfp->dbmpf_list, dbmfp, mpfq);
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
@@ -1237,8 +1237,8 @@ __memp_fclose(dbmfp, flags)
 	DB_ASSERT(dbmfp->ref >= 1);
 	if ((ref = --dbmfp->ref) == 0 && F_ISSET(dbmfp, MP_OPEN_CALLED)) {
 		TAILQ_REMOVE(&dbmp->dbmfq, dbmfp, q);
-        LIST_REMOVE(dbmfp, mpfq);
-    }
+		LIST_REMOVE(dbmfp, mpfq);
+	}
 
 	/*
 	 * Decrement the file descriptor's ref count -- if we're the last ref,

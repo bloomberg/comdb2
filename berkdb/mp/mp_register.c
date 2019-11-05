@@ -65,13 +65,13 @@ __memp_register(dbenv, ftype, pgin, pgout)
 	int (*pgout) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 {
 
-    if (ftype == DB_FTYPE_SET)
-        ftype = DB_UNKNOWN;
+	if (ftype == DB_FTYPE_SET)
+		ftype = DB_UNKNOWN;
 
-    if (dbenv->pgin[ftype] || dbenv->pgout[ftype])
-        return (0);
+	if (dbenv->pgin[ftype] || dbenv->pgout[ftype])
+		return (0);
 
-    dbenv->pgin[ftype] = pgin;
-    dbenv->pgout[ftype] = pgout;
+	dbenv->pgin[ftype] = pgin;
+	dbenv->pgout[ftype] = pgout;
 	return (0);
 }

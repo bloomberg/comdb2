@@ -204,6 +204,8 @@ struct __mpoolfile {
 	/* Protected by MPOOLFILE mutex. */
 	u_int32_t mpf_cnt;		/* Ref count: DB_MPOOLFILEs. */
 	u_int32_t block_cnt;		/* Ref count: blocks in cache. */
+	LIST_HEAD(, __db_mpoolfile) dbmpf_list;
+
 
 	roff_t	  path_off;		/* File name location. */
 
@@ -220,8 +222,6 @@ struct __mpoolfile {
 	db_pgno_t orig_last_pgno;	/* Original last page in the file. */
 	db_pgno_t alloc_pgno;           /* Last page alloced on disk. */
 	db_pgno_t maxpgno;		/* Maximum page number. */
-
-    LIST_HEAD(, __db_mpoolfile) dbmpf_list;
 
 	/*
 	 * None of the following fields are thread protected.
@@ -320,7 +320,7 @@ struct __bh {
 	SH_TAILQ_ENTRY(__bh) hq;	/* MPOOL hash bucket queue. */
 
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */
-    MPOOLFILE *mpf;
+	MPOOLFILE *mpf;
 
 	/* The begin LSN of the transaction that
 	   marked the page from clean to dirty. */

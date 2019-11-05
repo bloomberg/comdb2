@@ -112,7 +112,7 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 			++dbmfp->ref;
 			break;
 		}
-    }
+	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (dbmfp != NULL) {
@@ -1144,25 +1144,25 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 		start_time_us = bb_berkdb_fasttime();
 
 	ftype = mfp->ftype;
-    if (ftype == DB_FTYPE_SET)
-        ftype =  DB_UNKNOWN;
+	if (ftype == DB_FTYPE_SET)
+		ftype =  DB_UNKNOWN;
 
-    if (mfp->pgcookie_len == 0)
-        dbtp = NULL;
-    else {
-        dbt.size = mfp->pgcookie_len;
-        dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-        dbtp = &dbt;
-    }
-    if (is_pgin) {
-        if (dbmp->dbenv->pgin[ftype] != NULL &&
-                (ret = dbmp->dbenv->pgin[ftype](dbenv, pgno, buf, dbtp)) != 0)
-            goto err;
-    } else {
-        if (dbmp->dbenv->pgout[ftype] != NULL &&
-                (ret = dbmp->dbenv->pgout[ftype](dbenv, pgno, buf, dbtp)) != 0)
-            goto err;
-    }
+	if (mfp->pgcookie_len == 0)
+		dbtp = NULL;
+	else {
+		dbt.size = mfp->pgcookie_len;
+		dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
+		dbtp = &dbt;
+	}
+	if (is_pgin) {
+		if (dbmp->dbenv->pgin[ftype] != NULL &&
+			(ret = dbmp->dbenv->pgin[ftype](dbenv, pgno, buf, dbtp)) != 0)
+			goto err;
+	} else {
+		if (dbmp->dbenv->pgout[ftype] != NULL &&
+			(ret = dbmp->dbenv->pgout[ftype](dbenv, pgno, buf, dbtp)) != 0)
+			goto err;
+	}
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
 		bb_memp_pg_hit(start_time_us);

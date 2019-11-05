@@ -912,10 +912,10 @@ __memp_read_recovery_pages(dbmfp)
 		free_buf = 1;
 	}
 
-    if (mfp->pgcookie_len > 0) {
-        pginfo = (DB_PGINFO *)
-            R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-    }
+	if (mfp->pgcookie_len > 0) {
+		pginfo = (DB_PGINFO *)
+		R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
+	}
 
 	/* Scan in each of the recovery pages. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {

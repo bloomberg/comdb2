@@ -757,11 +757,11 @@ struct __db_mpoolfile {
 	DB_FH	  *fhp;		/* Underlying file handle. */
 	DB_FH     *recp;        /* Recovery page file handle. */
 
-    /* Protected by mpoolfile mutex */
-    struct {								\
-        DB_MPOOLFILE *le_next;	/* next element */			\
-        DB_MPOOLFILE **le_prev;	/* address of previous next element */	\
-    } mpfq;
+/* Protected by mpoolfile mutex */
+	struct {								\
+		DB_MPOOLFILE *le_next;	/* next element */			\
+		DB_MPOOLFILE **le_prev;	/* address of previous next element */	\
+	} mpfq;
 
 	/* Lock-array for recovery pages. */
 	pthread_mutex_t *recp_lk_array;
@@ -2583,8 +2583,8 @@ struct __db_env {
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
 
-    int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
-    int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 };
 
 #ifndef DB_DBM_HSEARCH
