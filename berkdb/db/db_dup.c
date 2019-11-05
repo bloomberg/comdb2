@@ -303,8 +303,8 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	}
 
 	if (nbytes > P_FREESPACE(dbp, pagep)) {
-        logmsg(LOGMSG_ERROR, "%s nbytes:%u freespace:%"PRIu64"\n",                                                                         
-            __func__, nbytes, (uint64_t)P_FREESPACE(dbp, pagep));
+        logmsg(LOGMSG_ERROR, "%s nbytes:%u freespace:%"PRId64"\n",                                                                         
+            __func__, nbytes, (int64_t)P_FREESPACE(dbp, pagep));
 		DB_ASSERT(nbytes <= P_FREESPACE(dbp, pagep));
 		return (EINVAL);
 	}
