@@ -16,7 +16,7 @@ limitations under the License. -->
   <groupId>com.bloomberg.comdb2</groupId>
   <modelVersion>4.0.0</modelVersion>
   <artifactId>cdb2jdbc</artifactId>
-  <version>2.1.0</version>
+  <version>2.2.0</version>
   <packaging>jar</packaging>
   <properties>
     <maven.compiler.source>1.6</maven.compiler.source>
