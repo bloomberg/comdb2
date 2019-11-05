@@ -12,6 +12,7 @@ static const char revid[] = "$Id: mp_register.c,v 11.24 2003/09/13 19:20:40 bost
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#include <assert.h>
 #endif
 
 #include "db_int.h"
@@ -67,6 +68,8 @@ __memp_register(dbenv, ftype, pgin, pgout)
 
 	if (ftype == DB_FTYPE_SET)
 		ftype = DB_UNKNOWN;
+
+    assert(ftype > 0 && ftype <= DB_TYPE_MAX);
 
 	if (dbenv->pgin[ftype] || dbenv->pgout[ftype])
 		return (0);
