@@ -3393,7 +3393,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         if (hndl->debug_trace) {
             gettimeofday(&tv, NULL);
             uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-            fprintf(stderr, "%s: auto consume %d records took %"PRIu64" ms\n",
+            fprintf(stderr, "%s: auto consume %d records took %" PRIu64 " ms\n",
                     __func__, nrec, curr - starttimems);
         }
     }

@@ -512,7 +512,8 @@ void sqllogger_process_message(char *line, int lline)
         }
         sqllog_async_maxsize = size;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
-        logmsg(LOGMSG_USER, "async logged %"PRId64" dropped %"PRId64" size %d max %d\n",
+        logmsg(LOGMSG_USER,
+               "async logged %" PRId64 " dropped %" PRId64 " size %d max %d\n",
                async_nmessages, async_ndrops, async_size, async_maxsize);
     } else {
         logmsg(LOGMSG_ERROR, "Unknown sqllogger command\n");

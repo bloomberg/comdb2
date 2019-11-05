@@ -1037,8 +1037,9 @@ static void increase_file_descriptor_limit()
     max_fd_limit = rlp.rlim_cur;
 
     if (rlp.rlim_cur < rlp.rlim_max) {
-        syslog(LOG_INFO, "Increasing soft file descriptor limit from current "
-                         "value of %ld to the hard max (%ld).\n",
+        syslog(LOG_INFO,
+               "Increasing soft file descriptor limit from current "
+               "value of %ld to the hard max (%ld).\n",
                (long int)rlp.rlim_cur, (long int)rlp.rlim_max);
 
         rlp.rlim_cur = rlp.rlim_max;

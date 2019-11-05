@@ -6494,12 +6494,13 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%"PRIu64"\"\n", tblname,
-               flibc_ntohll(version));
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%" PRIu64 "\"\n",
+               tblname, flibc_ntohll(version));
         } break;
         case LLMETA_TABLE_NUM_SC_DONE: {
             unsigned long long version = *(unsigned long long *)data;
-            logmsg(LOGMSG_USER, "LLMETA_TABLE_NUM_SC_DONE version=\"%"PRIu64"\"\n",
+            logmsg(LOGMSG_USER,
+                   "LLMETA_TABLE_NUM_SC_DONE version=\"%" PRIu64 "\"\n",
                    flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {

@@ -345,8 +345,8 @@ static void *test_get_put(void *_mode)
         }
     }
     end = gettimeofday_ms();
-    logmsg(LOGMSG_USER, "diff: %"PRIu64"ms (%.2fs) ", end - start,
-            (end - start) / 1000.0);
+    logmsg(LOGMSG_USER, "diff: %" PRIu64 "ms (%.2fs) ", end - start,
+           (end - start) / 1000.0);
     rc1 = dbenv->lock_id_free(dbenv, locker);
     if (rc1) {
         logmsg(LOGMSG_ERROR, "lock_id_free rc: %zu\n", rc1);
@@ -384,9 +384,10 @@ static void print_counters()
     for (int i = 0; i < THDS; ++i) {
         diff += diffs[i];
     }
-    logmsg(LOGMSG_USER, 
-        "detect_skip:%"PRIu64" detect_run:%"PRIu64" counter:%"PRIu64" deadlock:%"PRIu64" time:%.2fms\n",
-        detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
+    logmsg(LOGMSG_USER,
+           "detect_skip:%" PRIu64 " detect_run:%" PRIu64 " counter:%" PRIu64
+           " deadlock:%" PRIu64 " time:%.2fms\n",
+           detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
 }
 
 static void test_n_locks_rd(void)

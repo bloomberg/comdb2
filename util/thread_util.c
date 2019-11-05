@@ -122,8 +122,8 @@ void thread_remove_resource(void *resource, void (*freefunc)(void *))
     }
     r = hash_find(info->resource_hash, &resource);
     if (r == NULL) {
-        printf("resource 0x%p not found, thread %p archtid %u\n",
-               resource, (void *)info->tid, info->archtid);
+        printf("resource 0x%p not found, thread %p archtid %u\n", resource,
+               (void *)info->tid, info->archtid);
         return;
     }
     listc_rfl(&info->resource_list, r);
