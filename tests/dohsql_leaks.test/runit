@@ -31,7 +31,7 @@ for i in `seq 1 10`; do
 done
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Run the reproducer another 100 times
 for i in `seq 1 100`; do
@@ -39,7 +39,7 @@ for i in `seq 1 100`; do
 done
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
@@ -61,7 +61,7 @@ sleep 5
 kill $pid
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 while true; do cdb2sql $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
@@ -70,7 +70,7 @@ sleep 120
 kill $pid
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 # Should almost be identical
