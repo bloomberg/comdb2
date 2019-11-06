@@ -2017,7 +2017,8 @@ static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, tran_type **trans,
-                        tran_type **parent_trans, int *osql_needtransaction)
+                        tran_type **parent_trans, int *osql_needtransaction,
+                        int line)
 {
     int rc = 0;
     int irc = 0;
@@ -2033,8 +2034,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             iq->sc_logical_tran = NULL; // use trans in rowlocks
             if (sc_parent == NULL) {
                 irc = -1;
-                logmsg(LOGMSG_ERROR, "%s:%d failed to get physical tran\n",
-                       __func__, __LINE__);
+                logmsg(LOGMSG_ERROR, "%s:%d/%d td %ld failed to get physical "
+                        "tran\n", __func__, __LINE__, line, pthread_self());
             } else
                 irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
         } else if (irc == 0) { // pagelock
@@ -2046,6 +2047,10 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                     /* start another child tran for schema changes */
                     irc = create_child_transaction(iq, *parent_trans,
                                                    &(iq->sc_tran));
+                } else {
+                    logmsg(LOGMSG_ERROR, "%s:%d/%d td %ld failed to create "
+                            "child tran\n", __func__, __LINE__, line,
+                            pthread_self());
                 }
             } else {
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
@@ -2427,8 +2432,8 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
-                   __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "%s:%d TD %ld TRANS_ABORT FAILED RC %d\n",
+                    __func__, __LINE__, pthread_self(), rc);
         }
     }
     iq->sc_logical_tran = NULL;
@@ -3047,7 +3052,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3126,7 +3132,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3245,7 +3252,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3323,7 +3331,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3382,7 +3391,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3520,7 +3530,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3624,7 +3635,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3721,7 +3733,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3827,7 +3840,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3991,7 +4005,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4264,7 +4279,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4358,7 +4374,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     rc = osql_create_transaction(javasp_trans_handle, iq,
                                                  have_blkseq ? &parent_trans
                                                              : NULL,
-                                                 &trans, &osql_needtransaction);
+                                                 &trans, &osql_needtransaction,
+                                                 __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4705,7 +4722,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
             int iirc = osql_create_transaction(
                 javasp_trans_handle, iq, &trans,
-                have_blkseq ? &parent_trans : NULL, &osql_needtransaction);
+                have_blkseq ? &parent_trans : NULL, &osql_needtransaction,
+                __LINE__);
             if (iirc) {
                 if (!rc)
                     rc = iirc;

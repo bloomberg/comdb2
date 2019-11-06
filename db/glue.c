@@ -757,11 +757,18 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     }
 
     if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d TD %ld COMMIT FAILED RC %d\n", __func__,
+                __LINE__, pthread_self(), rc);
         return rc;
     }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
                                    timeoutms, adaptive, &ss);
+
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d TD %ld WAIT-FOR-SEQ FAILED RC %d\n",
+                __func__, __LINE__, pthread_self(), rc);
+    }
 
     if (cnonce) {
         DB_LSN *lsn = (DB_LSN *)&ss;
