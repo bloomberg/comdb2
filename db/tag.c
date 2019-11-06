@@ -1687,6 +1687,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
         }
         /* rest of fields irrelevant for indexes */
         add_tag_schema(dbname, s);
+        where = 0;
         rc = dyns_get_idx_tag(ix, altname, MAXTAGLEN, &where);
         if (rc == 0 && (strcasecmp(schema->tag, ".ONDISK") == 0 ||
                         strcasecmp(schema->tag, ".NEW..ONDISK") == 0)) {
