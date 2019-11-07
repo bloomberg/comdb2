@@ -182,7 +182,7 @@ bdb_osql_log_t *bdb_osql_log_next_synced(bdb_osql_log_t *log, int *bdberr);
  */
 int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *logcur,
                            bdb_osql_log_t *log, struct bdb_osql_trn *trn,
-                           int *dirty, enum log_ops log_op, int trak,
+                           int *dirty, log_ops_t log_op, int trak,
                            int *bdberr);
 
 /**

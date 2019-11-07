@@ -28,7 +28,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <ctrace.h>
-#include <string.h>
+#include <strings.h>
 #include <alloca.h>
 
 #include <logmsg.h>

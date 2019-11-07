@@ -474,6 +474,12 @@ REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("gofast", NULL, TUNABLE_BOOLEAN, &gbl_goslow,
                  INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "group_concat_memory_limit",
+    "Restrict GROUP_CONCAT from using more than this amount of memory; 0 "
+    "implies SQLITE_MAX_LENGTH, the limit imposed by sqlite. (Default: 0)",
+    TUNABLE_INTEGER, &gbl_group_concat_mem_limit, READONLY, NULL, NULL, NULL,
+    NULL);
 REGISTER_TUNABLE("heartbeat_check_time",
                  "Raise an error if no heartbeat for this amount of time (in "
                  "secs). (Default: 10 secs)",
@@ -1853,5 +1859,9 @@ REGISTER_TUNABLE("waitalive_iterations",
                  "socket to be usable.  (Default: 3)",
                  TUNABLE_INTEGER, &gbl_waitalive_iterations,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

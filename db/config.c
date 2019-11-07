@@ -1124,54 +1124,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         }
     } else if (lrltokignore(tok, ltok) == 0) {
         /* ignore this line */
-    } else if (tokcmp(tok, ltok, "sql_tranlevel_default") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Need to specify default type for sql_tranlevel_default\n");
-            return -1;
-        }
-        if (ltok == 6 && !strncasecmp(tok, "comdb2", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_COMDB2;
-            logmsg(LOGMSG_INFO, "sql default mode is comdb2\n");
-
-        } else if (ltok == 5 && !strncasecmp(tok, "block", 5)) {
-            gbl_sql_tranlevel_default = (gbl_upgrade_blocksql_2_socksql)
-                                            ? SQL_TDEF_SOCK
-                                            : SQL_TDEF_BLOCK;
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-        } else if ((ltok == 9 && !strncasecmp(tok, "blocksock", 9)) ||
-                   tokcmp(tok, ltok, "default") == 0) {
-            gbl_upgrade_blocksql_2_socksql = 1;
-            if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
-                gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-            }
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-            gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-            logmsg(LOGMSG_INFO, "sql default mode is read committed\n");
-
-        } else if (ltok == 8 && !strncasecmp(tok, "snapshot", 8)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-            logmsg(LOGMSG_INFO, "sql default mode is snapshot isolation\n");
-
-        } else if (ltok == 6 && !strncasecmp(tok, "serial", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
-            logmsg(LOGMSG_INFO, "sql default mode is serializable\n");
-
-        } else {
-            logmsg(LOGMSG_ERROR,
-                   "The default sql mode \"%s\" is not supported, "
-                   "defaulting to socksql\n",
-                   tok);
-            gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-        }
-        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     } else if (tokcmp(tok, ltok, "proxy") == 0) {
         char *proxy_line;
         tok = segline(line, len, &st, &ltok);

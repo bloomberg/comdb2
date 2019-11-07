@@ -141,6 +141,7 @@ extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
 extern int gbl_verbose_normalized_queries;
+extern int gbl_group_concat_mem_limit;
 
 extern int gbl_expressions_indexes;
 
@@ -2182,9 +2183,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
 
         if (rc == SQLITE_TOOBIG) {
-            strncpy(clnt->osql.xerr.errstr,
-                    "transaction too big, try increasing the limit using 'SET "
-                    "maxtransize N'",
+            strncpy(clnt->osql.xerr.errstr, "transaction too big",
                     sizeof(clnt->osql.xerr.errstr));
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
         }
@@ -5390,6 +5389,7 @@ int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
     case SQL_TDEF_COMDB2:
+    case SQL_TDEF_BLOCK:
     case SQL_TDEF_SOCK:
         return TRANLEVEL_SOSQL;
 
@@ -5425,6 +5425,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
     }
+    clnt->sqlite_errstr = NULL;
 
     if (clnt->context) {
         for (int i = 0; i < clnt->ncontext; i++) {
@@ -5579,6 +5580,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         clnt->saved_errstr = NULL;
     }
     clnt->saved_rc = 0;
+    clnt->sqlite_errstr = NULL;
     clnt->want_stored_procedure_debug = 0;
     clnt->want_stored_procedure_trace = 0;
     clnt->verifyretry_off = 0;
@@ -5613,6 +5615,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->planner_effort =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
+    clnt->group_concat_mem_limit = gbl_group_concat_mem_limit;
 
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
@@ -6434,8 +6437,12 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
 
     case SQLITE_TOOBIG:
-        *errstr = "transaction too big, try increasing the limit using 'SET "
-                  "maxtransize N'";
+        if (clnt->sqlite_errstr) {
+            *errstr = clnt->sqlite_errstr;
+            clnt->saved_errstr = 0;
+        } else {
+            *errstr = "transaction too big";
+        }
         rc = ERR_TRAN_TOO_BIG;
         break;
 

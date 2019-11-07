@@ -1,0 +1,10 @@
+(t='== test for group_concat_memory_limit/groupconcatmemlimit ==')
+(rows inserted=30000)
+(pass=300029999)
+(pass=10000)
+[select length(group_concat(v)) as fail from t1 where i in (1,2)] failed with rc 202 string or blob too big
+(pass=20001)
+(rows inserted=5)
+(pass='1,2,3,4,5')
+[select group_concat(i) as fail from t1] failed with rc 202 string or blob too big
+(pass='1,2,3,4,5')
