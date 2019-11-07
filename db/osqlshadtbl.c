@@ -3074,7 +3074,7 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 
     bpfunc_data = malloc(bpfunc_data_len);
     if (!bpfunc_data) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %ld\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                bpfunc_data_len);
         return -1;
     }

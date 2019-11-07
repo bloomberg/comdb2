@@ -392,13 +392,13 @@ void replication_stats(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "Replication statistics:-\n");
     logmsg(LOGMSG_USER, "   Num commits      %d\n", dbenv->num_txns);
     if (dbenv->num_txns > 0) {
-        logmsg(LOGMSG_USER, "   Avg txn sz           %lu\n",
+        logmsg(LOGMSG_USER, "   Avg txn sz           %" PRIu64 "\n",
                dbenv->total_txn_sz / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep timeout  %d\n",
                dbenv->total_timeouts_ms / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep time     %d\n",
                dbenv->total_reptime_ms / dbenv->num_txns);
-        logmsg(LOGMSG_USER, "   Max txn sz           %lu\n",
+        logmsg(LOGMSG_USER, "   Max txn sz           %" PRIu64 "\n",
                dbenv->biggest_txn);
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);

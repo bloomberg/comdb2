@@ -313,7 +313,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
             curr_time = time(NULL);
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER,
-                       "Deferring update, commit-ts %ld, "
+                       "Deferring update, commit-ts %" PRId64 ", "
                        "target %ld\n",
                        *timestamp, curr_time + gbl_deferred_phys_update);
             }

@@ -1574,8 +1574,8 @@ const int do_norm_secs;
     ** Do a binary search (this works whatever time_t's type is).
     */
 
-    lo = LLONG_MIN;
-    hi = LLONG_MAX;
+    lo = LONG_MIN;
+    hi = LONG_MAX;
     for (;;) {
         t = lo / 2 + hi / 2;
         if (t < lo)

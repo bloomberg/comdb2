@@ -725,7 +725,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
                     logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %lu)\n", ltok,
+                           "host %.*s name too long (expected < %zu)\n", ltok,
                            tok, sizeof(nodename));
                     return -1;
                 }

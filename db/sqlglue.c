@@ -3720,7 +3720,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                 clnt->idxDelete[pCur->ixnum] =
                     malloc(sizeof(int) + pCur->keybuflen);
                 if (clnt->idxDelete[pCur->ixnum] == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s:%d malloc %lu failed\n", __func__,
+                    logmsg(LOGMSG_ERROR, "%s:%d malloc %zu failed\n", __func__,
                            __LINE__, sizeof(int) + pCur->keybuflen);
                     rc = SQLITE_NOMEM;
                     goto done;
@@ -5075,7 +5075,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     }
     struct temptable *pNewTbl = calloc(1, sizeof(struct temptable));
     if (pNewTbl == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: calloc(%lu) failed\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: calloc(%zu) failed\n", __func__,
                sizeof(struct temptable));
         rc = SQLITE_NOMEM;
         goto done;
@@ -5517,7 +5517,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                 assert(clnt->idxDelete[pCur->ixnum] == NULL);
                 clnt->idxDelete[pCur->ixnum] = malloc(sizeof(int) + mem.n);
                 if (clnt->idxDelete[pCur->ixnum] == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s:%d malloc %ld failed\n", __func__,
+                    logmsg(LOGMSG_ERROR, "%s:%d malloc %zu failed\n", __func__,
                            __LINE__, sizeof(int) + mem.n);
                     rc = SQLITE_NOMEM;
                     goto done;
@@ -6457,8 +6457,8 @@ again:
             nretries++;
             if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery, rc %d\n",
-                           __func__, pthread_self(), rc);
+                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery, rc %d\n",
+                           __func__, (void *)pthread_self(), rc);
                 if (rc < 0)
                     return SQLITE_BUSY;
                 else
@@ -7022,7 +7022,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     key_size = getkeysize(cur->db, cur->ixnum);
     cur->ondisk_key = malloc(key_size + sizeof(int));
     if (!cur->ondisk_key) {
-        logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %zu failed\n", __func__,
                key_size + sizeof(int));
         return SQLITE_INTERNAL;
     }
@@ -7875,7 +7875,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         key_size = getkeysize(cur->db, cur->ixnum);
     cur->ondisk_key = malloc(key_size + sizeof(int));
     if (!cur->ondisk_key) {
-        logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %zu failed\n", __func__,
                key_size + sizeof(int));
         free(cur->ondisk_buf);
         return SQLITE_INTERNAL;
@@ -7884,7 +7884,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     if (cur->writeTransaction) {
         cur->fndkey = malloc(key_size + sizeof(int));
         if (!cur->fndkey) {
-            logmsg(LOGMSG_ERROR, "%s:malloc fndkey sz %lu failed\n", __func__,
+            logmsg(LOGMSG_ERROR, "%s:malloc fndkey sz %zu failed\n", __func__,
                    key_size + sizeof(int));
             free(cur->ondisk_buf);
             free(cur->ondisk_key);

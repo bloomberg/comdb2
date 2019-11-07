@@ -2485,8 +2485,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             if (bdb_state->attr->master_lease_set_trace && (now = time(NULL)) > lastpr)
             {
                 logmsg(LOGMSG_USER,
-                       "%s: setting lease time for %s to %lu, current "
-                       "time is %lu issue time is %lu epoch is %ld\n",
+                       "%s: setting lease time for %s to %" PRIu64 ", current "
+                       "time is %" PRIu64 " issue time is %" PRIu64
+                       " epoch is %ld\n",
                        __func__, host, lease_time, base_ts, issue_time,
                        time(NULL));
                 lastpr = now;
@@ -3779,7 +3780,8 @@ int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 
         count++;
         if ((now = time(NULL)) > lastpr && !bdb_state->attr->createdbs) {
-            logmsg(LOGMSG_WARN, "%s: get_myseqnum returned non-0, count=%lu\n",
+            logmsg(LOGMSG_WARN,
+                   "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
                    __func__, count);
             lastpr = now;
         }
@@ -4504,8 +4506,9 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
         // Useless leases suggest intolerable time-skew..
         if ((now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_WARN,
-                   "%s: got useless lease: lease_base=%lu "
-                   "my_base=%lu lease_time=%u diff=%lu total-useless=%lu\n",
+                   "%s: got useless lease: lease_base=%" PRIu64 " "
+                   "my_base=%" PRIu64 " lease_time=%u diff=%" PRIu64
+                   " total-useless=%" PRIu64 "\n",
                    __func__, colease.issue_time, base_ts, colease.lease_ms,
                    (base_ts - coherency_timestamp), no_lease_count);
             lastpr = now;
@@ -5978,7 +5981,7 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         if (rc == NET_SEND_FAIL_TIMEOUT) {
             logmsg(LOGMSG_WARN,
                    "%s line %d: timed out waiting for start_lsn from master %s "
-                   "after %lu ms\n",
+                   "after %" PRIu64 " ms\n",
                    __func__, __LINE__, bdb_state->repinfo->master_host,
                    end_time - start_time);
         }

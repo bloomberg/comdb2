@@ -3825,7 +3825,7 @@ retry:
     p_buf_start = p_buf =
         malloc(LLMETA_SC_STATUS_DATA_LEN + schema_change_data_len);
     if (p_buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %lu\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                LLMETA_SC_STATUS_DATA_LEN + schema_change_data_len);
         *bdberr = BDBERR_MALLOC;
         goto backout;
@@ -6494,12 +6494,13 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
-               flibc_ntohll(version));
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%" PRIu64 "\"\n",
+               tblname, flibc_ntohll(version));
         } break;
         case LLMETA_TABLE_NUM_SC_DONE: {
             unsigned long long version = *(unsigned long long *)data;
-            logmsg(LOGMSG_USER, "LLMETA_TABLE_NUM_SC_DONE version=\"%lu\"\n",
+            logmsg(LOGMSG_USER,
+                   "LLMETA_TABLE_NUM_SC_DONE version=\"%" PRIu64 "\"\n",
                    flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {

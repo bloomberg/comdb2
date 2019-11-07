@@ -90,7 +90,7 @@ __memp_dump_bufferpool_info(dbenv, f)
 
 			do {
 				bufcnt++;
-				logmsgf(LOGMSG_USER, f, " (%ld:%d:%d)", bhp->mf_offset,
+				logmsgf(LOGMSG_USER, f, " (%d:%d:%d)", (int)bhp->mf_offset,
 				    bhp->pgno, bhp->priority);
 				bhp = SH_TAILQ_NEXT(bhp, hq, __bh);
 			}
@@ -103,7 +103,7 @@ __memp_dump_bufferpool_info(dbenv, f)
 		logmsgf(LOGMSG_USER, f, "LRU_COUNT = %d\n", c_mp->lru_count);
 		logmsgf(LOGMSG_USER, f, "\n");
 	}
-	logmsgf(LOGMSG_USER, f, "BUFCNT = %lu\n", bufcnt);
+	logmsgf(LOGMSG_USER, f, "BUFCNT = %"PRIu64"\n", bufcnt);
 	return 0;
 }
 
@@ -205,7 +205,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	for(; fsp != NULL && *fsp != NULL; ++fsp)
 	{
 		logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*fsp)->file_name);
-		logmsgf(LOGMSG_USER, out, "  st_pagesize   : %"PRId64"\n", (*fsp)->st_pagesize);
+		logmsgf(LOGMSG_USER, out, "  st_pagesize   : %zu\n", (*fsp)->st_pagesize);
 		logmsgf(LOGMSG_USER, out, "  st_map        : %"PRId64"\n", (*fsp)->st_map);
 		logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %"PRId64"\n", (*fsp)->st_cache_hit);
 		logmsgf(LOGMSG_USER, out, "  st_cache_miss : %"PRId64"\n", (*fsp)->st_cache_miss);
