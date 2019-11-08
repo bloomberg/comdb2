@@ -1864,4 +1864,9 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("cached_output_buffer_max_bytes",
+                 "Maximum size in bytes of the output buffer of an appsock "
+                 "thread.  (Default: 8 MiB)",
+                 TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
