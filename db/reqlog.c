@@ -73,6 +73,8 @@
 #include "eventlog.h"
 #include "reqlog_int.h"
 
+#include <tohex.h>
+
 /*
 ** ugh - constants are variable
 ** comdb2 assumption #define MAXNODES 32768
@@ -1606,6 +1608,111 @@ static void log_header(struct reqlogger *logger, struct output *out,
     Pthread_mutex_unlock(&rules_mutex);
 }
 
+static void print_str(const char *data, int len, char *s, int n)
+{
+    int need = len + 3; // space for ''
+    if (n < need) {
+        int half = (n - 5) / 2; /* minus '..' and NUL */
+        snprintf(s, n, "'%.*s..%.*s'", half, data, half, data + len - half);
+    } else {
+        snprintf(s, n, "'%.*s'", len, data);
+    }
+}
+
+static void print_blob(const char *data, int len, char *s, int n)
+{
+    int need = (len * 2) + 4; // space for x''
+
+    if (n < need) {
+        int half = (n - 6) / 2; /* minus x'..' and NULL */
+        char buf0[half + 1], buf1[half + 1];
+        half /= 2;
+        util_tohex(buf0, data, half);
+        util_tohex(buf1, data + len - half, half);
+        snprintf(s, n, "x'%s..%s'", buf0, buf1);
+    } else {
+        char buf[len * 2 + 1];
+        util_tohex(buf, data, len);
+        snprintf(s, n, "x'%s'", buf);
+    }
+}
+
+static void print_ym(const intv_t *tv,  char *s, int n)
+{
+    const intv_ym_t *ym = &tv->u.ym;
+    snprintf(s, n, "%s%u-%2.2u", tv->sign == -1 ? "-" : "", ym->years, ym->months);
+}
+
+static void print_ds(const intv_t *tv, char *s, int n)
+{
+    const intv_ds_t *ds = &tv->u.ds;
+    snprintf(s, n, "%s%u %2.2u:%2.2u:%2.2u.%.*u", tv->sign == -1 ? "- " : "",
+             ds->days, ds->hours, ds->mins, ds->sec, ds->prec, ds->frac);
+}
+
+
+static void log_params(struct reqlogger *logger)
+{
+    struct sqlclntstate *clnt = logger->clnt;
+    int n = param_count(clnt);
+    if (n <= 0) return;
+    reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
+    struct param_data p = {0};
+    for (int i = 0; i < n; ++i) {
+        if (param_value(clnt, &p, i) != 0) {
+            continue;
+        }
+        int len;
+        char value[64];
+        char *type = CLIENT_TYPE_TO_STR(p.type);
+        if (p.null || p.type == COMDB2_NULL_TYPE) {
+            snprintf(value, sizeof(value), "null");
+        } else
+        switch (p.type) {
+        case CLIENT_UINT:
+        case CLIENT_INT:
+            snprintf(value, sizeof(value), "%"PRId64, p.u.i);
+            break;
+        case CLIENT_REAL:
+            snprintf(value, sizeof(value), "%f", p.u.r);
+            break;
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_VUTF8:
+            print_str(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_BYTEARRAY:
+        case CLIENT_BLOB:
+        case CLIENT_BLOB2:
+            print_blob(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_DATETIME:
+        case CLIENT_DATETIMEUS: {
+            dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
+            break; }
+        case CLIENT_INTVYM:
+            print_ym(&p.u.tv, value, sizeof(value));
+            break;
+        case CLIENT_INTVDS:
+        case CLIENT_INTVDSUS:
+            print_ds(&p.u.tv, value, sizeof(value));
+            break;
+        default:
+            value[0] = 0;
+            break;
+        }
+        if (p.pos)
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3zu indx=%-16d value=%s", i,
+                        type, p.len, p.pos, value);
+        else
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3zu name=%-16s value=%s", i,
+                        type, p.len, p.name, value);
+    }
+}
+
 static void log_all_events(struct reqlogger *logger, struct output *out)
 {
     struct logevent *event;
@@ -1903,6 +2010,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
 
     if (logger->durationus >= M2U(long_request_thresh)) {
+        if (logger->clnt) {
+            log_params(logger);
+        }
 
         log_header(logger, long_request_out, 1);
         long_reqs++;
