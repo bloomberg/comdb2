@@ -437,6 +437,29 @@ __txn_compensate_begin(dbenv, txnpp)
 	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
+void __txn_assert_none(void *env)
+{
+    DB_ENV *dbenv = (DB_ENV *)env;
+	DB_TXNREGION *region;
+	DB_TXNMGR *mgr;
+	TXN_DETAIL *td;
+
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
+	R_LOCK(dbenv, &mgr->reginfo);
+
+	for (td = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
+			td != NULL;
+			td = SH_TAILQ_NEXT(td, links, __txn_detail)) {
+		if (td->tid == pthread_self()) {
+			logmsg(LOGMSG_FATAL, "%s found txn with my tid\n", __func__);
+			abort();
+		}
+	}
+
+	R_UNLOCK(dbenv, &mgr->reginfo);
+}
+
 /*
  * __txn_begin_int --
  *	Normal DB version of txn_begin.
@@ -572,6 +595,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	td->status = TXN_RUNNING;
 	td->flags = 0;
 	td->xa_status = 0;
+    td->tid = pthread_self();
 
 	off = R_OFFSET(&mgr->reginfo, td);
 	R_UNLOCK(dbenv, &mgr->reginfo);
