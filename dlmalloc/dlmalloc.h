@@ -26,14 +26,14 @@
   * If MSPACES is defined, declarations for mspace versions are included.
 */
 
-#include <dlmalloc_config.h>
-
 #ifndef MALLOC_280_H
 #define MALLOC_280_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "dlmalloc_config.h"
 
 #include <stddef.h>   /* for size_t */
 
@@ -535,6 +535,11 @@ void** mspace_independent_comalloc(mspace msp, size_t n_elements,
 */
 size_t mspace_footprint(mspace msp);
 
+/*
+  Traverse allocated chunks in the mspace
+  with a callback to be executed on each chunk.
+*/
+void mspace_for_each_chunk(mspace msp, void (*cb) (void*, void *), void *arg);
 
 #if !NO_MALLINFO
 /*

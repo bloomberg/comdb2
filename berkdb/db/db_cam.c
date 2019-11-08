@@ -30,13 +30,16 @@ static const char revid[] = "$Id: db_cam.c,v 11.140 2003/11/18 18:20:48 mjc Exp 
 #include <pthread.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 #ifndef TESTSUITE
 extern pthread_key_t comdb2_open_key;
 #endif
 
 
+#ifndef COMDB2_VERSION
 static int __db_buildpartial __P((DB *, DBT *, DBT *, DBT *));
+#endif
 static int __db_c_cleanup __P((DBC *, DBC *, int));
 static int __db_c_del_secondary __P((DBC *));
 static int __db_c_pget_recno __P((DBC *, DBT *, DBT *, u_int32_t));
@@ -89,7 +92,7 @@ __db_c_close_ll(dbc, countmein)
 		p = pthread_getspecific(comdb2_open_key);
 		if (p) {
 			free(p);
-			pthread_setspecific(comdb2_open_key, NULL);
+			Pthread_setspecific(comdb2_open_key, NULL);
 		}
 		dbc->pp_allocated = 0;
 #endif
@@ -156,7 +159,7 @@ __db_c_close_ll(dbc, countmein)
 		dbc->txn->cursors--;
 
 	/* Move the cursor(s) to the free queue. */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	if (opd != NULL) {
 		if (dbc->txn != NULL)
 			dbc->txn->cursors--;
@@ -164,7 +167,7 @@ __db_c_close_ll(dbc, countmein)
 		opd = NULL;
 	}
 	TAILQ_INSERT_TAIL(&dbp->free_queue, dbc, links);
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	return (ret);
 }
@@ -521,9 +524,9 @@ __db_c_destroy(dbc)
 	dbenv = dbp->dbenv;
 
 	/* Remove the cursor from the free queue. */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	TAILQ_REMOVE(&dbp->free_queue, dbc, links);
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	/* Free up allocated memory. */
 	if (dbc->my_rskey.data != NULL)
@@ -792,9 +795,8 @@ __db_c_idup(dbc_orig, dbcp, flags)
 #endif
 
 	{
-#ifndef TESTSUITE
-		struct __dbg_free_cursor *p =
-		    pthread_getspecific(DBG_FREE_CURSOR);
+#ifndef BERKDB_46
+		struct __dbg_free_cursor *p = pthread_getspecific(DBG_FREE_CURSOR);
 		if (p) {
 			p->counter++;
 		} else {
@@ -804,7 +806,7 @@ __db_c_idup(dbc_orig, dbcp, flags)
 				logmsg(LOGMSG_ERROR, "error allocating __dbg_free_cursor\n");
 			} else {
 				p->counter = 1;
-				pthread_setspecific(DBG_FREE_CURSOR, p);
+				Pthread_setspecific(DBG_FREE_CURSOR, p);
 			}
 		}
 #endif
@@ -891,7 +893,6 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 	u_int8_t type;
 	int ret, t_ret;
 	int dontmove;
-	int dupcursor;
 
 	/*F_SET(dbc_arg, DBC_TRANSIENT); */
 
@@ -914,7 +915,6 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 	}
 
 	dontmove = 0;
-	dupcursor = 0;
 
 	/* Clear OR'd in additional bits so we can check for flag equality. */
 	tmp_rmw = LF_ISSET(DB_RMW);
@@ -1249,12 +1249,12 @@ __db_c_put(dbc_arg, key, data, flags)
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
-	DB *dbp, *sdbp;
-	DBC *dbc_n, *oldopd, *opd, *sdbc, *pdbc;
-	DBT olddata, oldpkey, oldskey, newdata, pkey, skey, temppkey, tempskey;
+	DB *dbp, *sdbp = NULL;
+	DBC *dbc_n, *oldopd, *opd;
+	DBT olddata, newdata;
 	db_pgno_t pgno;
-	int cmp, have_oldrec, ispartial, nodel, re_pad, ret, rmw, t_ret;
-	u_int32_t re_len, size, tmp_flags;
+	int ret, t_ret;
+	u_int32_t tmp_flags;
 
 	/*
 	 * Cursor Cleanup Note:
@@ -1267,8 +1267,7 @@ __db_c_put(dbc_arg, key, data, flags)
 	 */
 	dbp = dbc_arg->dbp;
 	dbenv = dbp->dbenv;
-	sdbp = NULL;
-	pdbc = dbc_n = NULL;
+	dbc_n = NULL;
 	memset(&newdata, 0, sizeof(DBT));
 	ret = 0;
 
@@ -1281,6 +1280,10 @@ __db_c_put(dbc_arg, key, data, flags)
 	F_SET(&olddata, DB_DBT_MALLOC);
 
 #ifndef COMDB2_VERSION
+	DBC *sdbc = NULL, *pdbc = NULL;
+	DBT oldskey, pkey, skey, temppkey, tempskey;
+	int cmp, have_oldrec, ispartial, nodel, re_pad, rmw;
+	u_int32_t re_len, size;
 	/*
 	 * Putting to secondary indices is forbidden;  when we need
 	 * to internally update one, we'll call this with a private
@@ -1576,6 +1579,7 @@ __db_c_put(dbc_arg, key, data, flags)
 		 *	does not exist, put it.
 		 */
 		if (!F_ISSET(sdbp, DB_AM_DUP)) {
+			DBT oldpkey;
 			/* Case 3. */
 			memset(&oldpkey, 0, sizeof(DBT));
 			F_SET(&oldpkey, DB_DBT_MALLOC);
@@ -2567,6 +2571,7 @@ __db_s_done(sdbp)
 	return (doclose ? __db_close(sdbp, NULL, 0) : 0);
 }
 
+#ifndef COMDB2_VERSION
 /*
  * __db_buildpartial --
  *	Build the record that will result after a partial put is applied to
@@ -2616,6 +2621,7 @@ __db_buildpartial(dbp, oldrec, partial, newrec)
 
 	return (0);
 }
+#endif
 
 /*
  * __db_partsize --

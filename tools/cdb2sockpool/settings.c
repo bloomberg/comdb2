@@ -50,7 +50,6 @@ static struct setting settings[] = {
 void
 print_setting(const struct setting *setting)
 {
-    int n;
     strbuf *stb = strbuf_new();
     strbuf_appendf(stb, "%-32s = %u", setting->name, *(setting->variable));
     switch(setting->type) {

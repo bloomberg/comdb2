@@ -1,0 +1,100 @@
+#!/bin/sh
+
+#############################################
+# User schema + SSL certificate             #
+#############################################
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+# set up users for charlie and sally brown
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+put password 'brown' for 'charlie'
+put password 'brown' for 'sally'
+grant op to charlie
+grant op to sally
+select * from comdb2_users
+set user charlie
+set password brown
+put authentication on
+EOF
+
+# gen keys for charlie brown
+openssl genrsa -out ${TESTDIR}/charlie.key 4096
+openssl req -new -key ${TESTDIR}/charlie.key -out ${TESTDIR}/charlie.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com/UID=charlie"
+openssl x509 -req -in ${TESTDIR}/charlie.key.csr -CA ${TESTDIR}/root.crt -CAkey ${TESTDIR}/root.key \
+             -CAcreateserial -out ${TESTDIR}/charlie.crt -days 10
+chmod 400 ${TESTDIR}/charlie.key
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+SET SSL_CERT ${TESTDIR}/charlie.crt
+SET SSL_KEY ${TESTDIR}/charlie.key
+CREATE TABLE whoami (name CHAR(30))\$\$
+INSERT INTO whoami values ("Charlie Brown")
+EOF
+
+# gen keys for sally brown
+openssl genrsa -out ${TESTDIR}/sally.key 4096
+openssl req -new -key ${TESTDIR}/sally.key -out ${TESTDIR}/sally.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com/UID=sally"
+openssl x509 -req -in ${TESTDIR}/sally.key.csr -CA ${TESTDIR}/root.crt -CAkey ${TESTDIR}/root.key \
+             -CAcreateserial -out ${TESTDIR}/sally.crt -days 10
+chmod 400 ${TESTDIR}/sally.key
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+SET SSL_CERT ${TESTDIR}/sally.crt
+SET SSL_KEY ${TESTDIR}/sally.key
+CREATE TABLE whoami (name CHAR(30))\$\$
+INSERT INTO whoami values ("Sally Brown")
+EOF
+
+# Charlie brown uses his cert
+name=`cat << EOF | cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
+SET SSL_CERT ${TESTDIR}/charlie.crt
+SET SSL_KEY ${TESTDIR}/charlie.key
+SELECT name FROM whoami
+EOF`
+if [ "$name" != "Charlie Brown" ]; then
+    exit 1
+fi
+
+# Sally Brown uses her cert
+name=`cat << EOF | cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
+SET SSL_CERT ${TESTDIR}/sally.crt
+SET SSL_KEY ${TESTDIR}/sally.key
+SELECT name FROM whoami
+EOF`
+if [ "$name" != "Sally Brown" ]; then
+    exit 1
+fi
+
+# Sally Brown uses her cert and she knows her brother's password
+name=`cat << EOF | cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
+SET SSL_CERT ${TESTDIR}/sally.crt
+SET SSL_KEY ${TESTDIR}/sally.key
+SET USER charlie
+SET PASSWORD brown
+SELECT name FROM whoami
+EOF`
+if [ "$name" != "Charlie Brown" ]; then
+    exit 1
+fi
+
+# Use both Sally and Charlie's certs
+names=`cat << EOF | cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
+SET SSL_CERT ${TESTDIR}/sally.crt
+SET SSL_KEY ${TESTDIR}/sally.key
+SELECT name FROM whoami
+SET SSL_CERT ${TESTDIR}/charlie.crt
+SET SSL_KEY ${TESTDIR}/charlie.key
+SELECT name FROM whoami
+EOF`
+browns='Sally Brown
+Charlie Brown'
+if [ "$names" != "$browns" ]; then
+    exit 1
+fi
+
+
+${TESTSBUILDDIR}/ssl_multi_certs_one_process $dbnm

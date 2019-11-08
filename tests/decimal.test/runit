@@ -110,9 +110,9 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    expected_output=$(cat $testcase.out)
+    expected_output=$(cat $testcase.exp)
     expected_output2=""
-    [[ -f $testcase.out.1 ]] && expected_output2=$(cat $testcase.out.1)
+    [[ -f $testcase.exp.1 ]] && expected_output2=$(cat $testcase.exp.1)
 
     # verify 
     if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$expected_output2" ]]; then
@@ -121,9 +121,9 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{$testcase.exp,$output}"
         echo " "
-        diff $testcase.out $output
+        diff $testcase.exp $output
         echo " "
         exit 1
 

@@ -41,12 +41,11 @@
 #include <epochlib.h>
 #include <util.h>
 #include <f2cstr.h>
-#include <plbitlib.h>
 #include <list.h>
 #include <plhash.h>
-#include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "tag.h"
@@ -68,6 +67,7 @@
 #include "osqlblkseq.h"
 #include "localrep.h"
 #include "util.h"
+#include "tohex.h"
 #include "osqlcomm.h"
 #include "nodemap.h"
 #include <bdb_schemachange.h>
@@ -80,9 +80,9 @@
 #endif
 
 int (*comdb2_ipc_swapnpasdb_sinfo)(struct ireq *) = 0;
+void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
-
 extern pthread_t gbl_invalid_tid;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_osql_verify_retries_max;
@@ -93,35 +93,30 @@ extern int n_commit_time;
 extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
+extern int gbl_reorder_socksql_no_deadlock;
+extern int gbl_reorder_idx_writes;
+extern int gbl_print_blockp_stats;
+extern int gbl_dump_blkseq;
+extern __thread int send_prefault_udp;
+extern void delay_if_sc_resuming(struct ireq *iq);
+extern unsigned int gbl_delayed_skip;
+
+int gbl_osql_snap_info_hashcheck = 1;
 
 #if 0
-#define BACKOUT                                                                \
+#define GOTOBACKOUT                                                            \
     do {                                                                       \
         printf("***BACKOUT*** from %d rc %d\n", __LINE__, rc);                 \
         if (1)                                                                 \
             goto backout;                                                      \
     } while (0)
 #else
-#define BACKOUT                                                                \
+#define GOTOBACKOUT                                                            \
     do {                                                                       \
         fromline = __LINE__;                                                   \
         goto backout;                                                          \
     } while (0);
 #endif
-
-/* I got really, really fed up of seeing this everywhere so I made it a
- * macro.  Since this is a macro, use with caution. -- Sam J */
-#define BACKOUT_BLOCK_FREE_SCHEMA_OP_ERR(rcode, blockerrcode, ii)              \
-    rc = (rcode);                                                              \
-    err.blockop_num = ii;                                                      \
-    err.errcode = (blockerrcode);                                              \
-    err.ixnum = -1;                                                            \
-    numerrs = 1;                                                               \
-    free_dynamic_schema(iq->usedb->tablename, dynschema);                      \
-    dynschema = NULL;                                                          \
-    goto backout
-#define BACKOUT_BLOCK_FREE_SCHEMA_OP(rcode, ii)                                \
-    BACKOUT_BLOCK_FREE_SCHEMA_OP_ERR((rcode), OP_FAILED_BAD_REQUEST, ii)
 
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
@@ -148,13 +143,6 @@ static int block_state_offset_from_ptr(block_state_t *p_blkstate,
 int gbl_blockop_count_xrefs[BLOCK_MAXOPCODE];
 const char *gbl_blockop_name_xrefs[NUM_BLOCKOP_OPCODES];
 
-static int findblkseq(struct ireq *iq, block_state_t *blkstate,
-                      fstblkseq_t *seq, int *have_keyless_requests);
-
-static pthread_mutex_t blkseqlk = PTHREAD_MUTEX_INITIALIZER;
-
-
-
 static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
                        struct packedreq_qadd *buf, blob_buffer_t *blobs)
 {
@@ -166,9 +154,9 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 
     if (buf->qnamelen > sizeof(qname) - 1) {
         if (iq->debug)
-            reqprintf(iq, "NAME TOO LONG %d>%d", buf->qnamelen,
+            reqprintf(iq, "NAME TOO LONG %u>%zu", buf->qnamelen,
                       sizeof(qname) - 1);
-        reqerrstr(iq, COMDB2_CUST_RC_NAME_SZ, "queue name to long %d>%d",
+        reqerrstr(iq, COMDB2_CUST_RC_NAME_SZ, "queue name to long %u>%zu",
                   buf->qnamelen, sizeof(qname) - 1);
         return ERR_BADREQ;
     }
@@ -198,7 +186,7 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 
     if (!blobs[0].exists) {
         if (iq->debug)
-            reqprintf(iq, "EXPECTED ONE BLOB", cblob);
+            reqprintf(iq, "EXPECTED AT LEAST ONE BLOB");
         reqerrstr(iq, COMDB2_QADD_RC_BAD_BLOB_BUFF,
                   "expected one blob (internal api error)");
         return ERR_BADREQ;
@@ -227,7 +215,6 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 static int block2_custom(struct ireq *iq, struct packedreq_custom *buf,
                          const uint8_t *p_opname, blob_buffer_t *blobs)
 {
-    struct packedreq_custom custom_buf;
     char opname[MAXCUSTOPNAME + 1];
     int rc;
     const void *data;
@@ -345,7 +332,7 @@ void toblock_init(void)
 #undef add_blockop
     /* a runtime assert to make sure we have the right size of blockop count
      * array */
-    if (index > NUM_BLOCKOP_OPCODES) {
+    if (index >= NUM_BLOCKOP_OPCODES) {
         logmsg(LOGMSG_FATAL, "%s: too many blockops defined!\n", __func__);
         logmsg(LOGMSG_FATAL, "%s: you need to increase NUM_BLOCKOP_OPCODES to %d\n",
                 __func__, index);
@@ -485,7 +472,7 @@ static int forward_longblock_to_master(struct ireq *iq,
     /*have a valid master to pass this off to. */
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%d\n",
+                      "%zu\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
     if (iq->is_socketrequest) {
         if (iq->sb == NULL) {
@@ -496,6 +483,15 @@ static int forward_longblock_to_master(struct ireq *iq,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        /* Don't change anything in request for socket-fstsnd. */
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -509,7 +505,7 @@ static int forward_longblock_to_master(struct ireq *iq,
 static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
                                    char *mstr)
 {
-    int rc;
+    int rc = 0;
     struct block_fwd fwd;
     struct req_hdr req_hdr;
     size_t req_len;
@@ -545,7 +541,7 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     if (iq->debug)
         reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%d\n",
+                      "%zu\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
 
     if (iq->is_socketrequest) {
@@ -557,6 +553,14 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -779,8 +783,6 @@ static void block_state_free(block_state_t *p_blkstate)
     p_blkstate->p_buf_saved_start = NULL;
 }
 
-extern int gbl_dump_blkseq;
-
 unsigned long long blkseq_replay_count = 0;
 unsigned long long blkseq_replay_error_count = 0;
 
@@ -795,9 +797,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
 {
-    struct block_rsp errrsp;
     int rc = 0;
-    int outrc, snapinfo_outrc, jj, snapinfo = 0;
+    int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -809,9 +810,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (!replay_data) {
 
-        if (!iq->have_snap_info)
+        if (!iq->have_snap_info) {
             assert( (seqlen == (sizeof(fstblkseq_t))) || 
                     (seqlen == (sizeof(uuid_t))));
+        }
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
@@ -972,14 +974,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 if (!(p_fstblk_buf = (uint8_t *)buf_get(&(snapinfo_outrc), sizeof(snapinfo_outrc), 
                         p_fstblk_buf, p_fstblk_buf_end)))  {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
-                    blkseq_line = __LINE__;
-                    goto replay_error;
                 }
             }
 
@@ -1089,54 +1087,57 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         util_tohex(printkey, fstseqnum, seqlen);
     }
 
-    logmsg(LOGMSG_ERROR,
-           "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n",
-           __func__, line, outrc, printkey, iq->snap_info.keylen,
-           iq->snap_info.key);
+    char *cnonce = NULL;
+    if (iq->have_snap_info) {
+        cnonce = alloca(iq->snap_info.keylen + 1);
+        memcpy(cnonce, iq->snap_info.key, iq->snap_info.keylen);
+        cnonce[iq->snap_info.keylen] = '\0';
+    }
+
+    logmsg(LOGMSG_WARN,
+           "%s from line %d replay returns %d for fstblk %s, cnonce %s\n",
+           __func__, line, outrc, printkey, cnonce);
     free(printkey);
-    
+
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
      * the cluster is incoherent */
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (iq->have_snap_info) {
-            char *bskey = alloca(iq->snap_info.keylen + 1);
-            memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
-            bskey[iq->snap_info.keylen] = '\0';
-            logmsg(
-                LOGMSG_ERROR,
-                "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
-                line, outrc, bskey);
+            logmsg(LOGMSG_ERROR,
+                   "%u replay rc changed from %d to NOT_DURABLE "
+                   "for blkseq '%s'\n",
+                   line, outrc, cnonce);
         }
         outrc = ERR_NOT_DURABLE;
     }
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
-        char *bskey = alloca(iq->snap_info.keylen + 1);
-        memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
-        bskey[iq->snap_info.keylen] = '\0';
-        logmsg(LOGMSG_USER, "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
-                            "rcout=%d\n",
-               bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
+        logmsg(LOGMSG_USER,
+               "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
+               cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
     blkseq_replay_count++;
     return outrc;
 
 replay_error:
-    logmsg(LOGMSG_FATAL, "%s in REPLAY ERROR\n", __func__);
+    logmsg(LOGMSG_FATAL, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
     abort();
+#if 0 /* never reached */
     if (check_long_trn) {
         outrc = RC_TRAN_CLIENT_RETRY;
         return outrc;
     }
+    struct block_rsp errrsp;
     errrsp.num_completed = 0;
     iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end);
 
     outrc = ERR_BLOCK_FAILED;
     blkseq_replay_error_count++;
     return outrc;
+#endif
 }
 
 /**
@@ -1151,7 +1152,6 @@ replay_error:
 static int tolongblock_req_pre_hdr_int(struct ireq *iq,
                                        block_state_t *p_blkstate)
 {
-    int rc;
     struct longblock_req_pre_hdr req;
 
     if (!(iq->p_buf_in = longblock_req_pre_hdr_get(&req, iq->p_buf_in,
@@ -1183,7 +1183,6 @@ pthread_mutex_t delay_lock = PTHREAD_MUTEX_INITIALIZER;
 static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
                                        block_state_t *p_blkstate)
 {
-    int rc;
     struct longblock_fwd_pre_hdr fwd;
 
     if (!(iq->p_buf_in = longblock_fwd_pre_hdr_get(&fwd, iq->p_buf_in,
@@ -1202,8 +1201,6 @@ int tolongblock(struct ireq *iq)
 {
     unsigned long long tranid = 0LL;
     int rc = 0;
-    int irc;
-    int have_keyless_requests = 0;
     longblk_trans_type *blklong_trans = NULL;
     block_state_t blkstate;
     struct longblock_req_hdr hdr;
@@ -1286,18 +1283,14 @@ int tolongblock(struct ireq *iq)
         /* if coming from socket, remove transaction entry from table, if it
          * exists.  we dont need any pieces since we have full buffer coming
          * in anyway */
-        rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "find_trn_entry:Failed to lock trn table mutex\n");
-            return ERR_INTERNAL;
-        }
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
 
         if (blklong_trans == NULL) {
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
         } else {
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans->trn_data);
             free(blklong_trans);
             blklong_trans = NULL;
@@ -1392,17 +1385,12 @@ int tolongblock(struct ireq *iq)
         int gotsequence = 0;
         int gotsequence2 = 0;
         fstblkseq_t sequence;
-        const uint8_t *p_buf_in_saved;
 
         memcpy(&tranid, hdr.trnid, sizeof(int) * 2);
 
-        rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "find_trn_entry:Failed to lock trn table mutex\n");
-            return ERR_INTERNAL;
-        }
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
-        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
 
         if (blklong_trans == NULL) {
             if (!hdr.docommit) {
@@ -1413,7 +1401,7 @@ int tolongblock(struct ireq *iq)
         /* if expected piece lower than sent one, something arrived out of
          * sequence, so we need to replay the transaction */
         else {
-            /* allocator memory from blobmem first before pthread_mutex_lock
+            /* allocator memory from blobmem first before Pthread_mutex_lock
                otherwise there might be deadlocks */
             in_dataszw =
                 hdr.offset - (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN +
@@ -1435,10 +1423,10 @@ int tolongblock(struct ireq *iq)
                 blklong_trans->blocking = 0;
             }
 
-            rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
             if (blklong_trans->expseg < hdr.curpiece) {
                 hash_del(iq->dbenv->long_trn_table, blklong_trans);
-                pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                 free(blklong_trans->trn_data);
                 free(blklong_trans);
                 blklong_trans = NULL;
@@ -1455,7 +1443,7 @@ int tolongblock(struct ireq *iq)
 
                 /* we already received that piece...just drop the packet */
                 memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-                pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                 rsp.rc = 0;
                 memset(rsp.reserved, 0, sizeof(rsp.reserved));
 
@@ -1470,7 +1458,6 @@ int tolongblock(struct ireq *iq)
         /* loop to adjust all new offsets to account for already existing
          * ones, this is a pre-loop, we want to jump back to the begining after
          * it's done */
-        p_buf_in_saved = iq->p_buf_in;
         for (ii = 0; ii < hdr.num_reqs; ++ii, block_state_next(iq, &blkstate)) {
             struct packedreq_hdr op_hdr;
             uint8_t *p_buf_op_start;
@@ -1495,7 +1482,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
             }
@@ -1510,7 +1497,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
                 gotsequence = 1;
@@ -1519,7 +1506,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
 
@@ -1536,25 +1523,14 @@ int tolongblock(struct ireq *iq)
                 if (!(iq->p_buf_in = packedreq_seq2_get(
                           &seq, iq->p_buf_in, blkstate.p_buf_next_start))) {
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
                 comdb2uuidcpy(blkseq_uuid, seq.seq);
                 break;
             }
 
-            case BLOCK2_ADDKL:
-            case BLOCK2_ADDKL_POS:
-            case BLOCK2_DELKL:
-            case BLOCK2_UPDKL:
-            case BLOCK2_UPDKL_POS:
-            case BLOCK2_RNGDELKL:
-            case BLOCK2_QADD:
-            case BLOCK2_SOCK_SQL:
-            case BLOCK2_RECOM:
-            case BLOCK2_SNAPISOL:
-            case BLOCK2_SERIAL:
-                have_keyless_requests = 1;
+            default:
                 break;
             }
             if (blklong_trans != NULL)
@@ -1578,14 +1554,14 @@ int tolongblock(struct ireq *iq)
         {
             logmsg(LOGMSG_ERROR, "%s: blklong_trans==NULL unexpectedly!!\n",
                     __func__);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             return ERR_INTERNAL;
         }
 
         /* allocation is done before grabbing long_trn_mtx */
         if (blklong_trans->trn_data == NULL) {
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans->trn_data);
             free(blklong_trans);
             return ERR_INTERNAL;
@@ -1613,7 +1589,7 @@ int tolongblock(struct ireq *iq)
 
             /* we already received that piece...just drop the packet */
             memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             rsp.rc = 0;
             memset(rsp.reserved, 0, sizeof(rsp.reserved));
 
@@ -1621,7 +1597,6 @@ int tolongblock(struct ireq *iq)
                                                     iq->p_buf_out_end)))
                 return ERR_INTERNAL;
         } else {
-            int datasz = blklong_trans->datasz;
             /* do not free data until execution is done */
             uint8_t *p_rawdata = (uint8_t *)blklong_trans->trn_data;
             int trnsegs = blklong_trans->numsegs;
@@ -1639,7 +1614,7 @@ int tolongblock(struct ireq *iq)
             MEMORY_SYNC;
 
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans);
 
             totpen = 0;
@@ -1654,13 +1629,7 @@ int tolongblock(struct ireq *iq)
                     if (!bdb_attr_get(
                             thedb->bdb_attr,
                             BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                        irc = pthread_mutex_lock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, 
-                                    "pthread_mutex_lock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
+                        Pthread_mutex_lock(&delay_lock);
 
                         penaltyinc =
                             (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
@@ -1677,12 +1646,7 @@ int tolongblock(struct ireq *iq)
                         gbl_maxwthreadpenalty += penaltyinc;
                         totpen += penaltyinc;
 
-                        irc = pthread_mutex_unlock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
+                        Pthread_mutex_unlock(&delay_lock);
                     }
 
                     n_retries++;
@@ -1703,19 +1667,11 @@ int tolongblock(struct ireq *iq)
             */
             osql_blkseq_unregister(iq);
 
-            irc = pthread_mutex_lock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
+            Pthread_mutex_lock(&delay_lock);
 
             gbl_maxwthreadpenalty -= totpen;
 
-            irc = pthread_mutex_unlock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
+            Pthread_mutex_unlock(&delay_lock);
 
             block_state_free(&blkstate);
 
@@ -1796,22 +1752,12 @@ int tolongblock(struct ireq *iq)
                 /*fprintf(stderr, "setting gbl_maxwthreadpenalty\n");*/
                 if (!bdb_attr_get(thedb->bdb_attr,
                                   BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                    irc = pthread_mutex_lock(&delay_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_mutex_lock(&delay_lock);
 
                     gbl_maxwthreadpenalty += penaltyinc;
                     totpen += penaltyinc;
 
-                    irc = pthread_mutex_unlock(&delay_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                        exit(1);
-                    }
+                    Pthread_mutex_unlock(&delay_lock);
                 }
 
                 n_retries++;
@@ -1825,19 +1771,11 @@ int tolongblock(struct ireq *iq)
             }
         }
 
-        irc = pthread_mutex_lock(&delay_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_mutex_lock(&delay_lock);
 
         gbl_maxwthreadpenalty -= totpen;
 
-        irc = pthread_mutex_unlock(&delay_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_mutex_unlock(&delay_lock);
 
         block_state_free(&blkstate);
 
@@ -1996,6 +1934,9 @@ int toblock(struct ireq *iq)
     /* TODO why is this here? */
     MEMORY_SYNC;
 
+    if (iq->debug)
+        reqprintf(iq, "BLOCK NUM REQS %d", blkstate.numreq);
+
     /* validate number of reqs */
     if (blkstate.numreq < 1 || blkstate.numreq > MAXBLOCKOPS) {
         if (iq->debug)
@@ -2049,6 +1990,30 @@ enum {
     OSQL_BPLOG_RECREATEDTRANS = 2
 };
 
+static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
+                                    tran_type **trans)
+{
+    int irc = 0;
+    if (gbl_enable_berkdb_retry_deadlock_bias) {
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries);
+    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
+               bdb_attr_get(thedb->bdb_attr,
+                            BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
+        if (iq->priority == 0) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
+                iq->priority = comdb2_time_epochms();
+        }
+
+        if (verbose_deadlocks)
+            logmsg(LOGMSG_DEBUG, "%x %s:%d Using iq %p priority %d\n",
+                   (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->priority);
+    } else {
+        irc = trans_start_set_retries(iq, parent_trans, trans, 0);
+    }
+    return irc;
+}
+
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, tran_type **trans,
@@ -2058,9 +2023,35 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     int irc = 0;
 
     if (iq->tranddl) {
-        irc = trans_start_logical_sc(iq, trans);
-        if (parent_trans)
-            *parent_trans = NULL;
+        irc = trans_start_logical_sc(iq, &(iq->sc_logical_tran));
+        if (gbl_rowlocks && irc == 0) { // rowlock
+            tran_type *sc_parent = NULL;
+            if (parent_trans)
+                *parent_trans = NULL;
+            *trans = iq->sc_logical_tran;
+            sc_parent = bdb_get_sc_parent_tran(iq->sc_logical_tran);
+            iq->sc_logical_tran = NULL; // use trans in rowlocks
+            if (sc_parent == NULL) {
+                irc = -1;
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get physical tran\n",
+                       __func__, __LINE__);
+            } else
+                irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
+        } else if (irc == 0) { // pagelock
+            if (parent_trans) {
+                *parent_trans = bdb_get_physical_tran(iq->sc_logical_tran);
+                /* start child tran */
+                irc = create_child_transaction(iq, *parent_trans, trans);
+                if (irc == 0) {
+                    /* start another child tran for schema changes */
+                    irc = create_child_transaction(iq, *parent_trans,
+                                                   &(iq->sc_tran));
+                }
+            } else {
+                *trans = bdb_get_physical_tran(iq->sc_logical_tran);
+                irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
+            }
+        }
     } else if (!gbl_rowlocks) {
         /* start parent transaction */
         if (parent_trans) {
@@ -2071,40 +2062,20 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
         }
 
         /* START child TRANSACTION */
-        if (gbl_enable_berkdb_retry_deadlock_bias) {
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, iq->retries);
-        } else if (bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
-                   bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
-            if (iq->priority == 0) {
-                if (bdb_attr_get(thedb->bdb_attr,
-                                 BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
-                    iq->priority = comdb2_time_epochms();
-            }
-
-            if (verbose_deadlocks)
-                fprintf(stderr, "%x %s:%d Using iq %p priority %d\n",
-                        (int)pthread_self(), __FILE__, __LINE__, iq,
-                        iq->priority);
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, iq->priority);
-        } else {
-            irc = trans_start_set_retries(
-                iq, parent_trans ? *parent_trans : NULL, trans, 0);
-        }
+        irc = create_child_transaction(iq, parent_trans ? *parent_trans : NULL,
+                                       trans);
     } else {
         irc = trans_start_logical(iq, trans);
         if (parent_trans)
             *parent_trans = NULL;
     }
     if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "trans_start failed rc %d\n", irc);
-        comdb2_die(0);
+        logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
+               __LINE__, irc);
+        return irc;
     }
 
-    if (iq->debug) {
+    if (iq->debug && iq->usedb) {
         /* TODO print trans twice? No parent_trans? */
         reqprintf(iq, "%p:START TRANSACTION OSQL ID %p DB %d '%s'", *trans,
                   *trans, iq->usedb->dbnum, iq->usedb->tablename);
@@ -2154,7 +2125,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 {
     int rc;
     int gaveaway;
-    int i;
+    int i = 0;
     block_state_t blkstate_copy;
     pthread_t my_tid;
     pthread_t working_for;
@@ -2195,11 +2166,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         newiq.reqlogger = NULL;
 
         /* try to give away this buffer to a toblock_prefault_thread*/
-        rc = pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "toblock_outer: couldnt lock main pflt mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
         for (i = 0; i < iq->dbenv->prefault_helper.numthreads; i++) {
             if (iq->dbenv->prefault_helper.threads[i].working_for ==
@@ -2236,24 +2203,14 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 
                 /*fprintf(stderr, "waking up prefault_helper %d\n", i);*/
 
-                rc = pthread_cond_signal(
+                Pthread_cond_signal(
                     &(iq->dbenv->prefault_helper.threads[i].cond));
-                if (rc != 0) {
-                    logmsg(LOGMSG_FATAL, "toblock_outer: couldnt cond signal pflt "
-                                    "thrd %d\n",
-                            i);
-                    exit(1);
-                }
 
                 break;
             }
         }
 
-        rc = pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "toblock_outer: couldnt unlock main pflt mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
     }
 
     /*sleep(1);*/
@@ -2261,7 +2218,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         int gotlk = 0;
 
         if (gbl_exclusive_blockop_qconsume) {
-            pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
+            Pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
             gotlk = 1;
         }
 
@@ -2272,15 +2229,13 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         bdb_stripe_done(iq->dbenv->bdb_env);
 
         if (gotlk)
-            pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+            Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
     }
 
     if (!gaveaway)
         iq->dbenv->prefault_stats.num_nohelpers++;
 
     if (gaveaway) {
-        int err_rc;
-
         /* we have another thread working on our memory - we cant
            proceed till he is done with it.  in theory he should be
            much faster than us as it's just memory operations */
@@ -2321,7 +2276,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
             }
         }
 
-        pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
+        Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
         /*fprintf(stderr, "done waiting for helper %d\n", i);*/
 
@@ -2329,23 +2284,12 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         if (iq->dbenv->prefault_helper.threads[i].seqnum == 0)
             iq->dbenv->prefault_helper.threads[i].seqnum = 1;
 
-        pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
+        Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
     }
 
     javasp_trans_end(iq->jsph);
-
-    if (rc == 0) {
-        /* yes - there is no locking here so we could get inaccuracies.
-         * doesn't matter. */
-        gbl_sc_adds += iq->sc_adds;
-        gbl_sc_updates += iq->sc_updates;
-        gbl_sc_deletes += iq->sc_deletes;
-    }
-
     return rc;
 }
-
-static unsigned int nLockAlls = 0;
 
 static int extract_blkseq(struct ireq *iq, block_state_t *p_blkstate,
                           int *found_blkseq, int *have_blkseq)
@@ -2423,8 +2367,6 @@ static int extract_blkseq2(struct ireq *iq, block_state_t *p_blkstate,
 
 static pthread_rwlock_t commit_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-extern __thread int send_prefault_udp;
-extern void delay_if_sc_resuming(struct ireq *iq);
 
 void handle_postcommit_bpfunc(struct ireq *iq)
 {
@@ -2433,7 +2375,8 @@ void handle_postcommit_bpfunc(struct ireq *iq)
     while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
     {
         assert(cur_bpfunc->func->success != NULL);
-        cur_bpfunc->func->success(NULL/*not used*/, cur_bpfunc->func, NULL);
+        cur_bpfunc->func->success(NULL /*not used*/, cur_bpfunc->func,
+                                  &iq->errstat);
         free_bpfunc(cur_bpfunc->func);
     }
 }
@@ -2444,9 +2387,174 @@ void handle_postabort_bpfunc(struct ireq *iq)
     while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
     {
         assert(cur_bpfunc->func->fail != NULL);
-        cur_bpfunc->func->fail(NULL/*not used*/, cur_bpfunc->func, NULL);
+        cur_bpfunc->func->fail(NULL /*not used*/, cur_bpfunc->func,
+                               &iq->errstat);
         free_bpfunc(cur_bpfunc->func);
     }
+}
+
+int backout_schema_changes(struct ireq *iq, tran_type *tran);
+static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
+                                      int rowlocks)
+{
+    int rc = 0;
+    if (rowlocks) {
+        assert(parent);
+        rc = trans_abort(iq, bdb_get_physical_tran(parent));
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+            comdb2_die(1);
+        }
+        parent = bdb_get_sc_parent_tran(parent);
+    }
+    if (iq->sc_tran) {
+        assert(parent);
+        rc = trans_abort(iq, iq->sc_tran);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+            comdb2_die(1);
+        }
+        iq->sc_tran = NULL;
+        backout_schema_changes(iq, parent);
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
+    if (iq->sc_logical_tran) {
+        rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
+                                  NULL, 0, NULL, 0);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+                   __LINE__, rc);
+        }
+    }
+    iq->sc_logical_tran = NULL;
+}
+
+static int pack_up_response(struct ireq *iq, int have_keyless_requests,
+                            int num_reqs, int numerrs, struct block_err *err,
+                            int rc, int opnum)
+{
+    if (!have_keyless_requests) {
+        struct block_rsp rsp;
+
+        rsp.num_completed = opnum;
+
+        if (!(iq->p_buf_out =
+                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+            return ERR_INTERNAL;
+
+        /* rcodes */
+        for (int jj = 0; jj < num_reqs; jj++) {
+            int rcode;
+
+            rcode = (jj == opnum) ? rc : 0;
+            if (!(iq->p_buf_out = buf_put(&rcode, sizeof(rcode), iq->p_buf_out,
+                                          iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+        }
+
+        /* rrns */
+        for (int jj = 0; jj < num_reqs; jj++) {
+            int rrn;
+
+            rrn = (jj < opnum) ? 2 : 0;
+            if (!(iq->p_buf_out = buf_put(&rrn, sizeof(rrn), iq->p_buf_out,
+                                          iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+#if 0
+            reqmoref(iq, " a%d:%d", jj, p_blkstate->rsp.packed_rc_rrn_brc[jj]);
+            reqmoref(iq, " b%d:%d", jj,
+                    p_blkstate->rsp.packed_rc_rrn_brc[jj+num_reqs]);
+            reqmoref(iq, " c%d:%d", jj,
+                    p_blkstate->rsp.packed_rc_rrn_brc[jj + num_reqs * 2]);
+#endif
+        }
+
+        /* borcodes */
+        if (!(iq->p_buf_out = buf_zero_put(sizeof(int) * num_reqs,
+                                           iq->p_buf_out, iq->p_buf_out_end)))
+            return ERR_INTERNAL;
+    } else {
+        if (iq->is_block2positionmode) {
+            struct block_rspkl_pos rspkl_pos;
+
+            rspkl_pos.num_completed = opnum;
+
+            rspkl_pos.position = iq->last_genid;
+
+            if (numerrs)
+                rspkl_pos.numerrs = 1;
+
+            if (!(iq->p_buf_out = block_rspkl_pos_put(&rspkl_pos, iq->p_buf_out,
+                                                      iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+            if (numerrs) {
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
+                    return ERR_INTERNAL;
+            }
+
+        } else {
+            struct block_rspkl rspkl;
+
+            rspkl.num_completed = opnum;
+
+            if (numerrs)
+                rspkl.numerrs = 1;
+
+            if (!(iq->p_buf_out = block_rspkl_put(&rspkl, iq->p_buf_out,
+                                                  iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+            if (numerrs) {
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
+                    return ERR_INTERNAL;
+            }
+        }
+    }
+    return 0;
+}
+
+static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
+{
+    /* If we get here and we are rtcpu-ed AND this is a cluster,
+     * return RC_TRAN_CLIENT_RETRY. */
+    if (debug_switch_reject_writes_on_rtcpu() && is_node_up(gbl_mynode) != 1) {
+        const char *nodes[REPMAX];
+        int nsiblings;
+        nsiblings = net_get_all_nodes_connected(thedb->handle_sibling, nodes);
+        if (nsiblings >= 1) {
+            reqprintf(iq, "Master is swinging, repeat the request");
+            /* The client code doesn't retry correctly if the request
+               is (1) a non-long transaction or, (2) a long transaction of a
+               single packet.  So if the block request was a single packet,
+               send back a return code telling the proxy to retry.  Otherwise,
+               the client code needs to retry (and handles it correctly).  The
+               reason the client doesn't handle single-buffer retries correctly
+               is that it doesn't make copies of these requests since the proxy
+               already has it.  Thus the proxy, not the client should retry. */
+            if (iq->is_socketrequest) {
+                /* We don't have proxy in this case so the client which has to
+                 * retry. */
+                return RC_TRAN_CLIENT_RETRY;
+            }
+            if (iq->opcode == OP_BLOCK || p_blkstate->numreq == 1) {
+                return 999; /* no dedicated code for proxy retry... */
+            } else if (p_blkstate->longblock_single == 1) {
+                return 999; /* no dedicated code for proxy retry... */
+            } else {
+                return RC_TRAN_CLIENT_RETRY;
+            }
+        }
+    }
+    return 0;
 }
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
@@ -2456,10 +2564,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int rowlocks = gbl_rowlocks;
     int fromline = -1;
     int opnum, jj, num_reqs;
-    int rc, ixkeylen, rrn;
-    int irc;
+    int rc = 0, ixkeylen, rrn;
+    int irc = 0;
     char *source_host;
-    char key[MAXKEYLEN];
     tran_type *trans = NULL; /*transaction handle */
     tran_type *parent_trans = NULL;
     /* for updates */
@@ -2467,15 +2574,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int saved_rrn = 0;
     int addrrn;
     int outrc=-1;
-    char ondisk_tag[MAXTAGLEN], client_tag[MAXTAGLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     unsigned long long genid = 0;
     int have_blkseq = 0;
-    int have_keyless_requests = 0;
+    bool have_keyless_requests = 0;
     int numerrs = 0;
-    int constraint_violation = 0;
+    int check_serializability = 0;
+    int force_serial_error = 0;
     struct block_err err;
-    long long seqno;
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
@@ -2497,12 +2603,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
      * After each keyless write op we clear this buffer ready for the next one.
      */
     blob_buffer_t blobs[MAXBLOBS];
-
     int delayed = 0;
-
     int hascommitlock = 0;
-    if (iq->tranddl)
-        rowlocks = 1;
 
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
@@ -2557,46 +2659,19 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (iq->is_sorese)
         osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
-    /* If we get here and we are rtcpu-ed AND this is a cluster,
-     * return RC_TRAN_CLIENT_RETRY. */
-    if (debug_switch_reject_writes_on_rtcpu() && is_node_up(gbl_mynode) != 1) {
-        const char *nodes[REPMAX];
-        int nsiblings;
-        nsiblings = net_get_all_nodes_connected(thedb->handle_sibling, nodes);
-        if (nsiblings >= 1) {
-            reqprintf(iq, "Master is swinging, repeat the request");
-            /* The client code doesn't retry correctly if the request
-               is (1) a non-long transaction or, (2) a long transaction of a
-               single
-               packet .  So if the block request was a single packet, send back
-               a return code telling the proxy to retry.  Otherwise, the client
-               code needs to retry (and handles it correctly).  The reason the
-               client
-               doesn't handle single-buffer retries correctly is that it doesn't
-               make copies of these requests since the proxy already has it.
-               Thus
-               the proxy, not the client should retry. */
-            if (iq->is_socketrequest) {
-                /* We don't have proxy in this case so the client which has to
-                 * retry. */
-                return RC_TRAN_CLIENT_RETRY;
-            }
-            if (iq->opcode == OP_BLOCK || p_blkstate->numreq == 1) {
-                return 999; /* no dedicated code for proxy retry... */
-            } else if (p_blkstate->longblock_single == 1) {
-                return 999; /* no dedicated code for proxy retry... */
-            } else {
-                return RC_TRAN_CLIENT_RETRY;
-            }
-        }
-    }
+    int lrc = check_for_node_up(iq, p_blkstate);
+    if (lrc)
+        return lrc;
+
+    uint64_t strt = comdb2_time_epochus();
+    reqlog_set_queue_time(iq->reqlogger, strt - iq->startus);
+    reqlog_set_startprcs(iq->reqlogger, strt);
 
     /* adding this back temporarily so I can get blockop counts again. this
        really just belongs in the main loop (should get its own logger event
        flag and logger events for this flag should be reset in the case of a
        retry) */
     if (iq->retries == 0) {
-        unsigned blockop_counts[NUM_BLOCKOP_OPCODES];
         const uint8_t *p_buf_in_saved;
         int got_blockseq = 0;
         int got_blockseq2 = 0;
@@ -2616,6 +2691,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (block_state_set_next(iq, p_blkstate, hdr.nxt))
                 break;
 
+            if (iq->debug)
+                reqprintf(iq, "PRE LOOP REQ %d: %d", opnum, hdr.opcode);
+
             if (hdr.opcode > 0 && hdr.opcode < BLOCK_MAXOPCODE)
                 opcode_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
 
@@ -2627,7 +2705,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                         &have_blkseq);
                     if (rc) {
                         logmsg(LOGMSG_ERROR, "failed to extract blockseq\n");
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                     if (have_blkseq) {
                         got_blockseq = 1;
@@ -2645,7 +2723,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                          &have_blkseq);
                     if (rc) {
                         logmsg(LOGMSG_ERROR, "failed to extract blockseq\n");
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                     if (have_blkseq) {
                         got_blockseq2 = 1;
@@ -2665,26 +2743,51 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && iq->have_snap_info) {
+            if (gbl_osql_snap_info_hashcheck) {
+                // the goal here is to stall until the original transaction
+                // has finished that way we can retrieve the outcome from blkseq
+                osql_blkseq_register_cnonce(iq);
+            }
+
             void *replay_data = NULL;
             int replay_len = 0;
-            int findout;
-            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                      iq->snap_info.key, iq->snap_info.keylen,
-                                      &replay_data, &replay_len);
-            if (findout == 0) {
-                logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
+            bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
+                             __LINE__);
+            if (thedb->master != gbl_mynode) {
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                outrc = ERR_NOMASTER;
+                fromline = __LINE__;
+                goto cleanup;
+            }
+            int found;
+            found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                    iq->snap_info.key, iq->snap_info.keylen,
+                                    &replay_data, &replay_len);
+            if (!found) {
+                logmsg(LOGMSG_WARN,
+                       "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
 
         if ((got_blockseq || got_blockseq2) && got_osql && !iq->have_snap_info) {
             /* register this blockseq early to detect expensive replays
                of the same blocksql transactions */
+            bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
+                             __LINE__);
+            if (thedb->master != gbl_mynode) {
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                outrc = ERR_NOMASTER;
+                fromline = __LINE__;
+                goto cleanup;
+            }
             rc = osql_blkseq_register(iq);
             switch (rc) {
             case OSQL_BLOCKSEQ_INV:
@@ -2696,10 +2799,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 logmsg(LOGMSG_WARN, "early blocksql replay detection\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                                        NULL, 0, __LINE__);
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
         iq->p_buf_in = p_buf_in_saved;
 
@@ -2715,9 +2820,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     iq->blkstate->pos = 0;
-    /* if client requested blkseq, please don't skip it, probably a retry */
-    if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-        have_blkseq = 0;
 
     if (!rowlocks) {
         /* start parent transaction */
@@ -2755,10 +2857,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     } else {
         /* we dont have nested transaction support here.  we play games with
            writing the blkseq record differently in rowlocks mode */
-        if (iq->tranddl)
-            irc = trans_start_logical_sc(iq, &trans);
-        else
-            irc = trans_start_logical(iq, &trans);
+        irc = trans_start_logical(iq, &trans);
         parent_trans = NULL;
 
         if (irc != 0) {
@@ -2769,14 +2868,17 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (thedb->master != gbl_mynode || irc == ERR_NOMASTER) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
-                BACKOUT;
+                GOTOBACKOUT;
             }
         }
     }
 
     if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "trans_start failed rc %d\n", irc);
-        comdb2_die(0);
+        logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
+               __LINE__, irc);
+        numerrs = 1;
+        rc = irc;
+        GOTOBACKOUT;
     }
 
     if (iq->debug) {
@@ -2801,6 +2903,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             useqno = bdb_get_timestamp(thedb->bdb_env);
             memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
         } else {
+            long long seqno;
             rc = get_next_seqno(trans, &seqno);
 
             /* This can fail if we deadlock with another transaction.
@@ -2809,7 +2912,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (rc) {
                 if (rc != RC_INTERNAL_RETRY)
                     logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);
-                BACKOUT;
+                GOTOBACKOUT;
             }
             p_blkstate->seqno = seqno;
         }
@@ -2831,7 +2934,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 reqprintf(iq, "%p:BAD BUFFER OFFSET OP %d", trans, opnum);
 
             rc = ERR_BADREQ;
-            BACKOUT;
+            GOTOBACKOUT;
         }
 
         if (iq->debug) {
@@ -2901,7 +3004,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             loadnullbmp(nulls, sizeof(nulls), updbykey.fldnullmap,
@@ -2912,7 +3015,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK TAG NAME");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             p_buf_tag_name = iq->p_buf_in;
@@ -2924,7 +3027,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /*
@@ -2947,7 +3050,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -2965,7 +3068,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
@@ -2986,7 +3089,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             loadnullbmp(nulls, sizeof(nulls), addkl.fldnullmap,
@@ -2997,7 +3100,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK TAG NAME");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             p_buf_tag_name = iq->p_buf_in;
             iq->p_buf_in += addkl.taglen;
@@ -3008,7 +3111,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             p_buf_data = iq->p_buf_in;
             iq->p_buf_in += addkl.reclen;
@@ -3026,7 +3129,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, 
@@ -3042,7 +3145,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3088,11 +3191,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             (uint8_t *)p_buf_data, p_buf_data_end, nulls, blobs,
                             MAXBLOBS, &err.errcode, &err.ixnum, &addrrn, &genid,
                             -1ULL, hdr.opcode, opnum, /*blkpos*/
-                            addflags);
+                            addflags, 0);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             /* TODO should this be set to rrn? where did that value come
              * from? */
@@ -3114,7 +3217,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* get the start/end of the data */
@@ -3122,7 +3225,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             p_buf_data = iq->p_buf_in;
             iq->p_buf_in += adddta.reclen;
@@ -3145,7 +3248,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3160,7 +3263,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3170,29 +3273,24 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
 
         case BLOCK2_ADDKEY: {
             struct packedreq_addkey addkey;
-            int opfailcode;
-
-            const uint8_t *p_buf_addkey_start;
-
             ++delayed;
-            p_buf_addkey_start = iq->p_buf_in;
 
             if (!(iq->p_buf_in = packedreq_addkey_get(
                       &addkey, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* if we got this far, the BLOCK2_ADDDTA should have
@@ -3212,7 +3310,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             have_keyless_requests = 1;
@@ -3228,7 +3326,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3243,7 +3341,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3256,14 +3354,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             &err.ixnum, hdr.opcode, 0);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
 
         case BLOCK2_DELDTA: {
-            int cterr = 0;
-
             struct packedreq_delete delete;
 
             ++delayed;
@@ -3272,7 +3368,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             rrn = delete.rrn;
@@ -3289,7 +3385,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3304,7 +3400,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3312,7 +3408,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             -1ULL, &err.errcode, &err.ixnum, hdr.opcode, 0);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
@@ -3328,7 +3424,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             ixkeylen = getdefaultkeysize(iq->usedb, delkey.ixnum);
@@ -3351,7 +3447,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                           "invalid index %d or bad key length %d!=%d\n",
                           delkey.ixnum, delkey.keylen, ixkeylen);
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             rrn = delkey.rrn;
 
@@ -3360,9 +3456,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK KEY");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
+            char ondisk_tag[MAXTAGLEN], client_tag[MAXTAGLEN];
+            char key[MAXKEYLEN];
             /* ix 0 is unique: use it to find record,
                use record to form and delete other keys */
             snprintf(client_tag, MAXTAGLEN, ".DEFAULT_IX_0");
@@ -3374,7 +3472,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "ERR CONVERT IX 0");
                 rc = ERR_CONVERT_IX;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             memcpy(saved_fndkey, key, getkeysize(iq->usedb, delkey.ixnum));
             saved_rrn = rrn;
@@ -3398,7 +3496,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             loadnullbmp(nulls, sizeof(nulls), updrrnkl.fldnullmap,
@@ -3425,7 +3523,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3440,7 +3538,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3455,7 +3553,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
@@ -3478,7 +3576,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* just like BLOCK_UPVRRN */
@@ -3487,7 +3585,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK NEW DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             p_buf_data_new = iq->p_buf_in;
@@ -3498,7 +3596,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK VDATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             p_buf_data_v = iq->p_buf_in;
@@ -3510,7 +3608,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "MISMATCH newlen %d != vlen %d", updrrn.rlen,
                               updrrn.vlen);
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             p_buf_tag_name = (const uint8_t *)".DEFAULT";
@@ -3529,7 +3627,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3544,7 +3642,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3563,7 +3661,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             break;
@@ -3584,7 +3682,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /*ADD RRN AND IX 0 KEY */
@@ -3602,7 +3700,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* increment the input pointer past the record */
@@ -3626,7 +3724,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3641,7 +3739,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3652,27 +3750,21 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY);
+                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
 
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             break;
         }
         case BLOCK_SEQ: {
             extract_blkseq(iq, p_blkstate, &found_blkseq, &have_blkseq);
-            if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-                have_blkseq = 0;
-
             break;
         }
         case BLOCK2_SEQV2: {
             extract_blkseq2(iq, p_blkstate, &found_blkseq, &have_blkseq);
-            if (iq->is_sorese && iq->frommach == 0 && !iq->sorese.use_blkseq)
-                have_blkseq = 0;
-
             break;
         }
 
@@ -3680,7 +3772,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         case BLOCK_ADNOD:
         case BLOCK_SECAFPRI: {
             struct packedreq_addsec addsec;
-            int opfailcode, ixnum;
+            int ixnum;
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_addsec_get(
@@ -3688,7 +3780,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             ixnum = addsec.ixnum;
@@ -3712,7 +3804,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             ixkeylen = getkeysize(iq->usedb, 0);
@@ -3722,7 +3814,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             p_keydat = (const char *)iq->p_buf_in;
             iq->p_buf_in += ixkeylen;
@@ -3738,7 +3830,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3756,13 +3848,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "ERR CLIENT CONVERT IX 0 RRN %d", rrn);
                 rc = ERR_CONVERT_IX;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             rc = del_record(iq, trans, key, delsc.rrn, 0, /*genid*/
                             -1ULL, &err.errcode, &err.ixnum, hdr.opcode, 0);
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
@@ -3780,7 +3872,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
 
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             ixnum = delsec.ixnum;
@@ -3790,7 +3882,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "BAD IX %d", ixnum);
                 reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "bad index %d", ixnum);
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* handled in BLOCK_DELSC */
@@ -3804,7 +3896,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
          * prescan loop, if you change it here please change it there */
         case BLOCK_UPVRRN: {
             struct packedreq_upvrrn upvrrn;
-            int vlen, vptr, newlen;
+            int vlen, newlen;
             const uint8_t *p_buf_tag_name;
             const uint8_t *p_buf_tag_name_end;
             const uint8_t *p_newdta;
@@ -3819,12 +3911,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
 
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             rrn = upvrrn.rrn;
             vlen = upvrrn.vlen4 * 4;
-            vptr = (upvrrn.vptr4 - 1) * 4;
 
             p_buf_vdta = iq->p_buf_in;
             if (vlen > p_blkstate->p_buf_req_end - iq->p_buf_in) {
@@ -3832,7 +3923,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
 
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             iq->p_buf_in += vlen;
@@ -3844,7 +3935,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
 
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             newlen *= 4;
@@ -3856,7 +3947,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
 
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             iq->p_buf_in += newlen;
@@ -3903,7 +3994,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -3918,7 +4009,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     numerrs = 1;
                     err.errcode = ERR_ACCESS;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -3937,7 +4028,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             if (rc != 0) {
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             break;
         }
@@ -3958,7 +4049,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             iq->usedb = getdbbynum(use.dbnum);
@@ -3973,7 +4064,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                           use.dbnum);
                 iq->usedb = iq->origdb;
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             if (iq->debug)
                 reqprintf(iq, "DB NUM %d '%s'", use.dbnum,
@@ -3991,7 +4082,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (usekl.taglen) {
@@ -4001,7 +4092,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqprintf(iq, "INVALID TAGLEN %d", usekl.taglen);
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
 
                 bzero(tbltag, sizeof(tbltag));
@@ -4013,7 +4104,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqprintf(iq, "FAILED TO UNPACK TBLTAG");
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
 
                 iq->usedb = get_dbtable_by_name(tbltag);
@@ -4023,15 +4114,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                         reqprintf(iq, "ERROR UNKNOWN TABLE '%s'", tbltag);
                     reqerrstr(iq, COMDB2_BLK_RC_UNKN_TAG,
                               "error unknown table '%s'", tbltag);
-                    BACKOUT;
-                }
-
-                /*
-                  Update iq->usedbtablevers here if the request came via IPC.
-                  This is done to avoid failure due to table version mismatch.
-                */
-                if (iq->p_sinfo) {
-                    iq->usedbtablevers = iq->usedb->tableversion;
+                    GOTOBACKOUT;
                 }
 
                 if (iq->debug)
@@ -4045,7 +4128,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                               "error unknown db num %d", usekl.dbnum);
                     iq->usedb = iq->origdb;
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
                 if (iq->debug)
                     reqprintf(iq, "DB NUM %d '%s'", usekl.dbnum,
@@ -4062,7 +4145,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (!(iq->p_buf_in =
@@ -4071,7 +4154,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK TZ");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             break;
@@ -4087,7 +4170,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (qblob.blobno >= MAXBLOBS) {
@@ -4095,16 +4178,16 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                           "blob %d out of range (MAXBLOBS is %d)", qblob.blobno,
                           MAXBLOBS);
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             } else {
                 blob_buffer_t *blob = &blobs[qblob.blobno];
                 if (!blob->exists) {
-                    if (qblob.length >= MAXBLOBLENGTH) {
+                    if (qblob.length > MAXBLOBLENGTH) {
                         reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_LARGE,
                                   "blob %d too large (%u > max size %u)",
                                   qblob.blobno, qblob.length, MAXBLOBLENGTH);
                         rc = ERR_BLOB_TOO_LARGE;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                     blob->length = qblob.length;
                     blob->collected = 0;
@@ -4121,7 +4204,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             reqerrstr(iq, COMDB2_BLOB_RC_ALLOC,
                                       "malloc failed");
                             rc = ERR_INTERNAL;
-                            BACKOUT;
+                            GOTOBACKOUT;
                         }
                     }
                     blob->exists = 1;
@@ -4131,22 +4214,22 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 } else if (qblob.length != blob->length) {
                     reqerrstr(iq, COMDB2_BLOB_RC_RCV_BAD_LENGTH,
                               "bad fragment for blob %d gives length %u "
-                              "expected %u",
+                              "expected %zu",
                               qblob.blobno, qblob.length, blob->length);
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
                 /* collect more data */
                 if (qblob.frag_len > 0) {
                     if (qblob.frag_len + blob->collected > blob->length) {
                         reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_MUCH,
                                   "received too much data for blob %d "
-                                  "(I had %u/%u bytes, received another "
+                                  "(I had %zu/%zu bytes, received another "
                                   "%u)",
                                   qblob.blobno, blob->collected, blob->length,
                                   qblob.frag_len);
                         rc = ERR_BADREQ;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                     iq->p_buf_in = buf_no_net_get(blob->data + blob->collected,
                                                   qblob.frag_len, iq->p_buf_in,
@@ -4167,7 +4250,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             have_keyless_requests = 1;
@@ -4184,7 +4267,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -4196,7 +4279,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             rc = block2_qadd(iq, p_blkstate, trans, &qadd, blobs);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0)
-                BACKOUT;
+                GOTOBACKOUT;
             break;
         }
         case BLOCK_SETFLAGS: {
@@ -4207,7 +4290,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             iq->transflags = p_setflags.flags;
             break;
@@ -4222,14 +4305,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* A Java stored procedure custom operation. */
             rc = block2_custom(iq, &p_custom, iq->p_buf_in, blobs);
             free_blob_buffers(blobs, MAXBLOBS);
             if (rc != 0)
-                BACKOUT;
+                GOTOBACKOUT;
             break;
         }
 
@@ -4248,7 +4331,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (iq && iq->usedb && iq->usedb->odh) {
                 reqprintf(iq, "ERROR - OPCODE BLOCK2_DELOLDER FOR ODH TABLE");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             ++delayed;
@@ -4257,7 +4340,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (!gbl_dtastripe) {
@@ -4278,7 +4361,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                  &trans, &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 } else {
                     logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
@@ -4297,7 +4380,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     if (rc) {
                         numerrs = 1;
                         err.errcode = ERR_ACCESS;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 }
 
@@ -4331,30 +4414,35 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         case BLOCK2_SERIAL: {
             struct packedreq_sql sql;
             const uint8_t *p_buf_sqlq;
-            const uint8_t *p_buf_sqlq_end;
 
             ++delayed;
             is_block2sqlmode = 1;
             have_keyless_requests = 1;
+
+            int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
+            if (d_ms) {
+                logmsg(LOGMSG_DEBUG,
+                       "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n", d_ms);
+                usleep(1000 * d_ms);
+            }
 
             if (!(iq->p_buf_in = packedreq_sql_get(
                       &sql, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (sql.sqlqlen > (p_blkstate->p_buf_next_start - iq->p_buf_in)) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK SQLQ");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             p_buf_sqlq = iq->p_buf_in;
             iq->p_buf_in += sql.sqlqlen;
-            p_buf_sqlq_end = iq->p_buf_in;
 
             if (iq->sorese.osql_retry) {
                 if (iq->debug)
@@ -4383,16 +4471,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                         &osql_needtransaction);
                     if (rc) {
                         numerrs = 1;
-                        BACKOUT;
+                        GOTOBACKOUT;
                     }
                 }
             }
 
-            rc = block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
-            if (rc != RC_OK) {
-                numerrs = 1;
-                BACKOUT;
-            }
+            block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
             break;
         }
 
@@ -4404,7 +4488,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
             iq->blkstate->modnum = modnum.modnum;
             break;
@@ -4425,7 +4509,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             break;
@@ -4439,7 +4523,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DBGLOG COOKIE");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             switch (cookie.op) {
@@ -4462,7 +4546,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK PRAGMA BLOCKOP");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (pragma.type == SQL_PRAGMA_MAXCOST) {
@@ -4478,7 +4562,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                         reqprintf(iq,
                                   "FAILED TO UNPACK SQL_PRAGMA_MAXCOST PRAGMA");
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
 
                 if (req.have_max_cost) {
@@ -4512,7 +4596,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                         reqprintf(
                             iq, "FAILED TO UNPACK TAGGED_CLIENT_ENDIAN PRAGMA");
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
                 /* Set ireq for big-endian. */
                 if (TAGGED_API_BIG_ENDIAN == req.endian) {
@@ -4529,7 +4613,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqprintf(iq, "INVALID TAGGED_CLIENT_ENDIAN PRAGMA");
                     rc = ERR_BADREQ;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
 
@@ -4545,14 +4629,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             if (iq->usedb == NULL) {
                 if (iq->debug)
                     reqprintf(iq, "NO USEDB PROVIDED");
                 rc = ERR_BADREQ;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             // if upgrade-ahead more than 1 record, start a table upgrade
@@ -4562,7 +4646,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = start_table_upgrade(iq->dbenv, iq->usedb->tablename,
                                          uptbl.genid, 0, uptbl.nrecs, 1);
                 if (rc != 0)
-                    BACKOUT;
+                    GOTOBACKOUT;
             } else {
                 dtasz = getdatsize(iq->usedb);
                 rc = upgrade_record(iq, trans, uptbl.genid, NULL,
@@ -4581,7 +4665,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 reqprintf(iq, "BAD OPCODE %d", hdr.opcode);
             reqerrstr(iq, COMDB2_BLK_RC_UNKN_OP, "bad opcode %d", hdr.opcode);
             rc = ERR_BADREQ;
-            BACKOUT;
+            GOTOBACKOUT;
         } /*switch opcode */
     }     /* BLOCK PROCESSOR FOR LOOP */
 
@@ -4589,7 +4673,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (is_block2sqlmode) {
         int tmpnops = 0;
         int needbackout = 0;
-        int iirc;
 
         rc = osql_bplog_finish_sql(iq, &err);
         if (rc) {
@@ -4608,7 +4691,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                                 &trans, &osql_needtransaction);
                 if (iirc) {
                     numerrs = 1;
-                    BACKOUT;
+                    GOTOBACKOUT;
                 }
             }
             iirc = osql_bplog_schemachange(iq);
@@ -4627,7 +4710,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (!rc)
                     rc = iirc;
                 numerrs = 1;
-                BACKOUT;
+                GOTOBACKOUT;
             }
 
             /* at this point we have a transaction, which would prevent a
@@ -4636,12 +4719,27 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (thedb->master != gbl_mynode) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
-                BACKOUT;
+                GOTOBACKOUT;
+            }
+        }
+
+        if (iq->tranddl) {
+            if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") &&
+                !gbl_replicate_local_concurrent) {
+                long long seqno;
+                rc = get_next_seqno(trans, &seqno);
+                if (rc) {
+                    if (rc != RC_INTERNAL_RETRY)
+                        logmsg(LOGMSG_ERROR,
+                               "get_next_seqno unexpected rc %d\n", rc);
+                    GOTOBACKOUT;
+                }
+                p_blkstate->seqno = seqno;
             }
         }
 
         if (needbackout) {
-            BACKOUT;
+            GOTOBACKOUT;
         }
 
         /*numerrs should be 0 for osql mode, since no
@@ -4649,25 +4747,18 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (gbl_prefault_udp)
             send_prefault_udp = 1;
         rc = osql_bplog_commit(iq, trans, &tmpnops, &err);
+        if (rc == ERR_VERIFY) {
+            check_serializability = 1;
+            force_serial_error = 1;
+        }
         send_prefault_udp = 0;
 
         if (iq->osql_step_ix) {
-            int mutex_rc = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
-            mutex_rc = pthread_mutex_lock(&osqlpf_mutex);
-            if (mutex_rc != 0) {
-                logmsg(LOGMSG_ERROR, "toblock: Failed to lock osqlpf_mutex\n");
-                numerrs = 1;
-                BACKOUT;
-            }
+            Pthread_mutex_lock(&osqlpf_mutex);
             queue_add(gbl_osqlpf_stepq, iq->osql_step_ix);
-            mutex_rc = pthread_mutex_unlock(&osqlpf_mutex);
-            if (mutex_rc != 0) {
-                logmsg(LOGMSG_ERROR, "toblock: Failed to unlock osqlpf_mutex\n");
-                numerrs = 1;
-                BACKOUT;
-            }
+            Pthread_mutex_unlock(&osqlpf_mutex);
             iq->osql_step_ix = NULL;
         }
 
@@ -4685,7 +4776,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (rc) {
             numerrs = 1;
-            BACKOUT;
+            GOTOBACKOUT;
         } else {
             nops += tmpnops;
             iq->sorese.nops = nops;
@@ -4693,10 +4784,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     /* clear prefixes */
-    if (iq->debug) {
+    if (iq->debug)
         reqpopprefixes(iq, -1);
-        reqpushprefixf(iq, "%p:", trans);
-    }
 
     /* do all previously not done ADD key ops here--they were delayed due
      * to necessity of constraint checks */
@@ -4705,55 +4794,84 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     ixout = -1;
     errout = 0;
 
-    if (delayed || gbl_goslow) {
+    if (delayed || gbl_goslow || osql_is_index_reorder_on(iq->osql_flags)) {
+
+        if (osql_is_index_reorder_on(iq->osql_flags)) {
+            if (iq->debug)
+                reqpushprefixf(iq, "process_defered_table:");
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,
+                                       &errout);
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+
+            if (rc != 0) {
+                opnum = blkpos; /* so we report the failed blockop accurately */
+                err.blockop_num = blkpos;
+                err.errcode = errout;
+                err.ixnum = ixout;
+                numerrs = 1;
+                reqlog_set_error(iq->reqlogger, "Process Defered Table", rc);
+                GOTOBACKOUT;
+            }
+        }
+
+        if (iq->debug)
+            reqpushprefixf(iq, "delayed_key_adds: %p", trans);
+
         int verror = 0;
         rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
+        if (iq->debug)
+            reqpopprefixes(iq, 1);
+
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */
             err.blockop_num = blkpos;
             err.errcode = errout;
             err.ixnum = ixout;
             numerrs = 1;
-            BACKOUT;
+            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
+            GOTOBACKOUT;
         }
 
         /* check foreign key constraints */
-        verror = 0;
-        if (iq->debug)
-            reqpushprefixf(iq, "%p:", trans);
 
-        rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    blobs, &verror);
+        if (iq->debug)
+            reqpushprefixf(iq, "verify_del_constraints: %p", trans);
+        rc = verify_del_constraints(iq, p_blkstate, trans, blobs, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
+
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
             numerrs = 1;
-            BACKOUT;
+            reqlog_set_error(iq->reqlogger, "Verify Del Constraints", rc);
+            GOTOBACKOUT;
         }
-        if (iq->debug)
-            reqpushprefixf(iq, "%p:", trans);
 
-        rc = verify_add_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    &verror);
+        if (iq->debug)
+            reqpushprefixf(iq, "verify_add_constraints: %p", trans);
+
+        rc = verify_add_constraints(iq, p_blkstate, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
+
         if (rc != 0) {
-            constraint_violation = 1;
+            check_serializability = 1;
             err.blockop_num = 0;
             err.errcode = verror;
             err.ixnum = -1;
             numerrs = 1;
-            BACKOUT;
+            reqlog_set_error(iq->reqlogger, "Verify Add Constraints", rc);
+            GOTOBACKOUT;
         }
 
     } /* end delayed */
     else {
-        extern unsigned int gbl_delayed_skip;
         ++gbl_delayed_skip;
     }
 
@@ -4772,7 +4890,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             rc = get_next_seqno(trans, &seqno);
             if (rc)
-                BACKOUT;
+                GOTOBACKOUT;
 
             init_fake_ireq(thedb, &aiq);
             aiq.jsph = iq->jsph;
@@ -4783,43 +4901,18 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             rc = add_oplog_entry(iq, trans, LCL_OP_COMMIT, NULL, 0);
         }
         if (rc)
-            BACKOUT;
+            GOTOBACKOUT;
     }
 
-    /* Trigger JAVASP_TRANS_LISTEN_BEFORE_COMMIT. */
-    thrman_wheref(thr_self, "%s [javasp pre commit hooks]", req2a(iq->opcode));
-    rc = javasp_trans_misc_trigger(javasp_trans_handle,
-                                   JAVASP_TRANS_LISTEN_BEFORE_COMMIT);
-    if (rc != 0) {
-        err.blockop_num = 0;
-        err.errcode = OP_FAILED_INTERNAL + ERR_JAVASP_ABORT_OP;
-        err.ixnum = -1;
-        numerrs = 1;
-        BACKOUT;
-    }
-
-    irc = pthread_rwlock_rdlock(&commit_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rdlock(&commit_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_rwlock_rdlock(&commit_lock);
     hascommitlock = 1;
     if (iq->arr || iq->selectv_arr) {
         // serializable read-set validation
-        int selectv_rc = 0;
-        int serial_rc = 0;
-        irc = pthread_rwlock_unlock(&commit_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
-            exit(1);
-        }
-        irc = pthread_rwlock_wrlock(&commit_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_wrlock(&commit_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_rwlock_unlock(&commit_lock);
+        Pthread_rwlock_wrlock(&commit_lock);
         hascommitlock = 1;
 
+        /* This is looking for a commit record - one dive is fine */
         while ((iq->arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
                                       &(iq->arr->offset), 1)) ||
@@ -4827,26 +4920,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                       &(iq->selectv_arr->file),
                                       &(iq->selectv_arr->offset), 1))) {
-            irc = pthread_rwlock_unlock(&commit_lock);
-            if (irc != 0) {
-                fprintf(stderr, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                        irc);
-                exit(1);
-            }
+            Pthread_rwlock_unlock(&commit_lock);
             hascommitlock = 0;
-            if (iq->arr &&
-                bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                                      &(iq->arr->offset), 0)) {
-                currangearr_free(iq->arr);
-                iq->arr = NULL;
-                numerrs = 1;
-                rc = ERR_NOTSERIAL;
-                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
-                BACKOUT;
-            } else if (iq->selectv_arr &&
-                       bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
-                                             &(iq->selectv_arr->file),
-                                             &(iq->selectv_arr->offset), 0)) {
+
+            if (iq->selectv_arr &&
+                bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                      &(iq->selectv_arr->file),
+                                      &(iq->selectv_arr->offset), 0)) {
                 currangearr_free(iq->selectv_arr);
                 iq->selectv_arr = NULL;
                 numerrs = 1;
@@ -4857,14 +4937,22 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                 rc = ERR_CONSTR;
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
-                BACKOUT;
+                GOTOBACKOUT;
+            } else if (iq->arr && bdb_osql_serial_check(
+                                      thedb->bdb_env, iq->arr, &(iq->arr->file),
+                                      &(iq->arr->offset), 0)) {
+                currangearr_free(iq->arr);
+                iq->arr = NULL;
+                numerrs = 1;
+                rc = ERR_NOTSERIAL;
+
+                /* Check selectv_arr in backout code */
+                if (iq->selectv_arr)
+                    check_serializability = 1;
+                reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+                GOTOBACKOUT;
             } else {
-                irc = pthread_rwlock_wrlock(&commit_lock);
-                if (irc != 0) {
-                    fprintf(stderr, "pthread_rwlock_wrlock(&commit_lock) %d\n",
-                            irc);
-                    exit(1);
-                }
+                Pthread_rwlock_wrlock(&commit_lock);
                 hascommitlock = 1;
             }
         }
@@ -4894,18 +4982,22 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
        have nested logical transactions.  we need to delay the commit until the
        point where we would write the blkseq using the parent transaction,
        and call tran_commit_logical_with_blkseq instead */
-    if (!rowlocks && parent_trans) {
+    if (!rowlocks && parent_trans && !iq->tranddl) {
         /*fprintf(stderr, "commit child\n");*/
         irc = trans_commit(iq, trans, source_host);
         if (irc != 0) { /* this shouldnt happen */
-            fprintf(stderr, "TRANS_COMMIT FAILED RC %d", rc);
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                   __LINE__, irc);
             comdb2_die(0);
         }
         trans = NULL;
     }
 
     if (iq->debug) {
-        reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
+        if (is_block2sqlmode)
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_ROWS WRITTEN %d", nops);
+        else
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
     }
 
     /* starting writes, no more reads */
@@ -5011,23 +5103,46 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
 backout:
     if (gbl_verbose_toblock_backouts)
-        fprintf(stderr, "Backing out, rc=%d outrc=%d from line %d\n", rc, outrc,
-                fromline);
+        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
+               outrc, fromline);
 
+    if (!reqlog_get_error_code(iq->reqlogger))
+        reqlog_set_error(iq->reqlogger, "Error Processing", rc);
     backed_out = 1;
 
     /* We don't have to prove serializability here, but if we have both a 
      * serializable error and a dup-key constraint we should return the 
      * serializable error as the dup-key may have been caused by the 
      * conflicting write. */
-    if (constraint_violation && iq->arr &&
-        bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
-                &(iq->arr->offset), 0)) {
-        currangearr_free(iq->arr);
-        iq->arr = NULL;
-        numerrs = 1;
-        rc = ERR_NOTSERIAL;
-        reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+    if (check_serializability) {
+        /* Check serial and selectv readsets independently, serial first to
+         * eliminate the race: selectv-error should override serial error */
+        if (iq->arr && (force_serial_error ||
+                               bdb_osql_serial_check(thedb->bdb_env, iq->arr,
+                                                     &(iq->arr->file),
+                                                     &(iq->arr->offset), 0))) {
+            numerrs = 1;
+            currangearr_free(iq->arr);
+            iq->arr = NULL;
+            rc = ERR_NOTSERIAL;
+            reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
+        }
+
+        if (iq->selectv_arr &&
+            bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
+                                  &(iq->selectv_arr->file),
+                                  &(iq->selectv_arr->offset), 0)) {
+            numerrs = 1;
+            currangearr_free(iq->selectv_arr);
+            iq->selectv_arr = NULL;
+
+            /* verify error */
+            err.ixnum = -1; /* data */
+            err.errcode = ERR_CONSTR;
+
+            rc = ERR_CONSTR;
+            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
+        } 
     }
 
     /* starting writes, no more reads */
@@ -5054,20 +5169,49 @@ backout:
     if (!rowlocks || rc == RC_INTERNAL_RETRY) {
         if (osql_needtransaction != OSQL_BPLOG_NOTRANS) {
             int priority = 0;
-            irc = trans_abort_priority(iq, trans, &priority);
-            if (irc != 0) {
-                fprintf(stderr, "TRANS_ABORT FAILED RC %d", rc);
-                comdb2_die(1);
+
+            if (iq->tranddl) {
+                if (iq->sc_tran) {
+                    irc = trans_abort(iq, iq->sc_tran);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(1);
+                    }
+                    iq->sc_tran = NULL;
+                }
+
+                /* Backout Schema Change */
+                if (!parent_trans)
+                    backout_schema_changes(iq, trans);
+                else {
+                    irc = trans_abort_priority(iq, trans, &priority);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(1);
+                    }
+                    trans = NULL;
+                    backout_schema_changes(iq, parent_trans);
+                }
             }
-            trans = NULL;
+            if (trans) {
+                irc = trans_abort_priority(iq, trans, &priority);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
+                           __func__, __LINE__, irc);
+                    comdb2_die(1);
+                }
+                trans = NULL;
+            }
 
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
-                    fprintf(stderr,
-                            "%x %s:%d Setting iq %p priority from %d to %d\n",
-                            (int)pthread_self(), __FILE__, __LINE__, iq,
-                            iq->priority, priority);
+                    logmsg(LOGMSG_ERROR,
+                           "%x %s:%d Setting iq %p priority from %d to %d\n",
+                           (int)pthread_self(), __FILE__, __LINE__, iq,
+                           iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
                     /*
@@ -5085,12 +5229,21 @@ backout:
 
                 iq->priority = priority;
             }
-        } else
+        } else {
             assert(trans == NULL);
+            if (iq->tranddl) {
+                bdb_get_readlock(thedb->bdb_env, "sc_downgrade", __func__,
+                                 __LINE__);
+                if (thedb->master != gbl_mynode) {
+                    backout_schema_changes(iq, NULL);
+                }
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+            }
+        }
 
         if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
-            fprintf(
-                stderr,
+            logmsg(
+                LOGMSG_ERROR,
                 "Forced VERIFY-FAIL for uncommitable blocksql transaction\n");
             if (is_block2sqlmode_blocksql) {
                 err.errcode = OP_FAILED_VERIFY;
@@ -5104,13 +5257,13 @@ backout:
             iq->sorese.verify_retries++;
 
             if (iq->sorese.verify_retries > gbl_osql_verify_retries_max) {
-                fprintf(stderr,
-                        "Blocksql request repeated too many times (%d)\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Blocksql request repeated too many times (%d)\n",
+                       iq->sorese.verify_retries);
             } else {
-                fprintf(stderr,
-                        "Repeating VERIFY for blocksql transaction %d\n",
-                        iq->sorese.verify_retries);
+                logmsg(LOGMSG_ERROR,
+                       "Repeating VERIFY for blocksql transaction %d\n",
+                       iq->sorese.verify_retries);
                 /* We want to repeat offloading the session */
                 iq->sorese.osql_retry =
                     0; /* this will let us repeat offloading */
@@ -5123,8 +5276,13 @@ backout:
 
         if (rc == RC_INTERNAL_RETRY) {
             /* abandon our parent if we have one, we're gonna redo it all */
-            if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans)
-                trans_abort(iq, parent_trans);
+            if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans) {
+                if (iq->tranddl)
+                    backout_and_abort_tranddl(iq, parent_trans, 0);
+                else
+                    trans_abort(iq, parent_trans);
+                parent_trans = NULL;
+            }
 
             /* restore any part of the req we have saved */
             if (block_state_restore(iq, p_blkstate))
@@ -5141,100 +5299,10 @@ backout:
         reqprintf(iq, "%p:TRANSACTION ABORTED, RC %d ERRCODE %d", trans, rc,
                   err.errcode);
 
-    /* pack up response. */
-    if (!have_keyless_requests) {
-        struct block_rsp rsp;
-
-        /* pack up response. */
-
-        rsp.num_completed = opnum;
-
-        if (!(iq->p_buf_out =
-                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
-            /* TODO can I just return here? should prob go to cleanup ? */
-            return ERR_INTERNAL;
-
-        /* rcodes */
-        for (jj = 0; jj < num_reqs; jj++) {
-            int rcode;
-
-            rcode = (jj == opnum) ? rc : 0;
-            if (!(iq->p_buf_out = buf_put(&rcode, sizeof(rcode), iq->p_buf_out,
-                                          iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-        }
-
-        /* rrns */
-        for (jj = 0; jj < num_reqs; jj++) {
-            int rrn;
-
-            rrn = (jj < opnum) ? 2 : 0;
-            if (!(iq->p_buf_out = buf_put(&rrn, sizeof(rrn), iq->p_buf_out,
-                                          iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-#if 0
-            reqmoref(iq, " a%d:%d", jj, p_blkstate->rsp.packed_rc_rrn_brc[jj]);
-            reqmoref(iq, " b%d:%d", jj,
-                    p_blkstate->rsp.packed_rc_rrn_brc[jj+num_reqs]);
-            reqmoref(iq, " c%d:%d", jj,
-                    p_blkstate->rsp.packed_rc_rrn_brc[jj + num_reqs * 2]);
-#endif
-        }
-
-        /* borcodes */
-        if (!(iq->p_buf_out = buf_zero_put(sizeof(int) * num_reqs,
-                                           iq->p_buf_out, iq->p_buf_out_end)))
-            /* TODO can I just return here? should prob go to cleanup ? */
-            return ERR_INTERNAL;
-    } else {
-        if (iq->is_block2positionmode) {
-            struct block_rspkl_pos rspkl_pos;
-
-            rspkl_pos.num_completed = opnum;
-
-            rspkl_pos.position = iq->last_genid;
-
-            if (numerrs)
-                rspkl_pos.numerrs = 1;
-
-            if (!(iq->p_buf_out = block_rspkl_pos_put(&rspkl_pos, iq->p_buf_out,
-                                                      iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-            if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(&err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
-                    /* TODO can I just return here? should prob go to cleanup ?
-                     */
-                    return ERR_INTERNAL;
-            }
-
-        } else {
-            struct block_rspkl rspkl;
-
-            rspkl.num_completed = opnum;
-
-            if (numerrs)
-                rspkl.numerrs = 1;
-
-            if (!(iq->p_buf_out = block_rspkl_put(&rspkl, iq->p_buf_out,
-                                                  iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-            if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(&err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
-                    /* TODO can I just return here? should prob go to cleanup ?
-                     */
-                    return ERR_INTERNAL;
-            }
-        }
-    }
+    lrc = pack_up_response(iq, have_keyless_requests, num_reqs, numerrs, &err,
+                           rc, opnum);
+    if (lrc) /* TODO can I just return here? should prob go to cleanup ? */
+        return lrc;
 
 #if 0
     printf("**toblock error reply_len %d rc %d\n", iq->reply_len,
@@ -5286,9 +5354,18 @@ backout:
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
         if (rowlocks) {
+            if (iq->tranddl)
+                backout_and_abort_tranddl(iq, trans, 1);
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
-            trans_abort(iq, parent_trans);
+            if (iq->tranddl) {
+                if (trans) {
+                    trans_abort(iq, trans);
+                    trans = NULL;
+                }
+                backout_and_abort_tranddl(iq, parent_trans, 0);
+            } else
+                trans_abort(iq, parent_trans);
             parent_trans = NULL;
         }
         fromline = __LINE__;
@@ -5312,25 +5389,19 @@ add_blkseq:
                            BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN +
                            FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) +
                            sizeof(int) + ERRSTAT_LEN + sizeof(int) + sizeof(int)];
-        uint8_t *p_buf_fstblk;
-        const uint8_t *p_buf_fstblk_end;
 
-        p_buf_fstblk = buf_fstblk;
-        p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
+        uint8_t *p_buf_fstblk = buf_fstblk;
+        const uint8_t *p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
 
         /* add the response array as a dta record */
         if (!have_keyless_requests) {
             struct block_rsp rsp;
-
-            const uint8_t *p_buf_rsp_unpack;
-
             size_t num_rrns;
-
             struct fstblk_header fstblk_header;
+            const uint8_t *p_buf_rsp_unpack = p_buf_rsp_start;
 
             /* unpack the rsp that we just packed above (there is almost
              * certainly a more efficient way to do this) */
-            p_buf_rsp_unpack = p_buf_rsp_start;
             if (!(p_buf_rsp_unpack =
                       block_rsp_get(&rsp, p_buf_rsp_unpack, iq->p_buf_out))) {
                 /* TODO can I just return here? should prob go to cleanup ? */
@@ -5462,28 +5533,23 @@ add_blkseq:
             bskey = iq->seq;
             bskeylen = iq->seqlen;
         }
+        int t = comdb2_time_epoch();
+        memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
-            extern int gbl_always_send_cnonce;
-            // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
-                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
+            // if VERIFY-ERROR && replicant_is_able_to_retry don't add to blkseq
+            if ((outrc == ERR_NOTSERIAL ||
+                 (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                (iq->have_snap_info &&
+                 iq->snap_info.replicant_is_able_to_retry)) {
                 /* do nothing */
             } else {
-                int t = comdb2_time_epoch();
-                memcpy(p_buf_fstblk, &t, sizeof(int));
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
                                        bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int),
                                        &replay_data, &replay_len);
             }
 
-            if (iq->seqlen == sizeof(uuid_t)) {
-                uuidstr_t us;
-                uuid_t u;
-                memcpy(&u, iq->seq, iq->seqlen);
-                comdb2uuidstr(u, us);
-            }
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
@@ -5491,7 +5557,37 @@ add_blkseq:
             }
 
             if (rc == 0 && have_blkseq) {
-                irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                if (iq->tranddl) {
+                    if (backed_out) {
+                        assert(trans == NULL);
+                        if (iq->sc_logical_tran)
+                            bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                    } else {
+                        assert(iq->sc_tran);
+                        assert(trans != NULL);
+                        trans_commit(iq, trans, source_host);
+                        trans = NULL;
+                        irc = trans_commit(iq, iq->sc_tran, source_host);
+                        if (irc != 0) { /* this shouldnt happen */
+                            logmsg(LOGMSG_FATAL,
+                                   "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
+                                   __LINE__, irc);
+                            comdb2_die(0);
+                        }
+                        iq->sc_tran = NULL;
+                    }
+                    if (iq->sc_locked) {
+                        unlock_schema_lk();
+                        iq->sc_locked = 0;
+                    }
+                    if (iq->sc_logical_tran)
+                        irc = trans_commit_logical(iq, iq->sc_logical_tran,
+                                                   gbl_mynode, 0, 1, NULL, 0,
+                                                   NULL, 0);
+                    iq->sc_logical_tran = NULL;
+                } else {
+                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
                      * ask the the client to retry */
@@ -5503,36 +5599,33 @@ add_blkseq:
                 }
 
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 if (gbl_dump_blkseq && iq->have_snap_info) {
                     char *bskey = alloca(iq->snap_info.keylen + 1);
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
-                    logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
-                                        "errstr='%s', rcout=%d commit-rc=%d\n",
+                    logmsg(LOGMSG_USER,
+                           "blkseq add '%s', outrc=%d errval=%d "
+                           "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                            iq->sorese.rcout, irc);
                 }
             } else {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
-                trans_abort(iq, parent_trans);
+                if (iq->tranddl) {
+                    if (trans) {
+                        trans_abort(iq, trans);
+                        trans = NULL;
+                    }
+                    backout_and_abort_tranddl(iq, parent_trans, 0);
+                } else {
+                    trans_abort(iq, parent_trans);
+                }
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
@@ -5577,17 +5670,15 @@ add_blkseq:
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL,
-                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
+                if (iq->tranddl)
+                    backout_and_abort_tranddl(iq, trans, 1);
                 trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
                 rc = RC_INTERNAL_RETRY;
-                if (block_state_restore(iq, p_blkstate)) return ERR_INTERNAL;
+                if (block_state_restore(iq, p_blkstate))
+                    return ERR_INTERNAL;
                 outrc = RC_INTERNAL_RETRY;
                 fromline = __LINE__;
                 goto cleanup;
@@ -5596,20 +5687,26 @@ add_blkseq:
                and write the blkseq */
             if (!backed_out) {
                 /*fprintf(stderr, "trans_commit_logical\n");*/
-
+                if (iq->tranddl) {
+                    irc = trans_commit(iq, iq->sc_tran, source_host);
+                    if (irc != 0) { /* this shouldnt happen */
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d",
+                               __func__, __LINE__, irc);
+                        comdb2_die(0);
+                    }
+                    iq->sc_tran = NULL;
+                }
+                if (iq->sc_locked) {
+                    unlock_schema_lk();
+                    iq->sc_locked = 0;
+                }
                 /* TODO: private blkseq with rowlocks? */
-                rc = trans_commit_logical(iq, trans, gbl_mynode, 0, 1,
-                                          buf_fstblk, p_buf_fstblk - buf_fstblk,
-                                          iq->seq, iq->seqlen);
+                rc = trans_commit_logical(
+                    iq, trans, gbl_mynode, 0, 1, buf_fstblk,
+                    p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
 
@@ -5617,18 +5714,14 @@ add_blkseq:
                     rc = ERR_NOT_DURABLE;
             } else {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_USER, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
-                rc = trans_abort_logical(iq, trans, buf_fstblk,
-                                         p_buf_fstblk - buf_fstblk, iq->seq,
-                                         iq->seqlen);
+                if (iq->tranddl)
+                    backout_and_abort_tranddl(iq, trans, 1);
+                rc = trans_abort_logical(
+                    iq, trans, buf_fstblk,
+                    p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
@@ -5681,13 +5774,7 @@ add_blkseq:
         if (rowlocks) {
             if (rc) {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 irc = trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
@@ -5701,13 +5788,7 @@ add_blkseq:
                     irc = ERR_NOT_DURABLE;
 
                 if (hascommitlock) {
-                    int newrc = pthread_rwlock_unlock(&commit_lock);
-                    if (newrc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                newrc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
             }
@@ -5721,12 +5802,7 @@ add_blkseq:
                     irc = rc = ERR_NOT_DURABLE;
             }
             if (hascommitlock) {
-                irc = pthread_rwlock_unlock(&commit_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                            irc);
-                    exit(1);
-                }
+                Pthread_rwlock_unlock(&commit_lock);
                 hascommitlock = 0;
             }
         }
@@ -5794,18 +5870,12 @@ add_blkseq:
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
-    pthread_mutex_lock(&commit_stat_lk);
+    Pthread_mutex_lock(&commit_stat_lk);
     n_commit_time += diff_time_micros;
     n_commits++;
-    pthread_mutex_unlock(&commit_stat_lk);
+    Pthread_mutex_unlock(&commit_stat_lk);
 
-    /* Trigger JAVASP_TRANS_LISTEN_AFTER_COMMIT.  Doesn't really matter what
-     * it does since the transaction is committed. */
     if (outrc == 0) {
-        thrman_wheref(thr_self, "%s [javasp post commit]", req2a(iq->opcode));
-        javasp_trans_misc_trigger(javasp_trans_handle,
-                                  JAVASP_TRANS_LISTEN_AFTER_COMMIT);
-
         if (iq->__limits.maxcost_warn &&
             (iq->cost > iq->__limits.maxcost_warn)) {
             logmsg(LOGMSG_WARN, "[%s] warning: transaction exceeded cost threshold "
@@ -5814,7 +5884,10 @@ add_blkseq:
         }
     }
 
+    fromline = __LINE__;
 cleanup:
+    logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
+           did_replay, fromline);
     bdb_checklock(thedb->bdb_env);
 
     iq->timings.req_finished = osql_log_time();
@@ -5855,18 +5928,18 @@ static uint64_t block_processor_ms = 0;
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *p_blkstate)
 {
-    int now, rc, prcnt = 0, prmax = 0;
-    uint64_t start, end;
-    extern int gbl_print_blockp_stats;
+    int rc, prcnt = 0, prmax = 0;
     static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
-    static int blkcnt = 0, lastpr = 0;
+    static int blkcnt = 0;
+    static uint64_t lastpr = 0;
 
-    pthread_mutex_lock(&blklk);
+    uint64_t start = gettimeofday_ms();
+
+    Pthread_mutex_lock(&blklk);
     blkcnt++;
-
-    if (((now = comdb2_time_epoch()) - lastpr) > 1) {
+    if (start - lastpr > 1000) {
         prcnt = blkcnt;
-        lastpr = now;
+        lastpr = start;
     }
 
     if (blkcnt > blkmax)
@@ -5874,16 +5947,16 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
 
     prmax = blkmax;
 
-    pthread_mutex_unlock(&blklk);
+    Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%d threads are in the block processor, max is %d\n",
-                prcnt, prmax);
+        logmsg(LOGMSG_USER,
+               "%d threads are in the block processor, max is %d\n", prcnt,
+               prmax);
     }
 
-    start = gettimeofday_ms();
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
-    end = gettimeofday_ms();
+    uint64_t end = gettimeofday_ms();
 
     if (rc == 0) {
         osql_postcommit_handle(iq);
@@ -5893,13 +5966,14 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         handle_postabort_bpfunc(iq);
     }
 
-    pthread_mutex_lock(&blklk);
+    Pthread_mutex_lock(&blklk);
     blkcnt--;
     block_processor_ms += (end - start);
-    pthread_mutex_unlock(&blklk);
+    Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+        logmsg(LOGMSG_USER,
+               "%" PRIu64 " total time spent in the block processor\n",
                block_processor_ms);
     }
 
@@ -6018,8 +6092,6 @@ int get_next_seqno(void *tran, long long *seqno)
     /* key is a long long + int + descriptor bytes for each */
     char fndkey[14];
     int rc;
-    int rrn;
-    unsigned long long genid;
     int fndlen;
     int outnull, outsz;
     struct ireq iq;
@@ -6045,7 +6117,7 @@ int get_next_seqno(void *tran, long long *seqno)
     if (fndlen == 0)
         *seqno = 1;
     else {
-        long long next_seqno;
+        long long next_seqno = 0;
 
         /* convert to client format value so we can use it. Call the Routine
          * Of Many Arguments to do so. */

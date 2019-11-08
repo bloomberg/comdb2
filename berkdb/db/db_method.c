@@ -32,6 +32,7 @@ static const char revid[] = "$Id: db_method.c,v 11.99 2003/07/08 20:14:17 ubell 
 #include "dbinc/qam.h"
 #include "dbinc/xa.h"
 #include "dbinc_auto/xa_ext.h"
+#include "logmsg.h"
 
 #ifdef HAVE_RPC
 #include "dbinc_auto/db_server.h"

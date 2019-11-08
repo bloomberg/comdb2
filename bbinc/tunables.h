@@ -49,7 +49,7 @@ typedef enum {
     INVERSE_VALUE = 1 << 4,
 
     /* The tunable has been deprecated. */
-    DEPRECATED = 1 << 5,
+    DEPRECATED_TUNABLE = 1 << 5,
 
     /* The tunable has been marked experimental. */
     EXPERIMENTAL = 1 << 6,
@@ -101,6 +101,7 @@ typedef enum {
     TUNABLE_STRING,
     TUNABLE_ENUM,
     TUNABLE_COMPOSITE,
+    TUNABLE_RAW,
 
     /* Must always be the last. */
     TUNABLE_INVALID,
@@ -168,9 +169,6 @@ typedef struct {
     /* Do not register tunables any more. */
     int freeze;
 
-    /* Array of all the registered tunables. */
-    comdb2_tunable **array;
-
     /* HASH of all the registered tunables (for quick lookup by name). */
     hash_t *hash;
 
@@ -183,17 +181,20 @@ typedef struct {
     do {                                                                       \
         comdb2_tunable t = {NAME,     DESCR,     TYPE,      VAR_PTR,   FLAGS,  \
                             VALUE_FN, VERIFY_FN, UPDATE_FN, DESTROY_FN};       \
-        register_tunable(t);                                                   \
+        register_tunable(&t);                                                  \
     } while (0)
 
 /* Resigter the tunable to the array of tunables. */
-int register_tunable(comdb2_tunable tunable);
+int register_tunable(comdb2_tunable *tunable);
 
 /* Returns name of the specified tunable type. */
 const char *tunable_type(comdb2_tunable_type type);
 
 /* Verify whether the given value is in [0-100] range. */
 int percent_verify(void *context, void *percent);
+
+/* Verify whether the given value is in [1-16] range. */
+int dtastripe_verify(void *context, void *stripes);
 
 /* Return error string. */
 const char *tunable_error(comdb2_tunable_err code);

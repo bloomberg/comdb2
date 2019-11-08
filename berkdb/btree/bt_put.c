@@ -569,8 +569,7 @@ user_copy:
 
 
 /* COMDB2 HACK to make snapisol & rowlocks work */
-extern int gbl_snapisol;
-extern int gbl_rowlocks;
+int bdb_logical_logging_enabled();
 
 /*
  * __bam_ritem --
@@ -594,7 +593,7 @@ __bam_ritem(dbc, h, indx, data)
 	int ret;
 	db_indx_t *inp;
 	u_int8_t *p, *t;
-	int disable_prefix_suffix_opt = (gbl_snapisol | gbl_rowlocks);
+	int disable_prefix_suffix_opt = bdb_logical_logging_enabled();
 
 	dbp = dbc->dbp;
 

@@ -401,7 +401,7 @@ typedef struct __dbpginfo {
 	(LSN).file = 0;							\
 	(LSN).offset = 0;						\
 } while (0)
-#define	IS_ZERO_LSN(LSN)	((LSN).file == 0)
+#define	IS_ZERO_LSN(LSN)	((LSN).file == 0 && (LSN).offset == 0)
 
 #define	IS_INIT_LSN(LSN)	((LSN).file == 1 && (LSN).offset == 0)
 #define	INIT_LSN(LSN)		do {					\
@@ -470,6 +470,9 @@ struct __vrfy_pageinfo; typedef struct __vrfy_pageinfo VRFY_PAGEINFO;
 #include "dbinc/qam.h"
 #include "dbinc/hmac.h"
 
+
+extern int gbl_is_physical_replicant;
+
 /*******************************************************
  * Remaining Log.
  * These need to be defined after the general includes
@@ -482,7 +485,7 @@ struct __vrfy_pageinfo; typedef struct __vrfy_pageinfo VRFY_PAGEINFO;
  */
 #define	DBENV_LOGGING(dbenv)						\
 	(LOGGING_ON(dbenv) && !IS_REP_CLIENT(dbenv) &&			\
-	    (!IS_RECOVERING(dbenv)))
+	    (!IS_RECOVERING(dbenv)) && !gbl_is_physical_replicant)
 
 /*
  * Test if we need to log a change.  By default, we don't log operations without
@@ -500,12 +503,16 @@ struct __vrfy_pageinfo; typedef struct __vrfy_pageinfo VRFY_PAGEINFO;
  */
 #if defined(DIAGNOSTIC) || defined(DEBUG_ROP)  || defined(DEBUG_WOP)
 #define	DBC_LOGGING(dbc)						\
-	(LOGGING_ON((dbc)->dbp->dbenv) &&				\
-	    !F_ISSET((dbc), DBC_RECOVER) && !IS_REP_CLIENT((dbc)->dbp->dbenv))
+    (LOGGING_ON((dbc)->dbp->dbenv) &&				\
+     !F_ISSET((dbc), DBC_RECOVER) &&  \
+     !IS_REP_CLIENT((dbc)->dbp->dbenv) &&  \
+     !gbl_is_physical_replicant)
 #else
 #define	DBC_LOGGING(dbc)						\
-	((dbc)->txn != NULL && LOGGING_ON((dbc)->dbp->dbenv) &&		\
-	    !F_ISSET((dbc), DBC_RECOVER) && !IS_REP_CLIENT((dbc)->dbp->dbenv))
+    ((dbc)->txn != NULL && LOGGING_ON((dbc)->dbp->dbenv) &&		\
+     !F_ISSET((dbc), DBC_RECOVER) &&  \
+     !IS_REP_CLIENT((dbc)->dbp->dbenv) && \
+     ! gbl_is_physical_replicant)
 #endif
 
 /* This is here to sniff out a crash seen in a SET_RANGE call where the dbc's 

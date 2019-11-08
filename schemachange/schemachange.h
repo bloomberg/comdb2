@@ -59,16 +59,19 @@ struct dest {
     LINKC_T(struct dest) lnk;
 };
 
+/* status for schema_change_type->addonly */
+enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     unsigned long long rqid;
     uuid_t uuid;
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
-    size_t table_len;
-    char table[MAXTABLELEN]; /* name of table/queue */
-    int rename;              /* new table name */
-    char newtable[MAXTABLELEN]; /* rename table */
+    size_t tablename_len;
+    char tablename[MAXTABLELEN]; /* name of table/queue/view */
+    int rename;                  /* new table name */
+    char newtable[MAXTABLELEN];  /* rename table */
     size_t fname_len;
     char fname[256];         /* name of schema file for table schema change
                                 or client provided SP version */
@@ -98,7 +101,7 @@ struct schema_change_type {
     int compress_blobs; /* new blob com algorithm or -1 for no change */
     int ip_updates;     /* inplace updates or -1 for no change */
     int instant_sc;     /* 1 is enable, 0 disable, or -1 for no change */
-    int doom;
+    int preempted;
     int use_plan;         /* if we want to use a plan so we don't rebuild
                              everything needlessly. */
     int commit_sleep;     /* Used for testing; sleep a bit before committing
@@ -134,6 +137,10 @@ struct schema_change_type {
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
 
+    /* View operations */
+    int add_view;
+    int drop_view;
+
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;
@@ -155,6 +162,8 @@ struct schema_change_type {
     int finalize_only; /* only commit the schema change */
 
     pthread_mutex_t mtx; /* mutex for thread sync */
+    pthread_mutex_t mtxStart; /* mutex for thread start */
+    pthread_cond_t condStart; /* condition var for thread sync */
     int sc_rc;
 
     struct ireq *iq;
@@ -163,6 +172,7 @@ struct schema_change_type {
     struct schema_change_type *sc_next;
 
     int usedbtablevers;
+    int fix_tp_badvers;
 
     /*********************** temporary fields for in progress
      * schemachange************/
@@ -177,9 +187,22 @@ struct schema_change_type {
                            whole schema change (I will change this in the
                            future)*/
 
+    int sc_thd_failed;
+    int schema_change;
+
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
+
+    int already_finalized;
+
+    int logical_livesc;
+    int *sc_convert_done;
+    unsigned int hitLastCnt;
+    int got_tablelock;
+
+    pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    void *curLsn;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -187,6 +210,8 @@ struct schema_change_type {
      * *****************************/
 
     size_t packed_len;
+
+    bool views_locked : 1;
 };
 
 struct ireq;
@@ -221,6 +246,10 @@ enum schema_change_rc {
     SC_TABLE_DOESNOT_EXIST,
     SC_TABLE_ALREADY_EXIST,
     SC_TRANSACTION_FAILED,
+    SC_PAUSED,
+    SC_ABORTED,
+    SC_PREEMPTED,
+    SC_DETACHED,
     SC_UNKNOWN_ERROR = -1,
     SC_CANT_SET_RUNNING = -99
 };
@@ -235,8 +264,28 @@ enum schema_change_views_rc {
 
 enum schema_change_resume {
     SC_NOT_RESUME = 0,
+    /* Non-transactional resume */
     SC_RESUME = 1,
-    SC_NEW_MASTER_RESUME = 2
+    /* New master resuming transactional sc (without finalizing) */
+    SC_NEW_MASTER_RESUME = 2,
+    /* OSQL (block processor) picking up sc resumed by the new master */
+    SC_OSQL_RESUME = 3,
+    /* Resume a paused sc */
+    SC_PREEMPT_RESUME = 4
+};
+
+enum schema_change_preempt {
+    SC_ACTION_NONE = 0,
+    SC_ACTION_PAUSE = 1,
+    SC_ACTION_RESUME = 2,
+    SC_ACTION_COMMIT = 3,
+    SC_ACTION_ABORT = 4
+};
+
+enum schema_alter_option {
+    SC_ALTER_NONE = 0,
+    SC_ALTER_ONLY = 1,
+    SC_ALTER_PENDING = 2
 };
 
 #include <bdb_schemachange.h>
@@ -315,10 +364,15 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len);
+
+int live_sc_disable_inplace_blobs(struct ireq *iq);
+
+int live_sc_delay_key_add(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
-extern unsigned long long get_next_sc_seed(bdb_state_type *);
+extern unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state);
 
 void handle_setcompr(SBUF2 *sb);
 
@@ -332,5 +386,14 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
+
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs,
+                                          size_t maxblobs);
+
+char *get_ddl_type_str(struct schema_change_type *s);
+char *get_ddl_csc2(struct schema_change_type *s);
 
 #endif

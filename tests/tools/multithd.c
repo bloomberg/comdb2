@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
 
     for(i = 0; i < thd_count; i++) {
         ids[i] = i;
-        if(rc = pthread_create(&tids[i],NULL,thd,(void *)&ids[i])) {
+        if((rc = pthread_create(&tids[i],NULL,thd,(void *)&ids[i]))) {
             fprintf(stderr, "Error creating threads: %d %s\n", rc, 
                     strerror(errno));
             exit(1);

@@ -199,22 +199,56 @@ do_verify
 
 
 
-echo "Simple rebuild while update/deleting"
+echo "Alter into t1_4.csc2 while update/deleting"
 
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 10')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 30"
 
-(cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "rebuild t1 " &> rebuild.out || touch rebuild.failed) &
+(cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t1 { `cat t1_4.csc2 ` }" &> alter.out || touch alter.failed) &
 
 sleep 15
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a % 2 = 1"
+if [ $? -ne 0 ] ; then
+    failexit "failed to delete while altering to t1_4"
+fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set a = a + 10000 where 1"
-
-
-if [ -f rebuild.failed ] ; then
-    failexit "Rebuild failed, but it should have succeeded"
+if [ $? -ne 0 ] ; then
+    failexit "failed to update while altering to t1_4"
 fi
 
+wait
+if [ -f alter.failed ] ; then
+    failexit "Alter to t1_4.csc2 failed, but it should have succeeded"
+fi
+do_verify
+
+echo "Add default null field"
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "CREATE TABLE t2 { schema {int a} }"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "INSERT INTO t2(a) VALUES (1)"
+if [ $? -ne 0 ] ; then
+    failexit "failed to insert to t2"
+fi
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'ALTER table t2 { schema {int a int b null=yes} keys {dup "IX_A" = a + b} }'
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t2')" &> verify.out
+if ! grep succeeded verify.out > /dev/null ; then
+    failexit "Verify t2"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set b = 1 where a = 1"
+if [ $? -ne 0 ] ; then
+    failexit "failed to update after adding null field"
+fi
+
+echo "Add new field without dbstore or null=yes"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "DROP TABLE IF EXISTS t3"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t3 { schema {int a} }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "ALTER TABLE t3 { schema {int a int b int c null=yes} }"
+if [ $? -eq 0 ] ; then
+    failexit "failed to detect bad schema"
+fi
 
 echo "Success"

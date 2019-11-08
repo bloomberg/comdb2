@@ -19,6 +19,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <alloca.h>
+
+#undef NDEBUG
 #include <assert.h>
 #include <comdb2rle.c> //need access to static funcs
 
@@ -44,7 +46,7 @@ static int mydecode(uint8_t *in, uint32_t insz, uint8_t *out, uint32_t outmax)
         if (rsize < 0)                                                         \
             assert(i == CNT(sizes));                                           \
         else                                                                   \
-            assert(sizes[i] == rsize);                                         \
+            assert(sizes[i] == (uint8_t)rsize);                                \
         break;                                                                 \
     } while (0)
 
@@ -170,7 +172,10 @@ static void test_encode_prev()
         uint8_t in[i];
         uint8_t out[i + 10];
         uint8_t out_rev[i + 10];
-        fread(in, 1, i, f);
+        int lrc = fread(in, 1, i, f);
+        if (lrc == 0) {
+            printf("ERROR: %s no data to read\n", __func__);
+        }
 
         Data input, output, output_rev;
         input.dt = in + sizeof(in); // need to be at end of buf

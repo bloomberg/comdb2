@@ -1,0 +1,7 @@
+schema {
+    vutf8 txt[8]
+}
+
+keys {
+    dup "KEY_LEN_TXT"=(int)"length(txt)"
+}

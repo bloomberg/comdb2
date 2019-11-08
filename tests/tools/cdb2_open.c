@@ -17,7 +17,7 @@ void usage(void)
 
 int main(int argc, char *argv[])
 {
-    int rc, iterations = DEFAULT_ITERATIONS, err = 0, i, c;
+    int iterations = DEFAULT_ITERATIONS, err = 0, i, c;
     cdb2_hndl_tp *cdb2 = NULL;
     uint64_t start, end;
     char *dbname = NULL;

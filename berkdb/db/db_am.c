@@ -33,7 +33,7 @@ static const char revid[] = "$Id: db_am.c,v 11.112 2003/09/13 19:23:42 bostic Ex
 
 static int __db_append_primary __P((DBC *, DBT *, DBT *));
 static int __db_secondary_get __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
-static int __db_secondary_close __P((DB *, DB_TXN *, u_int32_t));
+static int __db_secondary_close __P((DB *, u_int32_t));
 
 #ifdef DEBUG
 static int __db_cprint_item __P((DBC *));
@@ -80,7 +80,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 	 * right type.  With off page dups we may have different kinds
 	 * of cursors on the queue for a single database.
 	 */
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
 	for (dbc = TAILQ_FIRST(&dbp->free_queue);
 	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
 		if (dbtype == dbc->dbtype) {
@@ -88,7 +88,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 			F_CLR(dbc, ~DBC_OWN_LID);
 			break;
 		}
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
 
 	if (dbc == NULL) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(DBC), &dbc)) != 0)
@@ -362,7 +362,7 @@ __db_cursor_ser_int(dbp, txn, dbcs, dbcp, flags)
 {
 	DBTYPE dbtype;
 	DBCS_INTERNAL *dbcsi;
-	DBC *dbc;
+	DBC *dbc = NULL;
 	DBC_INTERNAL *cp;
 	int ret;
 	int t_ret;
@@ -974,9 +974,8 @@ __db_secondary_get(sdbp, txn, skey, data, flags)
  *	a primary that is updating.
  */
 static int
-__db_secondary_close(sdbp, txn, flags)
+__db_secondary_close(sdbp, flags)
 	DB *sdbp;
-	DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB *primary;
@@ -1007,7 +1006,7 @@ __db_secondary_close(sdbp, txn, flags)
 	 * sdbp->close is this function;  call the real one explicitly if
 	 * need be.
 	 */
-	return (doclose ? __db_close(sdbp, txn, flags) : 0);
+	return (doclose ? __db_close(sdbp, NULL, flags) : 0);
 }
 
 /*

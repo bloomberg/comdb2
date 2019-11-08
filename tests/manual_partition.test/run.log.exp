@@ -1,0 +1,375 @@
+Creating comdb2_logical_cron table
+Creating partition 1 and 2
+XXXXX we should see to empty partitions with no counters
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t1",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=1, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='t1')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=1, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(rows inserted=1)
+(rows inserted=1)
+XXXXX we should see the data in part1, and the counter, no rollout yet
+(a=1, alltypes_vutf8='hi')
+(a=2, alltypes_vutf8='ho')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t1",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=1, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='t1')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=1, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart1', value=0)
+XXXXX we should see additional counter for part2
+(a=1, alltypes_vutf8='hi')
+(a=2, alltypes_vutf8='ho')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t1",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=1, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='t1')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=1, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart1', value=0)
+(name='testpart2', value=0)
+sleeping
+(a=1, alltypes_vutf8='hi')
+(a=2, alltypes_vutf8='ho')
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+XXXXX we should see 5 rows in two shards in part1
+(a=1, alltypes_vutf8='hi')
+(a=2, alltypes_vutf8='ho')
+(a=10, alltypes_vutf8='hihi')
+(a=20, alltypes_vutf8='hoho')
+(a=30, alltypes_vutf8='hehe')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$1_7FC6B09",
+   "LOW"          : 1,
+   "HIGH"         : 2147483647
+  },
+  {
+   "TABLENAME"    : "t1",
+   "LOW"          : -2147483648,
+   "HIGH"         : 1
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=2, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='$1_7FC6B09')
+(name='testpart1', shardname='t1')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 1')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=2, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart1', value=1)
+(name='testpart2', value=0)
+(rows deleted=1)
+XXXXX we should see the counter for part1 reset
+(a=1, alltypes_vutf8='hi')
+(a=2, alltypes_vutf8='ho')
+(a=10, alltypes_vutf8='hihi')
+(a=20, alltypes_vutf8='hoho')
+(a=30, alltypes_vutf8='hehe')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$1_7FC6B09",
+   "LOW"          : 1,
+   "HIGH"         : 2147483647
+  },
+  {
+   "TABLENAME"    : "t1",
+   "LOW"          : -2147483648,
+   "HIGH"         : 1
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=2, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='$1_7FC6B09')
+(name='testpart1', shardname='t1')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=2, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart2', value=0)
+sleeping
+XXXXX we should see the counter back to next value, and first 2 rows gone
+(a=10, alltypes_vutf8='hihi')
+(a=20, alltypes_vutf8='hoho')
+(a=30, alltypes_vutf8='hehe')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_EDD2AB7A",
+   "LOW"          : 2,
+   "HIGH"         : 2147483647
+  },
+  {
+   "TABLENAME"    : "$1_7FC6B09",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=2, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='$2_EDD2AB7A')
+(name='testpart1', shardname='$1_7FC6B09')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 2')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=3, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart1', value=2)
+(name='testpart2', value=0)
+XXXXX we should see an empty part1
+(a=10, alltypes_vutf8='hihi')
+(a=20, alltypes_vutf8='hoho')
+(a=30, alltypes_vutf8='hehe')
+[
+ {
+  "NAME"      : "testpart1",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "1",
+  "SHARD0NAME": "t1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_EDD2AB7A",
+   "LOW"          : 2,
+   "HIGH"         : 2147483647
+  },
+  {
+   "TABLENAME"    : "$1_7FC6B09",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "testpart2",
+  "PERIOD"    : "manual",
+  "RETENTION" : 2,
+  "START"     : "10",
+  "SHARD0NAME": "t2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "t2",
+   "LOW"          : -2147483648,
+   "HIGH"         : 2147483647
+  }
+  ]
+ }
+]
+(name='testpart1', period='manual', retention=2, nshards=2, version=0, shard0name='t1')
+(name='testpart2', period='manual', retention=2, nshards=1, version=0, shard0name='t2')
+(name='testpart1', shardname='$2_EDD2AB7A')
+(name='testpart1', shardname='$1_7FC6B09')
+(name='testpart2', shardname='t2')
+(name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
+(name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 3')
+(name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
+(name='AddShard', type='testpart1', epoch=4, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='AddShard', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
+(name='testpart1', value=3)
+(name='testpart2', value=0)
+verify

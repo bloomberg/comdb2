@@ -3,9 +3,11 @@
 ** 1996-06-05 by Arthur David Olson.
 */
 
+#include "printformats.h"
+
 #ifndef lint
 #ifndef NOID
-static char elsieid[] = "@(#)localtime.c	8.5";
+//static char elsieid[] = "@(#)localtime.c	8.5";
 #endif /* !defined NOID */
 #endif /* !defined lint */
 
@@ -27,6 +29,8 @@ static char elsieid[] = "@(#)localtime.c	8.5";
 #include "mem_datetime.h"
 #include "mem_override.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
+#include <str0.h>
 
 #ifndef TZ_ABBR_MAX_LEN
 #define TZ_ABBR_MAX_LEN 16
@@ -153,7 +157,9 @@ static const char *getsecs P((const char *strp, long *secsp));
 static const char *getoffset P((const char *strp, long *offsetp));
 static const char *getrule P((const char *strp, struct rule *rulep));
 static void gmtload P((struct state * sp));
+#ifdef ALL_STATE
 static struct tm *gmtsub P((const time_t *timep, long offset, struct tm *tmp));
+#endif
 static struct tm *localsub P((const time_t *timep, long offset,
                               struct tm *tmp));
 static int increment_overflow P((int *number, int delta));
@@ -1231,6 +1237,7 @@ struct tm *const tmp;
     return result;
 }
 
+#if 0 //OMIT FOR COMDB2
 static struct tm *tz_gmtime(timep) const time_t *const timep;
 {
     return gmtsub(timep, 0L, &tm);
@@ -1255,6 +1262,7 @@ const long offset;
 }
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 /*
 ** Return the number of leap years through the end of the given year
@@ -1388,6 +1396,7 @@ register struct tm *const tmp;
     return tmp;
 }
 
+#if 0 //OMIT FOR COMDB2
 static char *tz_ctime(timep) const time_t *const timep;
 {
     /*
@@ -1407,6 +1416,7 @@ char *buf;
     return asctime_r(tz_localtime_r(timep, &mytm), buf);
 }
 
+#endif
 /*
 ** Adapted from code provided by Robert Elz, who writes:
 **	The "best" way to do mktime I think is based on an idea of Bob
@@ -1539,6 +1549,8 @@ const int do_norm_secs;
     }
     if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
     yourtm.tm_year = y;
+    if (! (INT_MIN <= y && y < INT_MAX))
+        return WRONG;
     if (yourtm.tm_year != y) return WRONG;
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
@@ -1561,21 +1573,9 @@ const int do_norm_secs;
     /*
     ** Do a binary search (this works whatever time_t's type is).
     */
-    if (!TYPE_SIGNED(time_t)) {
-        lo = 0;
-        hi = lo - 1;
-    } else if (!TYPE_INTEGRAL(time_t)) {
-        if (sizeof(time_t) > sizeof(float))
-            hi = (time_t)DBL_MAX;
-        else
-            hi = (time_t)FLT_MAX;
-        lo = -hi;
-    } else {
-        lo = 1;
-        for (i = 0; i < (int)TYPE_BIT(time_t) - 1; ++i)
-            lo *= 2;
-        hi = -(lo + 1);
-    }
+
+    lo = LONG_MIN;
+    hi = LONG_MAX;
     for (;;) {
         t = lo / 2 + hi / 2;
         if (t < lo)
@@ -1735,6 +1735,7 @@ static time_t tz_mktime(tmp) struct tm *const tmp;
     return time1(tmp, localsub, 0L);
 }
 
+#if 0 //OMIT FOR COMDB2
 #ifdef STD_INSPIRED
 
 static time_t tz_timelocal(tmp) struct tm *const tmp;
@@ -1757,6 +1758,7 @@ const long offset;
 }
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 #ifdef CMUCS
 
@@ -1779,6 +1781,7 @@ static long gtime(tmp) struct tm *const tmp;
 ** XXX--is the below the right way to conditionalize??
 */
 
+#if 0 //OMIT FOR COMDB2
 #ifdef STD_INSPIRED
 
 /*
@@ -1842,6 +1845,7 @@ static time_t posix2time(t) time_t t;
 #endif
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 /*************************DH modified zone***************/
 
@@ -1927,7 +1931,7 @@ register const int doextend;
         if (!doaccess) {
             if ((p = tzdir) == NULL) return -1;
 
-            if ((strlen(p) + strlen(name) + 1) >= sizeof fullname) return -1;
+            if ((strlen(p) + strlen(name) + 1) >= file_max) return -1;
 
             (void)strcpy(fullname, p);
             (void)strcat(fullname, "/");
@@ -2204,21 +2208,19 @@ static struct db_state *find_tz(const char *name)
 
 static void add_tz(const char *name, struct db_state *ptr)
 {
-    char key[NAME_KEY_MAX];
-    tz_hash_entry_type *hash_entry_ptr;
-
-    bzero(key, NAME_KEY_MAX);
-    strcpy(key, name);
-
-    hash_entry_ptr = malloc(sizeof(tz_hash_entry_type));
-    memcpy(&(hash_entry_ptr->key), key, NAME_KEY_MAX);
-    memcpy(&(hash_entry_ptr->db_mem), ptr, sizeof(struct db_state));
+    tz_hash_entry_type *hash_entry_ptr = malloc(sizeof(tz_hash_entry_type));
+    memset(&hash_entry_ptr->key, 0, sizeof(hash_entry_ptr->key));
+    strncpy0(hash_entry_ptr->key, name, sizeof(hash_entry_ptr->key));
+    memcpy(&hash_entry_ptr->db_mem, ptr, sizeof(struct db_state));
     hash_add(tz_hash_tbl, hash_entry_ptr);
 }
 
 static int db_tzset(name) register const char *name;
 {
     int rc;
+    struct db_state *sp;
+    struct db_state state;
+
     if (lcl_is_set > 0 && strcmp(lcl_TZname, name) == 0) return 0;
 
     if (*name == '\0') {
@@ -2239,22 +2241,25 @@ static int db_tzset(name) register const char *name;
         /* hit hash table by name, get db_lclptr from there if found,
            else add it to hash table */
 
-        db_lclptr = find_tz(name);
-        if (db_lclptr == NULL) {
+        sp = find_tz(name);
+        if (sp != NULL)
+            db_lclptr = sp;
+        else {
+            rc = db_tzload(name, &state, TRUE);
+            if (rc != 0)
+                return -1;
+
+            memcpy(&db_lclmem, &state, sizeof(struct db_state));
+            add_tz(name, &db_lclmem);
             db_lclptr = &db_lclmem;
-
-            /*fprintf(stderr, "calling db_tzload for %s\n", name);*/
-            rc = db_tzload(name, db_lclptr, TRUE);
-            if (rc != 0) return -1;
-
-            add_tz(name, db_lclptr);
         }
     }
 
+    lcl_is_set = strlen(name) < sizeof(lcl_TZname);
+    if (lcl_is_set) (void) strcpy(lcl_TZname, name);
+
     db_settzname();
 
-    lcl_is_set = strlen(name) < sizeof lcl_TZname;
-    if (lcl_is_set) (void)strcpy(lcl_TZname, name);
 
     return 0;
 }
@@ -2423,11 +2428,15 @@ struct tm *const tmp;
             register db_time_t newy;
 
             newy = tmp->tm_year;
+
+
             if (t < sp->ats[0])
                 newy -= icycles * YEARSPERREPEAT;
             else
                 newy += icycles * YEARSPERREPEAT;
+
             tmp->tm_year = newy;
+
             if (tmp->tm_year != newy) return NULL;
         }
         return result;
@@ -2485,13 +2494,13 @@ struct tm *outtm;
 {
     struct tm *ret = NULL;
 
-    pthread_mutex_lock(&global_dt_mutex);
+    Pthread_mutex_lock(&global_dt_mutex);
 
     if (!db_tzset(name)) ret = db_localsub(timeval, 0L, &tm);
 
     if (ret) memcpy(outtm, ret, sizeof(struct tm));
 
-    pthread_mutex_unlock(&global_dt_mutex);
+    Pthread_mutex_unlock(&global_dt_mutex);
 
     if (ret) return 0;
     return -1;
@@ -2556,7 +2565,8 @@ const int do_norm_secs;
     }
     if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
     yourtm.tm_year = y;
-    if (yourtm.tm_year != y) return WRONG;
+	if (! (INT_MIN <= y && y <= INT_MAX))
+		return WRONG;
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
     else if (y + TM_YEAR_BASE < EPOCH_YEAR) {
@@ -2578,21 +2588,8 @@ const int do_norm_secs;
     /*
     ** Do a binary search (this works whatever time_t's type is).
     */
-    if (!TYPE_SIGNED(db_time_t)) {
-        lo = 0;
-        hi = lo - 1;
-    } else if (!TYPE_INTEGRAL(db_time_t)) {
-        if (sizeof(db_time_t) > sizeof(float))
-            hi = (db_time_t)DBL_MAX;
-        else
-            hi = (db_time_t)FLT_MAX;
-        lo = -hi;
-    } else {
-        lo = 1;
-        for (i = 0; i < (int)TYPE_BIT(db_time_t) - 1; ++i)
-            lo *= 2;
-        hi = -(lo + 1);
-    }
+    lo = LLONG_MIN;
+    hi = LLONG_MAX;
     for (;;) {
         t = lo / 2 + hi / 2;
         if (t < lo)
@@ -2760,11 +2757,12 @@ struct tm *const tmp;
 {
     db_time_t ret = -1;
 
-    pthread_mutex_lock(&global_dt_mutex);
+
+    Pthread_mutex_lock(&global_dt_mutex);
 
     if (!db_tzset(name)) ret = db_time1(tmp, db_localsub, 0L);
 
-    pthread_mutex_unlock(&global_dt_mutex);
+    Pthread_mutex_unlock(&global_dt_mutex);
 
     return ret;
 }

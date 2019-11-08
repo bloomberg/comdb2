@@ -33,6 +33,7 @@ jdbc-docker-build-container:
 
 jdbc-docker-build: jdbc-docker-build-container
 	docker run \
+        -v /tmp/smoketestca:/ca \
         --rm \
 		--user $(shell id -u):$(shell id -g) \
 		--env HOME=/tmp \
@@ -42,5 +43,9 @@ jdbc-docker-build: jdbc-docker-build-container
 		jdbc-docker-builder:$(VERSION) \
 		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml \
 			-Denv.skipTests=$(envSkipTests) \
-			-DargLine="-Dcdb2jdbc.test.database=$(envTestDatabase) -Dcdb2jdbc.test.cluster=$(envTestCluster)" \
+			-DargLine="-Dcdb2jdbc.test.database=$(envTestDatabase) \
+                       -Dcdb2jdbc.test.cluster=$(envTestCluster) \
+                       -Dcdb2jdbc.test.ssldatabase=$(envSSLTestDatabase) \
+                       -Dcdb2jdbc.test.sslcertpath=$(envSSLCertPath) \
+                       -Dcdb2jdbc.test.sslcertpass=$(envSSLCertPass)" \
 			clean install

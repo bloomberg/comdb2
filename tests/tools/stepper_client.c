@@ -8,8 +8,6 @@
 #include <cdb2api.h>
 #include "stepper_client.h"
 
-static int debug = 0;
-
 /* storing clients (i.e. comm pipes) */
 struct client
 {

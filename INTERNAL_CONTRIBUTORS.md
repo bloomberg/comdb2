@@ -4,13 +4,13 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Adi Zaimi
  * Akshat Sikarwar
  * Dorin Hogea
- * James M Leddy
  * Lingzhi Deng
  * Mark Hannum
  * Michael Ponomarenko
  * Mohit Khullar
  * Nirbhay Choubey
  * Rivers Zhang
+ * Joe Mistachkin
 
 ## Past core team members
  * Alex Scotti
@@ -19,6 +19,7 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Kirill Komarov
  * Paul Lampert
  * Sam Jervis
+ * James M Leddy
 
 ## Contributors
  * Alexander Evdokimov

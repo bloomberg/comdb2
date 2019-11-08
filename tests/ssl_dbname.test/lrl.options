@@ -1,0 +1,2 @@
+ssl_client_mode VERIFY_DBNAME
+ssl_dbname_field host

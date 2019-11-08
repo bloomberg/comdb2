@@ -721,20 +721,32 @@ cdb2sql $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create table audit {$(cat audit.csc2)}\$\$
 create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
-put default procedure audit 'sptest' 
-create procedure cons version 'sptest' {$(cat cons.lua)}\$\$
-put default procedure cons 'sptest'
+create procedure cons0 version 'sptest' {$(cat cons.lua)}\$\$
+create procedure cons1 version 'sptest' {$(cat cons.lua)}\$\$
+create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
 create lua trigger audit on (table foraudit for insert and update and delete)
-create lua consumer cons on (table foraudit for insert and update and delete)
+create lua consumer cons0 on (table foraudit for insert and update and delete)
+create lua consumer cons1 on (table foraudit for insert and update and delete)
 EOF
 
 for ((i=0;i<500;++i)); do
-    echo "drop lua consumer cons"
-    echo "create lua consumer cons on (table foraudit for insert and update and delete)"
+    echo "drop lua consumer cons0"
+    echo "create lua consumer cons0 on (table foraudit for insert and update and delete)"
 done | cdb2sql $SP_OPTIONS - > /dev/null
 
-sleep 3 # Wait for trigger to start
-cdb2sql $SP_OPTIONS "exec procedure cons()" > /dev/null 2>&1 &
+#START CONSUMERS
+cdb2sql $SP_OPTIONS - <<'EOF'
+set transaction snapisol
+exec procedure cons0(true)
+EOF
+cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
+set transaction blocksql
+exec procedure cons0(true)
+EOF
+cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
+set transaction blocksql
+exec procedure cons1(false)
+EOF
 #GENERATE DATA
 cdb2sql $SP_OPTIONS "exec procedure gen('foraudit', 500)"
 #DELETE DATA
@@ -743,7 +755,8 @@ sleep 20 # Wait for queues to drain
 cdb2sql $SP_OPTIONS - <<'EOF'
 select * from comdb2_triggers order by name, type, tbl_name, event
 drop lua trigger audit
-drop lua consumer cons
+drop lua consumer cons0
+drop lua consumer cons1
 select * from comdb2_triggers order by name, type, tbl_name, event
 select added_by, type, count(*) from audit group by added_by, type
 EOF
@@ -776,10 +789,12 @@ exec procedure sys.cmd.verify("t1")
 select 2
 exec procedure sys.cmd.verify()
 select 3
-exec procedure sys.cmd.verify(\"nonexistent\")
+exec procedure sys.cmd.verify('')
 select 4
-exec procedure sys.cmd.verify("nonexistent")
+exec procedure sys.cmd.verify(\"nonexistent\")
 select 5
+exec procedure sys.cmd.verify("nonexistent")
+select 6
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
@@ -790,15 +805,19 @@ local function func(tbls)
     end
 end
 local function main()
+    local thds = {}
     local tbl = db:table("tbl", {{"i", "int"}})
     for i = 1, 20 do
         local tbls = {}
         for j = 1, i do
             table.insert(tbls, tbl)
         end
-        db:create_thread(func, tbls)
+        local thd = db:create_thread(func, tbls)
+        table.insert(thds, thd)
     end
-    db:sleep(2) -- enough time for threads to finish
+    for _, thd in ipairs(thds) do
+        thd:join()
+    end
     db:exec("select i, count(*) from tbl group by i"):emit()
 end
 }$$
@@ -939,34 +958,6 @@ end
 }$$
 put default procedure rcodes 'sptest'
 exec procedure rcodes()
-EOF
-
-cdb2sql $SP_OPTIONS - <<'EOF'
-create procedure tmptbls version 'sptest' {
-local function func(tbls)
-    for i, tbl in ipairs(tbls) do
-        tbl:insert({i=i})
-    end
-end
-local function main()
-    local tbl = db:table("tbl", {{"i", "int"}})
-    for i = 1, 20 do
-        local tbls = {}
-        for j = 1, i do
-            table.insert(tbls, tbl)
-        end
-        db:create_thread(func, tbls)
-    end
-    db:sleep(2) -- enough time for threads to finish
-    db:exec("select i, count(*) from tbl group by i"):emit()
-end
-}$$
-put default procedure tmptbls 'sptest'
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
-exec procedure tmptbls()
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
@@ -1194,7 +1185,7 @@ local function main()
     local y = db:json_to_table(json, {type_annotate = true})
     local r0 = check(x, y)
     local r1 = check(y, x)
-    if r0 ~= 0 and r1 ~= 0 then
+    if (r0 ~= 0) or (r1 ~= 0) then
         return -1, "failed"
     else
         return 0
@@ -1253,6 +1244,136 @@ put default procedure verify_stmt_caching 'sptest'
 exec procedure verify_stmt_caching()
 exec procedure verify_stmt_caching()
 
+
+create procedure tmp_tbl_and_thread version '1' {
+local function create_tmp_tbl(t)
+    return db:table(t, {{"i", "integer"}})
+end
+local function work(t, i)
+    db:exec("insert into "..t:name().." select * from generate_series limit "..i.." * 100 offset 1")
+    local tmp = create_tmp_tbl("tmp")
+    tmp:copyfrom(t)
+    local min = db:exec("select '"..t:name().."' as thd, min(i) as i from "..t:name())
+    local max = db:exec("select '"..t:name().."' as thd, max(i) as i from "..tmp:name())
+    min:emit()
+    max:emit()
+    return 0
+end
+local function create_tmp_tbl_and_thread(i)
+    if i < 10 then
+        i = '00'..tostring(i)
+    elseif i < 100 then
+        i = '0'..tostring(i)
+    else
+        i = tostring(i)
+    end
+    local t = create_tmp_tbl("tmp"..i)
+    return db:create_thread(work, t, i)
+end
+local function main()
+    db:setmaxinstructions(1000000)
+    local total = 500
+    for i = 1, total do
+        create_tmp_tbl_and_thread(i)
+    end
+    local t = create_tmp_tbl("main")
+    work(t, "1000")
+end}$$
 EOF
 
-wait
+cdb2sql $SP_OPTIONS "exec procedure tmp_tbl_and_thread()" | sort
+
+cdb2sql $SP_OPTIONS - > /dev/null 2>&1 <<'EOF'
+create table no_ddl_t1(x INT)$$
+create table no_ddl_t2(x BLOB)$$
+create table no_ddl_t3(x INT)$$
+create index no_ddl_t1_i1 on no_ddl_t1(x)$$
+create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {}$$
+create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {}$$
+put password 'password' for 'auth_test_user'
+create lua scalar function no_ddl_proc1
+create lua aggregate function no_ddl_proc2
+create lua consumer no_ddl_proc1 on (table no_ddl_t1 for insert)
+create table comdb2_logical_cron (name cstring(128) primary key, value int)$$
+EOF
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+create procedure no_ddl_test1 version 'sp_no_ddl_test1' {
+local function main()
+    local t = db:table("no_ddl_tmp1", {{"x", "int"}})
+    if t == nil then
+        db:emit("tmp table failed")
+    end
+    local ddl_stmts = {
+        "CREATE TEMP TABLE no_ddl_tmp0(x INT)",
+        "DROP TABLE no_ddl_tmp1",
+        "CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x)",
+        "CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END",
+        "CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1",
+        "PUT TUNABLE allow_lua_print 'OFF'",
+        "CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x)",
+        "CREATE TABLE t1(x INT)",
+        "CREATE TEMP INDEX no_ddl_tmp1_i2 ON no_ddl_tmp1(x)",
+        "CREATE TEMP TABLE tmp1(x INT)",
+        "CREATE TEMP TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END",
+        "CREATE TEMP VIEW v1 AS SELECT 1",
+        "CREATE TRIGGER tr1 UPDATE OF x ON no_ddl_t1 BEGIN SELECT 1; END",
+        "CREATE VIEW v1 AS SELECT 1",
+        "DROP INDEX no_ddl_t1_i1",
+        "DROP INDEX no_ddl_tmp1_i1",
+        "DROP lua consumer no_ddl_proc1",
+        "ALTER TABLE no_ddl_t1 ADD COLUMN y INT",
+        "REBUILD no_ddl_t1",
+        "REBUILD INDEX no_ddl_t1 no_ddl_t1_i1",
+        "REBUILD DATA no_ddl_t1",
+        "REBUILD DATABLOB no_ddl_t2",
+        "TRUNCATE TABLE no_ddl_t1",
+        "CREATE PROCEDURE nestedtest1 VERSION 'spnestedtest1' {}",
+        "DROP PROCEDURE no_ddl_proc1 'sp_no_ddl_proc1'",
+        "CREATE TIME PARTITION ON no_ddl_t3 AS p1 PERIOD 'DAILY' RETENTION 30 START '2018-04-30'",
+        "DROP TIME PARTITION no_ddl_t3_p1",
+        "GET KW",
+        "PUT AUTHENTICATION ON",
+        "GRANT OP TO 'auth_test_user'",
+        "REVOKE OP TO 'auth_test_user'",
+        "CREATE LUA SCALAR FUNCTION no_ddl_proc2",
+        "DROP LUA SCALAR FUNCTION no_ddl_proc2",
+        "CREATE LUA AGGREGATE FUNCTION no_ddl_proc2",
+        "DROP LUA AGGREGATE FUNCTION no_ddl_proc2",
+        "CREATE LUA TRIGGER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)",
+        "DROP LUA TRIGGER no_ddl_proc1",
+        "CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)",
+        "DROP LUA CONSUMER no_ddl_proc1",
+    }
+
+    db:column_type("int", 1)
+    db:column_type("int", 2)
+    db:column_type("text", 3)
+
+    db:column_name("exec_rc", 1)
+    db:column_name("prepare_rc", 2)
+    db:column_name("ddl", 3)
+
+    local stmt0, stmt1
+    local rc0, rc1
+    for _, ddl in ipairs(ddl_stmts) do
+        stmt0, rc0 = db:exec(ddl)
+        stmt1, rc1 = db:prepare(ddl)
+        db:emit(rc0, rc1, ddl)
+    end
+end}$$
+put default procedure no_ddl_test1 'sp_no_ddl_test1'
+exec procedure no_ddl_test1()
+EOF
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure json_emoji version 'sptest' {
+local function main(emoji)
+    local tbl = {}
+    tbl.emoji = emoji
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"
+cdb2sql $SP_OPTIONS "execute procedure json_emoji('hello world 😁')"

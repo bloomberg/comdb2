@@ -1,0 +1,29 @@
+#!/bin/sh
+
+#############################################
+# Test SSL certificate revocation list      #
+#############################################
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+# Server should reject as the client certificate has been revoked.
+cp $DBDIR/comdb2db.cfg $DBDIR/query1.cfg
+echo "comdb2_config:ssl_key=${TESTDIR}/revoked.key
+comdb2_config:ssl_cert=${TESTDIR}/revoked.crt" >>$DBDIR/query1.cfg
+cdb2sql --cdb2cfg $DBDIR/query1.cfg $dbnm default 'SELECT "REVOKED CERT"' 2>&1 | grep 'certificate revoked'
+if [ $? != 0 ]; then
+  echo "Server failed to invalidate a revoked cert." >&2
+  exit 1
+fi
+
+# Client should reject as the server certificate has been revoked.
+cp $DBDIR/comdb2db.cfg $DBDIR/query2.cfg
+echo "comdb2_config:ssl_crl=${TESTDIR}/client.crl" >>$DBDIR/query2.cfg
+cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default 'SELECT "REVOKED CERT"' 2>&1 | grep 'certificate verify failed'
+if [ $? != 0 ]; then
+  echo "Client failed to invalidate a revoked cert." >&2
+  exit 1
+fi
+echo "Passed."
+exit 0

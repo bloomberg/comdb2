@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "fdb_whitelist.h"
 #include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -32,6 +33,9 @@
 #include "sqllog.h"
 #include "ssl_bend.h"
 #include "translistener.h"
+#include "rtcpu.h"
+#include "config.h"
+#include "phys_rep.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -43,6 +47,7 @@ extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
+extern int gbl_fingerprint_max_queries;
 
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
@@ -52,23 +57,29 @@ extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
+static int pre_read_option(char *, int);
+static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int);
+
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
     {"repopnewlrl", required_argument, NULL, 0},
     {"recovertotime", required_argument, NULL, 0},
     {"recovertolsn", required_argument, NULL, 0},
-    {"recoverylsn", required_argument, NULL, 0},
+    {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
     {"create", no_argument, &gbl_create_mode, 1},
     {"fullrecovery", no_argument, &gbl_fullrecovery, 1},
     {"no-global-lrl", no_argument, &gbl_nogbllrl, 1},
     {"dir", required_argument, NULL, 0},
+    {"tunable", required_argument, NULL, 0},
+    {"version", no_argument, NULL, 'v'},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
     "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
     "              [--recovertolsn FILE:OFFSET]\n"
+    "              [--tunable STRING]\n"
     "              [--fullrecovery] NAME\n"
     "\n"
     "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
@@ -79,6 +90,9 @@ static const char *help_text = {
     "        --recovertotime            recovers database to epochtime\n"
     "        --create                   creates a new database\n"
     "        --dir                      specify path to database directory\n"
+    "        --tunable                  override tunable\n"
+    "        --help                     displays this help text and exit\n"
+    "        --version                  displays version information and exit\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -92,6 +106,14 @@ struct read_lrl_option_type {
     const char *lrlname;
     const char *dbname;
 };
+
+void print_version_and_exit()
+{
+    logmsg(LOGMSG_USER, "comdb2 [%s] [%s] [%s] [%s] [%s]\n",
+           gbl_db_version, gbl_db_codename, gbl_db_semver,
+           gbl_db_git_version_sha, gbl_db_buildtype);
+    exit(2);
+}
 
 void print_usage_and_exit()
 {
@@ -127,15 +149,63 @@ static void set_dbdir(char *dir)
     free(wd);
 }
 
+#include <berkdb/dbinc/queue.h>
+struct CmdLineTunable;
+struct CmdLineTunable {
+    char *arg;
+    STAILQ_ENTRY(CmdLineTunable) entry;
+};
+STAILQ_HEAD(CmdLineTunables, CmdLineTunable) *cmd_line_tunables;
+
+static void add_cmd_line_tunable(char *arg)
+{
+    if (cmd_line_tunables == NULL) {
+        cmd_line_tunables = malloc(sizeof(*cmd_line_tunables));
+        STAILQ_INIT(cmd_line_tunables);
+    }
+    struct CmdLineTunable *t = malloc(sizeof(*t));
+    t->arg = arg;
+    STAILQ_INSERT_TAIL(cmd_line_tunables, t, entry);
+}
+
+void add_cmd_line_tunables_to_file(FILE *f)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
+        fprintf(f, "%s\n", t->arg);
+        free(t);
+    }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
+}
+
+static void read_cmd_line_tunables(struct dbenv *dbenv)
+{
+    if (cmd_line_tunables == NULL)
+        return;
+    struct read_lrl_option_type options = {
+        .lineno = 0, .lrlname = "cmd_line_args", .dbname = dbenv->envname};
+    struct CmdLineTunable *t, *tmp;
+    STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
+        read_lrl_option(dbenv, t->arg, &options, strlen(t->arg));
+        free(t);
+    }
+    free(cmd_line_tunables);
+    cmd_line_tunables = NULL;
+}
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
     int c;
     int options_idx;
 
-    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
+        if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
 
         switch (options_idx) {
@@ -167,13 +237,22 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 4: /* recovery_lsn */ gbl_recovery_options = optarg; break;
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
+        case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
         }
     }
     return 0;
 }
 
-static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
-                        char *option, int len, int line)
+struct deferred_option {
+    char *option;
+    int line;
+    int len;
+    LINKC_T(struct deferred_option) lnk;
+};
+
+LISTC_T(struct deferred_option) deferred_options;
+
+static int defer_option(char *option, int len, int line)
 {
     struct deferred_option *opt;
     if (len == -1) len = strlen(option);
@@ -191,21 +270,117 @@ static int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl,
     memcpy(opt->option, option, len);
     opt->line = line;
     opt->len = strlen(opt->option);
-    listc_abl(&dbenv->deferred_options[lvl], opt);
+    listc_abl(&deferred_options, opt);
     return 0;
 }
 
-int deferred_do_commands(struct dbenv *env, char *option, void *p, int len)
+int deferred_do_commands(struct dbenv *env, char *option,
+                         struct read_lrl_option_type *p, int len)
 {
     char *tok;
     int st = 0, tlen = 0;
+    int rc = 0;
 
     tok = segtok(option, len, &st, &tlen);
     if (tokcmp(tok, tlen, "sqllogger") == 0)
         sqllogger_process_message(option + st, len - st);
     else if (tokcmp(tok, tlen, "do") == 0)
-        process_command(env, option + st, len - st, 0);
+        rc = process_command(env, option + st, len - st, 0);
+    return rc;
+}
+
+void process_deferred_options(struct dbenv *dbenv, lrl_reader *callback)
+{
+    struct deferred_option *opt;
+    LISTC_FOR_EACH(&deferred_options, opt, lnk) {
+        callback(dbenv, opt->option, NULL, opt->len);
+    }
+}
+
+void clear_deferred_options(void)
+{
+    struct deferred_option *opt;
+    opt = listc_rtl(&deferred_options);
+    while (opt) {
+        free(opt->option);
+        free(opt);
+        opt = listc_rtl(&deferred_options);
+    }
+}
+
+static char *legacy_options[] = {
+    "allow_negative_column_size",
+    "berkattr elect_highest_committed_gen 0",
+    "clean_exit_on_sigterm off",
+    "create_default_user",
+    "ddl_cascade_drop 0",
+    "decoupled_logputs off",
+    "disable_inplace_blob_optimization",
+    "disable_inplace_blobs",
+    "disable_osql_blob_optimization",
+    "disable_tpsc_tblvers",
+    "disallow write from beta if prod",
+    "dont_forbid_ulonglong",
+    "dont_init_with_inplace_updates",
+    "dont_init_with_instant_schema_change",
+    "dont_init_with_ondisk_header",
+    "dont_prefix_foreign_keys",
+    "dont_sort_nulls_with_header",
+    "dont_superset_foreign_keys",
+    "enable_sql_stmt_caching none",
+    "enable_tagged_api",
+    "env_messages",
+    "init_with_time_based_genids",
+    "legacy_schema on",
+    "logmsg level info",
+    "logmsg notimestamp",
+    "logput window 1",
+    "noblobstripe",
+    "nochecksums",
+    "nocrc32c",
+    "nokeycompr",
+    "no_null_blob_fix",
+    "norcache",
+    "no_static_tag_blob_fix",
+    "nullfkey off",
+    "nullsort high",
+    "off fix_cstr",
+    "off osql_odh_blob",
+    "off return_long_column_names",
+    "on accept_on_child_nets",
+    "on disable_etc_services_lookup",
+    "online_recovery off",
+    "osql_check_replicant_numops off",
+    "osql_send_startgen off",
+    "queuedb_genid_filename off",
+    "reorder_socksql_no_deadlock off",
+    "setattr DIRECTIO 0",
+    "setattr ENABLE_SEQNUM_GENERATIONS 0",
+    "setattr MASTER_LEASE 0",
+    "setattr NET_SEND_GBLCONTEXT 1",
+    "setattr SC_DONE_SAME_TRAN 0",
+    "unnatural_types 1",
+    "usenames",
+};
+int gbl_legacy_defaults = 0;
+int pre_read_legacy_defaults(void *_, void *__)
+{
+    if (gbl_legacy_defaults != 0) return 0;
+    gbl_legacy_defaults = 1;
+    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
+        pre_read_option(legacy_options[i], strlen(legacy_options[i]));
+    }
     return 0;
+}
+
+static void read_legacy_defaults(struct dbenv *dbenv,
+                                 struct read_lrl_option_type *options)
+{
+    if (gbl_legacy_defaults != 1) return;
+    gbl_legacy_defaults = 2;
+    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
+        read_lrl_option(dbenv, legacy_options[i], options, strlen(legacy_options[i]));
+    }
 }
 
 /* handles "if"'s, returns 1 if this isn't an "if" statement or if the statement
@@ -218,14 +393,11 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     if (tokcmp(tok, *ltok, "if") == 0) {
         enum mach_class my_class = get_my_mach_class();
         tok = segtok(line, line_len, st, ltok);
-        if (my_class == CLASS_TEST && tokcmp(tok, *ltok, "test") &&
-            tokcmp(tok, *ltok, "dev"))
+        char *label = strndup(tok, *ltok);
+        int value = mach_class_name2class(label);
+
+        if (my_class == CLASS_UNKNOWN || my_class != value)
             return 0;
-        if (my_class == CLASS_ALPHA && tokcmp(tok, *ltok, "alpha")) return 0;
-        if (my_class == CLASS_UAT && tokcmp(tok, *ltok, "uat")) return 0;
-        if (my_class == CLASS_BETA && tokcmp(tok, *ltok, "beta")) return 0;
-        if (my_class == CLASS_PROD && tokcmp(tok, *ltok, "prod")) return 0;
-        if (my_class == CLASS_UNKNOWN) return 0;
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;
@@ -234,81 +406,15 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-int process_deferred_options(struct dbenv *dbenv,
-                             enum deferred_option_level lvl, void *usrdata,
-                             int (*callback)(struct dbenv *env, char *option,
-                                             void *p, int len))
-{
-    struct deferred_option *opt;
-    int rc;
-
-    opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    while (opt) {
-        rc = callback(dbenv, opt->option, usrdata, opt->len);
-
-        if (rc) return rc;
-        free(opt->option);
-        free(opt);
-        opt = listc_rtl(&dbenv->deferred_options[lvl]);
-    }
-    return 0;
-}
-
-static void init_deferred_options(struct dbenv *dbenv)
-{
-    for (int lvl = 0; lvl < DEFERRED_OPTION_MAX; lvl++) {
-        listc_init(&dbenv->deferred_options[lvl],
-                   offsetof(struct deferred_option, lnk));
-    }
-}
-
-static void add_legacy_default_options(struct dbenv *dbenv)
-{
-    char *legacy_options[] = {
-        "disallow write from beta if prod",
-        "noblobstripe",
-        "nullsort high",
-        "dont_sort_nulls_with_header",
-        "nochecksums",
-        "sql_tranlevel_default comdb2",          /* check this one*/
-        "sql_tranlevel_default prefer_oldblock", /* and this one */
-        "off fix_cstr",
-        "no_null_blob_fix",
-        "no_static_tag_blob_fix",
-        "dont_forbid_ulonglong",
-        "dont_init_with_ondisk_header",
-        "dont_init_with_instant_schema_change",
-        "dont_init_with_inplace_updates",
-        "dont_prefix_foreign_keys",
-        "dont_superset_foreign_keys",
-        "disable_inplace_blobs",
-        "disable_inplace_blob_optimization",
-        "disable_osql_blob_optimization",
-        "nocrc32c",
-        "enable_tagged_api",
-        "nokeycompr",
-        "norcache",
-        "usenames",
-        "dont_return_long_column_names",
-        "setattr DIRECTIO 0"};
-    for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++)
-        defer_option(dbenv, DEFERRED_LEGACY_DEFAULTS, legacy_options[i], -1, 0);
-}
-
 void getmyaddr()
 {
-    struct hostent *h;
-
-    h = comdb2_gethostbyname(gbl_mynode);
-    if (h == NULL || h->h_addrtype != AF_INET) {
-        /* default to localhost */
-        gbl_myaddr.s_addr = INADDR_LOOPBACK;
+    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
+        gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
-    memcpy(&gbl_myaddr.s_addr, h->h_addr, h->h_length);
 }
 
-static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
+static int pre_read_option(char *line, int llen)
 {
     char *tok;
     int st = 0;
@@ -323,23 +429,13 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
         return 0;
     }
 
-    if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
-        add_legacy_default_options(dbenv);
-    }
-
     /* Handle global tunables which are supposed to be read early. */
     rc = handle_lrl_tunable(tok, ltok, line + st, llen - st, READEARLY);
+
     /* Follow through, if the tunable is not found. */
     if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
         return rc;
     }
-    return 0;
-}
-
-static int pre_read_deferred_callback(struct dbenv *env, char *option, void *p,
-                                      int len)
-{
-    pre_read_option(env, option, len);
     return 0;
 }
 
@@ -355,23 +451,17 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     }
 
     while (fgets(line, sizeof(line), ff)) {
-        pre_read_option(dbenv, line, strlen(line));
+        pre_read_option(line, strlen(line));
     }
-
-    process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, NULL,
-                             pre_read_deferred_callback);
 
     fclose(ff); /* lets get one fd back */
 }
 
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len);
-
-struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
-                                int required)
+static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
+                                       int required)
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
-    int rc;
     struct lrlfile *lrlfile;
     struct read_lrl_option_type options = {
         .lineno = 0, .lrlname = lrlname, .dbname = dbenv->envname,
@@ -396,22 +486,12 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
     }
 
     logmsg(LOGMSG_INFO, "processing %s...\n", lrlname);
+
     while (fgets(line, sizeof(line), ff)) {
         char *s = strchr(line, '\n');
         if (s) *s = 0;
         options.lineno++;
         read_lrl_option(dbenv, line, &options, strlen(line));
-    }
-    options.lineno = 0;
-    rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
-                                  read_lrl_option);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-        fclose(ff);
-    }
-    if (rc) {
-        fclose(ff);
-        return NULL;
     }
 
     /* process legacy options (we deferred them) */
@@ -491,28 +571,45 @@ static int lrltokignore(char *tok, int ltok)
         pfx##funcs[i] = NULL;                                                  \
     } while (0)
 
-static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
+static int read_lrl_option(struct dbenv *dbenv, char *line,
+                           struct read_lrl_option_type *options, int len)
 {
     char *tok;
     int st = 0;
     int ltok;
     int ii, kk;
-    int num;
     int rc;
-    struct read_lrl_option_type *options = (struct read_lrl_option_type *)p;
 
     tok = segtok(line, len, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
 
-    /* Handle global tunables. */
-    rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
-    if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
-        /* Follow through, if the tunable is not found. */
-        return rc;
-    }
-
-    /* if this is an "if" statement that evaluates to false, skip */
-    if (!lrl_if(&tok, line, len, &st, &ltok)) {
+    if (tokcmp(tok, ltok, "on") == 0) {
+        change_switch(1, line, len, st);
+    } else if (tokcmp(tok, ltok, "off") == 0) {
+        change_switch(0, line, len, st);
+    } else if (tokcmp(tok, ltok, "setattr") == 0) {
+        char name[48] = {0}; // oh valgrind
+        int value;
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute name\n",
+                   options->lrlname, options->lineno);
+            return -1;
+        }
+        tokcpy0(tok, ltok, name, sizeof(name));
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute value\n",
+                   options->lrlname, options->lineno);
+            return -1;
+        }
+        value = toknum(tok, ltok);
+        if (bdb_attr_set_by_name(NULL, dbenv->bdb_attr, name, value) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n",
+                   options->lrlname, options->lineno, name);
+        }
+    } else if (!lrl_if(&tok, line, len, &st, &ltok)) {
+        /* If this is an "if" statement that evaluates to false, skip */
         return 1;
     } else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
         tok = segtok(line, len, &st, &ltok);
@@ -608,6 +705,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
         }
+    } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
+        /* expected parse line: remsql_whitelist db1 db2 ...  */
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = fdb_add_dbname_to_whitelist(tok);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+        }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
         tok = segtok(line, len, &st, &ltok);
@@ -615,13 +721,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             /*create replication group. only me by default*/
             while (1) {
                 char nodename[512];
-                struct hostent *h;
-
                 tok = segtok(line, len, &st, &ltok);
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
                     logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %lu)\n", ltok,
+                           "host %.*s name too long (expected < %zu)\n", ltok,
                            tok, sizeof(nodename));
                     return -1;
                 }
@@ -636,13 +740,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 }
 
                 /* Check to see if this name is another name for me. */
-                h = comdb2_gethostbyname(nodename);
-                if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
+                struct in_addr addr;
+                char *name = nodename;
+                if (comdb2_gethostbyname(&name, &addr) == 0 &&
+                    addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(nodename);
+                    gbl_mynode = intern(name);
+                    gbl_mynodeid = machine_num(gbl_mynode);
                 }
-                if (strcmp(gbl_mynode, nodename) == 0 &&
+                if (strcmp(gbl_mynode, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
@@ -652,19 +758,29 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 /* lets ignore duplicate for now and make a list out of what is
                  * given in lrl */
                 for (kk = 1; kk < dbenv->nsiblings &&
-                             strcmp(dbenv->sibling_hostname[kk], nodename);
+                             strcmp(dbenv->sibling_hostname[kk], name);
                      kk++)
                     ; /*look for dupes*/
                 if (kk == dbenv->nsiblings) {
                     /*not a dupe.*/
                     dbenv->sibling_hostname[dbenv->nsiblings] =
-                        intern(nodename);
+                        intern(name);
                     for (int netnum = 0; netnum < MAXNETS; netnum++)
                         dbenv->sibling_port[dbenv->nsiblings][netnum] = 0;
                     dbenv->nsiblings++;
                 }
             }
             dbenv->sibling_hostname[0] = gbl_mynode;
+        }
+    } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
+        int classval = 1;
+        tok = segtok(line, len, &st, &ltok);
+        while (ltok) {
+            int lrc = mach_class_addclass(tok, classval);
+            if (lrc)
+                return -1;
+            tok = segtok(line, len, &st, &ltok);
+            classval++;
         }
     } else if (tokcmp(tok, ltok, "pagesize") == 0) {
         tok = segtok(line, len, &st, &ltok);
@@ -749,98 +865,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (rc != 0) {
             return -1;
         }
-    } else if (tokcmp(tok, ltok, "queue") == 0) {
-        struct dbtable *db;
-        char *qname;
-        int avgsz;
-        int pagesize = 0;
-
-        /*
-          queue <qname>
-        */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-
-        tok = segtok(line, len, &st, &ltok); /* item sz*/
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        avgsz = toknum(tok, ltok);
-        if (avgsz == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-
-        /* This code is dupliated in the message trap parser.. sorry */
-        tok = segtok(line, len, &st, &ltok);
-        while (ltok) {
-            char ctok[64];
-            tokcpy0(tok, ltok, ctok, sizeof(ctok));
-            if (strncmp(ctok, "pagesize=", 9) == 0) {
-                pagesize = atoi(ctok + 9);
-            } else {
-                logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                return -1;
-            }
-            tok = segtok(line, len, &st, &ltok);
-        }
-
-        db = newqdb(dbenv, qname, avgsz, pagesize, 0);
-        if (!db) {
-            return -1;
-        }
-        db->dbs_idx = -1;
-
-        dbenv->qdbs = realloc(dbenv->qdbs,
-                              (dbenv->num_qdbs + 1) * sizeof(struct dbtable *));
-        dbenv->qdbs[dbenv->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(dbenv->qdb_hash, db);
-
-    } else if (tokcmp(tok, ltok, "consumer") == 0) {
-        char *qname;
-        int consumer;
-        char *method;
-        struct dbtable *db;
-
-        /*
-         * consumer <qname> <consumer#> <method>
-         */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* consumer # */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        consumer = toknum(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* method */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        method = tokdup(tok, ltok);
-
-        db = getqueuebyname(qname);
-        if (!db) {
-            logmsg(LOGMSG_ERROR, "No such queue '%s'\n", qname);
-            return -1;
-        }
-
-        if (dbqueue_add_consumer(db, consumer, method, 1) != 0) {
-            return -1;
-        }
-
     } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
         parse_lua_funcs(s);
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
@@ -964,6 +988,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                        tok);
                 return -1;
             }
+
+            /* Initialize table's check constraint members. */
+            if (init_check_constraints(db)) {
+                logmsg(LOGMSG_ERROR,
+                       "Failed to load check constraints for %s\n",
+                       db->tablename);
+                return -1;
+            }
         } else {
             logmsg(LOGMSG_ERROR, "Invalid table option\n");
             return -1;
@@ -1048,6 +1080,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
+    } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
@@ -1070,6 +1105,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
     } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
@@ -1079,31 +1115,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "on") == 0) {
-        change_switch(1, line, len, st);
-    } else if (tokcmp(tok, ltok, "off") == 0) {
-        change_switch(0, line, len, st);
-    } else if (tokcmp(tok, ltok, "setattr") == 0) {
-        char name[48] = {0}; // oh valgrind
-        int value;
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute name\n",
-                   options->lrlname, options->lineno);
-            return -1;
-        }
-        tokcpy0(tok, ltok, name, sizeof(name));
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: expected attribute value\n",
-                   options->lrlname, options->lineno);
-            return -1;
-        }
-        value = toknum(tok, ltok);
-        if (bdb_attr_set_by_name(NULL, dbenv->bdb_attr, name, value) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n",
-                   options->lrlname, options->lineno, name);
-        }
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
@@ -1113,54 +1124,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
     } else if (lrltokignore(tok, ltok) == 0) {
         /* ignore this line */
-    } else if (tokcmp(tok, ltok, "sql_tranlevel_default") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Need to specify default type for sql_tranlevel_default\n");
-            return -1;
-        }
-        if (ltok == 6 && !strncasecmp(tok, "comdb2", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_COMDB2;
-            logmsg(LOGMSG_INFO, "sql default mode is comdb2\n");
-
-        } else if (ltok == 5 && !strncasecmp(tok, "block", 5)) {
-            gbl_sql_tranlevel_default = (gbl_upgrade_blocksql_2_socksql)
-                                            ? SQL_TDEF_SOCK
-                                            : SQL_TDEF_BLOCK;
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-        } else if (ltok == 9 && !strncasecmp(tok, "blocksock", 9) ||
-                   tokcmp(tok, ltok, "default") == 0) {
-            gbl_upgrade_blocksql_2_socksql = 1;
-            if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
-                gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-            }
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-            gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-            logmsg(LOGMSG_INFO, "sql default mode is read committed\n");
-
-        } else if (ltok == 8 && !strncasecmp(tok, "snapshot", 8)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-            logmsg(LOGMSG_INFO, "sql default mode is snapshot isolation\n");
-
-        } else if (ltok == 6 && !strncasecmp(tok, "serial", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
-            logmsg(LOGMSG_INFO, "sql default mode is serializable\n");
-
-        } else {
-            logmsg(LOGMSG_ERROR,
-                   "The default sql mode \"%s\" is not supported, "
-                   "defaulting to socksql\n",
-                   tok);
-            gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-        }
-        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     } else if (tokcmp(tok, ltok, "proxy") == 0) {
         char *proxy_line;
         tok = segline(line, len, &st, &ltok);
@@ -1220,14 +1183,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         free(attr);
         free(value);
     } else if (tokcmp(line, ltok, "sqllogger") == 0) {
-        /* This is one of several things we can't do until we have more of
-         * an environment set up.
-         * What would be nice is if processing options was decoupled from
-         * reading files, so we
-         * could build a list of deferred options and call process_lrl_line
-         * on them one by one.
-         * One day. No, pre_read_lrl_file isn't what I want. */
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
+        /* This is one of several things we can't do until we have more of an
+         * environment set up. What would be nice is if processing options was
+         * decoupled from reading files, so we could build a list of deferred
+         * options and call process_lrl_line on them one by one. One day. No,
+         * pre_read_lrl_file isn't what I want. */
+        defer_option(line, len, options->lineno);
     } else if (tokcmp(line, ltok, "location") == 0) {
         /* ignore - these are processed by init_file_locations */
     } else if (tokcmp(tok, ltok, "include") == 0) {
@@ -1257,7 +1218,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
 
         read_lrl_file(dbenv, file, 0);
     } else if (tokcmp(line, ltok, "do") == 0) {
-        defer_option(dbenv, DEFERRED_SEND_COMMAND, line, len, options->lineno);
+        defer_option(line, len, options->lineno);
     } else if (tokcmp(line, ltok, "default_datetime_precision") == 0) {
         tok = segtok(line, len, &st, &ltok);
         if (ltok <= 0) {
@@ -1272,11 +1233,114 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (rc != 0)
             return -1;
 #endif
-    } else {
-        logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
-               options->lrlname);
-        if (gbl_bad_lrl_fatal)
+    } else if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
+        /* Process here because can't pass to handle_lrl_tunable (where it is
+         * marked as READEARLY) */
+        read_legacy_defaults(dbenv, options);
+
+        /* 'replicate_from <dbname>
+         * <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
+    } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        cdb2_hndl_tp *hndl;
+        /* replicate_from <db_name> [dbs to query] */
+        if (gbl_exit)
             return -1;
+
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
+                                 "can only replicate from a single source\n");
+            return -1;
+        }
+
+        /* dbname */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate from\n");
+            exit(1);
+        }
+        char *dbname = tokdup(tok, ltok);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a type\n");
+            exit(1);
+        }
+        char *type = tokdup(tok, ltok);
+
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n", dbname,
+                   type, rc);
+            exit(1);
+        }
+
+        char *hosts[32];
+        int count;
+        cdb2_cluster_info(hndl, hosts, NULL, 32, &count);
+        count = (count < 32 ? count : 32);
+        for (ii = 0; ii < count; ii++) {
+            if (add_replicant_host(hosts[ii], dbname, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %s\n",
+                       hosts[ii]);
+            }
+            gbl_is_physical_replicant = 1;
+            free(hosts[ii]);
+        }
+        cdb2_close(hndl);
+        logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n",
+               dbname, type);
+        free(dbname);
+        free(type);
+        start_replication();
+
+    } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR,
+                   "Must specify # of seconds to wait for timestamp\n");
+            return -1;
+        }
+        gbl_deferred_phys_flag = 1;
+
+        char *wait = tokdup(tok, ltok);
+        gbl_deferred_phys_update = atol(wait);
+        logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
+               gbl_deferred_phys_update);
+        free(wait);
+
+    } else if (tokcmp(tok, ltok, "max_query_fingerprints") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected max query fingerprints\n");
+            return -1;
+        }
+        gbl_fingerprint_max_queries = toknum(tok, ltok);
+    } else {
+        // see if any plugins know how to handle this
+        struct lrl_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->lrl_handlers, h, lnk) {
+            rc = h->handle(dbenv, tok);
+            if (rc == 0)
+                break;
+        }
+
+        if (rc) {
+            /* Handle tunables registered under tunables sub-system. */
+            rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
+
+            if (rc) {
+                if (gbl_bad_lrl_fatal) {
+                    logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                    return -1;
+                } else {
+                    logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                }
+            }
+        }
     }
 
     if (gbl_disable_new_snapshot) {
@@ -1352,8 +1416,16 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     int loaded_comdb2_local = 0;
     const char *crtdir = getenv("PWD");
 
-    init_deferred_options(dbenv);
+    listc_init(&deferred_options, offsetof(struct deferred_option, lnk));
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
+
+#   ifdef LEGACY_DEFAULTS
+    struct read_lrl_option_type options = {0};
+    options.lrlname = "legacy_defaults";
+    options.dbname = dbenv->envname;
+    pre_read_legacy_defaults(NULL, NULL);
+    read_legacy_defaults(dbenv, &options);
+#   endif
 
     if (lrlname) pre_read_lrl_file(dbenv, lrlname);
 
@@ -1413,12 +1485,12 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
     if (envlrlname && !read_lrl_file(dbenv, envlrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* this database */
     if (lrlname && !read_lrl_file(dbenv, lrlname, 1 /*required*/)) {
-        return 0;
+        return 1;
     }
 
     /* switch to keyless mode as long as no mode has been selected yet */
@@ -1452,5 +1524,17 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
             /* (NC) TODO: Should this be freed here? */
             free((char *)lrlname);
     }
+
+    if (!gbl_create_mode) {
+        read_cmd_line_tunables(dbenv);
+
+        /* usenames is not supported with physical replication */
+        if (gbl_is_physical_replicant && !gbl_nonames) {
+            logmsg(LOGMSG_ERROR,
+                   "Cannot start a physical replicant under usenames\n");
+            return 1;
+        }
+    }
+
     return 0;
 }

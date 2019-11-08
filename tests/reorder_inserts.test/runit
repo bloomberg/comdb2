@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+set -x
+
+if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
+    CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 
+fi
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertcnt ()
+{
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "tbl $tbl count is now $cnt but should be $target"
+    fi
+}
+
+assert_vers()
+{
+    local loc_tbl=$1
+    local target=$2
+    local newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$loc_tbl')")
+    if [[ $newver != $target ]] ; then
+        failexit "newver is now $newver but should be $target"
+    fi
+}
+
+assert_schema()
+{
+    tbl=$1
+    schema=$2
+
+    echo "make sure that the current schema is $schema"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
+
+    if ! diff -Bw schema.out $schema ; then 
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
+        failexit "final schema is not same as $schema: diff schema.out $schema"
+    fi
+}
+
+function get_master
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_master"
+    typeset tries=$total_tries
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+
+do_verify()
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+# Do schema changes
+do_schema_changes()
+{
+    typeset max=$1
+    typeset iter=0
+    typeset scnt=0
+
+    schema=t2.csc2
+
+    while [[ $scnt -lt $max ]]; do 
+
+        echo "$dbnm alter t1 $schema"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
+        if [[ $? != 0 ]]; then
+
+            echo "Error schema-changing on iteration $scnt"
+            return 1
+
+        fi
+
+        let scnt=scnt+1
+
+    done
+
+    return 0
+}
+
+# Update all records in the table
+update_all_records()
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" &>/dev/null
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table t1 $iter times."
+
+        fi
+
+    done
+}
+
+update_records()
+{
+    j=0
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 
+        let j=j+1
+    done
+}
+
+
+insert_records()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    insfl=insert${nout}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        if [ $? -ne 0 ]; then 
+            sleep 1
+            continue
+        fi
+        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
+        let j=j+1
+    done
+    echo "done inserting round $nout"
+}
+
+
+
+delete_records()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    delfl=delete${nout}.out
+    echo "Deleting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $delfl
+
+    while [[ $j -le $nstop ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where alltypes_u_short=$j"  &>> $delfl
+        if [ $? -ne 0 ]; then 
+            sleep 1
+            continue
+        fi
+        let j=j+1
+    done
+    echo "done updating round $nout"
+}
+
+assertres ()
+{
+    if [ $# != 2 ] ; then 
+        failexit "number of parameters passed is $# but expecting 2"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+
+COUNT=5000
+TRANSZ=50
+INSERTERS=20
+
+do_inserts()
+{
+    sleep 0.1 #give time to start all inserters
+    item=$1
+
+    local j=0
+    start=$RANDOM$RANDOM
+    outfl=insert${item}.out
+    echo "" > $outfl
+
+    while [[ $j -lt $COUNT ]] ; do 
+      echo "begin"
+      local i=0
+      while [[ $i -lt $TRANSZ ]] ; do 
+        echo "insert into t1 (a, b, c, d, e, f, g) values ($j+$start, random(), random(), random(), random(), random(), random())"
+        let j=j+1
+        let i=i+1
+      done
+      echo "commit"
+
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &> $outfl
+
+    echo "done inserter $item"
+}
+
+#cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(x+1)%100,(x+2)%100,(x+3)%100 FROM i" > ins1.out
+
+i=0
+while [[ $i -lt $INSERTERS ]] ; do 
+    do_inserts $i &
+    let i=i+1
+done
+
+wait
+cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > t1content.out
+assertcnt t1 $((i*COUNT))
+
+
+# get master node
+master=$(get_master)
+
+export LOGDIR=$TESTDIR/logs # from setup
+if [[ -z "$CLUSTER" ]] ; then
+    mlog=$LOGDIR/${DBNAME}.db
+else
+    mlog=$LOGDIR/${DBNAME}.${master}.db
+fi
+
+ddcount=`grep -c DEADLOCK $mlog`
+
+if [[ $DBNAME == *"noreordergenerated"* ]] ; then
+    if [[ $ddcount -lt 1000 ]] ; then
+        failexit 'no reorder expected to get more than 1000 deadlocks for this test'
+    fi
+else
+    if [[ $ddcount -gt 1000 ]] ; then
+        failexit 'reorder expected to get less than 1000 deadlocks for this test'
+    fi
+fi
+
+echo "Success"

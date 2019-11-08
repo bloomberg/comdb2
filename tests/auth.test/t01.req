@@ -1,5 +1,8 @@
 select 'user1'
 set user user1
+select comdb2_user();
 set password password1
+select comdb2_user();
 put authentication on
 select 'authentication turned on'
+select comdb2_user();

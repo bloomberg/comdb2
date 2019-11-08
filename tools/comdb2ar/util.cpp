@@ -249,7 +249,9 @@ void make_dirs(const std::string& dirname)
 
         // set default extent size for database directories
         std::clog << ">>>>>> " << xfscmd.str() << std::endl;
-        std::system(xfscmd.str().c_str());
+        int rc = std::system(xfscmd.str().c_str());
+        if (rc == -1)
+            std::cerr << "system() returns rc = " << rc << std::endl;
         files[dirname] = true;
     }
 
@@ -268,7 +270,7 @@ void make_dirs(const std::string& dirname)
     std::string cmd("mkdir -p " + dirname);
 
     int rc = std::system(cmd.c_str());
-    if(rc != 0) {
+    if(rc) {
         std::ostringstream ss;
         ss << "Command " << cmd << " failed with rcode " << rc;
         throw Error(ss);

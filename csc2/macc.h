@@ -1,3 +1,6 @@
+#ifndef __macc_h
+#define __macc_h
+
 #include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
@@ -6,11 +9,9 @@
 #include "dynschemaload.h"
 #include <cdb2_constants.h>
 
-#include "mem_csc2.h"
-#include "mem_override.h"
+#include "mem.h"
 
 extern char *revision;
-extern char VER[16]; /* version info */
 
 #define ONDISKTAG ".ONDISK"
 #define DEFAULTTAG ".DEFAULT"
@@ -102,6 +103,7 @@ struct fieldopt {
 };
 
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
+enum ct_type { CT_FKEY, CT_CHECK };
 
 extern struct constraint {
     char *consname;
@@ -113,6 +115,13 @@ extern struct constraint {
 } constraints[MAXCNSTRTS];
 
 extern int nconstraints;
+
+extern struct check_constraint {
+    char *consname;
+    char *expr;
+} check_constraints[MAXCNSTRTS];
+
+extern int n_check_constraints;
 
 extern struct symbol {
     char *nm;   /* symbol name                     */
@@ -141,7 +150,7 @@ extern struct symbol {
     int dpth;
     int numfo; /* number of field options for this symbol */
     struct fieldopt fopts[FLDOPT_MAX]; /* field option structures */
-} sym[MAX];
+} symb[MAX];
 
 extern struct table {
     char table_tag[MAX_TAG_LEN + 1];
@@ -218,7 +227,8 @@ enum INDEXFLAGS {
     DUPKEY = 0x00000001,  /* duplicate key flag */
     RECNUMS = 0x00000002, /* index has key sequence numbers (COMDB2) */
     PRIMARY = 0x00000004,
-    DATAKEY = 0x00000008 /* key flag to indicate index has data */
+    DATAKEY = 0x00000008, /* key flag to indicate index has data */
+    UNIQNULLS = 0x00000010 /* all NULL values are treated as UNIQUE */
 };
 
 extern int fncs[MAXFUNCS];          /* functions                         */
@@ -289,11 +299,11 @@ extern void OUT(char *fmt, ...);
 int numkeys();
 int numix();
 void resolve_case_names();
-void end_constraint_list(void);
 void set_constraint_mod(int start, int op, int type);
-void set_constraint_name(char *name);
-void start_constraint_list(char *tblname);
+void set_constraint_name(char *name, enum ct_type type);
+void start_constraint_list(char *keyname);
 void add_constraint(char *tbl, char *key);
+void add_check_constraint(char *expr);
 void add_constant(char *name, int value, short type);
 void add_fldopt(int opttype, int valtype, void *value);
 void reset_array();
@@ -311,6 +321,7 @@ void key_setdup();
 void key_setrecnums(void);
 void key_setprimary(void);
 void key_setdatakey(void);
+void key_setuniqnulls(void);
 void reset_key_exprtype(void);
 void key_exprtype_add(int type, int arraysz);
 void key_piece_add(char *buf, int is_expr);
@@ -323,7 +334,6 @@ int wholekeysize(struct key *wk);
 char *strcpyupper(char *c);
 char *typetxt(int t, int size);
 int numdim(int dm[6]);
-char *sqltypetxt(int t, int size);
 int calc_rng(int rng, int *ask);
 char *printf_type_txt(int t, int size);
 void strupper(char *c);
@@ -346,3 +356,5 @@ void rng_add(int i);
 void expr_assoc_name(char *name);
 void expr_clear();
 void expr_add_pc(char *sym, int op, int num);
+
+#endif

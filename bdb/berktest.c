@@ -94,7 +94,7 @@ static void close_tables(berktable_t *tables, int tablecount)
     for (i = 0; i < tablecount; i++) {
         table = &tables[i];
         if (table->dbp) {
-            if ((rc = table->dbp->close(table->dbp, NULL, 0)) != 0) {
+            if ((rc = table->dbp->close(table->dbp, 0)) != 0) {
                 logmsg(LOGMSG_ERROR, "%s close error: %d\n", __func__, rc);
                 continue;
             }
@@ -170,8 +170,7 @@ static u_int32_t maxdata(berktable_t *tables, int tablecount)
 static void run_test(berktable_t *tables, int tablecount, int txnsize,
                      int iterations)
 {
-    uint64_t start, end, totalrecs = (txnsize * iterations), persecond,
-                         persecnorm;
+    uint64_t start, end, totalrecs = (txnsize * iterations), persecond;
     DB_TXN *tid;
     DBT key = {0}, data = {0};
     u_int32_t commit_flags, mkey, mdata, *keyptr;
@@ -227,8 +226,8 @@ static void run_test(berktable_t *tables, int tablecount, int txnsize,
 
     persecond = (1000 * totalrecs) / (end - start);
     logmsg(LOGMSG_USER,
-           "%lu records per second for txnsize %d, commit-delay %d "
-           "iterations: %d total time %lu\n",
+           "%" PRIu64 " records per second for txnsize %d, commit-delay %d "
+           "iterations: %d total time %" PRIu64 "\n",
            persecond, txnsize, commit_delay_ms, iterations, end - start);
     fflush(stdout);
 }

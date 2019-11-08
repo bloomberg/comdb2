@@ -30,11 +30,6 @@ int SBUF2_FUNC(sslio_read)(SBUF2 *, char *cc, int len);
 int SBUF2_FUNC(sslio_write)(SBUF2 *, const char *cc, int len);
 #define sslio_write SBUF2_FUNC(sslio_write)
 
-/* Verify peer certificate. Return 0 upon success. */
-int SBUF2_FUNC(sslio_verify)(SBUF2 *, ssl_mode,
-                            char *err, size_t n);
-#define sslio_verify SBUF2_FUNC(sslio_verify)
-
 /* Return the associated SSL object. */
 SSL *SBUF2_FUNC(sslio_get_ssl)(SBUF2 *);
 #define sslio_get_ssl SBUF2_FUNC(sslio_get_ssl)
@@ -54,18 +49,24 @@ int SBUF2_FUNC(sslio_has_x509)(SBUF2 *);
 /* Perform an SSL handshake.
    Return 1 upon success. */
 #if SBUF2_SERVER
-int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *,
-                            ssl_mode, char *err, size_t n);
+int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
+                              int nid, char *err, size_t n,
+                              int close_on_verify_error);
 #else
-int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *,
-                            ssl_mode, char *err, size_t n,
-                            SSL_SESSION *, int *unrecoverable);
+int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
+                              int nid, char *err, size_t n, SSL_SESSION *,
+                              int *unrecoverable);
 #endif
 #define sslio_connect SBUF2_FUNC(sslio_connect)
 
 /* Perform an SSL handshake.
    Return 1 upon success. */
-int SBUF2_FUNC(sslio_accept)(SBUF2 *, SSL_CTX *,
-                           ssl_mode, char *err, size_t n);
+int SBUF2_FUNC(sslio_accept)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
+                             int nid, char *err, size_t n,
+                             int close_on_verify_error);
 #define sslio_accept SBUF2_FUNC(sslio_accept)
+
+/* Given an NID, return the attribute in the X509 certificate in `out'. */
+int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len);
+#define sslio_x509_attr SBUF2_FUNC(sslio_x509_attr)
 #endif

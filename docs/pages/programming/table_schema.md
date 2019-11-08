@@ -259,6 +259,8 @@ Similarly, here is a typical query that uses index "b":
 [explain query plan select json_extract(json, '$.b') as b from jdemo order by json_extract(json, '$.b')] rc 0
 ```
 
+The syntax to create indexes on expressions using standard DDL can be found in
+an example [here](sql.md#create-table).
 
 
 ### Duplicate Keys.
@@ -282,6 +284,10 @@ If the key definition is preceded by the ```datacopy``` keyword, then the backin
 the data record in the btree used for the index.  This copy is maintained transparently by the database.  
 This allows for large performance gains when reading sequential records from on a key.  The trade-off is the 
 use of more disk space.
+
+### Unique NULL Keys.
+If the key definition is preceded by the ```uniqnulls``` keyword, then the backing index will treat NULL values
+as unique.
 
 ### Ascending and Descending Keys.
 
@@ -337,65 +343,4 @@ in the referenced index.
 Indexes on expressions are allowed in key constraints. However, if the local key
 of a constraint is an index on expressions, then cascading update is NOT
 supported on the constraint.
-
-
-## User Schemas
-Comdb2 supports tables in user's namespace. This allows multiple users to have tables with same name.
-
-To enable it, this lrl option needs to be enabled
-```
-allow_user_schema
-```
-
-The following example will create multiple users and separate table (with same name) for each user.
-Querying comdb2_tables from op user account will show all the tables.
-
-
-```sql
-put password 'user' for 'user'
-put password 'user1' for 'user1'
-put password 'user2' for 'user2'
-grant op to user
-
-set user user
-set password user
-put authentication on /* Only op can turn on the authentication. */
-
-select * from comdb2_users
-(username='user', isOP='Y')
-(username='user1', isOP='N')
-(username='user2', isOP='N')
-[select * from comdb2_users] rc 0
-
-
-set user user1
-set password user1
-create table test { schema {int t} keys { "T1" = t}}$$
-insert into test values(1)
-(rows inserted=1)
-
-set user user2
-set password user2
-create table test { schema {int t} keys { "T1" = t}}$$
-insert into test values(2)
-(rows inserted=1)
-
-set user user1
-set password user1
-select * from test
-(t=1)
-
-set user user2
-set password user2
-select * from test
-(t=2)
-
-set user user
-set password user
-select * from comdb2_tables
-(tablename='sqlite_stat1')
-(tablename='sqlite_stat2')
-(tablename='sqlite_stat4')
-(tablename='test@user1')
-(tablename='test@user2')
 ```

@@ -34,7 +34,9 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <sys/types.h>
 #include <dirent.h>
 
-#include <logmsg.h>
+#include "logmsg.h"
+#include "locks_wrap.h"
+#include "thread_stats.h"
 #include "comdb2_atomic.h"
 
 char *bdb_trans(const char infile[], char outfile[]);
@@ -240,7 +242,7 @@ __dir_pgread_multi(dbmfp, pgno, numpages, pages)
 {
 	DB_ENV *dbenv;
 	MPOOLFILE *mfp;
-	size_t len, nr, pagesize;
+	size_t nr, pagesize;
 	int cntpage;
 	int ret, idx;
 
@@ -304,33 +306,27 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 {
 
 	DB_ENV *dbenv;
-	DB dummydb, *dbp;
 	DB_LSN page_lsn, largest_lsn;
 	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
 	MPOOL *c_mp;
-	DB_MUTEX *mutexp;
-	DBT dbt, *dbtp;
-	size_t len, nr, pagesize;
+	size_t nr, pagesize;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
 	int ret, i, pgidx, free_buf, ftype;
 	u_int32_t n_cache;
 	db_pgno_t inpg;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;
 	pagesize = mfp->stat.st_pagesize;
 	dbmp = dbenv->mp_handle;
-	mutexp = &hp->hash_mutex;
 	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mf_offset, bhp->pgno);
 	c_mp = dbmp->reginfo[n_cache].primary;
 
 	pgidx = -1;
 	free_buf = 0;
-	dbtp = NULL;
 
 	ZERO_LSN(largest_lsn);
 
@@ -369,17 +365,17 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	/* If this is page-0, just read the meta page. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
 		/* Lock out other threads */
-		pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
 
 		/* Read page. */
 		if ((ret = __os_io(dbenv, DB_IO_READ,
 		    dbmfp->recp, i, pagesize,
 		    (u_int8_t *)pagep, &nr)) != 0) {
-			pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+			Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 			break;
 		}
 
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 
 		/* Verify length. */
 		if (nr < pagesize)
@@ -414,8 +410,8 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	if (pgidx < 0)
 		return DB_PAGE_NOTFOUND;
 
-	ATOMIC_ADD(hp->hash_page_dirty, 1);
-	ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+	ATOMIC_ADD32(hp->hash_page_dirty, 1);
+	ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
@@ -448,13 +444,13 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 	MPOOLFILE *mfp;
 	DB_MUTEX *mutexp;
 	size_t len, nr, pagesize;
-	int ret, try_recover, recovered_page;
+	int ret, try_recover;
 
 	mutexp = &hp->hash_mutex;
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;
 	pagesize = mfp->stat.st_pagesize;
-	recovered_page = try_recover = 0;
+	try_recover = 0;
 
 	/* We should never be called with a dirty or a locked buffer. */
 	DB_ASSERT(!F_ISSET(bhp, BH_DIRTY | BH_DIRTY_CREATE | BH_LOCKED));
@@ -524,7 +520,6 @@ recover_page:
 			    "recovery required", (u_long) bhp->pgno);
 			return (__db_panic(dbenv, DB_RUNRECOVERY));
 		}
-		recovered_page = 1;
 		++try_recover;
 	}
 
@@ -582,11 +577,11 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	char dir[PATH_MAX];
 	bdb_trans(dbenv->db_home, dir);
 
-	pthread_mutex_lock(&verifylk);
+	Pthread_mutex_lock(&verifylk);
 	d = opendir(dir);
 	if (d == NULL) {
 		__db_err(dbenv, "Can't get directory listing");
-		pthread_mutex_unlock(&verifylk);
+		Pthread_mutex_unlock(&verifylk);
 		return 1;
 	}
 
@@ -607,7 +602,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	}
 	closedir(d);
 
-	pthread_mutex_unlock(&verifylk);
+	Pthread_mutex_unlock(&verifylk);
 
 	/* guaranteed written */
 	if (lsn->file < filenum)
@@ -784,7 +779,7 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 	DB_LSN tmplsn, maxlsn;
 	MPOOLFILE *mfp;
 	DB_MPOOL_HASH *hp;
-	BH *bhp;
+	BH *bhp = NULL;
 	u_int8_t **bparray;
 	size_t nw;
 	int *callpgin, *reclk;
@@ -983,15 +978,15 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 
 			/* Get the next recovery-page index. */
 			else {
-				pthread_mutex_lock(&dbmfp->recp_idx_lk);
+				Pthread_mutex_lock(&dbmfp->recp_idx_lk);
 				idx = dbmfp->rec_idx;
 				dbmfp->rec_idx = (dbmfp->rec_idx %
 				    dbenv->mp_recovery_pages) + 1;
-				pthread_mutex_unlock(&dbmfp->recp_idx_lk);
+				Pthread_mutex_unlock(&dbmfp->recp_idx_lk);
 			}
 
 			/* Lock out other threads */
-			pthread_mutex_lock(&dbmfp->recp_lk_array[idx]);
+			Pthread_mutex_lock(&dbmfp->recp_lk_array[idx]);
 			/* Hack in case we're writing out the meta page. */
 			reclk[i] = idx + 1;
 
@@ -1061,7 +1056,7 @@ err:
 file_dead:
 	/* Unlock the recovery-lock. */
 	for (i = 0; reclk[i] && i < numpages; i++)
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
 
 	/*
 	 * !!!
@@ -1101,8 +1096,8 @@ file_dead:
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
 			    bhp->mf_offset, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
-			ATOMIC_ADD(hp->hash_page_dirty, -1);
-			ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
+			ATOMIC_ADD32(hp->hash_page_dirty, -1);
+			ATOMIC_ADD32(c_mp->stat.st_page_dirty, -1);
 
 			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */
@@ -1137,7 +1132,7 @@ static void
 bb_memp_pg_hit(uint64_t start_time_us)
 {
 	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
-	struct bb_berkdb_thread_stats *stats;
+	struct berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_pgs++;
@@ -1169,7 +1164,7 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;

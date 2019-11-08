@@ -103,101 +103,12 @@ if [[ -f partidx.csc2 ]] ; then
         exit 1
     fi
 fi
+
 # Iterate through input files
-for testcase in $files ; do
+${TESTSROOTDIR}/tools/compare_results.sh -d $a_dbn -r req
+[ $? -eq 0 ] || exit 1
 
-    # increment counter
-    let nfiles=nfiles+1
+./testsqlclients - $a_dbn
+rc=$?
 
-    # cleanup testcase
-    testcase=${testcase##*/}
-    
-    # see if the prefix has changed
-    new_batch=${testcase%.*}
-
-    # set output
-    output=$new_batch.res
-    
-    echo "$testcase running $new_batch"
-
-    # fastinit if requested
-    if [[ $new_batch != $last_batch ]] ; then
-
-        fastinit $a_dbn $new_batch
-        last_batch=$new_batch
-
-    fi
-
-    # Check for run-stepper
-    if [[ -f $new_batch.runstepper ]] ; then
-
-        runstepper $a_dbn $new_batch.req $output
-
-    elif [[ -f $new_batch.tool ]] ; then
-
-        tool=$( cat $new_batch.tool )
-        args=$( cat $new_batch.args )
-        runtool $tool "$args" $a_dbn $new_batch default ${TESTDIR}/log.txt notused ${TESTDIR} $output
-
-    elif [[ -f $new_batch.req ]] ; then
-
-        # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $new_batch.req > $output 2>&1"
-        echo $cmd
-        # run command
-        eval $cmd
-
-    else
-
-        # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < comdb2sys.req > $output 2>&1"
-        echo $cmd
-        # run command
-        eval $cmd
-
-    fi
-
-    # post-process
-    if [[ -f $new_batch.post ]]; then
-
-        # zap file
-        > $output.postprocess
-
-        # collect post-processing tool
-        pproc=$(cat $new_batch.post)
-
-        # post-process output
-        $pproc $output >> $output.postprocess
-
-        # copy post-processed output to original
-        mv $output.postprocess $output
-    fi
-
-    expected=comdb2sys
-    if [[ -f ${new_batch}.expected ]] ; then
-        expected=$new_batch
-    fi
-
-    # get testcase output
-    testcase_output=$(cat $output | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    # get expected output
-    expected_output=$(cat ${expected}.expected | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
-
-    # verify 
-    if [[ "$testcase_output" != "$expected_output" ]] ; then
-        echo "  ^^^^^^^^^^^^"
-        echo "The above testcase (${testcase}) has failed!!!"
-        echo " "
-        echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{${expected}.expected,$output}"
-        echo " "
-        diff ${expected}.expected $output
-        echo " "
-        exit 1
-
-    fi
-
-done
-
-echo "Testcase passed."
+exit $rc

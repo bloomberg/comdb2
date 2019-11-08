@@ -1,0 +1,4 @@
+(out='Num requests: 1 [1]')
+(out='Max distribution: 2 [2]')
+(out='Max queue bytes: 1999872 [1999872]')
+

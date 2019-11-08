@@ -43,7 +43,7 @@ done
 
 
 #setup remode db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 function old()
 {
@@ -235,7 +235,11 @@ echo ./test_missing.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 ./test_missing.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 result=$?
 
-$TESTSROOTDIR/unsetup
+if (( $result == 0 )) ; then
+   successful=1
+fi
+
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 
 function old_clenaup(){
 if (( $is_local == 0 )) ; then

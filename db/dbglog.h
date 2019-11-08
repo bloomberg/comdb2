@@ -18,6 +18,7 @@
 #define INCLUDED_DBGLOG_H
 
 #include <inttypes.h>
+#include <stddef.h>
 struct ireq;
 struct sbuf2;
 struct dbglog_hdr;
@@ -33,6 +34,9 @@ void dbglog_dump_write_stats(struct ireq *);
 void dbglog_record_db_write(struct ireq *, char *);
 void dump_client_query_stats(struct sbuf2 *, struct client_query_stats *);
 void dump_client_query_stats_packed(struct sbuf2 *, const uint8_t *);
+int dbglog_process_debug_pragma(struct sqlclntstate *, const char *);
+int dbglog_mmap_dbglog_file(unsigned long long, void **, size_t *, int *);
+int dbglog_munmap_dbglog_file(unsigned long long, void *, size_t, int);
 
 struct dbglog_impl {
     int (*dbglog_init_write_counters)(struct ireq *);
@@ -43,6 +47,9 @@ struct dbglog_impl {
     void (*dbglog_record_db_write)(struct ireq *, char *);
     void (*dump_client_query_stats)(struct sbuf2 *, struct client_query_stats *);
     void (*dump_client_query_stats_packed)(struct sbuf2 *, const uint8_t *);
+    int (*process_debug_pragma)(struct sqlclntstate *, const char *);
+    int (*mmap_dbglog_file)(unsigned long long, void **, size_t *, int *);
+    int (*munmap_dbglog_file)(unsigned long long, void *, size_t, int);
 };
 
 void set_dbglog_impl(struct dbglog_impl *);

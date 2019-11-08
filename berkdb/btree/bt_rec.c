@@ -28,6 +28,7 @@ static const char revid[] = "$Id: bt_rec.c,v 11.64 2003/09/13 18:48:58 bostic Ex
 
 #include <stdlib.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 #define	IS_BTREE_PAGE(pagep)						\
 	(TYPE(pagep) == P_IBTREE ||					\
@@ -59,18 +60,17 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_split_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
 	PAGE *_lp, *lp, *np, *pp, *_rp, *rp, *sp;
 	db_pgno_t pgno, root_pgno;
 	u_int32_t ptype;
-	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit, t_ret;
+	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit = 0, t_ret;
 
 	DBT split_key;
 	PAGE *argp_lp = NULL;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
 	__genid_pgno *hashtbl = NULL;
@@ -371,10 +371,18 @@ lrundo:		if ((rootsplit && lp != NULL) || rp != NULL) {
 done:	*lsnp = argp->prev_lsn;
 	ret = 0;
 
+	if (dbp && dbp->is_free) {
+		logmsg(LOGMSG_FATAL, "%s line %d file_dbp=%p freed-dbp=%p AM_RECOVER=%d"
+				" AM_HASH=%d HASH=%p rootsplit=%d\n", __func__, __LINE__,
+				file_dbp, dbp, dbp ? F_ISSET(dbp, DB_AM_RECOVER) : 0, dbp ?
+				F_ISSET(dbp, DB_AM_HASH) : 0, dbp ? dbp->pg_hash : NULL,
+				rootsplit);
+		abort();
+	}
 	if (file_dbp && dbp &&
-	    !F_ISSET(dbp, DB_AM_RECOVER) &&
-	    F_ISSET(dbp, DB_AM_HASH) &&
-	    (hash = dbp->pg_hash) != NULL &&!rootsplit) {
+		!F_ISSET(dbp, DB_AM_RECOVER) &&
+		F_ISSET(dbp, DB_AM_HASH) &&
+		(hash = dbp->pg_hash) != NULL &&!rootsplit) {
 		argp_lp = argp->pg.data;
 		// Update the page numbers in the genid-pg hash
 		for (off = argp->indx; off < NUM_ENT(argp_lp); off += P_INDX) {
@@ -384,30 +392,21 @@ done:	*lsnp = argp->prev_lsn;
 				memset(&split_key, 0, sizeof(split_key));
 				split_key.data = tmp_bk->data;
 				ASSIGN_ALIGN_DIFF(u_int32_t, split_key.size,
-				    db_indx_t, tmp_bk->len);
+					db_indx_t, tmp_bk->len);
 				hashtbl = hash->tbl;
 				hh = hash_fixedwidth((unsigned char
 					*)(split_key.data)) % (hash->ntbl);
 				if (split_key.size == GENID_SIZE &&
-				    genidcmp(hashtbl[hh].genid,
+					genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_page: Failed to lock (hash->mutex)\n");
-					}
+					Pthread_mutex_lock(&(hash->mutex));
 					// update new page
 					genidsetzero(hashtbl[hh].genid);
 					hashtbl[hh].pgno = argp->right;
 					genidcpy(hashtbl[hh].genid,
-					    split_key.data);
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_page: Failed to unlock (hash->mutex)\n");
-					}
+						split_key.data);
+					Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}
@@ -451,7 +450,7 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_rsplit_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_LSN copy_lsn;
 	DB_MPOOLFILE *mpf;
@@ -462,7 +461,6 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	int add_to_hash = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
@@ -575,11 +573,7 @@ done:	*lsnp = argp->prev_lsn;
 				    genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_root: Failed to lock (hash->mutex)\n");
-					}
+                    Pthread_mutex_lock(&(hash->mutex));
 					if (add_to_hash) {
 						// update new page
 						genidsetzero(hashtbl[hh].genid);
@@ -592,12 +586,7 @@ done:	*lsnp = argp->prev_lsn;
 						genidsetzero(hashtbl[hh].genid);
 						hashtbl[hh].pgno = 0;
 					}
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_root: Failed to unlock (hash->mutex)\n");
-					}
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

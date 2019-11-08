@@ -47,7 +47,7 @@
                    (let [[id val'] (:value op)
                          [val uid] (second
                                      (c/query c [(str "select val,uid from "
-                                                      table " where id = ?") id]
+                                                      table " where id = ? -- id is " id) id]
                                             {:as-arrays? true}))]
                      (assoc op
                             :type  :ok

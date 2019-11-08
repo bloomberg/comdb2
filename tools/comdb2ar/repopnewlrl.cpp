@@ -67,7 +67,7 @@ RepopNewLrl::RepopNewLrl(const std::string& dbname,
         << std::endl;
     errno = 0;
     int rc = system(cmdss.str().c_str());
-    if(rc != 0) {
+    if(rc) {
         std::ostringstream ss;
         ss << "Repopulate lrl command '" << cmdss.str() << "' failed rc "
             << rc << " errno " << errno << std::endl;

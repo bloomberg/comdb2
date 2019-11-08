@@ -49,11 +49,13 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include "db_int.h"
 #include "dbinc/db_swap.h"
+#include "thread_stats.h"
 #include "printformats.h"
 #include "mem_restore.h"
 
 #include <poll.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 uint64_t bb_berkdb_fasttime(void);
 
@@ -89,24 +91,16 @@ free_iobuf(void *p)
 	free(b);
 }
 
-static void
+static inline void
 init_iobuf(void)
 {
-	int rc;
-
-	rc = pthread_key_create(&iobufkey, free_iobuf);
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "can't create iobuf key %d %s\n", rc,
-		    strerror(errno));
-		abort();
-	}
+	Pthread_key_create(&iobufkey, free_iobuf);
 }
 
 static void *
 get_aligned_buffer(void *buf, size_t bufsz, int copy)
 {
 	struct iobuf *b;
-	uintptr_t addr = (uintptr_t) buf;
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
@@ -120,7 +114,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 		if (b->buf == NULL)
 			return NULL;
 #endif
-		pthread_setspecific(iobufkey, b);
+		Pthread_setspecific(iobufkey, b);
 	} else if (b->sz < bufsz) {
 		free(b->buf);
 		b->buf = NULL;
@@ -143,240 +137,17 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 }
 
 static int
-__berkdb_direct_read(int fd, void *buf, size_t bufsz)
-{
-	void *abuf;
-	int rc;
-	off_t off, aoff;
-	size_t asize;		/* adjusted size, rounded to block size */
-	int extra_fluff;
-	int bytes_read;
-
-	pthread_once(&once, init_iobuf);
-
-	off = lseek(fd, 0, SEEK_CUR);
-
-	aoff = off - (off % 512);
-	asize = ((bufsz / 512) + 1 + ((bufsz % 512) ? 1 : 0)) * 512;
-	abuf = get_aligned_buffer(buf, asize, 0);
-	extra_fluff = off - aoff;
-
-	rc = pread(fd, abuf, asize, aoff);
-	if (rc == -1) {
-		logmsg(LOGMSG_ERROR, "pread %d %s\n", errno, strerror(errno));
-		return -1;
-	}
-
-	/* short read? */
-	if (rc < extra_fluff) {
-		logmsg(LOGMSG_ERROR, "pread rc %d asize %zu bufsz %zu\n", rc, asize, bufsz);
-		return 0;
-	}
-
-	bytes_read = rc - extra_fluff;
-	if (bytes_read > bufsz)
-		bytes_read = bufsz;
-
-	memcpy(buf, ((uint8_t *) abuf) + (extra_fluff), bytes_read);
-
-	/* lseek here */
-	if (lseek(fd, off + bytes_read, SEEK_SET) != (off + bytes_read)) {
-		logmsg(LOGMSG_ERROR, "lseek %d %s\n", errno, strerror(errno));
-		return -1;
-	}
-#ifndef _SUN_SOURCE
-	if (gbl_verify_direct_io) {
-		int nfd = -1;
-		int flags;
-		void *checkbuf = NULL;
-		int verify_failed = 1;
-		int verify_bytes_read;
-
-		nfd = dup(fd);
-		if (nfd == -1) {
-			logmsgperror("nfd");
-			goto done_verify;
-		}
-		flags = fcntl(nfd, F_GETFL);
-#ifdef __APPLE__
-		flags &= ~F_NOCACHE;
-#else
-		flags &= ~O_DIRECT;
-#endif
-		rc = fcntl(nfd, F_SETFL, flags);
-		if (rc) {
-			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
-			goto done_verify;
-		}
-		checkbuf = malloc(bufsz);
-		verify_bytes_read = pread(nfd, checkbuf, bufsz, off);
-		if (verify_bytes_read == -1) {
-			logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
-			goto done_verify;
-		}
-		if (verify_bytes_read != bytes_read) {
-			logmsg(LOGMSG_ERROR, "unexpected read, wanted %d read %d\n",
-			    bytes_read, verify_bytes_read);
-			goto done_verify;
-		}
-		if (memcmp(checkbuf, buf, verify_bytes_read) == 0)
-			verify_failed = 0;
-		else {
-			logmsg(LOGMSG_ERROR, "expected:\n");
-			fsnapf(stdout, buf, bufsz);
-			logmsg(LOGMSG_ERROR, "read:\n");
-			fsnapf(stdout, checkbuf, bufsz);
-
-			logmsg(LOGMSG_ERROR, ">>>>> READ CHECK FAILED\n");
-		}
-
-done_verify:
-		if (nfd != -1)
-			close(nfd);
-		if (checkbuf)
-			free(checkbuf);
-
-		if (verify_failed)
-			return -1;
-	}
-#endif
-
-	return bytes_read;
-}
-
-static int
-__berkdb_direct_write(int fd, void *buf, size_t bufsz)
-{
-	uint8_t *abuf;
-	int rc;
-	off_t off, aoff;
-	size_t asize;		/* adjusted size, rounded to block size */
-	int extra_fluff;
-	int bytes_written;
-	off_t final_offset;
-
-	pthread_once(&once, init_iobuf);
-
-	/* find current offset */
-	off = lseek(fd, 0, SEEK_CUR);
-	if (off == -1) {
-		logmsg(LOGMSG_ERROR, "can't determine current offset %d %s\n", errno,
-		    strerror(errno));
-		return -1;
-	}
-
-	/* this is the adjusted size of the buffer we'll be writing */
-	asize = ((bufsz / 512) + 1 + ((bufsz % 512) ? 1 : 0)) * 512;
-
-	/* next lowest offset in file aligned at 512 bytes */
-	aoff = off - (off % 512);
-
-	extra_fluff = off - aoff;
-	final_offset = off + bufsz;
-
-	abuf = get_aligned_buffer(buf, asize, 0);
-	/* TODO: this is a synchronous read with no backing cache - get it out of the log buffer instead? */
-	rc = pread(fd, abuf, 512, aoff);
-	if (rc == -1) {
-		logmsg(LOGMSG_ERROR, "pread(%d, %u) %d %s\n",
-		    extra_fluff < 512 ? 512 : extra_fluff, (unsigned int)aoff,
-		    errno, strerror(errno));
-		return -1;
-	}
-	if (rc < extra_fluff)
-		extra_fluff = rc;
-
-	memcpy((uint8_t *) abuf + extra_fluff, buf, bufsz);
-
-	bytes_written = pwrite(fd, abuf, asize, aoff);
-	if (bytes_written == -1)
-		return -1;
-	if (bytes_written != asize) {
-		logmsg(LOGMSG_ERROR, "write %d bytes, needed to write %zu\n",
-		    bytes_written, asize);
-		return -1;
-	}
-
-	rc = ftruncate(fd, final_offset);
-	if (rc == -1) {
-		logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
-		    (unsigned int)final_offset, errno, strerror(errno));
-		return -1;
-	}
-
-	if (lseek(fd, final_offset, SEEK_SET) != final_offset) {
-		logmsg(LOGMSG_ERROR, "lseek(%u) %d %s\n", (unsigned int)final_offset,
-		    errno, strerror(errno));
-		return -1;
-	}
-#ifndef _SUN_SOURCE
-	if (gbl_verify_direct_io) {
-		int nfd = -1;
-		int flags;
-		void *checkbuf = NULL;
-		int verify_failed = 1;
-
-		nfd = dup(fd);
-		if (nfd == -1) {
-			logmsgperror("nfd");
-			goto done_verify;
-		}
-		flags = fcntl(nfd, F_GETFL);
-#ifdef __APPLE__
-		flags &= ~F_NOCACHE;
-#else
-		flags &= ~O_DIRECT;
-#endif
-		rc = fcntl(nfd, F_SETFL, flags);
-		if (rc) {
-			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
-			goto done_verify;
-		}
-		checkbuf = malloc(bufsz);
-		rc = pread(nfd, checkbuf, bufsz, off);
-		if (rc == -1) {
-            logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
-			goto done_verify;
-		}
-		if (rc != bufsz) {
-			logmsg(LOGMSG_ERROR, "unexpected read, wanted %zu read %d\n", bufsz,
-			    rc);
-			goto done_verify;
-		}
-		if (memcmp(checkbuf, buf, bufsz) == 0)
-			verify_failed = 0;
-		else {
-			logmsg(LOGMSG_ERROR, "expected:\n");
-			fsnapf(stdout, buf, bufsz);
-			logmsg(LOGMSG_ERROR, "read:\n");
-			fsnapf(stdout, checkbuf, bufsz);
-			logmsg(LOGMSG_ERROR, ">>>>> WRITE CHECK FAILED\n");
-		}
-
-done_verify:
-		if (nfd != -1)
-			close(nfd);
-		if (checkbuf)
-			free(checkbuf);
-
-		if (verify_failed)
-			return -1;
-	}
-#endif
-
-	return bufsz;
-}
-
-
-static int
-__berkdb_direct_pread(int fd, void *buf, size_t bufsz, off_t offset)
+__berkdb_pread(int fd, void *buf, size_t bufsz, off_t offset, int direct)
 {
 	void *abuf;
 	int rc;
 
 	pthread_once(&once, init_iobuf);
 
-	abuf = get_aligned_buffer(buf, bufsz, 0);
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 0);
+	else
+		abuf = buf;
 	rc = pread(fd, abuf, bufsz, offset);
 	if (rc > 0 && buf != abuf)
 		memcpy(buf, abuf, rc);
@@ -384,8 +155,8 @@ __berkdb_direct_pread(int fd, void *buf, size_t bufsz, off_t offset)
 }
 
 static int
-__berkdb_direct_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
-    off_t offset)
+__berkdb_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
+    off_t offset, int direct)
 {
 	void *abuf;
 	int rc;
@@ -394,11 +165,22 @@ __berkdb_direct_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
 
 	pthread_once(&once, init_iobuf);
 
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 1);
+	else
+		abuf = buf;
 again:
-	abuf = get_aligned_buffer(buf, bufsz, 1);
 	LOGCOPY_TOLSN(&lsn_before, abuf);
 	do {
 		rc = pwrite(fd, abuf, bufsz, offset);
+		if (rc == -1) {
+            int err = errno;
+			logmsg(LOGMSG_ERROR, 
+				"pwrite fd %d sz %zu off %"PRId64" retry %d %d %s\n", fd,
+				bufsz, (int64_t)offset, nretries, err, strerror(err));
+			if (err != EINTR && err != EBUSY)
+				poll(NULL, 0, 10);
+	    }
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -407,51 +189,7 @@ again:
 				errno = ENOSPC;
 			}
 		}
-		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, 
-                    "pwrite fd %d sz %zu off %ld retry %d\n", fd,
-			    bufsz, offset, nretries);
-			poll(NULL, 0, 10);
-		}
-		if (rc == bufsz && dbenv->attr.check_pwrites) {
-			int crc;
-
-			if (nretries == dbenv->attr.num_write_retries)
-				abort();
-
-			memset(abuf, 0, sizeof(DB_LSN));
-			crc = pread(fd, abuf, bufsz, offset);
-			if (crc != bufsz) {
-				logmsg(LOGMSG_ERROR, 
-                    "trying to verify pwrite fd %d sz %d off %ld (pgno %u) but got rc %d errno %d\n",
-				    fd, (int)bufsz, offset,
-				    (uint32_t) (offset / bufsz), crc, errno);
-				if (++nretries < dbenv->attr.num_write_retries) {
-					logmsg(LOGMSG_ERROR, "Trying again\n");
-					goto again;
-				}
-			} else {
-				LOGCOPY_TOLSN(&lsn_after, abuf);
-				if (log_compare(&lsn_before, &lsn_after) ||
-				    (dbenv->attr.check_pwrites_debug &&
-					((rand() % 100) <
-					    dbenv->attr.check_pwrites_debug))) {
-					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %zu off %ld (pgno %u) lsn before "
-					    PR_LSN ", lsn after " PR_LSN
-					    ", retry %d\n", fd, bufsz, offset,
-					    (uint32_t) (offset / bufsz),
-					    PARM_LSN(lsn_before),
-					    PARM_LSN(lsn_after), nretries);
-					if (++nretries <
-					    dbenv->attr.num_write_retries) {
-						logmsg(LOGMSG_ERROR, "Trying again\n");
-						goto again;
-					}
-				}
-			}
-		}
-	} while (rc == -1 && errno == ENOSPC &&
-	    ++nretries < dbenv->attr.num_write_retries);
+	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
 	return rc;
 }
 
@@ -511,18 +249,12 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pread(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pread(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pread(fhp->fd, buf, parlen,
+				(off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -543,15 +275,12 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
-		} else if (F_ISSET(fhp, DB_FH_DIRECT))
-			*niop =
-			    __berkdb_direct_pread(fhp->fd, buf, parlen,
-			    (off_t) pgno * pagesize);
-		else
-			*niop =
-			    pread(fhp->fd, buf, parlen,
-			    (off_t) pgno * pagesize);
-
+		} 
+		else {
+			*niop = __berkdb_pread(fhp->fd, buf, parlen,
+					(off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
+		}
 		if (__berkdb_num_read_ios)
 			(*__berkdb_num_read_ios)++;
 		if (read_callback)
@@ -571,18 +300,13 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pwrite(dbenv, fhp->fd, buf,
-				    parlen, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pwrite(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					parlen, (off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -604,14 +328,9 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				__berkdb_trace_func(s);
 			}
 		} else {
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pwrite(dbenv, fhp->fd, buf,
-				    parlen, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pwrite(fhp->fd, buf, parlen,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					parlen, (off_t) pgno * pagesize, 
+					F_ISSET(fhp, DB_FH_DIRECT));
 		}
 
 		if (__berkdb_num_write_ios)
@@ -623,6 +342,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 	}
 	if (*niop == (size_t) parlen)
 		return (0);
+    // This is for testing partial writes, so we fully expect partial IO here.
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -665,7 +385,6 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	int ret;
 	struct timespec s, rem;
 	int rc;
-
 
 	if (op == DB_IO_READ && __slow_read_ns) {
 		s.tv_sec = 0;
@@ -727,18 +446,13 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pread(fhp->fd, buf,
-				    pagesize, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pread(fhp->fd, buf, pagesize,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pread(fhp->fd, buf,
+				    pagesize, (off_t) pgno * pagesize,
+					F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -759,14 +473,11 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
-		} else if (F_ISSET(fhp, DB_FH_DIRECT))
+		} else {
 			*niop =
-			    __berkdb_direct_pread(fhp->fd, buf, pagesize,
-			    (off_t) pgno * pagesize);
-		else
-			*niop =
-			    pread(fhp->fd, buf, pagesize,
-			    (off_t) pgno * pagesize);
+			    __berkdb_pread(fhp->fd, buf, pagesize,
+			    (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
+		}
 
 		if (__berkdb_num_read_ios)
 			(*__berkdb_num_read_ios)++;
@@ -787,18 +498,12 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 			x1 = bb_berkdb_fasttime();
 
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pwrite(dbenv, fhp->fd, buf,
-				    pagesize, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pwrite(fhp->fd, buf, pagesize,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					pagesize, (off_t) pgno * pagesize, F_ISSET(fhp, DB_FH_DIRECT));
 
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -820,14 +525,9 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				__berkdb_trace_func(s);
 			}
 		} else {
-			if (F_ISSET(fhp, DB_FH_DIRECT))
-				*niop =
-				    __berkdb_direct_pwrite(dbenv, fhp->fd, buf,
-				    pagesize, (off_t) pgno * pagesize);
-			else
-				*niop =
-				    pwrite(fhp->fd, buf, pagesize,
-				    (off_t) pgno * pagesize);
+			*niop = __berkdb_pwrite(dbenv, fhp->fd, buf,
+					pagesize, (off_t) pgno * pagesize,
+					F_ISSET(fhp, DB_FH_DIRECT));
 		}
 
 		if (__berkdb_num_write_ios)
@@ -839,6 +539,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop);
+    // try to do a seek + read/write
 slow:
 #endif
 	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
@@ -859,6 +561,40 @@ err:	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
 
 	return (ret);
 
+}
+
+static int __berkdb_read(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int direct) {
+	void *abuf;
+	int rc;
+
+	pthread_once(&once, init_iobuf);
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 0);
+	else
+		abuf = buf;
+	rc = read(fd, abuf, bufsz);
+	if (rc > 0 && buf != abuf)
+		memcpy(buf, abuf, rc);
+	return rc;
+}
+
+static int __berkdb_write(DB_ENV *dbenv, int fd, void *buf, size_t bufsz, int direct) {
+	void *abuf;
+	int rc;
+	int nretries = 0;
+
+	pthread_once(&once, init_iobuf);
+	if (direct)
+		abuf = get_aligned_buffer(buf, bufsz, 1);
+	else
+		abuf = buf;
+	rc = write(fd, abuf, bufsz);
+	if (rc == -1) {
+		logmsg(LOGMSG_ERROR, 
+				"write fd %d sz %zu retry %d error %d %s\n", fd,
+				bufsz, nretries, errno, strerror(errno));
+	}
+	return rc;
 }
 
 /*
@@ -889,16 +625,14 @@ __os_read(dbenv, fhp, addr, len, nrp)
 	for (taddr = addr, offset = 0; offset < len; taddr += nr, offset += nr) {
 retry:		if ((nr = DB_GLOBAL(j_read) != NULL ?
 			DB_GLOBAL(j_read)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp,
-			    DB_FH_DIRECT) ? __berkdb_direct_read(fhp->fd, taddr,
-			    len - offset) : read(fhp->fd, taddr,
-			    len - offset))<0) {
+			 __berkdb_read(dbenv, fhp->fd, taddr, len - offset, 
+				 F_ISSET(fhp, DB_FH_DIRECT))) < 0) {
 			ret = __os_get_errno();
-			if ((ret == EINTR || ret == EBUSY) &&
+			if ((ret == EINTR || ret == EBUSY) && nr == -1 &&
 			    ++retries < DB_RETRY)
 				goto retry;
-			__db_err(dbenv, "read: %p, %lu: %s",
-			    taddr, (unsigned)len - offset, strerror(ret));
+			__db_err(dbenv, "read: %p, %zu: %s",
+			    taddr, len - offset, strerror(ret));
 			return (ret);
 		}
 		if (nr == 0)
@@ -951,7 +685,7 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 	size_t *nwp;
 {
 	size_t offset;
-	ssize_t nw;
+	ssize_t nw = 0;
 	int ret, retries;
 	u_int8_t *taddr;
 
@@ -965,23 +699,50 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 		    cur_off <= sb.st_size);
 	}
 #endif
-
 	retries = 0;
-	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw)
-retry:		if ((nw = DB_GLOBAL(j_write) != NULL ?
+
+	int debug_enospc = dbenv->attr.debug_enospc_chance;
+	off_t off = 0;
+
+	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw) {
+		if (debug_enospc)
+			off = lseek(fhp->fd, (off_t) 0, SEEK_CUR);
+
+retry:
+		nw = DB_GLOBAL(j_write) != NULL ?
 			DB_GLOBAL(j_write)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp,
-			    DB_FH_DIRECT) ? __berkdb_direct_write(fhp->fd,
-			    taddr, len - offset) : write(fhp->fd, taddr,
-			    len - offset))<0) {
+			__berkdb_write(dbenv, fhp->fd, taddr, len - offset,
+					F_ISSET(fhp, DB_FH_DIRECT));
+		if (debug_enospc && off >= 0) {
+			int p = rand() % 100;
+
+			if (p < dbenv->attr.debug_enospc_chance && nw > 0) {
+				off_t rc = lseek(fhp->fd, off, SEEK_SET);
+				if (rc == off) {
+					nw = -1;
+					errno = ENOSPC;
+				}
+				else {
+					/* We got positioned into the limbo somewhere (how?)
+					 * so it's not safe to proceed. */
+					__db_err(dbenv, "lseek: fd %d off %"PRId64", wanted %"PRId64"\n", fhp->fd,
+							(int64_t)rc, (int64_t)off);
+					return errno;
+				}
+			}
+		}
+		if (nw < 0) {
 			ret = __os_get_errno();
-			if ((ret == EINTR || ret == EBUSY) &&
-			    ++retries < DB_RETRY)
+			logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d err %d %s\n",
+					__func__, fhp->fd, (int) (len - offset), retries, ret, strerror(ret));
+			if (++retries < dbenv->attr.num_write_retries) {
+				if (ret != EINTR && ret != EBUSY)
+					poll(NULL, 0, 10);
 				goto retry;
-			__db_err(dbenv, "write: %p, %lu: %s",
-			    taddr, (u_long) len - offset, strerror(ret));
+			}
 			return (ret);
 		}
+	}
 	*nwp = len;
 	return (0);
 }
@@ -1032,6 +793,13 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 
 	do {
 		rc = pwrite(fd, abuf, nobufs * pagesize, offset);
+		int err = errno;
+		if (rc == -1) {
+			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %"PRId64" retry %d error %d %s\n",
+			    fd, (int)(nobufs * pagesize), (int64_t)offset, nretries, err, strerror(err));
+				if (err != EINTR && err != EBUSY)
+						poll(NULL, 0, 10);
+		}
 		if (dbenv->attr.debug_enospc_chance) {
 			int p = rand() % 100;
 
@@ -1040,13 +808,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 				errno = ENOSPC;
 			}
 		}
-		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %ld retry %d\n",
-			    fd, (int)(nobufs * pagesize), offset, nretries);
-			poll(NULL, 0, 10);
-		}
-	} while (rc == -1 && errno == ENOSPC
-	    && ++nretries < dbenv->attr.num_write_retries);
+	} while (rc == -1 && ++nretries < dbenv->attr.num_write_retries);
 	return rc;
 }
 #endif
@@ -1067,9 +829,9 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	size_t pagesize, nobufs, *niop;
 	u_int8_t **bufs;
 {
-	int ret, i;
+	int ret = 0, i;
 	db_pgno_t c_pgno;
-	size_t single_niop, max_niop, max_bufs;
+	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
 
@@ -1130,7 +892,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) &&
 	    fhp->fd != -1 && DB_GLOBAL(j_read) != NULL);
 
-	uint64_t x1, x2;
+	uint64_t x1 = 0, x2;
 
 	max_bufs = nobufs;
 	*niop = 0;
@@ -1162,7 +924,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 		if (__berkdb_read_alarm_ms) {
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -1219,7 +981,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 		if (__berkdb_write_alarm_ms) {
 			x2 = bb_berkdb_fasttime();
 			if (gbl_bb_berkdb_enable_thread_stats) {
-				struct bb_berkdb_thread_stats *p, *t;
+				struct berkdb_thread_stats *p, *t;
 
 				t = bb_berkdb_get_thread_stats();
 				p = bb_berkdb_get_process_stats();
@@ -1251,6 +1013,8 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 
 	if (*niop == (size_t)(pagesize * nobufs))
 		return (0);
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize * nobufs, *niop);
+    // iov - we failed to write the pages as a unit, fall through and try them individually
 slow:
 #endif
 	/* TODO: __os_pwritev/__os_readv */
@@ -1267,6 +1031,31 @@ slow:
 	}
 
 	return (ret);
+}
+
+/*
+ * __os_truncate --
+ *	Truncate a file
+ *
+ * PUBLIC: int __os_truncate __P((DB_ENV *, DB_FH *, off_t offset));
+ */
+int
+__os_truncate(dbenv, fhp, offset)
+	DB_ENV *dbenv;
+	DB_FH *fhp;
+    off_t offset;
+{
+	int rc;
+	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) && fhp->fd != -1);
+	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
+	rc = ftruncate(fhp->fd, offset);
+	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
+	if (rc == -1) {
+		logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
+			(unsigned int)offset, errno, strerror(errno));
+		return -1;
+	}
+	return rc;
 }
 
 #ifdef HAVE_FILESYSTEM_NOTZERO
@@ -1457,22 +1246,22 @@ static pthread_key_t berkdb_thread_stats_key;
 void
 bb_berkdb_thread_stats_init(void)
 {
-	pthread_key_create(&berkdb_thread_stats_key, free);
+	Pthread_key_create(&berkdb_thread_stats_key, free);
 	inited = 1;
 }
 
-struct bb_berkdb_thread_stats *
+struct berkdb_thread_stats *
 bb_berkdb_get_thread_stats(void)
 {
-	static struct bb_berkdb_thread_stats junk;
-	struct bb_berkdb_thread_stats *p;
+	static struct berkdb_thread_stats junk;
+	struct berkdb_thread_stats *p;
 
 #ifndef TESTSUITE
 	if (inited) {
 		p = pthread_getspecific(berkdb_thread_stats_key);
 		if (!p) {
-			p = calloc(1, sizeof(struct bb_berkdb_thread_stats));
-			pthread_setspecific(berkdb_thread_stats_key, p);
+			p = calloc(1, sizeof(struct berkdb_thread_stats));
+			Pthread_setspecific(berkdb_thread_stats_key, p);
 		}
 		if (!p)
 			p = &junk;
@@ -1488,14 +1277,19 @@ void
 bb_berkdb_thread_stats_reset(void)
 {
 	bzero(bb_berkdb_get_thread_stats(),
-	    sizeof(struct bb_berkdb_thread_stats));
+	    sizeof(struct berkdb_thread_stats));
 }
 
-struct bb_berkdb_thread_stats *
+struct berkdb_thread_stats *
 bb_berkdb_get_process_stats(void)
 {
-	static struct bb_berkdb_thread_stats s = { 0 };
+	static struct berkdb_thread_stats s = { 0 };
 	return &s;
+}
+
+void bb_berkdb_reset_worst_lock_wait_time_us(void)
+{
+	bb_berkdb_get_process_stats()->worst_lock_wait_time_us = 0;
 }
 
 void

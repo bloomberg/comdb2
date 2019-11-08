@@ -48,7 +48,7 @@ void net_reset_explicit_flushes(void);
 static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
                              int count)
 {
-    int i, j, rc, start, end = 0, now, elapsed;
+    int i, j, rc, start, end = 0, elapsed;
     tran_type *trans = NULL;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
@@ -151,7 +151,7 @@ void rowlocks_print_stats(FILE *f)
 static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
                                int phys_txns_per_logical)
 {
-    int i, j, rc, start, end = 0, now, elapsed, physcnt;
+    int i, j, rc, start, end = 0, elapsed, physcnt;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
     tran_type *trans = NULL;

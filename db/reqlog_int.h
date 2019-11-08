@@ -1,7 +1,6 @@
 #ifndef INCLUDED_REQLOG_INT_H
 #define INCLUDED_REQLOG_INT_H
 
-#include "sqlquery.pb-c.h"
 #include "list.h"
 #include "comdb2.h"
 #include "cdb2_constants.h"
@@ -77,8 +76,6 @@ struct reqlogger {
     unsigned dump_mask;
     unsigned mask; /* bitwise or of the above two masks */
 
-    uint64_t startus;
-
     struct prefix_type prefix;
     char dumpline[1024];
     int dumplinepos;
@@ -102,21 +99,21 @@ struct reqlogger {
     /* the bound parameters */
     cson_value *bound_param_cson;
 
-    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
+    uint32_t nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
-    int rc;
+    uint64_t startus;     /* logger start timestamp */
+    uint64_t startprcsus; /* processing start timestamp */
     uint64_t durationus;
-    int vreplays;
     uint64_t queuetimeus;
+    int rc;
+    int vreplays;
     char fingerprint[FINGERPRINTSZ];
     int have_fingerprint;
     char id[41];
     int have_id;
     const char *event_type;
-
-    CDB2SQLQUERY *request;
 
     int ntables;
     int alloctables;
@@ -127,6 +124,7 @@ struct reqlogger {
     struct client_query_stats *path;
     int ncontext;
     char **context;
+    struct sqlclntstate *clnt;
 };
 
 /* a rage of values to look for */
@@ -225,8 +223,8 @@ struct nodestats {
     /* previous totals for last time quanta */
     struct rawnodestats prevtotals;
 
-    /* keep a diff of reqs/second for th last few seconds so we can
-     * caculate a smoothis reqs/second.  this may not get updated regularaly
+    /* keep a diff of reqs/second for the last few seconds so we can
+     * caculate a smooth reqs/second.  this may not get updated regularly
      * so we record epochms times. */
     unsigned cur_bucket;
     struct rawnodestats raw_buckets[NUM_BUCKETS];

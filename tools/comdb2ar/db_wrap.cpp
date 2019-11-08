@@ -32,7 +32,10 @@ DB_Wrap::DB_Wrap(const std::string& filename) : m_filename(filename)
 	// because db might be encrypted and we don't have passwd
 	uint8_t meta_buf[DBMETASIZE];
 	int fd = open(filename.c_str(), O_RDONLY);
-	read(fd, meta_buf, DBMETASIZE);
+	size_t n = read(fd, meta_buf, DBMETASIZE);
+	if (n == -1) {
+	    perror("read");
+	}
 	close(fd);
 	DBMETA *meta = (DBMETA *)meta_buf;
 	bool swapped = false;

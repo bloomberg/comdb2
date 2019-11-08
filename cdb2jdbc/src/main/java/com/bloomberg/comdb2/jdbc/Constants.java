@@ -86,6 +86,7 @@ public class Constants {
         /* linux */
         public static final int CDB2ERR_TRAN_MODE_UNSUPPORTED = -107;
 
+        public static final int CDB2ERR_SCHEMA = -110;
 
         public static final int CDB2ERR_VERIFY_ERROR = 2;
         public static final int CDB2ERR_FKEY_VIOLATION = 3;
@@ -98,6 +99,7 @@ public class Constants {
 
         public static final int CDB2ERR_DUPLICATE = 299;
         public static final int CDB2ERR_TZNAME_FAIL = 401;
+        public static final int CDB2ERR_CHECK_CONSTRAINT = 403;
 
         public static final int CDB2ERR_UNKNOWN = 300;
     }
@@ -107,6 +109,7 @@ public class Constants {
         , REQUIRE
         , VERIFY_CA
         , VERIFY_HOSTNAME
+        , VERIFY_DBNAME
     }
 
     public enum PEER_SSL_MODE {

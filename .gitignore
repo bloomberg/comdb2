@@ -62,8 +62,10 @@ tests/tools/register
 tests/tools/verify_atomics_work
 tests/tools/cdb2_open
 tests/tools/cdb2api_unit
+tests/tools/cdb2_close_early
 
 
+tests/*_generated.test
 tests/test_*
 tests/pmux.sqlite
 
@@ -81,3 +83,5 @@ contrib/docker/volumes
 
 #cscope files
 cscope.*
+
+plugins/.gitignore

@@ -1,94 +1,129 @@
 #!/usr/bin/env bash
+bash -n "$0" | exit 1
 
-bash -n "$0" | exit 1 
-# Grab my database name.
-db=$1
+################################################################################
 
-########## DAYS
+# debug=1
 
-#adding negative days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast((now() - (now() + cast('-1' as days))) as int) as res\" 2>&1 "
-echo $cmd
-res=$(eval $cmd)
-echo $res
-if [ "$res" != 86400 ] ; then
-   echo "Adding negative days fails"
-   exit 1
-fi
+# args
+dbname=$1
 
-# adding positive days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() + cast('1' as days)) -now()) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 86400 ] ; then
-   echo "Adding positive days fails"
-   exit 1
-fi
+export TMPDIR=${TMPDIR:-/tmp}
 
-#subtractive negative days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() - cast('-1' as days))- now()) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 86400 ] ; then
-   echo "Subtracting negative days fails"
-   exit 1
-fi
+# find input files
+files=$( find . -type f -name \*.req | sort )
 
-#subtracting positive days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(now() - (now() - cast('1' as days)) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 86400 ] ; then
-   echo "Subtracting positive days fails"
-   exit 1
-fi
+# counter 
+nfiles=0
 
-########## SECONDS
+# last batch
+last_batch=
 
-#adding negative days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast((now() - (now() + cast('-60' as sec))) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 60 ] ; then
-   echo "Adding negative seconds fails"
-   exit 1
-fi
+# post-process
+pproc=cat
 
-# adding positive days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() + cast('60' as sec)) -now()) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 60 ] ; then
-   echo "Adding positive seconds fails"
-   exit 1
-fi
+# testcase output
+testcase_output=
 
-#subtractive negative days
-cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() - cast('-60' as sec))- now()) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 60 ] ; then
-   echo "Subtracting negative seconds fails"
-   exit 1
-fi
+# expected output
+expected_output=
 
-#subtracting positive days
-res="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(now() - (now() - cast('60' as sec)) as int) as res\""
-echo $cmd
-res=$(eval $cmd)
-if [ "$res" != 60 ] ; then
-   echo "Subtracting positive seconds fails"
-   exit 1
-fi
+# fastinit
+function fastinit
+{
+    # print debug trace
+    [[ "$debug" == "1" ]] && set -x
 
-#Intervalds/Intervaldsus Arithmetics
-cdb2sql ${CDB2_OPTIONS} -f t1.sql $db default > t1.res
-res=$(cat t1.res)
-exp=$(cat t1.expected)
-if [[ "$res" != "$exp" ]]; then
-   diff t1.expected t1.res
-   echo "Intervalds/Intervaldsus Arithmetics fails"
-   exit 1
-fi
+    # args
+    typeset db=$1
+    typeset iter=$2
+    typeset tbl
 
-echo "Success"
+    # flagged?
+    if [[ ! -f $iter.fastinit ]]; then
+        return 0
+    fi
+
+    # fastinit
+    for tbl in $(cat $iter.fastinit) ; do
+        cdb2sql ${CDB2_OPTIONS} $db default "truncate $tbl"
+    done
+
+    return 0
+}
+
+TZ="US/Eastern"
+
+# Iterate through input files
+for testcase in $files ; do
+
+    # increment counter
+    let nfiles=nfiles+1
+
+    # cleanup testcase
+    testcase=${testcase##*/}
+    
+    # see if the prefix has changed
+    new_batch=${testcase%%_*}
+
+    # set output
+    output=$testcase.res
+    
+    # fastinit if requested
+    if [[ $new_batch != $last_batch ]] ; then
+
+        fastinit $dbname $new_batch
+        last_batch=$new_batch
+
+    fi
+
+    # Check for run-stepper
+
+    cmd="cdb2sql ${CDB2_OPTIONS} $dbname default - < $testcase > $output 2>&1"
+    # Be verbose
+    echo $cmd
+    # run command
+    eval $cmd
+
+    # post-process
+    if [[ -f $new_batch.post ]]; then
+
+        # zap file
+        > $output.postprocess
+
+        # collect post-processing tool
+        pproc=$(cat $new_batch.post)
+
+        # post-process output
+        $pproc $output >> $output.postprocess
+
+        # copy post-processed output to original
+        mv $output.postprocess $output
+    fi
+
+    # get testcase output
+    testcase_output=$(cat $output)
+
+    # get expected output
+    expected_output=$(cat $testcase.expected)
+    expected_output2=""
+    [[ -f $testcase.expected.1 ]] && expected_output2=$(cat $testcase.expected.1)
+
+    # verify 
+    if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$expected_output2" ]]; then
+
+        echo "  ^^^^^^^^^^^^"
+        echo "The above testcase (${testcase}) has failed!!!"
+        echo " "
+        echo "Use 'diff <expected-output> <my-output>' to see why:"
+        echo "> diff ${PWD}/{$testcase.expected,$output}"
+        echo " "
+        diff $testcase.expected $output
+        echo " "
+        exit 1
+
+    fi
+
+done
+
+echo "Testcase passed."

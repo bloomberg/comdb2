@@ -1,1 +1,0 @@
-./deadlock_policy.sh

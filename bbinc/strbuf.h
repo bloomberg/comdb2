@@ -25,6 +25,7 @@ void strbuf_appendf(strbuf *, const char *, ...);
 void strbuf_vappendf(strbuf *, const char *, va_list args);
 void strbuf_clear(strbuf *);
 void strbuf_free(strbuf *);
+void strbuf_hex(strbuf *, void *buf, int len);
 const char *strbuf_buf(const strbuf *);
 int strbuf_len(const strbuf *buf);
 char *strbuf_disown(strbuf *);

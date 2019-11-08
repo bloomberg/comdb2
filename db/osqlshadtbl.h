@@ -18,7 +18,6 @@
 #define _OSQL_SHADTBL_H_
 
 #include <comdb2.h>
-#include "bpfunc.pb-c.h"
 
 struct BtCursor;
 struct sql_thread;
@@ -37,6 +36,9 @@ struct shad_tbl {
 
     hash_t *addidx_hash; /* remember which index to add/del */
     hash_t *delidx_hash;
+
+    hash_t *ins_rec_hash;
+    hash_t *upd_rec_hash;
 
     struct tmp_table *upd_tbl; /* all updates go here also,
                                   key=tbl->seq, data=original_genid */
@@ -85,9 +87,9 @@ void *osql_get_shadtbl_skpcur(struct BtCursor *pCur);
 
 int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd);
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData);
+                     int nData, int flags);
 int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData);
+                     int nData, int flags);
 int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                      struct blob_buffer *blobs, int maxblobs, int is_update);
 int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,

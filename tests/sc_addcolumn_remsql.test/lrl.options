@@ -1,2 +1,5 @@
 round_robin_stripes
 ssl_allow_remsql 1
+fdbdebg 1
+nowatch
+notimeout

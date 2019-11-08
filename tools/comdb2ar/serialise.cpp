@@ -11,6 +11,7 @@
 #include "tar_header.h"
 #include "increment.h"
 #include "util.h"
+#include "ssl_support.h"
 
 #include <cassert>
 #include <cstring>
@@ -230,7 +231,8 @@ reopen:
     unsigned long long pageno = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &pagebuf, 512, bufsize);
+        if(posix_memalign((void**) &pagebuf, 512, bufsize))
+            throw Error("Failed to allocate output buffer");
 #else
         pagebuf = (uint8_t*) memalign(512, bufsize);
 #endif
@@ -386,6 +388,61 @@ reopen:
         free(pagebuf);
 }
 
+std::string replace_dbname(const std::string& replaceWith, const std::string& dbname, 
+        std::string filepath)
+{
+    size_t pos = filepath.find(dbname);
+    if (pos == std::string::npos)
+    {
+        return filepath;
+    }
+    return filepath.replace(pos, dbname.length(), replaceWith);
+}
+
+bool is_changeable_file(const std::string& filepath)
+{
+    std::string changeable[] = {
+        ".llmeta.dta",
+        ".metadata.dta",
+        ".service",
+        ".txn",
+        "_file_vers_map",
+        ".fstblk.dta",
+        ".blkseq.dta",
+        ".blkseq.freerec",
+        ".blkseq.ix0"
+    };
+
+    for (auto chg : changeable)
+    {
+        if (filepath.find(chg) != std::string::npos)
+            return true;
+    }
+    return false;
+
+}
+
+void replace_file_name(FileInfo &fi, const std::string& repl_name,
+        const std::string& dbname)
+{
+    std::string newname = replace_dbname(repl_name, dbname, fi.get_filename());
+    std::cerr << "Replace " << fi.get_filename() << " with " << newname << "\n";
+    fi.set_filename(replace_dbname(repl_name, dbname, fi.get_filename()));
+}
+
+static void serialise_page_list(const std::string &dbtxndir,
+                                const std::string &dbdir)
+{
+    std::string absfile, storename;
+    struct stat st;
+    makeabs(absfile, dbtxndir, "pagelist");
+    if (stat(absfile.c_str(), &st) == -1) {
+        return;
+    }
+    /* Pretend its a logfile */
+    FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+    serialise_file(fi);
+}
 
 static void serialise_log_files(
         const std::string& dbtxndir,
@@ -456,6 +513,14 @@ static void strip_cluster(const std::string& lrlpath,
     }
 }
 
+static bool file_exists(const std::string &path) {
+    int rc = access(path.c_str(), F_OK);
+    if (rc == 0)
+        return true;
+    // treat not being able to access the file the same as file doesn't exist
+    return false;
+}
+
 void parse_lrl_file(const std::string& lrlpath,
         std::string* p_dbname,
         std::string* p_dbdir,
@@ -465,6 +530,13 @@ void parse_lrl_file(const std::string& lrlpath,
         bool* p_nonames,
         bool* has_cluster_info)
 {
+    /* SSL certificates */
+    std::string certdir, cert, key, ca;
+
+#if HAVE_CRL
+    std::string crl;
+#endif
+
     // First, load the lrl file into memory.
     std::ifstream lrlstream(lrlpath.c_str());
     if(!lrlstream.is_open()) {
@@ -528,15 +600,136 @@ void parse_lrl_file(const std::string& lrlpath,
                     throw LRLError(path, lineno, "missing spfile");
                 }
                 p_support_files->push_back(path);
+            } else if(tok == "timepartitions") {
+                std::string path;
+                if(!(liness >> path)) {
+                    throw LRLError(path, lineno, "missing timepartitions file");
+                }
+                p_support_files->push_back(path);
             } else if(tok == "nonames") {
                 *p_nonames = true;
             } else if (tok == "usenames") {
                 *p_nonames = false;
             } else if(tok == "cluster") {
                 *has_cluster_info = true;
+            } else if(tok == SSL_CERT_PATH_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate path");
+                certdir = tok;
+            } else if(tok == SSL_CERT_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate");
+                cert = tok;
+            } else if(tok == SSL_KEY_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL key");
+                key = tok;
+            } else if(tok == SSL_CA_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL CA certificate");
+                ca = tok;
+#if HAVE_CRL
+            } else if(tok == SSL_CRL_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate revocation list");
+                crl = tok;
+#endif
             }
         }
     }
+
+    if (!certdir.empty())
+        certdir += "/";
+
+    if (!cert.empty())
+        p_support_files->push_back(cert);
+    else if (file_exists(certdir + DEFAULT_SERVER_CERT))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_CERT);
+
+    if (!key.empty())
+        p_support_files->push_back(key);
+    else if (file_exists(certdir + DEFAULT_SERVER_KEY))
+        p_support_files->push_back(certdir + DEFAULT_SERVER_KEY);
+
+    if (!ca.empty())
+        p_support_files->push_back(ca);
+    else if (file_exists(certdir + DEFAULT_CA))
+        p_support_files->push_back(certdir + DEFAULT_CA);
+
+#if HAVE_CRL
+    if (!crl.empty())
+        p_support_files->push_back(crl);
+    else if (file_exists(certdir + DEFAULT_CRL))
+        p_support_files->push_back(certdir + DEFAULT_CRL);
+#endif
+}
+
+void create_lrl_file(std::string& lrlpath,
+        std::string repl_name,
+        std::string master_name,
+        std::string repl_type)
+{
+    // First, load the lrl file into memory.
+    // Modify string path to rename it to the replication machine's name
+    size_t parent_dir_loc = lrlpath.find_last_of("/") + 1;
+    if (parent_dir_loc >= lrlpath.size())
+    {
+        std::cerr << "Path doesn't have / inside?" << std::endl;
+    }
+    std::string new_path = lrlpath.substr(0, parent_dir_loc) + repl_name + ".lrl";
+
+    std::ifstream lrlstream(lrlpath.c_str());
+    std::ofstream phys_lrl(new_path.c_str());
+
+    std::cerr << "orig lrlpath was: " << lrlpath << std::endl;
+    std::cerr << "create_lrl_file here: " << new_path << std::endl;
+    lrlpath = new_path;
+
+    if(!lrlstream.is_open()) {
+        throw LRLError(lrlpath, 0, "cannot open file");
+    }
+    int lineno = 0;
+    while(!lrlstream.eof()) {
+        std::string line;
+        std::getline(lrlstream, line);
+        lineno++;
+
+        // Parse the line that we just read.  First strip off comments.
+        size_t pos = line.find_first_of('#');
+        if(pos != std::string::npos) {
+            line.resize(pos);
+        }
+        std::istringstream liness(line);
+
+        std::string tok;
+        if(liness >> tok) {
+
+            /* rewrite the name here */
+            if(tok == "cluster") {
+                if(!(liness >> tok)) {
+                    throw LRLError(lrlpath, lineno, "Invalid cluster nodes line");
+                }
+
+                /* cleave cluster is implied */
+                phys_lrl << "#" << line << std::endl;
+            }
+            else if(tok == "name") {
+                if(!(liness >> tok)) {
+                    throw LRLError(lrlpath, lineno, "missing database name");
+                }
+                phys_lrl << "name    " << repl_name << std::endl; 
+
+            }
+            else 
+            {
+                phys_lrl << line << std::endl;
+            }
+
+        }
+
+    }
+
+    phys_lrl << "replicate_from " << master_name << " " << repl_type; 
 }
 
 std::string generate_fingerprint(void) 
@@ -558,6 +751,8 @@ std::string generate_fingerprint(void)
 
 void serialise_database(
   std::string lrlpath,
+  std::string repl_type,
+  std::string repl_name,
   const std::string& comdb2_task,
   bool disable_log_deletion,
   bool strip_cluster_info,
@@ -566,6 +761,7 @@ void serialise_database(
   bool do_direct_io,
   bool incr_create,
   bool incr_gen,
+  bool copy_physical,
   const std::string& incr_path
 )
 // Serialise a database into tape archive format and write it to stdout.
@@ -581,8 +777,10 @@ void serialise_database(
     bool has_cluster_info = false;
     std::string origlrlname("");
     std::string strippedpath("");
+    std::string templrlpath("");
 
-    // All support files - csc2s, extra lrls, resources for stored procedures
+    // All support files - csc2s, extra lrls, resources for stored procedures,
+    // SSL certificates
     // etc.
     std::list<std::string> support_files;
 
@@ -613,17 +811,34 @@ void serialise_database(
         nonames = check_usenames(dbname, dbdir, nonames);
     }
 
+    if (copy_physical && !nonames)
+    {
+        std::ostringstream ss;
+        ss << "Cannot copy a physical replicant under master that has usenames";
+        throw Error(ss);
+    }
+
+    /* update found parsed info if making a physical replicant */
+    if (copy_physical)
+    {
+        create_lrl_file(lrlpath, repl_name, dbname, repl_type);
+        templrlpath = lrlpath;
+    }
+
     // Create the directory for incremental backups if needed
     if (incr_create) {
         struct stat sb;
 
         if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
             std::string cmd("mkdir -p " + incr_path);
-            system(cmd.c_str());
+            int rc = system(cmd.c_str());
+            if (rc)
+                std::cerr << "system() returns rc = " << rc << std::endl;
         }
     }
 
-    if (strip_cluster_info && has_cluster_info) {
+    /* Copy physical should ignore this, */
+    if (strip_cluster_info && has_cluster_info && !copy_physical) {
         std::string newlrlpath;
         support_files.clear();
         table_names.clear();
@@ -717,6 +932,12 @@ void serialise_database(
     if(!support_files_only) {
         listdir(dbdir_files, dbdir);
         listdir(dbtxndir_files, dbtxndir);
+    }
+
+    std::string rulesetdir = dbdir + "/rulesets";
+    std::list<std::string> ruleset_files;
+    if(file_exists(rulesetdir)) {
+        listdir(ruleset_files, rulesetdir);
     }
 
     // List of incremental comparison files to determine new/updated/deleted files
@@ -1100,6 +1321,7 @@ void serialise_database(
                 }
             }
             if (islrl && strippedpath != "") {
+                /* never reached if copy physical */
                 FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
                 serialise_file(fi, iom, strippedpath);
             } else {
@@ -1107,6 +1329,18 @@ void serialise_database(
                 serialise_file(fi, iom);
             }
             islrl = false;
+        }
+
+        // Now do ruleset files (if any).
+        // These are special because the relative "rulesets/" prefix must be
+        // preserved, unlike support files, where only the base file name is
+        // considered.
+        for(std::list<std::string>::const_iterator it = ruleset_files.begin();
+                it != ruleset_files.end();
+                ++it) {
+            abspath = dbdir + "/rulesets/" + *it;
+            FileInfo fi(FileInfo::RULESET_FILE, abspath, dbdir);
+            serialise_file(fi, iom);
         }
 
         // Now do optional files (if any)
@@ -1126,13 +1360,6 @@ void serialise_database(
         // Now do data files
         if(!support_files_only) {
 
-            // Grab the checkpoint file, pretend its a logfile
-            std::string absfile;
-            std::cerr<<"Serializing checkpoint"<<std::endl;
-            makeabs(absfile, dbtxndir, "checkpoint");
-            FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
-            serialise_file(fi);
-
             long long log_number(lowest_log);
             for(std::list<FileInfo>::iterator
                     it = data_files.begin();
@@ -1148,12 +1375,12 @@ void serialise_database(
                     log_holder->release_log(log_number - 1);
                 }
 
-                // Ok, now serialise this file.
                 serialise_file(*it, iom, "", incr_path, incr_create);
             }
 
             // Serialise all remaining log files, including incomplete ones
             serialise_log_files(dbtxndir, dbdir, log_number, false);
+            serialise_page_list(dbtxndir, dbdir);
         }
 
     // Serialise files for incremental backup
@@ -1277,6 +1504,17 @@ void serialise_database(
     writepadding(2 * 512);
 
     // Success, all done!
+    
+    // Need to delete extraneous lrl file if modified 
+    if (copy_physical)
+    {
+        if (remove(templrlpath.c_str()) != 0)
+        {
+            std::cerr << "Failed to remove physical replicant lrl file at: "
+                << templrlpath << std::endl;
+        }
+
+    }
 }
 
 extern uint32_t myflip(uint32_t in);
@@ -1337,7 +1575,8 @@ void write_incremental_file (
     off_t offset = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, bufsize);
+    if(posix_memalign((void**) &pagebuf, 512, bufsize))
+        throw Error("Failed to allocate output buffer");
 #else
     pagebuf = (uint8_t*) memalign(512, bufsize);
 #endif
@@ -1366,9 +1605,26 @@ void write_incremental_file (
                 pagep->lsn.offset = myflip(pagep->lsn.offset);
             }
 
-            write(1, &(LSN(pagep).file), 4);
-            write(1, &(LSN(pagep).offset), 4);
-            write(1, &verify_cksum, 4);
+            rc = write(1, &(LSN(pagep).file), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &(LSN(pagep).offset), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &verify_cksum, 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
 
             offset += pagesize;
         }

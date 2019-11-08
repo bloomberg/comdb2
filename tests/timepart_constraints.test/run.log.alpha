@@ -1,0 +1,33 @@
+cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[]
+
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[]
+
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "testview1",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  },
+  {
+   "TABLENAME"    : "$1_E6C71BFE",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='testview1', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='testview1', shardname='$2_CE9DB8D')
+(name='testview1', shardname='$1_E6C71BFE')

@@ -61,18 +61,30 @@ char *strdup(char *str1)
 
 void initresourceman(const char *newlrlname)
 {
-    listc_init(&list, offsetof(struct resource, link));
+    static int once = 1;
+    if (once) {
+        listc_init(&list, offsetof(struct resource, link));
+        once = 0;
+    }
     if (!newlrlname)
         return;
 
     if (lrlname) // free before assigning new one
         free(lrlname);
 
-    lrlname = realpath(newlrlname, NULL);
+    char *mem = NULL;
+#   if defined(_IBM_SOURCE)
+    mem = malloc(PATH_MAX);
+#   endif
+    lrlname = realpath(newlrlname, mem);
 
     /* lrl file is always known as "lrl" */
     if (lrlname)
         addresource("lrl", lrlname);
+#   if defined(_IBM_SOURCE)
+    else
+        free(mem);
+#   endif
 }
 
 /* Gets the path of the child file (usually a .lrl or .csc2 relative to a
@@ -91,8 +103,9 @@ char *getdbrelpath(const char *relpath)
     size_t reltolen, relpathlen;
     const char *relto = lrlname;
 
-    /* if relpath is absolute then return it unaltered */
-    if (relpath[0] == '/')
+    /* if relpath is absolute then return it unaltered -OR- if there is
+     * no base path available to help us modify it */
+    if (relpath[0] == '/' || !relto)
         return strdup(relpath);
 
     /* if relto has no path information then return relpath unaltered */
@@ -162,5 +175,13 @@ void dumpresources(void)
     LISTC_FOR_EACH(&list, res, link)
     {
         logmsg(LOGMSG_USER, "%s -> %s\n", res->name, res->filepath);
+    }
+}
+
+void cleanresources(void)
+{
+    void *ent;
+    while ((ent = listc_rtl(&list)) != NULL) {
+        free(ent);
     }
 }

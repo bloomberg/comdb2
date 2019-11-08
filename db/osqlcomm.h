@@ -24,9 +24,15 @@
 #include "block_internal.h"
 #include "comdb2uuid.h"
 #include "schemachange.h"
-#include "bpfunc.pb-c.h"
 
+#define OSQL_BLOB_ODH_BIT (1 << 31)
+#define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
+
+enum {
+    OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001,
+};
+
 /**
  * Initializes this node for osql communication
  * Creates the offload net.
@@ -49,13 +55,14 @@ void osql_comm_destroy(void);
  * It is used mainly with blocksql
  *
  */
-int osql_comm_blkout_node(char *host);
+int osql_comm_blkout_node(const char *host);
 
 /* Offload upgrade record request. */
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
 /* Offload upgrade record request. */
-int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid);
+int offload_comm_send_upgrade_records(const dbtable *db,
+                                      unsigned long long genid);
 
 /* Offload record upgrade statistics */
 void upgrade_records_stats(void);
@@ -79,8 +86,8 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
-                      struct ireq *);
+int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
+                      struct errstat **xerr, struct ireq *);
 
 /**
  * Send a "POKE" message to "tonode" inquering about session "rqid"
@@ -142,7 +149,8 @@ int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb);
+                     char *pData, int nData, int type, SBUF2 *logsb,
+                     int upsert_flags);
 
 /**
  * Send DELREC op
@@ -192,6 +200,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              struct errstat *xerr, int type, SBUF2 *logsb,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info);
+int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
+                       uint32_t start_gen, int type, SBUF2 *logsb);
 
 /**
  * Send decomission for osql net
@@ -218,7 +228,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
  *
  */
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                        void *trans, char *msg, int msglen, int *flags,
+                        void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
@@ -227,7 +237,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
@@ -363,7 +373,7 @@ int osql_disable_net_test(void);
  * Check if we need the bdb lock to stop long term sql sessions
  *
  */
-int osql_comm_check_bdb_lock(void);
+int osql_comm_check_bdb_lock(const char *func, int line);
 
 int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,
@@ -412,5 +422,10 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        unsigned long long seq);
 
 int osql_close_connection(char *host);
+
+int osql_get_replicant_numops(const char *rpl, int has_uuid);
+
+int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
+                   int step, struct block_err *err);
 
 #endif

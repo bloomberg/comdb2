@@ -56,136 +56,23 @@ static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
 
 enum mach_class get_my_mach_class(void)
 {
-    static int have_class = 0;
-    static enum mach_class my_class = CLASS_UNKNOWN;
-    char *class;
-
-    if (!have_class) {
-        static const char *delims = " \t\r\n";
-        char line[512];
-        char *tok;
-        FILE *fh;
-        char hostname[64];
-
-        /* whatever the outcome, don't do this again */
-        have_class = 1;
-
-        if (gethostname(hostname, sizeof(hostname)) == -1) {
-            logmsg(LOGMSG_ERROR, "%s:gethostname: %d %s\n", __func__, errno,
-                    strerror(errno));
-            return CLASS_UNKNOWN;
-        }
-
-        /* TODO: find a way around? only use if exists? */
-        char *bbcpu = comdb2_location("config", "bbcpu.lst");
-        fh = fopen(bbcpu, "r");
-        if (!fh) {
-            logmsg(LOGMSG_ERROR, "%s: error opening %s: %d %s\n", __func__, bbcpu,
-                    errno, strerror(errno));
-            free(bbcpu);
-            return CLASS_UNKNOWN;
-        }
-        free(bbcpu);
-
-        while (fgets(line, sizeof(line), fh)) {
-            char *lasts;
-            tok = strtok_r(line, delims, &lasts);
-            if (tok && strcmp(tok, hostname) == 0) {
-                tok = strtok_r(NULL, delims, &lasts);
-
-                /* Choose the weakest class listed in bbcpu. */
-                while (tok) {
-                    if (strcmp(tok, "alpha") == 0) {
-                        if (my_class == CLASS_UNKNOWN ||
-                            my_class > CLASS_ALPHA) {
-                            my_class = CLASS_ALPHA;
-                            class = "alpha";
-                        }
-                    }
-                    if (strcmp(tok, "cdbuat") == 0) {
-                        if (my_class == CLASS_UNKNOWN || my_class > CLASS_UAT) {
-                            my_class = CLASS_UAT;
-                            class = "uat";
-                        }
-                    } else if (strcmp(tok, "beta") == 0) {
-                        if (my_class == CLASS_UNKNOWN ||
-                            my_class > CLASS_BETA) {
-                            my_class = CLASS_BETA;
-                            class = "beta";
-                        }
-                    } else if (strcmp(tok, "prod") == 0) {
-                        if (my_class == CLASS_UNKNOWN) {
-                            my_class = CLASS_PROD;
-                            class = "prod";
-                        }
-                    } else if (strcmp(tok, "tstpr") == 0) {
-                        my_class = CLASS_TEST;
-                        class = "tstpr";
-                    }
-
-                    tok = strtok_r(NULL, delims, &lasts);
-                }
-
-                if (my_class != CLASS_UNKNOWN) {
-                    logmsg(LOGMSG_ERROR, "Identified %s as class %s in bin/bbcpu.lst\n",
-                           hostname, class);
-                }
-
-                break;
-            }
-        }
-        fclose(fh);
-    }
-
-    return my_class;
+    if (gbl_machine_class)
+        return mach_class_name2class(gbl_machine_class);
+    return get_mach_class(gbl_mynode);
 }
-
-static pthread_mutex_t mach_class_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
 
-const char *get_class_str(enum mach_class cls)
-{
-    switch (cls) {
-    default:
-        return "???";
-    case CLASS_TEST:
-        return "test";
-    case CLASS_ALPHA:
-        return "alpha";
-    case CLASS_BETA:
-        return "beta";
-    case CLASS_PROD:
-        return "prod";
-    }
-}
 
 const char *get_mach_class_str(char *host)
 {
-    return get_class_str(get_mach_class(host));
-}
-
-static int disable_rmt_dbupdates(const char *mach)
-{
-    enum mach_class rmtclass, myclass;
-
-    rmtclass = get_mach_class(mach);
-    myclass = get_mach_class(gbl_mynode);
-
-    if (rmtclass == CLASS_TEST && rmtclass != CLASS_BETA &&
-        myclass != CLASS_TEST)
-        return 1;
-    return 0;
+    return mach_class_class2name(get_mach_class(host));
 }
 
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 {
-
     enum mach_class rmtclass;
     int ix = nodeix(host);
-
-    if (disable_rmt_dbupdates(host))
-        return 0;
 
     if (btst(pol->explicit_disallow_machs, ix))
         return 0;
@@ -218,7 +105,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_mach_class(gbl_mynode))
+        if (get_mach_class(host) >= get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -233,7 +120,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_mach_class(gbl_mynode))
+        if (get_mach_class(host) == get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -247,7 +134,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_mach_class(host))
+        if (get_mach_class(host) <= get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -258,21 +145,11 @@ int allow_broadcast_to_remote(const char *host)
 static int parse_mach_or_group(char *tok, int ltok, char **mach,
                                enum mach_class *cls)
 {
+    char *name = strndup(tok, ltok);
     *mach = NULL;
-    *cls = CLASS_UNKNOWN;
-    if (tokcmp(tok, ltok, "test") == 0)
-        *cls = CLASS_TEST;
-    else if (tokcmp(tok, ltok, "dev") == 0)
-        *cls = CLASS_TEST;
-    else if (tokcmp(tok, ltok, "alpha") == 0)
-        *cls = CLASS_ALPHA;
-    else if (tokcmp(tok, ltok, "beta") == 0)
-        *cls = CLASS_BETA;
-    else if (tokcmp(tok, ltok, "prod") == 0)
-        *cls = CLASS_PROD;
-    else if (tokcmp(tok, ltok, "uat") == 0)
-        *cls = CLASS_UAT;
-    else {
+
+    *cls = mach_class_name2class(name);
+    if (!*cls) {
         char *m;
         m = tokdup(tok, ltok);
         *mach = intern(m);
@@ -379,7 +256,7 @@ int process_allow_command(char *line, int lline)
 
         if (if_mach > 0 && if_mach != gbl_mynode)
             goto ignore;
-        if (if_cls != CLASS_UNKNOWN && if_cls != get_mach_class(gbl_mynode))
+        if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;
     }
 
@@ -401,17 +278,18 @@ int process_allow_command(char *line, int lline)
         if (allow == 1) {
             bset(&pol->explicit_allow_classes, cls);
             bclr(&pol->explicit_disallow_classes, cls);
-            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr, get_class_str(cls));
+            logmsg(LOGMSG_USER, "allowing %s %s machines\n", pol->descr,
+                   mach_class_class2name(cls));
         } else if (allow == 0) {
             bset(&pol->explicit_disallow_classes, cls);
             bclr(&pol->explicit_allow_classes, cls);
             logmsg(LOGMSG_USER, "disallowing %s %s machines\n", pol->descr,
-                   get_class_str(cls));
+                   mach_class_class2name(cls));
         } else if (allow == -1) {
             bclr(&pol->explicit_disallow_classes, cls);
             bclr(&pol->explicit_allow_classes, cls);
-            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n", pol->descr,
-                   get_class_str(cls));
+            logmsg(LOGMSG_USER, "resetting policy for %s %s machines\n",
+                   pol->descr, mach_class_class2name(cls));
         }
     } else {
         goto bad;
@@ -426,4 +304,34 @@ ignore:
 bad:
     logmsg(LOGMSG_ERROR, "bad command <%*.*s>\n", lline, lline, line);
     return -1;
+}
+
+void dump_policy_structure(const struct rmtpol *pol)
+{
+    logmsg(LOGMSG_USER, "Policy '%s'\n", pol->descr);
+    for (int i = 0; i < sizeof(pol->explicit_disallow_machs); i++) {
+        if (btst(pol->explicit_disallow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_disallow mach %d\n", i);
+    }
+    for (int i = 0; i < sizeof(pol->explicit_allow_machs); i++) {
+        if (btst(pol->explicit_allow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_allow mach %d\n", i);
+    }
+
+    int c = 0;
+    while (++c <= 6) { // start from dev
+        if (btst(&pol->explicit_disallow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_disallow class %s\n",
+                   mach_class_class2name(c));
+        if (btst(&pol->explicit_allow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_allow class %s\n",
+                   mach_class_class2name(c));
+    }
+}
+
+void dump_remote_policy()
+{
+    dump_policy_structure(&write_pol);
+    dump_policy_structure(&brd_pol);
+    dump_policy_structure(&cluster_pol);
 }

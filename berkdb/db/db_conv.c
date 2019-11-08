@@ -687,8 +687,6 @@ __db_pageswap(dbp, pp, len, pgin)
 {
 	DB_ENV *dbenv = dbp->dbenv;
 	db_pgno_t pg;
-	size_t pgsize;
-	void *pgcopy;
 	int ret;
 	u_int16_t hoffset;
 

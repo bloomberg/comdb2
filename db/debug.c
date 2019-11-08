@@ -21,15 +21,16 @@
 
 #include <segstr.h>
 #include <stdarg.h>
+#include <compat.h>
 
 #include "comdb2.h"
 #include "tag.h"
 #include "net.h"
-
 #include "nodemap.h"
 #include "logmsg.h"
+#include "time_accounting.h"
+#include "intern_strings.h"
 
-void tcmtest_routecpu_set_down_node(int n);
 int osql_disable_net_test(void);
 int osql_enable_net_test(int testnum);
 
@@ -77,17 +78,16 @@ static void nettest_usage(void)
     logmsg(LOGMSG_USER, "\n");
 }
 
-/* parse debug trap */
+char *tcmtest_routecpu_down_node;
+
+/* parse debug trap @send debug <cmd> */
 void debug_trap(char *line, int lline)
 {
     char table[MAXTABLELEN];
     char tag[MAXTAGLEN];
-    int i;
-    int rc;
     int st = 0;
     char *tok;
     int ltok;
-    int newvers;
 
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "delsc") == 0) {
@@ -117,19 +117,24 @@ void debug_trap(char *line, int lline)
 
         else if (tokcmp(tok, ltok, "routecpu") == 0) {
             tok = segtok(line, lline, &st, &ltok);
-            if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "routecpu command requires a node to route-off argument\n");
-            } else {
-                int node = toknum(tok, ltok);
-                if (node > 0) {
-                    tcmtest_routecpu_set_down_node(node);
-                    logmsg(LOGMSG_USER, "enabled routecpu test for node %d\n", node);
+            char *host = NULL;
+            if (ltok > 0) {
+                char *tmphost = tokdup(tok, ltok);
+                char *end = NULL;
+                int node = strtol(tmphost, &end, 10);
+                if (*end == 0) { /* consumed entire token */
+                    if (node > 0) {
+                        host = hostname(node);
+                    }
                 } else {
-                    tcmtest_routecpu_set_down_node(0);
-                    logmsg(LOGMSG_USER, "disabled routecpu test\n");
+                    host = intern(tmphost);
                 }
+                free(tmphost);
             }
+            logmsg(LOGMSG_USER, "%s routecpu test for node %s\n",
+                   host ? "enable" : "disable",
+                   host ? host : tcmtest_routecpu_down_node);
+            tcmtest_routecpu_down_node = host;
         }
         /* netdebug tests */
         else if (tokcmp(tok, ltok, "nettest") == 0) {
@@ -247,55 +252,17 @@ void debug_trap(char *line, int lline)
         logmsg(LOGMSG_USER, "nodes:\n");
         for (int i = 0; i < numnodes; i++)
             logmsg(LOGMSG_USER, "  %s %d\n", hosts[i], nodeix(hosts[i]));
+    } else if (tokcmp(tok, ltok, "timings") == 0) {
+        print_all_time_accounting();
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "tcmtest <test>       - enable a cdb2tcm test\n");
         logmsg(LOGMSG_USER, "tcmtest list         - list cdb2tcm tests\n");
         logmsg(LOGMSG_USER, "getvers table        - get schema version for table (or all)\n");
         logmsg(LOGMSG_USER, "putvers table num    - set schema version for table\n");
         logmsg(LOGMSG_USER, "delsc   table tag    - delete a tag\n");
+        logmsg(LOGMSG_USER, "timings              - print all accumulated "
+                            "timing measurements \n");
     } else {
         logmsg(LOGMSG_ERROR, "Unknown debug command <%.*s>\n", ltok, tok);
-    }
-}
-
-void fhexdump(FILE *out, void *memp, size_t len, char *prefix)
-{
-    int line, i;
-    unsigned char *mem = (unsigned char *)memp;
-
-    for (line = 0; line < len / 16; line++) {
-        logmsgf(LOGMSG_USER, out, "%s%8x |", prefix, line * 16);
-        for (i = 0; i < 16; i++) {
-            logmsgf(LOGMSG_USER, out, "%02x", mem[line * 16 + i]);
-            if ((i + 1) % 4 == 0)
-                logmsgf(LOGMSG_USER, out, " ");
-        }
-        logmsgf(LOGMSG_USER, out, "|  |");
-        for (i = 0; i < 16; i++) {
-            logmsgf(LOGMSG_USER, out, "%c",
-                    isprint(mem[line * 16 + i]) ? mem[line * 16 + i] : '.');
-        }
-        logmsgf(LOGMSG_USER, out, "|\n");
-    }
-    if (len % 16) {
-        int lim = len % 16;
-        logmsgf(LOGMSG_USER, out, "%s%8x |", prefix, line * 16);
-        for (i = 0; i < lim; i++) {
-            logmsgf(LOGMSG_USER, out, "%02x", mem[line * 16 + i]);
-            if ((i + 1) % 4 == 0)
-                logmsgf(LOGMSG_USER, out, " ");
-        }
-        for (i = lim; i < 16; i++) {
-            logmsgf(LOGMSG_USER, out, "..");
-            if ((i + 1) % 4 == 0)
-                logmsgf(LOGMSG_USER, out, " ");
-        }
-        logmsgf(LOGMSG_USER, out, "|  |");
-        for (i = 0; i < lim; i++)
-            logmsgf(LOGMSG_USER, out, "%c",
-                    isprint(mem[line * 16 + i]) ? mem[line * 16 + i] : '.');
-        for (i = lim; i < 16; i++)
-            logmsgf(LOGMSG_USER, out, " ");
-        logmsgf(LOGMSG_USER, out, "|\n");
     }
 }

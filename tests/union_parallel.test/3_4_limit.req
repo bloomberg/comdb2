@@ -1,0 +1,1 @@
+select c from t2 union all select e from t3 limit 10

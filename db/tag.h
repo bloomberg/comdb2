@@ -80,8 +80,8 @@ struct dbtag {
     LISTC_T(struct schema) taglist;
 };
 
-int lock_taglock(void);
-int unlock_taglock(void);
+void lock_taglock(void);
+void unlock_taglock(void);
 
 /* sql_record.flags */
 enum {
@@ -92,7 +92,8 @@ enum {
     SCHEMA_RECNUM = 8 /* recnum flag set */
     ,
     SCHEMA_DYNAMIC = 16,
-    SCHEMA_DATACOPY = 32 /* datacopy flag set on index */
+    SCHEMA_DATACOPY = 32, /* datacopy flag set on index */
+    SCHEMA_UNIQNULLS = 64 /* treat all NULL values as UNIQUE */
 };
 
 /* sql_record_member.flags */
@@ -106,9 +107,10 @@ enum {
 /* flags for schema conversion */
 enum {
     /* conversion for update: skip fields missing in source buffer */
-    CONVERT_UPDATE = 1,
+    CONVERT_UPDATE               = 1,
     CONVERT_LITTLE_ENDIAN_CLIENT = 2,
-    CONVERT_NULL_NO_ERROR = 4 // support instant sc for dbstore
+    CONVERT_NULL_NO_ERROR        = 4, // support instant sc for dbstore
+    CONVERT_IGNORE_BLOBS         = 8
 };
 
 typedef enum convert_errcode {
@@ -304,9 +306,9 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
 void printrecord(char *buf, struct schema *sc, int len);
 
 void *create_blank_record(struct dbtable *db, size_t *length);
-int validate_server_record(const void *record, size_t reclen,
-                           const struct schema *schema,
-                           struct convert_failure *reason);
+int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
+                           const char *tag, const char *ondisktag,
+                           struct schema *schema);
 void init_convert_failure_reason(struct convert_failure *fail_reason);
 
 /* I'm putting these functions in so that javasp.c code can query schema stuff
@@ -414,7 +416,7 @@ int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail, int *tail
                            char *outbuf, struct convert_failure *reason,
                            const char *tzname);
 
-int create_key_from_ondisk_blobs(struct dbtable *db, int ixnum, char **tail,
+int create_key_from_ondisk_blobs(const struct dbtable *db, int ixnum, char **tail,
                                  int *taillen, char *mangled_key,
                                  const char *fromtag, const char *inbuf,
                                  int inbuflen, const char *totag, char *outbuf,
@@ -429,17 +431,19 @@ int create_key_from_ondisk_sch(struct dbtable *db, struct schema *fromsch, int i
                                struct convert_failure *reason,
                                const char *tzname);
 
-int create_key_from_ondisk_sch_blobs(
-    struct dbtable *db, struct schema *fromsch, int ixnum, char **tail, int *taillen,
-    char *mangled_key, const char *fromtag, const char *inbuf, int inbuflen,
-    const char *totag, char *outbuf, struct convert_failure *reason,
-    blob_buffer_t *inblobs, int maxblobs, const char *tzname);
+int create_key_from_ondisk_sch_blobs(const struct dbtable *db, struct schema *fromsch,
+                                     int ixnum, char **tail, int *taillen,
+                                     char *mangled_key, const char *fromtag,
+                                     const char *inbuf, int inbuflen,
+                                     const char *totag, char *outbuf,
+                                     struct convert_failure *reason,
+                                     blob_buffer_t *inblobs, int maxblobs,
+                                     const char *tzname);
 
 int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,
                          int inbuflen, char *outbuf);
 
-extern pthread_rwlock_t schema_lk;
 char* typestr(int type, int len);
 
 #endif

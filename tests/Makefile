@@ -11,16 +11,35 @@ include $(TESTSROOTDIR)/Makefile.common
 
 
 # List of disabled tests
-export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+
+ifeq ($(SKIPSSL), 1)
+SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+ifeq ($(wildcard $(BUILDDIR)/tcl/libtclcdb2.so),)
+#if we have not compiled with tcl, skip tests that require tclcdb2
+SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+export DISABLED_TESTS
+
+DOALL:=0
+
+ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
+DOALL:=1
+endif
 
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
-TOTAL=$(words $(MAKECMDGOALS))
-ifeq ($(TOTAL),0)
-TOTAL=$(words $(ALL_TESTS))
+TOTAL=$(words $(MAKECMDGOALS) )
+ifeq ($(DOALL),1)
+TOTAL=$(words $(ALL_TESTS) )
 endif
 
 all: init basicops all_tests
@@ -40,14 +59,17 @@ basicops_nokey: init
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "MAKECMDGOALS=${MAKECMDGOALS}" >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
-	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
 	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} SKIP_COPY_EXE="${SKIP_COPY_EXE}" ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed, see ${TESTDIR}/copy_files_to_cluster.log" )
 
 showparams: 
+	@echo MAKECMDGOALS=${MAKECMDGOALS}
+	@echo DOALL=${DOALL}
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
 	@echo SRCHOME=${SRCHOME}
 	@echo TESTID=${TESTID}
@@ -60,10 +82,17 @@ showparams:
 	@echo CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE}
 	@echo PMUX_EXE=${PMUX_EXE}
 
-$(patsubst %.test,%,$(shell ls -d *.test)): basicops
+
+
+%_generated: basicops
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $@ $$N/${TOTAL}
+	@tools/create_generated_tests.sh `tools/get_testopts_path.sh $@` $(TESTDIR)
+	@$(MAKE) -skC $(TESTDIR)/$@.test
+
+$(patsubst %.test,%,$(ALL_TESTS)): basicops
 
 %: %.test
-	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $* $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 
@@ -75,6 +104,9 @@ $(patsubst %.test,%,$(shell ls -d *.test)): basicops
 
 %.tool: %.test
 	+$(MAKE) -C $(patsubst %.tool,%,$<) tool
+
+generated_tests:
+	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 
 stop:
 	@./stopall
@@ -93,5 +125,6 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 clean: testclean
 
 testclean:
-	@rm -rf test_[0-9]*
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*' < /dev/null;)
+	@rm -rf test_[0-9]* $(TESTDIR)/ *_generated.test/
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)
+

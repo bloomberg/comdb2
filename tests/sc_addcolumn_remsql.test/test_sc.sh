@@ -79,7 +79,12 @@ if (( $# > 5 )); then
 fi
 
 # Make sure we talk to the same host
-mach=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
+echo cdb2sql --tabs --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "SELECT comdb2_host()"
+mach=`cdb2sql --tabs --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "SELECT comdb2_host()"`
+if (( $? != 0 )); then
+    echo "Failed to get a machine"
+    exit 1
+fi
 
 test=1
 if (( $test >= $test1 && $test<= $test2 )) ; then

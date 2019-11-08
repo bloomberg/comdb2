@@ -88,7 +88,7 @@ const char *luabb_pushfstring(lua_State *lua, char *fmt, ...) {
     char c[1];
     va_list args;
     int len;
-    char *out;
+    char *out = NULL;
     va_start(args, fmt);
     len = vsnprintf(c, 1, fmt, args);
     va_end(args);
@@ -229,15 +229,10 @@ int luabb_istype(lua_State *lua, int index, dbtypes_enum type)
 
 int luabb_error(Lua lua, SP sp, const char *fmt, ...)
 {
-    lua_Debug ar;
-    int rc;
-    const char *w = NULL;   // where
-    ptrdiff_t wl = 0;       // where len
-
     char c[1];
     va_list args;
     int len;
-    char *out;
+    char *out = NULL;
     va_start(args, fmt);
     len = vsnprintf(c, 1, fmt, args);
     va_end(args);
@@ -257,9 +252,9 @@ int luabb_error(Lua lua, SP sp, const char *fmt, ...)
     extern int gbl_allow_lua_print;
     if (gbl_allow_lua_print)  {
         luaL_where(lua, 0);
-        const char *src = lua_tostring(lua, -1);
         lua_pop(lua, 1);
 #if 0
+        const char *src = lua_tostring(lua, -1);
         if (sp && sp->spname)
             fprintf(stderr, "ERROR in SP:%s Ver:%d %s:%s\n",
               sp->spname, sp->spversion, out, src);
@@ -338,7 +333,6 @@ void luabb_typeconvert_int(Lua l, int pos, dbtypes_enum to, const char *to_str)
         return;
     }
 
-    const char *fstr, *tstr;
     all_types_t u;
     switch (to) {
     case DBTYPES_LSTRING:
@@ -441,7 +435,7 @@ HashType luabb_hashinfo(void *udata, double *d, const char **c, size_t *l)
 
 static int numeq(lua_dbtypes_t *b1, TValue *t2, int *eq)
 {
-    double d1, d2;
+    double d1 = 0, d2;
     lua_dbtypes_t *b2;
     luabb_hashinfo(b1, &d1, NULL, NULL);
     switch(ttype(t2)) {
@@ -461,7 +455,7 @@ static int numeq(lua_dbtypes_t *b1, TValue *t2, int *eq)
 
 static int streq(lua_cstring_t *b1, TValue *t2, int *eq)
 {
-    const char *s1, *s2;
+    const char *s1, *s2 = NULL;
     lua_cstring_t *b2;
     s1 = b1->val;
     switch (ttype(t2)) {

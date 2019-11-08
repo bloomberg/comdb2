@@ -1,0 +1,23 @@
+#!/bin/bash
+
+DB=$2
+default=default
+cdb2sql=cdb2sql
+set -e
+
+hostflags=
+
+if [[ -n "$CLUSTER" ]]; then
+    read -ra nodes <<< "$CLUSTER"
+    hostflags="--host ${nodes[0]}"
+fi
+
+
+sql='select 1'
+for i in $(seq 1 10); do
+    $cdb2sql ${CDB2_OPTIONS} $hostflags $DB $default "$sql"
+    sql="${sql}+1"
+done
+
+$cdb2sql ${CDB2_OPTIONS} $hostflags $DB $default "select f.fingerprint, normalized_sql, c.task, c.qcount, c.cost, c.rows from comdb2_sql_client_stats c join comdb2_fingerprints f on c.fingerprint = f.fingerprint where normalized_sql like 'SELECT?%' and c.task='cdb2sql' order by normalized_sql" > testclients.out
+diff testclients.out testclients.expected

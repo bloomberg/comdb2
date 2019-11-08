@@ -22,11 +22,11 @@
 #include <time.h>
 
 #include <segstr.h>
-#include <lockmacro.h>
 
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
@@ -41,8 +41,14 @@
 #include "nodemap.h"
 #include "sqlresponse.pb-c.h"
 #include "logmsg.h"
+#include "thread_stats.h"
+#include <compat.h>
 
-char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
+extern void __test_last_checkpoint(DB_ENV *dbenv);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
@@ -64,14 +70,14 @@ int dump_llmeta(bdb_state_type *, int *bdberr);
 void bdb_show_reptimes(bdb_state_type *bdb_state);
 void bdb_lc_cache_trap(bdb_state_type *bdb_state, char *line, int lline);
 
-extern int osql_process_message_decom(char *host);
-
 int __lock_dump_region __P((DB_ENV *, const char *, FILE *));
 int __latch_dump_region __P((DB_ENV *, FILE *));
 void __dbenv_heap_dump __P((DB_ENV * dbenv));
 int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
+int __lock_dump_active_locks(DB_ENV *, FILE *);
 int __db_cprint(DB *dbp);
+char *bdb_coherent_state_string(const char *host);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
                                   char *name);
@@ -81,6 +87,11 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
 #define prn_statstr(x) logmsgf(LOGMSG_USER, out, #x ": %s\n", stats->x)
 
 extern int gbl_namemangle_loglevel;
+extern int __db_dump_freepages(DB *dbp, FILE *out);
+extern int __memp_dump_region(DB_ENV *dbenv, const char *area, FILE *fp);
+extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz,
+                                      int maxins);
+extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
 static void printf_wrapper(void *userptr, const char *fmt, ...)
 {
@@ -135,7 +146,6 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
 static void log_stats(FILE *out, bdb_state_type *bdb_state)
 {
     DB_LOG_STAT *stats;
-    char str[100];
 
     bdb_state->dbenv->log_stat(bdb_state->dbenv, &stats, 0);
 
@@ -183,7 +193,8 @@ static void log_stats(FILE *out, bdb_state_type *bdb_state)
 }
 
 int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
-                          int64_t *waits)
+                          int64_t *locks_aborted, int64_t *waits,
+                          int64_t *requests)
 {
     int rc;
     DB_LOCK_STAT *lock_stats = NULL;
@@ -191,26 +202,33 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks,
     rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &lock_stats, 0);
     if (rc)
         return rc;
-    *deadlocks = lock_stats->st_ndeadlocks;
-    *waits = lock_stats->st_nconflicts;
+    if (deadlocks)
+        *deadlocks = lock_stats->st_ndeadlocks;
+    if (locks_aborted)
+        *locks_aborted = lock_stats->st_locks_aborted;
+    if (waits)
+        *waits = lock_stats->st_nconflicts;
+    if (requests)
+        *requests = lock_stats->st_nrequests;
 
     free(lock_stats);
     return 0;
 }
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses)
+                           int64_t *bpool_misses, int64_t *rw_evicts)
 {
     int rc;
     DB_MPOOL_STAT *mpool_stats;
 
     rc = bdb_state->dbenv->memp_stat(bdb_state->dbenv, &mpool_stats, NULL,
-                                     DB_STAT_MINIMAL);
+                                     0);
     if (rc)
         return rc;
 
     *bpool_hits = mpool_stats->st_cache_hit;
     *bpool_misses = mpool_stats->st_cache_miss;
+    *rw_evicts = mpool_stats->st_rw_evict;
 
     free(mpool_stats);
     return 0;
@@ -253,6 +271,18 @@ int deadlock_policy_max()
     return DB_LOCK_MAX;
 }
 
+int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks)
+{
+    DB_LOCK_STAT *stats = NULL;
+    int rc;
+    rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &stats, 0);
+    if (rc)
+        return -1;
+    *nlocks = stats->st_nlocks;
+    free(stats);
+    return 0;
+}
+
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
 {
     int rc;
@@ -279,38 +309,38 @@ static void lock_stats(FILE *out, bdb_state_type *bdb_state)
     logmsgf(LOGMSG_USER, out, "deadlock-detect-policy: %s\n", deadlock_policy_str(policy));
     prn_stat(st_id);
     prn_stat(st_cur_maxid);
-    prn_stat(st_maxlocks);
-    prn_stat(st_maxlockers);
-    prn_stat(st_maxobjects);
+    prn_lstat(st_maxlocks);
+    prn_lstat(st_maxlockers);
+    prn_lstat(st_maxobjects);
     prn_stat(st_nmodes);
-    prn_stat(st_nlocks);
-    prn_stat(st_maxnlocks);
-    prn_stat(st_nlockers);
-    prn_stat(st_maxnlockers);
-    prn_stat(st_nobjects);
-    prn_stat(st_maxnobjects);
+    prn_lstat(st_nlocks);
+    prn_lstat(st_maxnlocks);
+    prn_lstat(st_nlockers);
+    prn_lstat(st_maxnlockers);
+    prn_lstat(st_nobjects);
+    prn_lstat(st_maxnobjects);
 #if !defined(BERKDB_4_5) && !defined(BERKDB_46)
-    prn_stat(st_nconflicts);
+    prn_lstat(st_nconflicts);
 #endif
-    prn_stat(st_nrequests);
-    prn_stat(st_nreleases);
+    prn_lstat(st_nrequests);
+    prn_lstat(st_nreleases);
 #if !defined(BERKDB_4_5) && !defined(BERKDB_46)
-    prn_stat(st_nnowaits);
+    prn_lstat(st_nnowaits);
 #endif
-    prn_stat(st_ndeadlocks);
+    prn_lstat(st_ndeadlocks);
     prn_stat(st_locktimeout);
-    prn_stat(st_nlocktimeouts);
+    prn_lstat(st_nlocktimeouts);
     prn_stat(st_txntimeout);
-    prn_stat(st_ntxntimeouts);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
+    prn_lstat(st_ntxntimeouts);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
     logmsgf(LOGMSG_USER, out, "locks_check_waiters: %s\n",
             gbl_locks_check_waiters ? "enabled" : "disabled");
     logmsgf(LOGMSG_USER, out, "no_waiter_commit_skips: %llu\n", check_waiters_skip_count);
     logmsgf(LOGMSG_USER, out, "waiter_commits: %llu\n", check_waiters_commit_count);
     logmsgf(LOGMSG_USER, out, "rowlocks_deadlock_retries: %llu\n",
             gbl_rowlocks_deadlock_retries);
-    prn_stat(st_regsize);
+    prn_lstat(st_regsize);
 
     free(stats);
 }
@@ -369,12 +399,15 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     prn_stat(st_election_tiebreaker);
     prn_stat(st_election_votes);
 
-    logmsgf(LOGMSG_USER, out, "txn parallel: %ld\n", gbl_rep_trans_parallel);
-    logmsgf(LOGMSG_USER, out, "txn serial: %ld\n", gbl_rep_trans_serial);
-    logmsgf(LOGMSG_USER, out, "txn inline: %ld\n", gbl_rep_trans_inline);
-    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %ld\n",
+    logmsgf(LOGMSG_USER, out, "txn parallel: %" PRId64 "\n",
+            gbl_rep_trans_parallel);
+    logmsgf(LOGMSG_USER, out, "txn serial: %" PRId64 "\n",
+            gbl_rep_trans_serial);
+    logmsgf(LOGMSG_USER, out, "txn inline: %" PRId64 "\n",
+            gbl_rep_trans_inline);
+    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %" PRId64 "\n",
             gbl_rep_rowlocks_multifile);
-    logmsgf(LOGMSG_USER, out, "txn deadlocked: %ld\n",
+    logmsgf(LOGMSG_USER, out, "txn deadlocked: %" PRId64 "\n",
             gbl_rep_trans_deadlocked);
     prn_lstat(lc_cache_hits);
     prn_lstat(lc_cache_misses);
@@ -392,7 +425,6 @@ void bdb_get_rep_stats(bdb_state_type *bdb_state,
                        unsigned long long *retry, int *max_retry)
 {
     DB_REP_STAT *rep_stats;
-    char str[80];
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -420,8 +452,6 @@ static char *genid_format_str(int format)
 void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state)
 {
-    extern int __db_dump_freepages(DB * dbp, FILE * out);
-    DB *db;
     if (ixnum == -1 && datafile == -1 && stripe == -1) {
         int ix, df, st;
         for (ix = 0; ix < bdb_state->numix; ix++) {
@@ -504,73 +534,67 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     bdb_state->dbenv->memp_stat(bdb_state->dbenv, &stats, extra ? &fsp : NULL,
                                 0);
 
-    prn_stat(st_gbytes);
-    prn_stat(st_bytes);
-    prn_stat(st_ncache);
-    prn_stat(st_regsize);
-    prn_stat(st_map);
-    prn_stat(st_cache_hit);
-    prn_stat(st_cache_miss);
-    prn_stat(st_cache_ihit);
-    prn_stat(st_cache_imiss);
-    prn_stat(st_cache_lhit);
-    prn_stat(st_cache_lmiss);
-    prn_stat(st_page_pf_in);
-    prn_stat(st_page_pf_in_late);
-    prn_stat(st_page_in);
-    prn_stat(st_page_out);
-    prn_stat(st_ro_merges);
-    prn_stat(st_rw_merges);
-    prn_stat(st_ro_evict);
-    prn_stat(st_rw_evict);
-    prn_stat(st_ro_levict);
-    prn_stat(st_rw_levict);
-    prn_stat(st_pf_evict);
-    prn_stat(st_rw_evict_skip);
-    prn_stat(st_page_trickle);
-    prn_stat(st_pages);
-    prn_stat(st_page_clean);
+    prn_lstat(st_gbytes);
+    prn_lstat(st_bytes);
+    prn_lstat(st_ncache);
+    prn_lstat(st_regsize);
+    prn_lstat(st_map);
+    prn_lstat(st_cache_hit);
+    prn_lstat(st_cache_miss);
+    prn_lstat(st_cache_ihit);
+    prn_lstat(st_cache_imiss);
+    prn_lstat(st_cache_lhit);
+    prn_lstat(st_cache_lmiss);
+    prn_lstat(st_page_pf_in);
+    prn_lstat(st_page_pf_in_late);
+    prn_lstat(st_page_in);
+    prn_lstat(st_page_out);
+    prn_lstat(st_ro_merges);
+    prn_lstat(st_rw_merges);
+    prn_lstat(st_ro_evict);
+    prn_lstat(st_rw_evict);
+    prn_lstat(st_ro_levict);
+    prn_lstat(st_rw_levict);
+    prn_lstat(st_pf_evict);
+    prn_lstat(st_rw_evict_skip);
+    prn_lstat(st_page_trickle);
+    prn_lstat(st_pages);
+    prn_lstat(st_page_clean);
     logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", stats->st_page_dirty);
-    prn_stat(st_hash_buckets);
-    prn_stat(st_hash_searches);
-    prn_stat(st_hash_longest);
-    prn_stat(st_hash_examined);
-    prn_stat(st_hash_nowait);
-    prn_stat(st_hash_wait);
-    prn_stat(st_hash_max_wait);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
-    prn_stat(st_alloc);
-    prn_stat(st_alloc_buckets);
-    prn_stat(st_alloc_max_buckets);
-    prn_stat(st_alloc_pages);
-    prn_stat(st_alloc_max_pages);
-    prn_stat(st_ckp_pages_sync);
-    prn_stat(st_ckp_pages_skip);
+    prn_lstat(st_hash_buckets);
+    prn_lstat(st_hash_searches);
+    prn_lstat(st_hash_longest);
+    prn_lstat(st_hash_examined);
+    prn_lstat(st_hash_nowait);
+    prn_lstat(st_hash_wait);
+    prn_lstat(st_hash_max_wait);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
+    prn_lstat(st_alloc);
+    prn_lstat(st_alloc_buckets);
+    prn_lstat(st_alloc_max_buckets);
+    prn_lstat(st_alloc_pages);
+    prn_lstat(st_alloc_max_pages);
+    prn_lstat(st_ckp_pages_sync);
+    prn_lstat(st_ckp_pages_skip);
 
     if (extra) {
         bdb_state->dbenv->memp_dump_region(bdb_state->dbenv, "A", out);
 
         for (i = fsp; i != NULL && *i != NULL; ++i) {
             logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*i)->file_name);
-            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %u\n", (unsigned)(*i)->st_pagesize);
-            logmsgf(LOGMSG_USER, out, "  st_map        : %u\n", (unsigned)(*i)->st_map);
-            logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %u\n",
-                    (unsigned)(*i)->st_cache_hit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_miss : %u\n",
-                    (unsigned)(*i)->st_cache_miss);
-            logmsgf(LOGMSG_USER, out, "  st_cache_ihit : %u\n",
-                    (unsigned)(*i)->st_cache_ihit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_imiss: %u\n",
-                    (unsigned)(*i)->st_cache_imiss);
-            logmsgf(LOGMSG_USER, out, "  st_cache_lhit : %u\n",
-                    (unsigned)(*i)->st_cache_lhit);
-            logmsgf(LOGMSG_USER, out, "  st_cache_lmiss: %u\n",
-                    (unsigned)(*i)->st_cache_lmiss);
-            logmsgf(LOGMSG_USER, out, "  st_page_create: %u\n",
-                    (unsigned)(*i)->st_page_create);
-            logmsgf(LOGMSG_USER, out, "  st_page_in    : %u\n", (unsigned)(*i)->st_page_in);
-            logmsgf(LOGMSG_USER, out, "  st_page_out   : %u\n", (unsigned)(*i)->st_page_out);
+            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %zu\n",
+                    (*i)->st_pagesize);
+            logmsgf(LOGMSG_USER, out, "  st_map        : %"PRId64"\n", (*i)->st_map);
+            logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %"PRId64"\n", (*i)->st_cache_hit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_miss : %"PRId64"\n", (*i)->st_cache_miss);
+            logmsgf(LOGMSG_USER, out, "  st_cache_ihit : %"PRId64"\n", (*i)->st_cache_ihit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_imiss: %"PRId64"\n", (*i)->st_cache_imiss);
+            logmsgf(LOGMSG_USER, out, "  st_cache_lhit : %"PRId64"\n", (*i)->st_cache_lhit);
+            logmsgf(LOGMSG_USER, out, "  st_cache_lmiss: %"PRId64"\n", (*i)->st_cache_lmiss);
+            logmsgf(LOGMSG_USER, out, "  st_page_create: %"PRId64"\n", (*i)->st_page_create);
+            logmsgf(LOGMSG_USER, out, "  st_page_in    : %"PRId64"\n", (*i)->st_page_in);
+            logmsgf(LOGMSG_USER, out, "  st_page_out   : %"PRId64"\n", (*i)->st_page_out);
         }
 
         free(fsp);
@@ -585,35 +609,35 @@ static void temp_cache_stats(FILE *out, bdb_state_type *bdb_state)
 
     bdb_temp_table_stat(bdb_state, &stats);
 
-    prn_stat(st_cache_hit);
-    prn_stat(st_cache_miss);
-    prn_stat(st_cache_ihit);
-    prn_stat(st_cache_imiss);
-    prn_stat(st_cache_lhit);
-    prn_stat(st_cache_lmiss);
-    prn_stat(st_page_pf_in);
-    prn_stat(st_page_in);
-    prn_stat(st_page_out);
-    prn_stat(st_ro_merges);
-    prn_stat(st_rw_merges);
-    prn_stat(st_ro_evict);
-    prn_stat(st_rw_evict);
-    prn_stat(st_pf_evict);
-    prn_stat(st_rw_evict_skip);
-    prn_stat(st_page_trickle);
-    prn_stat(st_hash_searches);
-    prn_stat(st_hash_longest);
-    prn_stat(st_hash_examined);
-    prn_stat(st_hash_nowait);
-    prn_stat(st_hash_wait);
-    prn_stat(st_hash_max_wait);
-    prn_stat(st_region_wait);
-    prn_stat(st_region_nowait);
-    prn_stat(st_alloc);
-    prn_stat(st_alloc_buckets);
-    prn_stat(st_alloc_max_buckets);
-    prn_stat(st_alloc_pages);
-    prn_stat(st_alloc_max_pages);
+    prn_lstat(st_cache_hit);
+    prn_lstat(st_cache_miss);
+    prn_lstat(st_cache_ihit);
+    prn_lstat(st_cache_imiss);
+    prn_lstat(st_cache_lhit);
+    prn_lstat(st_cache_lmiss);
+    prn_lstat(st_page_pf_in);
+    prn_lstat(st_page_in);
+    prn_lstat(st_page_out);
+    prn_lstat(st_ro_merges);
+    prn_lstat(st_rw_merges);
+    prn_lstat(st_ro_evict);
+    prn_lstat(st_rw_evict);
+    prn_lstat(st_pf_evict);
+    prn_lstat(st_rw_evict_skip);
+    prn_lstat(st_page_trickle);
+    prn_lstat(st_hash_searches);
+    prn_lstat(st_hash_longest);
+    prn_lstat(st_hash_examined);
+    prn_lstat(st_hash_nowait);
+    prn_lstat(st_hash_wait);
+    prn_lstat(st_hash_max_wait);
+    prn_lstat(st_region_wait);
+    prn_lstat(st_region_nowait);
+    prn_lstat(st_alloc);
+    prn_lstat(st_alloc_buckets);
+    prn_lstat(st_alloc_max_buckets);
+    prn_lstat(st_alloc_pages);
+    prn_lstat(st_alloc_max_pages);
 
     free(stats);
 }
@@ -628,7 +652,7 @@ static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
 
     logmsgf(LOGMSG_USER, out, "sanc dump:\n");
     for (ii = 0; ii < numnodes && ii < REPMAX; ii++)
-        logmsgf(LOGMSG_USER, out, "node %s\n", nodes[ii]);
+        logmsgf(LOGMSG_USER, out, "node %s\n", nodenum_str((char *)nodes[ii]));
 
     if (net_sanctioned_list_ok(bdb_state->repinfo->netinfo))
         logmsgf(LOGMSG_USER, out, "sanc is intact\n");
@@ -674,15 +698,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0; /* will not be used by client */
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0; /* will not be used by client */
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->has_room = 1;
@@ -713,15 +737,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0;
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0;
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->port = nodes[j].port;
@@ -746,12 +770,11 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     fill_ssl_info(dbinfo_response);
 }
 
-static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
+static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
-    int num_nodes, ii, iammaster;
+    int num_nodes, ii;
 
-    iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
     num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
 
     logmsgf(LOGMSG_USER, out, "db engine cluster status\n");
@@ -763,7 +786,7 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
         char *coherent_state;
 
@@ -786,30 +809,7 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
 
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
 
-        switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
-        case STATE_COHERENT:
-            coherent_state = "";
-            break;
-
-        case STATE_INCOHERENT:
-            coherent_state = "INCOHERENT";
-            break;
-
-        case STATE_INCOHERENT_SLOW:
-            coherent_state = "INCOHERENT_SLOW";
-            break;
-
-        /* Incoherent local is only meaningful on the master */
-        case STATE_INCOHERENT_WAIT:
-            if (iammaster)
-                coherent_state = "INCOHERENT_WAIT";
-            else
-                coherent_state = "";
-            break;
-
-        default:
-            coherent_state = "???";
-        }
+        coherent_state = bdb_coherent_state_string(nodes[ii].host);
 
         logmsgf(LOGMSG_USER, out, "%16s:%d %-6s %-1s fd %-3d lsn %s f %d %s\n",
                 nodes[ii].host, nodes[ii].port, status_mstr, status,
@@ -817,6 +817,15 @@ static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
                 bdb_state->seqnum_info->filenum[nodeix(nodes[ii].host)],
                 coherent_state);
     }
+}
+netinfo_dumper *netinfo_dump_impl = netinfo_dump_hostname;
+void set_netinfo_dumper(netinfo_dumper *d)
+{
+    netinfo_dump_impl = d;
+}
+static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
+{
+    netinfo_dump_impl(out, bdb_state);
 }
 
 /* This is public (called by db layer) and used for the incoherent
@@ -832,7 +841,7 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
 
         if (strcmp(nodes[ii].host,
@@ -849,16 +858,20 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         }
         if (bdb_state->repinfo->master_host == nodes[ii].host)
             status_mstr = "MASTER";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT)
-            status_mstr = "INCOHERENT";
-        else if (bdb_state->coherent_state[nodeix(nodes[ii].host)] ==
-                 STATE_INCOHERENT_SLOW)
-            status_mstr = "INCOHERENT_SLOW";
-        else if (bdb_state->coherent_state[ii] == STATE_INCOHERENT_WAIT)
-            status_mstr = "INCOHERENT_WAIT";
-        else
-            status_mstr = " ";
+        else {
+            switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
+            case STATE_INCOHERENT:
+            case STATE_INCOHERENT_WAIT:
+            case STATE_INCOHERENT_SLOW:
+            default:
+                status_mstr = coherent_state_to_str(
+                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                break;
+            case STATE_COHERENT:
+                status_mstr = " ";
+                break;
+            }
+        }
 
         lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
 
@@ -886,11 +899,6 @@ void bdb_get_cur_lsn_str(bdb_state_type *bdb_state, uint64_t *lsnbytes,
                              net_get_mynode(bdb_state->repinfo->netinfo));
 }
 
-void bdb_get_cur_lsn_str_master(bdb_state_type *bdb_state, uint64_t *lsnbytes,
-                                char *lsnstr, size_t len)
-{
-}
-
 static void test_send(bdb_state_type *bdb_state)
 {
     int count;
@@ -914,44 +922,60 @@ static void test_send(bdb_state_type *bdb_state)
     }
 }
 
+static int write_hostname(netinfo_type *net, const char *to, char *host, int type)
+{
+    int len = strlen(host) + 1;
+    return net_send_message(net, to, type, host, len, 1, 5 * 1000);
+}
+
+static int write_add_hostname(netinfo_type *netinfo, const char *to, char *host)
+{
+    return write_hostname(netinfo, to, host, USER_TYPE_ADD_NAME);
+}
+static add_writer *write_add_impl = write_add_hostname;
+void set_add_writer(add_writer *impl)
+{
+    write_add_impl = impl;
+}
+int write_add(netinfo_type *n, const char *t, char *a)
+{
+    return write_add_impl(n, t, a);
+}
+
+static int write_del_hostname(netinfo_type *netinfo, const char *to, char *host)
+{
+    return write_hostname(netinfo, to, host, USER_TYPE_DEL_NAME);
+}
+static del_writer *write_del_impl = write_del_hostname;
+void set_del_writer(del_writer *impl)
+{
+    write_del_impl = impl;
+}
+int write_del(netinfo_type *n, const char *t, char *a)
+{
+    return write_del_impl(n, t, a);
+}
+
 static void process_add(bdb_state_type *bdb_state, char *host)
 {
-    int count;
     const char *hostlist[REPMAX];
-    int i;
-    int rc;
-    int hostlen;
-
-    net_add_to_sanctioned(bdb_state->repinfo->netinfo, host, 0);
-    hostlen = strlen(host) + 1;
-
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        int tmp;
-        uint8_t *p_buf, *p_buf_end;
-        int node = 0;
-
-        rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
-                              USER_TYPE_ADD_NAME, host, hostlen, 1, 5 * 1000);
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    net_add_to_sanctioned(netinfo, host, 0);
+    int count = net_get_all_nodes_connected(netinfo, hostlist);
+    for (int i = 0; i < count; i++) {
+        int rc = write_add(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_add\n", rc);
     }
 }
-
 static void process_del(bdb_state_type *bdb_state, char *host)
 {
-    int count;
     const char *hostlist[REPMAX];
-    int i;
-    int rc;
-    int hostlen = strlen(host) + 1;
-
-    net_del_from_sanctioned(bdb_state->repinfo->netinfo, host);
-
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    for (i = 0; i < count; i++) {
-        rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
-                              USER_TYPE_DEL_NAME, host, hostlen, 1, 5 * 1000);
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    net_del_from_sanctioned(netinfo, host);
+    int count = net_get_all_nodes_connected(netinfo, hostlist);
+    for (int i = 0; i < count; i++) {
+        int rc = write_del(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_del\n", rc);
     }
@@ -995,7 +1019,7 @@ void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out)
     extern u_int32_t gbl_rep_lockid;
     fprintf(out, "Replication locker: %x\n", gbl_rep_lockid);
 #endif
-    __lock_dump_region_int(bdb_state->dbenv, "o", out, 1);
+    __lock_dump_active_locks(bdb_state->dbenv, out);
 }
 
 void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out)
@@ -1004,8 +1028,6 @@ void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out)
         bdb_state = gbl_bdb_state;
     __lock_dump_region_int(bdb_state->dbenv, "t", out, 0);
 }
-
-extern int __memp_dump_region(DB_ENV *dbenv, const char *area, FILE *fp);
 
 void bdb_dump_cache(bdb_state_type *bdb_state, FILE *out)
 {
@@ -1085,12 +1107,12 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
     struct bdb_thread_args *args;
 
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    pthread_attr_setstacksize(&attr, 1024 * 128);
+    Pthread_attr_setstacksize(&attr, 1024 * 128);
     args = malloc(sizeof(struct bdb_thread_args));
     if (args == NULL) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         errno = ENOMEM;
         return -1;
     }
@@ -1098,6 +1120,7 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
     args->func = func;
 
     rc = pthread_create(&tid, &attr, bdb_thread_wrapper, args);
+    Pthread_attr_destroy(&attr);
     return rc;
 }
 
@@ -1116,7 +1139,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
     int fd = -1;
     char fname[PATH_MAX];
     char tmpname[PATH_MAX];
-    int numstripes, numblobs;
+    int numstripes;
     int bdberr;
     unsigned int npages;
     uint64_t total_npages = 0;
@@ -1170,8 +1193,8 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
             logmsg(LOGMSG_USER, "  %s ix %d   => %u\n", bdb_state->name, ix, npages);
         }
     }
-    logmsg(LOGMSG_USER, "total freelist pages for %s: %lu\n", bdb_state->name,
-           total_npages);
+    logmsg(LOGMSG_USER, "total freelist pages for %s: %" PRIu64 "\n",
+           bdb_state->name, total_npages);
     return total_npages;
 }
 
@@ -1192,15 +1215,14 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
             return;
         }
     }
-    logmsg(LOGMSG_USER, "total free pages: %lu\n", npages);
+    logmsg(LOGMSG_USER, "total free pages: %" PRIu64 "\n", npages);
 }
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
 {
-    char *h;
     int nhosts;
     const char *hosts[REPMAX];
-    char hlen = strlen(host);
+    size_t hlen = strlen(host);
     const char *fnd = NULL;
     int multiple = 0;
     char *me;
@@ -1229,6 +1251,15 @@ const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
         fnd = NULL;
 
     return fnd;
+}
+
+/* return interned hostname */
+static char *tokdup_hostname(char *tok, int ltok)
+{
+    tok = tokdup(tok, ltok);
+    char *host = intern(hostname_str(tok));
+    free(tok);
+    return host;
 }
 
 void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
@@ -1531,7 +1562,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
 
     else if (tokcmp(tok, ltok, "elect") == 0) {
         logmsg(LOGMSG_USER, "forcing an election\n");
-        call_for_election(bdb_state);
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     else if (tokcmp(tok, ltok, "repdbgy") == 0)
@@ -1569,7 +1600,25 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         rc = bdb_state->dbenv->set_verbose(bdb_state->dbenv, DB_VERB_WAITSFOR,
                                            num);
     }
+    else if (tokcmp(tok, ltok, "temptbltest") == 0) {
+        //@send bdb temptbltest 200 1000
+        logmsg(LOGMSG_USER, "Testing temp tables\n");
+        int recsz = 20;
+        int maxins = 10000;
 
+        tok = segtok(line, lline, &st, &ltok);
+        int y = toknum(tok, ltok);
+        if (y > 0) { 
+            recsz = y;
+            tok = segtok(line, lline, &st, &ltok);
+            int z = toknum(tok, ltok);
+            if (z > 0) { 
+                maxins = z;
+            }
+        }
+
+        bdb_temp_table_insert_test(bdb_state, recsz, maxins);
+    } 
     else if (tokcmp(tok, ltok, "reptrcy") == 0) {
         logmsg(LOGMSG_USER, "turning on replication trace\n");
         bdb_state->rep_trace = 1;
@@ -1612,9 +1661,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        process_add(bdb_state, intern(host));
-        free(host);
+        host = tokdup_hostname(host, ltok);
+        process_add(bdb_state, host);
     }
 
     else if (tokcmp(tok, ltok, "del") == 0) {
@@ -1624,31 +1672,28 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        process_del(bdb_state, intern(host));
-        free(host);
+        host = tokdup_hostname(host, ltok);
+        process_del(bdb_state, host);
     }
-
-    else if (tokcmp(tok, ltok, "rem") == 0) {
+    else if (tokcmp(tok, ltok, "rem") == 0 || tokcmp(tok, ltok, "bdbrem") == 0) {
+        char cmd[ltok+1];
+        tokcpy(tok, ltok, cmd);
         char *host;
         host = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_USER, "expected hostname\n");
             return;
         }
-        host = tokdup(host, ltok);
-        const char *realhost = bdb_find_net_host(bdb_state, host);
+        host = tokdup_hostname(host, ltok);
+        char *realhost = (char *)bdb_find_net_host(bdb_state, host);
         if (realhost == NULL) {
             logmsg(LOGMSG_USER, "WARNING: don't know about %s.\n", host);
-            free(host);
             return;
         }
-        free(host);
-
-        net_send_decom_all(bdb_state->repinfo->netinfo, intern(realhost));
-        osql_process_message_decom(intern(realhost));
+        realhost = intern(realhost);
+        net_send_decom_all(bdb_state->repinfo->netinfo, realhost);
+        osql_process_message_decom(realhost);
     }
-
     else if (tokcmp(tok, ltok, "bdbstat") == 0) {
         logmsgf(LOGMSG_USER, out, "rep_process_message %d\n",
                 bdb_state->repinfo->repstats.rep_process_message);
@@ -1680,7 +1725,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "dblist") == 0) {
         __bb_dbreg_print_dblist(bdb_state->dbenv, printf_wrapper, out);
     } else if (tokcmp(tok, ltok, "dbs") == 0) {
-        extern void bdb_dump_table_dbregs(bdb_state_type * bdb_state);
         bdb_dump_table_dbregs(bdb_state);
     }
 #ifdef BERKDB_46
@@ -1717,7 +1761,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
            logmsg(LOGMSG_USER, "Attribute set\n");
         }
     } else if (tokcmp(tok, ltok, "bbstat") == 0) {
-        const struct bdb_thread_stats *p = bdb_get_process_stats();
+        const struct berkdb_thread_stats *p = bdb_get_process_stats();
         unsigned n_lock_waits = p->n_lock_waits ? p->n_lock_waits : 1;
         unsigned n_preads = p->n_preads ? p->n_preads : 1;
         unsigned n_pwrites = p->n_pwrites ? p->n_pwrites : 1;
@@ -1788,13 +1832,13 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             free(lsn);
     } else if (tokcmp(tok, ltok, "dumpqext") == 0) {
         int i;
-        bdb_state_type *st;
+        bdb_state_type *chld;
         for (i = 0; i < bdb_state->numchildren; i++) {
-            st = bdb_state->children[i];
-            if (st) {
-                if (st->bdbtype == BDBTYPE_QUEUE) {
-                    logmsgf(LOGMSG_USER, out, "queue %s\n", st->name);
-                    bdb_queue_extent_info(out, st, st->name);
+            chld = bdb_state->children[i];
+            if (chld) {
+                if (chld->bdbtype == BDBTYPE_QUEUE) {
+                    logmsgf(LOGMSG_USER, out, "queue %s\n", chld->name);
+                    bdb_queue_extent_info(out, chld, chld->name);
                 }
             }
         }
@@ -1806,7 +1850,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     } else if (tokcmp(tok, ltok, "curcount") == 0) {
         bdb_dump_cursor_count(bdb_state, out);
     } else if (tokcmp(tok, ltok, "testckp") == 0) {
-        extern void __test_last_checkpoint(DB_ENV * dbenv);
         __test_last_checkpoint(bdb_state->dbenv);
     } else if (tokcmp(tok, ltok, "repworkers") == 0 ||
                tokcmp(tok, ltok, "repprocs") == 0) {
@@ -1835,7 +1878,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgdump(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgdump(bdb_state->dbenv, fileid, pgno);
     } else if (tokcmp(tok, ltok, "pgtrash") == 0) {
         int fileid, pgno;
@@ -1848,7 +1890,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        void __pgtrash(DB_ENV * dbenv, int32_t fileid, db_pgno_t pgno);
         __pgtrash(bdb_state->dbenv, fileid, pgno);
     } else {
         logmsg(LOGMSG_ERROR, "backend engine unknown cmd <%.*s>. try help\n", ltok,
@@ -1925,14 +1966,12 @@ void all_locks(bdb_state_type *x)
     __lock_dump_region(x->dbenv, parm, stdout);
 }
 
-extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
                                   char *name)
 {
     char **names;
     int rc;
-    int i;
     char qname[PATH_MAX];
     char tran_name[PATH_MAX];
 
@@ -2016,7 +2055,7 @@ void bdb_dump_table_dbregs(bdb_state_type *bdb_state)
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
     int numdisplayed = 0;
     int first = 1;
 
@@ -2046,7 +2085,7 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 void bdb_show_reptimes(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
 
     numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodes);
     logmsg(LOGMSG_USER, "%5s %10s %10s    (rolling avg over interval)\n", "node",
@@ -2090,4 +2129,136 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
 
     net_send(bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
              USER_TYPE_ANALYZED_TBL, table, strlen(table), 0);
+}
+
+repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
+        bdb_state_type *bdb_state, int *pnnodes)
+{
+    int rc, i, nnodes;
+    const char *host;
+    struct host_node_info nodes[REPMAX];
+    netinfo_type *p_netinfo;
+
+    repl_wait_and_net_use_t *rv;
+    repl_wait_and_net_use_t *pos;
+
+    p_netinfo = bdb_state->repinfo->netinfo;
+
+    nnodes = net_get_nodes_info(p_netinfo, REPMAX, nodes);
+    *pnnodes = nnodes - 1;
+
+    if (nnodes == 1) /* Standalone */
+        return NULL;
+
+    rv = malloc(sizeof(repl_wait_and_net_use_t) * nnodes);
+    if (rv == NULL) /* Malloc failed. */
+        return NULL;
+
+    for (i = 0; i != nnodes; ++i) {
+        pos = rv + i;
+        strncpy0(pos->host, nodes[i].host, sizeof(pos->host));
+        host = nodes[i].host;
+
+        /* net_get_nodes_info() returns all nodes. Exclude myself. */
+        if (host == bdb_state->repinfo->myhost)
+            continue;
+
+        rc = net_get_host_network_usage(p_netinfo,
+                                        host,
+                                        &pos->bytes_written,
+                                        &pos->bytes_read,
+                                        &pos->throttle_waits,
+                                        &pos->reorders);
+
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+
+        if (rc != 0 ||
+                bdb_state->seqnum_info->time_10seconds[nodeix(host)] == NULL || 
+                bdb_state->seqnum_info->time_minute[nodeix(host)] == NULL) {
+            /* Make sure we don't read uninitialized data on error. */
+            pos->bytes_written = 0;
+            pos->bytes_read = 0;
+            pos->throttle_waits = 0;
+            pos->reorders = 0;
+            pos->avg_wait_over_10secs = 0;
+            pos->max_wait_over_10secs = 0;
+            pos->avg_wait_over_1min = 0;
+            pos->max_wait_over_1min = 0;
+        } else {
+            pos->avg_wait_over_10secs =
+                averager_avg(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
+            pos->max_wait_over_10secs =
+                averager_max(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
+            pos->avg_wait_over_1min =
+                averager_avg(bdb_state->seqnum_info->time_minute[nodeix(host)]);
+            pos->max_wait_over_1min =
+                averager_max(bdb_state->seqnum_info->time_minute[nodeix(host)]);
+        }
+
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
+    return rv;
+}
+
+char *bdb_coherent_state_string(const char *host) {
+    char *coherent_state;
+    bdb_state_type *bdb_state = gbl_bdb_state;
+    int iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
+
+    switch (bdb_state->coherent_state[nodeix(host)]) {
+        case STATE_COHERENT:
+            coherent_state = "";
+            break;
+
+        case STATE_INCOHERENT:
+            coherent_state = "INCOHERENT";
+            break;
+
+        case STATE_INCOHERENT_SLOW:
+            coherent_state = "INCOHERENT_SLOW";
+            break;
+
+            /* Incoherent local is only meaningful on the master */
+        case STATE_INCOHERENT_WAIT:
+            if(iammaster)
+                coherent_state = "INCOHERENT_WAIT";
+            else
+                coherent_state = "";
+            break;
+
+        default:
+            coherent_state = "???";
+    }
+    return coherent_state;
+}
+
+
+int bdb_fill_cluster_info(void **data, int *num_nodes) {
+    struct cluster_info *info;
+    bdb_state_type *bdb_state = gbl_bdb_state;
+
+    struct host_node_info nodes[REPMAX];
+    *num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo,
+            REPMAX, nodes);
+    info = malloc(sizeof(struct cluster_info) * *num_nodes);
+    if (info == NULL)
+        return -1;
+    for (int i = 0; i < *num_nodes; i++) {
+        info[i].host = strdup(nodes[i].host);
+        info[i].port = nodes[i].port;
+        info[i].is_master = (nodes[i].host == gbl_bdb_state->repinfo->master_host) ? "Y" : "N";
+        info[i].coherent_state = bdb_coherent_state_string(nodes[i].host);
+        if (info[i].coherent_state[0] == 0)
+            info[i].coherent_state = "coherent";
+    }
+    *data = info;
+    return 0;
+}
+
+int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks) {
+    DB_REP_STAT *stats;
+    bdb_state->dbenv->rep_stat(bdb_state->dbenv, &stats, 0);
+    *nrep_deadlocks = stats->retry;
+    free(stats);
+    return 0;
 }

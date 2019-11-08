@@ -23,6 +23,7 @@
 (out='stat switch                - show switch statuses')
 (out='stat clnt [#] [rates|totals]- show per client request stats')
 (out='stat mtrap                 - show mtrap system stats')
+(out='stat dohsql                - show distributed sql stats')
 (out='dmpl                       - dump threads')
 (out='dmptrn                     - show long transaction stats')
 (out='dmpcts                     - show table constraints')

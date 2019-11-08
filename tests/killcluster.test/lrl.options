@@ -77,7 +77,7 @@ rep_verify_will_recover_trace on
 # on debug_sqlthd_failures
 
 # Force random get_curtran failures
-#on random_get_curtran_failures
+#random_get_curtran_failures 1000
 
 # Abort on invalid query info key
 # on abort_invalid_query_info_key

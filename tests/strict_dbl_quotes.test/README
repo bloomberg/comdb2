@@ -1,0 +1,2 @@
+This test attempts to verify that SQL queries cannot contain any double-quoted
+string literals when the 'strict_double_quotes' tunable is enabled.

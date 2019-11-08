@@ -184,15 +184,9 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
 {
     int sockfd, rc;
     int sendbuff;
-    struct sockaddr_in tcp_srv_addr; /* server's Internet socket addr */
-    struct sockaddr_in my_addr;      /* my Internet address */
-    bzero((char *)&tcp_srv_addr, sizeof tcp_srv_addr);
-    tcp_srv_addr.sin_family = AF_INET;
     if (port <= 0) {
         return -1;
     }
-    tcp_srv_addr.sin_port = htons(port);
-    memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         fprintf(stderr, "tcpconnect_to: can't create TCP socket\n");
         return -1;
@@ -216,10 +210,10 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
     }
 
     if (myport > 0) { /* want to use specific port on local host */
-        bzero((char *)&my_addr, sizeof my_addr);
+        struct sockaddr_in my_addr = {0};      /* my Internet address */
         my_addr.sin_family = AF_INET;
-        my_addr.sin_addr.s_addr = INADDR_ANY;
         my_addr.sin_port = htons((u_short)myport);
+        my_addr.sin_addr.s_addr = INADDR_ANY;
         if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof my_addr) < 0) {
             fprintf(stderr, "tcpconnect_to: bind failed on local port %d: %s",
                     myport, strerror(errno));
@@ -227,6 +221,11 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
             return -1;
         }
     }
+
+    struct sockaddr_in tcp_srv_addr = {0}; /* server's Internet socket addr */
+    tcp_srv_addr.sin_family = AF_INET;
+    tcp_srv_addr.sin_port = htons(port);
+    memcpy(&tcp_srv_addr.sin_addr, &in.s_addr, sizeof(in.s_addr));
     /* Connect to the server.  */
     rc = lclconn(sockfd, (struct sockaddr *)&tcp_srv_addr, sizeof(tcp_srv_addr),
                  timeoutms);
@@ -251,11 +250,10 @@ static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
 static int cdb2portmux_route(const char *remote_host, const char *app,
                              const char *service, const char *instance)
 {
-    char name[64];
+    char name[64] = {0};
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd;
-    bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;

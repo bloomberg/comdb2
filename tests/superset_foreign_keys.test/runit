@@ -89,14 +89,14 @@ for testcase in $files ; do
     testcase_output_alt=""
 
     # grab alt if it exists
-    if [[ -f "$testcase.out.alt" ]]; then
+    if [[ -f "$testcase.exp.alt" ]]; then
 
-        testcase_output_alt=$(cat $testcase.out.alt)
+        testcase_output_alt=$(cat $testcase.exp.alt)
 
     fi
 
     # get expected output
-    expected_output=$(cat $testcase.out)
+    expected_output=$(cat $testcase.exp)
 
     # verify 
     if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" ]]; then
@@ -105,9 +105,9 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{$testcase.exp,$output}"
         echo " "
-        diff $testcase.out $output
+        diff $testcase.exp $output
         echo " "
         exit 1
 

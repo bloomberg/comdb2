@@ -66,7 +66,7 @@ const char *strbuf_buf(const strbuf *buf)
     return buf->buf;
 }
 
-const int strbuf_len(const strbuf *buf)
+int strbuf_len(const strbuf *buf)
 {
     assert(buf != NULL);
     return buf->len;

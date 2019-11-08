@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+function cleanup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cleanup"
+    write_prompt $func "Running $func"
+    touch $stopfile
+    wait
+}
+
+function randomtable
+{
+    [[ $debug == "1" ]] && set -x
+    typeset table=$(( RANDOM % tablecount ))
+    echo "t$table"
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    write_prompt $func "Running $func"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    cleanup
+    exit -1
+}
+
+function create_database_tables
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_tables"
+    write_prompt $func "Running $func"
+
+    i=0
+    while [[ $i -lt $tablecount ]]; do
+        drop_table t$i
+        let i=i+1
+    done
+
+    i=0
+    while [[ $i -lt $tablecount ]]; do
+        create_table t$i
+        let i=i+1
+    done
+}
+
+function truncate_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="truncate_thread"
+    typeset tdno=$1
+    typeset sleep_sec=${2:-0.10}
+    write_prompt $func "Running $func $tdno"
+    while [[ ! -f $stopfile ]]; do
+        table=$(randomtable)
+        truncate_table $table
+        [[ $sleep_sec ]] && sleep $sleep_sec
+    done
+}
+
+function insert_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="insert_thread"
+    typeset tdno=$1
+    typeset sleep_sec=${2:-0}
+    typeset maxrec=${3:-10000}
+    write_prompt $func "Running $func $tdno"
+    while [[ ! -f $stopfile ]]; do
+        table=$(randomtable)
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "INSERT INTO $table SELECT * FROM generate_series(1, $maxrec)" >/dev/null 2>&1
+        [[ $sleep_sec ]] && sleep $sleep_sec
+    done
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "Running $func"
+
+    # Arguments
+    typeset truncaters=${1}
+    typeset truncate_sleep=${2}
+    typeset downgrade_sleep=${3}
+    typeset inserters=${4}
+    typeset insertrecs=${5}
+    typeset nocheckpoint=${6}
+
+    # Locals
+    typeset maxtime=300
+    typeset downgrade=1
+    typeset i=0
+    typeset now=$(date +%s)
+    typeset endtime=$(( now + maxtime ))
+
+    create_database_tables
+    rm -f $stopfile
+
+    # Tell nodes to not change the checkpoint-lsn
+    if [[ $nocheckpoint != 0 ]]; then
+        for node in $CLUSTER ; do
+            $CDB2SQL_EXE --admin -tabs $CDB2_OPTIONS --host $node $DBNAME "PUT TUNABLE 'disable_ckp' 1"
+        done
+    fi
+
+    i=0
+    while [[ $i -lt $truncaters ]]; do
+        truncate_thread $i $truncate_sleep &
+        let i=i+1
+    done
+
+    i=0
+    while [[ $i -lt $inserters ]]; do
+        insert_thread $i 0 $insertrecs &
+        let i=i+1
+    done
+
+    while [[ "$(date +%s)" -lt $endtime ]]; do
+        sleep $downgrade_sleep
+        if [[ $downgrade != 0 ]]; then
+            for node in $CLUSTER ; do
+                $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
+            done
+        fi
+    done
+    touch $stopfile
+    wait
+}
+
+# Globals
+export stopfile=./stop.test
+if [[ $DBNAME == *"lockordergenerated"* ]]; then
+    export tablecount=3
+    export truncaters=5
+    export truncate_sleep=0
+    export downgrade_sleep=20
+    export inserters=10
+    export insertrecs=10
+    export nocheckpoint=0
+else
+    export tablecount=100
+    export truncaters=1
+    export truncate_sleep=30
+    export downgrade_sleep=30
+    export inserters=1
+    export insertrecs=10000
+    export nocheckpoint=1
+fi
+
+run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint
+
+echo "Success"

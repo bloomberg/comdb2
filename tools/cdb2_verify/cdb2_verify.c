@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -25,6 +25,7 @@ static const char revid[] =
 
 #include "build/db_int.h"
 #include <crc32c.h>
+#include "locks_wrap.h"
 
 int main __P((int, char *[]));
 static int cdb2_verify_usage __P((void));
@@ -36,7 +37,6 @@ tool_cdb2_verify_main(argc, argv)
 	int argc;
 	char *argv[];
 {
-	crc32c_init(0);
 	extern char *optarg;
 	extern int optind;
 	const char *progname = "cdb2_verify";
@@ -48,9 +48,14 @@ tool_cdb2_verify_main(argc, argv)
 	char *home, passwd[1024];
 	FILE *crypto;
 
+	crc32c_init(0);
     comdb2ma_init(0, 0);
 	if ((ret = cdb2_verify_version_check(progname)) != 0)
 		return (ret);
+
+#ifndef BERKDB_46
+	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
+#endif
 
 	dbenv = NULL;
 	dbp = NULL;
@@ -170,7 +175,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			if ((ret = dbp1->open(dbp1, NULL,
 			    argv[0], NULL, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
 				dbenv->err(dbenv, ret, "DB->open: %s", argv[0]);
-				(void)dbp1->close(dbp1, NULL, 0);
+				(void)dbp1->close(dbp1, 0);
 				goto shutdown;
 			}
 			/*
@@ -182,12 +187,12 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			 * get back into the for-loop.
 			 */
 			ret = __db_util_cache(dbenv, dbp1, &cache, &resize);
-			(void)dbp1->close(dbp1, NULL, 0);
+			(void)dbp1->close(dbp1, 0);
 			if (ret != 0)
 				goto shutdown;
 
 			if (resize) {
-				(void)dbp->close(dbp, NULL, 0);
+				(void)dbp->close(dbp, 0);
 				dbp = NULL;
 
 				(void)dbenv->close(dbenv, 0);
@@ -210,7 +215,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 shutdown:	exitval = 1;
 	}
 
-	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0) {
+	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}

@@ -22,6 +22,7 @@
 #include "localrep.h"
 #include "endian_core.h"
 #include <flibc.h>
+#include "str0.h"
 
 typedef struct {
     char name[32];    /* name of field as a \0 terminated string */
@@ -113,6 +114,10 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
         if (fld->blob_index == -1)
             sz += fld->len;
         else {
+            rc = unodhfy_blob_buffer(iq->usedb, blobs + fld->blob_index,
+                                     fld->blob_index);
+            if (rc != 0)
+                goto err;
             /* vutf8 and fits in inline portion */
             if (fld->type == CLIENT_VUTF8 &&
                 blobs[fld->blob_index].exists == 0) {
@@ -293,7 +298,6 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
 {
     /* log the delete.  once the update succeeds we log the add
        - otherwise the whole thing gets aborted. */
-    long long id;
     struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
@@ -391,18 +395,14 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     struct dbtable *savedb;
     int fndlen;
     int odsz, clsz;
-    unsigned long long oldgenid;
     int rc;
     int using_newblobs = 0;
-    blob_status_t newblobs[MAXBLOBS] = {0};
+    blob_status_t newblobs[MAXBLOBS] = {{0}};
     uint8_t *lim;
 
     /* NOTE: 80% of this routine is a copy-and-paste job from
      * local_replicant_log_add.
      * One day, when there's nothing better to do, fix that. */
-
-    if (!iq->usedb->do_local_replication)
-        return 0;
 
     if (!iq->usedb->do_local_replication)
         return 0;
@@ -655,10 +655,9 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     uint8_t *p_buf_data;
     const uint8_t *p_buf_data_end;
     uint8_t buf[OPREC_SIZE] = {0};
-    unsigned long long genid;
+    unsigned long long genid = 0;
     struct oprec rec;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
-    char *p;
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct dbtable *db;
     struct ireq aiq;
 
@@ -707,7 +706,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     rc = add_record(&aiq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, (unsigned char *)nulls, blobs, MAXBLOBS,
                     &err, &fix, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     iq->blkstate->pos++;
 
@@ -730,8 +729,8 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     uint8_t buf[COMMITREC_SIZE] = {0};
     int err, fix;
     int rrn;
-    unsigned long long genid;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    unsigned long long genid = 0;
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct commitrec rec;
 
     struct dbtable *db;
@@ -761,14 +760,15 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, nulls, blobs, MAXBLOBS, &err, &fix, &rrn,
                     &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     if (iq->debug)
         reqpopprefixes(iq, 1);
     return rc;
 }
 
-int local_replicant_write_clear(struct dbtable *db)
+int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
+                                struct dbtable *db)
 {
     struct schema *s;
     int rc;
@@ -794,9 +794,14 @@ int local_replicant_write_clear(struct dbtable *db)
         return 0;
     }
 
-    strncpy(table, db->tablename, sizeof(table));
+    strncpy0(table, db->tablename, sizeof(table));
 
     table[31] = 0;
+
+    if (in_iq && !in_iq->is_fake && in_trans) {
+        return add_oplog_entry(in_iq, in_trans, LCL_OP_CLEAR, table,
+                               sizeof(table));
+    }
 
     init_fake_ireq(thedb, &iq);
     iq.use_handle = thedb->bdb_env;

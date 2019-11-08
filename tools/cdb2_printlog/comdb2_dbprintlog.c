@@ -6,6 +6,7 @@
 #include <plhash.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_swap.h"
@@ -220,11 +221,12 @@ comdb2_txn_regop_print(curlog_t * c)
 
 	/* Find this transaction. */
 	if ((txn = hash_find(h, &c->txnid)) != NULL) {
+		/* Delete from hash. */
+		hash_del(h, txn);
+
 		/* Free the memory. */
 		free(txn);
 
-		/* Delete from hash. */
-		hash_del(h, txn);
 	}
 
 	if (argp->locks.size >= 8) {
@@ -282,7 +284,7 @@ static int
 comdb2_bam_repl_print(curlog_t * c)
 {
 	__bam_repl_args *argp = (__bam_repl_args *) c->argp;
-	char data[32], *btree, *operation, *p, *gn;
+	char data[32], *btree;
 	hash_t *h = dbreg_hash();
 	trak_dbreg_t *dbreg;
 

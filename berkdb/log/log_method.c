@@ -118,7 +118,6 @@ __log_set_lg_nsegs(dbenv, lg_nsegs)
 	DB_ENV *dbenv;
 	u_int32_t lg_nsegs;
 {
-	u_int32_t lg_max;
 
 	ENV_ILLEGAL_AFTER_OPEN(dbenv, "DB_ENV->set_lg_bsize");
 

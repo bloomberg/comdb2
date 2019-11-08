@@ -22,11 +22,8 @@
   double fltpoint;
   char *varname;
   char *opttext;
-  char *casetxt;
-  char *unnmtxt;
   char *where;
   char *comment;
-  char *codetxt;
   char *bytestr; /* first int is size */
   struct unum {
     int   number;
@@ -56,13 +53,15 @@
 %token T_TABLE_TAG T_DEFAULT T_ONDISK T_SCHEMA
 %token T_CONSTRAINTS T_CASCADE
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
+%token T_CHECK
 
-%token T_RECNUMS T_PRIMARY T_DATAKEY 
+%token T_RECNUMS T_PRIMARY T_DATAKEY T_UNIQNULLS
 %token T_YES T_NO
 
 %token T_ASCEND T_DESCEND T_DUP					/*MODIFIERS*/
 
 %token T_LT T_GT 
+%token T_EQ
 
 %type <number> validctype validstrtype valididxstrtype
 %type <numstr>      number
@@ -85,12 +84,11 @@
 extern int current_line;
 extern char *blankchar;
 extern int yyleng;
-extern int charidx;
 extern int lastidx;
 extern int declaration;
-extern int cparse;
 extern int range_or_array;
 int parser_reset=0;
+int gbl_allow_neg_column_size;
 #ifndef YYDEBUG
 #define YYDEBUG 1
 #endif
@@ -125,7 +123,7 @@ validstruct:	recstruct
 
 
 /* constraintstruct: defines cross-table constraints */
-constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' { end_constraint_list(); }
+constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' {}
                 ;
 
 ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_constraint_mod(0,0,1); }
@@ -135,20 +133,26 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 | /* %empty */
                 ;
 
-cnstrtstart:    string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
-                | varname '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+cnstrtstart:    string '-' T_GT { start_constraint_list($1); }
+                | varname '-' T_GT { start_constraint_list($1); }
                 ;
 
 /* Named constraint (introduced in r7) */
-cnstrtnamedstart: string '=' string '-' T_GT {
-                      end_constraint_list();
+cnstrtnamedstart: string T_EQ string '-' T_GT {
                       start_constraint_list($3);
-                      set_constraint_name($1);
+                      set_constraint_name($1, CT_FKEY);
+                  }
+
+/* Named check constraint */
+cnstrtnamedcheck: T_CHECK string T_EQ where {
+                      add_check_constraint($4);
+                      set_constraint_name($2, CT_CHECK);
                   }
 
 /* Note: a named constraint does not allow a list of parent key references. */
-cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { /*end_constraint_list(); */}
-                | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { /*end_constraint_list(); */}
+cnstrtdef:      cnstrtdef cnstrtstart cnstrtparentlist ctmodifiers { }
+                | cnstrtdef cnstrtnamedstart cnstrtparent ctmodifiers { }
+                | cnstrtdef cnstrtnamedcheck
                 | /* %empty */
                 ;
 
@@ -278,23 +282,50 @@ typedec:	validctype varname fieldopts comment
 carray:         cstart                       { range_or_array=CLANG;}
 		;
 
-cstart:         '[' number ']' cstart         {  lastidx++; add_array($2.number, NULL);}
-                | '[' varname ']' cstart 
-                                              {
-                                                int i=constant($2);
-                                                if (i != -1)
+cstart:         '[' number ']' cstart
 						{
-						  lastidx++;
-						  add_array(constants[i].value, 
-							    constants[i].nm);
+							lastidx++;
+							if ((gbl_allow_neg_column_size == 0) &&
+                                ($2.number < 0)) {
+								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+									current_line);
+								csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+									current_line);
+								any_errors++;
+							} else {
+                                if ($2.number < 0) {
+                                    logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                           current_line);
+                                }
+								add_array($2.number, NULL);
+							}
 						}
-					      else
+                | '[' varname ']' cstart
 						{
-						  csc2_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT\n", current_line);
-						  csc2_syntax_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT", current_line);
-						  any_errors++;
+							int i=constant($2);
+							if (i != -1) {
+								if ((gbl_allow_neg_column_size == 0) &&
+                                    (constants[i].value < 0)) {
+									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+										current_line);
+									csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+										current_line);
+									any_errors++;
+								} else {
+                                    if (constants[i].value < 0) {
+                                        logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                               current_line);
+                                    }
+									lastidx++;
+									add_array(constants[i].value,
+										constants[i].nm);
+								}
+							} else {
+								csc2_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT\n", current_line);
+								csc2_syntax_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT", current_line);
+								any_errors++;
+							}
 						}
-                                              }
                 | /* %empty */
                 ;
 
@@ -345,9 +376,6 @@ comment:	T_COMMENT
 
 	| /* %empty */ {$$=blankchar;}
 		;
-
-
-
 
 /* keystruct: defines a key
 **	ie.
@@ -408,6 +436,7 @@ keyflags:	T_DUP		{ key_setdup(); }
                 | T_RECNUMS     { key_setrecnums(); }
                 | T_PRIMARY     { key_setprimary(); }
                 | T_DATAKEY     { key_setdatakey(); }
+                | T_UNIQNULLS   { key_setuniqnulls(); }
 		;
 
 compoundkey:	keypiece

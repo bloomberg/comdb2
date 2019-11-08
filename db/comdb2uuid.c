@@ -18,11 +18,10 @@
 
 #include <uuid/uuid.h>
 
-static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-
 void comdb2uuid(uuid_t u) { uuid_generate(u); }
 
-char *comdb2uuidstr(uuid_t u, char out[37])
+char *comdb2uuidstr(uuid_t u, char out[37]);
+inline char *comdb2uuidstr(uuid_t u, char out[37])
 {
     uuid_unparse(u, out);
     return out;

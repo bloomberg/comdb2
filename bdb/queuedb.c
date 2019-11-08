@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <inttypes.h>
+#include <flibc.h>
 #include "endian_core.h"
 #include "bdb_cursor.h"
 #include "bdb_int.h"
@@ -113,8 +114,12 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     qfnd.genid = get_genid(bdb_state, 0);
     qfnd.data_len = dtalen;
     qfnd.data_offset = sizeof(struct bdb_queue_found);
-    qfnd.num_fragments = 1;
-    qfnd.epoch = comdb2_time_epoch();
+    qfnd.trans.tid = tran->tid->txnid;
+    if (tran->trigger_epoch) {
+        qfnd.epoch = tran->trigger_epoch;
+    } else {
+        qfnd.epoch = tran->trigger_epoch = comdb2_time_epoch();
+    }
     p_buf = databuf;
     p_buf_end = p_buf + dtalen + sizeof(struct bdb_queue_found);
     p_buf = queue_found_put(&qfnd, p_buf, p_buf_end);
@@ -176,7 +181,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 goto done;
             } else if (rc) {
                 logmsg(LOGMSG_ERROR,
-                       "queuedb %s consumer %d genid %lx put rc %d\n",
+                       "queuedb %s consumer %d genid %" PRIx64 " put rc %d\n",
                        bdb_state->name, i, k.genid, rc);
                 *bdberr = BDBERR_MISC;
                 rc = -1;
@@ -192,14 +197,12 @@ done:
     return rc;
 }
 
-int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
+int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
-    struct queuedb_key *k;
-    struct bdb_queue_found qfnd;
     int rc;
 
     if (gbl_debug_queuedb)
@@ -218,7 +221,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
     if (flags & BDB_QUEUE_WALK_RESTART) {
         /* this is a restart, and lastitem containts a copy of the last key when
          * we stopped */
-        dbt_key.data = *lastitem;
+        dbt_key.data = lastitem;
         dbt_key.size = sizeof(struct queuedb_key);
         rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
     } else {
@@ -226,11 +229,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void **lastitem,
     }
     while (rc == 0) {
         struct bdb_queue_found qfnd;
-        int consumern;
+        int consumern = 0;
         uint8_t *p_buf, *p_buf_end;
 
-        *lastitem = (void *)dbt_key.data;
-        consumern = ntohl(k->consumer);
+        lastitem = (void *)dbt_key.data;
 
         p_buf = dbt_data.data;
         p_buf_end = p_buf + dbt_data.size;
@@ -309,7 +311,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     struct queuedb_key k;
     DBT dbt_key = {0}, dbt_data = {0};
-    DBC *dbcp;
+    DBC *dbcp = NULL;
     int rc;
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
@@ -325,6 +327,11 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
                                            &dbcp, 0);
+    if (rc) {
+        *bdberr = BDBERR_MISC;
+        goto done;
+    }
+
     k.consumer = consumer;
     if (prevcursor)
         memcpy(&k.genid, prevcursor->genid, sizeof(uint64_t));
@@ -441,7 +448,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
         goto done;
     }
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "next key is consumer %d genid %016lx\n",
+        logmsg(LOGMSG_USER, "next key is consumer %d genid %016" PRIx64 "\n",
                fndk.consumer, fndk.genid);
     if (fndk.consumer != consumer) {
         /* pretend we didn't find anything - the next record is meant for
@@ -476,11 +483,13 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     /* what endianness is this? */
     *fnd = dbt_data.data;
-    *fnddtalen = dbt_data.size;
-    *fnddtaoff = sizeof(struct bdb_queue_found);
+    if (fnddtalen)
+        *fnddtalen = dbt_data.size;
+    if (fnddtaoff)
+        *fnddtaoff =
+            qfnd.data_offset; /* This length will be used to check version. */
     if (fndcursor) {
-        uint64_t g;
-        memcpy(fndcursor->genid, &qfnd.genid, sizeof(qfnd.genid));
+        memcpy(fndcursor->genid, &fndk.genid, sizeof(fndk.genid));
         fndcursor->recno = 0;
         fndcursor->reserved = 0;
     }
@@ -517,6 +526,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     uint8_t key[QUEUEDB_KEY_LEN];
     int rc = 0;
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    struct queuedb_key fndk = {0};
 
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
@@ -539,9 +549,10 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
     k.consumer = consumer;
-    k.genid = qfnd.genid;
+    k.genid = 0;
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "consumer %d genid %016lx\n", consumer, k.genid);
+        logmsg(LOGMSG_USER, "consumer %d genid %016llx\n", consumer,
+               qfnd.genid);
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + QUEUEDB_KEY_LEN;
     p_buf = queuedb_key_put(&k, p_buf, p_buf_end);
@@ -558,7 +569,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* we don't want to actually fetch the data, just position the cursor */
-    dbt_data.flags = DB_DBT_REALLOC;
+    dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
     dbt_key.data = key;
     dbt_key.size = QUEUEDB_KEY_LEN;
 
@@ -568,7 +579,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         *bdberr = BDBERR_MISC;
         goto done;
     }
-    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET);
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
     if (rc == DB_NOTFOUND) {
         if (gbl_debug_queuedb) {
             logmsg(LOGMSG_USER, "not found on consume:\n");
@@ -585,6 +596,21 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     } else if (rc) {
         logmsg(LOGMSG_ERROR, "%s: find queue %s consumer %d berk rc %d\n", __func__,
                 bdb_state->name, consumer, rc);
+        *bdberr = BDBERR_MISC;
+        rc = -1;
+        goto done;
+    }
+
+    p_buf = dbt_key.data;
+    p_buf_end = p_buf + dbt_key.size;
+    p_buf = queuedb_key_get(&fndk, p_buf, p_buf_end);
+
+    if ((fndk.genid != qfnd.genid) &&
+        (fndk.genid != flibc_ntohll(qfnd.genid))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: Trying to consume non-first item of queue %s genid: "
+               "%016llx first: %016" PRIx64 " consumer %d\n",
+               __func__, bdb_state->name, qfnd.genid, fndk.genid, consumer);
         *bdberr = BDBERR_MISC;
         rc = -1;
         goto done;

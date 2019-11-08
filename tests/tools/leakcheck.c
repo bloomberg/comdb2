@@ -21,7 +21,6 @@ void usage(FILE *f)
     exit(1);
 }
 
-static int cnt=0;
 static int iters = 1000;
 
 int comdb2_time_epochms(void)

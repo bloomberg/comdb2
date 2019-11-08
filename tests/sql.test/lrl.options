@@ -2,3 +2,4 @@ table t t.csc2
 dtastripe 4
 blobstripe
 round_robin_stripes
+exec_sql_on_new_connect PRAGMA short_column_names = off;

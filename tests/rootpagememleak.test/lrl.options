@@ -3,3 +3,5 @@ sqlenginepool mint 0
 sqlenginepool linger 0
 appsockpool mint 0
 appsockpool linger 0
+max_clientstats 1
+fingerprint_queries 0

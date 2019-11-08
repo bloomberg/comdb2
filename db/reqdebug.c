@@ -28,7 +28,6 @@ void reqprintflush(struct ireq *iq)
 /* prints to debug string until full.  FLUSHES OUTPUT FIRST..*/
 void reqmoref(struct ireq *iq, char *format, ...)
 {
-    int rc, left;
     va_list ap;
     va_start(ap, format);
     reqlog_logv(iq->reqlogger, REQL_TRACE, format, ap);
@@ -38,7 +37,6 @@ void reqmoref(struct ireq *iq, char *format, ...)
 /* continues string...*/
 void reqprintf(struct ireq *iq, char *format, ...)
 {
-    int rc, left;
     va_list ap;
     va_start(ap, format);
     reqprintflush(iq);
@@ -92,7 +90,6 @@ void reqdumphex(struct ireq *iq, void *buf, int nb)
 
 void reqpushprefixf(struct ireq *iq, const char *format, ...)
 {
-    int left, rc;
     va_list ap;
     va_start(ap, format);
     reqlog_pushprefixv(iq->reqlogger, format, ap);

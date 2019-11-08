@@ -44,6 +44,9 @@ typedef unsigned int u_int;
 #include <gettimeofday_ms.h>
 #include <errno.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
+
+extern void berkdb_dump_lockers_summary(DB_ENV *);
 
 static pthread_attr_t locktest_attr;
 static DB_ENV *dbenv = NULL;
@@ -103,7 +106,6 @@ void bdb_detect(void *_bdb_state)
 void bdb_locker_summary(void *_bdb_state)
 {
     bdb_state_type *bdb_state = _bdb_state;
-    void berkdb_dump_lockers_summary(DB_ENV *);
     berkdb_dump_lockers_summary(bdb_state->dbenv);
 }
 #endif
@@ -134,14 +136,14 @@ static void *test_lockmgr(void *_arg)
     int i, j;
     u_int32_t locker;
     DB_LOCK lock[DBTs];
-    ssize_t rc, rc1;
+    ssize_t rc, rc1 = 0;
     DB_LOCKREQ put_all = {0};
 
     start = gettimeofday_ms();
 
     rc = dbenv->lock_id(dbenv, &locker);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "lock_id rc: %ld\n", rc);
+        logmsg(LOGMSG_ERROR, "lock_id rc: %zu\n", rc);
         goto out;
     }
 
@@ -175,7 +177,7 @@ static void *test_lockmgr(void *_arg)
 id_free:
     rc1 = dbenv->lock_id_free(dbenv, locker);
     if (rc1) {
-        logmsg(LOGMSG_ERROR, "lock_id_free rc: %ld\n", rc1);
+        logmsg(LOGMSG_ERROR, "lock_id_free rc: %zu\n", rc1);
     }
 
 out:
@@ -324,7 +326,7 @@ static void *test_get_put(void *_mode)
 
     rc = dbenv->lock_id(dbenv, &locker);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "lock_id rc: %ld\n", rc);
+        logmsg(LOGMSG_ERROR, "lock_id rc: %zu\n", rc);
         return (void *)rc;
     }
 
@@ -332,22 +334,22 @@ static void *test_get_put(void *_mode)
     while (!stop) {
         rc = dbenv->lock_get(dbenv, locker, 0, &obj, mode, &lock);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "lock_get rc: %ld\n", rc);
+            logmsg(LOGMSG_ERROR, "lock_get rc: %zu\n", rc);
             break;
         }
         ++counter;
         rc = dbenv->lock_put(dbenv, &lock);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "lock_get rc: %ld\n", rc);
+            logmsg(LOGMSG_ERROR, "lock_get rc: %zu\n", rc);
             break;
         }
     }
     end = gettimeofday_ms();
-    logmsg(LOGMSG_USER, "diff: %lums (%.2fs) ", end - start,
-            (end - start) / 1000.0);
+    logmsg(LOGMSG_USER, "diff: %" PRIu64 "ms (%.2fs) ", end - start,
+           (end - start) / 1000.0);
     rc1 = dbenv->lock_id_free(dbenv, locker);
     if (rc1) {
-        logmsg(LOGMSG_ERROR, "lock_id_free rc: %ld\n", rc1);
+        logmsg(LOGMSG_ERROR, "lock_id_free rc: %zu\n", rc1);
     }
     rc |= rc1;
     return (void *)rc;
@@ -363,7 +365,7 @@ static void test_lock_per_sec(db_lockmode_t mode)
     stop = 1;
     pthread_join(t, (void **)&rc);
     if (rc)
-        logmsg(LOGMSG_ERROR, "fail: %ld ", (ssize_t)rc);
+        logmsg(LOGMSG_ERROR, "fail: %zu ", (ssize_t)rc);
     else
         logmsg(LOGMSG_USER, "pass ");
 }
@@ -382,9 +384,10 @@ static void print_counters()
     for (int i = 0; i < THDS; ++i) {
         diff += diffs[i];
     }
-    logmsg(LOGMSG_USER, 
-        "detect_skip:%lu detect_run:%lu counter:%lu deadlock:%lu time:%.2fms\n",
-        detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
+    logmsg(LOGMSG_USER,
+           "detect_skip:%" PRIu64 " detect_run:%" PRIu64 " counter:%" PRIu64
+           " deadlock:%" PRIu64 " time:%.2fms\n",
+           detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
 }
 
 static void test_n_locks_rd(void)
@@ -592,7 +595,7 @@ static ssize_t tester(const char *name, size_t num, tester_routine *routine)
     ssize_t s = 0;
     int i;
 
-    logmsg(LOGMSG_USER, "%s threads:%lu\n", name, num);
+    logmsg(LOGMSG_USER, "%s threads:%zu\n", name, num);
     for (i = 0; i < num; ++i) {
         arg[i].id = i;
         arg[i].num = num;
@@ -841,7 +844,6 @@ static int lockvec_as(void *lockdesc, uint32_t id)
     memcpy(mylock, lockdesc, sizeof(mylock));
     shuffle(mylock);
 
-    DB_LOCK gotlock[arraylen(p_lockdesc)];
     DBT mydbt[arraylen(p_lockdesc)];
     DB_LOCKREQ list[arraylen(mylock)];
     for (i = 0; i < arraylen(mydbt); ++i) {
@@ -992,14 +994,14 @@ void bdb_locktest(void *_bdb_state)
     bdb_state_type *bdb_state = _bdb_state;
     dbenv = bdb_state->dbenv;
 #endif
-    pthread_attr_init(&locktest_attr);
-    pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
+    Pthread_attr_init(&locktest_attr);
+    Pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
     void *ret;
     pthread_t t;
     uint64_t before = gettimeofday_ms();
     pthread_create(&t, NULL, locktest, io_override_get_std());
     pthread_join(t, &ret);
-    pthread_attr_destroy(&locktest_attr);
+    Pthread_attr_destroy(&locktest_attr);
     uint64_t after = gettimeofday_ms();
     uint64_t diff = after - before;
     fprintf(stderr, "total runtime: %" PRIu64 "ms (%0.2fs)\n", diff,

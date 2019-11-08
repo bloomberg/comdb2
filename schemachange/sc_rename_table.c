@@ -28,7 +28,7 @@ int do_rename_table(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
     struct dbtable *db;
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -68,6 +68,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     bdb_lock_table_write(db->handle, tran);
     bdb_lock_tablename_write(db->handle, newname, tran);
 
+    s->already_finalized = 1;
+
     /* renamed table schema gets bumped */
     rc = table_version_upsert(db, tran, &bdberr);
     if (rc) {
@@ -76,8 +78,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* update all associated metadata */
-    rc = bdb_rename_table_metadata(db->handle, tran, newname, db->version,
-                                   &bdberr);
+    rc = bdb_rename_table_metadata(db->handle, tran, newname,
+                                   db->schema_version, &bdberr);
     if (rc) {
         sc_errf(s, "Failed to rename metadata structure for %s\n",
                 db->tablename);
@@ -91,11 +93,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
-    rc = mark_schemachange_over_tran(db->tablename, tran);
-    if (rc) {
-        sc_errf(s, "Failed to mark schema change over for %s\n", db->tablename);
-        goto tran_error;
-    }
     /* fragile, handle with care */
     oldname = db->tablename;
     rc = rename_db(db, newname);
@@ -121,19 +118,17 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
-    rc = create_sqlmaster_records(tran);
-    if (rc) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto recover_memory;
+    if (s->finalize) {
+        if (create_sqlmaster_records(tran)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            goto recover_memory;
+        }
+        create_sqlite_master();
     }
-    create_sqlite_master(); /* create sql statements */
 
     gbl_sc_commit_count++;
 
     live_sc_off(db);
-
-    if (gbl_replicate_local)
-        local_replicant_write_clear(db);
 
     if (oldname)
         free(oldname);

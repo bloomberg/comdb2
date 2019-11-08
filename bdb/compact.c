@@ -40,8 +40,6 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 #ifdef BERKDB_46
@@ -138,9 +136,7 @@ static int compact_this_db(bdb_state_type *bdb_state, DB *db, DBT *end,
         bzero(tran, sizeof(tran_type));
         tran->master = 1;
 
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-        if( rc != 0)
-            fprintf( stderr, "compact_this_db: pthread_specific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
         rc = DB_LOCK_DEADLOCK;
     */
@@ -227,7 +223,7 @@ static int compact_this_db(bdb_state_type *bdb_state, DB *db, DBT *end,
         }
     }
     /*
-        pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
 
         myfree(tran);
     */

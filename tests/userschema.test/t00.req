@@ -5,5 +5,5 @@ put password 'mohit' for 'mohit'
 grant op to mohit
 put authentication on
 
-select * from comdb2_tablepermissions
+select * from comdb2_tablepermissions order by tablename
 select * from comdb2_users

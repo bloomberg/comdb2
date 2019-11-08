@@ -21,8 +21,13 @@ unsetup_db ()
     DBDIR=${TESTDIR}/${DBNAME}
     CDB2_CONFIG=${DBDIR}/comdb2db.cfg
     CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+    result=$2
 
-    $TESTSROOTDIR/unsetup
+    if (( $result == 0 )) ; then
+       successful=1
+    fi
+
+    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 }
 
 
@@ -50,7 +55,7 @@ echo ./test_ssl.sh $db1 $cdb2cfg1 $db2 $cdb2cfg2
 ./test_ssl.sh $db1 $cdb2cfg1 $db2 $cdb2cfg2
 result=$?
 
-unsetup_db $db2
+unsetup_db $db2 $result
 
 if (( $result != 0 )) ; then
    echo "FAILURE"

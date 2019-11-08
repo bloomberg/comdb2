@@ -22,8 +22,20 @@ public class NoDbHostFoundException extends Exception {
 
     private static final long serialVersionUID = -3336167815219390728L;
 
+    public NoDbHostFoundException(String dbname, Throwable t) {
+        super(dbname, t);
+    }
+
+    public NoDbHostFoundException(String dbname, String reason, Throwable t) {
+        super(dbname + ": " + reason, t);
+    }
+
+    public NoDbHostFoundException(String dbname, String reason) {
+        this(dbname, reason, null);
+    }
+
     public NoDbHostFoundException(String dbname) {
-        super("No host found for " + dbname);
+        super(dbname);
     }
 
 }

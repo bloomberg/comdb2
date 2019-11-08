@@ -54,10 +54,12 @@ const char *help_text[] = {
 "  -b <path>    location to store/load the incremental backup",
 "  -x <path>    path to comdb2 binary to use for full recovery",
 "  -r/R         do/do-not run full recovery after extracting",
-"  -u %         do not allow disk usage to exceed this percentage",
+"  -u \%       do not allow disk usage to exceed this percentage",
 "  -f           force deserialisation even if checksums fail",
 "  -O           legacy mode, does not delete old format files",
 "  -D           turn off directio",
+"  -E dbname    create replicant with dbname",
+"  -T type      override physrep type",
 NULL
 };
 
@@ -87,8 +89,8 @@ int main(int argc, char *argv[])
     extern char *optarg;
     extern int optind, optopt;
 
-    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_CREATE_MODE, PARTIAL_RESTORE_MODE, NO_MODE};
-    modes_enum mode = NO_MODE;
+    enum class Mode {create, extract, partial_create, partial_restore, none};
+    Mode mode = Mode::none;
 
     int c;
 
@@ -108,6 +110,10 @@ int main(int argc, char *argv[])
     std::string incr_path;
     bool incr_path_specified = false;
     bool dryrun = false;
+    bool copy_physical = false;
+
+    std::string new_db_name = "";
+    std::string new_type = "default";
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -121,7 +127,7 @@ int main(int argc, char *argv[])
     ss << root << "/bin/comdb2";
     std::string comdb2_task(ss.str());
 
-    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSkKfOD")) != EOF) {
+    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSkKfODE:T:")) != EOF) {
         switch(c) {
             case 'O':
                 legacy_mode = true;
@@ -214,6 +220,16 @@ int main(int argc, char *argv[])
                 dryrun = true;
                 break;
 
+            case 'E':
+                new_db_name = std::string(optarg);
+                copy_physical = true;
+                strip_cluster_info = true;
+                break;
+
+            case 'T':
+                new_type = std::string(optarg);
+                break;
+
             case '?':
                 std::cerr << "Unrecognised option: -" << (char)c << std::endl;
                 usage();
@@ -238,19 +254,19 @@ int main(int argc, char *argv[])
     for(const char *cp = argv[0]; *cp; ++cp) {
         switch(*cp) {
             case 'c':
-                mode = CREATE_MODE;
+              mode = Mode::create;
                 break;
 
             case 'p':
-                mode = PARTIAL_CREATE_MODE;
+              mode = Mode::partial_create;
                 break;
 
             case 'P':
-                mode = PARTIAL_RESTORE_MODE;
+              mode = Mode::partial_restore;
                 break;
 
             case 'x':
-                mode = EXTRACT_MODE;
+              mode = Mode::extract;
                 break;
 
             default:
@@ -263,11 +279,11 @@ int main(int argc, char *argv[])
     // known to set an odd umask
     umask(02);
 
-    if(mode == NO_MODE) {
+    if(mode == Mode::none) {
         std::cerr << "Must specify a valid mode" << std::endl;
         std::exit(2);
 
-    } else if(mode == CREATE_MODE) {
+    } else if(mode == Mode::create) {
         // In create mode we expect one more parameter, the path to the lrl
         // file that we must back up.
         if(argc != 2) {
@@ -280,6 +296,8 @@ int main(int argc, char *argv[])
         try {
             serialise_database(
                 lrlpath,
+                new_type,
+                new_db_name,
                 comdb2_task,
                 disable_log_deletion,
                 strip_cluster_info,
@@ -288,6 +306,7 @@ int main(int argc, char *argv[])
                 do_direct_io,
                 incr_create,
                 incr_gen,
+                copy_physical,
                 incr_path
             );
         } catch(std::exception& e) {
@@ -295,7 +314,7 @@ int main(int argc, char *argv[])
             errexit();
         }
 
-    } else if(mode == EXTRACT_MODE) {
+    } else if(mode == Mode::extract) {
 
         // In extract mode we expect two parameters or none
         std::string lrldest, datadest;
@@ -339,7 +358,7 @@ int main(int argc, char *argv[])
               errexit();
             }
         }
-    } else if (mode == PARTIAL_CREATE_MODE) {
+    } else if (mode == Mode::partial_create) {
         // A lot like create, we create a tarball, but we don't do
         // lots of other things that create does, so it's a great
         // deal easier to skip that code
@@ -351,7 +370,7 @@ int main(int argc, char *argv[])
             std::cerr << e.what() << std::endl;
             errexit();
         }
-    } else if (mode == PARTIAL_RESTORE_MODE) {
+    } else if (mode == Mode::partial_restore) {
         // Also a lot like restore, with enough differences
         // that it's incredibly ... unclean ... to make the
         // restore code do what we need

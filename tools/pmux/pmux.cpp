@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
+#include <assert.h>
 #include <strings.h>
 
 #include <algorithm>
@@ -74,11 +75,12 @@ static long open_max;
 static bool foreground_mode = false;
 static std::unique_ptr<pmux_store> pmux_store;
 static std::vector<struct in_addr> local_addresses(5);
+static std::vector<std::pair<int, int>> port_ranges;
 
 struct connection {
     int fd;
     std::list<std::string> out;
-    char inbuf[128];
+    char inbuf[256];
     int inoff;
     bool writable;
     bool is_hello;
@@ -131,13 +133,26 @@ static int alloc_fd(const char *svc, int fd)
     return 0;
 }
 
-static int get_port(const char *svc)
+static int get_svc_port(const char *svc)
 {
     std::string key(svc);
-    const auto &port = port_map.find(key);
-    if (port == port_map.end())
+    const auto &it = port_map.find(key);
+    if (it == port_map.end())
         return -1;
-    return port->second;
+    return it->second;
+}
+
+static bool is_port_in_range(int port)
+{
+    for (auto &range : port_ranges) {
+        if (range.first <= port && port <= range.second)
+            return true;
+    }
+    return false;
+}
+
+static void dealloc_port_int(const std::map<std::string, int>::iterator &it)
+{
 }
 
 static int connect_instance(int servicefd, char *name)
@@ -145,17 +160,19 @@ static int connect_instance(int servicefd, char *name)
 #ifdef VERBOSE
     fprintf(stderr, "Adding fd %d service %s\n", servicefd, name);
 #endif
-    int port = get_port(name);
+    int port = get_svc_port(name);
     std::string s;
     std::stringstream out;
     out << port;
     s = out.str();
-    write(servicefd, s.c_str(), strlen(s.c_str()));
+    int rc = write(servicefd, s.c_str(), strlen(s.c_str()));
+    if (rc == -1)
+        std::cerr << "write() returns rc = " << rc << std::endl;
     int oldfd = get_fd(name);
     if (oldfd > 0) {
         dealloc_fd(name);
     }
-    int rc = alloc_fd(name, servicefd);
+    rc = alloc_fd(name, servicefd);
 #ifdef VERBOSE
     std::cout << "connect " << name << " " << servicefd << std::endl;
 #endif
@@ -164,12 +181,12 @@ static int connect_instance(int servicefd, char *name)
 
 int client_func(int fd)
 {
-    char service[128];
+    char service[256] = {0};
     int listenfd = fd;
 #ifdef VERBOSE
     fprintf(stderr, "Starting client thread \n");
 #endif
-    ssize_t n = read(listenfd, service, sizeof(service));
+    ssize_t n = read(listenfd, service, sizeof(service) - 1);
 #ifdef VERBOSE
     fprintf(stderr, "%s\n", service);
 #endif
@@ -281,7 +298,7 @@ static void init_router_mode()
 
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sun_family = AF_UNIX;
-    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
+    strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path) - 1);
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
@@ -384,28 +401,51 @@ static int tcp_listen(uint16_t port)
     return fd;
 }
 
+static void dealloc_svc_running_on_port(int port)
+{
+    for (std::map<std::string, int>::iterator it = port_map.begin();
+         it != port_map.end(); ++it) {
+        if (it->second == port) {
+            pmux_store->del_port(it->first.c_str());
+            port_map.erase(it);
+            if (is_port_in_range(port))
+                free_ports.insert(port);
+            break;
+        }
+    }
+}
+
+/* Service svc is informing us that it is using a certain port.
+ * If port is in use by another service we need to update the
+ * mapping. If port is outside of range, we still need to honor
+ * and store it in the mapping.
+ */
 static int use_port(const char *svc, int port)
 {
-    const auto &i = free_ports.find(port);
-    // remember the old service->port mapping, if any
-    int usedport = get_port(svc);
+    // remember the old port for this service, if any
+    int usedport = get_svc_port(svc);
 
-    if (i == free_ports.end()) {
-        /* service can tell us over and over that it's using the port, that's
-         * fine */
-        if (usedport == port)
-            return 0;
+    // service can tell us repeatedly that it's using the port, thats fine
+    if (usedport == port) // we dont need to do anything
+        return 0;
 
-        syslog(LOG_ERR, "%s -- not using port, not on free list:%d\n", svc,
-                port);
-        return -1;
-    } else {
-        // was the service using a different port before?  remove that mapping
-        if (usedport != -1)
-            dealloc_port(svc);
+    // service was using a different port before so remove that mapping
+    if (usedport != -1) {
+        dealloc_port(svc);
     }
-    free_ports.erase(i);
 
+    // now find what's running in our port
+    const auto &it = free_ports.find(port);
+
+    // find who's using port and dealloc it since db is up and running
+    // on the specified port which it is trying to register with pmux
+    dealloc_svc_running_on_port(port);
+
+    if (is_port_in_range(port)) {
+        const auto &it = free_ports.find(port);
+        assert(it != free_ports.end()); // port should be free
+        free_ports.erase(it);
+    }
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
     pmux_store->sav_port(svc, port);
@@ -431,16 +471,20 @@ static int alloc_port(const char *svc)
 static int dealloc_port(const char *svc)
 {
     std::string key(svc);
-    const auto &i = port_map.find(key);
-    if (i == port_map.end()) {
+    const auto &it = port_map.find(key);
+    if (it == port_map.end()) {
         return -1;
     }
-    int port = i->second;
-    port_map.erase(i);
-    pmux_store->del_port(svc);
-    free_ports.insert(port);
+
+    int port = it->second;
+    pmux_store->del_port(it->first.c_str());
+    port_map.erase(it);
+    if (is_port_in_range(port))
+        free_ports.insert(port);
+
     return 0;
 }
+
 #if 0
 static char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 static void hprintf(FILE *f, char *b, size_t s)
@@ -496,8 +540,8 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
 
 static void used(connection &c)
 {
-    for (auto &port : port_map) {
-        conn_printf(c, "port %-7d name %s\n", port.second, port.first.c_str());
+    for (auto &kv : port_map) {
+        conn_printf(c, "port %-7d name %s\n", kv.second, kv.first.c_str());
     }
 }
 
@@ -529,8 +573,10 @@ static int route_to_instance(char *svc, int fd)
 void disallowed_write(connection &c, char *cmd)
 {
     char *ip = inet_ntoa(c.addr);
+#ifdef VERBOSE
     syslog(LOG_INFO, "attempt to write (%s) from remote connection %s\n", cmd,
            ip);
+#endif
     conn_printf(c, "-1 write requests not permitted from this host\n");
 }
 
@@ -538,7 +584,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
                    connection &c)
 {
     int bad = 0;
-    char *cmd = NULL, *svc = NULL, *sav;
+    char *cmd = nullptr, *svc = nullptr, *sav;
 
 #ifdef VERBOSE
     syslog(LOG_INFO, "%d: cmd: %s\n", fd.fd, in);
@@ -546,17 +592,16 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
 #endif
 
     cmd = strtok_r(in, " ", &sav);
-    if (cmd == NULL)
+    if (cmd == nullptr)
         goto done;
 
-again:
     if (strcmp(cmd, "reg") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
-                int port = get_port(svc);
+                int port = get_svc_port(svc);
                 if (port == -1) {
                     port = alloc_port(svc);
                 }
@@ -566,20 +611,20 @@ again:
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "get") == 0) {
-        char *echo = strtok_r(NULL, " ", &sav);
-        if (echo == NULL) {
+        char *echo = strtok_r(nullptr, " ", &sav);
+        if (echo == nullptr) {
             conn_printf(c, "-1 missing service name\n");
         } else {
             if (strcmp(echo, "/echo") == 0) {
-                svc = strtok_r(NULL, " ", &sav);
+                svc = strtok_r(nullptr, " ", &sav);
             } else {
                 svc = echo;
-                echo = NULL;
+                echo = nullptr;
             }
-            if (svc == NULL) {
+            if (svc == nullptr) {
                 conn_printf(c, "-1\n");
             } else {
-                int port = get_port(svc);
+                int port = get_svc_port(svc);
                 if (echo)
                     conn_printf(c, "%d %s\n", port, svc);
                 else
@@ -587,8 +632,8 @@ again:
             }
         }
     } else if (strcmp(cmd, "rte") == 0) {
-        char *svc = strtok_r(NULL, " ", &sav);
-        if (svc == NULL) {
+        char *svc = strtok_r(nullptr, " ", &sav);
+        if (svc == nullptr) {
             conn_printf(c, "-1\n");
         } else {
             int rc = route_to_instance(svc, fd.fd);
@@ -601,8 +646,8 @@ again:
         }
     } else if (strcmp(cmd, "del") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
                 int rc = dealloc_port(svc);
@@ -613,11 +658,11 @@ again:
         }
     } else if (strcmp(cmd, "use") == 0) {
         if (c.writable) {
-            svc = strtok_r(NULL, " ", &sav);
-            if (svc == NULL) {
+            svc = strtok_r(nullptr, " ", &sav);
+            if (svc == nullptr) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
-                char *p = strtok_r(NULL, " ", &sav);
+                char *p = strtok_r(nullptr, " ", &sav);
                 int use = p ? atoi(p) : 0;
                 if (use == 0) {
                     conn_printf(c, "-1 missing/invalid port\n");
@@ -637,20 +682,20 @@ again:
     } else if (strcmp(cmd, "used") == 0 || strcmp(cmd, "list") == 0) {
         used(c);
     } else if (strcmp(cmd, "hello") == 0) {
-        svc = strtok_r(NULL, " ", &sav);
+        svc = strtok_r(nullptr, " ", &sav);
         if (c.writable && svc != nullptr) {
-            if (svc != nullptr) {
-                c.is_hello = true;
-                {
-                    std::lock_guard<std::mutex> l(active_services_mutex);
-                    active_services.insert(std::string(svc));
-                }
-                c.service = std::string(svc);
-                conn_printf(c, "ok\n");
-#ifdef VERBOSE
-                std::cout << "hello from " << svc << std::endl;
-#endif
+            c.is_hello = true;
+            {
+                std::lock_guard<std::mutex> l(active_services_mutex);
+                active_services.insert(std::string(svc));
             }
+            c.service = std::string(svc);
+            conn_printf(c, "ok\n");
+#ifdef VERBOSE
+            std::cout << "hello from " << svc << std::endl;
+#endif
+        } else if (svc == nullptr) {
+            conn_printf(c, "-1 missing service name\n");
         } else {
             disallowed_write(c, cmd);
         }
@@ -661,22 +706,33 @@ again:
             conn_printf(c, "%s\n", it.c_str());
         }
     } else if (strcmp(cmd, "exit") == 0) {
-        if (c.writable) {
+        if (c.writable)
             return 1;
-        } else {
+        else {
             disallowed_write(c, cmd);
         }
+    } else if (strcmp(cmd, "range") == 0) {
+        for (auto &range : port_ranges) {
+            conn_printf(c, "%d:%d\n", range.first, range.second);
+        }
     } else if (strcmp(cmd, "help") == 0) {
-        conn_printf(c, "get [/echo] service     : discover port for service\n"); 
-        conn_printf(c, "reg service             : obtain/discover port for new service\n");
-        conn_printf(c, "del service             : forget port assignment for service\n");
-        conn_printf(c, "use service port        : set specific port registration for service\n");
-        conn_printf(c, "stat                    : dump some stats\n");
-        conn_printf(c, "used                    : dump active port assignments\n");
-        conn_printf(c, "rte                     : get route to instance service/port\n");
-        conn_printf(c, "hello service           : keep active connection\n");
-        conn_printf(c, "active                  : list active connections\n");
-        conn_printf(c, "exit                    : shutdown pmux (may be restarted by system)\n");
+        conn_printf(
+            c,
+            "active                  : list active connections\n"
+            "del service             : forget port assignment for service\n"
+            "exit                    : shutdown pmux (may be restarted by "
+            "system)\n"
+            "get [/echo] service     : discover port for service\n"
+            "hello service           : keep active connection\n"
+            "help                    : this help message\n"
+            "range                   : print port range which this pmux can "
+            "assign\n"
+            "reg service             : obtain/discover port for new service\n"
+            "rte                     : get route to instance service/port\n"
+            "stat                    : dump some stats\n"
+            "use service port        : set specific port registration for "
+            "service\n"
+            "used (or list)          : dump active port assignments\n");
     } else {
         conn_printf(c, "-1 unknown command, type 'help' for a brief usage description\n");
     }
@@ -695,7 +751,7 @@ done:
 static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 {
     connection &c = connections[fd.fd];
-    ssize_t n = read(fd.fd, c.inbuf + c.inoff, sizeof(c.inbuf) - c.inoff);
+    ssize_t n = read(fd.fd, c.inbuf + c.inoff, (sizeof(c.inbuf) - 1) - c.inoff);
     if (n <= 0) {
         unwatchfd(fd);
         return 0;
@@ -763,7 +819,7 @@ static bool init_local_names()
     struct hostent *me;
     me = gethostbyname("localhost");
 
-    if (me == NULL) {
+    if (me == nullptr) {
         syslog(LOG_ERR, "gethostbyname(\"localhost\") %d\n", h_errno);
         return false;
     }
@@ -783,18 +839,18 @@ static bool init_local_names()
     return true;
 }
 
-static bool init(std::vector<std::pair<int, int>> port_ranges)
+static bool init(const std::vector<std::pair<int, int>> &pranges)
 {
 
     if (!init_local_names())
         return false;
 
-    for (auto &range : port_ranges) {
+    for (auto &range : pranges) {
 #ifdef VERBOSE
         syslog(LOG_INFO, "%s free port range %d - %d\n", __func__, range.first,
                range.second);
 #endif
-        for (int s = range.first; s < range.second; ++s) {
+        for (int s = range.first; s <= range.second; ++s) {
             free_ports.insert(s);
         }
     }
@@ -861,8 +917,8 @@ static int make_range(char *s, std::pair<int, int> &range)
     std::string orig(s);
     char *sav;
     char *first = strtok_r(s, ":", &sav);
-    char *second = strtok_r(NULL, ":", &sav);
-    if (first == NULL || second == NULL) {
+    char *second = strtok_r(nullptr, ":", &sav);
+    if (first == nullptr || second == nullptr) {
         syslog(LOG_ERR, "bad port range -> %s\n", orig.c_str());
         return 1;
     }
@@ -906,7 +962,7 @@ int main(int argc, char **argv)
         syslog(LOG_WARNING, "setting open_max to:%ld\n", open_max);
     }
     char *host = getenv("HOSTNAME");
-    if (host == NULL) {
+    if (host == nullptr) {
         long hostname_max = sysconf(_SC_HOST_NAME_MAX);
         if (hostname_max == -1) {
             syslog(LOG_WARNING, "sysconf(_SC_HOST_NAME_MAX): %d %s ", errno,
@@ -920,7 +976,7 @@ int main(int argc, char **argv)
         if (rc == 0)
             host = strdup(myhost);
     }
-    if (host == NULL) {
+    if (host == nullptr) {
         syslog(LOG_CRIT,
                "Can't figure out hostname: please export HOSTNAME.\n");
         return EXIT_FAILURE;
@@ -928,7 +984,6 @@ int main(int argc, char **argv)
     const char *cluster = "prod";
     const char *dbname = "pmuxdb";
     std::vector<int> listen_ports = {5105};
-    std::vector<std::pair<int, int>> port_ranges{{19000, 19999}};
     bool default_ports = true;
     bool default_range = true;
     enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
@@ -936,6 +991,8 @@ int main(int argc, char **argv)
     std::pair<int, int> custom_range;
     int c;
     struct sockaddr_un serv_addr;
+    port_ranges = {{19000, 19999}}; // default range
+
     while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
         switch (c) {
         case 'h':
@@ -948,11 +1005,12 @@ int main(int argc, char **argv)
             dbname = strdup(optarg);
             break;
         case 'b':
-            if (strlen(optarg) >= sizeof(serv_addr.sun_path)) {
+            if (strlen(optarg) >= sizeof(serv_addr.sun_path) ||
+                strlen(optarg) >= sizeof(unix_bind_path)) {
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }
-            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            strncpy(unix_bind_path, optarg, sizeof(unix_bind_path) - 1);
             break;
         case 'p':
             if (default_ports) {

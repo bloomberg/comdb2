@@ -166,7 +166,6 @@ __bam_defcmp(dbp, a, b)
 	const DBT *a, *b;
 {
 	size_t len;
-	u_int8_t *p1, *p2;
 	int rc;
 
 	COMPQUIET(dbp, NULL);
@@ -194,6 +193,7 @@ __bam_defcmp(dbp, a, b)
 		return rc;
 
 #if 0
+	u_int8_t *p1, *p2;
 	for (p1 = a->data, p2 = b->data; len--; ++p1, ++p2)
 		if (*p1 != *p2)
 			return ((long)*p1 - (long)*p2);

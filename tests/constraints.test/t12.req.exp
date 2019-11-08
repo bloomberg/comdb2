@@ -1,0 +1,53 @@
+[drop table if exists c] rc 0
+[drop table if exists p] rc 0
+(comment='the following transacions should succeed because c has non dup key')
+[select "the following transacions should succeed because c has non dup key" as comment] rc 0
+[create table p {schema{int i} keys{"pki" = i}}] rc 0
+[create table c {schema{int i} keys{dup "cki" = i} constraints{"cki" -> <"p" : "pki"> on update cascade on delete cascade }}] rc 0
+(rows inserted=1)
+[insert into p values (1)] rc 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(comment='the following transacion will fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints')
+[select "the following transacion will fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints" as comment] rc 0
+[begin] rc 0
+[insert into c values (1)] rc 0
+[delete from p where i = 1] rc 0
+[commit] failed with rc 304 verify key constraint: record not found in table c (cascaded)
+(i=1)
+[select * from c] rc 0
+(i=1)
+[select * from p] rc 0
+(comment='the following transacion should result in all rows including the inserted to c within the transaction being updated to 2')
+[select "the following transacion should result in all rows including the inserted to c within the transaction being updated to 2" as comment] rc 0
+[begin] rc 0
+[insert into c values (1)] rc 0
+[update p set i = i+i where i = 1] rc 0
+[commit] failed with rc 304 verify key constraint: record not found in table c (cascaded)
+(i=1)
+[select * from c] rc 0
+(i=1)
+[select * from p] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify("p")] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify("c")] rc 0
+[insert into p values (1)] failed with rc 299 add key constraint duplicate key 'PKI' on table 'p' index 0
+(rows inserted=1)
+[insert into c values (1)] rc 0
+(comment='the following transacion should fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints')
+[select "the following transacion should fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints" as comment] rc 0
+[begin] rc 0
+[insert into c values (1)] rc 0
+[delete from p where i = 1] rc 0
+[commit] failed with rc 304 verify key constraint: record not found in table c (cascaded)
+(i=1)
+(i=1)
+[select * from c order by i] rc 0
+(i=1)
+[select * from p order by i] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify("p")] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify("c")] rc 0
+

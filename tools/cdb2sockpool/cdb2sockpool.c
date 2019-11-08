@@ -49,6 +49,7 @@
 #include <bb_daemon.h>
 
 #include "cdb2sockpool.h"
+#include <locks_wrap.h>
 
 #define MAX_TYPESTR_LEN 2048
 
@@ -75,6 +76,8 @@ struct db_number_info {
     LINKC_T(struct db_number_info) linkv;
 };
 
+static hash_t *dbs_info_hash = NULL;
+
 struct client {
     /* client file descriptor */
     int fd;
@@ -93,14 +96,10 @@ struct client {
 
 static char unix_bind_path[128] = SOCKPOOL_SOCKET_NAME;
 static char msgtrap_fifo[128] = "/tmp/msgtrap.sockpool";
+static int foreground_mode = 0;
 
 static struct stat save_st;
 
-/* Keep a count of how many sockets we have per database number and which
- * dbnums are active.  This is all protected using the BB_MUTEX_SOCKET_POOL
- * lock. */
-static struct db_number_info *dbs_info;
-static int num_dbs;
 static LISTC_T(struct db_number_info) active_list;
 
 /* Keep an overall count of pooled sockets */
@@ -113,11 +112,6 @@ static int max_clients;
 
 /* Global stats.  These are updated locklessly. */
 static struct stats gbl_stats;
-
-/* alarm if a high proportion of available fds are in use */
-static const int FD_CHECK_TIMER_FREQ =
-    10000; /* check frequency in milliseconds */
-static const double FD_PERCENTAGE_ALMN_THRESHOLD = 0.75;
 
 /* File descriptor limit, determined at run-time
  * in increase_file_descriptor_limit() */
@@ -148,36 +142,26 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     pthread_t local_tid;
     if (!tid)
         tid = &local_tid;
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        syslog(LOG_ERR, "%s:pthread_attr_init: %d %s\n", __func__, rc,
-               strerror(rc));
-        return -1;
-    }
+    Pthread_attr_init(&attr);
+
     if (stacksize > 0) {
-        rc = pthread_attr_setstacksize(&attr, stacksize);
-        if (rc != 0) {
-            syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
-                   rc, strerror(rc));
-            pthread_attr_destroy(&attr);
-            return -1;
-        }
+        Pthread_attr_setstacksize(&attr, stacksize);
     }
     rc = pthread_attr_setdetachstate(&attr, detachstate);
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_attr_setdetachstate: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
     rc = pthread_create(tid, &attr, start_routine, arg);
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -192,11 +176,11 @@ static int get_num_clients()
 static int get_pooled_socket_count()
 {
     int pooled_sockets;
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     {
         pooled_sockets = pooled_socket_count;
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     return pooled_sockets;
 }
 
@@ -215,12 +199,14 @@ static void fd_destructor(enum socket_pool_event event, const char *typestr,
     }
 
     pooled_socket_count--;
-
-    if (dbnum > 0 && dbnum < num_dbs) {
-        dbs_info[dbnum].pool_count--;
-        if (dbs_info[dbnum].pool_count == 0) {
-            /*comdb2_shm_clr_flag(dbnum, CMDB2_SHMFLG_FDAVAIL);*/
-            listc_rfl(&active_list, &dbs_info[dbnum]);
+    if (dbnum > 0) {
+        struct db_number_info *dbs_info;
+        dbs_info = hash_find(dbs_info_hash, &dbnum);
+        if (dbs_info) {
+            dbs_info->pool_count--;
+            if (dbs_info->pool_count == 0) {
+                listc_rfl(&active_list, dbs_info);
+            }
         }
     }
 }
@@ -235,7 +221,7 @@ int recvall(int fd, void *bufp, int len)
     while (bytesleft) {
         rc = recv(fd, buf + off, bytesleft, MSG_WAITALL);
         if (rc == -1) {
-            if (rc == EINTR || rc == EAGAIN)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return -1;
         } else if (rc == 0) /* EOF before entire message read */
@@ -267,11 +253,9 @@ struct fsqlreq {
     int followlen; /* how much data follows header*/
 };
 
-static int send_reset(int fd)
+static void send_reset(int fd)
 {
-    int rc;
-    int nretries = 0, maxretries = 6;
-    int sbuftimeoutms;
+    int ret;
     struct fsqlreq req;
 
     req.request = FSQL_RESET; /* special reset opcode */
@@ -279,9 +263,14 @@ static int send_reset(int fd)
     req.parm = 0;
     req.followlen = 0;
 
-    rc = write(fd, &req, sizeof(req));
+    ret = write(fd, &req, sizeof(req));
+    if (ret == -1)
+        syslog(LOG_ERR, "send_reset(): Failed to write to fd. %s\n",
+               strerror(errno));
 
-    return 0;
+    if (ret != sizeof(req))
+        syslog(LOG_ERR, "send_reset(): Wrote %d bytes instead of %zu to fd.\n",
+               ret, sizeof(req));
 }
 
 static int cache_port(char *typestr, int fd, char *prefix)
@@ -364,20 +353,20 @@ static int cdb2_get_progname_by_pid(pid_t pid, char *pname, int pnamelen)
      * migrated into bb_get_pid_argv0() and this routine would call that one
      * unconditionally.
      **/
-    if (rc != 0 && pname != NULL) {
-        strncpy(pname, "???", pnamelen);
+    if (pname != NULL) {
+        strncpy(pname, "???", pnamelen); /* call bb_get_pid_argv0 here? */
         pname[pnamelen - 1] = 0;
+        rc = 0;
     }
     return rc;
 }
 
 void *client_thd(void *voidarg)
 {
-    struct client clnt;
     int rc, fd = (intptr_t)voidarg;
     struct sockpool_hello hello;
     ssize_t nbytes;
-    char prefix[80];
+    char prefix[128];
     char *typestrbuf = NULL;
     int maxtypestrlen = 0;
 
@@ -407,10 +396,8 @@ void *client_thd(void *voidarg)
         return NULL;
     }
 
+    struct client clnt = {.fd = fd, .pid = hello.pid, .slot = hello.slot};
     bzero(&clnt.stats, sizeof(clnt.stats));
-    clnt.fd = fd;
-    clnt.pid = hello.pid;
-    clnt.slot = hello.slot;
 
     rc = cdb2_get_progname_by_pid(clnt.pid, clnt.progname,
                                   sizeof(clnt.progname));
@@ -440,10 +427,10 @@ void *client_thd(void *voidarg)
         struct sockpool_msg_vers0 msg0;
         struct sockpool_msg_vers1 msg1;
         int rc, newfd;
-        int request;
-        char *typestr;
+        int request = 0;
+        char *typestr = 0;
         int dbnum;
-        int timeout;
+        int timeout = 0;
         void *msg;
         int msglen;
 
@@ -485,7 +472,7 @@ void *client_thd(void *voidarg)
                 continue;
             }
 
-            if (msg0.dbnum < 0 || msg0.dbnum >= num_dbs) {
+            if (msg0.dbnum < 0) {
                 syslog(
                     LOG_NOTICE,
                     "%s: received fd for out of range dbnum %d typestr '%s'\n",
@@ -554,17 +541,24 @@ void *client_thd(void *voidarg)
              * pool it our destructor (fd_destructor) will be called and will
              * decrement the count.  Also of course light the shared memory
              * bit to indicate that we have fds available for this dbnum. */
-            pthread_mutex_lock(&sockpool_lk);
+            Pthread_mutex_lock(&sockpool_lk);
             {
                 pooled_socket_count++;
                 if (dbnum > 0) {
-                    if (dbs_info[dbnum].pool_count == 0) {
-                        listc_atl(&active_list, &dbs_info[dbnum]);
+                    struct db_number_info *dbs_info;
+                    dbs_info = hash_find(dbs_info_hash, &dbnum);
+                    if (dbs_info == NULL) {
+                        dbs_info = calloc(1, sizeof(struct db_number_info));
+                        dbs_info->dbnum = dbnum;
+                        hash_add(dbs_info_hash, dbs_info);
                     }
-                    dbs_info[dbnum].pool_count++;
+                    if (dbs_info->pool_count == 0) {
+                        listc_atl(&active_list, dbs_info);
+                    }
+                    dbs_info->pool_count++;
                 }
             }
-            pthread_mutex_unlock(&sockpool_lk);
+            Pthread_mutex_unlock(&sockpool_lk);
 
             clnt.stats.fds_donated++;
             gbl_stats.fds_donated++;
@@ -803,7 +797,7 @@ static void do_stat(void)
     syslog(LOG_INFO, "---\n");
     print_all_settings();
     syslog(LOG_INFO, "---\n");
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     syslog(LOG_INFO, "Currently holding sockets for %d discrete dbnums:\n",
            listc_size(&active_list));
     strbuf *stb = strbuf_new();
@@ -824,11 +818,10 @@ static void do_stat(void)
     if (count > 0)
         syslog(LOG_INFO, "%s", strbuf_buf(stb));
     strbuf_free(stb);
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     syslog(LOG_INFO, "---\n");
     LOCK(&client_lock)
     {
-        struct client *clnt;
         syslog(LOG_INFO, "current number of clients : %u\n",
                listc_size(&client_list));
         syslog(LOG_INFO, "peak number of clients    : %u\n", max_clients);
@@ -890,8 +883,6 @@ static void do_stat_port(void)
 {
     LOCK(&gbl_port_hints_lock)
     {
-        struct hint *hint;
-
         if (!gbl_exiting) {
             syslog(LOG_INFO, "=== Cached %d ports ===\n", num_port_hints);
             hash_for(port_hints, port_hint_dump, NULL);
@@ -1046,9 +1037,10 @@ static void increase_file_descriptor_limit()
     max_fd_limit = rlp.rlim_cur;
 
     if (rlp.rlim_cur < rlp.rlim_max) {
-        syslog(LOG_INFO, "Increasing soft file descriptor limit from current "
-                         "value of %ld to the hard max (%ld).\n",
-               rlp.rlim_cur, rlp.rlim_max);
+        syslog(LOG_INFO,
+               "Increasing soft file descriptor limit from current "
+               "value of %ld to the hard max (%ld).\n",
+               (long int)rlp.rlim_cur, (long int)rlp.rlim_max);
 
         rlp.rlim_cur = rlp.rlim_max;
 
@@ -1063,7 +1055,6 @@ static void increase_file_descriptor_limit()
 
 static int cdb2_waitft()
 {
-    char rec[1000];
     char *fifo = NULL;
     fifo = getenv("MSGTRAP_SOCKPOOL");
     if (fifo == NULL) {
@@ -1081,7 +1072,7 @@ static int cdb2_waitft()
     while (1) {
         int i = 0;
         int rc;
-        bzero(rec, 1000);
+        char rec[1000] = {0};
         fd = open(fifo, O_RDONLY | O_NONBLOCK);
 
         fd_set set;
@@ -1122,8 +1113,8 @@ int main(int argc, char *argv[])
     extern int optind, optopt;
 
     int c;
-    int listenfd, dbnum;
-    struct sockaddr_un serv_addr;
+    int listenfd;
+    struct sockaddr_un serv_addr = {.sun_family = AF_UNIX};
 
     sigignore(SIGPIPE);
 #ifndef LOG_PERROR
@@ -1135,7 +1126,7 @@ int main(int argc, char *argv[])
 
     optind = 1;
 
-    while ((c = getopt(argc, argv, "p:")) != EOF) {
+    while ((c = getopt(argc, argv, "p:f")) != EOF) {
         switch (c) {
         case 'p':
             /* Of the two limits sizeof(sun_addr.sun_path) is smaller */
@@ -1144,6 +1135,10 @@ int main(int argc, char *argv[])
                 exit(2);
             }
             strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            break;
+
+        case 'f':
+            foreground_mode = 1;
             break;
 
         case '?':
@@ -1159,7 +1154,6 @@ int main(int argc, char *argv[])
      * To deal with this, we increase the soft limit to meet the hard
      * limit here.
      */
-    int increased_fd_limit = 1;
     increase_file_descriptor_limit();
 
     socket_pool_enable();
@@ -1171,16 +1165,7 @@ int main(int argc, char *argv[])
     socket_pool_set_max_fds(POOL_MAX_FDS);
     socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 
-    /*num_dbs = gbltbls_get_max_dbnum() + 1;*/
-    num_dbs = 262144;
-    dbs_info = calloc(num_dbs, sizeof(struct db_number_info));
-    if (!dbs_info) {
-        syslog(LOG_ERR, "Out of memory for %d dbs\n", num_dbs);
-        exit(1);
-    }
-    for (dbnum = 0; dbnum < num_dbs; dbnum++) {
-        dbs_info[dbnum].dbnum = dbnum;
-    }
+    dbs_info_hash = hash_init(sizeof(int32_t));
 
     listc_init(&active_list, offsetof(struct db_number_info, linkv));
     listc_init(&client_list, offsetof(struct client, linkv));
@@ -1199,8 +1184,6 @@ int main(int argc, char *argv[])
                strerror(errno));
     }
 
-    bzero(&serv_addr, sizeof(serv_addr));
-    serv_addr.sun_family = AF_UNIX;
     strncpy(serv_addr.sun_path, unix_bind_path, sizeof(serv_addr.sun_path));
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
@@ -1220,7 +1203,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    bb_daemon();
+    if (!foreground_mode) {
+        bb_daemon();
+    }
 
     if (pthread_create_attrs(NULL, PTHREAD_CREATE_DETACHED, 64 * 1024,
                              accept_thd, (void *)(intptr_t)listenfd) != 0) {

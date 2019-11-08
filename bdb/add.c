@@ -43,10 +43,10 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
-
 #include "genid.h"
 #include "logmsg.h"
+
+extern int gbl_debug_omit_dta_write;
 
 /* if dta is not null, it will be tailed after the genid in btree data part */
 static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -61,8 +61,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     unsigned int *iptr;
     void *mallocedkeydata;
     unsigned int stackkeydata[3];
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
-    int odh_len = 0;
+    void *pKeyMaxBuf = 0;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -91,7 +90,8 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
         abort();
     }
 
-    rrn = 2;
+    /* JJM 2018-05-02: This value is not actually used by this function. */
+    /* rrn = 2; */
 
     /* for fixed format (rrn+genid, or genid) we dont malloc */
     mallocedkeydata = NULL;
@@ -103,8 +103,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
         keydata_len += dtalen;
         if (bdb_state->ixdta[ixnum] && bdb_state->ondisk_header &&
             bdb_state->datacopy_odh) {
-            odh_len = ODH_SIZE_RESERVE;
-            keydata_len += odh_len;
+            keydata_len += ODH_SIZE_RESERVE;
         }
     }
 
@@ -142,7 +141,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
             assert(rec == (iptr + 2));
             keydata_len = sizeof(unsigned long long) + recsize;
         } else {
-            /* collattr or non-odh datacopy */
+            /* for decimal, collattr or non-odh datacopy */
             memcpy(iptr + 2, dta, dtalen);
         }
     }
@@ -160,35 +159,10 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
 
       */
 
-    /* set up the dbt_key */
-    memset(&dbt_key, 0, sizeof(dbt_key));
-
-    /* indexes with dupes get a genid tacked on, same for indexes that
-       dont allow dupes but allow for nulls.  the genid is the sanitized
-       'search' genid.  */
-
-    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
-        unsigned long long tmpgenid;
-
-        tmpgenid = get_search_genid(bdb_state, genid);
-
-        /* use 0 as the genid if no null values to keep it unique */
-        if (bdb_state->ixnulls[ixnum] && !isnull)
-            tmpgenid = 0;
-
-        memcpy(keymax, ixdta, bdb_state->ixlen[ixnum]);
-
-        dbt_key.data = keymax;
-        dbt_key.size = bdb_state->ixlen[ixnum];
-
-        memcpy(keymax + bdb_state->ixlen[ixnum], &tmpgenid,
-               sizeof(unsigned long long));
-        dbt_key.size += sizeof(unsigned long long);
-    } else {
-        /* in place if we dont have dups */
-        dbt_key.data = ixdta;
-        dbt_key.size = bdb_state->ixlen[ixnum];
-    }
+    /* depending on the index flags and the provided field (column?) values, we
+     * may want to use the genid as part of the index key.  currently, this is
+     * only done when supporting multiple NULL values in a UNIQUE index. */
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, ixdta, ixnum, genid, isnull, &pKeyMaxBuf);
 
     /* set up the dbt_data */
     memset(&dbt_data, 0, sizeof(dbt_data));
@@ -198,6 +172,8 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     /* write to the index */
     rc = ll_key_add(bdb_state, genid, tran, ixnum, &dbt_key, &dbt_data);
 
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
     if (mallocedkeydata)
         free(mallocedkeydata);
     if (rc == DB_KEYEXIST) {
@@ -241,13 +217,10 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
     DBT dbt_key, dbt_data;
     int rc;
     int rrn;
-    unsigned long long saved_genid = 0, *chkgenid = NULL;
     int dtafile;
     bdb_state_type *parent;
     int *genid_dta;
-    tran_type *parent_tran;
     DB *dbp;
-    int *mallocedtid;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -256,11 +229,6 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
         parent = bdb_state->parent;
     else
         parent = bdb_state;
-
-    if (tran->parent)
-        parent_tran = tran->parent;
-    else
-        parent_tran = tran;
 
 #ifdef FOO
     /* we DO NOT support variable length dta.  (for dta[0], blobs are above
@@ -290,6 +258,11 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
             set_participant_stripeid(bdb_state, participantstripid, *genid);
     }
 
+    if (gbl_debug_omit_dta_write) {
+        //needs to be done here intstead of glue.c because need genid to be created because it is used to insert blob and idx
+        return rrn;
+    }
+
     /* add data to the dta file, with key being rrn */
     memset(&dbt_key, 0, sizeof(dbt_key));
     memset(&dbt_data, 0, sizeof(dbt_data));
@@ -307,7 +280,7 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
     dbp = bdb_state->dbp_data[0][dtafile];
 
     rc = ll_dta_add(bdb_state, *genid, dbp, tran, 0, dtafile /* stripe! */,
-                    &dbt_key, &dbt_data, DB_NOOVERWRITE);
+                    &dbt_key, &dbt_data, DB_NOOVERWRITE, 0);
 
     if (genid_dta)
         free(genid_dta);
@@ -356,7 +329,8 @@ int bdb_prim_allocdta_genid(bdb_state_type *bdb_state, tran_type *tran,
 static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
                                        tran_type *tran, int dtanum,
                                        void *dtaptr, size_t dtalen, int rrn,
-                                       unsigned long long genid, int *bdberr)
+                                       unsigned long long genid, int *bdberr,
+                                       int odhready)
 {
     DBT dbt_key, dbt_data;
     unsigned long long *genid_dta = NULL;
@@ -421,7 +395,7 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
     dbp = get_dbp_from_genid(bdb_state, dtanum, genid, &stripe);
 
     rc = ll_dta_add(bdb_state, genid, dbp, tran, dtanum, stripe, &dbt_key,
-                    &dbt_data, DB_NOOVERWRITE);
+                    &dbt_data, DB_NOOVERWRITE, odhready);
 
     if (genid_dta)
         free(genid_dta);
@@ -446,12 +420,9 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
 
 int bdb_prim_adddta_n_genid(bdb_state_type *bdb_state, tran_type *tran,
                             int dtanum, void *dtaptr, size_t dtalen, int rrn,
-                            unsigned long long genid, int *bdberr)
+                            unsigned long long genid, int *bdberr, int odhready)
 {
-    int rc;
 
-    rc = bdb_prim_adddta_n_genid_int(bdb_state, tran, dtanum, dtaptr, dtalen,
-                                     rrn, genid, bdberr);
-
-    return rc;
+    return bdb_prim_adddta_n_genid_int(bdb_state, tran, dtanum, dtaptr, dtalen,
+                                       rrn, genid, bdberr, odhready);
 }

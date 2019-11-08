@@ -5,11 +5,23 @@ permalink: auth.html
 ---
 
 ## Authenticating comdb2 session
+
+### Password-based Authentication
+
 A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
 
 ```sql
 set user 'foo_user'
 set password 'foo_password'
+``` 
+
+### Certificate-based Authentication
+
+A comdb2 session can also be authenticated by setting the client certificate/key using [set ssl_cert](sql.html#set-ssl_cert) and [set ssl_key](sql.html#set-ssl_key), just after opening the connection.
+
+```sql
+set ssl_cert /path/to/certificate
+set ssl_key /path/to/key
 ``` 
 
 ## Adding/deleting users to database
@@ -43,7 +55,6 @@ select * from comdb2_users
 
 ```
 select * from comdb2_users
-(username='default', isOP='N')
 (username='foo_user', isOP='N')
 (username='op_user', isOP='Y')
 ```
@@ -63,8 +74,7 @@ put authentication off
 ``` 
 Only users which have OP credentials can turn on/off authentication.
 
-Turning on authentication will add a new user with the name 'default', if it doesn't already exist. This user will be used for every unauthenticated session.
-The newly created 'default' user doesn't have any privileges to any objects, but can be granted any privilege by an OP user.
+As a convenience, if ```create_default_user``` tunable is turned on, turning on authentication would automatically create a new user with name 'default' and empty password if it doesn't already exist. This newly created user doesn't have any privileges to any objects, but can be granted any privilege by an OP user. It will be used for every unauthenticated session.
 
 ## Granting/Revoking table privileges to users
 
@@ -121,4 +131,63 @@ testdb> select * from comdb2_tablepermissions
 (tablename='t2', username='foo_user', READ='N', WRITE='N', DDL='N')
 (tablename='t2', username='op_user', READ='Y', WRITE='Y', DDL='Y')
 [select * from comdb2_tablepermissions] rc 0
+```
+
+## User Schemas
+Comdb2 supports tables in user's namespace. This allows multiple users to have tables with same name.
+
+To enable it, this lrl option needs to be enabled
+```
+allow_user_schema
+```
+
+The following example will create multiple users and separate table (with same name) for each user.
+Querying comdb2_tables from op user account will show all the tables.
+
+```sql
+put password 'user' for 'user'
+put password 'user1' for 'user1'
+put password 'user2' for 'user2'
+grant op to user
+
+set user user
+set password user
+put authentication on /* Only op can turn on the authentication. */
+
+select * from comdb2_users
+(username='user', isOP='Y')
+(username='user1', isOP='N')
+(username='user2', isOP='N')
+[select * from comdb2_users] rc 0
+
+set user user1
+set password user1
+create table test { schema {int t} keys { "T1" = t}}$$
+insert into test values(1)
+(rows inserted=1)
+
+set user user2
+set password user2
+create table test { schema {int t} keys { "T1" = t}}$$
+insert into test values(2)
+(rows inserted=1)
+
+set user user1
+set password user1
+select * from test
+(t=1)
+
+set user user2
+set password user2
+select * from test
+(t=2)
+
+set user user
+set password user
+select * from comdb2_tables
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat2')
+(tablename='sqlite_stat4')
+(tablename='test@user1')
+(tablename='test@user2')
 ```

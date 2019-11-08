@@ -1450,7 +1450,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
     }                                                                    \
     else {                                                               \
       decNumber rhsdn;                                                   \
-      fnrtn result;                                                      \
       decContext * dnctx = &(Tls_Load()->dn128Context);                  \
       decimal128ToNumber(&rhs, &rhsdn);                                  \
       return(dnfn(&rhsdn,dnctx));                                        \
@@ -2168,7 +2167,6 @@ decimal64 dfpal_decimal64FromString(const char *string)
 decimal64 decimal64FromDecimal32(const decimal32 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_single xrhs;
     dfp_single_parameter xin;
     dfp_double xres;
 
@@ -2402,7 +2400,6 @@ uByte * decimal64ToPackedBCD(
   #if !defined(DFPAL_USE_DECFLOAT)
     decNumber dn;
 
-    decContext * dnctx = &(Tls_Load()->dn64Context);
     decimal64ToNumber(&rhs, &dn);
     return (decPackedFromNumber(bcdOut, length, scale, &dn));
   #else
@@ -2467,7 +2464,6 @@ decimal64 decimal64FromPackedBCD (
   else {
     decNumber   dn;
     decNumber *dnErr;
-    decimal64 *d64Err;
     decimal64 result64;
     decContext * dnctx = &(Tls_Load()->dn64Context);
 
@@ -2597,7 +2593,6 @@ compare_result decimal64Cmpop(const decimal64 lhs,
   }
   else {
   #if !defined(DFPAL_USE_DECFLOAT)
-    decimal64 result64;                                   
     decNumber lhsdn, rhsdn, resultdn;                             
     decContext * dnctx = &(Tls_Load()->dn64Context);             
     decimal64ToNumber(&(lhs),&lhsdn);                  
@@ -2998,7 +2993,6 @@ decimal64 decimal64Rescale(const decimal64 lhs, const decimal64 rhs)
       (ires.sll > DFPAL_DECIMAL64_Emax) || 
       (ires.sll < (DFPAL_DECIMAL64_Emin-DFPAL_DECIMAL64_Pmax+1))) {
       /* input scale was non-integer or out of bound */
-      dec64DataXchg xnan;
 
       /* set invalid into pre-FPSCR */
       beforeFPSCR.fpscr_attrib.vxsoft=1;
@@ -3546,7 +3540,6 @@ uByte * decimal128ToPackedBCD(
   #if !defined(DFPAL_USE_DECFLOAT)
     decNumber dn;
 
-    decContext * dnctx = &(Tls_Load()->dn64Context);
     decimal128ToNumber(&rhs, &dn);
     return (decPackedFromNumber(bcdOut, length, scale, &dn));
   #else
@@ -3613,7 +3606,6 @@ decimal128 decimal128FromPackedBCD (
   else {
     decNumber   dn;
     decNumber *dnErr;
-    decimal128 *d128Err;
     decimal128 result128;
     decContext * dnctx = &(Tls_Load()->dn128Context);
 
@@ -3634,6 +3626,7 @@ decimal128 decimal128FromPackedBCD (
     decimal128FromNumber(&result128, &dn, dnctx);
     return (result128);
   #else
+    decimal128 *d128Err;
     d128Err=(decimal128 *)
       decQuadFromPackedChecked((decQuad *)&result128, -scale, bcdin);
     if(d128Err==NULL) {
@@ -3748,7 +3741,6 @@ compare_result decimal128Cmpop(const decimal128 lhs,
   }
   else {
   #if !defined(DFPAL_USE_DECFLOAT)
-    decimal128 result128;                                   
     decNumber lhsdn, rhsdn, resultdn;                             
     decContext * dnctx = &(Tls_Load()->dn128Context);            
     decimal128ToNumber(&(lhs),&lhsdn);                  
@@ -3767,6 +3759,7 @@ compare_result decimal128Cmpop(const decimal128 lhs,
     /* must be +ve number (+1) */
     return(DFPAL_COMP_GT);
   #else
+    decimal128 result128;                                   
     decQuad result128;
     decContext * dnctx = &(Tls_Load()->dn128Context);
     if(op==DFPAL_COMP_ORDERED) {
@@ -4259,7 +4252,6 @@ decimal128 decimal128Rescale(const decimal128 lhs, const decimal128 rhs)
       (ires.sll > DFPAL_DECIMAL128_Emax) ||
       (ires.sll < (DFPAL_DECIMAL128_Emin-DFPAL_DECIMAL128_Pmax+1))) {
       /* input scale was non-integer */
-      dec128DataXchg xnan;
 
       /* set invalid into pre-FPSCR */
       beforeFPSCR.fpscr_attrib.vxsoft=1;

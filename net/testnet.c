@@ -29,8 +29,7 @@
 #include <epochlib.h>
 #include <db.h>
 #include <bsnodeusr.h>
-#include <lockmacro.h>
-
+#include "lockmacros.h"
 #include "net.h"
 
 enum { MSGTYPE_MSG = 0, MSGTYPE_RETRAN_REQUEST = 1, MSGTYPE_NEEDACK = 2 };

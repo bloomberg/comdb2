@@ -1,0 +1,8 @@
+durable_set_trace on
+setattr DURABLE_LSNS 1
+setattr WAIT_FOR_SEQNUM_TRACE 1
+master_swing_osql_verbose
+master_swing_sock_restart_sleep 2
+on block_set_commit_genid_trace
+logmsg level info
+nowatch

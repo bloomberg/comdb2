@@ -42,7 +42,7 @@ void user_request_begin(enum request_type type, int flags)
         st = malloc(sizeof(struct per_request_stats));
         if (st == NULL)
             return;
-        pthread_setspecific(key, st);
+        Pthread_setspecific(key, st);
     }
     bzero(st, sizeof(struct per_request_stats));
     st->type = type;
@@ -111,12 +111,7 @@ void user_request_memp_callback(void)
 
 void user_request_init(void)
 {
-    int rc;
-    rc = pthread_key_create(&key, user_request_done);
-    if (rc) {
-        logmsgperror("user_request_init:pthread_key_create");
-        exit(1);
-    }
+    Pthread_key_create(&key, user_request_done);
 
     __berkdb_register_read_callback(user_request_read_callback);
     __berkdb_register_write_callback(user_request_write_callback);

@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Time partition testcase for comdb2
+################################################################################
+
+
+# args
+# <dbname>
+dbname=$1
+
+VIEW1="testview1"
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+
+function timepart_stats
+{
+    set -x
+    # check the current partitions 
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | 
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" |
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+}
+
+timepart_stats
+
+# create the partition
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-24*3600)'`
+
+# test 1: failure to use a initial shard that is pointed to from a 
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >> $OUT
+if (( $? == 0 )) ; then
+   echo "FAILURE to stop creating a partition using a bad shard0"
+   exit 1
+fi
+
+timepart_stats
+
+# test 2: create a regular partition
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t3 as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to create a normal partition"
+   exit 1
+fi
+
+sleep 6
+
+timepart_stats
+
+# test 3: check attempt to drop a shard
+shard=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'select shardname from comdb2_timepartshards limit 1'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "drop table ${shard}" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table \'${shard}\'" >> $OUT
+if (( $? == 0 )) ; then
+   echo "FAILURE to stop dropping a shard"
+   exit 1
+fi
+
+
+# we need to scrub dbname from alpha
+sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+
+
+difs=`diff $OUT $OUT.alpha.actual`
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"

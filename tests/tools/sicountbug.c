@@ -155,8 +155,6 @@ void *insert_records_thd(void *arg)
 
 int insert_records(config_t *c)
 {
-    int i, ret;
-
     insert_thread_t *ins = (insert_thread_t *) malloc(sizeof(*ins));
     ins->c = c;
     insert_records_thd(ins);
@@ -236,7 +234,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld, ret=%d.\n", id, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64", ret=%d.\n", id, ret);
             exit(1);
         }
 
@@ -294,7 +292,7 @@ void *update_records_thd(void *arg)
             }
             if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
             {
-                fprintf(stderr, "error selecting record id=%ld, ret=%d.\n", id, ret);
+                fprintf(stderr, "error selecting record id=%"PRId64", ret=%d.\n", id, ret);
                 exit(1);
             }
 
@@ -355,7 +353,7 @@ void *update_records_thd(void *arg)
                 }
                 if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
                 {
-                    fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
+                    fprintf(stderr, "error selecting record id=%"PRId64" and acct=%"PRId64", ret=%d.\n", id, acct, ret);
                     exit(1);
                 }
 
@@ -370,13 +368,13 @@ void *update_records_thd(void *arg)
                 {
                     ch = cdb2_column_value(sqlh, 0);
                     sum3 += atoll(ch);
-                    fprintf(stderr, "id=%ld, acct=%d, bal=%lld\n", id, nacct3, atoll(ch));
+                    fprintf(stderr, "id=%"PRId64", acct=%d, bal=%lld\n", id, nacct3, atoll(ch));
                 }
                 else if(type == CDB2_INTEGER)
                 {
                     ll = (long long *)cdb2_column_value(sqlh, 0);
                     sum3 += *ll;
-                    fprintf(stderr, "id=%ld, acct=%d, bal=%lld\n", id, nacct3, *ll);
+                    fprintf(stderr, "id=%"PRId64", acct=%d, bal=%lld\n", id, nacct3, *ll);
                 }
                 else
                 {
@@ -389,7 +387,7 @@ void *update_records_thd(void *arg)
                 }
                 while(ret == CDB2_OK);
             }
-            fprintf(stderr, "userid=%ld account sum=%lld sum2=%lld, sum3=%lld, nacct=%d, nacct2=%d, nacct3=%d\n", 
+            fprintf(stderr, "userid=%"PRId64" account sum=%lld sum2=%lld, sum3=%lld, nacct=%d, nacct2=%d, nacct3=%d\n", 
                     id, sum, sum2, sum3, nacct, nacct2, nacct3);
             fprintf(stderr, "sum and nacct is the result from the first select sum(bal) and count(bal).\n");
             fprintf(stderr, "sum2 and nacct2 is the result from the second select sum(bal) and count(bal) after first one failed.\n");
@@ -413,7 +411,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64" and acct=%"PRId64", ret=%d.\n", id, acct, ret);
             exit(1);
         }
 
@@ -475,7 +473,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64" and acct=%"PRId64", ret=%d.\n", id, acct, ret);
             exit(1);
         }
         do

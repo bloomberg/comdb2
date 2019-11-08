@@ -30,6 +30,8 @@ static const char revid[] = "$Id: rep_region.c,v 1.42 2003/09/04 18:06:49 bostic
 #include "dbinc/log.h"
 #include "dbinc/db_am.h"
 
+void init_log_repdb_queue(void);
+
 /*
  * __rep_region_init --
  *	Initialize the shared memory state for the replication system.
@@ -109,6 +111,7 @@ __rep_region_init(dbenv)
 		rep = R_ADDR(infop, renv->rep_off);
 	MUTEX_UNLOCK(dbenv, &renv->mutex);
 
+    init_log_repdb_queue();
 	db_rep->rep_mutexp = &rep->mutex;
 	db_rep->db_mutexp = R_ADDR(infop, rep->db_mutex_off);
 	db_rep->region = rep;

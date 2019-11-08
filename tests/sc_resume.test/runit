@@ -26,6 +26,7 @@ fi
 
 # Number of insert_records function calls
 nins=0
+nupd=0
 
 
 function assertcnt 
@@ -99,7 +100,7 @@ function get_sc_seed
         failexit "sending stat to new master $master"
     fi
 
-    scseed=`grep "Schema change in progress with seed" stat1.out | awk '{print $7}'`
+    scseed=`grep "Schema change in progress" stat1.out | awk '{print $10}'`
     if [ "x$scseed" == "x" ] ; then
         failexit "scseed is empty"
     fi
@@ -144,6 +145,23 @@ function insert_records
         let j=j+1
     done
     echo "done inserting round $nins"
+}
+
+function update_records
+{
+    j=$1
+    nstop=$2
+    let nupd=nupd+1
+    updfl=update${nupd}.out
+    echo "update $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $updfl
+
+    while [[ $j -le $nstop ]]; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set b = 'x' || b where a = $j" &>> $updfl
+        let j=j+1
+        sleep 0.1
+    done
+    echo "done updating round $nupd"
 }
 
 
@@ -228,9 +246,26 @@ function get_schemachange_status
     return 0
 }
 
+getmaster() {
+    [[ $debug != "0" ]] && set -x
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb cluster')" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    ok=0
+    while [[ "$ok" != "1" ]] ; do
+        ok=1
+        for node in $CLUSTER ; do
+            master2=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('bdb cluster')" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+            if [[ "$master" == "" || $master != $master2 ]] ; then
+                master="$master2"
+                ok=0
+                break
+            fi
+        done
+    done
+    echo $master
+}
 
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+function getrepnode {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | grep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]'
 }
 
 function force_delay_master
@@ -254,6 +289,8 @@ function wait_for_sc
 
 echo "Test with insert, SC should not fail"
 
+master=`getmaster`
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
@@ -276,11 +313,12 @@ echo "starting alter on master node $master"
 force_delay_master
 
 insert_records 201 400 &
+update_records 1 200 &
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.out || touch alter1.failed) &
 
-echo "sleep 15 to let alter1 process some rows"
-sleep 15
+echo "sleep 10 to let alter1 process some rows"
+sleep 10
 
 seed1=`get_sc_seed`
 #if it is a cluster we can downgrade, if it is single node we can restart
@@ -292,8 +330,7 @@ if [ ! -n "$CLUSTER" ] ; then
     assert_sc_seed $seed1
 fi
 
-echo "wait for sc and insert commands above to return"
-wait
+sleep 5
 
 if [ -n "$CLUSTER" ] ; then
     echo expect the sc command to fail
@@ -326,8 +363,12 @@ if [ -n "$CLUSTER" ] ; then
     # Only valid for clustered: make sure that the current schema is the t1_1.csc2
     assert_schema t1 t1_1.csc2
 else 
-    assert_sc_status 0
+    #single node, not always valid that: assert_sc_status 0
+    echo "single node, do nothing"
 fi
+
+echo "wait for sc and insert commands above to return"
+wait
 
 wait_for_sc
 
@@ -344,6 +385,7 @@ do_verify
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
 kill_restart_node $master 
+sleep 5
 master=`getmaster`
 assert_sc_status 0
 assert_vers t1 1
@@ -377,6 +419,7 @@ fi
 
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed2
@@ -401,7 +444,7 @@ if ! diff allrows_pre.out allrows_post.out ; then
     failexit "pre values are different from post"
 fi
 
-assert_vers t1 2
+assert_vers t1 1
 do_verify
 
 
@@ -426,9 +469,9 @@ if [ -f alter2.failed ] ; then
     cat alter2.out
 fi
 
-
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed3
@@ -442,7 +485,7 @@ insert_records_oneshot 601 800
 echo "after insert, t=$SECONDS"
 
 
-assert_vers t1 2
+assert_vers t1 1
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "select * from t1 order by c" > allrows_pre.out
 
 
@@ -462,8 +505,8 @@ if ! diff allrows_pre.out allrows_post.out ; then
     failexit "pre values are different from post"
 fi
 
-echo "version should now be 3"
-assert_vers t1 3
+echo "version should now be 2"
+assert_vers t1 2
 do_verify
 
 
@@ -474,8 +517,8 @@ echo "TESTING KILLING MASTER WHILE PERFORMING ALTER AGAIN"
 echo 'alter to t1_2, then to t1_3 again'
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
 
-echo "version should now be 4"
-assert_vers t1 4
+echo "version should now be 3"
+assert_vers t1 3
 do_verify
 
 echo 'alter to t1_3 while interrupting by killing master node'
@@ -500,13 +543,14 @@ fi
 
 #run inserts, updates, deletes and make sure they are in new btrees
 
+sleep 5
 master=`getmaster`
 echo "master node now $master"
 assert_sc_seed $seed4
 
 
-echo "version should still be 4 because new master takes a while to startup"
-assert_vers t1 4
+echo "version should still be 3 because new master takes a while to startup"
+assert_vers t1 3
 
 coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default - 
 cppid=$!
@@ -518,7 +562,7 @@ in_schema_change=$?   # SC may not have restarted yet
 while true ; do
     let j=j+1
     echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
-    read -t 0.2 -ru ${COPROC[0]} out
+    read -t 1.9 -ru ${COPROC[0]} out
     if [ "$out" != "(rows inserted=1)" ] ; then
         echo "out is $out at t=$SECONDS"
     fi
@@ -541,7 +585,7 @@ if [ $diff -gt 1 ] ; then
     failexit "count does not match is $cnt but should be $target"
 fi
 
-assert_vers t1 5
+assert_vers t1 4
 do_verify
 
 if [ ! -n "$CLUSTER" ] ; then
@@ -556,49 +600,62 @@ master=`getmaster`
 echo "master node now $master"
 kill_restart_node $master
 
+sleep 5
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 
-echo "version should now be 6"
-assert_vers t1 6
+echo "version should now be 5"
+assert_vers t1 5
 do_verify
 
 sleep 5
-
 master=`getmaster`
 echo "master node now $master"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > pre.out 2>&1
+mach=`getrepnode`
+
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "select a, c from t1 order by a" > pre.out 2>&1
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 0')"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 60"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 60"
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "PUT SCHEMACHANGE COMMITSLEEP 60"
 
 sleep 5
 
-(cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter22.out || touch alter22.failed) &
+(cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "alter table t1  { `cat t1_2.csc2 ` }" &> alter22.out || touch alter22.failed) &
 
-sleep 30
+sleep 20
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
-
-sleep 5
+function update_column_c
+{
+    while true ; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1
+        grep -e "Client api should" -e "Cannot connect to db" update.out
+        if [[ $? != 0 ]]; then
+            break
+        fi
+    done
+}
+update_column_c &
 
 echo "kill master node $master in the middle of alter"
 kill_restart_node $master
+
+sleep 20
 
 master=`getmaster`
 echo "master node now $master"
 
 wait_for_sc
 
-assert_vers t1 7
+assert_vers t1 6
 assert_schema t1 t1_2.csc2
 do_verify
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > post.out 2>&1
 diff pre.out post.out > /dev/null
 if [[ $? == 0 ]]; then
+    cat update.out
     failexit "expected updated column c"
 fi
 

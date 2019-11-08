@@ -47,6 +47,7 @@
  *
  *
  * April 2011 - Sam Jervis altered this module to use the assert_pthread_mutex_
+ * (2019 using Pthread_mutex_)
  * wrappers, altering the behaviour so that if a lock acquisition fails the
  * program will abort rather than blindly carry on.  This should be ok -
  * carrying on regardless will likely just corrupt memory (as things which
@@ -59,19 +60,19 @@
 #include <pthread.h>
 #include <stdio.h>
 
-#include <lockassert.h>
+#include "locks_wrap.h"
 
 /*
  * LOCK() {  ...  } UNLOCK()
  */
 
 #define LOCK(lk)                                                               \
-    assert_pthread_mutex_lock(lk);                                             \
+    Pthread_mutex_lock(lk);                                                    \
     do
 #define UNLOCK(lk)                                                             \
     while (0)                                                                  \
         ;                                                                      \
-    assert_pthread_mutex_unlock(lk);
+    Pthread_mutex_unlock(lk);
 #define SKIPUNLOCK(lk)                                                         \
     while (0)                                                                  \
         ;
@@ -87,13 +88,13 @@
 
 #define LOCKIFNZ(lk, a)                                                        \
     if (a)                                                                     \
-        assert_pthread_mutex_lock(lk);                                         \
+        Pthread_mutex_lock(lk);                                                \
     do
 #define UNLOCKIFNZ(lk, a)                                                      \
     while (0)                                                                  \
         ;                                                                      \
     if (a)                                                                     \
-        assert_pthread_mutex_unlock(lk);
+        Pthread_mutex_unlock(lk);
 
 /*
  * xUNLOCK() {  ...  } xLOCK()
@@ -102,12 +103,12 @@
  */
 
 #define xUNLOCK(lk)                                                            \
-    assert_pthread_mutex_unlock(lk);                                           \
+    Pthread_mutex_unlock(lk);                                                  \
     do
 #define xLOCK(lk)                                                              \
     while (0)                                                                  \
         ;                                                                      \
-    assert_pthread_mutex_lock(lk);
+    Pthread_mutex_lock(lk);
 
 /*
  * xUNLOCKIFNZ() { ... } xLOCKIFNZ()
@@ -115,13 +116,13 @@
 
 #define xUNLOCKIFNZ(lk, a)                                                     \
     if (a)                                                                     \
-        assert_pthread_mutex_unlock(lk);                                       \
+        Pthread_mutex_unlock(lk);                                              \
     do
 #define xLOCKIFNZ(lk, a)                                                       \
     while (0)                                                                  \
         ;                                                                      \
     if (a)                                                                     \
-        assert_pthread_mutex_lock(lk);
+        Pthread_mutex_lock(lk);
 
 /*
  * errUNLOCK() .. return
@@ -139,14 +140,14 @@
  * } UNLOCK(&lock);
  */
 
-#define errUNLOCK(lk) assert_pthread_mutex_unlock(lk);
+#define errUNLOCK(lk) Pthread_mutex_unlock(lk);
 
 /*
  * errLOCK()
  *
  * Same semantics as errUNLOCK(), but loccks instead of unlocks.
  */
-#define errLOCK(lk) assert_pthread_mutex_lock(lk);
+#define errLOCK(lk) Pthread_mutex_lock(lk);
 
 /*
  * errUNLOCKIFNZ() ... return
@@ -154,7 +155,7 @@
 
 #define errUNLOCKIFNZ(lk, a)                                                   \
     if (a)                                                                     \
-        assert_pthread_mutex_unlock(lk);
+        Pthread_mutex_unlock(lk);
 
 /* skip out early with return: */
 #define retUNLOCK(lk) errUNLOCK(lk)

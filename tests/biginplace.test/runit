@@ -58,7 +58,7 @@ echo "out is $out"
 # Snapshot should remain the same after update from small to a large record #
 #############################################################################
 
-results1=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.1
+results1=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.1
 bigrec1=$(cat bigrec1.txt)
 echo "begin" >&${COPROC[1]}
 echo >&${COPROC[1]} "@redirect $results1"
@@ -66,7 +66,7 @@ echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
 cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec1' where a=1" &>/dev/null
 
-results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
+results2=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
@@ -82,7 +82,7 @@ diff $results1 $results2
 # Snapshot should remain the same after update from large to a large record #
 #############################################################################
 
-results1=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.1
+results1=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.1
 bigrec2=$(cat bigrec2.txt)
 echo >&${COPROC[1]} "begin"
 echo >&${COPROC[1]} "@redirect $results1"
@@ -90,7 +90,7 @@ echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
 cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bigrec2' where a=1" &>/dev/null
 
-results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
+results2=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
@@ -106,14 +106,14 @@ diff $results1 $results2
 # Snapshot should remain the same after update from large to a small record #
 #############################################################################
 
-results1=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.1
+results1=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.1
 echo >&${COPROC[1]} "begin"
 echo >&${COPROC[1]} "@redirect $results1"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"
 cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'1234' where a=1" &>/dev/null
 
-results2=${TMPDIR}/cdb2tst_big.$$.$RANDOM.tmp.2
+results2=${TMPDIR}/$DBNAME.cdb2tst_big.$$.$RANDOM.tmp.2
 echo >&${COPROC[1]} "@redirect $results2"
 echo >&${COPROC[1]} "select * from t1"
 echo >&${COPROC[1]} "@redirect"

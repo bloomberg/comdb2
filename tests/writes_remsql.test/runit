@@ -30,7 +30,7 @@ CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 #setup remode db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 #run tests
 echo "Starting tests"
@@ -38,7 +38,12 @@ echo ./test_writes.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 ./test_writes.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 result=$?
 
-$TESTSROOTDIR/unsetup
+if (( $result == 0 )) ; then
+   successful=1
+fi
+
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+
 
 if (( $result != 0 )) ; then
    echo "FAILURE"

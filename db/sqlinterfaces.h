@@ -44,23 +44,16 @@
 
 #include <sqlite3.h>
 #include "comdb2uuid.h"
-#include <sqlresponse.pb-c.h>
-
-struct fsqlreq {
-    int request;   /* enum fsql_request */
-    int flags;     /* request flags */
-    int parm;      /* extra word of into differs per request */
-    int followlen; /* how much data follows header*/
-};
-enum { FSQLREQ_LEN = 4 + 4 + 4 + 4 };
-BB_COMPILE_TIME_ASSERT(fsqlreq_size, sizeof(struct fsqlreq) == FSQLREQ_LEN);
 
 char *tranlevel_tostr(int lvl);
-
+struct sqlthdstate;
+struct sqlclntstate;
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
 
 void sql_dump_hist_statements(void);
+void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
+                             const char *func, int line);
 
 enum {
     SQL_PRAGMA_CASE_SENSITIVE_LIKE = 1,
@@ -84,5 +77,13 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt);
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
+void thr_set_user(const char *label, int id);
+void sql_reset_sqlthread(struct sql_thread *thd);
+void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt);
+int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt);
+int lock_client_write_lock(struct sqlclntstate *clnt);
+void unlock_client_write_lock(struct sqlclntstate *clnt);
+struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
+                                   int index);
 
 #endif

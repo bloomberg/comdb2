@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
+#include "comdb2.h"
 #include "types.h"
 #include "endian_core.h"
 #include "flibc.h"
@@ -50,8 +51,9 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
-
-extern void hexdump(const void *buf, int size);
+#include "util.h"
+#include "tohex.h"
+#include "str0.h"
 
 struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
@@ -194,7 +196,6 @@ uint8_t *tm_put(const cdb2_tm_t *p_tm, uint8_t *p_buf, const uint8_t *p_buf_end)
 const uint8_t *tm_get(cdb2_tm_t *p_tm, const uint8_t *p_buf,
                       const uint8_t *p_buf_end)
 {
-    int lft;
     if (p_buf_end < p_buf || TM_LEN > (p_buf_end - p_buf))
         return NULL;
 
@@ -243,7 +244,6 @@ uint8_t *tm_little_put(const cdb2_tm_t *p_tm, uint8_t *p_buf,
 const uint8_t *tm_little_get(cdb2_tm_t *p_tm, const uint8_t *p_buf,
                              const uint8_t *p_buf_end)
 {
-    int lft;
     if (p_buf_end < p_buf || TM_LEN > (p_buf_end - p_buf))
         return NULL;
 
@@ -874,24 +874,6 @@ TYPES_INLINE int validate_pstr(const char *s, int lim)
     }
 
     return 0;
-}
-
-/* pstr2 strings are not supposed to be "sniffed" to learn about their length.
-   there is an out of band length that goes along with them. */
-TYPES_INLINE int pstr2lenlim(const char *s, int lim)
-{
-
-#if 0
-    int len=0;
-    /* now check the remaining string to make sure it has no invalid chars */
-    while (*s && len < lim) {
-        s++;
-        len++;
-    }
-    return len;
-#endif
-
-    return lim;
 }
 
 TYPES_INLINE int pstrlenlim(const char *s, int lim)
@@ -3295,14 +3277,12 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_CSTR(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len < 0 || len >= outlen)
+    if (inlen < 0 || inlen >= outlen)
         return -1;
     memset(out, 0, outlen);
-    strncpy(out, in, len);
-    *outdtsz = len;
+    strncpy(out, in, inlen);
+    *outdtsz = inlen;
     return 0;
 }
 
@@ -3365,14 +3345,12 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_PSTR(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len == -1 || len > outlen)
+    if (inlen == -1 || inlen > outlen)
         return -1;
     memset(out, ' ', outlen);
     *outdtsz = outlen;
-    strncpy(out, in, len);
+    strncpy(out, in, inlen);
     return 0;
 }
 
@@ -3381,13 +3359,11 @@ TYPES_INLINE int CLIENT_PSTR2_to_CLIENT_PSTR2(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int len;
     *outdtsz = 0;
-    len = pstr2lenlim(in, inlen);
-    if (len == -1 || len > outlen)
+    if (inlen == -1 || inlen > outlen)
         return -1;
-    *outdtsz = len;
-    strncpy(out, in, len);
+    *outdtsz = inlen;
+    strncpy(out, in, inlen);
     return 0;
 }
 
@@ -4050,8 +4026,8 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
         return 0;
     }
 
-    float from_4;
-    double from_8;
+    float from_4 = 0;
+    double from_8 = 0;
 
     unsigned long to_4;
     unsigned long long to_8;
@@ -4195,26 +4171,25 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     if (rc != 0)
         return -1;
 
-    int len = pstr2lenlim(in, inlen);
-    const int olen = len; // original len
-    if (len == -1)
+    const int olen = inlen; // original len
+    if (inlen == -1)
         return -1;
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
-    if (len > outlen - 1) {
+    if ((unsigned int)inlen > (unsigned int)outlen - 1) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
-            len = outlen - 1;
+            inlen = outlen - 1;
         } else {
             return -1;
         }
     }
-    ++len;
-    set_data_int(out, in, len, hdr);
-    memset(out + len, 0, outlen - len);
-    *outdtsz = len;
+    ++inlen;
+    set_data_int(out, in, inlen, hdr);
+    memset(out + inlen, 0, outlen - inlen);
+    *outdtsz = inlen;
 
-    if (olen > outlen - 1) {
+    if ((unsigned int)olen > (unsigned int)outlen - 1) {
         // Can't just set truncate bit
         // 1. aaa
         // 2. zzz
@@ -4223,7 +4198,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
         // Walk backwards and increment first byte not 0xff
         if (inopts->step == 1) {
             uint8_t *a = (uint8_t *)out;
-            uint8_t *b = a + len - 1;
+            uint8_t *b = a + inlen - 1;
             while (b > a) {
                 if (*b != 0xff) {
                     ++(*b);
@@ -4249,11 +4224,31 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BYTEARRAY(
     if (innull) {
         set_null(out, outlen);
     } else {
-        int rc;
+        int rc, olen = inlen;
+        if (inlen > outlen - 1) {
+            if (inopts && (inopts->flags & FLD_CONV_TRUNCATE)) {
+                inlen = outlen - 1;
+            } else {
+                return -1;
+            }
+        }
         rc = bytearray_copy(in, inlen, inopts, inblob, ((char *)out) + 1,
                             outlen - 1, outdtsz, outopts, outblob);
         if (-1 == rc)
             return -1;
+        if (olen > outlen - 1 && inopts->step == 1) {
+            uint8_t *a = ((uint8_t *)out);
+            uint8_t *b = a + inlen;
+            while (b > a) {
+                if (*b != 0xff) {
+                    ++(*b);
+                    break;
+                }
+                --b;
+            }
+            if (b == a)
+                bset(out, truncate_bit);
+        }
         /* set data bit */
         set_data(out, in, 1);
         (*outdtsz)++;
@@ -4441,7 +4436,7 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    float from_4;
+    float from_4 = 0;
     double from_8;
     ieee4b from_4b;
     ieee8b from_8b;
@@ -5625,13 +5620,7 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
             *outdtsz += inlen;
         }
     } else if (outblob) {
-        if (inlen <= 0) {
-            /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "CLIENT_PSTR2_to_SERVER_VUTF8: invalid string "
-                            "length: %d\n",
-                    inlen);
-            return -1;
-        }
+        assert(inlen > 0);
 
         if (inlen > gbl_blob_sz_thresh_bytes)
             outblob->data = comdb2_bmalloc(blobmem, inlen);
@@ -5913,7 +5902,6 @@ TYPES_INLINE int SERVER_BLOB2_to_CLIENT_BLOB(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int tmp;
     const char *cin = in;
     client_blob_tp *blob = out;
 
@@ -5975,7 +5963,6 @@ TYPES_INLINE int SERVER_BLOB_to_CLIENT_BLOB(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int tmp;
     const char *cin = in;
     client_blob_tp *blob = out;
 
@@ -6460,8 +6447,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
                                       blob_buffer_t *inblob,
                                       blob_buffer_t *outblob, int *outdtsz)
 {
-    int valid_len;
-
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
      * to another */
@@ -6508,8 +6493,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * fit in the out buffer, then the string needs to be copied from the in
      * buffer to a new out blob */
     else if (len <= in_len) {
-        int valid_len;
-
         if (outblob) {
             if (len > gbl_blob_sz_thresh_bytes)
                 outblob->data = comdb2_bmalloc(blobmem, len);
@@ -6534,8 +6517,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * blob to the out buffer */
     else /* len <= out_len */
     {
-        int valid_len;
-
         if (inblob) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "blob2_convert: missing inblob\n");
@@ -6565,7 +6546,7 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
 {
     const char *cin = (const char *)in + 1;
 
-    int len, tmp;
+    int tmp;
 
     if (outlen < BLOB_ON_DISK_LEN)
         return -1;
@@ -6639,7 +6620,7 @@ static TYPES_INLINE int SERVER_BLOB_to_SERVER_BYTEARRAY(
 
     if (len <= inlen - BLOB_ON_DISK_LEN) {
         int rc;
-        rc = bytearray_copy(in + BLOB_ON_DISK_LEN, len, inopts, NULL,
+        rc = bytearray_copy(cin + BLOB_ON_DISK_LEN, len, inopts, NULL,
                             ((char *)out) + 1, outlen - 1, outdtsz, outopts,
                             outblob);
         /* set data bit */
@@ -6880,7 +6861,6 @@ int SERVER_DATETIMEUS_to_CLIENT_REAL(S2C_FUNKY_ARGS)
 #define SERVER_DT_to_CLIENT_DT_func_body(from_dt, FROM_UDT, from_prec,         \
                                          from_frac, from_fracdt, to_dt, TO_DT, \
                                          to_prec, to_frac, to_fracdt)          \
-    db_time_t sec = 0;                                                         \
     SRV_TP(from_dt) sdt;                                                       \
     CLT_TP(to_dt) cdt;                                                         \
     struct field_conv_opts_tz *tzopts = (struct field_conv_opts_tz *)outopts;  \
@@ -7187,7 +7167,6 @@ static int _isISO8601(const char *str, int len)
 #define string2structtm_ISO_func_body(dt, UDT, minlen, prec, frac, fracdt)     \
     int offset = 0;                                                            \
     int ltoken = 0;                                                            \
-    char *token = NULL;                                                        \
     int year = 0, month = 0, day = 0, hh = 0, mm = 0, ss = 0, sss = 0;         \
     int skipped = 0;                                                           \
     int sign = 1;                                                              \
@@ -7382,9 +7361,9 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
             return ret;                                                        \
                                                                                \
         if (!cdt.tzname[0])                                                    \
-            strncpy(cdt.tzname,                                                \
-                    ((struct field_conv_opts_tz *)outopts)->tzname,            \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)outopts)->tzname,           \
+                     sizeof(cdt.tzname));                                      \
         /* IF CLIENT THE TIMEZONELESS FIELD WAS STORED IN A DIFFERENT TIMEZONE \
          */                                                                    \
         /* THE PROVIDED CLIENT_DATETIME IS WRONG. THIS IS AS MUCH WE CAN DO */ \
@@ -7425,7 +7404,7 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
         /*error */                                                             \
         return -1;                                                             \
     }                                                                          \
-/* END OF SERVER_BCSTR_to_CLIENT_DT_func_body */
+    /* END OF SERVER_BCSTR_to_CLIENT_DT_func_body */
 
 int SERVER_BCSTR_to_CLIENT_DATETIME(S2C_FUNKY_ARGS)
 {
@@ -7591,18 +7570,15 @@ int datetime_check_range(long long secs, int fracs)
     CLT_TP(from_dt) cdt;                                                       \
     SRV_TP(to_dt) sdt;                                                         \
     struct tm tm = {0};                                                        \
-    struct field_conv_opts_tz *tzopts = (struct field_conv_opts_tz *)inopts;   \
     char *actualtzname = NULL;                                                 \
                                                                                \
     uint8_t *p_in = (uint8_t *)in;                                             \
-    const uint8_t *p_in_start = (const uint8_t *)in;                           \
     const uint8_t *p_in_end = (const uint8_t *)in + inlen;                     \
                                                                                \
     uint8_t *p_out = out;                                                      \
     const uint8_t *p_out_start = out;                                          \
     const uint8_t *p_out_end = (const uint8_t *)out + outlen;                  \
     int from_little = 0;                                                       \
-    int from_ext_tm = 0;                                                       \
                                                                                \
     /* paranoia testing */                                                     \
     if (!in || !out)                                                           \
@@ -7787,7 +7763,6 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         struct field_conv_opts_tz tzopts;                                      \
                                                                                \
         uint8_t *p_buf = cdt_buf;                                              \
-        uint8_t *p_cdt_buf_start = cdt_buf;                                    \
         const uint8_t *p_cdt_buf_end = cdt_buf + sizeof(cdt_buf);              \
                                                                                \
         bzero(&cdt, sizeof(cdt));                                              \
@@ -7802,8 +7777,9 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         }                                                                      \
                                                                                \
         if (!cdt.tzname[0])                                                    \
-            strncpy(cdt.tzname, ((struct field_conv_opts_tz *)inopts)->tzname, \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)inopts)->tzname,            \
+                     sizeof(cdt.tzname));                                      \
                                                                                \
         if (inopts)                                                            \
             memcpy(&tzopts, inopts, sizeof(*inopts));                          \
@@ -7842,8 +7818,9 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         }                                                                      \
         cdt.tm.tm_isdst = 1;                                                   \
         if (!cdt.tzname[0])                                                    \
-            strncpy(cdt.tzname, ((struct field_conv_opts_tz *)inopts)->tzname, \
-                    sizeof(cdt.tzname));                                       \
+            strncpy0(cdt.tzname,                                               \
+                     ((struct field_conv_opts_tz *)inopts)->tzname,            \
+                     sizeof(cdt.tzname));                                      \
                                                                                \
         if (!(p_buf = client_##dt##_put(&cdt, cdt_buf, p_cdt_buf_end))) {      \
             return -1;                                                         \
@@ -7891,7 +7868,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         /* error */                                                            \
         return -1;                                                             \
     }                                                                          \
-/* END OF CLIENT_CSTR_to_SERVER_DT_func_body */
+    /* END OF CLIENT_CSTR_to_SERVER_DT_func_body */
 
 int CLIENT_CSTR_to_SERVER_DATETIME(C2S_FUNKY_ARGS)
 {
@@ -9368,7 +9345,6 @@ int make_order_decimal32(server_decimal32_t *pdec32)
 
     if (i < DECSINGLE_PACKED_COEF) {
         /* this is not zero */
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9405,12 +9381,12 @@ int make_order_decimal32(server_decimal32_t *pdec32)
     return 0;
 }
 
-int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
+                                  int *exponent)
 {
     int adj_exp = 0;
     int i;
-    char exp;
+    signed char exp;
 
     exp = pdec32->exp;
 
@@ -9491,7 +9467,7 @@ int unmake_order_decimal32(server_decimal32_t *pdec32, char *decimals,
     return 0;
 }
 
-int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
+static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 {
     short adj_exp;
     int i;
@@ -9501,7 +9477,7 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9510,7 +9486,6 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
         ;
 
     if (i < DECDOUBLE_PACKED_COEF) {
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9552,14 +9527,15 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order OUT:\n");
-        hexdump(pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (const char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
     return 0;
 }
 
-int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
+static int dec64_exponent_is_outrageous(server_decimal64_t *pdec64,
+                                        char *decimals)
 {
     /* 0 decimals were able to insert exponents > 15, missing for %16=0 the mark
      * that it is a new format */
@@ -9587,8 +9563,8 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
     return 0;
 }
 
-int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
-                           int *exponent)
+static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
+                                  int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9598,7 +9574,7 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9702,14 +9678,14 @@ int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order out (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
     return 0;
 }
 
-int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
+static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 {
     short adj_exp;
     int i;
@@ -9719,7 +9695,7 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9729,7 +9705,6 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
         ;
 
     if (i < DECQUAD_PACKED_COEF) {
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9772,15 +9747,15 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order OUT:\n");
-        hexdump(pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
     return 0;
 }
 
-int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
-                            int *exponent)
+static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
+                                   int *exponent)
 {
     comdb2_int2 tmp;
     int2b exp;
@@ -9790,7 +9765,7 @@ int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9882,7 +9857,7 @@ int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order out (exponent %d %x):\n",
                 *exponent, *exponent);
-        hexdump(decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9893,9 +9868,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
                                        decSingle *dn)
 {
     char decimals[DECSINGLE_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
     char mask;
 
     if (pdec32->coef[DECSINGLE_PACKED_COEF - 1] & 0x0F) {
@@ -9928,7 +9901,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
     if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
         logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n",
                 __func__, exponent);
-        hexdump(pdec32, sizeof(*pdec32));
+        hexdump(LOGMSG_USER, (const char *)pdec32, sizeof(*pdec32));
         logmsg(LOGMSG_USER, "\n");
         exponent ^= 0x080;
     }
@@ -9940,9 +9913,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
                                        decDouble *dn)
 {
     char decimals[DECDOUBLE_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
 
     bzero(decimals, sizeof(decimals));
 
@@ -9968,7 +9939,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
             comdb2_int2 tmp;
             logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n",
                     __func__, exponent);
-            hexdump(pdec64, sizeof(*pdec64));
+            hexdump(LOGMSG_ERROR, (const char *)pdec64, sizeof(*pdec64));
             logmsg(LOGMSG_ERROR, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -9978,12 +9949,10 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
     decDoubleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
-void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
+static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
 {
     char decimals[DECQUAD_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
 
     bzero(decimals, sizeof(decimals));
 
@@ -10010,7 +9979,7 @@ void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
             comdb2_int2 tmp;
             logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n",
                     __func__, exponent);
-            hexdump(pdec128, sizeof(*pdec128));
+            hexdump(LOGMSG_USER, (const char *)pdec128, sizeof(*pdec128));
             logmsg(LOGMSG_USER, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -10077,7 +10046,6 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decSingle dfp_single;
     decDouble dfp_double;
     decQuad dfp_quad;
-    int rc;
 
     if (stype_is_null(in)) {
         *outnull = 1;
@@ -10764,7 +10732,6 @@ static int dfp_single_to_ondisk(decSingle *dn, server_decimal32_t *pdec32)
     /* Good one */
     {
         int32_t exponent;
-        int i;
 
         sign = decSingleToPacked(dn, &exponent, pdec32->coef);
 
@@ -10991,7 +10958,6 @@ static int dfp_quad_to_decimal32_ondisk(decQuad *quad, void *rec, int len)
         decContext sing_ctx;
         decDouble doub;
         decSingle sing;
-        int i;
 
         /* first, convert Quad to Single and check for range */
         dec_ctx_init(&doub_ctx, DEC_INIT_DECIMAL64, gbl_decimal_rounding);
@@ -12214,7 +12180,6 @@ static TYPES_INLINE int SERVER_INTVDSUS_to_SERVER_INTVDS(S2S_FUNKY_ARGS)
         intv_dsus, INTVDSUS, 6, usec, unsigned int, /* from */
         intv_ds, INTVDS, 3, msec, unsigned short /* to   */);
 }
-/*FIXME TODO XXX*/
 
 static TYPES_INLINE int SERVER_BCSTR_to_SERVER_VUTF8(S2S_FUNKY_ARGS)
 {
@@ -13180,7 +13145,6 @@ TYPES_INLINE int NULL_to_SERVER(void *out, int outlen, int outtype)
 
 TYPES_INLINE int convertible_types(int intype, int outtype)
 {
-    int rc;
     if (intype < SERVER_MINTYPE || intype > SERVER_MAXTYPE)
         return -1;
 
@@ -13301,7 +13265,7 @@ void _setIntervalDSUS(intv_ds_t *ds, long long sec, int usec)
     fracdt frac;                                                               \
     bzero(opts, sizeof(*opts));                                                \
     opts->flags |= 2 /*FLD_CONV_TZONE*/;                                       \
-    strncpy(opts->tzname, tz, sizeof(opts->tzname));                           \
+    strncpy0(opts->tzname, tz, sizeof(opts->tzname));                          \
     if (datetime_check_range(in->dttz_sec, in->dttz_frac))                     \
         return -1;                                                             \
     /* brr, ugly */                                                            \
@@ -13420,7 +13384,7 @@ int str_to_dttz(const char *z, int n, const char *tz, dttz_t *dt, int precision)
     /* provide the timezone to the conversion routines */
     bzero(&tzopts, sizeof(tzopts));
     tzopts.flags |= 2 /*FLD_CONV_TZONE*/;
-    strncpy(tzopts.tzname, tz, sizeof(tzopts.tzname));
+    strncpy0(tzopts.tzname, tz, sizeof(tzopts.tzname));
 
     if (is_usec_dt(z, n)) {
         dt->dttz_prec = DTTZ_PREC_USEC;
@@ -13544,7 +13508,7 @@ int timespec_to_dttz(const struct timespec *ts, dttz_t *dt, int precision)
     if (little_endian)                                                         \
         optstz.flags |= FLD_CONV_LENDIAN;                                      \
                                                                                \
-    strncpy(optstz.tzname, outtz, sizeof(optstz.tzname));                      \
+    strncpy0(optstz.tzname, outtz, sizeof(optstz.tzname));                     \
                                                                                \
     /* convert to a server datetime first */                                   \
     rc = CLIENT_##UDT##_to_SERVER_##UDT(in, sizeof(*in), 0, opts, NULL, &sdt,  \
@@ -13560,7 +13524,7 @@ int timespec_to_dttz(const struct timespec *ts, dttz_t *dt, int precision)
     out->dttz_prec = prec;                                                     \
     out->dttz_conv = 0;                                                        \
     return rc;                                                                 \
-/* END OF client_dt_to_dttz_func_body */
+    /* END OF client_dt_to_dttz_func_body */
 
 int client_datetime_to_dttz(const cdb2_client_datetime_t *in, const char *outtz,
                             dttz_t *out, int little_endian)
@@ -13574,142 +13538,79 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
-extern int gbl_dump_sql_dispatched; /* for the following get_field()s */
-int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
+static int get_int_field(int64_t *out, void *in, size_t len, int flip)
 {
-    int rc = 0;
-    switch (f->datalen) {
-    case sizeof(short):
-        *out = (short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "short: %ld\n", *out);
+    int16_t i16;
+    int32_t i32;
+    int64_t i64;
+    switch (len) {
+    case sizeof(int16_t):
+        memcpy(&i16, in, len);
+        if (flip) i16 = flibc_shortflip(i16);
+        *out = i16;
         break;
-    case sizeof(int):
-        *out = (int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "int: %ld\n", *out);
+    case sizeof(int32_t):
+        memcpy(&i32, in, len);
+        if (flip) i32 = flibc_intflip(i32);
+        *out = i32;
         break;
-    case sizeof(long long):
-        *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "long long: %ld\n", *out);
+    case sizeof(int64_t):
+        memcpy(&i64, in, len);
+        if (flip) i64 = flibc_llflip(i64);
+        *out = i64;
         break;
     default:
-        rc = -1;
-        break;
+        return -1;
     }
-    return rc;
+    return 0;
 }
 
-int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
+static int get_uint_field(uint64_t *out, void *in, size_t len, int flip)
 {
-    int rc = 0;
-    int64_t ival;
-    uint64_t uival;
-    switch (f->datalen) {
-    case sizeof(unsigned short):
-        ival = (long long)(unsigned short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned short: %ld\n", ival);
+    uint16_t u16;
+    uint32_t u32;
+    uint64_t u64;
+    switch (len) {
+    case sizeof(uint16_t):
+        memcpy(&u16, in, len);
+        if (flip) u16 = flibc_shortflip(u16);
+        *out = u16;
         break;
-    case sizeof(unsigned int):
-        ival = (long long)(unsigned int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned int: %ld\n", ival);
+    case sizeof(uint32_t):
+        memcpy(&u32, in, len);
+        if (flip) u32 = flibc_intflip(u32);
+        *out = u32;
         break;
-    case sizeof(unsigned long long):
-        uival = (uint64_t)flibc_htonll(*(uint64_t *)(buf + f->offset));
-        if (uival > LLONG_MAX) {
-            rc = -1;
-            break;
-        }
-        ival = uival;
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned long long: %ld\n", ival);
+    case sizeof(uint64_t):
+        memcpy(&u64, in, len);
+        if (flip) u64 = flibc_llflip(u64);
+        *out = u64;
         break;
     default:
-        rc = -1;
-        break;
+        return -1;
     }
-    *out = ival;
-    return rc;
+    return *out <= LLONG_MAX ? 0 : -1;
 }
 
-int get_real_field(struct field *f, const uint8_t *buf, double *out)
+static int get_real_field(double *out, void *in, size_t len, int flip)
 {
-    int rc = 0;
-    double dval;
-    switch (f->datalen) {
+    float f;
+    double d;
+    switch (len) {
     case sizeof(float):
-        dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "float: %f\n", dval);
+        memcpy(&f, in, len);
+        if (flip) f = flibc_floatflip(f);
+        *out = f;
         break;
     case sizeof(double):
-        dval = (double)flibc_htond(*(double *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "double: %f\n", dval);
+        memcpy(&d, in, len);
+        if (flip) d = flibc_dblflip(d);
+        *out = d;
         break;
     default:
-        rc = 1;
+        return -1;
     }
-    *out = dval;
-    return rc;
-}
-
-int get_str_field(struct field *f, const uint8_t *buf, char **out, int *outlen)
-{
-    int rc = 0;
-    *out = (char *)buf + f->offset;
-
-    const char *b = *out;
-    int len = 0;
-    while (*b != '\0' && len < f->datalen) {
-        ++b;
-        ++len;
-    }
-    *outlen = len;
-    return rc;
-}
-
-int get_byte_field(struct field *f, const uint8_t *buf, void **out, int *outlen)
-{
-    int rc = 0;
-    *out = (void *)buf + f->offset;
-    *outlen = f->datalen;
-    if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER, "byte:\n");
-        fsnapf(stdout, *out, *outlen);
-    }
-    return rc;
-}
-
-int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
-                   int *outlen)
-{
-    int rc = 0;
-    if (blobno >= clnt->numblobs) return -1;
-    *out = clnt->blobs[blobno];
-    *outlen = clnt->bloblens[blobno];
-    if (gbl_dump_sql_dispatched) {
-        logmsg(LOGMSG_USER, "blob:\n");
-        fsnapf(stdout, *out, *outlen);
-    }
-    return rc;
-}
-
-int get_datetime_field(struct field *f, const uint8_t *buf, const char *tz,
-                       dttz_t *out, int little_endian)
-{
-    cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)(buf + f->offset);
-    return client_datetime_to_dttz(cdt, tz, out, little_endian);
-}
-
-int get_datetimeus_field(struct field *f, const uint8_t *buf, const char *tz,
-                         dttz_t *out, int little_endian)
-{
-    cdb2_client_datetimeus_t *cdt =
-        (cdb2_client_datetimeus_t *)(buf + f->offset);
-    return client_datetimeus_to_dttz(cdt, tz, out, little_endian);
+    return 0;
 }
 
 /**
@@ -14413,7 +14314,6 @@ double interval_to_double(const intv_t *i)
 /* datetime - datetime = intv_ds */
 void sub_dttz_dttz(const dttz_t *d1, const dttz_t *d2, intv_t *intv)
 {
-    long long tmp = 0;
     intv->sign = 1;
     intv_ds_t *ds = &intv->u.ds;
 
@@ -14568,4 +14468,137 @@ void set_null_func(void *to, int sz) { set_null(to, sz); }
 void set_data_func(void *to, const void *from, int sz)
 {
     set_data(to, from, sz);
+}
+
+static void client_intv_ym_to_intv_t(const cdb2_client_intv_ym_t *in,
+                                     intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_YM_TYPE;
+    intv_ym_t *ym = &out->u.ym;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ym->years = flibc_intflip(in->years);
+        ym->months = flibc_intflip(in->months);
+    } else {
+        out->sign = in->sign;
+        ym->years = in->years;
+        ym->months = in->months;
+    }
+}
+
+static void client_intv_ds_to_intv_t(const cdb2_client_intv_ds_t *in,
+                                     intv_t *out, int flip)
+{
+    memset(out, 0, sizeof(intv_t));
+    out->type = INTV_DS_TYPE;
+    intv_ds_t *ds = &out->u.ds;
+    ds->prec = DTTZ_PREC_MSEC;
+    ds->conv = 1;
+    if (flip) {
+        out->sign = flibc_intflip(in->sign);
+        ds->days =  flibc_intflip(in->days);
+        ds->hours = flibc_intflip(in->hours);
+        ds->mins = flibc_intflip(in->mins);
+        ds->sec = flibc_intflip(in->sec);
+        ds->frac = flibc_intflip(in->msec);
+    } else {
+        out->sign = in->sign;
+        ds->days =  in->days;
+        ds->hours = in->hours;
+        ds->mins = in->mins;
+        ds->sec = in->sec;
+        ds->frac = in->msec;
+    }
+}
+
+static void client_intv_dsus_to_intv_t(const cdb2_client_intv_dsus_t *in,
+                                       intv_t *out, int flip)
+{
+    client_intv_ds_to_intv_t((cdb2_client_intv_ds_t *)in, out, flip);
+    out->type = INTV_DSUS_TYPE;
+    out->u.ds.prec = DTTZ_PREC_USEC;
+}
+
+int get_type(struct param_data *param, void *p, int len, int type,
+             const char *tzname, int little)
+{
+    int flip = 0;
+#   if BYTE_ORDER == BIG_ENDIAN
+    if (little)
+#   elif BYTE_ORDER == LITTLE_ENDIAN
+    if (!little)
+#   endif
+        flip = 1;
+    param->null = 0;
+    switch (type) {
+    case CLIENT_INT:
+        param->len = sizeof(param->u.i);
+        return get_int_field(&param->u.i, p, len, flip);
+    case CLIENT_UINT:
+        param->len = sizeof(param->u.i);
+        return get_uint_field((uint64_t *)&param->u.i, p, len, flip);
+    case CLIENT_REAL:
+        param->len = sizeof(param->u.r);
+        return get_real_field(&param->u.r, p, len, flip);
+    case CLIENT_CSTR:
+    case CLIENT_PSTR:
+    case CLIENT_PSTR2:
+    case CLIENT_VUTF8:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_BLOB:
+    case CLIENT_BYTEARRAY:
+        param->u.p = p;
+        param->len = len;
+        return 0;
+    case CLIENT_DATETIME:
+        param->len = sizeof(param->u.dt);
+        return client_datetime_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_DATETIMEUS:
+        param->len = sizeof(param->u.dt);
+        return client_datetimeus_to_dttz(p, tzname, &param->u.dt, little);
+    case CLIENT_INTVYM:
+        param->len = sizeof(param->u.tv);
+        client_intv_ym_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDS:
+        param->len = sizeof(param->u.tv);
+        client_intv_ds_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    case CLIENT_INTVDSUS:
+        param->len = sizeof(param->u.tv);
+        client_intv_dsus_to_intv_t(p, &param->u.tv, flip);
+        return 0;
+    }
+    return -1;
+}
+
+#include <str0.h>
+int intv_to_str(const intv_t *tv, char *out, int len, int *used)
+{
+    switch (tv->type) {
+    case INTV_YM_TYPE:
+        *used = snprintf0(out, len, "%s%u-%2.2u", tv->sign == -1 ? "- " : "",
+                          tv->u.ym.years, tv->u.ym.months);
+        break;
+    case INTV_DS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%3.3u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    case INTV_DSUS_TYPE:
+        *used =
+            snprintf0(out, len, "%s%u %2.2u:%2.2u:%2.2u.%6.6u",
+                      tv->sign == -1 ? "- " : "", tv->u.ds.days, tv->u.ds.hours,
+                      tv->u.ds.mins, tv->u.ds.sec, tv->u.ds.frac);
+        break;
+    default:
+        return -1;
+    }
+    if (*used < len)
+        return 0;
+    return -1;
 }

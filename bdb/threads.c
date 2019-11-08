@@ -45,13 +45,15 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include <locks_wrap.h>
 
 #include <memory_sync.h>
-#include <plbitlib.h> /* for bset/btst */
 #include <autoanalyze.h>
 #include <logmsg.h>
 
-int db_is_stopped(void);
+extern int db_is_stopped(void);
+extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
+extern void *rep_catchup_add_thread(void *arg);
 
 void *udp_backup(void *arg)
 {
@@ -102,8 +104,18 @@ void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
+    static int have_memp_trickle_thread = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     int nwrote;
     int rc;
+
+    Pthread_mutex_lock(&lk);
+    if (have_memp_trickle_thread) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_memp_trickle_thread = 1;
+    Pthread_mutex_unlock(&lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -121,8 +133,6 @@ void *memp_trickle_thread(void *arg)
         sleep(1);
 
     while (!db_is_stopped()) {
-        int t1, t2;
-
         BDB_READLOCK("memp_trickle_thread");
 
         /* time is in usecs, memptricklemsecs is in msecs */
@@ -131,12 +141,12 @@ void *memp_trickle_thread(void *arg)
     again:
         rc = bdb_state->dbenv->memp_trickle(
             bdb_state->dbenv, bdb_state->attr->memptricklepercent, &nwrote, 1);
-        if (rc == 0) {
-            if (rc == DB_LOCK_DESIRED) {
-                BDB_RELLOCK();
-                sleep(1);
-                BDB_READLOCK("memp_trickle_thread");
-            }
+        if (rc == DB_LOCK_DESIRED) {
+            BDB_RELLOCK();
+            sleep(1);
+            BDB_READLOCK("memp_trickle_thread");
+            goto again;
+        } else if (rc == 0) {
             if (nwrote != 0) {
                 goto again;
             }
@@ -151,6 +161,7 @@ void *memp_trickle_thread(void *arg)
 
     bdb_thread_event(bdb_state, 0);
     logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
+    return NULL;
 }
 
 void *deadlockdetect_thread(void *arg)
@@ -172,7 +183,6 @@ void *deadlockdetect_thread(void *arg)
 
     while (1) {
         int rc;
-        int time_now;
         int policy;
 
         BDB_READLOCK("deadlockdetect thread");
@@ -219,14 +229,14 @@ void *master_lease_thread(void *arg)
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_master_lease_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_master_lease_thread = 1;
         bdb_state->master_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
 
     assert(!bdb_state->parent);
@@ -237,7 +247,6 @@ void *master_lease_thread(void *arg)
     while (!db_is_stopped() &&
            (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
-            int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
         }
 
@@ -250,10 +259,10 @@ void *master_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -268,14 +277,14 @@ void *coherency_lease_thread(void *arg)
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_coherency_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_coherency_thread = 1;
         bdb_state->coherency_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
@@ -310,7 +319,6 @@ void *coherency_lease_thread(void *arg)
         now = time(NULL);
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
             if ((now - last_add_record) >= add_interval) {
-                void *rep_catchup_add_thread(void *arg);
                 pthread_create(&tid, &gbl_pthread_attr_detached,
                                rep_catchup_add_thread, bdb_state);
                 last_add_record = now;
@@ -329,10 +337,10 @@ void *coherency_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -343,8 +351,6 @@ void *logdelete_thread(void *arg)
 
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
-
-    populate_deleted_files(bdb_state);
 
     thread_started("bdb logdelete");
 
@@ -372,12 +378,19 @@ extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
 extern int db_is_stopped();
 
+int64_t gbl_last_checkpoint_ms;
+int64_t gbl_total_checkpoint_ms;
+int gbl_checkpoint_count;
+int gbl_cache_flush_interval = 30;
+int backend_opened(void);
+
 void *checkpoint_thread(void *arg)
 {
-    int rc;
+    int rc, now;
     int checkpointtime;
     int checkpointtimepoll;
     int checkpointrand;
+    int loaded_cache = 0, last_cache_dump = 0;
     bdb_state_type *bdb_state;
     int start, end;
     int total_sleep_msec;
@@ -386,13 +399,20 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
+    static int have_checkpoint_thd = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+
+    Pthread_mutex_lock(&lk);
+    if (have_checkpoint_thd) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_checkpoint_thd = 1;
+    Pthread_mutex_unlock(&lk);
 
     thread_started("bdb checkpoint");
 
     bdb_state = (bdb_state_type *)arg;
-
-    bdb_state = (bdb_state_type *)arg;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -413,9 +433,7 @@ void *checkpoint_thread(void *arg)
                     broken);
         }
 
-        /* can't call checkpoint until llmeta is open if we are using rowlocks
-         */
-        if (gbl_rowlocks && !bdb_state->after_llmeta_init_done) {
+        if (gbl_rowlocks && !backend_opened()) {
             BDB_RELLOCK();
             sleep(1);
             continue;
@@ -433,10 +451,27 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
+
+        /* This is spawned before we open tables- don't repopulate the
+         * cache until the backend has opened */
+        if ((gbl_cache_flush_interval > 0) &&
+            ((now = time(NULL)) - last_cache_dump) > gbl_cache_flush_interval) {
+            if (!loaded_cache) {
+                bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
+                loaded_cache = 1;
+            } else {
+                bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 0);
+                last_cache_dump = now;
+            }
+        }
+
         end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
         ctrace("checkpoint (scheduled) took %d ms\n", end - start);
+        gbl_last_checkpoint_ms = (end - start);
+        gbl_total_checkpoint_ms += gbl_last_checkpoint_ms;
+        gbl_checkpoint_count++;
 
         BDB_RELLOCK();
 

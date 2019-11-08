@@ -33,6 +33,8 @@
 #include "net_types.h"
 #include "cdb2_constants.h"
 #include "logmsg.h"
+#include "quantize.h"
+#include "perf.h"
 
 enum {
     /* Flags for write_list() */
@@ -44,11 +46,13 @@ enum {
     WRITE_MSG_INORDER = 32
 };
 
+#define HOSTNAME_LEN 16
+
 typedef struct {
-    char fromhost[16];
+    char fromhost[HOSTNAME_LEN];
     int fromport;
     int fromnode;
-    char tohost[16];
+    char tohost[HOSTNAME_LEN];
     int toport;
     int tonode;
     int type;
@@ -62,7 +66,6 @@ BB_COMPILE_TIME_ASSERT(net_write_header_type,
 typedef struct write_node_data {
     int flags;
     int enque_time;
-    int pooled;
     struct write_node_data *next;
     struct write_node_data *prev;
     size_t len;
@@ -121,8 +124,6 @@ typedef struct {
     unsigned long long reorders;
 } stats_type;
 
-#define HOSTNAME_LEN 16
-
 struct host_node_tag {
     int fd;
     SBUF2 *sb;
@@ -171,7 +172,6 @@ struct host_node_tag {
     unsigned dedupe_count;
 
     struct in_addr addr;
-    int addr_len;
     int distress; /* if this is set, do not report any errors, we know we're
                     looping trying to get a successful read_message_header
 
@@ -185,10 +185,7 @@ struct host_node_tag {
     struct netinfo_struct *netinfo_ptr;
     stats_type stats; /* useful per host */
 
-    pthread_mutex_t pool_lock;
-    void *write_pool;
-
-#ifndef PER_THREAD_MALLOC
+#ifdef PER_THREAD_MALLOC
     comdb2ma msp;
 #endif
 
@@ -203,6 +200,11 @@ struct host_node_tag {
     pthread_mutex_t throttle_lock;
     pthread_cond_t throttle_wakeup;
     int last_queue_dump;
+    int last_print_queue_time;
+    int interval_max_queue_count;
+    int interval_max_queue_bytes;
+    void *qstat;
+    struct time_metric *metric_queue_size;
 };
 
 /* Cut down data structure used for storing the sanc list. */
@@ -218,6 +220,13 @@ typedef struct decom_struct {
     int timestamp;
     struct decom_struct *next;
 } decom_type;
+
+typedef struct userfunc_info {
+    NETFP *func;
+    char *name;
+    int64_t count;
+    int64_t totus;
+} userfunc_t;
 
 struct netinfo_struct {
     host_node_type *head;
@@ -246,7 +255,7 @@ struct netinfo_struct {
     int ischild;
     int accept_on_child;
 
-    NETFP *userfuncs[MAX_USER_TYPE + 1];
+    userfunc_t userfuncs[MAX_USER_TYPE + 1];
     decom_type *decomhead;
     pthread_mutex_t seqlock;
     pthread_rwlock_t lock;
@@ -268,6 +277,7 @@ struct netinfo_struct {
     NEWNODEFP *new_node_rtn;
     pthread_attr_t pthread_attr_detach;
     APPSOCKFP *appsock_rtn;
+    APPSOCKFP *admin_appsock_rtn;
     HELLOFP *hello_rtn;
     int accept_thread_created;
     int heartbeat_send_time;
@@ -297,7 +307,6 @@ struct netinfo_struct {
     int trace;
 
     int pool_size;
-    int pool_extend;
 
     int user_data_buf_size;
     int net_test;
@@ -317,10 +326,27 @@ struct netinfo_struct {
     int enque_reorder_lookahead;
     int portmux_register_interval;
     int portmux_register_time;
+    int port_from_lrl;
 
     int use_getservbyname;
     int hellofd;
     GETLSNFP *getlsn_rtn;
+    QSTATINITFP *qstat_init_rtn;
+    QSTATREADERFP *qstat_reader_rtn;
+    QSTATENQUEFP *qstat_enque_rtn;
+    QSTATCLEARFP *qstat_clear_rtn;
+    QSTATFREEFP *qstat_free_rtn;
+
+    struct quantize *conntime_all;
+    struct quantize *conntime_periodic;
+    int64_t num_accepts;
+    int64_t num_accept_timeouts;
+    int conntime_dump_period;
+
+
+    /* An appsock routine may or may not close the connection.
+       Therefore we can only reliably keep track of non-appsock connections. */
+    int num_current_non_appsock_accepts;
 };
 
 typedef struct ack_state_struct {
@@ -334,4 +360,9 @@ typedef struct ack_state_struct {
 void host_node_printf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 
+#if WITH_SSL
+/* To verify replicant database name. */
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
+extern int gbl_nid_dbname;
+#endif
 #endif /* INCLUDED__NET_INT_H */

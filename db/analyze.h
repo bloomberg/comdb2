@@ -43,15 +43,15 @@ long long analyze_get_sampling_threshold(void);
  * it
  * exists, or a NULL otherwise.
  */
-struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
-                                                 char *table, int idx);
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+                               int idx);
 
 /**
  * Retrieve the actual number of compressed records in this sampled (compressed)
  * index.
  * This is required for sqlite_stat1
  */
-int analyze_get_nrecs(int iTable);
+int64_t analyze_get_nrecs(int iTable);
 
 /**
  * Retrieve the number of sampled (previously misnamed compressed) records in

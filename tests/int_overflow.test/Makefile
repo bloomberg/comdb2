@@ -6,4 +6,4 @@ else
 endif
 
 unit:
-	gcc $(CURRDIR)/test.c $(SRCHOME)/bb/int_overflow.c -o test -I$(SRCHOME)/bbinc
+	gcc $(CURRDIR)/test.c $(SRCHOME)/util/int_overflow.c -o test -I$(SRCHOME)/bbinc

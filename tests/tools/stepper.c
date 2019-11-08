@@ -23,7 +23,10 @@ static int parse_line( char *line, char **query);
 void timed_out(int sig, siginfo_t *info, void *uap)
 {
     char buf[32] = "Timed out\n";
-    write(STDERR_FILENO, buf, 10);
+    int lrc = write(STDERR_FILENO, buf, 10);
+    if (lrc == -1) {
+        printf("ERROR: %s write returns -1\n", __func__);
+    }
     exit(1);
 }
 
@@ -31,7 +34,6 @@ int main( int argc, char **argv)
 {
    char  *infile = NULL;
    char  *outfile = NULL;
-   char  *comdb2sql = NULL;
    char  *dbname = NULL;
    char  *stage;
    FILE  *file = NULL;
@@ -49,6 +51,9 @@ int main( int argc, char **argv)
    stage = "default";
    infile = argv[2];
 
+   if (getenv("DEBUG")) {
+       debug = 1;
+   }
    outfile = (argc == 4)?argv[3]:NULL;
 
    file = fopen( infile, "r");
@@ -83,7 +88,7 @@ int main( int argc, char **argv)
 
    if( ! isatty(fileno(file) ) )
    {
-      struct sigaction act = {0};
+      struct sigaction act = {{0}};
       act.sa_sigaction = timed_out;
       act.sa_flags = (SA_SIGINFO | SA_RESETHAND);
       sigfillset( &act.sa_mask );
@@ -106,7 +111,7 @@ int main( int argc, char **argv)
     
       lineno++;
 
-      if(line[0] == '\n')
+      if(line[0] == '\n' || line[0] == '#')
          continue;
       id = parse_line( line, &query);
       if (id<0)
@@ -129,6 +134,8 @@ int main( int argc, char **argv)
          break;
       } 
 
+      if (debug)
+         fprintf( out, "%d [%s]\n", id, query);
       rc = clnt_run_query(clnt, query, out);
       if (rc)
       {

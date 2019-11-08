@@ -39,6 +39,7 @@ int dyns_is_idx_dup(int index);
 int dyns_is_idx_recnum(int index);
 int dyns_is_idx_primary(int index);
 int dyns_is_idx_datacopy(int index);
+int dyns_is_idx_uniqnulls(int index);
 int dyns_get_idx_count(void);
 int dyns_get_idx_size(int index);
 int dyns_get_idx_piece(int index, int piece, char *sname, int slen, int *type,
@@ -83,6 +84,8 @@ int dyns_get_constraint_count(void);
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
                            int *rulecnt, int *flags);
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm);
+int dyns_get_check_constraint_count(void);
+int dyns_get_check_constraint_at(int idx, char **consname, char **expr);
 
 /* misc */
 void dyns_allow_bools(void);

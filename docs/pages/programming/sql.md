@@ -37,12 +37,20 @@ without the use of long term read locks through the use of Multi Version Concurr
 also guarantees lack of phantoms. Before using snapshot isolation, you must add enable_snapshot_isolation 
 to your lrl file.
 
-**NOTE**: if any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application 
-needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests.  A 
+The optional ```AS OF DATETIME``` clause begins a transaction with a snapshot of the database as
+it existed as of the given time. The snapshot only has the effects of transactions that committed
+before that time. Using ```AS OF DATETIME``` requires the transaction being in ```SNAPSHOT ISOLATION```
+mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```SNAPSHOT ISOLATION```
+requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
+isolation was enabled will not work. A snapshot is only available if enough transaction logs are
+online to find commits before the specified time. The time provided must unquoted date in ISO 8601
+format or Unix time.
+
+**NOTE**: If any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application
+needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests. A
 transaction that calls ```COMMIT``` or ```ROLLBACK``` is considered complete, regardless of any errors returned.
 The next statement that runs on the same connection will be in a new transaction.
 
-The optional AS OF DATETIME clause begins a transaction with a snapshot of the database as it existing as of the given time. The snapshot only has the effects of transactions that committed before that time. Using AS OF DATETIME requires the transaction being in SNAPSHOT ISOLATION mode (set with SET TRANSACTION SNAPSHOT ISOLATION). Note that enabling SNAPSHOT ISOLATION requires the enable_snapshot_isolation lrl tunable. Snapshots requested from before snapshot isolation was enabled will not work. A snapshot is only available if enough transaction logs are online to find commits before the specified time.
 
 
 ### COMMIT
@@ -65,11 +73,22 @@ undone.
 
 ## Changing data
 
-### INSERT
+### INSERT/REPLACE
 
-![INSERT](images/insert-stmt.gif)
+#### insert
 
-The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
+![insert](images/insert-stmt.gif)
+
+#### replace
+
+![replace](images/replace-stmt.gif)
+
+#### upsert-clause
+
+![upsert-clause](images/upsert-clause.gif)
+
+
+The ```INSERT``` statement comes in three basic forms. The first form (with the "VALUES" keyword) creates a single new
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
 of columns in the table. If a column-list is specified, then the number of values must match the number of 
 specified columns. Columns of the table that do not appear in the column list are filled with the default value, 
@@ -80,6 +99,11 @@ result of the SELECT must exactly match the number of columns in the table if no
 must match the number of columns named in the column list. A new entry is made in the table for every row of the 
 ```SELECT``` result. The ```SELECT``` may be simple or compound.
 
+The third form of the ```INSERT``` statement is with ```DEFAULT VALUES```. This
+inserts a single new row in the named table populated with default values for
+columns, or with a NULL if no default value is specified as part of column
+definition.
+
 Note that if wrapped in a ```BEGIN```/```COMMIT``` pair, the ```INSERT``` is considered a [deferred](transaction_model.html#immediate-and-deferred-statements)
 statement, and will not return an error (except in the rare case of a connection failure) until ```COMMIT``` time.
 
@@ -87,7 +111,13 @@ See also:
 
 [expr](#expr)
 
+[index-column-list](#index-column-list)
+
+[qualified-table-name](#qualified-table-name)
+
 [select-stmt](#select-statement)
+
+[with-clause](#with-clause)
 
 ### UPDATE
 
@@ -100,11 +130,11 @@ made. A ```WHERE``` clause can be used to restrict which rows are updated.
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ### DELETE
 
@@ -119,11 +149,11 @@ statement, but has the advantage that it will work on tables with foreign key co
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ## Querying data
 
@@ -229,19 +259,19 @@ See also:
 
 [common-table-expression](#common-table-expression)
 
-[result-column](#result-column)
+[compound-operator](#compound-operator)
 
-[table-or-subquery](#table-or-subquery)
-    
+[expr](#expr)
+
 [join-clause](#join-clause)
 
 [join-operator](#join-operator)
 
-[expr](#expr)
-
-[compound-operator](#compound-operator)
-
 [ordering-term](#ordering-term)
+
+[result-column](#result-column)
+
+[table-or-subquery](#table-or-subquery)
 
 ## Stored procedures
 
@@ -250,7 +280,8 @@ See also:
 ![CREATE PROCEDURE](images/create-proc.gif)
 
 The ```CREATE PROCEDURE``` statement defines a new procedure.  Procedures can be run directly with the 
-```EXEC PROCEDURE``` statement. Defined procedures can also be registered as new SQL functions with the
+```EXEC PROCEDURE``` or ```EXECUTE PROCEDURE``` statements. Defined procedures can also be registered
+as new SQL functions with the
 [CREATE LUA FUNCTION](#create-lua-function) statement, or as triggers with ```CREATE LUA TRIGGER```/
 ```CREATE LUA CONSUMER``` statements.
 
@@ -263,7 +294,7 @@ the [```PUT DEFAULT PROCEDURE```](#put) statement.
 
 For detailed information on writing stored procedures, see the [stored procedures](storedprocs.html) section.
 
-### EXEC PROCEDURE
+### EXEC/EXECUTE PROCEDURE
 
 ![exec procedure](images/exec-procedure.gif)
 
@@ -274,33 +305,33 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
-**CREATE TABLE (I):**
+#### create-table-csc2
 
-![CREATE TABLE](images/create-table.gif)
+![create-table-csc2](images/create-table.gif)
 
-**CREATE TABLE (II, Version R7 and above):**
+#### create-table-ddl
 
-![CREATE TABLE](images/create-table-ddl.gif)
+![create-table-ddl](images/create-table-ddl.gif)
 
-**Index column list:**
+#### index-column-list
 
-![INDEX COLUMN LIST](images/index-column-list.gif)
+![index-column-list](images/index-column-list.gif)
 
-**Column constraint:**
+#### column-constraint
 
-![COLUMN CONSTRAINT](images/column-constraint.gif)
+![column-constraint](images/column-constraint.gif)
 
-**Table constraint:**
+#### table-constraint
 
-![TABLE CONSTRAINT](images/table-constraint.gif)
+![table-constraint](images/table-constraint.gif)
 
-**Foreign key definition:**
+#### foreign-key-def
 
-![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
+![foreign-key-def](images/foreign-key-def.gif)
 
-**Table options:**
+#### table-options
 
-![TABLE OPTIONS](images/table-options.gif)
+![table-options](images/table-options.gif)
 
 The ```CREATE TABLE``` statement creates a new table. If the table already
 exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
@@ -310,15 +341,28 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in **version R7**, follows the usual standard data
+The second approach, added in version `7.0`, follows the usual standard data
 definition language syntax supported by other relational database systems.
-A primary key created using ```CREATE TABLE (II)``` implicitly creates a
-```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
-```NOT NULL```.
+A primary key created using this syntax implicitly creates a ```UNIQUE``` index
+named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
+
+Comdb2 allows creation of indexes only on fields with fixed-sized types. For
+instance, an attempt to create index on a blob or vutf8 field would result in
+error. In terms of syntax, ```indexes on expressions``` need a little extra
+care in Comdb2. The expression *must* be casted to a fixed-sized type.
+
+```sql
+CREATE TABLE t1(`json` VUTF8(128),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
+```
+
+The list of allowed types that the expression in an index be casted to as well
+as the syntax required to define an index on expression using CSC2 schema, can
+be found [here](table_schema.html#indexes-on-expressions).
 
 See also:
-
-[table-schema](table_schema.html)
+[Schema definition language (CSC2)](table_schema.html)
 
 ### CREATE LUA TRIGGER
 
@@ -368,13 +412,13 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
-**ALTER TABLE (I):**
+#### alter-table-csc2
 
-![ALTER](images/alter-table.gif)
+![alter-table-csc2](images/alter-table.gif)
 
-**ALTER TABLE (II, Version R7 and above):**
+#### alter-table-ddl
 
-![ALTER](images/alter-table-ddl.gif)
+![alter-table-ddl](images/alter-table-ddl.gif)
 
 _**Schema changes in Comdb2 are live by default**. The database will not acquire
 long duration table locks during the change and may be freely read from and
@@ -401,7 +445,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in **version R7**, supports the usual standard data
+The second approach, added in version `7.0`, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -410,9 +454,21 @@ silently removed from the referring keys and constraints definitions. ```RENAME 
 option renames a table.  This option cannot be combined with other ```ALTER TABLE```
 options.
 
+```SET COMMIT PENDING``` detaches the schema change from the current transaction
+and schema changes that use this option will keep running until an explicit
+commit/abort command is issued. Also see [```SCHEMACHANGE```](#schemachange).
+
 See also:
 
+[column-constraint](#column-constraint)
+
+[foreign-key-def](#foreign-key-def)
+
+[index-column-list](#index-column-list)
+
 [table-options](#table-options)
+
+[table-schema](table_schema.html)
 
 ### CREATE TIME PARTITION
 
@@ -437,7 +493,12 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0.
+table. The support for ```CREATE INDEX``` was added in version `7.0`.
+
+```sql
+CREATE INDEX idx ON t1(CAST(UPPER(c) AS cstring(100)));
+CREATE UNIQUE INDEX idx ON t2(CAST(i+j AS int));
+```
 
 ### DROP INDEX
 
@@ -446,7 +507,17 @@ table. The support for ```CREATE INDEX``` was added in version 7.0.
 The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
 INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
-same name. The support for ```DROP INDEX``` was added in version 7.0.
+same name. The support for ```DROP INDEX``` was added in version `7.0`.
+
+### CREATE VIEW
+
+![CREATE VIEW](images/create-view.gif)
+
+The ```CREATE VIEW``` statement can be used to create a view, which is essentially
+an alias of a SELECT statement. Views cannot be used to modify records. Thus, an
+attempt to INSERT, UPDATE or DELETE on a view would fail. One may think of views
+as READ-ONLY tables. A list of views can be obtained by querying ```comdb2_views```
+system table.
 
 ## Access control
 
@@ -496,6 +567,7 @@ The settings currently available to ```PUT``` are:
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
   * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; only increasing retention is supported currently
+  * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
 
@@ -537,6 +609,17 @@ ever run ```REBUILD```:
 The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
 Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
 rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
+
+### SCHEMACHANGE
+
+![SCHEMACHANGE](images/schemachange.gif)
+
+```SCHEMACHANGE``` is an operational command to preempt ongoing schema changes:
+
+  * ```PAUSE``` ongoing schema changes.
+  * ```RESUME``` already paused schema changes. NOTE: Resumed schema changes will not commit until an explicit commit is issued.
+  * ```COMMIT``` ongoing schema changes. This command also resumes paused schema changes and commits after all records are converted.
+  * ```ABORT``` ongoing schema changes.
 
 ## Built-in functions
 
@@ -611,6 +694,13 @@ do not need to be quoted. For example, ```SET USER mike``` is correct.  ```SET U
 This sets the current connection's transaction level.  See 
 [transaction levels](transaction_model.html#isolation-levels-and-artifacts) for more details
 
+### SET TRANSACTION CHUNK
+
+This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
+the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
+as a sequence of small lock-footprint transactions.  Another common use-case is periodic data-set clean-up, replacing 
+the legacy comdb2del tool.  Currently requires a client specified ```BEGIN ... COMMIT``` transaction.
+
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
@@ -682,6 +772,33 @@ that pass the limit are rejected.
 Sets a tunable that determines how hard the query planner will work to estimate the cost of possible query plans.  The
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
+
+### SET SSL_MODE
+
+Sets client-side SSL mode. See [SSL Mode Summary](ssl.html#ssl-mode-summary) for details.
+
+### SET SSL_CERT_PATH
+
+Sets SSL certificate path. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CERT
+
+Sets path to the SSL certificate. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_KEY
+
+Sets path to the SSL key. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CA
+
+Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CRL
+
+Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_MIN_TLS_VER
+Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
 ## Common syntax rules
 
@@ -839,3 +956,4 @@ partition_info |
 comdb2_host | Returns the hostname on which this query is executing.
 comdb2_dbname | Returns the name of the connected database.
 comdb2_prevquerycost | Returns the cost of the previously executed query, when possible.
+comdb2_user() | Returns the name of the current authenticated user for the session.

@@ -67,8 +67,6 @@
 #include "dbinc/hmac.h"
 #include "genid.h"
 #include "crc32c.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 extern int __dbreg_get_name(DB_ENV *, u_int8_t *, char **);
@@ -228,9 +226,9 @@ int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
                 DB_LOCK *lk)
 {
     int rc;
-    char lock_description[100];
 
 #if 0
+    char lock_description[100];
     bdb_describe_lock(dbenv, lkname->data, lkname->size, lock_description,
                       sizeof(lock_description));
     printf("get: %s\n", lock_description);
@@ -515,7 +513,7 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
     rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
 
 #ifdef DEBUG_LOCKS
-    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
+    fprintf(stderr, "%p:%s: mode %d, name %s, lid=%x\n", (void *)pthread_self(),
             __func__, how, name, lid);
 #endif
 
@@ -685,6 +683,12 @@ int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 {
     return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
                               BDB_LOCK_READ);
+}
+
+int bdb_lock_table_write_fromlid(bdb_state_type *bdb_state, int lid)
+{
+    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+                              BDB_LOCK_WRITE);
 }
 
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)

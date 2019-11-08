@@ -35,6 +35,7 @@
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
 static volatile bool auto_analyze_running = false;
+int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
  */
@@ -60,15 +61,17 @@ void reset_aa_counter(char *tblname)
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
 
         char epoch[30] = {0};
-        sprintf(epoch, "%" PRId64, tbl->aa_lastepoch);
+        sprintf(epoch, "%d", (int)tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
     }
 
     BDB_RELLOCK();
 
+    char my_buf[30];
     ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d and last "
            "run time %s",
-           tbl->tablename, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
+           tbl->tablename, tbl->aa_saved_counter,
+           ctime_r(&tbl->aa_lastepoch, my_buf));
 }
 
 static inline void loc_print_date(const time_t *timep)
@@ -86,6 +89,10 @@ static inline void loc_print_date(const time_t *timep)
 void *auto_analyze_table(void *arg)
 {
     char *tblname = (char *)arg;
+    if (is_sqlite_stat(tblname)) {
+        free(tblname);
+        return NULL;
+    }
     int rc;
 
     for (int retries = 0; gbl_schema_change_in_progress && retries < 10;
@@ -108,8 +115,14 @@ void *auto_analyze_table(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     sbuf2free(sb);
-    auto_analyze_running = false;
     free(tblname);
+    if (gbl_debug_aa) {
+        ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
+               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+        sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
+    }
+
+    auto_analyze_running = false;
     return NULL;
 }
 
@@ -148,9 +161,10 @@ int load_auto_analyze_counters(void)
             get_saved_counter_epoch(tbl->tablename, &tbl->aa_saved_counter,
                                     &tbl->aa_lastepoch);
 
+            char my_buf[30];
             ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s",
                    tbl->tablename, tbl->aa_saved_counter,
-                   ctime(&tbl->aa_lastepoch));
+                   ctime_r(&tbl->aa_lastepoch, my_buf));
         }
     }
 
@@ -181,9 +195,6 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     /* Grab the tag schema, or punt. */
     if (!(s = find_tag_schema(tbldb->tablename, ".ONDISK_ix_0"))) {
         /* This is not an error. This just means the table has no indexes. */
-        logmsg(LOGMSG_INFO, "%s: Could not retrieve the row count from stat1 "
-                            "because table \"%s\" has no indexes.\n",
-               __func__, tbldb->tablename);
         goto abort;
     }
 
@@ -254,6 +265,8 @@ void stat_auto_analyze(void)
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME));
     logmsg(LOGMSG_USER, "SAVE COUNTERS FREQ: %d \n",
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ));
+    logmsg(LOGMSG_USER, "REQUEST MODE: %s\n",
+           YESNO(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_REQUEST_MODE)));
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
@@ -301,26 +314,16 @@ void stat_auto_analyze(void)
  */
 void *auto_analyze_main(void *unused)
 {
-    int now = comdb2_time_epoch();
-    if (now - gbl_sc_last_writer_time >
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME)) {
-#ifdef DEBUG
-        ctrace("AUTOANALYZE: no writes in the last %d sec\n",
-               now - gbl_sc_last_writer_time);
-#endif
-        return NULL; // nothing to do
-    }
-
     if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         logmsg(LOGMSG_DEBUG,
                "ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
         return NULL;
     }
 
-    static int loc_call_counter = 0;
+    static int call_counter = 0;
+    int now = comdb2_time_epoch();
 
-    logmsg(LOGMSG_DEBUG, "%s: loc_call_counter %d\n", __func__,
-           loc_call_counter);
+    logmsg(LOGMSG_DEBUG, "%s: call_counter %d\n", __func__, call_counter);
 
     bdb_state_type *bdb_state = thedb->bdb_env;
 
@@ -334,7 +337,8 @@ void *auto_analyze_main(void *unused)
     int min_percent = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_MIN_PERCENT);
     int min_percent_jitter =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_MIN_PERCENT_JITTER);
-    loc_call_counter++;
+    call_counter++;
+    char my_buf[30];
 
     int strt = comdb2_time_epochms();
 
@@ -403,24 +407,41 @@ void *auto_analyze_main(void *unused)
                        "> min_percent %d\n",
                        new_aa_percnt, min_percent);
 
-            ctrace("AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
-                   "run time %s\n",
-                   tbl->tablename, tbl->aa_saved_counter, delta,
-                   ctime(&tbl->aa_lastepoch));
-            auto_analyze_running = true; // will be reset by
-                                         // auto_analyze_table()
-            pthread_t analyze;
-            // will be freed in auto_analyze_table()
-            char *tblname = strdup(tbl->tablename);
-            pthread_create(&analyze, &gbl_pthread_attr_detached,
-                           auto_analyze_table, tblname);
+            // In AA_REQUEST_MODE, a message is printed to stdout that another
+            // task can watch for and schedule analyze at a time of its own
+            // choosing
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_REQUEST_MODE)) {
+                ctrace("AUTOANALYZE: Requesting analyze be run for Table %s, "
+                       "counters (%d, %d); last "
+                       "run time %s\n",
+                       tbl->tablename, tbl->aa_saved_counter, delta,
+                       ctime_r(&tbl->aa_lastepoch, my_buf));
+
+                logmsg(LOGMSG_USER,
+                       "AUTOANALYZE: Requesting analyze "
+                       "be run for table: %s\n",
+                       tbl->tablename);
+            } else {
+                ctrace(
+                    "AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
+                    "run time %s\n",
+                    tbl->tablename, tbl->aa_saved_counter, delta,
+                    ctime_r(&tbl->aa_lastepoch, my_buf));
+                auto_analyze_running = true; // will be reset by
+                                             // auto_analyze_table()
+                pthread_t analyze;
+                // will be freed in auto_analyze_table()
+                char *tblname = strdup(tbl->tablename);
+                pthread_create(&analyze, &gbl_pthread_attr_detached,
+                               auto_analyze_table, tblname);
+            }
         } else if (delta > 0 && save_freq > 0 &&
-                   (loc_call_counter % save_freq) ==
-                       0) { // save updated counter
+                   (call_counter % save_freq) ==
+                       0) { // save updated autoanalyze counter
             ctrace("AUTOANALYZE: Table %s, saving counter (%d, %d); last run "
                    "time %s\n",
                    tbl->tablename, tbl->aa_saved_counter, delta,
-                   ctime(&tbl->aa_lastepoch));
+                   ctime_r(&tbl->aa_lastepoch, my_buf));
             char str[12] = {0};
             sprintf(str, "%d", newautoanalyze_counter);
             bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);
@@ -442,3 +463,12 @@ void *auto_analyze_main(void *unused)
     return NULL;
 }
 
+void autoanalyze_after_fastinit(char *table)
+{
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE) == 0)
+        return;
+    pthread_t analyze;
+    char *tblname = strdup(table); // will be freed in auto_analyze_table()
+    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table,
+                   tblname);
+}

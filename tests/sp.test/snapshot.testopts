@@ -1,0 +1,2 @@
+sql_tranlevel_default snapshot
+disable_selectvonly_tran_nop 1

@@ -1,1 +1,1 @@
-(selectid=0, order=0, from=0, detail='SEARCH TABLE t3 AS v USING INDEX $PRICINGTIME_D72963A7 (pricing_time>? AND pricing_time<?) (16384 rows)')
+(id=10, parent=0, notused=0, detail='SEARCH TABLE t3 AS v USING INDEX $PRICINGTIME_D72963A7 (pricing_time>? AND pricing_time<?) (~16384 rows)')

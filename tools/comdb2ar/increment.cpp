@@ -140,7 +140,9 @@ bool compare_checksum(
     {
         std::ostringstream ss;
         ss << "ls -l " << file.get_filepath() << " >&2";
-        system(ss.str().c_str());
+        int rc = system(ss.str().c_str());
+        if (rc)
+            std::cerr << "system() returns rc = " << rc << std::endl;
         std::cerr << "stat says size " << new_st.st_size << std::endl;
     }
 
@@ -163,7 +165,8 @@ bool compare_checksum(
         bool file_expanded = false;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &new_pagebuf, 512, pagesize);
+        if(posix_memalign((void**) &new_pagebuf, 512, pagesize))
+            throw Error("Failed to allocate output buffer");
 #else
         new_pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
@@ -266,7 +269,8 @@ ssize_t serialise_incr_file(
     uint8_t *pagebuf = NULL;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, pagesize);
+    if(posix_memalign((void**) &pagebuf, 512, pagesize))
+        throw Error("Failed to allocate output buffer");
 #else
     pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
@@ -362,7 +366,8 @@ std::string getDTString() {
     char buffer[80];
 
     time(&rawtime);
-    timeinfo = localtime(&rawtime);
+    struct tm mytime;
+    timeinfo = localtime_r(&rawtime, &mytime);
 
     strftime(buffer, sizeof(buffer), "%Y%m%d%I%M%S", timeinfo);
     std::string str(buffer);

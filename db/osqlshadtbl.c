@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <alloca.h>
 #include <epochlib.h>
 #include "sql.h"
 #include "osqlshadtbl.h"
@@ -24,11 +25,13 @@
 #include <list.h>
 #include <plhash.h>
 #include <bpfunc.h>
+#include <compile_time_assert.h>
 
 #include <genid.h>
 #include <net_types.h>
 #include "comdb2uuid.h"
 #include "logmsg.h"
+#include "str0.h"
 
 extern int g_osql_max_trans;
 extern int gbl_partial_indexes;
@@ -37,11 +40,13 @@ extern int gbl_expressions_indexes;
 typedef struct blob_key {
     unsigned long long seq; /* tbl->seq identifying the owning row */
     unsigned long long id;  /* blob index in the row */
+    int odh;                /* ODH-ready or not */
 } blob_key_t;
 
 typedef struct updCols_key {
     unsigned long long seq; /* thd->seq identifying the owning row */
     unsigned long long id;  /* -1 to differentiate from blobs */
+    int odh;                /* Unused */
 } updCols_key_t;
 
 struct rec_dirty_keys {
@@ -53,6 +58,11 @@ typedef struct index_key {
     unsigned long long seq;   /* tbl->seq identifying the owning row */
     unsigned long long ixnum; /* index num in the row */
 } index_key_t;
+
+typedef struct rec_flags {
+    unsigned long long seq;
+    int flags;
+} rec_flags_t;
 
 static shad_tbl_t *get_shadtbl(struct BtCursor *pCur);
 static shad_tbl_t *open_shadtbl(struct BtCursor *pCur);
@@ -114,6 +124,17 @@ static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
 static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
                                        struct sqlclntstate *clnt);
 
+#ifndef NDEBUG
+#define DEBUG_PRINT_NUMOPS()                                                   \
+    do {                                                                       \
+        uuidstr_t us;                                                          \
+        DEBUGMSG("uuid=%s, replicant_numops=%d\n",                             \
+                 comdb2uuidstr(osql->uuid, us), osql->replicant_numops);       \
+    } while (0)
+#else
+#define DEBUG_PRINT_NUMOPS()
+#endif
+
 static int free_it(void *obj, void *arg)
 {
     free(obj);
@@ -144,6 +165,12 @@ static int destroy_shadtbl(shad_tbl_t *tbl)
         destroy_idx_hash(tbl->addidx_hash);
     if (tbl->delidx_hash)
         destroy_idx_hash(tbl->delidx_hash);
+
+    if (tbl->ins_rec_hash)
+        destroy_idx_hash(tbl->ins_rec_hash);
+    if (tbl->upd_rec_hash)
+        destroy_idx_hash(tbl->upd_rec_hash);
+
     if (tbl->delidx_tbl)
         destroy_tablecursor(tbl->env->bdb_env, tbl->delidx_cur, tbl->delidx_tbl,
                             &bdberr);
@@ -403,14 +430,11 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
                                   struct sqlclntstate *clnt)
 {
     shad_tbl_t *tbl;
-    unsigned long long rqid;
     struct dbtable *db = pCur->db;
     struct dbenv *env = pCur->db->dbenv;
     int numblobs = pCur->numblobs;
     int rc = 0;
     int bdberr = 0;
-
-    /*pBt->vdbe = pthread_getspecific(sqlite3VDBEkey);*/
 
     tbl = calloc(1, sizeof(shad_tbl_t));
     if (!tbl)
@@ -418,7 +442,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 
     tbl->seq = 0;
     tbl->env = env;
-    strncpy(tbl->tablename, db->tablename, sizeof(tbl->tablename));
+    strncpy0(tbl->tablename, db->tablename, sizeof(tbl->tablename));
     tbl->tableversion = db->tableversion;
     tbl->nix = db->nix;
     tbl->ix_expr = db->ix_expr;
@@ -484,6 +508,11 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
                                    sizeof(unsigned long long));
 
+    tbl->ins_rec_hash =
+        hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
+    tbl->upd_rec_hash =
+        hash_init_o(offsetof(rec_flags_t, seq), sizeof(unsigned long long));
+
     listc_abl(&clnt->osql.shadtbls, tbl);
     pCur->shadtbl = tbl;
 
@@ -505,14 +534,15 @@ static int destroy_tablecursor(bdb_state_type *bdb_env, struct temp_cursor *cur,
     if (cur) {
         rc = bdb_temp_table_close_cursor(bdb_env, cur, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to close cursor bdberr=%d\n", __func__,
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close cursor rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
     }
 
     if (tbl) {
         rc = bdb_temp_table_close(bdb_env, tbl->table, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to bdberr=%d\n", __func__, *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close tbl rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
 
         free(tbl);
     }
@@ -560,89 +590,65 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
     int rc = 0;
     /*int   i = 0;*/
     shad_tbl_t *tbl = NULL;
-    /* key gets set into cur->key, and is freed when a new key is
-       submitted or when the cursor is closed */
-    blob_key_t *key = (blob_key_t *)malloc(sizeof(blob_key_t));
+    void *tmptblblb;
+    blob_key_t *tmptblkey;
+    int tmptblblblen;
+    void *freeptr;
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
                pCur->db->tablename);
-        if (key)
-            free(key);
         return -1;
     }
 
-    key->seq = pCur->genid;
-    key->id = *blobnum - 1;
+    blob_key_t key = {.seq = pCur->genid, .id = *blobnum - 1};
 
-    rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
-                                   sizeof(*key), bdberr);
-    if (rc == IX_EMPTY || rc == IX_NOTFND) {
-        free(key);
-        key = NULL;
+    /* We don't know the ODH-ness of the blob, so we search using
+     * bdb_temp_table_find(). */
+    rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, &key, sizeof(key),
+                             NULL, bdberr);
 
+    tmptblkey = bdb_temp_table_key(tbl->blb_cur);
+    if (rc == IX_EMPTY || rc == IX_NOTFND || key.seq != tmptblkey->seq ||
+        key.id != tmptblkey->id) {
         blobs->bloblens[0] = 0;
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = NULL;
         rc = 0;
-
     } else if (!rc) {
+        tmptblblb = bdb_temp_table_data(tbl->blb_cur);
+        tmptblblblen = bdb_temp_table_datasize(tbl->blb_cur);
 
-        blobs->bloblens[0] = bdb_temp_table_datasize(tbl->blb_cur);
+        if (tmptblkey->odh) {
+            rc = bdb_unpack_heap(pCur->db->handle, tmptblblb, tmptblblblen,
+                                 (void **)blobs->blobptrs, blobs->bloblens,
+                                 &freeptr);
+            if (rc != 0)
+                return rc;
+
+            if (freeptr == NULL) {
+                /* Always Make a copy here. blobptrs[0] will become Mem.z
+                   after being fetched into SQLite. VDBE may call MemGrow
+                   on Mem.z so we need to make sure blobptrs[0] is a malloc'd
+                   pointer. */
+                freeptr = malloc(blobs->bloblens[0]);
+                memcpy(freeptr, blobs->blobptrs[0], blobs->bloblens[0]);
+                blobs->blobptrs[0] = freeptr;
+            }
+
+            free(tmptblblb);
+
+        } else {
+            blobs->bloblens[0] = tmptblblblen;
+            blobs->blobptrs[0] = tmptblblb;
+        }
+
         blobs->bloboffs[0] = 0;
-        blobs->blobptrs[0] = bdb_temp_table_data(tbl->blb_cur);
 
         /* reset data pointer in cursor; blob will be freed when blobs is freed
          */
         bdb_temp_table_reset_datapointers(tbl->blb_cur);
-
-    } else {
-        free(key);
-        key = NULL;
-
-        return rc;
     }
-
-#if 0
-   for(i=0; i<tbl->nblobs; i++) {
-
-      /* key gets set into cur->key, and is freed when a new key is
-         submitted or when the cursor is closed */
-      blob_key_t  *key = (blob_key_t*)malloc(sizeof(blob_key_t));
-
-      key->seq = pCur->genid;
-      key->id = i;
-
-      rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key, sizeof(*key), bdberr);
-      if(rc == IX_EMPTY || rc == IX_NOTFND)
-      {
-         free(key);
-         key = NULL;
-
-         blobs->bloblens[i] = 0;
-         blobs->bloboffs[i] = 0;
-         blobs->blobptrs[i] = NULL;
-         rc = 0;
-
-      } else if(!rc) {
-
-         blobs->bloblens[i]   = bdb_temp_table_datasize(tbl->blb_cur);
-         blobs->bloboffs[i]   = 0;
-         blobs->blobptrs[i]   = bdb_temp_table_data(tbl->blb_cur);
-
-         /* reset data pointer in cursor; blob will be freed when blobs is freed */
-         bdb_temp_table_reset_datapointers(tbl->blb_cur);
-
-      } else 
-      {
-         free(key);
-         key = NULL;
-
-         return rc;
-      }
-   }
-#endif
-
     return rc;
 }
 
@@ -717,7 +723,7 @@ static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
         return -1;
     }
 
-    tbl->table = bdb_temp_table_create(bdb_env, bdberr);
+    tbl->table = bdb_temp_array_create(bdb_env, bdberr);
 
     if (!tbl->table) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed, bderr=%d\n",
@@ -788,14 +794,16 @@ static int save_dirty_keys(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                            unsigned long long seq,
                            int ins /* 1 for add, 0 for del */)
 {
-    struct rec_dirty_keys rdk;
     struct rec_dirty_keys *prdk;
     hash_t *h;
-    rdk.seq = seq;
     h = ins ? tbl->addidx_hash : tbl->delidx_hash;
 
     assert(h);
+#ifndef NDEBUG
+    struct rec_dirty_keys rdk;
+    rdk.seq = seq;
     assert(hash_find(h, &rdk) == NULL);
+#endif
 
     prdk = calloc(1, sizeof(struct rec_dirty_keys));
     if (!prdk) {
@@ -853,6 +861,54 @@ static unsigned long long get_del_keys(struct sqlclntstate *clnt,
     return get_dirty_keys(clnt, tbl, seq, 0);
 }
 
+static int save_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
+                          unsigned long long seq, int flags,
+                          int ins /* 1 for add, 0 for del */)
+{
+    hash_t *h;
+    rec_flags_t *rec_flags;
+
+    h = ins ? tbl->ins_rec_hash : tbl->upd_rec_hash;
+
+    assert(h);
+#ifndef NDEBUG
+    rec_flags_t tmp;
+    tmp.seq = seq;
+    assert(hash_find(h, &tmp) == NULL);
+#endif
+
+    rec_flags = calloc(1, sizeof(rec_flags_t));
+    if (!rec_flags) {
+        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
+               sizeof(rec_flags_t));
+        return -1;
+    }
+
+    rec_flags->seq = seq;
+    rec_flags->flags = flags;
+    hash_add(h, rec_flags);
+
+    return 0;
+}
+
+static int get_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
+                         unsigned long long seq,
+                         int ins /* 1 for add, 0 for del */)
+{
+    hash_t *h;
+    rec_flags_t tmp;
+    rec_flags_t *rec_flags;
+
+    tmp.seq = seq;
+    h = ins ? tbl->ins_rec_hash : tbl->upd_rec_hash;
+
+    rec_flags = hash_find(h, &tmp);
+    if (rec_flags)
+        return rec_flags->flags;
+
+    return 0;
+}
+
 /*
  * NOTE:
  * Handle upd table for multiple updates of synthetic rows
@@ -863,7 +919,7 @@ static unsigned long long get_del_keys(struct sqlclntstate *clnt,
  *
  */
 int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData)
+                     int nData, int flags)
 {
 
     osqlstate_t *osql = &thd->clnt->osql;
@@ -1006,6 +1062,10 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
+    if (save_rec_flags(thd->clnt, tbl, tmp, flags, 0 /* updrec */)) {
+        return -1;
+    }
+
 #ifdef TEST_OSQL
     uuidstr_t us;
     fprintf(stdout,
@@ -1020,7 +1080,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 }
 
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
-                     int nData)
+                     int nData, int flags)
 {
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
@@ -1076,6 +1136,10 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (gbl_partial_indexes && pCur->db->ix_partial &&
         save_ins_keys(thd->clnt, tbl, tmp)) {
         logmsg(LOGMSG_ERROR, "%s: error saving the shadow dirty keys\n", __func__);
+        return -1;
+    }
+
+    if (save_rec_flags(thd->clnt, tbl, tmp, flags, 1 /* insrec */)) {
         return -1;
     }
 
@@ -1144,6 +1208,9 @@ int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,
     struct tmp_table *tmp_tbl = NULL;
     struct temp_cursor *tmp_cur = NULL;
     unsigned char **index = NULL;
+
+    if (!gbl_expressions_indexes || !pCur->db->ix_expr)
+        return SQLITE_OK;
 
     if (!(tbl = open_shadtbl(pCur))) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl\n", __func__);
@@ -1222,7 +1289,6 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
     updCols_key_t key;
     int len = 0;
     int rc;
-    int updated_synthetic = 0;
 
     /* verify that there's something to update */
     if (NULL == updCols || updCols[0] <= 0) {
@@ -1267,10 +1333,12 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 
         if (rc == IX_FND) {
             int *oldUpdCols = (int *)bdb_temp_table_data(tbl->blb_cur);
-            int oldUpdCols_len = bdb_temp_table_datasize(tbl->blb_cur);
             int i;
 
+#ifndef NDEBUG
+            int oldUpdCols_len = bdb_temp_table_datasize(tbl->blb_cur);
             assert((oldUpdCols[0] + 1) * sizeof(int) == oldUpdCols_len);
+#endif
             assert(updCols[0] == oldUpdCols[0]);
 
             for (i = 0; i < updCols[0]; i++) {
@@ -1286,7 +1354,8 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
                         __func__, rc, bdberr);
             }
             updCols = oldUpdCols;
-        }
+        } else
+            free(pkey);
     }
 
     /* insert into the blobs table with a blobid of -1 */
@@ -1327,9 +1396,6 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
-    int i;
-    int idx;
-    int ncols;
     unsigned long long tmp = 0;
 
     if (pCur->numblobs == 0) {
@@ -1357,10 +1423,11 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     else
         set_genid_add(&tmp);
 
-    for (i = 0; i < maxblobs && rc == SQLITE_OK; i++) {
+    for (int i = 0; i < maxblobs && rc == SQLITE_OK; i++) {
 
         if (blobs[i].exists == 1) {
 
+            (void)odhfy_blob_buffer(pCur->db, blobs + i, i);
             blob_key_t key;
 
             key.id = i;
@@ -1368,6 +1435,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                if it is an insert, we index blobs using temptable seq number
              */
             key.seq = tmp;
+            key.odh = IS_ODH_READY(blobs + i);
 
             rc = bdb_temp_table_put(tbl->env->bdb_env, tbl->blb_tbl->table,
                                     &key, sizeof(key), blobs[i].data,
@@ -1407,6 +1475,8 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
     return ret;
 }
 
+extern int gbl_serialize_reads_like_writes;
+
 /**
  * Scan the shadow tables for the current transaction
  * and send to the master the ops
@@ -1417,7 +1487,6 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     shad_tbl_t *tbl = NULL;
-    int i = 0;
 
     *nops = 0;
 
@@ -1427,7 +1496,8 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
      */
     if (!restarting && !osql->dirty &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
-        !osql->sc_tbl && !osql->bpfunc_tbl) {
+        !osql->sc_tbl && !osql->bpfunc_tbl &&
+        !gbl_serialize_reads_like_writes) {
         return -3;
     }
 
@@ -1570,10 +1640,15 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
                          osql_nettype, osql->logsb, tableversion);
-
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: osql_send_usedb rc=%d\n", __func__, rc);
+    }
+    osql->replicant_numops++;
+    DEBUG_PRINT_NUMOPS();
     return rc;
 }
 
+/* Think of this function as if it were called process_local_shadtbl_del */
 static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops)
 {
@@ -1602,28 +1677,51 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             tbl->nops++;
 
-            if ((tbl->nops + crt_nops) > g_osql_max_trans) {
+            if (clnt->osql_max_trans &&
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 return SQLITE_TOOBIG;
+            }
+
+            if (osql->is_reorder_on) {
+                rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial)
+                                          ? get_del_keys(clnt, tbl, genid)
+                                          : -1ULL,
+                                      osql_nettype, osql->logsb);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: error writting record to master in offload "
+                           "mode %d!\n",
+                           __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
             }
 
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                                "offload mode %d!\n",
-                        __func__, rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writing index record to master in "
+                       "offload mode %d!\n",
+                       __func__, rc);
                 return SQLITE_INTERNAL;
             }
 
-            rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_del_keys(clnt, tbl, genid)
-                                      : -1ULL,
-                                  osql_nettype, osql->logsb);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode %d!\n",
-                    __func__, rc);
-                return SQLITE_INTERNAL;
+            if (!osql->is_reorder_on) {
+                rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial)
+                                          ? get_del_keys(clnt, tbl, genid)
+                                          : -1ULL,
+                                      osql_nettype, osql->logsb);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: error writting record to master in offload "
+                           "mode %d!\n",
+                           __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
             }
+            osql->replicant_numops++;
+            DEBUG_PRINT_NUMOPS();
         }
 
         rc = bdb_tran_deltbl_next(tbl->env->bdb_env, clnt->dbtran.shadow_tran,
@@ -1662,13 +1760,12 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
 
     rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
                                    sizeof(*key), bdberr);
-    if (rc < 0) {
+    if (IX_FND != rc)
         free(key);
-        return rc;
-    }
 
-    if (IX_EMPTY == rc || IX_NOTFND == rc) {
-        free(key);
+    if (rc < 0) {
+        return rc;
+    } else if (IX_EMPTY == rc || IX_NOTFND == rc) {
         return 0;
     }
 
@@ -1703,6 +1800,8 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
                 __func__, rc);
         return SQLITE_INTERNAL;
     }
+    osql->replicant_numops++;
+    DEBUG_PRINT_NUMOPS();
 
     return rc;
 }
@@ -1721,10 +1820,10 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
     int idx;
     int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
+    blob_key_t *tmptblkey;
 
     /* identify the number of blobs */
     for (i = 0; i < tbl->nblobs; i++) {
-        blob_key_t *key;
 
         if (updCols && gbl_osql_blob_optimization) {
             idx = get_schema_blob_field_idx(tbl->tablename, ".ONDISK", i);
@@ -1732,33 +1831,37 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, seq,
                                      osql_nettype, NULL, -2, osql->logsb);
+                osql->replicant_numops++;
+                DEBUG_PRINT_NUMOPS();
                 continue;
             }
         }
 
-        /* key gets set into cur->key, and is freed when a new key is
-           submitted or when the cursor is closed */
-        key = (blob_key_t *)malloc(sizeof(blob_key_t));
+        blob_key_t key = {.seq = seq, .id = i};
 
-        key->seq = seq;
-        key->id = i;
+        /* We don't know the ODH-ness of the blob, so we search using
+         * bdb_temp_table_find(). */
+        rc = bdb_temp_table_find(tbl->env->bdb_env, tbl->blb_cur, &key,
+                                 sizeof(key), NULL, bdberr);
 
-        rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
-                                       sizeof(*key), bdberr);
-        if (rc == IX_EMPTY || rc == IX_NOTFND) {
+        tmptblkey = bdb_temp_table_key(tbl->blb_cur);
+        idx = i;
+        if (rc == IX_EMPTY || rc == IX_NOTFND ||
+            (key.seq != tmptblkey->seq || key.id != tmptblkey->id)) {
             /* null blob */
             data = NULL;
             ldata = -1;
-            free(key);
         } else if (rc == IX_FND) {
+            tmptblkey = bdb_temp_table_key(tbl->blb_cur);
+            if (tmptblkey->odh)
+                idx |= OSQL_BLOB_ODH_BIT;
             data = bdb_temp_table_data(tbl->blb_cur);
             ldata = bdb_temp_table_datasize(tbl->blb_cur);
         } else {
-            free(key);
             return SQLITE_INTERNAL;
         }
 
-        rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, seq,
+        rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, idx, seq,
                              osql_nettype, data, ldata, osql->logsb);
 
         if (rc) {
@@ -1767,6 +1870,8 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
                     __func__, rc);
             return SQLITE_INTERNAL;
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
 
     } /* for */
 
@@ -1782,8 +1887,6 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
     int lindex = 0;
     char *index = NULL;
     int rc = 0;
-    int idx;
-    int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     struct temp_cursor *tmp_cur = NULL;
     unsigned long long dk = -1ULL;
@@ -1813,15 +1916,14 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
 
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tmp_cur, key,
                                        sizeof(*key), bdberr);
-        if (rc == IX_FND) {
-            index = bdb_temp_table_data(tmp_cur);
-            lindex = bdb_temp_table_datasize(tmp_cur);
-        } else {
+        if (rc != IX_FND) {
             logmsg(LOGMSG_ERROR, "%s: error missing index record!\n", __func__);
             free(key);
             return SQLITE_INTERNAL;
         }
 
+        index = bdb_temp_table_data(tmp_cur);
+        lindex = bdb_temp_table_datasize(tmp_cur);
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, seq, is_delete,
                              i, index, lindex, osql_nettype, osql->logsb);
 
@@ -1830,6 +1932,8 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
                     __func__, rc);
             return SQLITE_INTERNAL;
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
     }
     return 0;
 }
@@ -1839,7 +1943,6 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 {
 
     osqlstate_t *osql = &clnt->osql;
-    unsigned long long *seq = NULL;
     int rc = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
 
@@ -1856,78 +1959,92 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         char *data = bdb_temp_table_data(tbl->add_cur);
         int ldata = bdb_temp_table_datasize(tbl->add_cur);
 
+        unsigned long long key;
+        key = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
+
+        /* If this isn't a synthetic genid, then it's a logfile update to a
+         * page-order cursor- ignore that here. */
+        if (!is_genid_synthetic(key))
+            goto next;
+
+        unsigned long long *seq;
         seq = (unsigned long long *)malloc(sizeof(unsigned long long));
-
-        *seq = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
-
-        /*
-         * If this isn't a synthetic genid, then it's a logfile update to a
-         * page-order cursor- ignore that here.
-         */
-        if (!is_genid_synthetic(*seq)) {
-            rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
-            continue;
-        }
-
-        /* lookup the upd_cur to see if this is an actual update, skip it if so
-  TODO: we could package and ship it rite here, rite now (later)
-         */
+        *seq = key;
+        /* lookup the upd_cur: if this is an actual update then skip it
+         * TODO: we could package and ship it rite here, rite now (later) */
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
                                        sizeof(*seq), bdberr);
-        if (rc < 0) {
+        if (rc != IX_FND)
             free(seq);
+
+        if (rc < 0)
             return rc;
-        }
+        else if (rc == IX_FND)
+            goto next;
 
-        if (rc != IX_FND) {
-
-            rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                                "offload mode!\n",
-                        __func__);
-                free(seq);
-                break;
-            }
-
-            rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
-                                             data);
-            if (rc) {
-                free(seq);
-                break;
-            }
-
-            tbl->nops++;
-
-            if ((tbl->nops + crt_nops) > g_osql_max_trans) {
-                free(seq);
-                return SQLITE_TOOBIG;
-            }
-
-            rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, *seq,
+        if (osql->is_reorder_on) {
+            rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
                                   (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_ins_keys(clnt, tbl, *seq)
+                                      ? get_ins_keys(clnt, tbl, key)
                                       : -1ULL,
-                                  data, ldata, osql_nettype, osql->logsb);
+                                  data, ldata, osql_nettype, osql->logsb,
+                                  get_rec_flags(clnt, tbl, key, 1));
 
             if (rc) {
-                logmsg(LOGMSG_USER, 
-                        "%s: error writting record to master in offload mode!\n",
-                        __func__);
-                free(seq);
+                logmsg(LOGMSG_USER,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
                 return SQLITE_INTERNAL;
             }
-            free(seq);
+        }
+        rc = process_local_shadtbl_index(clnt, tbl, bdberr, key, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: error writting index record to master in "
+                   "offload mode!\n",
+                   __func__);
+            break;
         }
 
+        rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, key, data);
+        if (rc) {
+            break;
+        }
+
+        tbl->nops++;
+
+        if (clnt->osql_max_trans &&
+            ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
+            return SQLITE_TOOBIG;
+        }
+
+        if (!osql->is_reorder_on) {
+            rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, key)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb,
+                                  get_rec_flags(clnt, tbl, key, 1));
+
+            if (rc) {
+                logmsg(LOGMSG_USER,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                return SQLITE_INTERNAL;
+            }
+        }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
+    next:
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
     }
 
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
     } else {
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                __func__, __LINE__, rc, *bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
         /* fall-through */
     }
 
@@ -1940,7 +2057,6 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
     osqlstate_t *osql = &clnt->osql;
     unsigned long long *seq = NULL;
-    int *updCols = NULL;
     int rc = 0;
     unsigned long long genid = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
@@ -1967,8 +2083,9 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->add_cur, seq,
                                        sizeof(*seq), bdberr);
         if (rc != IX_FND) {
-            logmsg(LOGMSG_ERROR, "%s: this genid %llu must exist! bug rc = %d\n",
-                    __func__, *seq, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: this genid %llu must exist! bug rc = %d\n", __func__,
+                   *seq, rc);
             free(seq);
             return SQLITE_INTERNAL;
         }
@@ -1979,10 +2096,30 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         /* counting operations */
         tbl->nops++;
 
-        if ((tbl->nops + crt_nops) > g_osql_max_trans) {
+        if (clnt->osql_max_trans &&
+            ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
             return SQLITE_TOOBIG;
         }
+        if (osql->is_reorder_on) {
+            rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, *seq)
+                                      : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_del_keys(clnt, tbl, genid)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb);
 
+            if (rc) {
+                rc = SQLITE_INTERNAL;
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                break;
+            }
+        }
+
+        int *updCols = NULL;
         rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
         if (rc)
             return SQLITE_INTERNAL;
@@ -2003,24 +2140,28 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (updCols) {
             free(updCols);
-            updCols = NULL;
         }
 
-        rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
-                              (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_ins_keys(clnt, tbl, *seq)
-                                  : -1ULL,
-                              (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_del_keys(clnt, tbl, genid)
-                                  : -1ULL,
-                              data, ldata, osql_nettype, osql->logsb);
+        if (!osql->is_reorder_on) {
+            rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, *seq)
+                                      : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_del_keys(clnt, tbl, genid)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb);
 
-        if (rc) {
-            rc = SQLITE_INTERNAL;
-            logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode!\n",
-                    __func__);
-            break;
+            if (rc) {
+                rc = SQLITE_INTERNAL;
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                break;
+            }
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
     }
@@ -2044,13 +2185,14 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 static int process_local_shadtbl_dbq(struct sqlclntstate *clnt, int *bdberr,
                                      int *crt_nops)
 {
-    if (*crt_nops >= g_osql_max_trans) {
+
+    if (clnt->osql_max_trans && (*crt_nops) > clnt->osql_max_trans) {
         return SQLITE_TOOBIG;
     }
     shadbq_t *shadbq = &clnt->osql.shadbq;
     if (shadbq->spname && shadbq->genid) {
         osql_dbq_consume(clnt, shadbq->spname, shadbq->genid);
-        ++*crt_nops;
+        ++(*crt_nops);
     }
     return SQLITE_OK;
 }
@@ -2146,7 +2288,6 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     char namebuf[MAXTAGLEN];
     struct dbtable *db = pCur->db;
     char *key;
-    void *tran = thd->clnt->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;
     int rc = 0;
     unsigned long long genid = pCur->genid;
@@ -2258,6 +2399,7 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     shad_tbl_t *tbl = NULL, *tmp = NULL;
 
+    osql->dirty = 0;
     osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
     osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
@@ -2529,12 +2671,6 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-#ifdef _AIX
-#pragma options align = packed
-#else
-#pragma pack(1)
-#endif
-
 typedef struct recgenid_key {
     int tablename_len;
     char tablename[MAXTABLELEN];
@@ -2542,29 +2678,18 @@ typedef struct recgenid_key {
     unsigned long long genid;
 } recgenid_key_t;
 
-#ifdef _AIX
-#pragma options align = full
-#else
-#pragma pack() /* return to normal alignment */
-#endif
+BB_COMPILE_TIME_ASSERT(recgenid_key_size,
+                       sizeof(recgenid_key_t) == 4 + MAXTABLELEN + 4 + 8);
 
-static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
+#define RECGENID_KEY_PACKED_LEN(k)                                             \
+    (sizeof((k).tablename_len) + (k).tablename_len +                           \
+     sizeof((k).tableversion) + sizeof((k).genid))
+
+static void *pack_recgenid_key(recgenid_key_t *key, uint8_t *buf, size_t len)
 {
-    int len = 0;
-    uint8_t *buf = NULL;
     uint8_t *buf_end;
     uint8_t *ret = NULL;
 
-    len += sizeof(key->tablename_len);
-    len += key->tablename_len;
-    len += sizeof(key->tableversion);
-    len += sizeof(key->genid);
-
-    buf = malloc(len);
-    if (buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc size %d\n", __func__, len);
-        return NULL;
-    }
     ret = buf;
     buf_end = buf + len;
 
@@ -2579,11 +2704,8 @@ static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
         logmsg(LOGMSG_ERROR,
                "%s: size of date written did not match precomputed size\n",
                __func__);
-        free(ret);
         return NULL;
     }
-
-    *outlen = len;
     return ret;
 }
 
@@ -2614,10 +2736,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
-    shad_tbl_t *tbl = NULL;
     recgenid_key_t key;
-    void *packed_key = NULL;
-    int packed_len = 0;
+    uint8_t *packed_key = NULL;
 
     /*create a common verify */
     if (!osql->verify_tbl) {
@@ -2637,11 +2757,13 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
-    packed_key = pack_recgenid_key(&key, &packed_len);
+    packed_key = alloca(RECGENID_KEY_PACKED_LEN(key));
+    packed_key =
+        pack_recgenid_key(&key, packed_key, RECGENID_KEY_PACKED_LEN(key));
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
@@ -2652,7 +2774,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     /*printf("RECGENID SAVING %d : %llx\n", pCur->tblnum, genid);*/
 
     rc = bdb_temp_table_put(thedb->bdb_env, osql->verify_tbl, packed_key,
-                            packed_len, NULL, 0, NULL, &bdberr);
+                            RECGENID_KEY_PACKED_LEN(key), NULL, 0, NULL,
+                            &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to save genid %llx\n", __func__, genid);
         return -1;
@@ -2668,9 +2791,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     int rc = 0;
     int bdberr = 0;
     recgenid_key_t key;
-    struct temp_cursor *cur = NULL;
-    void *packed_key = NULL;
-    int packed_len = 0;
+    uint8_t *packed_key = NULL;
 
     if (!osql->verify_tbl) return 0;
 
@@ -2680,11 +2801,13 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     }
 
     key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
-    packed_key = pack_recgenid_key(&key, &packed_len);
+    packed_key = alloca(RECGENID_KEY_PACKED_LEN(key));
+    packed_key =
+        pack_recgenid_key(&key, packed_key, RECGENID_KEY_PACKED_LEN(key));
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
@@ -2693,7 +2816,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     }
 
     rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, packed_key,
-                             packed_len, NULL, &bdberr);
+                             RECGENID_KEY_PACKED_LEN(key), NULL, &bdberr);
 
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, "%s: temp table find failed\n", __func__);
@@ -2754,7 +2877,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                         __func__, __LINE__);
                 return SQLITE_INTERNAL;
             }
-            strncpy(old_tablename, key.tablename, MAXTABLELEN);
+            strncpy0(old_tablename, key.tablename, MAXTABLELEN);
         }
 
 #if 0
@@ -2770,6 +2893,8 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                     __func__);
             return SQLITE_INTERNAL;
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     }
@@ -2809,19 +2934,13 @@ int osql_save_schemachange(struct sql_thread *thd,
 
     if (!osql->sc_tbl || !osql->sc_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting sc table for \'%s\'\n",
-               __func__, sc->table);
+               __func__, sc->tablename);
         return -1;
-    }
-
-    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
-        clnt->in_client_trans) {
-        sc->rqid = osql->rqid;
-        comdb2uuidcpy(sc->uuid, osql->uuid);
     }
 
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
         logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",
-               __func__, sc->table);
+               __func__, sc->tablename);
         return -1;
     }
     if (clnt->ddl_tables) {
@@ -2829,14 +2948,14 @@ int osql_save_schemachange(struct sql_thread *thd,
                   NULL, NULL);
     }
     if (usedb) {
-        packed_sc_key[1] = comdb2_table_version(sc->table);
+        packed_sc_key[1] = comdb2_table_version(sc->tablename);
     }
     rc = bdb_temp_table_put(thedb->bdb_env, osql->sc_tbl, &packed_sc_key,
                             sizeof(packed_sc_key), packed_sc_data,
                             packed_sc_data_len, NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error saving sc table for \'%s\'\n", __func__,
-               sc->table);
+               sc->tablename);
         return -1;
     }
 
@@ -2853,7 +2972,6 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     void *packed_sc_data = NULL;
     size_t packed_sc_data_len;
     int *packed_sc_key;
-    size_t packed_sc_key_len;
 
     if (!cur) {
         return 0;
@@ -2871,11 +2989,14 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     while (rc == 0) {
         struct schema_change_type *sc = NULL;
         packed_sc_key = bdb_temp_table_key(cur);
-        packed_sc_key_len = bdb_temp_table_keysize(cur);
         packed_sc_data = bdb_temp_table_data(cur);
         packed_sc_data_len = bdb_temp_table_datasize(cur);
 
+#ifndef NDEBUG
+        size_t packed_sc_key_len;
+        packed_sc_key_len = bdb_temp_table_keysize(cur);
         assert(packed_sc_key_len == (sizeof(int) * 2));
+#endif
 
         sc = new_schemachange_type();
         if (!sc) {
@@ -2888,34 +3009,27 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
         }
 
         if (packed_sc_key[1] >= 0 &&
-            packed_sc_key[1] != comdb2_table_version(sc->table)) {
+            packed_sc_key[1] != comdb2_table_version(sc->tablename)) {
             free_schema_change_type(sc);
             osql->xerr.errval = ERR_SC;
             errstat_set_strf(
                 &(osql->xerr),
-                "stale version for table:%s master:%d replicant:%d", sc->table,
-                comdb2_table_version(sc->table), packed_sc_key[1]);
+                "stale version for table:%s master:%llu replicant:%d",
+                sc->tablename, comdb2_table_version(sc->tablename),
+                packed_sc_key[1]);
             return ERR_SC;
-        } else if (packed_sc_key[1] >= 0) {
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,
-                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb,
-                                 packed_sc_key[1]);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: error writting record to master in offload mode!\n",
-                       __func__);
-                return SQLITE_INTERNAL;
-            }
         }
 
         rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,
-                                    NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+                                    NET_OSQL_SOCK_RPL, osql->logsb);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting record to master in offload mode!\n",
                    __func__);
             return SQLITE_INTERNAL;
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
         free_schema_change_type(sc);
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
@@ -2936,15 +3050,14 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
 int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 {
     struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &thd->clnt->osql;
+    osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int bdberr = 0;
     void *bpfunc_data = NULL;
     size_t bpfunc_data_len = bpfunc_arg__get_packed_size(arg);
 
     if (!osql->bpfunc_tbl) {
-        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->clnt,
-                                        &bdberr);
+        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, clnt, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to create bpfunc table rc=%d bdberr=%d\n",
@@ -2961,7 +3074,7 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 
     bpfunc_data = malloc(bpfunc_data_len);
     if (!bpfunc_data) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %ld\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                bpfunc_data_len);
         return -1;
     }
@@ -3026,6 +3139,8 @@ static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr)
                    __func__);
             return SQLITE_INTERNAL;
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     }
@@ -3142,6 +3257,7 @@ static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
                                             int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
+    osql->running_ddl = 1;
     return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
 }
 
@@ -3149,6 +3265,7 @@ static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
                                              struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
+    osql->running_ddl = 0;
     return osql_destroy_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur);
 }
 
@@ -3172,7 +3289,7 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
-    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+    return listc_empty(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
            !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl;
 }
 
@@ -3186,9 +3303,7 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
     unsigned long long genid = 0;
     char *data = NULL;
     int datalen = 0;
-    if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
-        !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl)
-        return 1;
+
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
         cur =
@@ -3200,6 +3315,30 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
         if (rc != IX_EMPTY)
             return 0;
         rc = bdb_temp_table_first(tbl->env->bdb_env, tbl->upd_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+
+    if (!osql->verify_tbl && !osql->sc_tbl && !osql->bpfunc_tbl)
+        return 1;
+
+    if (osql->verify_tbl) {
+        assert(osql->verify_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->verify_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+
+    if (osql->sc_tbl) {
+        assert(osql->sc_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->sc_cur, &bdberr);
+        if (rc != IX_EMPTY)
+            return 0;
+    }
+
+    if (osql->bpfunc_tbl) {
+        assert(osql->bpfunc_cur);
+        rc = bdb_temp_table_first(thedb->bdb_env, osql->bpfunc_cur, &bdberr);
         if (rc != IX_EMPTY)
             return 0;
     }

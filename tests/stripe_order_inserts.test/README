@@ -1,0 +1,18 @@
+This test will perform validation of two types of stripe ordering for inserts, 
+round robin and thread affinity. It comes in the form of a unit test because
+I need to have one DB with start time lrl option 'round_robin_stripes' and 
+another without that option set.
+
+In round robin scheme, each insert goes to subsequent stripe, whereas with thread
+affinity we choose a stripe at client connect and all inserts that client issues
+go to that same stripe.
+
+For round robin validation, we use table t1 and insert N records to check 
+that all stripes get N/stripe_count records (by doing pgdump).
+
+For thread affinity, we insert N records into table t2 from a client, and check
+that all rows were inserted in the same stripe, and the other stripes have
+zero rows.
+
+We use send bdb dblist to see the list of files to find the one pertaining to table t1 
+and we use send bdb pgdump fileid 1 to dump page 1 of that file.

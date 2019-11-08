@@ -34,5 +34,5 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                              struct dbtable *new_db, struct schema_change_type *s);
 
 int do_schema_change_tran(sc_arg_t *);
-int do_schema_change(struct schema_change_type *);
+int do_schema_change_locked(struct schema_change_type *);
 #endif

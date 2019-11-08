@@ -1,0 +1,13 @@
+create table cdb2api_t39 (i int)$$
+
+set intransresults on
+begin
+insert into cdb2api_t39 values(1)
+rollback
+
+SELECT 1
+
+set intransresults off
+begin
+insert into cdb2api_t39 values(1)
+commit

@@ -22,10 +22,10 @@
 
 #include <stddef.h> /*THIS DEFINES offsetof() MACRO*/
 
-#ifdef LIST_EMPTY
-#undef LIST_EMPTY
+#ifdef listc_empty
+#undef listc_empty
 #endif
-#define LIST_EMPTY(listp) ((listp)->count == 0)
+#define listc_empty(listp) ((listp)->count == 0)
 
 typedef struct linkc_t {
     void *next;
@@ -46,6 +46,7 @@ typedef struct {
         size_t diff;                                                           \
         int count;                                                             \
     }
+
 #define LINKC_T(type)                                                          \
     struct {                                                                   \
         type *next;                                                            \
@@ -74,6 +75,9 @@ extern void listc_free(listc_t *l);
  * struct */
 extern void listc_init(void *list, int offset);
 
+/* maybe remove from list. returns item removed or NULL */
+extern void *listc_maybe_rfl(void *list, void *obj);
+
 /* remove from list. returns item removed*/
 extern void *listc_rfl(void *list, void *obj);
 
@@ -90,6 +94,8 @@ extern void *listc_abl(void *list, void *obj);
 
 /* add to top of list. returns item added */
 extern void *listc_atl(void *list, void *obj);
+
+extern void *listc_add_after(void *list, void *obj, void *afterobj);
 
 /* number of elements in list */
 extern int listc_size(void *list);

@@ -42,8 +42,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
-
 /* returns -1 on error, 0 on empy table, >0 for number of recs found */
 int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
 {
@@ -53,11 +51,8 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
     DBC *dbcp;
     int lowrecnum;
     int highrecnum;
-    int lowrrn;
-    int highrrn;
     int numrecs;
     int smallest_index = 0;
-    const int BUFFER_LENGTH = 1024 * 1024;
 
     size_t buffer_length;
     void *buffer;

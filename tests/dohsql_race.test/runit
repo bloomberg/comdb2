@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t0 (c DATETIME)"
+sleep 1
+yes 'INSERT INTO t0 VALUES (now())' | head -9999 | cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default >/dev/null
+
+sql='SELECT CAST(c AS TEXT) FROM t0 '
+for i in `seq 1 4`; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t$i (c DATETIME)"
+    sleep 1
+    for j in `seq 1 10`; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t$i SELECT * FROM t0" >/dev/null
+    done
+    sql="${sql} UNION ALL SELECT CAST(c AS TEXT) from t$i "
+done
+
+for i in `seq 1 20`; do
+  cdb2sql ${CDB2_OPTIONS} $dbnm default "$sql" >/dev/null
+done

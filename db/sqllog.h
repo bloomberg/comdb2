@@ -19,8 +19,6 @@
 
 extern int gbl_log_all_sql;
 
-void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
-                          int timems);
 void sqllogger_process_message(char *line, int lline);
 
 void sqllog_save_event(struct sqlclntstate *clnt, char *p, int bytes);

@@ -53,6 +53,7 @@ function writer
 {
     while true; do
         update_t1
+        sleep 0.02
     done
 }
 

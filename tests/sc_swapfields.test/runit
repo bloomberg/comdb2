@@ -163,7 +163,7 @@ echo "Alter table to t1_2 version"
 j=4001
 while [ ! -f alter1.done ] ; do
     echo "insert into t1(a,b,c,d) values ($j,'test1$j',$j,$j)" >&${COPROC[1]}
-    read -t 0.5 -ru ${COPROC[0]} out
+    read -t 1.9 -ru ${COPROC[0]} out
     if [ "$out" != "(rows inserted=1)" ] ; then
         failexit " error inserting out=$out"
     fi

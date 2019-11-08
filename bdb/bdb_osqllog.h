@@ -37,6 +37,7 @@ struct bdb_osql_trn;
 struct bdb_osql_log_impl;
 
 typedef struct bdb_osql_log {
+    u_int32_t txnid;
     struct bdb_osql_log_impl *impl;
     LINKC_T(struct bdb_osql_log) lnk;
 } bdb_osql_log_t;
@@ -181,7 +182,7 @@ bdb_osql_log_t *bdb_osql_log_next_synced(bdb_osql_log_t *log, int *bdberr);
  */
 int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *logcur,
                            bdb_osql_log_t *log, struct bdb_osql_trn *trn,
-                           int *dirty, enum log_ops log_op, int trak,
+                           int *dirty, log_ops_t log_op, int trak,
                            int *bdberr);
 
 /**
@@ -262,4 +263,26 @@ int bdb_osql_log_undo_required(tran_type *tran, bdb_osql_log_t *log);
 int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
                             bdb_osql_log_t *lastlog, int trak);
 
+/* Modeled after generate_series */
+typedef struct bdb_llog_cursor bdb_llog_cursor;
+struct bdb_llog_cursor {
+    DB_LSN curLsn; /* Current LSN */
+    DB_LSN minLsn; /* Minimum LSN */
+    DB_LSN maxLsn; /* Maximum LSN */
+    int hitLast;
+    int openCursor;
+    int subop;
+    DB_LOGC *logc; /* Log Cursor */
+    int getflags;
+    DBT data;
+    bdb_osql_log_t *log;
+};
+
+void bdb_llog_cursor_reset(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_open(bdb_llog_cursor *pCur);
+void bdb_llog_cursor_close(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_first(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_next(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn);
+void bdb_llog_cursor_cleanup(bdb_llog_cursor *pCur);
 #endif

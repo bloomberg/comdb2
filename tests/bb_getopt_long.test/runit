@@ -233,5 +233,11 @@ glib_compatible_tests
 transform_args
 missing_required_argument
 
+# cleanup if this was a successful run
+if [ $error -eq 0 ] && [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -f *.gl *.bb
+fi
+
+
 # Comdb2 specific: we transform '-option' into '--option'
 exit $error

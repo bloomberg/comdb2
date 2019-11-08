@@ -150,11 +150,11 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    pthread_mutex_lock(&blobmutex);                                            \
+    Pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    pthread_mutex_unlock(&blobmutex);
+    Pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
@@ -182,11 +182,7 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
-                strerror(errno));
-        return -1;
-    }
+    Pthread_mutex_init(&blobmutex, NULL);
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {
@@ -294,8 +290,8 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
     blob->key.rrn = rrn;
     blob->key.genid = genid;
     blob->key.total_length = (unsigned)total_length;
-    strncpy(blob->key.tablename, table, sizeof(blob->key.tablename));
-    strncpy(blob->key.tagname, tag, sizeof(blob->key.tagname));
+    strncpy0(blob->key.tablename, table, sizeof(blob->key.tablename));
+    strncpy0(blob->key.tagname, tag, sizeof(blob->key.tagname));
     if (*extra1 == 0 && *extra2 == 0 && strcasecmp(tag, ".DYNT.") == 0) {
         /* assign the "extra" value for dynamic tags if it is not already
          * assigned. */
@@ -336,7 +332,7 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
         goto err;
     } else {
         if (iq->debug)
-            reqprintf(iq, "CACHED BLOB LEN %u TBL %s TAG %s RRN %d GENID %llu "
+            reqprintf(iq, "CACHED BLOB LEN %zu TBL %s TAG %s RRN %d GENID %llu "
                           "EXTRA %u+%u NUMBLOBS %d\n",
                       total_length, table, tag, rrn, genid, *extra1, *extra2,
                       numblobs);
@@ -515,17 +511,17 @@ int toblobask(struct ireq *iq)
     cached_blob_key_t key;
     cached_blob_t *blob;
     char *schemaname;
-    int rc;
+    int rc = 0;
     int is_dynt = 0;
     char table[MAXTABLELEN + 1];
     char cachetag[MAXTAGLEN + 1]; /* as used in the cache */
 
     struct blobask_req req;
-    struct blobask_rsp rsp;
+    struct blobask_rsp rsp = {0};
 
     uint8_t *p_buf_out;
-    uint8_t *p_buf_out_rsp_start;
-    uint8_t *p_buf_out_rsp_blob_start;
+    uint8_t *p_buf_out_rsp_start = NULL;
+    uint8_t *p_buf_out_rsp_blob_start = NULL;
 
     /* get our own p_buf_out so that if we fail we don't touch iq's copy */
     p_buf_out = iq->p_buf_out;
@@ -577,7 +573,6 @@ int toblobask(struct ireq *iq)
 
     /* have read up to data */
     if (!strncasecmp((const char *)iq->p_buf_in, ".DYNT.", 6)) {
-        char tmp[6];
         is_dynt = 1;
         strncpy0(cachetag, ".DYNT.", sizeof(cachetag));
     } else {
@@ -602,8 +597,8 @@ int toblobask(struct ireq *iq)
     key.total_length = req.total_length;
     key.dyntag_extra1 = req.extra1;
     key.dyntag_extra2 = req.extra2;
-    strncpy(key.tablename, table, sizeof(key.tablename));
-    strncpy(key.tagname, cachetag, sizeof(key.tagname));
+    strncpy0(key.tablename, table, sizeof(key.tablename));
+    strncpy0(key.tagname, cachetag, sizeof(key.tagname));
     reqlog_logf(iq->reqlogger, REQL_INFO, "key=%d:0x%llx:%u:%u:%u:%s:%s",
                 key.rrn, key.genid, key.total_length, key.dyntag_extra1,
                 key.dyntag_extra2, key.tablename, key.tagname);
@@ -641,7 +636,7 @@ int toblobask(struct ireq *iq)
         } else {
             if (req.taglen >= sizeof(dbtag)) {
                 if (iq->debug)
-                    reqprintf(iq, "TAG NAME IS TOO LONG '%s' (%d>%d)\n",
+                    reqprintf(iq, "TAG NAME IS TOO LONG '%s' (%d>%zu)\n",
                               cachetag, req.taglen, sizeof(dbtag) - 1);
                 rc = ERR_BADREQ;
                 goto error;
@@ -675,7 +670,7 @@ int toblobask(struct ireq *iq)
                     static int throttle = 100;
                     if (throttle > 0 || iq->debug)
                         reqprintf(iq, "BLOB ASK %u:%s:%s:%d:%llu+%u:%u "
-                                      "RECOVERED BUT WITH WRONG LENGTH %u\n",
+                                      "RECOVERED BUT WITH WRONG LENGTH %zu\n",
                                   key.total_length, table, cachetag, key.rrn,
                                   key.genid, key.dyntag_extra1,
                                   key.dyntag_extra2, new_length);
@@ -994,6 +989,16 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
             b->bloboffs[cblob] = 0;
             if (repair_mode)
                 outrc = -2;
+        } else if (blob->notnull && blob->length == 0 &&
+                   b->bloblens[cblob] == 1) {
+            /* There was a bug where a 0-len blob, after LZ4 compression,
+               would become 1 byte. Repair this too. */
+            free(b->blobptrs[cblob]);
+            b->blobptrs[cblob] = NULL;
+            b->bloblens[cblob] = 0;
+            b->bloboffs[cblob] = 0;
+            if (repair_mode)
+                outrc = -2;
         } else
             return -1;
     }
@@ -1041,7 +1046,6 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob)
 {
-    int outrc = 0;
     struct schema *schema = find_tag_schema(table, tag);
     int isondisk = is_tag_ondisk_sc(schema);
 

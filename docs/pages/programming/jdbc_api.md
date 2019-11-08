@@ -160,9 +160,25 @@ The parameters are as follows:
       
       The password of the database user. The default is empty.
 
-    * _comdb2_timeout_=Integer
+    * _sotimeout_=Integer
 
-      The server-side socket read and write timeouts in seconds. The default is 10 seconds.
+      Socket timeout for the target database, in milliseconds. The default is 5,000 milliseconds.
+
+    * _maxquerytime_=Integer
+
+      The maximum execution time allowed in seconds for a query.
+
+    * _connect_timeout_=Integer
+
+      Connect timeout in milliseconds. The default is 100 milliseconds.
+
+    * _comdb2db_timeout_=Integer
+
+      Socket timeout for comdb2db, in milliseconds. The default is 5,000 milliseconds.
+
+    * _dbinfo_timeout_=Integer
+
+      Socket timeout for the DBINFO response, in milliseconds. The default is 500 milliseconds.
 
     * _load_balance_="room" \| "randomroom" \| "random"
 
@@ -237,6 +253,10 @@ The parameters are as follows:
     * _trust_store_type_=String
 
       Type of the trusted CA keystore. The default is `"JKS"`.
+
+    * _crl_=String
+
+      Path to the Certificate Revocation List (CRL), in `PEM` format.
 
     * _allow_pmux_route_=Boolean
 
@@ -330,7 +350,7 @@ To load the JKS into the driver, the JDBC URL looks like this:
 jdbc:comdb2//<hostname>/<database>?key_store=<path/to/jks>&key_store_password=<passwd>
 ```
 
-A trusted CA keystore can be generated the same way.
+A trusted CA keystore can be generated the same way to authenticate the server.
 
 To load the trusted CA JKS into the driver, the JDBC URL looks like this:
 

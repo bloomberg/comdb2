@@ -12,12 +12,15 @@ static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
 static std::string at("@");
+static std::string begin("begin");
+static std::string commit("commit");
+unsigned int transize;
 
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
     int rc = cdb2_run_statement(h, sql.c_str());
     if (rc != 0) {
-        fprintf(stderr, "cdb2_run_statement failed: %d %s\n", rc,
+        fprintf(stderr, "Error: cdb2_run_statement failed: %d %s\n", rc,
                 cdb2_errstr(h));
         return rc;
     }
@@ -40,7 +43,7 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
     if (rc == CDB2_OK_DONE)
         rc = 0;
     else
-        fprintf(stderr, "cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+        fprintf(stderr, "Error: cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
     return rc;
 }
 
@@ -50,7 +53,7 @@ int runtag(cdb2_hndl_tp *h, std::string &sql, std::vector<int> &types)
     int rc =
         cdb2_run_statement_typed(h, sql.c_str(), types.size(), types.data());
     if (rc != 0) {
-        fprintf(stderr, "cdb2_run_statement_typed failed: %d %s\n", rc,
+        fprintf(stderr, "Error: cdb2_run_statement_typed failed: %d %s\n", rc,
                 cdb2_errstr(h));
         return rc;
     }
@@ -70,7 +73,7 @@ int runtag(cdb2_hndl_tp *h, std::string &sql, std::vector<int> &types)
     if (rc == CDB2_OK_DONE)
         rc = 0;
     else
-        fprintf(stderr, "cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+        fprintf(stderr, "Error: cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
     return rc;
 }
 
@@ -92,17 +95,11 @@ typedef struct {
 
 void *thr(void *arg)
 {
-    char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
-    else
-        fprintf(stderr, "no config was set\n");
-
     cdb2_hndl_tp *db;
     int rc = cdb2_open(&db, dbname, "default", 0);
     if (rc != 0) {
-        fprintf(stderr, "cdb2_open failed: %d\n", rc);
-        return NULL;
+        fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
+        exit(1);
     }
 
     thr_info_t *tinfo = (thr_info_t *)arg;
@@ -111,6 +108,9 @@ void *thr(void *arg)
     std::ostringstream ss;
     ss << "insert into " << table << "(i, j) values (@i, @j)" ;
     std::string s = ss.str();
+
+    if (transize > 0)
+        runsql(db, begin);
 
     // insert records with bind params
     int count = 0;
@@ -129,7 +129,13 @@ void *thr(void *arg)
         //runtag(db, s, types);
         cdb2_clearbindings(db);
         if((++count & 0xff) == 0) std::cout << "Thr " << i << " Items " << count << std::endl;
+        if (transize > 0 && (count % transize) == 0) {
+            runsql(db, commit);
+            runsql(db, begin);
+        }
     }
+    if (transize > 0)
+        runsql(db, commit);
 
     cdb2_close(db);
     std::cout << "Done thr " << i << std::endl;
@@ -139,7 +145,7 @@ void *thr(void *arg)
 int main(int argc, char *argv[])
 {
     if(argc < 5) {
-        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS\n", argv[0]);
+        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS TRANSIZE\n", argv[0]);
         return 1;
     }
 
@@ -147,6 +153,14 @@ int main(int argc, char *argv[])
     unsigned int numthreads = atoi(argv[2]);
     unsigned int cntperthread = atoi(argv[3]);
     unsigned int iterations = atoi(argv[4]);
+    if (argv[5])
+        transize = atoi(argv[5]);
+
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
+    else
+        fprintf(stderr, "Error: no config was set\n");
 
     pthread_t *t = (pthread_t *) malloc(sizeof(pthread_t) * numthreads);
     thr_info_t *tinfo = (thr_info_t *) malloc(sizeof(thr_info_t) * numthreads);

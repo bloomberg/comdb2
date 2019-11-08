@@ -24,6 +24,7 @@ static const char revid[] = "$Id: lock_region.c,v 11.73 2003/07/23 13:13:12 mjc 
 #include "dbinc/lock.h"
 
 #include <logmsg.h>
+#include "locks_wrap.h"
 
 static int  __lock_init __P((DB_ENV *, DB_LOCKTAB *));
 static size_t
@@ -171,7 +172,7 @@ add_to_lock_partition(DB_ENV *dbenv, DB_LOCKTAB *lt,
 		    MUTEX_SELF_BLOCK)) != 0)
 			return (ret);
 
-		pthread_mutex_init(&lp[i].lsns_mtx, NULL);
+		Pthread_mutex_init(&lp[i].lsns_mtx, NULL);
 		SH_LIST_INIT(&lp[i].lsns);
 		lp[i].nlsns = 0;
 		MUTEX_LOCK(dbenv, &lp[i].mutex);
@@ -332,7 +333,7 @@ __lock_init(dbenv, lt)
 		region->nwlk_scale[i] = 0;
 		region->nwobj_scale[i] = 0;
 		/* Allocate room for the object hash table and initialize it. */
-		pthread_mutex_init(&region->obj_tab_mtx[i].mtx, NULL);
+		Pthread_mutex_init(&region->obj_tab_mtx[i].mtx, NULL);
 		bzero(region->obj_tab_mtx[i].fluff,
 		    sizeof(region->obj_tab_mtx[i].fluff));
 		if ((ret = __db_shalloc(lt->reginfo.addr,
@@ -365,7 +366,7 @@ __lock_init(dbenv, lt)
 	for (i = 0; i < gbl_lkr_parts; ++i) {
 		region->nwlkr_scale[i] = 0;
 		/* Allocate room for the locker hash table and initialize it. */
-		pthread_mutex_init(&region->locker_tab_mtx[i].mtx, NULL);
+		Pthread_mutex_init(&region->locker_tab_mtx[i].mtx, NULL);
 		bzero(region->locker_tab_mtx[i].fluff,
 		    sizeof(region->locker_tab_mtx[i].fluff));
 		if ((ret = __db_shalloc(lt->reginfo.addr,
@@ -403,13 +404,13 @@ mem_err:		__db_err(dbenv,
 	SH_TAILQ_INIT(&region->dd_objs);
 	SH_TAILQ_INIT(&region->lockers);
 
-	pthread_mutex_init(&region->dd_mtx.mtx, NULL);
+	Pthread_mutex_init(&region->dd_mtx.mtx, NULL);
 	bzero(region->dd_mtx.fluff, sizeof(region->dd_mtx.fluff));
 
-	pthread_mutex_init(&region->lockers_mtx.mtx, NULL);
+	Pthread_mutex_init(&region->lockers_mtx.mtx, NULL);
 	bzero(region->lockers_mtx.fluff, sizeof(region->lockers_mtx.fluff));
 
-	pthread_mutex_init(&region->db_lock_lsn_lk, NULL);
+	Pthread_mutex_init(&region->db_lock_lsn_lk, NULL);
 	SH_LIST_INIT(&region->db_lock_lsn_head);
 	region->db_lock_lsn_step = dbenv->attr.db_lock_lsn_step;
 

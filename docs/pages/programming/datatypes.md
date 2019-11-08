@@ -77,11 +77,12 @@ string value, except that it may not contain 0x00 bytes.
 
 ```VUTF8``` is a variable length field.  Like ```BLOB```, the field can be optionally declared with a size hint.
 Values smaller than that size are stored inline in the record.  Values larger (up to 255MB) are stored in a separate
-entity, with the associated access cost.  ```VUTF8``` fields may not be a part of a key.  ```Vutf8``` values must
+entity, with the associated access cost.  ```VUTF8``` fields may not be a part of a key.  ```VUTF8``` values must
 be valid UTF-8.  Strings that contain invalid characters are rejected.  ```VUTF8``` values may not contain 0x00 bytes.
 
-Both ```CSTRING``` and ```VUTF8``` types are returned to applications as CDB2_CSTRING types.  Both also return the
-size of the value, but are null-terminated.
+Both ```CSTRING``` and ```VUTF8``` types are returned to applications as CDB2_CSTRING types.
+They both return the size of the value which includes the null-terminator. On input, the value
+gets truncated at the first 0x00 (if any) and anything beyond that gets discarded.
 
 |Type|SQL Datatype|Description|Range|
 |---|---|---|---|

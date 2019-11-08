@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# 
+# This script starts a comdb2 cluster
+# needs the following parameters:
+# [optionally] a directory to store the database files, if ommited
+#   it will use current working directory
+# the database name
+# cluster nodes (at least two nodes)
+
+#set -x
+
+failexit() {
+    echo $1
+    exit -1
+}
+
+usage() {
+    failexit "usage: $0 [--dir /path/to/dir] dbname node1 node2 [..nodeN]"
+}
+
+
+if [[ $# -lt 3 || $1 = "--help" || $1 = "-h" ]] ; then
+    usage
+fi
+
+CREATEDB=1
+if [[ $1 = "--nocreate" ]] ; then 
+    shift
+    CREATEDB=0
+fi
+
+
+if [[ $1 = "--dir" ]] ; then 
+    shift
+    DBDIR=$1
+    shift
+fi
+
+DBNAME=$1
+shift
+
+#what remains is the cluster line
+if [[ $# -lt 2 ]] ; then
+    echo "Error: cluster needs to have at least two nodes."
+    usage
+fi
+
+CLUSTER=$@
+
+# use --dir to specify db directory otherwise creates db in current_dir/$DBNAME
+if [[ -z $DBDIR ]]; then
+    DBDIR=`pwd`/$DBNAME/
+else
+    DBDIR=`readlink -f ${DBDIR}`
+fi
+
+if [ "x$CLUSTER" = "x" ] ; then
+    usage
+fi
+
+
+TMPDIR=${TMPDIR:-/tmp}
+CDB2_CONFIG=$DBDIR/comdb2db.cfg
+CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
+COMDB2_EXE=${COMDB2_EXE:-comdb2}
+CDB2SQL_EXE=${CDB2SQL_EXE:-cdb2sql}
+COMDB2AR_EXE=${COMDB2AR_EXE:-comdb2ar}
+COPYCOMDB2_EXE=${COPYCOMDB2_EXE:-copycomdb2}
+export comdb2ar=$COMDB2AR_EXE  # used by copycomdb2
+export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
+export COMDB2_ROOT=${DBDIR}
+myhostname=`hostname`
+LOGDIR=${LOGDIR:-$DBDIR/var/log}
+
+
+check_executables_for_cluster() 
+{
+    which $CDB2SQL_EXE  > /dev/null || failexit "$CDB2SQL_EXE not in path"
+    which $COMDB2AR_EXE  > /dev/null || failexit "$COMDB2AR_EXE not in path"
+    which $COPYCOMDB2_EXE  > /dev/null || failexit "$COPYCOMDB2_EXE not in path"
+    for node in $CLUSTER; do
+        if [ $node == $myhostname ] ; then
+            if [ $CREATEDB == "1" ] ; then
+                ls $DBDIR &> /dev/null && failexit "$DBDIR already exists, please clean up before attempting to start"
+            fi
+            which $COMDB2_EXE > /dev/null || failexit "$COMDB2_EXE not in path"
+            continue
+        fi
+
+        hst=$(ssh -o StrictHostKeyChecking=no $node "hostname" < /dev/null )
+        if [ "x$hst" == "x" ] ; then
+            failexit "cant get hostname on $node"
+        fi
+
+        ssh -o StrictHostKeyChecking=no $node "ls $DBDIR > /dev/null 2>&1" < /dev/null && failexit "$DBDIR already exists in node $node, please clean up before attempting to start" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE > /dev/null 2>&1" < /dev/null || failexit "$COMDB2_EXE not in path in node $node" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "which $COMDB2AR_EXE > /dev/null 2>&1" < /dev/null || failexit "$COMDB2AR_EXE not in path in node $node" < /dev/null
+    done
+}
+
+check_executables_for_cluster
+
+LRL="$DBDIR/$DBNAME.lrl"
+PARAMS="$DBNAME --no-global-lrl"
+if [ $CREATEDB == 1 ] ; then 
+    mkdir -p $DBDIR $TMPDIR
+    mkdir -p $LOGDIR $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2
+
+    # setup files:
+    echo "$DBNAME: creating"
+    > ${LRL}
+
+    cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
+name    $DBNAME
+dir     $DBDIR
+
+EOPTIONS
+
+
+    pmux_port=5105
+    pmux_cmd='pmux -n'
+    if [ -n "$PMUXPORT" ] ; then
+        pmux_port=$PMUXPORT
+        pmux_socket=/tmp/pmux.socket.$PMUXPORT
+        pmux_port_range="-r 21000:22000"
+        pmux_cmd="pmux -n -p $PMUXPORT -b $pmux_socket $pmux_port_range"
+        echo "comdb2_config:portmuxport=$PMUXPORT" >> $CDB2_CONFIG
+        echo "portmux_port $PMUXPORT" >> ${LRL}
+        echo "portmux_bind_path $pmux_socket" >> ${LRL}
+    fi
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" > /dev/null && echo "setattr directio 0" >> ${LRL}
+
+    echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
+    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+    echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
+    set +e
+    $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
+    rc=$?
+    rm -f ${DBNAME}.trap
+    if [[ $rc -ne 0 ]] ; then
+        echo "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
+        exit 1
+    fi
+
+    echo "${DBNAME} created successfully"
+fi
+
+#set -e  # from here, a bad rc will mean failure and exit
+
+
+echo "$DBNAME: copying to cluster"
+for node in $CLUSTER; do
+    if [ $node == $myhostname ] ; then
+        continue        # no copying to self
+    fi
+
+    ssh -o StrictHostKeyChecking=no $node "mkdir -p $LOGDIR $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2" < /dev/null
+    ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $LOGDIR/setup.log < /dev/null
+
+    loccomdb2ar_exopts=`ssh -o StrictHostKeyChecking=no $node "which $COMDB2_EXE"`
+    COMDB2AR_EXOPTS="-x $loccomdb2ar_exopts" $COPYCOMDB2_EXE ${LRL} ${node}: &> ${LOGDIR}/${DBNAME}.${node}.copy
+    if [[ $? -ne 0 ]]; then
+        echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
+        echo "see $LOGDIR/${DBNAME}.${node}.copy "
+        exit 1
+    fi
+done
+
+echo "export COMDB2_ROOT=$DBDIR" >> ${DBDIR}/replicant_vars
+echo "export PATH=$PATH" >> ${DBDIR}/replicant_vars
+CMD="source ${DBDIR}/replicant_vars ; $COMDB2_EXE ${DBNAME} --lrl $DBDIR/${DBNAME}.lrl"
+echo "$DBNAME: starting"
+for node in $CLUSTER; do
+    if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
+            if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
+                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+            else
+                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $LOGDIR/${DBNAME}.${node}.db &
+            fi
+        continue
+    fi
+
+    if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
+        echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
+        continue
+    fi
+    scp -o StrictHostKeyChecking=no ${DBDIR}/replicant_vars $node:${DBDIR}/replicant_vars &>> $LOGDIR/setup.log
+    # redirect output from CMD to a subshell which runs awk to prepend time
+    ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
+    # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
+    echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+done
+
+if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
+    exit 0
+fi
+
+set +e
+echo "$DBNAME: waiting until ready"
+sleep 1
+for node in $CLUSTER; do
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+    while  [[ "$out" != "1" ]]; do
+        sleep 2
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
+    done
+done
+
+n=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
+echo "$DBNAME: Cluster is running with $n nodes. You can query it with:"
+echo "   $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default 'select 1'"
+
+exit 0

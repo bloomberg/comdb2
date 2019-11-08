@@ -43,8 +43,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
-
 bdb_callback_type *bdb_callback_create(void)
 {
     bdb_callback_type *bdb_callback;
@@ -73,6 +71,9 @@ void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
         break;
     case BDB_CALLBACK_APPSOCK:
         bdb_callback->appsock_rtn = callback_rtn;
+        break;
+    case BDB_CALLBACK_ADMIN_APPSOCK:
+        bdb_callback->admin_appsock_rtn = callback_rtn;
         break;
     case BDB_CALLBACK_PRINT:
         bdb_callback->print_rtn = (PRINTFP)callback_rtn;

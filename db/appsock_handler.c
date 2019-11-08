@@ -23,13 +23,14 @@
  * of this when doing appsock stuff!
  */
 
-#include <lockmacro.h>
+#include "lockmacros.h"
 #include "util.h"
 #include "comdb2.h"
 #include "comdb2_plugin.h"
 #include "comdb2_appsock.h"
 #include "plhash.h"
 #include "comdb2_atomic.h"
+#include "perf.h"
 
 #ifdef DEBUG
 // was crashing because of the small stack size when debug was on
@@ -45,11 +46,18 @@ struct appsock_thd_state {
     struct thr_handle *thr_self;
 };
 
+typedef struct appsock_work_args {
+    SBUF2 *sb;
+    int admin;
+} appsock_work_args_t;
+
 struct thdpool *gbl_appsock_thdpool = NULL;
 char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
 int active_appsock_conns = 0;
+
+pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /* HASH of all registered appsock handlers (one handler per appsock type) */
 hash_t *gbl_appsock_hash;
@@ -58,20 +66,18 @@ static unsigned long long total_appsock_conns = 0;
 static unsigned long long num_bad_toks = 0;
 static unsigned long long total_toks = 0;
 static unsigned long long total_appsock_rejections = 0;
-static pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
-static size_t num_commands = 0;
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
 
 void close_appsock(SBUF2 *sb)
 {
-    net_end_appsock(sb);
-    LOCK(&appsock_conn_lk)
-    {
+    if (sb != NULL) {
+        net_end_appsock(sb);
+        Pthread_mutex_lock(&appsock_conn_lk);
         active_appsock_conns--;
+        Pthread_mutex_unlock(&appsock_conn_lk);
     }
-    UNLOCK(&appsock_conn_lk);
 }
 
 int appsock_init(void)
@@ -118,7 +124,6 @@ void appsock_quick_stat(void)
 void appsock_stat(void)
 {
     comdb2_appsock_t *rec;
-    unsigned int exec_count;
     unsigned int bkt;
     void *ent;
 
@@ -129,7 +134,7 @@ void appsock_stat(void)
 
     for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
          rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
-        exec_count = ATOMIC_LOAD(rec->exec_count);
+        uint32_t exec_count = ATOMIC_LOAD32(rec->exec_count);
         if (exec_count > 0) {
             logmsg(LOGMSG_USER, "  num %-16s  %u\n", rec->name, exec_count);
         }
@@ -139,12 +144,11 @@ void appsock_stat(void)
 void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
 {
     comdb2_appsock_t *rec;
-    unsigned int exec_count;
     unsigned int bkt;
     void *ent;
+    uint32_t exec_count = 0;
 
     *n_appsock = total_appsock_conns;
-    exec_count = 0;
 
     /*
       Iterate through the list of registered appsock handlers
@@ -153,18 +157,18 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
     for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
          rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
         if (rec->flags & APPSOCK_FLAG_IS_SQL) {
-            exec_count += ATOMIC_LOAD(rec->exec_count);
+            exec_count += ATOMIC_LOAD32(rec->exec_count);
         }
     }
     *n_sql = exec_count;
 }
 
-static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
+static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
                              struct thr_handle *thr_self)
 {
+    SBUF2 *sb = w->sb;
     comdb2_appsock_t *appsock;
     comdb2_appsock_arg_t arg;
-    struct dbtable *tab;
     char line[128];
     char command[128];
     char *ptr;
@@ -175,7 +179,14 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    tab = thedb->dbs[0];
+    if (!thedb->dbs) {
+        logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
+               __func__);
+        return 0;
+    }
+
+    arg.tab = &thedb->static_table;
+    arg.conv_flags = 0;
 
     while (1) {
         thrman_where(thr_self, NULL);
@@ -188,7 +199,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
 
         st = 0;
 
-        logmsg(LOGMSG_DEBUG, "thd_apsock_int(): '%s'\n", line);
+        logmsg(LOGMSG_DEBUG, "%s:%s", __func__, line);
 
         tok = segtok(line, rc, &st, &ltok);
         if (ltok == 0)
@@ -215,15 +226,15 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         /* Prepare the argument to be passed to the handler. */
         arg.thr_self = thr_self;
         arg.dbenv = thedb;
-        arg.tab = tab;
         arg.sb = sb;
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
+        arg.admin = w->admin;
 
         thrman_where(thr_self, appsock->name);
 
         /* Increment the execution count. */
-        ATOMIC_ADD(appsock->exec_count, 1);
+        ATOMIC_ADD32(appsock->exec_count, 1);
 
         /* Invoke the handler. */
         rc = appsock->appsock_handler(&arg);
@@ -246,7 +257,6 @@ static void appsock_thd_start(struct thdpool *pool, void *thddata)
 
 static void appsock_thd_end(struct thdpool *pool, void *thddata)
 {
-    struct appsock_thd_state *state = thddata;
     if (!gbl_use_appsock_as_sqlthread)
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 }
@@ -254,15 +264,17 @@ static void appsock_thd_end(struct thdpool *pool, void *thddata)
 static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 {
     struct appsock_thd_state *state = thddata;
-    SBUF2 *sb = work;
+    appsock_work_args_t *w = (appsock_work_args_t *)work;
     int keepsocket = 0;
 
-    thrman_setfd(state->thr_self, sbuf2fileno(sb));
-    thd_appsock_int(sb, &keepsocket, state->thr_self);
+    thrman_setfd(state->thr_self, sbuf2fileno(w->sb));
+    thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
     thrman_where(state->thr_self, NULL);
-    if (keepsocket == 0)
-        close_appsock(sb);
+    if (keepsocket == 0) {
+        close_appsock(w->sb);
+        w->sb = NULL;
+    }
 
     if (thrman_get_type(state->thr_self) != THRTYPE_APPSOCK_POOL)
         thrman_change_type(state->thr_self, THRTYPE_APPSOCK_POOL);
@@ -271,7 +283,7 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
 static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
                             int op)
 {
-    SBUF2 *sb = (SBUF2 *)work;
+    appsock_work_args_t *w = (appsock_work_args_t *)work;
 
     switch (op) {
     case THD_RUN:
@@ -279,12 +291,14 @@ static void appsock_work_pp(struct thdpool *pool, void *work, void *thddata,
         break;
 
     case THD_FREE:
-        close_appsock(sb);
+        close_appsock(w->sb);
+        w->sb = NULL;
         break;
 
     default:
         abort();
     }
+    free(w);
 }
 
 int gbl_appsock_connection_warn_threshold = 80;
@@ -295,11 +309,9 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
+void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
-    int rc;
-    pthread_t tid;
     static int last_thread_dump_time = 0;
     static int last_thread_dump_warn_time = 0;
     int nconns = 0;
@@ -307,6 +319,8 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     time_t now;
 
     now = time(NULL);
+
+    time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
 
     maxconns = thdpool_get_maxthds(gbl_appsock_thdpool);
     nconns = thdpool_get_nthds(gbl_appsock_thdpool);
@@ -351,8 +365,12 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
         }
     }
 
-    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, sb, 0, NULL) !=
-        0) {
+    uint32_t flags = admin ? THDPOOL_FORCE_DISPATCH : 0;
+    appsock_work_args_t *work = malloc(sizeof(*work));
+    work->admin = admin;
+    work->sb = sb;
+    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
+                        flags, PRIORITY_T_DEFAULT) != 0) {
         total_appsock_rejections++;
         if ((now - last_thread_dump_time) > 10) {
             logmsg(LOGMSG_WARN, "Too many concurrent SQL connections:\n");
@@ -366,11 +384,9 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb)
     }
 
     total_appsock_conns++;
-    LOCK(&appsock_conn_lk)
-    {
-        active_appsock_conns++;
-    }
-    UNLOCK(&appsock_conn_lk);
+    Pthread_mutex_lock(&appsock_conn_lk);
+    active_appsock_conns++;
+    Pthread_mutex_unlock(&appsock_conn_lk);
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
         logmsg(LOGMSG_WARN,
@@ -394,7 +410,7 @@ int set_rowlocks(void *trans, int enable)
         return -1;
     }
 
-    if (gbl_rowlocks) {
+    if (enable) {
         gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
         gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
     } else {

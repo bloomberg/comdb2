@@ -449,6 +449,11 @@ static const int sentinel_ = 0;
 
 
 static int ll_require (lua_State *L) {
+  extern int gbl_allow_lua_dynamic_libs;
+  if (!gbl_allow_lua_dynamic_libs) {
+    luaL_error(L, "dynamic libraries not enabled; check comdb2 documentation");
+    return 1;
+  }
   const char *name = luaL_checkstring(L, 1);
   int i;
   lua_settop(L, 1);  /* _LOADED table will be at index 2 */

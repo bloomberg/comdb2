@@ -41,11 +41,13 @@ static const char revid[] = "$Id: lock_stat.c,v 11.44 2003/09/13 19:20:36 bostic
 #include <execinfo.h>
 #endif
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 static void __lock_dump_locker __P((DB_LOCKTAB *, DB_LOCKER *, FILE *));
 static void __lock_dump_object __P((DB_LOCKTAB *, DB_LOCKOBJ *, FILE *, int));
 static void __lock_printheader __P((FILE *));
 static int __lock_stat __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
+static int __lock_collect __P((DB_ENV *, collect_locks_f, void *));
 
 void __lock_dump_locker_int __P((DB_LOCKTAB *, DB_LOCKER *, FILE *, int));
 int __lock_printlock_int __P((DB_LOCKTAB *, struct __db_lock *, int, FILE *,
@@ -225,8 +227,9 @@ __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, lockerid)
 		    "lsynch_off", (u_long)lrp->lsynch_off,
 		    "need_dd", (u_long)lrp->need_dd);
 		if (LOCK_TIME_ISVALID(&lrp->next_timeout)) {
+			struct tm mytime;
 			strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S",
-			    localtime((time_t*)&lrp->next_timeout.tv_sec));
+			    localtime_r((time_t*)&lrp->next_timeout.tv_sec, &mytime));
 			logmsgf(LOGMSG_USER, fp, "next_timeout: %s.%lu\n",
 			    buf, (u_long)lrp->next_timeout.tv_usec);
 		}
@@ -337,7 +340,6 @@ __dump_lid_latches(dbenv, lid, fp)
 		    ((addr -(u_int8_t *) & region->latches[0])/sizeof(*latch));
 
 		for (lnode = latch->listhead; lnode; lnode = lnode->next) {
-			char fileid[DB_FILE_ID_LEN];
 			char *namep = NULL, *mode = NULL;
 			u_int8_t *ptr = lnode->lock;
 			db_pgno_t pgno;
@@ -387,8 +389,6 @@ __latch_dump_region_int(dbenv, fp)
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKERID_LATCH_LIST *lockerid_latches = region->lockerid_latches;
 	DB_LOCKERID_LATCH_NODE *lid = NULL;
-	DB_ILOCK_LATCH *lnode = NULL;
-	DB_LATCH *latch = NULL;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, lt, "latch_dump_region", DB_INIT_LOCK);
@@ -400,14 +400,14 @@ __latch_dump_region_int(dbenv, fp)
 	    "Mode", "Page", "Filename");
 
 	for (idx = 0; idx < region->max_latch_lockerid; idx++) {
-		pthread_mutex_lock(&(lockerid_latches[idx].lock));
+		Pthread_mutex_lock(&(lockerid_latches[idx].lock));
 		lid = lockerid_latches[idx].head;
 
 		while (lid) {
 			__dump_lid_latches(dbenv, lid, fp);
 			lid = lid->next;
 		}
-		pthread_mutex_unlock(&(lockerid_latches[idx].lock));
+		Pthread_mutex_unlock(&(lockerid_latches[idx].lock));
 	}
 	return 0;
 }
@@ -439,7 +439,6 @@ __lock_locker_lockcount(dbenv, id, nlocks)
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKER *locker;
-	int ret = 0;
 
 	int ndx;
 
@@ -470,7 +469,6 @@ __lock_locker_pagelockcount(dbenv, id, nlocks)
 	DB_LOCKER *locker;
 	struct __db_lock *lp;
 	int cnt = 0;
-	int ret = 0;
 	int ndx;
 
 	LOCKER_INDX(lt, region, id, ndx)
@@ -550,189 +548,10 @@ __lock_locker_pagelockcount_pp(dbenv, id, nlocks)
 	return (ret);
 }
 
-
-/*
- * COMDB2 MODIFICATION
- *
- * PUBLIC: void __lock_dump_locker_int __P((DB_LOCKTAB *, DB_LOCKER *, FILE *, int));
- */
-void
-__lock_dump_locker_int(lt, lip, fp, just_active_locks)
-	DB_LOCKTAB *lt;
-	DB_LOCKER *lip;
-	FILE *fp;
-	int just_active_locks;
+static char *mode_to_str(int lpmode)
 {
-	struct __db_lock *lp;
-	time_t s;
-	char buf[64];
-	int have_interesting_locks;
-	int have_waiters = 0;
-
-	if (just_active_locks &&lip->nlocks == 0)
-		return;
-
-	if (lip->has_waiters)
-		have_waiters = 1;
-	have_interesting_locks = 0;
-	if (just_active_locks) {
-		lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
-
-		if (lp !=NULL) {
-			for (; lp !=NULL;
-			    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
-				DB_LOCKOBJ *lockobj;
-				db_pgno_t pgno;
-				u_int32_t *fidp, type;
-				u_int8_t *ptr;
-				char *namep;
-				const char *mode, *status;
-
-				lockobj = lp->lockobj;
-				ptr = lockobj->lockobj.data;
-
-				if (lockobj->lockobj.size ==
-				    sizeof(struct __db_ilock)) {
-					/* Assume this is a DBT lock. */
-					memcpy(&pgno, ptr, sizeof(db_pgno_t));
-
-					fidp =
-					    (u_int32_t *) (ptr
-					    +sizeof(db_pgno_t));
-					type =
-					    *(u_int32_t *) (ptr
-					    +sizeof(db_pgno_t) +
-					    DB_FILE_ID_LEN);
-					if (__dbreg_get_name(lt->dbenv,
-						(u_int8_t *) fidp, &namep) != 0)
-						namep = NULL;
-
-					if (type == DB_PAGE_LOCK ||
-					    type == DB_RECORD_LOCK) {
-						have_interesting_locks = 1;
-						break;
-					}
-				} else {
-					have_interesting_locks = 1;
-					break;
-				}
-			}
-		}
-	}
-	if (!just_active_locks)
-		logmsg(LOGMSG_USER, "%8x havelocks %d\n", lip->id, have_interesting_locks);
-
-	if (just_active_locks &&!have_interesting_locks)
-		return;
-
-	if (!just_active_locks)
-		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread %lu (0x%lx)",
-		    (u_long)lip->id, (long)lip->dd_id, lip->nlocks,
-		    lip->nwrites, have_waiters ? "Y" : "N", lip->tid, lip->tid);
-
-	logmsgf(LOGMSG_USER, fp, "%s", F_ISSET(lip, DB_LOCKER_DELETED) ? "(D)" : "   ");
-
-	if (LOCK_TIME_ISVALID(&lip->tx_expire)) {
-		s = lip->tx_expire.tv_sec;
-		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime(&s));
-		logmsgf(LOGMSG_USER, fp,
-		    "expires %s.%lu", buf, (u_long)lip->tx_expire.tv_usec);
-	}
-	if (F_ISSET(lip, DB_LOCKER_TIMEOUT))
-		logmsgf(LOGMSG_USER, fp, " lk timeout %u", lip->lk_timeout);
-
-	if (LOCK_TIME_ISVALID(&lip->lk_expire)) {
-		s = lip->lk_expire.tv_sec;
-		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime(&s));
-		logmsgf(LOGMSG_USER, fp,
-		    " lk expires %s.%lu", buf, (u_long)lip->lk_expire.tv_usec);
-	}
-	logmsgf(LOGMSG_USER, fp, "\n");
-
-	lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
-
-	if (lp !=NULL) {
-		for (; lp !=NULL;
-		    lp = SH_LIST_NEXT(lp, locker_links, __db_lock))
-			 __lock_printlock_int(lt, lp, 1, fp, just_active_locks);
-		logmsgf(LOGMSG_USER, fp, "\n");
-	}
-}
-
-static void
-__lock_dump_object(lt, op, fp, just_active_locks)
-	DB_LOCKTAB *lt;
-	DB_LOCKOBJ *op;
-	FILE *fp;
-	int just_active_locks;
-{
-	struct __db_lock *lp;
-	int printed;
-
-	for (lp =
-	    SH_TAILQ_FIRST(&op->holders, __db_lock);
-	    lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock))
-		printed =
-		    __lock_printlock_int(lt, lp, 1, fp, just_active_locks);
-	for (lp = SH_TAILQ_FIRST(&op->waiters, __db_lock); lp !=NULL;
-	    lp = SH_TAILQ_NEXT(lp, links, __db_lock))
-		printed =
-		    __lock_printlock_int(lt, lp, 1, fp, just_active_locks);
-
-	/*
-	 * if (printed)
-	 * fprintf(fp, "\n");
-	 */
-}
-
-/* XXX It's easier to diff against master & replicant locks if I don't print the lid */
-#define TRACE_DIFF
-
-
-/*
- * __lock_printheader --
- */
-static void
-__lock_printheader(fp)
-	FILE *fp;
-{
-#ifdef TRACE_DIFF
-	logmsgf(LOGMSG_USER, fp, "%-10s%-4s %-7s %s\n",
-	    "Mode",
-	    "Count", "Status", "----------------- Object ---------------");
-#else
-	logmsgf(LOGMSG_USER, fp, "%-8s %-10s%-4s %-7s %s\n",
-	    "Locker", "Mode",
-	    "Count", "Status", "----------------- Object ---------------");
-#endif
-}
-
-/*
- * __lock_printlock --
- *
- * PUBLIC: void __lock_printlock __P((DB_LOCKTAB *,
- * PUBLIC:      struct __db_lock *, int, FILE *));
- */
-int
-__lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
-	DB_LOCKTAB *lt;
-	struct __db_lock *lp;
-	int ispgno;
-	FILE *fp;
-	int just_active_locks;
-{
-	DB_LOCKOBJ *lockobj;
-	db_pgno_t pgno;
-	u_int32_t *fidp, type;
-	u_int8_t *ptr;
-	char *namep;
-	const char *mode, *status;
-
-	/* Make it easy to call from the debugger. */
-	if (fp == NULL)
-		fp = stderr;
-
-	switch (lp->mode) {
+	char *mode = NULL;
+	switch (lpmode) {
 	case DB_LOCK_DIRTY:
 		mode = "DIRTY_READ";
 		break;
@@ -770,7 +589,13 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 		mode = "UNKNOWN";
 		break;
 	}
-	switch (lp->status) {
+	return mode;
+}
+
+static char *status_to_str(int lpstatus)
+{
+	char *status;
+	switch (lpstatus) {
 	case DB_LSTAT_ABORTED:
 		status = "ABORT";
 		break;
@@ -796,11 +621,394 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 		status = "UNKNOWN";
 		break;
 	}
+	return status;
+}
+
+#include "tohex.h"
+
+static int
+__collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
+		collect_locks_f func, void *arg)
+{
+	DB_LOCKOBJ *lockobj;
+	db_pgno_t pgno = 0;
+	DB_LSN lsn;
+	int64_t page = -1;
+	u_int32_t *fidp, type;
+	u_int8_t *ptr;
+	char minmax = 0;
+	char *hexdump = NULL;
+	char *namep = NULL;
+	char rectype[80]={0};
+	unsigned long long genid;
+	char fileid[DB_FILE_ID_LEN];
+	char tablename[64] = {0};
+	const char *mode, *status;
+
+	mode = mode_to_str(lp->mode);
+	status = status_to_str(lp->status);
+
+	lockobj = lp->lockobj;
+	ptr = lockobj->lockobj.data;
+
+	switch(lockobj->lockobj.size) {
+		case(sizeof(struct __db_ilock)):
+			memcpy(&pgno, ptr, sizeof(db_pgno_t));
+			fidp = (u_int32_t *)(ptr + sizeof(db_pgno_t));
+			type = *(u_int32_t *)(ptr + sizeof(db_pgno_t) + DB_FILE_ID_LEN);
+			if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+				namep = NULL;
+			switch(type) {
+				case (DB_PAGE_LOCK):
+					snprintf(rectype, sizeof(rectype), "PAGE");
+					page = pgno;
+					break;
+				case (DB_HANDLE_LOCK):
+					snprintf(rectype, sizeof(rectype), "HANDLE");
+					break;
+				default:
+					snprintf(rectype, sizeof(rectype), "UNKNOWN");
+					break;
+			}
+			break;
+
+		/* row or keyhash lock*/
+		case (30):
+			memcpy(fileid, ptr, DB_FILE_ID_LEN);
+			memcpy(&genid, ptr + DB_FILE_ID_LEN + sizeof(short),
+					sizeof(unsigned long long));
+			fidp = (u_int32_t*) fileid;
+			if (__dbreg_get_name(lt->dbenv, (u_int8_t *)fidp, &namep) != 0)
+				namep = NULL;
+			int l=strlen(namep);
+			if (l >= 5 && !strncmp(&namep[l-5], "index", 5)) {
+				snprintf(rectype, sizeof(rectype), "KEYHASH %llx", genid);
+			} else {
+				snprintf(rectype, sizeof(rectype), "ROWLOCK %llx", genid);
+			}
+			break;
+
+		case (31):
+			memcpy(fileid, ptr, DB_FILE_ID_LEN);
+			memcpy(&minmax, ((char *)ptr)+30, sizeof(char));
+			fidp = (u_int32_t *) fileid;
+			if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+				namep = NULL;
+			snprintf(rectype, sizeof(rectype), "MINMAX %s", minmax == 0 ?
+					"MIN" : "MAX");
+			break;
+
+		case (32):
+			memcpy(tablename, ptr, 28);
+			snprintf(rectype, sizeof(rectype), "TABLELOCK %s", tablename);
+			namep = tablename;
+			break;
+
+		case (20):
+			memcpy(fileid, ptr, DB_FILE_ID_LEN);
+			fidp = (u_int32_t *) fileid;
+			if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
+				namep = NULL;
+			snprintf(rectype, sizeof(rectype), "STRIPELOCK");
+			break;
+
+		/* LSN LOCK .. REALLY?? */
+		case (8):
+			memcpy(&lsn, ptr, sizeof(DB_LSN));
+			snprintf(rectype, sizeof(rectype), "LSN %u:%u", lsn.file,lsn.offset);
+			break;
+
+		case (4):
+			if (*((int *)ptr) == 1) {
+				namep = "ENVLOCK";
+				snprintf(rectype, sizeof(rectype), "ENVLOCK");
+				break;
+			}
+
+		default:
+			hexdumpbuf(lockobj->lockobj.data, lockobj->lockobj.size, &hexdump);
+			snprintf(rectype, sizeof(rectype), "UNKNOWN-TYPE SIZE %d",
+					lockobj->lockobj.size);
+			namep = hexdump;
+			break;
+	}
+
+	if (namep && memcmp(namep, "XXX.", 4) == 0)
+		namep += 4;
+
+	(*func)(arg, lip->tid, lip->id, mode, status, namep, page, rectype);
+	if (hexdump)
+		free(hexdump);
+	return 0;
+}
+
+static int
+__collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_f func, void *arg)
+{
+	struct __db_lock *lp;
+
+	lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
+	if (lp !=NULL) {
+		for (; lp !=NULL;
+			lp = SH_LIST_NEXT(lp, locker_links, __db_lock))
+			 __collect_lock(lt, lip, lp, func, arg);
+	}
+	return 0;
+}
+
+static int
+__lock_collect(DB_ENV *dbenv, collect_locks_f func, void *arg)
+{
+	DB_LOCKTAB *lt;
+	DB_LOCKER *lip;
+	DB_LOCKREGION *lrp;
+	int i, j;
+
+	lt = dbenv->lk_handle;
+	lrp = lt->reginfo.primary;
+	LOCKREGION(dbenv, lt);
+	lock_lockers(lrp);
+
+	for (i = 0; i < gbl_lkr_parts; ++i) {
+		lock_locker_partition(lrp, i);
+
+		for (j = 0; j < lrp->locker_p_size; j++) {
+			for (lip = SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
+					lip != NULL; lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
+				__collect_locker(lt, lip, func, arg);
+			}
+		}
+		unlock_locker_partition(lrp, i);
+	}
+
+	unlock_lockers(lrp);
+	UNLOCKREGION(dbenv, lt);
+	return (0);
+}
+
+
+/*
+ * __lock_collect_pp --
+ *	DB_ENV->lock_collect pre/post processing.
+ *
+ * PUBLIC: int __lock_collect_pp __P((DB_ENV *, collect_locks_f, void *));
+ */
+int
+__lock_collect_pp(dbenv, func, arg)
+	DB_ENV *dbenv;
+	collect_locks_f func;
+	void *arg;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+		dbenv->lk_handle, "DB_ENV->lock_collect", DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __lock_collect(dbenv, func, arg);
+
+	if (rep_check)
+		__env_rep_exit(dbenv);
+
+	return (ret);
+}
+
+
+/*
+ * COMDB2 MODIFICATION
+ *
+ * PUBLIC: void __lock_dump_locker_int __P((DB_LOCKTAB *, DB_LOCKER *, FILE *, int));
+ */
+void
+__lock_dump_locker_int(lt, lip, fp, just_active_locks)
+	DB_LOCKTAB *lt;
+	DB_LOCKER *lip;
+	FILE *fp;
+	int just_active_locks;
+{
+	struct __db_lock *lp;
+	time_t s;
+	char buf[64];
+	int have_interesting_locks;
+	int have_waiters = 0;
+
+	if (just_active_locks &&lip->nlocks == 0)
+		return;
+
+	if (lip->has_waiters)
+		have_waiters = 1;
+	have_interesting_locks = 0;
+	/* NB: just dumping active locks via this function will not print
+	 * lockers which have only one lock in WAIT status -- use LOCK_DUMP_OBJECTS
+	 * instead if you want to see those lockers (ex. in case of a deadlock) */
+	if (just_active_locks) {
+		lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
+
+		if (lp !=NULL) {
+			for (; lp !=NULL;
+				lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+				DB_LOCKOBJ *lockobj;
+				db_pgno_t pgno;
+				u_int32_t *fidp, type;
+				u_int8_t *ptr;
+				char *namep;
+
+				lockobj = lp->lockobj;
+				ptr = lockobj->lockobj.data;
+
+				if (lockobj->lockobj.size ==
+					sizeof(struct __db_ilock)) {
+					/* Assume this is a DBT lock. */
+					memcpy(&pgno, ptr, sizeof(db_pgno_t));
+
+					fidp =
+						(u_int32_t *) (ptr
+						+sizeof(db_pgno_t));
+					type =
+						*(u_int32_t *) (ptr
+						+sizeof(db_pgno_t) +
+						DB_FILE_ID_LEN);
+					if (__dbreg_get_name(lt->dbenv,
+						(u_int8_t *) fidp, &namep) != 0)
+						namep = NULL;
+
+					if (type == DB_PAGE_LOCK ||
+						type == DB_RECORD_LOCK) {
+						have_interesting_locks = 1;
+						break;
+					}
+				} else {
+					have_interesting_locks = 1;
+					break;
+				}
+			}
+		}
+	}
+	if (!just_active_locks)
+		logmsg(LOGMSG_USER, "%8x havelocks %d\n", lip->id, have_interesting_locks);
+
+	if (just_active_locks &&!have_interesting_locks)
+		return;
+
+	if (!just_active_locks)
+		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread %lu (0x%lx)",
+			(u_long)lip->id, (long)lip->dd_id, lip->nlocks,
+			lip->nwrites, have_waiters ? "Y" : "N", lip->tid, lip->tid);
+
+	logmsgf(LOGMSG_USER, fp, "%s", F_ISSET(lip, DB_LOCKER_DELETED) ? "(D)" : "   ");
+
+	struct tm mytime;
+	if (LOCK_TIME_ISVALID(&lip->tx_expire)) {
+		s = lip->tx_expire.tv_sec;
+		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime_r(&s, &mytime));
+		logmsgf(LOGMSG_USER, fp,
+			"expires %s.%lu", buf, (u_long)lip->tx_expire.tv_usec);
+	}
+	if (F_ISSET(lip, DB_LOCKER_TIMEOUT))
+		logmsgf(LOGMSG_USER, fp, " lk timeout %u", lip->lk_timeout);
+
+	if (LOCK_TIME_ISVALID(&lip->lk_expire)) {
+		s = lip->lk_expire.tv_sec;
+		strftime(buf, sizeof(buf), "%m-%d-%H:%M:%S", localtime_r(&s, &mytime));
+		logmsgf(LOGMSG_USER, fp,
+			" lk expires %s.%lu", buf, (u_long)lip->lk_expire.tv_usec);
+	}
+	logmsgf(LOGMSG_USER, fp, "\n");
+
+	lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
+
+	if (lp !=NULL) {
+		for (; lp !=NULL;
+			lp = SH_LIST_NEXT(lp, locker_links, __db_lock))
+			 __lock_printlock_int(lt, lp, 1, fp, just_active_locks);
+		logmsgf(LOGMSG_USER, fp, "\n");
+	}
+}
+
+static void
+__lock_dump_object(lt, op, fp, just_active_locks)
+	DB_LOCKTAB *lt;
+	DB_LOCKOBJ *op;
+	FILE *fp;
+	int just_active_locks;
+{
+	struct __db_lock *lp;
+	int printed;
+
+	for (lp =
+		SH_TAILQ_FIRST(&op->holders, __db_lock);
+		lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock))
+		printed =
+			__lock_printlock_int(lt, lp, 1, fp, just_active_locks);
+	for (lp = SH_TAILQ_FIRST(&op->waiters, __db_lock); lp !=NULL;
+		lp = SH_TAILQ_NEXT(lp, links, __db_lock))
+		printed =
+			__lock_printlock_int(lt, lp, 1, fp, just_active_locks);
+
+	/*
+	 * if (printed)
+	 * fprintf(fp, "\n");
+	 */
+}
+
+/* XXX It's easier to diff against master & replicant locks if I don't print the lid */
+#undef TRACE_DIFF
+
+
+/*
+ * __lock_printheader --
+ */
+static void
+__lock_printheader(fp)
+	FILE *fp;
+{
+#ifdef TRACE_DIFF
+	logmsgf(LOGMSG_USER, fp, "%-10s%-4s %-7s %s\n",
+	    "Mode",
+	    "Count", "Status", "----------------- Object ---------------");
+#else
+	logmsgf(LOGMSG_USER, fp, "%-14s %-8s %-8s %-10s%-4s %-7s %s\n",
+	    "TID", "MRLocker", "Locker", "Mode",
+	    "Count", "Status", "----------------- Object ---------------");
+#endif
+}
+
+/*
+ * __lock_printlock --
+ *
+ * PUBLIC: void __lock_printlock __P((DB_LOCKTAB *,
+ * PUBLIC:      struct __db_lock *, int, FILE *));
+ */
+int
+__lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
+	DB_LOCKTAB *lt;
+	struct __db_lock *lp;
+	int ispgno;
+	FILE *fp;
+	int just_active_locks;
+{
+	DB_LOCKOBJ *lockobj;
+	db_pgno_t pgno;
+	u_int32_t *fidp, type;
+	u_int8_t *ptr;
+	char *namep;
+	const char *mode, *status;
+
+	/* Make it easy to call from the debugger. */
+	if (fp == NULL)
+		fp = stderr;
+
+    mode = mode_to_str(lp->mode);
+    status = status_to_str(lp->status);
 
     /* peek at type, skip if handle, if asked */ 
     if (just_active_locks) {
         lockobj = lp->lockobj;
-        ptr = lockobj->lockobj.data;
+	    ptr = lockobj->lockobj.data;
         if (ispgno && lockobj->lockobj.size == sizeof(struct __db_ilock)) {
             /* Assume this is a DBT lock. */
             memcpy(&pgno, ptr, sizeof(db_pgno_t));
@@ -816,8 +1024,9 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	logmsgf(LOGMSG_USER, fp, "%-10s %4lu %-7s ",
 	        mode, (u_long)lp->refcount, status);
 #else
-	logmsgf(LOGMSG_USER, fp, "%8lx %-10s %4lu %-7s ",
-	        (u_long)lp->holderp->id, mode, (u_long)lp->refcount, status);
+	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, lp->holderp->master_locker);
+	logmsgf(LOGMSG_USER, fp, "0x%lx %8x %8x %-10s %4lu %-7s ",
+			lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
 #endif
 
 	lockobj = lp->lockobj;
@@ -906,8 +1115,6 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 
 	/* see if its a comdb2 table lock */
 	else if (lockobj->lockobj.size == 32) {
-		char fileid[DB_FILE_ID_LEN];
-		unsigned long long genid;
 		char tablename[64];
 
 		bzero(tablename, 64);
@@ -921,35 +1128,6 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 		DB_LSN lsn;
 		memcpy(&lsn, ptr, sizeof(DB_LSN));
 		logmsg(LOGMSG_USER, "lsn %u:%u\n", lsn.file, lsn.offset);
-	}
-
-	/* see if it's a comdb2 key lock */
-	else if (lockobj->lockobj.size >32) {
-		char fileid[DB_FILE_ID_LEN];
-		unsigned long long genid;
-
-		memcpy(fileid, ptr, DB_FILE_ID_LEN);
-		memcpy(&genid, ptr +DB_FILE_ID_LEN + sizeof(short),
-		    sizeof(unsigned long long));
-
-		fidp = (u_int32_t *) fileid;
-
-		if (__dbreg_get_name(lt->dbenv, (u_int8_t *) fidp, &namep) != 0)
-			namep = NULL;
-
-		if (namep == NULL)
-			logmsgf(LOGMSG_USER, fp, "(%lx %lx %lx %lx %lx)",
-			    (u_long)fidp[0], (u_long)fidp[1], (u_long)fidp[2],
-			    (u_long)fidp[3], (u_long)fidp[4]);
-		else
-			logmsgf(LOGMSG_USER, fp, "%-25s", namep);
-
-		logmsgf(LOGMSG_USER, fp, " keylock ");
-
-		__db_pr(ptr +DB_FILE_ID_LEN + 10,
-		    lockobj->lockobj.size -DB_FILE_ID_LEN - 10, fp);
-
-		/*fprintf(fp, "\n"); */
 	}
 
 	else if (lockobj->lockobj.size == 20) {
@@ -1057,6 +1235,7 @@ __lock_locker_haslocks(dbenv, lockerid)
 	return haslocks;
 }
 
+/* TODO: fix (we dont print anything) or remove
 void
 berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 {
@@ -1064,7 +1243,6 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 	DB_LOCKREGION *lrp;
 	DB_LOCKER *lip;
 	int done = 0;
-	struct __db_lock *lp;
 	u_int32_t i;
 	u_int32_t j;
 
@@ -1079,19 +1257,14 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 		lock_locker_partition(lrp, i);
 
 		for (j = 0; j < lrp->locker_p_size && !done; j++) {
-			for (lip =
-			    SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
+			for (lip = SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
 			    lip != NULL &&!done;
 			    lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
 				if (lip->id == lockerid) {
 					struct __db_lock *lp;
 
-					for (lp =
-					    SH_LIST_FIRST(&lip->heldby,
-						__db_lock); lp;
-					    lp =
-					    SH_LIST_NEXT(lp, locker_links,
-						__db_lock)) {
+					for (lp = SH_LIST_FIRST(&lip->heldby, __db_lock); lp;
+					    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
 						DB_LOCKOBJ *lockobj;
 						lockobj = lp->lockobj;
 					}
@@ -1103,6 +1276,7 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 	}
 	UNLOCKREGION(dbenv, lt);
 }
+*/
 
 void
 berkdb_dump_lockers_summary(DB_ENV *dbenv)
@@ -1131,3 +1305,12 @@ berkdb_dump_lockers_summary(DB_ENV *dbenv)
 	unlock_lockers(region);
 }
 
+// PUBLIC: int __lock_dump_active_locks __P((DB_ENV *, FILE *));
+int __lock_dump_active_locks(
+		DB_ENV *dbenv,
+		FILE *fp)
+{
+	/* "o" will print all active objects in object order, including 
+	 * lockers that have onle one lock in WAIT status */
+	return __lock_dump_region_int(dbenv, "o", fp, 1 /*just_active_locks*/);
+}

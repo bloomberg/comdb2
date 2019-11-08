@@ -60,7 +60,9 @@ void update_tree(const std::string& filename,
     uint8_t *pagebuf = NULL;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, pagesize);
+    int rc = posix_memalign((void**) &pagebuf, 512, pagesize);
+    if (rc)
+        std::cerr << "posix_memalign returns rc " << rc << std::endl;
 #else
     pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
@@ -137,7 +139,8 @@ void unpack_incr_data(
             abort();
         }
         std::cerr << "truncating to " << fi.get_filesize() << " current size " << st.st_size << std::endl;
-        truncate(abs_filepath.c_str(), fi.get_filesize());
+        if(truncate(abs_filepath.c_str(), fi.get_filesize()))
+            perror("truncating");
     }
 }
 

@@ -1,0 +1,16 @@
+(res=86400)
+[select cast((now() - (now() + cast('-1' as days))) as int) as res] rc 0
+(res=86400)
+[select cast(((now() + cast('1' as days)) -now()) as int) as res] rc 0
+(res=86400)
+[select cast(((now() - cast('-1' as days))- now()) as int) as res] rc 0
+(res=86400)
+[select cast(now() - (now() - cast('1' as days)) as int) as res] rc 0
+(res=60)
+[select cast((now() - (now() + cast('-60' as sec))) as int) as res] rc 0
+(res=60)
+[select cast(((now() + cast('60' as sec)) -now()) as int) as res] rc 0
+(res=60)
+[select cast(((now() - cast('-60' as sec))- now()) as int) as res] rc 0
+(res=60)
+[select cast(now() - (now() - cast('60' as sec)) as int) as res] rc 0

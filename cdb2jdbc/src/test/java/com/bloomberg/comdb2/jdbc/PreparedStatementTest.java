@@ -15,12 +15,7 @@ package com.bloomberg.comdb2.jdbc;
 
 import static org.junit.Assert.*;
 
-import java.sql.Connection;
-import java.sql.Date;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -66,6 +61,11 @@ public class PreparedStatementTest {
 
     @Test
     public void createTable() throws SQLException {
+        try {
+            conn.createStatement().execute("DROP TABLE application");
+        } catch (SQLException sqle) {
+            /* Ignore */
+        }
         PreparedStatement stmt = conn.prepareStatement(
                 "create table application (app_id int primary key, name varchar(100), update_uuid int, update_tms datetime)");
         int shouldbezero = stmt.executeUpdate();
@@ -222,6 +222,33 @@ public class PreparedStatementTest {
         assertEquals(id, 1);
         
         stmt.clearParameters();
+    }
+
+    /* test PreparedStatement.setNull() and PreparedStatement.setObject(indx, null). */
+    @Test
+    public void testBindNull() throws SQLException{
+        Statement stmt = conn.createStatement();
+        stmt.execute("DROP TABLE IF EXISTS longlong");
+        stmt.execute("CREATE TABLE longlong (f BIGINT NULL)");
+        PreparedStatement ps = conn.prepareStatement("INSERT INTO longlong VALUES(?)");
+
+        ps.setNull(1, Types.INTEGER);
+        ps.executeUpdate();
+
+        ps.setNull(1, Types.DOUBLE);
+        ps.executeUpdate();
+
+        ps.setObject(1, null);
+        ps.executeUpdate();
+
+        ResultSet rs = ps.executeQuery("SELECT COUNT(*) FROM longlong");
+        assertEquals(rs.getInt(1), 3);
+
+        rs = ps.executeQuery("SELECT * FROM longlong");
+        while (rs.next()) {
+            rs.getObject(1);
+            assertEquals(rs.wasNull(), true);
+        }
     }
 }
 /* vim: set sw=4 ts=4 et: */

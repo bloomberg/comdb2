@@ -1,0 +1,7 @@
+schema
+	{
+		int e null = yes 
+		int f null = yes 
+		vutf8 g null = yes 
+	}
+

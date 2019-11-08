@@ -45,6 +45,7 @@
 #include "debug_switches.h"
 
 #include <ctrace.h>
+#include <locks_wrap.h>
 
 #include <net.h>
 #include "bdb_int.h"
@@ -53,7 +54,8 @@
 #include <str0.h>
 
 #include <sbuf2.h>
-#include <logmsg.h>
+#include "logmsg.h"
+#include "thread_stats.h"
 
 struct error_extension {
     uint32_t length; /* length of this struct in bytes */
@@ -270,12 +272,12 @@ static void *fstdump_thread(void *arg)
             bdb_thread_event(common->bdb_state, BDBTHR_EVENT_DONE_RDONLY);
         }
     } else {
-        pthread_mutex_lock(&common->lock);
+        Pthread_mutex_lock(&common->lock);
         {
             common->bdberr = BDBERR_MALLOC;
             snprintf0(common->errmsg, sizeof(common->errmsg), "out of memory");
         }
-        pthread_mutex_unlock(&common->lock);
+        Pthread_mutex_unlock(&common->lock);
     }
 
     if (sendrec)
@@ -300,12 +302,12 @@ static void *fstdump_thread2(void *voidarg)
         fstdump_per_thread_t *work = NULL;
 
         /* Get the nxt stripe to process */
-        pthread_mutex_lock(&args->mutex);
+        Pthread_mutex_lock(&args->mutex);
         if (args->num_done < args->num_stripes) {
             work = &args->perthread[args->num_done];
             args->num_done++;
         }
-        pthread_mutex_unlock(&args->mutex);
+        Pthread_mutex_unlock(&args->mutex);
 
         if (work) {
             int bdberr;
@@ -313,9 +315,9 @@ static void *fstdump_thread2(void *voidarg)
             work->tid = pthread_self();
             fstdump_thread(work);
 
-            pthread_mutex_lock(&work->common->lock);
+            Pthread_mutex_lock(&work->common->lock);
             bdberr = work->common->bdberr;
-            pthread_mutex_unlock(&work->common->lock);
+            Pthread_mutex_unlock(&work->common->lock);
 
             /* If the dump has errored then don't continue on to next stripe */
             if (bdberr != 0)
@@ -334,15 +336,13 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length)
 {
     fstdump_t *common = fstdump->common;
-    int fndrrn, fndlen, rc, rrn;
+    int rc, rrn;
     unsigned long long genid;
-    unsigned char *fnddta;
     unsigned char *retkey = NULL;
     unsigned long long lastkey;
 
     DBC *dbcp;
     DBT key, data;
-    void *p;
     int need_advance = 1;
 
     memset(&key, 0, sizeof(key));
@@ -379,13 +379,13 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (common->bdb_parent_state->bdb_lock_desired) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
                             "aborting due to write lock desired\n");
-            pthread_mutex_lock(&common->lock);
+            Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
                           "aborted because database write lock desired");
             }
-            pthread_mutex_unlock(&common->lock);
+            Pthread_mutex_unlock(&common->lock);
             dbcp->c_close(dbcp);
             return NULL;
         }
@@ -393,13 +393,13 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (db_is_stopped()) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
                             "aborting due to stop_threads\n");
-            pthread_mutex_lock(&common->lock);
+            Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
                           "aborted because database stop_threads");
             }
-            pthread_mutex_unlock(&common->lock);
+            Pthread_mutex_unlock(&common->lock);
             dbcp->c_close(dbcp);
             return NULL;
         }
@@ -426,7 +426,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         ms_after = comdb2_time_epochms();
         ms_diff = ms_after - ms_before;
         if (ms_diff > common->bdb_parent_state->attr->fstdump_longreq) {
-            const struct bdb_thread_stats *thread_stats =
+            const struct berkdb_thread_stats *thread_stats =
                 bdb_get_thread_stats();
             logmsg(LOGMSG_ERROR, "fstdump_thread: LONG REQUEST dbcp->c_get %d ms\n",
                     ms_diff);
@@ -484,12 +484,12 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         }
     }
 
-done:
     close_retry(dbcp, common);
 
     return NULL;
 }
 
+#define UNUSED(x) ((void)(x))
 static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
                          void *sendrec, unsigned char **retkey_p)
 {
@@ -513,6 +513,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         unsigned char buffer[24 * 1024];
 
         DB_MULTIPLE_KEY_NEXT(p, data, retkey, retklen, retdata, retdlen);
+        UNUSED(retklen);
         if (p == NULL)
             break;
 
@@ -521,26 +522,26 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         if (common->bdb_parent_state->bdb_lock_desired) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
                             "aborting due to write lock desired\n");
-            pthread_mutex_lock(&common->lock);
+            Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
                           "aborted because database write lock desired");
             }
-            pthread_mutex_unlock(&common->lock);
+            Pthread_mutex_unlock(&common->lock);
             return -1;
         }
 
         if (db_is_stopped()) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
                             "aborting due to stop_threads\n");
-            pthread_mutex_lock(&common->lock);
+            Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
                           "aborted because database stop_threads");
             }
-            pthread_mutex_unlock(&common->lock);
+            Pthread_mutex_unlock(&common->lock);
             return -1;
         }
 
@@ -554,13 +555,13 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: bdb_unpack %d %s\n", __func__, rc,
                     bdb_strerror(rc));
-            pthread_mutex_lock(&common->lock);
+            Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_CALLBACK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
                           "bdb_unpack failure");
             }
-            pthread_mutex_unlock(&common->lock);
+            Pthread_mutex_unlock(&common->lock);
             return -1;
         }
 
@@ -602,13 +603,13 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
             if (rc) {
                 logmsg(LOGMSG_ERROR, "write_records: convert returns bad rc, %d\n",
                         rc);
-                pthread_mutex_lock(&common->lock);
+                Pthread_mutex_lock(&common->lock);
                 {
                     common->bdberr = BDBERR_CALLBACK;
                     snprintf0(common->errmsg, sizeof(common->errmsg),
                               "conversion failure");
                 }
-                pthread_mutex_unlock(&common->lock);
+                Pthread_mutex_unlock(&common->lock);
                 return -1;
             }
             fnddta = (unsigned char *)sendrec;
@@ -620,7 +621,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
 
         /* we dont have the proper comdb rc, but it seems meaningless here */
         /* write the record size as first thing in the stream */
-        pthread_mutex_lock(&common->lock);
+        Pthread_mutex_lock(&common->lock);
         {
             rc = 0;
 
@@ -661,7 +662,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
             if (common->bdberr != BDBERR_NOERROR)
                 rc = -1;
         }
-        pthread_mutex_unlock(&common->lock);
+        Pthread_mutex_unlock(&common->lock);
 
         if (rc <= 0)
             return -1;
@@ -714,7 +715,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
     fstdump.bdb_state = bdb_state;
     fstdump.bdb_parent_state =
         bdb_state->parent ? bdb_state->parent : bdb_state;
-    pthread_mutex_init(&fstdump.lock, NULL);
+    Pthread_mutex_init(&fstdump.lock, NULL);
     fstdump.fd = sockfd;
     fstdump.bdberr = 0;
     fstdump.convert_callback = convert_callback;
@@ -733,8 +734,8 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr,
+        Pthread_attr_init(&attr);
+        Pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
         bzero(perthread, sizeof(perthread));
@@ -753,13 +754,13 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
                     "bdb_fstdumpdta_sendsz: pthread_create failed rc %d %s\n",
                     rc, strerror(rc));
 
-                pthread_mutex_lock(&fstdump.lock);
+                Pthread_mutex_lock(&fstdump.lock);
                 {
                     snprintf0(fstdump.errmsg, sizeof(fstdump.errmsg),
                               "pthread_create failed");
                     fstdump.bdberr = 1;
                 }
-                pthread_mutex_unlock(&fstdump.lock);
+                Pthread_mutex_unlock(&fstdump.lock);
                 break;
             }
 
@@ -776,7 +777,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
 
     } else if (bdb_state->attr->dtastripe &&
                bdb_state->attr->fstdump_maxthreads > 0) {
@@ -788,8 +789,8 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr,
+        Pthread_attr_init(&attr);
+        Pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
         bzero(&args, sizeof(args));
@@ -800,7 +801,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             args.perthread[nthr].real_thread = 1;
             args.perthread[nthr].get_genids = get_genids;
         }
-        pthread_mutex_init(&args.mutex, NULL);
+        Pthread_mutex_init(&args.mutex, NULL);
         args.num_stripes = bdb_state->attr->dtastripe;
         args.num_done = 0;
 
@@ -812,13 +813,13 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
                     "bdb_fstdumpdta_sendsz: pthread_create failed rc %d %s\n",
                     rc, strerror(rc));
 
-                pthread_mutex_lock(&fstdump.lock);
+                Pthread_mutex_lock(&fstdump.lock);
                 {
                     snprintf0(fstdump.errmsg, sizeof(fstdump.errmsg),
                               "pthread_create failed");
                     fstdump.bdberr = 1;
                 }
-                pthread_mutex_unlock(&fstdump.lock);
+                Pthread_mutex_unlock(&fstdump.lock);
                 break;
             }
 
@@ -836,7 +837,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     } else if (bdb_state->attr->dtastripe) {
         /* non-multithreaded approach, for comparison */
         int ndta;
@@ -967,8 +968,6 @@ struct dtadump *bdb_dtadump_start(bdb_state_type *bdb_state, int *bdberr,
                                   int is_blob, int nr)
 {
     struct dtadump *dump;
-    int rc;
-    unsigned long long genid = 0;
     int i;
     int dtanum;
 
@@ -1108,6 +1107,7 @@ int bdb_dtadump_next(bdb_state_type *bdb_state, struct dtadump *dump,
 
         DB_MULTIPLE_KEY_NEXT(dump->p, &dump->dbt_dta, retkey, retklen, retdata,
                              retdlen);
+        UNUSED(retklen);
         if (dump->p == NULL) {
             dump->have_keys = 0;
             /* go back and do another find */
@@ -1218,13 +1218,13 @@ static int close_retry(DBC *dbcp, fstdump_t *common)
 
     logmsg(LOGMSG_ERROR, "fstdump_thread: dbcp->c_close failed %d %s\n", rc,
             db_strerror(rc));
-    pthread_mutex_lock(&common->lock);
+    Pthread_mutex_lock(&common->lock);
     {
         common->bdberr = rc == DB_LOCK_DEADLOCK ? BDBERR_DEADLOCK : BDBERR_MISC;
         snprintf0(common->errmsg, sizeof(common->errmsg),
                   "cursor close error %d %s", rc, db_strerror(rc));
     }
-    pthread_mutex_unlock(&common->lock);
+    Pthread_mutex_unlock(&common->lock);
     return 1;
 }
 
@@ -1255,13 +1255,13 @@ static int get_retry(DBC *dbcp, fstdump_t *common, DBT *key, DBT *data,
     logmsg(LOGMSG_ERROR, "fstdump_thread: dbcp->c_get failed %d %s\n", rc,
             db_strerror(rc));
     dbcp->c_close(dbcp);
-    pthread_mutex_lock(&common->lock);
+    Pthread_mutex_lock(&common->lock);
     {
         common->bdberr = rc == DB_LOCK_DEADLOCK ? BDBERR_DEADLOCK : BDBERR_MISC;
         snprintf0(common->errmsg, sizeof(common->errmsg),
                   "cursor read error %d %s", rc, db_strerror(rc));
     }
-    pthread_mutex_unlock(&common->lock);
+    Pthread_mutex_unlock(&common->lock);
     return BDBERR_MISC;
 }
 
@@ -1282,10 +1282,7 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
                       fstdump_t *common)
 {
     int retries = 0;
-    int rc;
-    bdb_state_type *bdb_state;
-
-    bdb_state = common->bdb_state;
+    int rc = 0;
 
     while (retries < gbl_maxretries) {
         if ((rc = fstdump->dbp->cursor(fstdump->dbp, NULL, dbcp, 0)) == 0) {
@@ -1294,9 +1291,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 
         if (!is_handled_rc(rc))
             break;
-
-        if (rc == DB_REP_HANDLE_DEAD) {
-        }
 
         if (++retries > deadlock_sleep_start)
             usleep(deadlock_sleep_amt);
@@ -1307,13 +1301,13 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 
     logmsg(LOGMSG_ERROR, "fstdump_thread: dbp->cursor failed %d %s\n", rc,
             db_strerror(rc));
-    pthread_mutex_lock(&common->lock);
+    Pthread_mutex_lock(&common->lock);
     {
         common->bdberr = rc == DB_LOCK_DEADLOCK ? BDBERR_DEADLOCK : BDBERR_MISC;
         snprintf0(common->errmsg, sizeof(common->errmsg),
                   "cursor open error %d %s", rc, db_strerror(rc));
     }
-    pthread_mutex_unlock(&common->lock);
+    Pthread_mutex_unlock(&common->lock);
     return 1;
 }
 
@@ -1394,6 +1388,7 @@ int bdb_next_fstdump(bulk_dump *dmp, void *buf, int sz, int *bdberr)
 
 again:
     DB_MULTIPLE_KEY_NEXT(dmp->p, &dmp->data, retkey, retklen, retdata, retdlen);
+    UNUSED(retklen);
 
     if (dmp->p == NULL) {
         rc = dmp->dbcp->c_get(dmp->dbcp, &dmp->key, &dmp->data,
@@ -1501,6 +1496,7 @@ int bdb_fstdumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
 
         for (DB_MULTIPLE_INIT(p, &data);;) {
             DB_MULTIPLE_KEY_NEXT(p, &data, retkey, retklen, retdata, retdlen);
+            UNUSED(retklen);
             if (p == NULL)
                 break;
 
@@ -1623,6 +1619,7 @@ int bdb_dumpdta(bdb_state_type *bdb_state, SBUF2 *sb, int *bdberr)
 
         for (DB_MULTIPLE_INIT(p, &data);;) {
             DB_MULTIPLE_KEY_NEXT(p, &data, retkey, retklen, retdata, retdlen);
+            UNUSED(retklen);
             if (p == NULL)
                 break;
 

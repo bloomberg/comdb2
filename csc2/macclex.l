@@ -23,15 +23,9 @@
 #include <ctype.h>
 #include <string.h>
 #include "maccparse.h"
-#include "mem_csc2.h"
-#include "mem_override.h"
 #include "logmsg.h"
 extern int current_line;
 extern YYSTYPE yylval;
-static char   inputch=0;
-static int    matchp=0;
-static int    startcustom=0;
-static int    bufsz=32768;
 static int    rectplvl=0;
 extern int    parser_reset;
 int    charidx=0;
@@ -228,6 +222,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL>recnums                { return T_RECNUMS; }
 <INITIAL>datacopy               { return T_DATAKEY; }
 <INITIAL>primary                { return T_PRIMARY; }
+<INITIAL>uniqnulls              { return T_UNIQNULLS; }
 
 
 <RECTYPE>dbpad                  { return T_FLD_PADDING; }
@@ -252,14 +247,14 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <RECTYPE>default                { return T_DEFAULT; }
 <RECTYPE>ondisk                 { return T_ONDISK; }
 <INITIAL>constraints            { BEGIN CONSTRAINTS; return T_CONSTRAINTS; }
-<INITIAL,RECTYPE>{where}      { char *p = yytext;
+<INITIAL,CONSTRAINTS,RECTYPE>{where} { char *p = yytext;
                                 char *end= NULL;
                                 for(++p; *p == '\t' || *p == ' '; ++p);
                                 yylval.where = csc2_strdup(p);
                                 p = yylval.where;
                                 for(p = p + strlen(yylval.where); *p != '}' && p > yylval.where; --p);
                                 if (p == yylval.where) {
-                                    yyerror("partial indexes missing '}'");
+                                    yyerror("where expression: missing '}'");
                                     return 0;
                                 }
                                 end = p;
@@ -267,13 +262,13 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
                                 if (*p != '\0') {
                                     /* check comment */
                                     if (*p != '/') {
-                                        yyerror("partial indexes syntax error after '}'");
+                                        yyerror("where expression: syntax error after '}'");
                                         return 0;
                                     }
                                     else {
                                         ++p;
                                         if (*p != '/') {
-                                            yyerror("partial indexes syntax error after '}'");
+                                            yyerror("where expression: syntax error after '}'");
                                             return 0;
                                         }
                                     }
@@ -291,12 +286,14 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL>"<DESCEND>"	        { return T_DESCEND; }
 
 <CONSTRAINTS>cascade            { return T_CASCADE; }
-<CONSTRAINTS>restrict            { return T_RESTRICT; }
+<CONSTRAINTS>restrict           { return T_RESTRICT; }
+<CONSTRAINTS>check              { return T_CHECK; }
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }
 <CONSTRAINTS>[\-:]              { return yytext[0];;  }
 <CONSTRAINTS>{varname}          { yylval.varname=yytext; return T_VARNAME; }
+<CONSTRAINTS>=                  { return T_EQ; }
 <INITIAL,RECTYPE,CONSTRAINTS>[\{]                   { rectplvl++; return yytext[0]; }
 <INITIAL,RECTYPE,CONSTRAINTS>[\}]                   { 
                                   rectplvl--; 

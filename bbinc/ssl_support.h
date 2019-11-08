@@ -41,27 +41,44 @@
 #  endif
 #endif
 
+#if OPENSSL_VERSION_NUMBER >= 0x00907000L
+#define HAVE_CRL 1
+#else
+#define HAVE_CRL 0
+#endif
+
 /* Common SSL options and values */
 #define SSL_CERT_PATH_OPT       "ssl_cert_path"
 #define SSL_CERT_OPT            "ssl_cert"
 #define SSL_KEY_OPT             "ssl_key"
 #define SSL_CA_OPT              "ssl_ca"
+#if HAVE_CRL
+#define SSL_CRL_OPT "ssl_crl"
+#endif
+#define SSL_MIN_TLS_VER_OPT "ssl_min_tls_ver"
 
 #define SSL_MODE_ALLOW          "ALLOW"
 #define SSL_MODE_REQUIRE        "REQUIRE"
 #define SSL_MODE_VERIFY_CA      "VERIFY_CA"
 #define SSL_MODE_VERIFY_HOST    "VERIFY_HOSTNAME"
+#define SSL_MODE_VERIFY_DBNAME "VERIFY_DBNAME"
 #define SSL_MODE_OPTIONAL       "OPTIONAL"
 
 /* Default file names */
+#define DEFAULT_SERVER_KEY "server.key"
+#define DEFAULT_SERVER_CERT "server.crt"
+#define DEFAULT_CLIENT_KEY "client.key"
+#define DEFAULT_CLIENT_CERT "client.crt"
 #if SBUF2_SERVER
-#  define DEFAULT_KEY           "server.key"
-#  define DEFAULT_CERT          "server.crt"
-#  define DEFAULT_CA            "root.crt"
+#define DEFAULT_KEY DEFAULT_SERVER_KEY
+#define DEFAULT_CERT DEFAULT_SERVER_CERT
 #else
-#  define DEFAULT_KEY           "client.key"
-#  define DEFAULT_CERT          "client.crt"
-#  define DEFAULT_CA            "root.crt"
+#define DEFAULT_KEY DEFAULT_CLIENT_KEY
+#define DEFAULT_CERT DEFAULT_CLIENT_CERT
+#endif
+#define DEFAULT_CA "root.crt"
+#if HAVE_CRL
+#define DEFAULT_CRL "root.crl"
 #endif
 
 /* logmsg: when compiled with cdb2api, do nothing. */
@@ -108,14 +125,14 @@ do {                                            \
             PRINT_SSL_ERRSTR_MT(cb, msg);                       \
     } while (0)
 
-
 typedef enum {
     SSL_DISABLE, /* invisible to users */
     SSL_UNKNOWN, /* invisible to users */
     SSL_ALLOW,
     SSL_REQUIRE,
-    SSL_VERIFY_CA, /* It implies REQUIRE. */
-    SSL_VERIFY_HOSTNAME /* It impiles VERIFY_CA. */
+    SSL_VERIFY_CA,       /* It implies REQUIRE. */
+    SSL_VERIFY_HOSTNAME, /* It impiles VERIFY_CA. */
+    SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
 } ssl_mode;
 
 typedef enum {
@@ -123,6 +140,16 @@ typedef enum {
     PEER_SSL_ALLOW,
     PEER_SSL_REQUIRE
 } peer_ssl_mode;
+
+const static struct ssl_protocol {
+    double tlsver;
+    long opensslver;
+    const char *name;
+} SSL_NO_PROTOCOLS[] = {{-2.0, SSL_OP_NO_SSLv2, "SSLv2"},
+                        {-1.0, SSL_OP_NO_SSLv3, "SSLv3"},
+                        {1.0, SSL_OP_NO_TLSv1, "TLSv1"},
+                        {1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1"},
+                        {1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2"}};
 
 /*
  * Initialize SSL library.
@@ -157,13 +184,15 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
  *               else use *ca as the trusted CA
  * sesssz      - SSL session cache size
  * ciphers     - cipher suites. ignored in client mode.
+ * mintlsver   - minimum acceptable TLS protocol version.
  *
  * RETURN VALUES
  * 0 upon success
  */
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **cert,
-                            char **key, char **ca, long sesssz,
-                            const char *ciphers, char *err, size_t n);
+int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
+                            char **cert, char **key, char **ca, char **crl,
+                            long sesssz, const char *ciphers, double mintlsver,
+                            char *err, size_t n);
 #define ssl_new_ctx SBUF2_FUNC(ssl_new_ctx)
 
 #endif

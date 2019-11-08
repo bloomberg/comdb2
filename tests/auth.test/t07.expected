@@ -1,2 +1,2 @@
-(1=1)
-[put password 'password3' for 'user3'] failed with rc -3 User does not have OP credentials
+[select 1] failed with rc -106 access denied
+[put password 'password3' for 'user3'] failed with rc -106 access denied

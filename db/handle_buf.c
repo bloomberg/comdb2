@@ -31,13 +31,11 @@
 
 #include <epochlib.h>
 #include <list.h>
-#include <lockmacro.h>
-#include <machpthread.h>
 #include <pool.h>
 #include <time.h>
 
 #include "debug_switches.h"
-
+#include "lockmacros.h"
 #include "comdb2.h"
 #include "block_internal.h"
 #include "util.h"
@@ -48,6 +46,7 @@
 #include "osqlblockproc.h"
 #include "intern_strings.h"
 #include "logmsg.h"
+#include <poll.h>
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -64,6 +63,7 @@ static pool_t *p_reqs; /* request pool */
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
     LINKC_T(struct dbq_entry_t) rqlnk;
+    time_t queue_time_ms;
     void *obj;
 };
 
@@ -149,27 +149,10 @@ static void thd_io_complete(void)
 
 int thd_init(void)
 {
-    int rc;
-    rc = pthread_mutex_init(&lock, 0);
-    if (rc) {
-        perror_errnum("thd_init:pthread_mutex_init", rc);
-        return -1;
-    }
-    rc = pthread_attr_init(&attr);
-    if (rc) {
-        perror_errnum("thd_init:pthread_attr_init", rc);
-        return -1;
-    }
-    PTHD_ATTR_SETDETACHED(attr, rc);
-    if (rc) {
-        perror_errnum("thd_init:pthread_attr_setdetached", rc);
-        return -1;
-    }
-    rc = pthread_cond_init(&coalesce_wakeup, NULL);
-    if (rc) {
-        perror_errnum("thd_init:pthread_cond_init", rc);
-        return -1;
-    }
+    Pthread_mutex_init(&lock, 0);
+    Pthread_attr_init(&attr);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_cond_init(&coalesce_wakeup, NULL);
     p_thds = pool_setalloc_init(sizeof(struct thd), 0, malloc, free);
     if (p_thds == 0) {
         logmsg(LOGMSG_ERROR, "thd_init:failed thd pool init");
@@ -212,7 +195,7 @@ int thd_init(void)
     listc_init(&busy, offsetof(struct thd, lnk));
     bdb_set_io_control(thd_io_start, thd_io_complete);
     logmsg(LOGMSG_INFO, "thd_init: thread subsystem initialized\n");
-    rc = pthread_attr_setstacksize(&attr, 4096 * 1024);
+    Pthread_attr_setstacksize(&attr, 4096 * 1024);
     return 0;
 }
 
@@ -290,11 +273,7 @@ static void thd_coalesce_check_ll(void)
 {
     if (coalesce_waiters && busy.count <= coalesce_reqthd_waiters &&
         q_reqs.count == 0) {
-        int rc;
-        rc = pthread_cond_broadcast(&coalesce_wakeup);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "%s:pthread_cond_broadcast: %d %s\n", __func__, rc,
-                    strerror(rc));
+        Pthread_cond_broadcast(&coalesce_wakeup);
     }
 }
 
@@ -325,13 +304,18 @@ static void thd_dump_nolock(void)
         logmsg(LOGMSG_USER, "no active threads\n");
 }
 
+int thd_queue_depth(void)
+{
+    return q_reqs.count;
+}
+
 void thd_coalesce(struct dbenv *dbenv)
 {
     LOCK(&lock)
     {
         struct thd *thd;
         int am_req_thd = 0;
-        int num_wait;
+        int num_wait = 0;
 
         /* fstsnd based fastinit can lead to us waiting for ourself.. check if
          * this is one of the request threads and if so that's one less
@@ -417,14 +401,14 @@ int free_bigbuf(uint8_t *p_buf, struct buf_lock_t *p_slock)
     p_slock->reply_state = REPLY_STATE_DONE;
     LOCK(&buf_lock) { pool_relablk(p_bufs, p_buf); }
     UNLOCK(&buf_lock);
-    pthread_cond_signal(&(p_slock->wait_cond));
+    Pthread_cond_signal(&(p_slock->wait_cond));
     return 0;
 }
 
 int signal_buflock(struct buf_lock_t *p_slock)
 {
     p_slock->reply_state = REPLY_STATE_DONE;
-    pthread_cond_signal(&(p_slock->wait_cond));
+    Pthread_cond_signal(&(p_slock->wait_cond));
     return 0;
 }
 
@@ -434,7 +418,6 @@ static void *thd_req(void *vthd)
     struct thd *thd = (struct thd *)vthd;
     struct dbenv *dbenv;
     struct timespec ts;
-    pthread_cond_t *hldcnd;
     int rc;
     int iamwriter = 0;
     struct thread_info *thdinfo;
@@ -443,10 +426,8 @@ static void *thd_req(void *vthd)
     int numwriterthreads;
 
     thread_started("request");
+    THREAD_TYPE("tag");
 
-#ifdef PER_THREAD_MALLOC
-    thread_type_key = "tag";
-#endif
     thr_self = thrman_register(THRTYPE_REQ);
     logger = thrman_get_reqlogger(thr_self);
 
@@ -463,12 +444,8 @@ static void *thd_req(void *vthd)
     }
     thdinfo->uniquetag = 0;
     thdinfo->ct_id_key = 0LL;
-    thdinfo->ct_add_table = NULL;
-    thdinfo->ct_del_table = NULL;
-    thdinfo->ct_add_index = NULL;
 
-    thdinfo->ct_add_table =
-        (void *)create_constraint_table(&thdinfo->ct_id_key);
+    thdinfo->ct_add_table = create_constraint_table();
     if (thdinfo->ct_add_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add table thd "
@@ -476,8 +453,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_del_table =
-        (void *)create_constraint_table(&thdinfo->ct_id_key);
+    thdinfo->ct_del_table = create_constraint_table();
     if (thdinfo->ct_del_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint delete table "
@@ -485,8 +461,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    thdinfo->ct_add_index =
-        (void *)create_constraint_index_table(&thdinfo->ct_id_key);
+    thdinfo->ct_add_index = create_constraint_index_table();
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add index table "
@@ -494,7 +469,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(unique_tag_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
      * thd->tid);*/
@@ -578,9 +553,8 @@ static void *thd_req(void *vthd)
 #endif
             pool_relablk(p_reqs, thd->iq); /* this request is done, so release
                                             * resource. */
-            nxtrq =
-                (struct dbq_entry_t *)listc_rtl(&q_reqs); /* get next item off
-                                                         *  hqueue */
+            /* get next item off hqueue */
+            nxtrq = (struct dbq_entry_t *)listc_rtl(&q_reqs);
             thd->iq = 0;
             if (nxtrq != 0) {
                 thd->iq = nxtrq->obj;
@@ -648,7 +622,7 @@ static void *thd_req(void *vthd)
                 {
                     nretire++;
                     listc_rfl(&idle, thd);
-                    pthread_cond_destroy(&thd->wakeup);
+                    Pthread_cond_destroy(&thd->wakeup);
                     thd->tid =
                         -2; /*returned. this is just for info & debugging*/
                     pool_relablk(p_thds, thd); /*release this struct*/
@@ -659,6 +633,7 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
+                    delete_defered_index_tbl();
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
                     return 0;
                 }
@@ -671,6 +646,7 @@ static void *thd_req(void *vthd)
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
         truncate_constraint_table(thdinfo->ct_add_index);
+        truncate_defered_index_tbl();
     } while (1);
 }
 
@@ -678,7 +654,6 @@ static void *thd_req(void *vthd)
 static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 /* 040307dh: 64bits */
 {
-    int is_legacy_fstsnd = 1;
     if (thd || iq) {
         LOCK(&lock)
         {
@@ -702,14 +677,13 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         sndbak_open_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                     } else {
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
+                        iq->sb = NULL;
                     }
-                    is_legacy_fstsnd = 0;
                 } else if (iq->is_sorese) {
                     if (iq->sorese.osqllog) {
                         sbuf2close(iq->sorese.osqllog);
                         iq->sorese.osqllog = NULL;
                     }
-                    is_legacy_fstsnd = 0;
                 }
                 pool_relablk(p_reqs, iq);
             }
@@ -738,6 +712,7 @@ static int reterr_withfree(struct ireq *iq, int rc)
                 iq->request_data = iq->p_buf_out_start = NULL;
             } else {
                 sndbak_socket(iq->sb, NULL, 0, rc);
+                iq->sb = NULL;
             }
         } else {
             /* we don't do this anymore for sorese requests */
@@ -804,8 +779,8 @@ void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
 
     /* sbuf2 is owned by the appsock. Don't close it here. */
 
-    pthread_cond_destroy(&lock_buffer->wait_cond);
-    pthread_mutex_destroy(&lock_buffer->req_lock);
+    Pthread_cond_destroy(&lock_buffer->wait_cond);
+    Pthread_mutex_destroy(&lock_buffer->req_lock);
 
     LOCK(&buf_lock)
     {
@@ -828,16 +803,14 @@ int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
 
-int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
-              const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-              char *fromtask, int qtype, void *data_hndl, int luxref,
-              unsigned long long rqid, void *p_sinfo, intptr_t curswap)
+static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                     uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                     char *frommach, int frompid, char *fromtask, int qtype,
+                     void *data_hndl, int luxref, unsigned long long rqid,
+                     void *p_sinfo, intptr_t curswap)
 {
     struct req_hdr hdr;
     uint64_t nowus;
-    int rc, num, ndispatch, iamwriter = 0;
-    struct thd *thd;
-    int numwriterthreads;
 
     nowus = comdb2_time_epochus();
 
@@ -941,8 +914,10 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
+    if (iq->origdb == NULL)
+        iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
-    if (thedb->stopped) {
+    if (db_is_stopped()) {
         errUNLOCK(&lock);
         return reterr(curswap, NULL, iq, ERR_REJECTED);
     }
@@ -955,6 +930,8 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     return 0;
 }
 
+int gbl_handle_buf_add_latency_ms = 0;
+
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask,
@@ -962,7 +939,8 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      int luxref, unsigned long long rqid, void *p_sinfo,
                      intptr_t curswap)
 {
-    int rc, nowms, num, ndispatch, iamwriter = 0;
+    int rc, num, ndispatch, iamwriter = 0;
+    int add_latency = gbl_handle_buf_add_latency_ms;
     struct thd *thd;
     int numwriterthreads;
     struct dbq_entry_t *newent = NULL;
@@ -979,7 +957,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     /* allocate a request for later dispatch to available thread */
 
-    pthread_mutex_lock(&lock);
+    Pthread_mutex_lock(&lock);
     if (iq == NULL) {
         iq = (struct ireq *)pool_getablk(p_reqs);
 #if 0
@@ -1018,6 +996,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         }
         newent->obj = (void *)iq;
         iamwriter = is_req_write(iq->opcode) ? 1 : 0;
+        newent->queue_time_ms = comdb2_time_epochms();
         if (!iamwriter) {
             (void)listc_abl(&rq_reqs, newent);
         }
@@ -1050,6 +1029,11 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 iq = nextrq->obj;
                 /* remove from global list, and release link block of reader*/
                 listc_rfl(&q_reqs, nextrq);
+                if (add_latency > 0) {
+                    poll(0, 0, rand() % add_latency);
+                }
+                time_metric_add(thedb->handle_buf_queue_time,
+                                comdb2_time_epochms() - nextrq->queue_time_ms);
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq)
                     /* this should never be hit */
@@ -1062,6 +1046,11 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     /* remove reader from read queue */
                     listc_rfl(&rq_reqs, nextrq);
                 }
+                if (add_latency > 0) {
+                    poll(0, 0, rand() % add_latency);
+                }
+                time_metric_add(thedb->handle_buf_queue_time,
+                                comdb2_time_epochms() - nextrq->queue_time_ms);
                 /* release link block */
                 pool_relablk(pq_reqs, nextrq);
                 if (!iq) {
@@ -1085,7 +1074,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 if (num >= MAXSTAT)
                     num = MAXSTAT - 1;
                 bkt_thd[num]++; /*count threads*/
-                pthread_cond_signal(&thd->wakeup);
+                Pthread_cond_signal(&thd->wakeup);
                 ndispatch++;
             } else /*i can create one..*/
             {
@@ -1106,12 +1095,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 thd->iq = iq;
                 /*                fprintf(stderr, "added3 %8.8x\n",thd);*/
                 iq->where = "dispatched new";
-                rc = pthread_cond_init(&thd->wakeup, 0);
-                if (rc != 0) {
-                    errUNLOCK(&lock);
-                    perror_errnum("handle_buf:failed pthread_cond_init", rc);
-                    return reterr(curswap, thd, iq, ERR_INTERNAL);
-                }
+                Pthread_cond_init(&thd->wakeup, 0);
                 nthdcreates++;
 #ifdef MONITOR_STACK
                 rc = comdb2_pthread_create(&thd->tid, &attr, thd_req,
@@ -1130,7 +1114,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      * than limp onwards, we should just exit here.  Hand off
                      * masterness if possible. */
                     if (debug_exit_on_pthread_create_error()) {
-                        bdb_transfermaster(thedb->dbs[0]->handle);
+                        bdb_transfermaster(thedb->static_table.handle);
                         logmsg(LOGMSG_FATAL, 
                                 "%s:Exiting due to thread create errors\n",
                                 __func__);
@@ -1166,7 +1150,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     listc_rfl(&rq_reqs, nextrq);
                 }
                 pool_relablk(pq_reqs, nextrq);
-                pthread_mutex_unlock(&lock);
+                Pthread_mutex_unlock(&lock);
                 nqfulls++;
                 reterr_withfree(iq, ERR_REJECTED);
             } else {
@@ -1190,10 +1174,10 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     abort();
                 }
 
-                pthread_mutex_unlock(&lock);
+                Pthread_mutex_unlock(&lock);
             }
         } else {
-            pthread_mutex_unlock(&lock);
+            Pthread_mutex_unlock(&lock);
         }
     }
 
@@ -1222,50 +1206,51 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
     LOCK(&lock)
     {
         iq = (struct ireq *)pool_getablk(p_reqs);
-#if 0
-        fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
-#endif
-        if (iq == NULL) {
-            logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
-            errUNLOCK(&lock);
-        }
-        rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
-                       NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
-        if (rc)
-            /* init_ireq unlocks on error */
-            return NULL;
-
-        iq->sorese = *sorese;
-        iq->is_sorese = 1;
+    }
+    UNLOCK(&lock);
 
 #if 0
-        printf("Mapping sorese %llu\n", osql_log_time());
+    fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-        /* this creates the socksql/recom/serial local log (temp table) */
-        snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
-                 iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
-                 iq->sorese.rqid);
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
+    }
+    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
+                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    if (rc)
+        /* init_ireq unlocks on error */
+        return NULL;
 
-        /* enable logging, if any */
-        if (gbl_enable_osql_logging) {
-            int ffile = 0;
-            char filename[128];
-            static unsigned long long fcounter = 0;
+    iq->sorese = *sorese;
+    iq->is_sorese = 1;
+    iq->use_handle = thedb->bdb_env;
 
-            snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
+#if 0
+    printf("Mapping sorese %llu\n", osql_log_time());
+#endif
+    /* this creates the socksql/recom/serial local log (temp table) */
+    snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
+             iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
+             iq->sorese.rqid);
 
-            ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (ffile == -1) {
-                logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
-            } else {
-                iq->sorese.osqllog = sbuf2open(ffile, 0);
-                if (!iq->sorese.osqllog) {
-                    close(ffile);
-                }
+    /* enable logging, if any */
+    if (gbl_enable_osql_logging) {
+        int ffile = 0;
+        char filename[128];
+        static unsigned long long fcounter = 0;
+
+        snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
+
+        ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (ffile == -1) {
+            logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
+        } else {
+            iq->sorese.osqllog = sbuf2open(ffile, 0);
+            if (!iq->sorese.osqllog) {
+                close(ffile);
             }
         }
     }
-    UNLOCK(&lock);
 
     return iq;
 }

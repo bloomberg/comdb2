@@ -171,6 +171,13 @@ public class ProtobufProtocol implements Protocol {
                     .setLittleEndian(cdb2SqlQuery.littleEndian)
                     .setTzname(cdb2SqlQuery.tzName)
                     .setMachClass(cdb2SqlQuery.machClass);
+
+            if (cdb2SqlQuery.cinfo != null)
+                _sqlquery.setClientInfo(CDB2_SQLQUERY.cinfo.newBuilder().
+                        setPid(cdb2SqlQuery.cinfo.pid).setThId(cdb2SqlQuery.cinfo.tid).
+                        setHostId(cdb2SqlQuery.cinfo.host_id).setArgv0(cdb2SqlQuery.cinfo.argv0).
+                        setStack(cdb2SqlQuery.cinfo.stack));
+
             if (cdb2SqlQuery.cnonce != null)
                 _sqlquery.setCnonce(ByteString.copyFrom(cdb2SqlQuery.cnonce));
 
@@ -201,6 +208,9 @@ public class ProtobufProtocol implements Protocol {
 
             if (cdb2SqlQuery.features.size() > 0)
                 _sqlquery.addAllFeatures(cdb2SqlQuery.features);
+
+            if (cdb2SqlQuery.reqInfo != null)
+                _sqlquery.setReqInfo(CDB2_SQLQUERY.reqinfo.newBuilder().setTimestampus(cdb2SqlQuery.reqInfo.timestampus).setNumRetries(cdb2SqlQuery.reqInfo.numretries));
 
             _query.setSqlquery(_sqlquery.build());
         }

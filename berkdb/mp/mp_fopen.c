@@ -23,6 +23,7 @@ static const char revid[] = "$Id: mp_fopen.c,v 11.120 2003/11/07 18:45:15 ubell 
 #include "dbinc/db_shash.h"
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
+#include "locks_wrap.h"
 
 #ifdef HAVE_RPC
 #include "dbinc_auto/db_server.h"
@@ -103,13 +104,13 @@ __memp_fcreate(dbenv, retp)
 			return (ret);
 
 		for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
-			pthread_mutex_init(&reclk[i], NULL);
+			Pthread_mutex_init(&reclk[i], NULL);
 		}
 
 		dbmfp->recp_lk_array = reclk;
 
 		/* Initialize the index lock. */
-		pthread_mutex_init(&dbmfp->recp_idx_lk, NULL);
+		Pthread_mutex_init(&dbmfp->recp_idx_lk, NULL);
 	}
 
 #ifdef HAVE_RPC
@@ -1109,7 +1110,7 @@ check_map:
 				dbmfp->recp = tmp_dbmfp->recp;
 
 				for (i = 0; i <= dbenv->mp_recovery_pages; i++)
-					pthread_mutex_destroy(&dbmfp->
+					Pthread_mutex_destroy(&dbmfp->
 					    recp_lk_array[i]);
 
 				__os_free(dbenv, dbmfp->recp_lk_array);
@@ -1294,7 +1295,7 @@ __memp_fclose(dbmfp, flags)
 		dbmfp->recp = NULL;
 
 		for (i = 0; i <= dbenv->mp_recovery_pages; i++)
-			pthread_mutex_destroy(&dbmfp->recp_lk_array[i]);
+			Pthread_mutex_destroy(&dbmfp->recp_lk_array[i]);
 
 		__os_free(dbenv, dbmfp->recp_lk_array);
 		dbmfp->recp_lk_array = NULL;
