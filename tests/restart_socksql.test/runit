@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Debug variable
 debug=0
@@ -16,12 +17,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
 
 assert_vers()
 {
@@ -46,19 +41,6 @@ assert_schema()
         failexit "final schema is not same as $schema: diff schema.out $schema"
     fi
 }
-
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
-}
-
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send debg 10000"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send ndebg 10000"

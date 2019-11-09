@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Debug variable
 debug=0
 
@@ -15,30 +16,9 @@ fi
 nins=0
 
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
 if [ -z $COMDB2_EXE ] ; then
    failexit '$COMDB2_EXE is not set'
 fi
-
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function assertsel
@@ -282,7 +262,7 @@ master=`getmaster`
 insert_records 1 200 rows1.txt
 echo check records match inserted
 assert_vers t1 0
-assertcnt 200
+assertcnt t1 200
 assertsel rows1.txt
 do_verify
 
@@ -292,7 +272,7 @@ cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default 'select 1'
 
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
-assertcnt 200
+assertcnt t1 200
 assertsel rows1.txt
 do_verify
 
@@ -302,7 +282,7 @@ echo "got present lsn up to which we will recover, lsn=$lsn"
 
 #run inserts, updates, deletes and make sure they are in new btrees
 insert_records_oneshot 201 400
-assertcnt 400
+assertcnt t1 400
 
 echo "about to delete, $SECONDS"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "delete from t1 where a % 2 = 1"
@@ -314,13 +294,13 @@ insert_records_oneshot 401 600
 echo "after insert, $SECONDS"
 
 # 400 = 600 - (200 deleted !!)
-assertcnt 400
+assertcnt t1 400
 
 
 kill_restarttolsn $master $lsn
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
-assertcnt 200
+assertcnt t1 200
 assertsel rows1.txt
 do_verify
 

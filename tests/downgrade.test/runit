@@ -2,12 +2,10 @@
 bash -n "$0" | exit 1
 
 set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 dbname=$1
 
-getmaster()
-{
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "create table m (i int primary key)" 2>&1
 cdb2sql ${CDB2_OPTIONS} $dbname default "create table c (i int index, j int, foreign key (i) references m(i) on update cascade on delete cascade)" 2>&1

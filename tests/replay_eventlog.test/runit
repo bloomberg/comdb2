@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 RESTART_DELAY=35
 INITNUMREC=100
@@ -30,22 +31,6 @@ failexit()
     exit -1
 }
 
-
-assertcnt()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs --host $node $dbnm "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
 assert_vers()
 {
     tbl=$1
@@ -56,7 +41,6 @@ assert_vers()
     fi
     tblver=$newver
 }
-
 
 assert_schema()
 {
@@ -218,20 +202,20 @@ assert_schema t1 alltypes.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 update_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt $INITNUMREC
+assertcnt t1 $INITNUMREC
 
 let NEWSTRT=$((INITNUMREC+1))
 insert_records_with_bind $NEWSTRT $NEWNUMREC
 assertcnt $NEWNUMREC
 
 #update_records_with_bind $NEWSTRT $NEWNUMREC
-#assertcnt $NEWNUMREC
+#assertcnt t1 $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"

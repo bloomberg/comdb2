@@ -3,6 +3,7 @@ bash -n "$0" | exit 1
 
 set -e
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Debug variable
 debug=0
@@ -22,20 +23,6 @@ failexit()
 {
     echo "Failed $1"
     exit -1
-}
-
-assertcnt ()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
 }
 
 assert_vers()
@@ -72,19 +59,6 @@ do_verify()
     fi
 }
 
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
-}
-
-#test inserting a large number of items via generate series and query for them
 gen_series_test()
 {
     MAX=9000
@@ -110,12 +84,12 @@ TRANSIZE=0
 gen_series_test
 
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
-assertcnt $((THRDS * CNT * ITERATIONS))
+assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 TRANSIZE=2800
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
-assertcnt $((THRDS * CNT * ITERATIONS))
+assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
 echo "Success"
