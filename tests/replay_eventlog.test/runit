@@ -207,7 +207,7 @@ assertcnt t1 $INITNUMREC
 
 let NEWSTRT=$((INITNUMREC+1))
 insert_records_with_bind $NEWSTRT $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 #update_records_with_bind $NEWSTRT $NEWNUMREC
 #assertcnt t1 $NEWNUMREC

@@ -1,10 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
 source ${TESTSROOTDIR}/tools/runit_common.sh
-
-{DBNAME}=$1
 
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table m (i int primary key)" 2>&1
