@@ -5,7 +5,7 @@ bash -n "$0" | exit 1
 debug=0
 
 dbnm=$1
-tblcnt=150
+tblcnt=10
 
 if [ "x$dbnm" == "x" ] ; then
     echo "need a DB name"
@@ -45,33 +45,6 @@ function do_verify
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "Verify"
     fi
-}
-
-# Do schema changes
-function do_schema_changes
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t2.csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
 }
 
 
@@ -190,7 +163,7 @@ for i in `seq 1 $tblcnt`; do
   time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table ${PRFIX}$i  { `cat t1_1.csc2 ` }"
   insert_records ${PRFIX}$i $i
   echo truncate ${PRFIX}0
-  time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate ${PRFIX}0"
+#time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate ${PRFIX}0"
 
   #flushall
 done

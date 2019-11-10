@@ -11,6 +11,9 @@
 *************************************************************************
 */
 
+#ifndef _sqlite3expert_h
+#define _sqlite3expert_h
+
 
 #include "sqlite3.h"
 
@@ -165,4 +168,4 @@ const char *sqlite3_expert_report(sqlite3expert*, int iStmt, int eReport);
 */
 void sqlite3_expert_destroy(sqlite3expert*);
 
-
+#endif

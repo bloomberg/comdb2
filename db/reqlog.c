@@ -1704,11 +1704,11 @@ static void log_params(struct reqlogger *logger)
         }
         if (p.pos)
             reqlog_logf(logger, REQL_INFO,
-                        "param%-3d type=%-12s len=%-3zu indx=%-16d value=%s", i,
+                        "param%-3d type=%-12s len=%-3d indx=%-16d value=%s", i,
                         type, p.len, p.pos, value);
         else
             reqlog_logf(logger, REQL_INFO,
-                        "param%-3d type=%-12s len=%-3zu name=%-16s value=%s", i,
+                        "param%-3d type=%-12s len=%-3d name=%-16s value=%s", i,
                         type, p.len, p.name, value);
     }
 }
