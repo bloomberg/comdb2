@@ -2395,7 +2395,7 @@ struct __db_env {
 	int  (*get_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*set_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*txn_begin) __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
-	int  (*assert_notran) __P((DB_ENV *));
+	int  (*txn_assert_notran) __P((DB_ENV *));
 	int  (*txn_checkpoint) __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
