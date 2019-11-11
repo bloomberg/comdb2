@@ -370,13 +370,6 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 			Pthread_setspecific(txn_key, (void *)txn);
 	}
 
-	if (txncnt >= TXN_TD_MAX) {
-		logmsg(LOGMSG_FATAL, "%s insane number of open txns for this td\n",
-				__func__);
-		abort();
-	}
-
-	td_txn[txncnt++] = txn;
 	return (0);
 
 err:
@@ -661,6 +654,14 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 		if ((ret = __lock_addfamilylocker_set_retries(dbenv,
 				txn->parent->txnid, txn->txnid, retries)) != 0)
 			return (ret);
+
+	if (txncnt >= TXN_TD_MAX) {
+		logmsg(LOGMSG_FATAL, "%s insane number of open txns for this td\n",
+				__func__);
+		abort();
+	}
+
+	td_txn[txncnt++] = txn;
 
 	if (F_ISSET(txn, TXN_MALLOC)) {
 		MUTEX_THREAD_LOCK(dbenv, mgr->mutexp);
