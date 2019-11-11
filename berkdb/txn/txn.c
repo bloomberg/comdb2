@@ -114,6 +114,11 @@ extern int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
 extern int dumptxn(DB_ENV *, DB_LSN *);
 extern void fsnapf(FILE * fil, const void *buf, int len);
 
+/* Track transactions open by a single td (should remain small) */
+#define TXN_TD_MAX 10
+static __thread int txncnt = 0;
+static __thread DB_TXN *td_txn[TXN_TD_MAX];
+
 #define	SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags) \
 	do {								\
 		lflags = DB_LOG_COMMIT;			\
@@ -227,6 +232,23 @@ __txn_begin_pp(dbenv, parent, txnpp, flags)
 	u_int32_t flags;
 {
 	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, 0);
+}
+
+static void remove_td_txn(DB_TXN *txn)
+{
+	int found = 0;
+	for (int i = 0; i < txncnt; i++) {
+		if (td_txn[i] == txn) {
+			found = 1;
+			td_txn[i] = td_txn[--txncnt];
+			break;
+		}
+	}
+	if (!found) {
+		logmsg(LOGMSG_FATAL, "%s unable to locate td txn %p\n", __func__,
+				txn);
+		abort();
+	}
 }
 
 int
@@ -347,6 +369,14 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		if (pthread_getspecific(txn_key) == NULL)
 			Pthread_setspecific(txn_key, (void *)txn);
 	}
+
+	if (txncnt >= TXN_TD_MAX) {
+		logmsg(LOGMSG_FATAL, "%s insane number of open txns for this td\n",
+				__func__);
+		abort();
+	}
+
+	td_txn[txncnt++] = txn;
 	return (0);
 
 err:
@@ -437,27 +467,33 @@ __txn_compensate_begin(dbenv, txnpp)
 	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
-void __txn_assert_none(void *env)
+/* Abort if this thread has an open transaction */
+static void __dbenv_assert_notran(dbenv)
+	DB_ENV *dbenv;
 {
-    DB_ENV *dbenv = (DB_ENV *)env;
-	DB_TXNREGION *region;
-	DB_TXNMGR *mgr;
-	TXN_DETAIL *td;
-
-	mgr = dbenv->tx_handle;
-	region = mgr->reginfo.primary;
-	R_LOCK(dbenv, &mgr->reginfo);
-
-	for (td = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
-			td != NULL;
-			td = SH_TAILQ_NEXT(td, links, __txn_detail)) {
-		if (td->tid == pthread_self()) {
-			logmsg(LOGMSG_FATAL, "%s found txn with my tid\n", __func__);
-			abort();
-		}
+	if (txncnt > 0) {
+		logmsg(LOGMSG_FATAL, "%s td has open txns\n", __func__);
 	}
+}
 
-	R_UNLOCK(dbenv, &mgr->reginfo);
+/*
+ * __dbenv_assert_notran_pp --
+ *	Abort if this thread has an open transaction.
+ */
+int __dbenv_assert_notran_pp(dbenv)
+	DB_ENV *dbenv;
+{
+	int rep_check, ret;
+	PANIC_CHECK(dbenv);
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	__dbenv_assert_notran(dbenv);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+    return 0;
 }
 
 /*
@@ -1289,6 +1325,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
+    remove_td_txn(txnp);
+
 	/* This is OK because __txn_end can only fail with a panic. */
 	return (__txn_end(txnp, 1));
 
@@ -1512,6 +1550,8 @@ __txn_abort(txnp)
 		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
+
+	remove_td_txn(txnp);
 
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));

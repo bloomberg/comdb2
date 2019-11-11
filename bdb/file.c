@@ -8480,8 +8480,7 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     return 0;
 }
 
-void __txn_assert_none(void *dbenv);
 void bdb_assert_notran(bdb_state_type *bdb_state)
 {
-    __txn_assert_none(bdb_state->dbenv);
+    bdb_state->dbenv->assert_notran(bdb_state->dbenv);
 }

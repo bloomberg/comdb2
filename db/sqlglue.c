@@ -7342,8 +7342,6 @@ static int rootpcompare(const void *p1, const void *p2)
 
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
-    // assert_lock_schema_lk();
-
     if (pStmt == NULL)
         return 0;
 

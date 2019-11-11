@@ -5977,7 +5977,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
 
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     uint64_t end = gettimeofday_ms();
-    void bdb_assert_notran(bdb_state_type *bdb_state);
+
     bdb_assert_notran(thedb->bdb_env);
 
     if (rc == 0) {
