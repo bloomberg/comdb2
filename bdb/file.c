@@ -8489,5 +8489,5 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
 
 void bdb_assert_notran(bdb_state_type *bdb_state)
 {
-    bdb_state->dbenv->assert_notran(bdb_state->dbenv);
+    bdb_state->dbenv->txn_assert_notran(bdb_state->dbenv);
 }

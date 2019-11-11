@@ -132,6 +132,7 @@ __txn_dbenv_create(dbenv)
 		dbenv->txn_checkpoint = __txn_checkpoint_pp;
 		dbenv->txn_recover = __txn_recover_pp;
 		dbenv->txn_stat = __txn_stat_pp;
+		dbenv->txn_assert_notran = __txn_assert_notran_pp;
 		dbenv->txn_begin = __txn_begin_pp;
 		dbenv->txn_dump_ltrans =  __txn_dump_ltrans;
 		dbenv->lowest_logical_lsn = __txn_ltrans_find_lowest_lsn;

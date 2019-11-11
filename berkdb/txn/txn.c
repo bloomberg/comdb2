@@ -468,19 +468,20 @@ __txn_compensate_begin(dbenv, txnpp)
 }
 
 /* Abort if this thread has an open transaction */
-static void __dbenv_assert_notran(dbenv)
+static void __txn_assert_notran(dbenv)
 	DB_ENV *dbenv;
 {
 	if (txncnt > 0) {
 		logmsg(LOGMSG_FATAL, "%s td has open txns\n", __func__);
+        abort();
 	}
 }
 
 /*
- * __dbenv_assert_notran_pp --
+ * __txn_assert_notran_pp --
  *	Abort if this thread has an open transaction.
  */
-int __dbenv_assert_notran_pp(dbenv)
+int __txn_assert_notran_pp(dbenv)
 	DB_ENV *dbenv;
 {
 	int rep_check, ret;
@@ -490,7 +491,7 @@ int __dbenv_assert_notran_pp(dbenv)
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	__dbenv_assert_notran(dbenv);
+	__txn_assert_notran(dbenv);
 	if (rep_check)
 		__env_rep_exit(dbenv);
     return 0;
