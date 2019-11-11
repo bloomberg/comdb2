@@ -311,6 +311,7 @@ extern int gbl_debug_omit_blob_write;
 extern int eventlog_nkeep;
 
 int gbl_page_order_table_scan = 0;
+size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*
   =========================================================
