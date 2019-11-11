@@ -231,6 +231,97 @@ enum INDEXFLAGS {
     UNIQNULLS = 0x00000010 /* all NULL values are treated as UNIQUE */
 };
 
+
+typedef struct macc_globals_t {
+    struct constraint constraints[MAXCNSTRTS];
+    struct check_constraint check_constraints[MAXCNSTRTS];
+    struct symbol symb[MAX];
+    struct table tables[MAXTBLS];
+    unsigned int un_start[MAX];
+    unsigned int un_end[MAX];
+    unsigned int un_reset[MAX];
+    unsigned int un_case[MAX];
+    short cur_dpth[MAX_DEPTH];
+    int dpth_idx;
+
+    struct key *keys[MAXKEYS], *workkey, *rngs[MAXRNGS];
+    int keyixnum[MAXKEYS];
+    int keyexprnum[MAXKEYS];
+    int workkeyflag;
+    int workkeypieceflag;
+    struct expression expr[EXPRMAX];
+    struct expr_table exprtab[EXPRTABMAX];
+    int ex_p;
+    int et_p;
+
+    int func_jstfnd;
+    int sorted[MAX];
+    int nsym;
+    int ntables;
+    int ncnst;
+    int prcnst;
+    int nrngs;
+    int nkeys;
+    int bufszb, bufszhw, bufszw;
+    int maxrngsz;
+    int rngrrnoff[MAXRNGS];
+    int current_case;
+    int current_union;
+    char *union_names[MAX];
+    int union_index;
+    int union_level;
+    int un_init;
+    char *customcode;
+    char includename[256];
+    char includefiles[MAX_INCLUDES][MAX_INC_NAME];
+    int includetypes[MAX_INCLUDES];
+    int nincludes;
+    int ixblocksize[MAXINDEX], lv0size[MAXINDEX];
+    int spltpercnt[MAXINDEX];
+
+    int case_table[MAX];   /* names of the cases */
+    int cn_p;              /* pointer into casenames[] */
+    int ixsize[MAXINDEX];  /* index size */
+    int ixflags[MAXINDEX]; /* index size */
+
+    int flag_anyname; /* allow any db name - normally restricted to xxDB*/
+    int cluster_nodes[MAX_CLUSTER];
+    int ncluster;
+    int createlv0;
+    char *opt_incldir;
+    char *opt_dtadir;
+    char *opt_lrldir;
+    char *opt_prefix;
+    int opt_cachesz;
+    int opt_dbnum;
+    int opt_remote;
+    char *opt_dbname;    /* database+table name */
+    char opt_maindbname[MAX_DBNAME_LENGTH]; /* database name */
+    char opt_tblname[64];    /* table name */
+    int opt_verbose;         /* 0=don't use verbose comments in .h */
+    int opt_copycsc;         /* 0=don't copy .csc to .inc */
+    char *opt_accname;       /* different name for acc routine/.f */
+    int opt_reclen;          /* optional record length */
+    int opt_sntoremb;    /* USE SNTOREMB OPTION*/
+    int opt_nicedbvalue; /* USE START NICE PROCMGR VALUE FOR DATABASE */
+    int opt_useglobals;  /* GENERATE STATIC RECORD/CONTROL STRUCTS IN ACC
+                            ROUTINE, ALONG WITH SHORTCUTS */
+    int opt_staticacc;   /* Create Access Routine to be static */
+    int opt_noprefix;    /* Don't generate prefixes for variables */
+    int opt_threadsafe;  /* By default, access routine is thread-safe */
+    int opt_macc2pack;
+    int opt_usenames;
+    char *opt_filesfx; /* Include file suffix..By default disabled */
+    int opt_sync;
+    int opt_setsql;
+    int opt_schematype;
+    int nconstraints;
+    int n_check_constraints;
+} macc_globals_t;
+
+
+extern macc_globals_t macc_globals;
+
 extern int fncs[MAXFUNCS];          /* functions                         */
 extern int func_jstfnd;             /*function # of jstfnd - needed for delete*/
 extern int sorted[MAX];             /* array to keep symbol table sorted */
@@ -287,7 +378,7 @@ char *eos(char *);
 
 #define TABLENAME opt_tblname
 #define MAINDBNAME opt_maindbname
-#define DBNAME opt_dbname
+#define DBNAME macc_globals.opt_dbname
 #define INCLDIR opt_incldir
 #define DTADIR opt_dtadir
 #define ACCNAME opt_accname
