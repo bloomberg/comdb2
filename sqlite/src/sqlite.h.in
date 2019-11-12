@@ -3742,6 +3742,7 @@ int sqlite3_limit(sqlite3*, int id, int newVal);
 #define SQLITE_PREPARE_NO_VTAB                 0x04
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_PREPARE_ONLY                    0x08
+#define SQLITE_PREPARE_SRCLIST_ONLY            0x10
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
