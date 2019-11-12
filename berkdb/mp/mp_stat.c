@@ -27,8 +27,8 @@ static const char revid[] = "$Id: mp_stat.c,v 11.58 2003/09/13 19:20:41 bostic E
 #include "comdb2_atomic.h"
 
 static void __memp_dumpcache __P((DB_ENV *,
-		DB_MPOOL *, REGINFO *, size_t *, FILE *, u_int32_t));
-static void __memp_pbh __P((DB_MPOOL *, BH *, size_t *, FILE *));
+		DB_MPOOL *, REGINFO *, MPOOLFILE **, FILE *, u_int32_t));
+static void __memp_pbh __P((DB_MPOOL *, BH *, MPOOLFILE **, FILE *));
 static int  __memp_stat __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 static void __memp_stat_wait __P((REGINFO *, MPOOL *, DB_MPOOL_STAT *, int));
@@ -317,7 +317,7 @@ __memp_dump_region(dbenv, area, fp)
 	DB_MPOOLFILE *dbmfp;
 	MPOOL *mp;
 	MPOOLFILE *mfp;
-	size_t fmap[FMAP_ENTRIES + 1];
+	MPOOLFILE *fmap[FMAP_ENTRIES + 1];
 	u_int32_t i, flags, mfp_flags;
 	int cnt;
 	u_int8_t *p;
@@ -380,7 +380,7 @@ __memp_dump_region(dbenv, area, fp)
 		}
 		(void)logmsgf(LOGMSG_USER, fp, "\n");
 		if (cnt < FMAP_ENTRIES)
-			fmap[cnt] = R_OFFSET(dbmp->reginfo, mfp);
+			fmap[cnt] = mfp;
 	}
 	R_UNLOCK(dbenv, dbmp->reginfo);
 
@@ -391,7 +391,7 @@ __memp_dump_region(dbenv, area, fp)
 		    cnt + 1, __memp_fn(dbmfp),
 		    F_ISSET(dbmfp, MP_READONLY) ? "readonly" : "read/write");
 		    if (cnt < FMAP_ENTRIES)
-			fmap[cnt] = R_OFFSET(dbmp->reginfo, mfp);
+			fmap[cnt] = mfp;
 	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 	if (cnt < FMAP_ENTRIES)
@@ -421,7 +421,7 @@ __memp_dumpcache(dbenv, dbmp, reginfo, fmap, fp, flags)
 	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
 	REGINFO *reginfo;
-	size_t *fmap;
+	MPOOLFILE **fmap;
 	FILE *fp;
 	u_int32_t flags;
 {
@@ -466,7 +466,7 @@ static void
 __memp_pbh(dbmp, bhp, fmap, fp)
 	DB_MPOOL *dbmp;
 	BH *bhp;
-	size_t *fmap;
+	MPOOLFILE **fmap;
 	FILE *fp;
 {
 	static const FN fn[] = {
@@ -483,12 +483,12 @@ __memp_pbh(dbmp, bhp, fmap, fp)
 	int i;
 
 	for (i = 0; i < FMAP_ENTRIES; ++i)
-		if (fmap[i] == INVALID_ROFF || fmap[i] == bhp->mf_offset)
+		if (fmap[i] == NULL || fmap[i] == bhp->mpf)
 			break;
 
 	if (fmap[i] == INVALID_ROFF)
-		(void)logmsgf(LOGMSG_USER, fp, "\t%5lu, %lu, %2lu, %8lu [%lu,%lu] %lu",
-		    (u_long)bhp->pgno, (u_long)bhp->mf_offset,
+		(void)logmsgf(LOGMSG_USER, fp, "\t%5lu, %p, %2lu, %8lu [%lu,%lu] %lu",
+		    (u_long)bhp->pgno, bhp->mpf,
 		    (u_long)bhp->ref, (u_long)R_OFFSET(dbmp->reginfo, bhp),
 		    (u_long)LSN(bhp->buf).file, (u_long)LSN(bhp->buf).offset,
 		    (u_long)bhp->priority);
