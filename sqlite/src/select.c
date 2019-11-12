@@ -5764,7 +5764,7 @@ int sqlite3Select(
   }
   sqlite3SelectPrep(pParse, p, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pParse->prepFlags&SQLITE_PREPARE_SRCLIST_ONLY ){
+  if( !db->mallocFailed && pParse->prepFlags&SQLITE_PREPARE_SRCLIST_ONLY ){
     SrcList *pSrc = p->pSrc;
     int iSrc;
     if( !pSrc ) goto select_end;

@@ -692,6 +692,17 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
     lastTokenParsed = tokenType;
     zSql += n;
     assert( db->mallocFailed==0 || pParse->rc!=SQLITE_OK || startedWithOom );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pParse->prepFlags&SQLITE_PREPARE_SRCLIST_ONLY ){
+      if( pParse->rc!=SQLITE_OK ){
+        if( pParse->zErrMsg ){
+          sqlite3DbFree(db, zErrMsg);
+          pParse->zErrMsg = 0;
+        }
+        break;
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pParse->rc!=SQLITE_OK ) break;
   }
   assert( nErr==0 );

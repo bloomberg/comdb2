@@ -464,9 +464,14 @@ static void tableNamesFunc(
   sParse.db = db;
   sParse.prepFlags = SQLITE_PREPARE_SRCLIST_ONLY;
   if( sqlite3RunParser(&sParse, (char*)sqlite3_value_text(argv[0]), &zErrMsg) ){
-    sqlite3_result_error(context, zErrMsg, -1);
+    if( zErrMsg ){
+      sqlite3_result_error(context, zErrMsg, -1);
+      sqlite3DbFree(db, zErrMsg);
+    }
     sqlite3ParserReset(&sParse);
     return;
+  }else if( zErrMsg ){
+    sqlite3DbFree(db, zErrMsg);
   }
   sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
   for(i=0; i<sParse.nSrcListOnly; i++){
