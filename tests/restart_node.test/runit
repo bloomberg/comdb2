@@ -3,13 +3,11 @@ bash -n "$0" | exit 1
 
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 RESTART_DELAY=35
 INITNUMREC=100
 NUMREC=300
-
-# Debug variable
-debug=0
 
 dbnm=$1
 
@@ -24,29 +22,6 @@ fi
 
 # Number of insert_records function calls
 nins=0
-
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
-
-assertcnt()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 
 assert_vers()
 {
@@ -262,11 +237,6 @@ get_schemachange_status()
 }
 
 
-getmaster()
-{
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
 force_delay_master()
 {
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
@@ -282,7 +252,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
 insert_records 1 $INITNUMREC
-assertcnt $INITNUMREC
+assertcnt t1 $INITNUMREC
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
 
@@ -304,7 +274,7 @@ done
 
 master=`getmaster`
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > all_rows.txt
-assertcnt $NUMREC
+assertcnt t1 $NUMREC
 do_verify
 
 #sleep 15

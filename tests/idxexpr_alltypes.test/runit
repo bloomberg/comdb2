@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-dbname=$1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 NRUNS=100
 
-cdb2sql ${CDB2_OPTIONS} $dbname default - <<"EOF"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - <<"EOF"
 drop table if exists alltypes
 create table alltypes {
 schema
@@ -46,31 +46,11 @@ function randbl
     return 0
 }
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    tbl=$1
-    target=$2
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count of $tbl is now $cnt but should be $target"
-    fi
-}
 
 function do_verify
 {
     tbl=$1
-    cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
 
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "verify $tbl failed"
@@ -87,7 +67,7 @@ function insert_rows
         echo "insert into alltypes values ($i, $i, $i, $i, $i, '$i.$i', cast(now(6) as real), x'$bl', 'abcdefghij$i', now(), now(6), cast($i as years), cast($i as days), cast($i as days), '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 92))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 381))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 6141))')"
         let i=i+1
     done > in${s}.sql
-    cdb2sql -s ${CDB2_OPTIONS} $dbname default -f in${s}.sql > out${s}.sql
+    cdb2sql -s ${CDB2_OPTIONS} ${DBNAME} default -f in${s}.sql > out${s}.sql
 }
 
 insert_rows 1 2000 &
@@ -101,7 +81,7 @@ NRECS=10000
 assertcnt alltypes $NRECS
 do_verify alltypes
 
-cdb2sql ${CDB2_OPTIONS} $dbname default - <<"EOF"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - <<"EOF"
 alter table alltypes {
 schema
 {
@@ -167,7 +147,7 @@ while [ $i -le $NRUNS ]; do
         ;;
     esac
     let i=i+1
-done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
+done | cdb2sql -s ${CDB2_OPTIONS} ${DBNAME} default - >/dev/null
 
 do_verify alltypes
 

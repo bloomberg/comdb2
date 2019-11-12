@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 ################################################################################
 
 TMPDIR=${TMPDIR:-/tmp}
@@ -225,17 +227,6 @@ function assertbadexitcode
     fi
 }
 
-function assertres
-{
-    if [ $# != 2 ] ; then
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
-}
 
 set -- +o errexit
 echo "create and use 'uniqnulls' enabled tables with foreign keys"

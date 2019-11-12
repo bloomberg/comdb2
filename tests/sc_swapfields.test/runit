@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
-
+source ${TESTSROOTDIR}/tools/runit_common.sh
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
@@ -13,27 +11,6 @@ fi
 
 # Number of insert_records function calls
 nins=0
-
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function do_verify
@@ -68,7 +45,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 
 insert_records 1 2000
-assertcnt 2000
+assertcnt t1 2000
 
 
 
@@ -85,7 +62,7 @@ if [[ "$ret" != 0 ]]; then
 fi
 
 wait
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > select2.out
 #if ! diff select2.out select2.expected > /dev/null ; then
@@ -107,7 +84,7 @@ if [[ "$ret" != 0 ]]; then
 fi
 
 wait
-assertcnt 4000
+assertcnt t1 4000
 do_verify
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > select3.out
 #if ! diff select3.out select3.expected > /dev/null ; then

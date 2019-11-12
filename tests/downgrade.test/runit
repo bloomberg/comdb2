@@ -1,47 +1,43 @@
-#!/bin/sh
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
-dbname=$1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
-getmaster()
-{
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
 
-cdb2sql ${CDB2_OPTIONS} $dbname default "create table m (i int primary key)" 2>&1
-cdb2sql ${CDB2_OPTIONS} $dbname default "create table c (i int index, j int, foreign key (i) references m(i) on update cascade on delete cascade)" 2>&1
-cdb2sql ${CDB2_OPTIONS} $dbname default "insert into m select * from generate_series limit 10" 2>&1
-cdb2sql ${CDB2_OPTIONS} $dbname default "insert into c select * from m, generate_series limit 100" 2>&1
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table m (i int primary key)" 2>&1
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table c (i int index, j int, foreign key (i) references m(i) on update cascade on delete cascade)" 2>&1
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into m select * from generate_series limit 10" 2>&1
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into c select * from m, generate_series limit 100" 2>&1
 
 master=`getmaster`
 # Delay writes
-cdb2sql ${CDB2_OPTIONS} --host $master $dbname "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 1000')"
+cdb2sql ${CDB2_OPTIONS} --host $master ${DBNAME} "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 1000')"
 
 # Run a long transaction
-cdb2sql ${CDB2_OPTIONS} $dbname default "delete from m" 2>&1 &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "delete from m" 2>&1 &
 
 sleep 20
 
 # Downgrade master
-cdb2sql ${CDB2_OPTIONS} --host $master $dbname "exec procedure sys.cmd.send('downgrade')" 2>&1
+cdb2sql ${CDB2_OPTIONS} --host $master ${DBNAME} "exec procedure sys.cmd.send('downgrade')" 2>&1
 
 wait
 
 # Make sure every node is still up
 if [ -n "$CLUSTER" ] ; then
     for node in $CLUSTER ; do
-        cdb2sql ${CDB2_OPTIONS} --host $node $dbname "select 1"
+        cdb2sql ${CDB2_OPTIONS} --host $node ${DBNAME} "select 1"
     done
 fi
 
-out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbname default 'select count(*) from c' 2>/dev/null)
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs ${DBNAME} default 'select count(*) from c' 2>/dev/null)
 if [[ "$out" != "0" ]]; then
     echo "Table c has $out rows"
     exit 1
 fi
 
-out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbname default 'select count(*) from m' 2>/dev/null)
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs ${DBNAME} default 'select count(*) from m' 2>/dev/null)
 if [[ "$out" != "0" ]]; then
     echo "Table m has $out rows"
     exit 1

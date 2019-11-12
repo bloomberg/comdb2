@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 #set -e
 set -x
 
@@ -21,27 +23,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
-assertcnt ()
-{
-    local tbl=$1
-    local target=$2
-    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "tbl $tbl count is now $cnt but should be $target"
-    fi
-}
 
 assert_vers()
 {
@@ -161,18 +142,6 @@ delete_records()
         let j=j+1
     done
     echo "done updating round $nout"
-}
-
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
 }
 
 do_updates()

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 
@@ -9,12 +11,6 @@ debug=0
 
 dbnm=$1
 
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 if [ "x$dbnm" == "x" ] ; then
     failexit "need a DB name"
@@ -28,20 +24,6 @@ fi
 nins=0
 nupd=0
 
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function assert_vers 
@@ -298,7 +280,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
 insert_records 1 200
-assertcnt 200
+assertcnt t1 200
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
 
