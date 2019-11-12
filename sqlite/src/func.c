@@ -454,23 +454,26 @@ static void tableNamesFunc(
   int argc,
   sqlite3_value **argv
 ){
-  sqlite3 *db = sqlite3_context_db_handle(context);
+  sqlite3 *db;
+  int i, wasPrepareOnly;
   Parse sParse;
   StrAccum str;
-  int i;
-  char *zErrMsg = 0;
+  char *zErrMsg;
   if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
+  db = sqlite3_context_db_handle(context);
+  wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
+  db->flags |= SQLITE_PrepareOnly;
   memset(&sParse, 0, sizeof(Parse));
   sParse.db = db;
   sParse.prepFlags = SQLITE_PREPARE_ONLY|SQLITE_PREPARE_SRCLIST_ONLY;
+  zErrMsg = 0;
   if( sqlite3RunParser(&sParse, (char*)sqlite3_value_text(argv[0]), &zErrMsg) ){
     if( zErrMsg ){
       sqlite3_result_error(context, zErrMsg, -1);
       sqlite3DbFree(db, zErrMsg);
     }
-    sqlite3ParserReset(&sParse);
-    return;
-  }else if( zErrMsg ){
+    goto done;
+  }else if( zErrMsg ){ /* TODO: Is this ever possible? */
     sqlite3DbFree(db, zErrMsg);
   }
   sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
@@ -478,8 +481,9 @@ static void tableNamesFunc(
     if( i>0 ) sqlite3_str_append(&str, ", ", 2);
     sqlite3_str_appendall(&str, sParse.azSrcListOnly[i]);
   }
-  sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1,
-                      SQLITE_DYNAMIC);
+  sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1, SQLITE_DYNAMIC);
+done:
+  if( !wasPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
   sqlite3ParserReset(&sParse);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
