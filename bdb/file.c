@@ -8484,3 +8484,9 @@ void bdb_assert_notran(bdb_state_type *bdb_state)
 {
     bdb_state->dbenv->txn_assert_notran(bdb_state->dbenv);
 }
+
+/* This is an expensive function */
+void bdb_assert_nolock(bdb_state_type *bdb_state)
+{
+    bdb_state->dbenv->lock_assert_none(bdb_state->dbenv);
+}

@@ -2159,4 +2159,8 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
 /* Abort if this thread has an open transaction */
 void bdb_assert_notran(bdb_state_type *bdb_state);
+
+/* Abort if this thread holds a lock */
+void bdb_assert_nolock(bdb_state_type *bdb_state);
+
 #endif
