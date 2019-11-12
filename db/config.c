@@ -49,6 +49,8 @@ extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 extern int gbl_fingerprint_max_queries;
 
+int gbl_disable_access_controls;
+
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
@@ -74,6 +76,7 @@ static struct option long_options[] = {
     {"dir", required_argument, NULL, 0},
     {"tunable", required_argument, NULL, 0},
     {"version", no_argument, NULL, 'v'},
+    {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
@@ -93,6 +96,7 @@ static const char *help_text = {
     "        --tunable                  override tunable\n"
     "        --help                     displays this help text and exit\n"
     "        --version                  displays version information and exit\n"
+    "        --insecure                 disable access controls\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"

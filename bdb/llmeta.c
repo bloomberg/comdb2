@@ -35,6 +35,7 @@
 #include <str0.h>
 
 extern int gbl_maxretries;
+extern int gbl_disable_access_controls;
 
 static bdb_state_type *llmeta_bdb_state = NULL; /* the low level meta table */
 
@@ -5739,6 +5740,10 @@ static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
+    if (gbl_disable_access_controls) {
+        logmsg(LOGMSG_WARN, "**Bypassing user authentication**\n");
+        return 1;
+    }
     return bdb_feature_get_int(bdb_state, tran, bdberr, LLMETA_AUTHENTICATION);
 }
 

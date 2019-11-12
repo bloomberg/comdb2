@@ -756,9 +756,6 @@ int gbl_pg_compact_latency_ms = 0;
 int gbl_large_str_idx_find = 1;
 int gbl_abort_invalid_query_info_key;
 
-extern int gbl_allow_user_schema;
-extern int gbl_uses_password;
-
 extern int gbl_direct_count;
 extern int gbl_parallel_count;
 extern int gbl_debug_sqlthd_failures;
