@@ -103,10 +103,10 @@ extern unsigned int gbl_delayed_skip;
 
 int gbl_osql_snap_info_hashcheck = 1;
 
-#if 1
+#if 0
 #define GOTOBACKOUT                                                            \
     do {                                                                       \
-        printf("***BACKOUT*** from td %ld %d rc %d\n", pthread_self(), __LINE__, rc); \
+        printf("***BACKOUT*** from %d rc %d\n", __LINE__, rc);                 \
         if (1)                                                                 \
             goto backout;                                                      \
     } while (0)
@@ -5914,6 +5914,8 @@ int get_blkmax(void) { return blkmax; }
 
 static uint64_t block_processor_ms = 0;
 
+int gbl_assert_toblock_nolock = 0;
+
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -5948,6 +5950,10 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     uint64_t end = gettimeofday_ms();
 
     bdb_assert_notran(thedb->bdb_env);
+
+    if (gbl_assert_toblock_nolock) {
+        bdb_assert_nolock(thedb->bdb_env);
+    }
 
     if (rc == 0) {
         osql_postcommit_handle(iq);
