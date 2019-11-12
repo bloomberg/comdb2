@@ -36,7 +36,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <sys/types.h>
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #include <execinfo.h>
 #include <walkback.h>
 #endif
@@ -54,7 +54,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #define PRINTF(...)
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
@@ -1923,6 +1923,37 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	return (ret);
 }
 
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+static void inline
+get_stack(struct __db_lock *lockp, DB_LOCK *lock)
+{
+	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
+
+	if (lockp->gen != lockp->stack_gen + 1) {
+		abort();
+	}
+	lockp->stack_gen = lockp->gen;
+	lockp->tid = pthread_self();
+	lockp->lock = lock;
+}
+#endif
+
+static void inline
+stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_LOCK_GEN_INCREMENT
+	get_stack(lockp, lock);
+#endif
+}
+
+static void inline
+stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_GET_LOCK
+	get_stack(lockp, lock);
+#endif
+}
+
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
 static inline int
 is_comdb2_rowlock(u_int32_t sz)
@@ -2818,6 +2849,7 @@ expired:			obj_ndx = sh_obj->index;
 	lock->off = R_OFFSET(&lt->reginfo, newl);
 	lock->gen = newl->gen;
 	lock->mode = newl->mode;
+	stack_at_get_lock(newl, lock);
 	sh_locker->nlocks++;
 
 
@@ -3122,21 +3154,6 @@ __lock_downgrade(dbenv, lock, new_mode, flags)
 
 out:	UNLOCKREGION(dbenv, lt);
 	return (ret);
-}
-
-static void inline
-stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
-{
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
-	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
-
-	if (lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
-#endif
 }
 
 static int
