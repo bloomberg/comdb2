@@ -4662,8 +4662,9 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                 continue;
         }
 
-        char *rephostname =
-            alloca(strlen(host_node_ptr->host) + strlen(subnet) + 1);
+        int loc_len = strlen(host_node_ptr->host) + strlen(subnet);
+        char tmp_hostname[loc_len + 1];
+        char *rephostname = tmp_hostname;
         strcpy(rephostname, host_node_ptr->host);
         if (subnet[0]) {
             strcat(rephostname, subnet);

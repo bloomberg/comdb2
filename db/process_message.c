@@ -612,6 +612,10 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
     }
 }
 
+extern int gbl_fdb_track;
+extern int gbl_fdb_track_hints;
+extern unsigned long long release_locks_on_si_lockwait_cnt;
+extern int reset_blkmax(void);
 extern int gbl_new_snapisol;
 #ifdef NEWSI_STAT
 void bdb_print_logfile_pglogs_stat();
@@ -735,7 +739,6 @@ clipper_usage:
         free(subnet);
     }
     else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
-        extern int gbl_fdb_track;
 
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);
@@ -746,7 +749,6 @@ clipper_usage:
         dbgflag = toknum(tok, ltok);
         gbl_fdb_track = dbgflag;
     } else if (tokcmp(tok, ltok, "fdbtrackhints") == 0) {
-        extern int gbl_fdb_track_hints;
 
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);
@@ -898,8 +900,6 @@ clipper_usage:
 #if defined SET_GBLCONTEXT_TEST_TRAPS
     else if (tokcmp(tok, ltok, "setcontext") == 0) {
         unsigned long long ctxt;
-        extern void set_gblcontext(void *bdb_state,
-                                   unsigned long long gblcontext);
         tok = segtok(line, lline, &st, &ltok);
         ctxt = strtoull(tok, NULL, 0);
         set_gblcontext(thedb->bdb_env, ctxt);
@@ -937,7 +937,6 @@ clipper_usage:
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
     } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
-        extern unsigned long long release_locks_on_si_lockwait_cnt;
         logmsg(LOGMSG_USER,
                "new snapshot is %s; new snapshot logging is %s; new snapshot "
                "as-of is %s\n",
@@ -1359,7 +1358,6 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "unknown diag command <%.*s>\n", ltok, tok);
         }
     } else if (tokcmp(tok, ltok, "reset_blkmax") == 0) {
-        extern int reset_blkmax(void);
         reset_blkmax();
         logmsg(LOGMSG_USER, "Reset blkmax\n");
     }

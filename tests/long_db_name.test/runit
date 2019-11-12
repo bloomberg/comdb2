@@ -73,33 +73,6 @@ do_verify()
     fi
 }
 
-# Do schema changes
-do_schema_changes()
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t2.csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
-}
-
 # Update all records in the table
 update_all_records()
 {
