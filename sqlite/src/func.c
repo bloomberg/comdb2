@@ -468,8 +468,8 @@ static void tableNamesFunc(
   }
   sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
   for(i=0; i<sParse.nSrcListOnly; i++){
-    if( i>0 ) sqlite3_str_append(&src, ", ", 2);
-    sqlite3_str_appendall(&src, sParse.azSrcListOnly[i]);
+    if( i>0 ) sqlite3_str_append(&str, ", ", 2);
+    sqlite3_str_appendall(&str, sParse.azSrcListOnly[i]);
   }
   sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1,
                       SQLITE_DYNAMIC);
