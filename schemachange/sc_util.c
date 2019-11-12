@@ -153,10 +153,6 @@ static inline int validate_ixname(const char *keynm)
         // go to ' ' or end of keynm
     }
 
-    if (*cptr == ' ') {
-        logmsg(LOGMSG_ERROR, "Key '%s' contains space character\n", keynm);
-        return SC_BAD_INDEX_NAME;
-    }
     if (cptr - keynm < 1) {
         logmsg(LOGMSG_ERROR, "Length of key '%s' must be > 0\n", keynm);
         return SC_BAD_INDEX_NAME;
