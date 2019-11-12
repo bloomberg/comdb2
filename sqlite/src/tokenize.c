@@ -699,6 +699,7 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
           sqlite3DbFree(db, pParse->zErrMsg);
           pParse->zErrMsg = 0;
         }
+        pParse->rc = SQLITE_OK;
         break;
       }
     }
