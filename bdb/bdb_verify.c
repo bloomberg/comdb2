@@ -352,8 +352,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                 rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                 if (rc) {
                     par->verify_status = 1;
-                    locprint(par, "!%016llx cursor on blob %d rc %d", genid_flipped,
-                             blobno, rc);
+                    locprint(par, "!%016llx cursor on blob %d rc %d",
+                             genid_flipped, blobno, rc);
                     rc = 0;
                     goto next_record;
                 }
@@ -376,14 +376,15 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                     if (blobsizes[blobno] != -1 && blobsizes[blobno] != -2) {
                         had_errors = 1;
                         par->verify_status = 1;
-                        locprint(par, "!%016llx no blob %d found expected sz %d",
+                        locprint(par,
+                                 "!%016llx no blob %d found expected sz %d",
                                  genid_flipped, blobno, blobsizes[blobno]);
                     }
                 } else if (rc) {
                     had_irrecoverable_errors = 1;
                     par->verify_status = 1;
-                    locprint(par, "!%016llx blob %d rc %d", genid_flipped, blobno,
-                             rc);
+                    locprint(par, "!%016llx blob %d rc %d", genid_flipped,
+                             blobno, rc);
                     had_errors = 1;
                 }
 
@@ -396,15 +397,19 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                         had_errors = 1;
                     } else if (blobsizes[blobno] == -2) {
                         par->verify_status = 1;
-                        locprint(par, "!%016llx blob %d size %d expected none (inline vutf8)",
+                        locprint(par,
+                                 "!%016llx blob %d size %d expected none "
+                                 "(inline vutf8)",
                                  genid_flipped, blobno, realblobsz[blobno]);
                         had_errors = 1;
                     } else if (blobsizes[blobno] != -1 &&
                                dbt_blob_data.size != blobsizes[blobno]) {
                         par->verify_status = 1;
-                        locprint(par, "!%016llx blob %d size mismatch got %d expected %d",
-                                 genid_flipped, blobno, dbt_blob_data.size,
-                                 blobsizes[blobno]);
+                        locprint(
+                            par,
+                            "!%016llx blob %d size mismatch got %d expected %d",
+                            genid_flipped, blobno, dbt_blob_data.size,
+                            blobsizes[blobno]);
                         had_errors = 1;
                     }
 
@@ -452,7 +457,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                                        expected_keybuf, &keylen);
             if (rc) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d formkey rc %d", genid_flipped, ix, rc);
+                locprint(par, "!%016llx ix %d formkey rc %d", genid_flipped, ix,
+                         rc);
                 ckey->c_close(ckey);
                 ckey = NULL;
                 rc = 0;
@@ -492,7 +498,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             if (!(has_keys & (1ULL << ix))) {
                 if (!rc && (bdb_state->ixdups[ix] || genid == verify_genid)) {
                     par->verify_status = 1;
-                    locprint(par, "!%016llx ix %d expect notfound but got an index",
+                    locprint(par,
+                             "!%016llx ix %d expect notfound but got an index",
                              genid_flipped, ix);
                 }
             } else if (rc == DB_NOTFOUND) {
@@ -500,11 +507,12 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                 locprint(par, "!%016llx ix %d missing key", genid_flipped, ix);
             } else if (rc) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d fetch rc %d", genid_flipped, ix, rc);
+                locprint(par, "!%016llx ix %d fetch rc %d", genid_flipped, ix,
+                         rc);
             } else if (genid != verify_genid) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d genid mismatch %016llx", genid_flipped,
-                         ix, verify_genid);
+                locprint(par, "!%016llx ix %d genid mismatch %016llx",
+                         genid_flipped, ix, verify_genid);
             }
 
             ckey->c_close(ckey);
@@ -694,7 +702,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             par->verify_status = 1;
             char hexstr[dbt_key.size * 2 + 1];
             util_tohex(hexstr, dbt_key.data, dbt_key.size);
-            locprint(par, "!%016llx ix %d orphaned %s", genid_flipped, ix, hexstr);
+            locprint(par, "!%016llx ix %d orphaned %s", genid_flipped, ix,
+                     hexstr);
             goto next_key;
         } else if (rc) {
             par->verify_status = 1;
@@ -863,7 +872,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
             if (expected_size != bdb_state->lrl) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d dtacpy payload wrong size expected %d got %d",
+                locprint(par,
+                         "!%016llx ix %d dtacpy payload wrong size expected %d "
+                         "got %d",
                          genid_flipped, ix, bdb_state->lrl, expected_size);
                 goto next_key;
             }
@@ -871,8 +882,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             if (memcmp(expected_data, dbt_dta_check_data.data,
                        bdb_state->lrl)) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d dtacpy data mismatch", genid_flipped,
-                         ix);
+                locprint(par, "!%016llx ix %d dtacpy data mismatch",
+                         genid_flipped, ix);
                 goto next_key;
             }
 
@@ -880,7 +891,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             if (dbt_data.size !=
                 (sizeof(unsigned long long) + 4 * bdb_state->ixcollattr[ix])) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d decimal payload wrong size expected %zu got %d",
+                locprint(par,
+                         "!%016llx ix %d decimal payload wrong size expected "
+                         "%zu got %d",
                          genid_flipped, ix,
                          sizeof(unsigned long long) +
                              4 * bdb_state->ixcollattr[ix],
@@ -891,7 +904,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         } else {
             if (dbt_data.size != sizeof(unsigned long long)) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d payload wrong size expected 8 got %d",
+                locprint(par,
+                         "!%016llx ix %d payload wrong size expected 8 got %d",
                          genid_flipped, ix, dbt_data.size);
                 goto next_key;
             }
@@ -904,7 +918,9 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             masked_genid = get_search_genid(bdb_state, genid);
             if (memcmp(&genid_left, &masked_genid, sizeof(genid))) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix %d dupe key genid != dta genid %016llx (%016llx)",
+                locprint(par,
+                         "!%016llx ix %d dupe key genid != dta genid %016llx "
+                         "(%016llx)",
                          genid_left, ix, masked_genid, genid);
             }
         }
@@ -922,13 +938,17 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                                lid, &ridx);
             if (rc == DB_NOTFOUND) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix '%d' key '%s': foreign key table '%s' key '%s' not found\n",
+                locprint(par,
+                         "!%016llx ix '%d' key '%s': foreign key table '%s' "
+                         "key '%s' not found\n",
                          genid, ix, ix_constraint->lclkeyname,
                          ix_constraint->table[ridx],
                          ix_constraint->keynm[ridx]);
             } else if (rc) {
                 par->verify_status = 1;
-                locprint(par, "!%016llx ix '%d' key '%s' foreign key table '%s' key '%s' error loading rc = %d\n",
+                locprint(par,
+                         "!%016llx ix '%d' key '%s' foreign key table '%s' key "
+                         "'%s' error loading rc = %d\n",
                          genid, ix, ix_constraint->lclkeyname,
                          ix_constraint->table[ridx], ix_constraint->keynm[ridx],
                          rc);
@@ -966,7 +986,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 
     if (!db) {
         par->verify_status = 1;
-        locprint(par, "incorrect number of blobs? blob index %d stripe %d has no DB",
+        locprint(par,
+                 "incorrect number of blobs? blob index %d stripe %d has no DB",
                  blobno, dtastripe);
         return;
     }

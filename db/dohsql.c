@@ -24,7 +24,7 @@
 #include "sqlinterfaces.h"
 #include "memcompare.c"
 
-extern char *print_mem(Mem * m);
+extern char *print_mem(Mem *m);
 
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
