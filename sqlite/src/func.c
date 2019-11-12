@@ -461,15 +461,15 @@ static void tableNamesFunc(
   char *zErrMsg = 0;
   if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
   memset(&sParse, 0, sizeof(Parse));
-  if( sqlite3RunParser(&sParse, sqlite3_value_text(argv[0]), &zErrMsg) ){
+  if( sqlite3RunParser(&sParse, (char*)sqlite3_value_text(argv[0]), &zErrMsg) ){
     sqlite3_result_error(context, zErrMsg, -1);
     sqlite3ParserReset(&sParse);
     return;
   }
   sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
-  for(i=0; i<pParse->nSrcListOnly; i++){
+  for(i=0; i<sParse.nSrcListOnly; i++){
     if( i>0 ) sqlite3_str_append(&src, ", ", 2);
-    sqlite3_str_appendall(&src, pParse->azSrcListOnly[i]);
+    sqlite3_str_appendall(&src, sParse.azSrcListOnly[i]);
   }
   sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1,
                       SQLITE_DYNAMIC);
