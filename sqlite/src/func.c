@@ -461,6 +461,7 @@ static void tableNamesFunc(
   char *zErrMsg = 0;
   if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
   memset(&sParse, 0, sizeof(Parse));
+  sParse.db = db;
   sParse.prepFlags = PREPARE_SRCLIST_ONLY;
   if( sqlite3RunParser(&sParse, (char*)sqlite3_value_text(argv[0]), &zErrMsg) ){
     sqlite3_result_error(context, zErrMsg, -1);
