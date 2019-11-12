@@ -1346,7 +1346,8 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
 {
-    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+    //return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+    return close_dbs_int(bdb_state, tid, 0);
 }
 
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
