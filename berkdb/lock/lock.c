@@ -1925,11 +1925,11 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 
 #if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 static void inline
-get_stack(struct __db_lock *lockp, DB_LOCK *lock)
+get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
 {
 	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
 
-	if (lockp->gen != lockp->stack_gen + 1) {
+	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
 		abort();
 	}
 	lockp->stack_gen = lockp->gen;
@@ -1942,7 +1942,7 @@ static void inline
 stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
 {
 #ifdef STACK_AT_LOCK_GEN_INCREMENT
-	get_stack(lockp, lock);
+	get_stack(lockp, lock, 1);
 #endif
 }
 
@@ -1950,7 +1950,7 @@ static void inline
 stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
 {
 #ifdef STACK_AT_GET_LOCK
-	get_stack(lockp, lock);
+	get_stack(lockp, lock, 0);
 #endif
 }
 
