@@ -184,6 +184,7 @@ static int connect_instance(int servicefd, char *name)
 }
 
 static int alloc_port(const char *);
+static int route_to_instance(char *, int);
 int client_func(int fd)
 {
     char cmd[256] = {0};
@@ -220,6 +221,10 @@ int client_func(int fd)
             int rc = write(fd, s.c_str(), strlen(s.c_str()));
             if (rc == -1)
                 std::cerr << "write() returns rc = " << rc << std::endl;
+        } else if (strncasecmp(cmd, "rte", 3) == 0) {
+            if (route_to_instance(svc, fd) == -1) {
+                write(fd, "-1\n", 3);
+            }
         }
 #       endif
         close(fd);
@@ -571,7 +576,7 @@ static void conn_printf(connection &c, const char *fmt, ...)
     out = sqlite3_vmprintf(fmt, args);
     va_end(args);
 #ifdef VERBOSE
-    syslog(LOG_INFO, "sending: %s\n", out);
+    syslog(LOG_INFO, "sending: %s", out);
 #endif
     c.out.push_back(out);
     sqlite3_free(out);
@@ -584,7 +589,6 @@ static int route_to_instance(char *svc, int fd)
         const char *msg = "pmux";
         return send_fd(routefd, msg, size_t(strlen(msg)), fd);
     }
-
     return -1;
 }
 
@@ -775,7 +779,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
         return 0;
     }
 #ifdef VERBOSE
-    syslog(LOG_INFO, "read %zd:\n", n);
+//  syslog(LOG_INFO, "read %zd:\n", n);
 //  fsnapf(stdout, c.inbuf + c.inoff, n);
 #endif
 
