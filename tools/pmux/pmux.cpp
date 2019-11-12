@@ -55,6 +55,10 @@
 #include <signal.h>
 #include <syslog.h>
 #include <netdb.h>
+
+//#define VERBOSE
+#define REQUIRE_HELLO
+
 #ifdef VERBOSE
 #include <fsnapf.h>
 #endif
@@ -179,31 +183,45 @@ static int connect_instance(int servicefd, char *name)
     return rc;
 }
 
+static int alloc_port(const char *);
 int client_func(int fd)
 {
-    char service[256] = {0};
-    int listenfd = fd;
+    char cmd[256] = {0};
+    ssize_t n = read(fd, cmd, sizeof(cmd) - 1);
 #ifdef VERBOSE
-    fprintf(stderr, "Starting client thread \n");
-#endif
-    ssize_t n = read(listenfd, service, sizeof(service) - 1);
-#ifdef VERBOSE
-    fprintf(stderr, "%s\n", service);
+    fprintf(stderr, "Starting client thread cmd:%s", cmd);
 #endif
     char *sav;
-    char *cmd = strtok_r(service + 4, " \n", &sav);
-    if (strncasecmp(service, "reg", 3) == 0) {
+    char *svc = strtok_r(cmd + 4, " \n", &sav);
+    if (strncasecmp(cmd, "reg", 3) == 0) {
         {
             std::lock_guard<std::mutex> l(active_services_mutex);
-            if (active_services.find(cmd) == active_services.end()) {
-                syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
-                        cmd);
-                close(fd);
-                return -1;
+            if (active_services.find(svc) == active_services.end()) {
+#               ifdef REQUIRE_HELLO
+                    syslog(LOG_WARNING, "reg request:%s, not an active service\n", svc);
+                    close(fd);
+                    return -1;
+#               else
+                    active_services.insert(std::string(svc));
+                    if (get_svc_port(svc) == -1) {
+                        alloc_port(svc);
+                    }
+#               endif
             }
         }
-        connect_instance(listenfd, cmd);
+        connect_instance(fd, svc);
     } else {
+#       ifndef REQUIRE_HELLO
+        if (strncasecmp(cmd, "get", 3) == 0) {
+            int port = get_svc_port(svc);
+            std::stringstream out;
+            out << port;
+            std::string s = out.str();
+            int rc = write(fd, s.c_str(), strlen(s.c_str()));
+            if (rc == -1)
+                std::cerr << "write() returns rc = " << rc << std::endl;
+        }
+#       endif
         close(fd);
     }
     return 0;
@@ -757,7 +775,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
         return 0;
     }
 #ifdef VERBOSE
-    syslog(LOG_INFO, "read %d:\n", n);
+    syslog(LOG_INFO, "read %zd:\n", n);
 //  fsnapf(stdout, c.inbuf + c.inoff, n);
 #endif
 
@@ -884,7 +902,7 @@ static int poll_loop(const std::vector<int> &ports,
             wl.pop_front();
             bytes_written = write(fd.fd, out.data(), out.size());
 #ifdef VERBOSE
-            syslog(LOG_INFO, "wrote %d/%d bytes\n", bytes_written, out.size());
+            syslog(LOG_INFO, "wrote %d/%zu bytes\n", bytes_written, out.size());
 #endif
             if (bytes_written == -1)
                 unwatchfd(fd);
