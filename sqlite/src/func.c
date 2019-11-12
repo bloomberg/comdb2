@@ -982,12 +982,26 @@ static void md5Func(
     MD5Context ctx = {0};
     char checksum[16];
     char out[33];
+    unsigned int len;
+    int type = sqlite3_value_type(argv[0]);
 
-    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT)
-        return;
-    s = sqlite3_value_text(argv[0]);
+    switch (type) {
+        case SQLITE_TEXT:
+            s = sqlite3_value_text(argv[0]);
+            len = strlen((char*) s);
+            break;
+
+        case SQLITE_BLOB:
+            s = sqlite3_value_blob(argv[0]);
+            len = sqlite3_value_bytes(argv[0]);
+            break;
+
+        default:
+            return;
+    }
+
     MD5Init(&ctx);
-    MD5Update(&ctx, (unsigned char*) s, strlen((char*) s));
+    MD5Update(&ctx, (unsigned char*) s, len);
     MD5Final((unsigned char*) checksum, &ctx);
     util_tohex(out, (char*) checksum, sizeof(checksum));
     sqlite3_result_text(context, strdup(out), 32, free);
