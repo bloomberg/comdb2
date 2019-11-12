@@ -326,7 +326,7 @@ static void ma_stats_dashes(int length, int toctrc);
 /* print table head. if `percentage' is no-zero, a '%' column head will be added
  */
 static int ma_stats_head(size_t maxnamesz, size_t maxscopesz, int columns,
-                         int verbose, int hr, int percentage, int toctrc);
+                         int verbose, int percentage, int toctrc);
 
 /* default stats display function on `cm'.
    this will be overridden if a stats callback has been defined through
@@ -1857,7 +1857,7 @@ static void ma_stats_dashes(int length, int toctrc)
 }
 
 static int ma_stats_head(size_t maxnamesz, size_t maxscopesz, int columns,
-                         int verbose, int hr, int percentage, int toctrc)
+                         int verbose, int percentage, int toctrc)
 {
     char head[256];
     size_t len = 256, ofs = 0;
