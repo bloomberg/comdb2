@@ -286,18 +286,6 @@ else()
   add_definitions(-DPAGELIST_DEBUG=0)
 endif()
 
-option(STACK_AT_GET_LOCK "Save a cheap-stack at every lock-get" OFF)
-mark_as_advanced(STACK_AT_GET_LOCK)
-if(STACK_AT_GET_LOCK)
-  add_definitions(-DSTACK_AT_GET_LOCK)
-endif()
-
-option(STACK_AT_DB_OPEN "Save a cheap-stack at every db_open" OFF)
-mark_as_advanced(STACK_AT_DB_OPEN)
-if(STACK_AT_DB_OPEN)
-  add_definitions(-DSTACK_AT_DB_OPEN)
-endif()
-
 option(WRITELOCK_HANDLE_DUMP_MATCHING "Dump matching handles at writelock" OFF)
 mark_as_advanced(WRITELOCK_HANDLE_DUMP_MATCHING)
 if(WRITELOCK_HANDLE_DUMP_MATCHING)

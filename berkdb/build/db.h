@@ -38,17 +38,6 @@
 #include <mem_override.h>
 #endif
 
-#if defined (STACK_AT_DB_OPEN) || defined (STACK_AT_LOCK_GEN_INCREMENT) || \
-	defined (STACK_AT_GET_LOCK)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#endif
-#endif
-
 #include <netinet/in.h>
 
 #ifndef __NO_SYSTEM_INCLUDES
@@ -1377,10 +1366,7 @@ void timeval_add(struct timeval *tvp,
 				  struct timeval *uvp,
 				  struct timeval *vvp);
 
-#if defined (STACK_AT_DB_OPEN) || defined (STACK_AT_GET_LOCK) || \
-	defined (STACK_AT_LOCK_GEN_INCREMENT)
-#define MAX_FRAMES 64
-#endif
+#define MAX_BERK_STACK_FRAMES 64
 
 /* Database handle. */
 struct __db {
@@ -1437,7 +1423,7 @@ struct __db {
 
 #if defined (STACK_AT_DB_OPEN)
 	int  frames;
-	void *buf[MAX_FRAMES];
+	void *buf[MAX_BERK_STACK_FRAMES];
 	pthread_t tid;
 #endif
 

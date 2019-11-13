@@ -37,6 +37,16 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 
 #include <string.h>
 
+#if defined (STACK_AT_DB_OPEN)
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
+#endif
+
 /*
  * __db_open --
  *	DB->open method.
@@ -239,7 +249,7 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 		dbp->offset_bias = 1;
 
 #if defined (STACK_AT_DB_OPEN)
-	dbp->frames = backtrace(dbp->buf, MAX_FRAMES);
+	dbp->frames = backtrace(dbp->buf, MAX_BERK_STACK_FRAMES);
 	dbp->tid = pthread_self();
 #endif
 	// printf(">>>> %s pagesize %d bias %d\n", fname, dbp->pgsize, dbp->offset_bias);
