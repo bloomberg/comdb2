@@ -5768,6 +5768,7 @@ int sqlite3Select(
     SrcList *pSrc = p->pSrc;
     int iSrc;
     if( !pSrc ) goto select_end;
+    if( pSrc->nSrc==0 ) goto select_end;
     pParse->azSrcListOnly = sqlite3DbMallocZero(db, pSrc->nSrc * sizeof(char*));
     if( db->mallocFailed ) goto select_end;
     for(iSrc=0; iSrc<pSrc->nSrc; iSrc++){
