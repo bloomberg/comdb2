@@ -137,45 +137,6 @@ if [[ $? != 0 ]]; then
 fi
 
 
-echo "Add index with spaces -- should not succeed"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
-create table t5 {
-schema
-{
-   int  id
-   blob b1 null=yes
-}
-keys
-{
-   dup "KEYWITH SPACE"  = id
-}
-}\$\$
-EOF
-if [[ $? == 0 ]]; then
-    failexit "Schemachange has succeded and thats a problem"
-fi
-
-
-echo "Alter index with spaces -- should not succeed"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
-alter table t4 {
-schema
-{
-   int  id
-   blob b1 null=yes
-}
-keys
-{
-   dup "KEYWITH SPACE"  = id
-}
-}\$\$
-EOF
-if [[ $? == 0 ]]; then
-    failexit "Schemachange has succeded and thats a problem"
-fi
-
-
-
 echo "Add index with empty name -- should not succeed"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
 create table t5 {
