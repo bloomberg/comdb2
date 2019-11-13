@@ -238,6 +238,10 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	} else
 		dbp->offset_bias = 1;
 
+#if defined (STACK_AT_DB_OPEN)
+	dbp->frames = backtrace(dbp->buf, MAX_FRAMES);
+	dbp->tid = pthread_self();
+#endif
 	// printf(">>>> %s pagesize %d bias %d\n", fname, dbp->pgsize, dbp->offset_bias);
 
 	/*
