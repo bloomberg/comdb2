@@ -9374,12 +9374,8 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     int rc = 0;
     uint32_t curtran_flags;
     int bdberr;
-#if 0
-   char buf[160];
-#endif
 
-    /* Should never have schema lock here */
-   assert_no_schema_lk();
+    assert_no_schema_lk();
 
     if (clnt->recover_deadlock_rcode) {
         assert(bdb_lockref() == 0);
@@ -9419,10 +9415,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             return -300;
         }
     }
-#if 0
-   sprintf(buf, "recover_deadlock put curtran tid %d\n", pthread_self());
-   bdb_bdblock_print(thedb->bdb_env, buf);
-#endif
 
     if (unlikely(gbl_sql_random_release_interval)) {
         logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);

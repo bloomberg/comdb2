@@ -1875,11 +1875,4 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "thread.  (Default: 8 MiB)",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
-
-REGISTER_TUNABLE("assert_toblock_nolock",
-                 "Abort if block-processor maintains a lock after completion.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_assert_toblock_nolock,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 #endif /* _DB_TUNABLES_H */

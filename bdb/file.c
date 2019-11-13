@@ -1338,8 +1338,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
 {
-    //return close_dbs_int(bdb_state, tid, DB_NOSYNC);
-    return close_dbs_int(bdb_state, tid, 0);
+    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
 }
 
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
@@ -4084,7 +4083,6 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
-    /* This call should be protected by the schema lock */
     assert_wrlock_schema_lk();
 
 deadlock_again:
@@ -8486,8 +8484,3 @@ void bdb_assert_notran(bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_assert_notran(bdb_state->dbenv);
 }
 
-/* This is an expensive function */
-void bdb_assert_nolock(bdb_state_type *bdb_state)
-{
-    bdb_state->dbenv->lock_assert_none(bdb_state->dbenv);
-}

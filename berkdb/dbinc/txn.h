@@ -69,7 +69,7 @@ typedef struct __txn_detail {
 	u_int32_t bqual;		/* bqual_length from XID */
 	u_int32_t gtrid;		/* gtrid_length from XID */
 	int32_t format;			/* XA format */
-    pthread_t tid;
+	pthread_t tid;
 } TXN_DETAIL;
 
 /*

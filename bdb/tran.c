@@ -1692,8 +1692,6 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
            abort it again, and we don't want that (though it won't do any
            harm) */
 
-        logmsg(LOGMSG_USER, "%s:%d tran aborted=%d\n", __func__, __LINE__,
-                tran->aborted);
         if (tran->aborted) {
             needed_to_abort = 1;
 
@@ -1729,8 +1727,6 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                 outrc = -1;
                 goto cleanup;
             }
-            logmsg(LOGMSG_USER, "%s:%d committed logical txn\n", __func__,
-                    __LINE__);
             tran->physical_tran = tran->sc_parent_tran;
             tran->sc_parent_tran = NULL;
             tran->schema_change_txn = 0; // done
