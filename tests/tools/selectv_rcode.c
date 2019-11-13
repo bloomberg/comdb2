@@ -757,7 +757,7 @@ void *thd(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    char opt, err = 0;
+    int opt, err = 0;
     int test_time = 60;
     int nthreads, ix;
 
@@ -765,7 +765,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     srand(time(NULL) * getpid());
 
-    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARDh")) != -1) {
+    while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARDh")) != EOF) {
         switch (opt) {
             case 'd':
                 dbname = optarg;

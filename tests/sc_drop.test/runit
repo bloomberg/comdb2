@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 #kill any background jobs remaining upon exiting
 trap 'kill $(jobs -pr)' SIGINT SIGTERM EXIT
@@ -16,21 +17,6 @@ function failexit
 {
     echo "Failed $@"
     exit -1
-}
-
-assertcnt ()
-{
-    local tbl=$1
-    local target=$2
-    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "tbl $tbl count is now $cnt but should be $target"
-    fi
 }
 
 

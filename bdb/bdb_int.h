@@ -76,7 +76,7 @@ enum {
 };
 
 /* snapisol log ops */
-enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 };
+typedef enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 } log_ops_t;
 
 /* These are the fields of the ondisk header.  This is not the ondisk
  * representation but a convenient format for passing the header around in

@@ -5972,7 +5972,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+        logmsg(LOGMSG_USER,
+               "%" PRIu64 " total time spent in the block processor\n",
                block_processor_ms);
     }
 

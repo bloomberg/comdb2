@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 set -e
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Debug variable
 debug=0
@@ -23,19 +24,6 @@ failexit()
     exit -1
 }
 
-assertcnt ()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 echo $CDB2_CONFIG
 CNT=10000
@@ -71,7 +59,7 @@ set -x
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1' > content.out
 echo 'failure in transactions inserting will mean count will be off'
-assertcnt $((CNT*PARALLEL*3))
+assertcnt t1 $((CNT*PARALLEL*3))
 
 echo "make sure we can find all the ids (field 1) from content.out"
 cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1

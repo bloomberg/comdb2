@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -88,7 +89,7 @@ void *schedule_thd(void *arg)
     char *ch;
     int64_t host = u->thd + 1;
 
-    snprintf(sql, sizeof(sql), "selectv_thd%ld.log", host);
+    snprintf(sql, sizeof(sql), "selectv_thd%"PRId64".log", host);
     FILE *f = fopen(sql, "w");
     if (f == NULL) {
         fprintf(stderr, "%s:%d Error opening log file %s\n", __func__, __LINE__,
@@ -194,8 +195,8 @@ void *schedule_thd(void *arg)
             int i = 0;
             for (i = 0; i < n; i++) {
                 snprintf(sql, sizeof(sql),
-                         "update jobs set state = state + 1, updatehost = %ld "
-                         "where instid = %ld",
+                         "update jobs set state = state + 1, updatehost = %"PRId64
+                         " where instid = %"PRId64,
                          host, ids[i]);
                 if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
                     fprintf(f, "%s:%d error selectv record.\n", __func__,
@@ -264,7 +265,7 @@ retry_add:
             for (i = 0; i < n; i++) {
                 snprintf(sql, sizeof(sql),
                          "insert into schedule(instid, state, updatehost) "
-                         "values(%ld, %d, %ld)",
+                         "values(%"PRId64", %d, %"PRId64")",
                          ids[i], 1, host);
                 if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
                     fprintf(f, "%s:%d error insert record.\n", __func__,
@@ -301,7 +302,7 @@ retry_add:
             } else if (ret) {
                 fprintf(f, "BUG: FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
-                fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT: RET %d, ERR %s\n",
+                fprintf(stderr, "BUG in thread %"PRId64": FAILED TO INSERT: RET %d, ERR %s\n",
                         host, ret, cdb2_errstr(sqlh));
                 failexit(__func__, __LINE__, 1);
             }
@@ -316,7 +317,7 @@ retry_add:
         } else {
 			fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
-            fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE: RET %d, ERR %s\n", 
+            fprintf(stderr, "BUG in thread %"PRId64": FAILED TO UPDATE: RET %d, ERR %s\n", 
                     host, ret, cdb2_errstr(sqlh));
             failexit(__func__, __LINE__, 1);
         }

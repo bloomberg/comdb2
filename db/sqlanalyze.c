@@ -46,7 +46,7 @@ static int analyze_thread_memory = 1048576;
 extern void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
-volatile uint32_t analyze_running_flag = 0;
+uint32_t analyze_running_flag = 0;
 static int analyze_abort_requested = 0;
 
 /* global enable / disable switch */

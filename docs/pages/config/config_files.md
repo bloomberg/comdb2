@@ -951,6 +951,7 @@ configurations:
     legacy_schema on
     logmsg level info
     logmsg notimestamp
+    logmsg skiplevel
     logput window 1
     noblobstripe
     nochecksums

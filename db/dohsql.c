@@ -24,6 +24,8 @@
 #include "sqlinterfaces.h"
 #include "memcompare.c"
 
+extern char *print_mem(Mem *m);
+
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
 int gbl_dohsql_max_queued_kb_highwm = 10000000; /* 10 GB */
@@ -1487,7 +1489,6 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
             assert(orderby_idx > 0);
             orderby_idx--;
             if (gbl_dohsql_verbose) {
-                extern char *print_mem(Mem * m);
                 logmsg(LOGMSG_USER, "%lu COMPARE %s <> %s\n", pthread_self(),
                        print_mem(&a[orderby_idx]), print_mem(&b[orderby_idx]));
             }

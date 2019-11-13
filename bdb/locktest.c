@@ -143,7 +143,7 @@ static void *test_lockmgr(void *_arg)
 
     rc = dbenv->lock_id(dbenv, &locker);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "lock_id rc: %ld\n", rc);
+        logmsg(LOGMSG_ERROR, "lock_id rc: %zu\n", rc);
         goto out;
     }
 
@@ -177,7 +177,7 @@ static void *test_lockmgr(void *_arg)
 id_free:
     rc1 = dbenv->lock_id_free(dbenv, locker);
     if (rc1) {
-        logmsg(LOGMSG_ERROR, "lock_id_free rc: %ld\n", rc1);
+        logmsg(LOGMSG_ERROR, "lock_id_free rc: %zu\n", rc1);
     }
 
 out:
@@ -326,7 +326,7 @@ static void *test_get_put(void *_mode)
 
     rc = dbenv->lock_id(dbenv, &locker);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "lock_id rc: %ld\n", rc);
+        logmsg(LOGMSG_ERROR, "lock_id rc: %zu\n", rc);
         return (void *)rc;
     }
 
@@ -334,22 +334,22 @@ static void *test_get_put(void *_mode)
     while (!stop) {
         rc = dbenv->lock_get(dbenv, locker, 0, &obj, mode, &lock);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "lock_get rc: %ld\n", rc);
+            logmsg(LOGMSG_ERROR, "lock_get rc: %zu\n", rc);
             break;
         }
         ++counter;
         rc = dbenv->lock_put(dbenv, &lock);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "lock_get rc: %ld\n", rc);
+            logmsg(LOGMSG_ERROR, "lock_get rc: %zu\n", rc);
             break;
         }
     }
     end = gettimeofday_ms();
-    logmsg(LOGMSG_USER, "diff: %lums (%.2fs) ", end - start,
-            (end - start) / 1000.0);
+    logmsg(LOGMSG_USER, "diff: %" PRIu64 "ms (%.2fs) ", end - start,
+           (end - start) / 1000.0);
     rc1 = dbenv->lock_id_free(dbenv, locker);
     if (rc1) {
-        logmsg(LOGMSG_ERROR, "lock_id_free rc: %ld\n", rc1);
+        logmsg(LOGMSG_ERROR, "lock_id_free rc: %zu\n", rc1);
     }
     rc |= rc1;
     return (void *)rc;
@@ -365,7 +365,7 @@ static void test_lock_per_sec(db_lockmode_t mode)
     stop = 1;
     pthread_join(t, (void **)&rc);
     if (rc)
-        logmsg(LOGMSG_ERROR, "fail: %ld ", (ssize_t)rc);
+        logmsg(LOGMSG_ERROR, "fail: %zu ", (ssize_t)rc);
     else
         logmsg(LOGMSG_USER, "pass ");
 }
@@ -384,9 +384,10 @@ static void print_counters()
     for (int i = 0; i < THDS; ++i) {
         diff += diffs[i];
     }
-    logmsg(LOGMSG_USER, 
-        "detect_skip:%lu detect_run:%lu counter:%lu deadlock:%lu time:%.2fms\n",
-        detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
+    logmsg(LOGMSG_USER,
+           "detect_skip:%" PRIu64 " detect_run:%" PRIu64 " counter:%" PRIu64
+           " deadlock:%" PRIu64 " time:%.2fms\n",
+           detect_skip, detect_run, counter, deadlock, (double)diff / THDS);
 }
 
 static void test_n_locks_rd(void)
@@ -594,7 +595,7 @@ static ssize_t tester(const char *name, size_t num, tester_routine *routine)
     ssize_t s = 0;
     int i;
 
-    logmsg(LOGMSG_USER, "%s threads:%lu\n", name, num);
+    logmsg(LOGMSG_USER, "%s threads:%zu\n", name, num);
     for (i = 0; i < num; ++i) {
         arg[i].id = i;
         arg[i].num = num;

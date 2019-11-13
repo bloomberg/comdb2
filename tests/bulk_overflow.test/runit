@@ -146,6 +146,11 @@ function nextschema
 cdb2sql ${CDB2_OPTIONS} $db default "drop table t"
 cdb2sql ${CDB2_OPTIONS} $db default "create table t { `cat t.csc2 ` }"
 
+cp t_v1_sel.txt t_v2_sel.txt
+cp t_v1_sel.txt t_v3_sel.txt
+cp t_v1_sql.txt t_v2_sql.txt
+cp t_v1_sql.txt t_v3_sql.txt
+
 # Change schemas and select back in a loop
 while nextschema ; do
 
