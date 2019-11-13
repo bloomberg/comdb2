@@ -508,8 +508,8 @@ static void bdb_state_dump(FILE *out, const char *prefix,
     logmsgf(LOGMSG_USER, out, "%s->read_write = %d\n", prefix, bdb_state->read_write);
     logmsgf(LOGMSG_USER, out, "%s->master_cmpcontext = 0x%08llx\n", prefix,
             bdb_state->master_cmpcontext);
-    logmsgf(LOGMSG_USER, out, "%s->got_gblcontext = %d (gblcontext=0x%llx)\n", prefix,
-            bdb_state->got_gblcontext, bdb_state->gblcontext);
+    logmsgf(LOGMSG_USER, out, "%s->got_gblcontext = %d (gblcontext=0x%llx)\n",
+            prefix, bdb_state->got_gblcontext, get_gblcontext(bdb_state));
     logmsgf(LOGMSG_USER, out, "%s->genid_format = %s\n", prefix,
             genid_format_str(bdb_state->genid_format));
 
@@ -1414,7 +1414,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     }
 
     else if (tokcmp(tok, ltok, "gblcontext") == 0)
-        logmsg(LOGMSG_USER, "gblcontext = 0x%08llx\n", bdb_state->gblcontext);
+        logmsg(LOGMSG_USER, "gblcontext = 0x%08llx\n",
+               get_gblcontext(bdb_state));
 
     else if (tokcmp(tok, ltok, "cluster") == 0)
         netinfo_dump(out, bdb_state);
