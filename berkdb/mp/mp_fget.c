@@ -231,7 +231,6 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	DB_MPOOL_HASH *hp;
 	MPOOL *c_mp, *mp;
 	MPOOLFILE *mfp;
-	roff_t mf_offset;
 	u_int32_t n_cache, st_hsearch, alloc_flags;
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
@@ -253,7 +252,6 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	c_mp = NULL;
 	mp = dbmp->reginfo[0].primary;
 	mfp = dbmfp->mfp;
-	mf_offset = R_OFFSET(dbmp->reginfo, mfp);
 	alloc_bhp = bhp = NULL;
 	hp = NULL;
 	b_incr = extending = ret = is_recovery_page = 0;
@@ -320,10 +318,10 @@ hb_search:
 	 * local pointers to them.  Reset on each pass through this code, the
 	 * page number can change.
 	 */
-	n_cache = NCACHE(mp, mf_offset, *pgnoaddr);
+	n_cache = NCACHE(mp, mfp, *pgnoaddr);
 	c_mp = dbmp->reginfo[n_cache].primary;
 	hp = R_ADDR(&dbmp->reginfo[n_cache], c_mp->htab);
-	hp = &hp[NBUCKET(c_mp, mf_offset, *pgnoaddr)];
+	hp = &hp[NBUCKET(c_mp, mfp, *pgnoaddr)];
 
 	/* Search the hash chain for the page. */
 retry:	st_hsearch = 0;
@@ -331,7 +329,7 @@ retry:	st_hsearch = 0;
 	for (bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
 	    bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
 		++st_hsearch;
-		if (bhp->pgno != *pgnoaddr || bhp->mf_offset != mf_offset)
+		if (bhp->pgno != *pgnoaddr || bhp->mpf != mfp)
 			continue;
 
 		/*
@@ -501,11 +499,10 @@ alloc:		/*
 
 		/*
 		 * !!!
-		 * In the DB_MPOOL_NEW code path, mf_offset and n_cache have
+		 * In the DB_MPOOL_NEW code path, mfp and n_cache have
 		 * not yet been initialized.
 		 */
-		mf_offset = R_OFFSET(dbmp->reginfo, mfp);
-		n_cache = NCACHE(mp, mf_offset, *pgnoaddr);
+		n_cache = NCACHE(mp, mfp, *pgnoaddr);
 		c_mp = dbmp->reginfo[n_cache].primary;
 		alloc_flags = flags == DB_MPOOL_NOCACHE ? DB_MPOOL_LOWPRI : 0;
 
@@ -558,7 +555,7 @@ alloc:		/*
 		 */
 		if (flags == DB_MPOOL_NEW && *pgnoaddr != mfp->last_pgno + 1) {
 			*pgnoaddr = mfp->last_pgno + 1;
-			if (n_cache != NCACHE(mp, mf_offset, *pgnoaddr)) {
+			if (n_cache != NCACHE(mp, mfp, *pgnoaddr)) {
 				/*
 				 * flags == DB_MPOOL_NEW, so extending is set
 				 * and we're holding the region locked.
@@ -656,7 +653,7 @@ alloc:		/*
 		bhp->ref = 1;
 		bhp->priority = UINT32_T_MAX;
 		bhp->pgno = *pgnoaddr;
-		bhp->mf_offset = mf_offset;
+		bhp->mpf = mfp;
 		SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
 
 		hp->hash_priority =
@@ -887,7 +884,6 @@ __memp_read_recovery_pages(dbmfp)
 	DB_ENV *dbenv;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
 	int ret, free_buf, ftype, i;
@@ -916,22 +912,10 @@ __memp_read_recovery_pages(dbmfp)
 		free_buf = 1;
 	}
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
-	/* Get the page-cookie for data format. */
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len > 0) {
-			pginfo = (DB_PGINFO *)
-			    R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-		}
-		break;
+	if (mfp->pgcookie_len > 0) {
+		pginfo = (DB_PGINFO *)
+		R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
 	}
-
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-
 
 	/* Scan in each of the recovery pages. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {

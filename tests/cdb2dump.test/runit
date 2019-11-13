@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 CNT=100
 i=0
@@ -13,17 +14,6 @@ while [ $i -lt $CNT ] ; do
  let i=i+1
  echo "insert into t1(a, b) values (1, '0123456789')"
 done | cdb2sql ${CDB2_OPTIONS} $dbnm default -
-
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
 
 
 master=`getmaster`

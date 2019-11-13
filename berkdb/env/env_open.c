@@ -109,6 +109,11 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	u_int32_t init_flags, orig_flags;
 	int rep_check, ret;
 
+	for (int i = 0; i < DB_UNKNOWN; i++) {
+		dbenv->pgin[i] = NULL;
+		dbenv->pgout[i] = NULL;
+	}
+
 	orig_flags = dbenv->flags;
 	rep_check = 0;
 
@@ -661,7 +666,6 @@ foundlsn:
 		goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
-
 	return (0);
 
 err:				/* If we fail after creating the regions, remove them. */

@@ -80,7 +80,8 @@ void analyze_set_headroom(uint64_t headroom)
 {
     if (headroom < 1 || 100 < headroom) {
         logmsg(LOGMSG_ERROR,
-               "Invalid headroom %lu. Needs to be between 0 and 100%%\n",
+               "Invalid headroom %" PRIu64
+               ". Needs to be between 0 and 100%%\n",
                headroom);
         return;
     }

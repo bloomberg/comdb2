@@ -357,7 +357,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
 int release_locks_int(const char *trace, const char *func, int line);
 
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
-                            int *dirty, enum log_ops log_op, int *bdberr)
+                            int *dirty, log_ops_t log_op, int *bdberr)
 {
     extern int gbl_sql_release_locks_in_update_shadows;
     bdb_cursor_impl_t *cur = pcur_ifn->impl;

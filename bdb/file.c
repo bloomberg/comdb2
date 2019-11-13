@@ -1949,8 +1949,9 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
         logmsg(LOGMSG_WARN, "\n");
     }
 
-    logmsg(LOGMSG_WARN, "catching up (%d):: us: %s "
-                        " master : %s behind %lu\n",
+    logmsg(LOGMSG_WARN,
+           "catching up (%d):: us: %s "
+           " master : %s behind %" PRIu64 "\n",
            phase, lsn_to_str(our_lsn_str, our_lsn),
            lsn_to_str(master_lsn_str, master_lsn),
            subtract_lsn(bdb_state, master_lsn, our_lsn));

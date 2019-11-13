@@ -25,6 +25,7 @@
 #include <list.h>
 #include <plhash.h>
 #include <bpfunc.h>
+#include <compile_time_assert.h>
 
 #include <genid.h>
 #include <net_types.h>
@@ -2670,12 +2671,6 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-#ifdef _AIX
-#pragma options align = packed
-#else
-#pragma pack(1)
-#endif
-
 typedef struct recgenid_key {
     int tablename_len;
     char tablename[MAXTABLELEN];
@@ -2683,15 +2678,12 @@ typedef struct recgenid_key {
     unsigned long long genid;
 } recgenid_key_t;
 
+BB_COMPILE_TIME_ASSERT(recgenid_key_size,
+                       sizeof(recgenid_key_t) == 4 + MAXTABLELEN + 4 + 8);
+
 #define RECGENID_KEY_PACKED_LEN(k)                                             \
     (sizeof((k).tablename_len) + (k).tablename_len +                           \
      sizeof((k).tableversion) + sizeof((k).genid))
-
-#ifdef _AIX
-#pragma options align = full
-#else
-#pragma pack() /* return to normal alignment */
-#endif
 
 static void *pack_recgenid_key(recgenid_key_t *key, uint8_t *buf, size_t len)
 {
@@ -3082,7 +3074,7 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 
     bpfunc_data = malloc(bpfunc_data_len);
     if (!bpfunc_data) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %ld\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                bpfunc_data_len);
         return -1;
     }

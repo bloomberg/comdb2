@@ -2112,10 +2112,12 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
         then = gettimeofday_ms();
 
         if (old == 0ULL) {
-            logmsg(LOGMSG_USER, "TTTTTT now=%ld 0 %ld\n", now, then - now);
+            logmsg(LOGMSG_USER, "TTTTTT now=%" PRId64 " 0 %" PRId64 "\n", now,
+                   then - now);
         } else {
-            logmsg(LOGMSG_USER, "TTTTTT now=%ld delta=%ld %ld\n", now,
-                   now - old, then - now);
+            logmsg(LOGMSG_USER,
+                   "TTTTTT now=%" PRId64 " delta=%" PRId64 " %" PRId64 "\n",
+                   now, now - old, then - now);
         }
         old = now;
     }
