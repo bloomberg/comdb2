@@ -714,8 +714,8 @@ static int sqlite3Prepare(
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( isPrepareOnly ) sParse.prepFlags |= PREPARE_ONLY;
-  if( isSrcListOnly ) sParse.prepFlags |= PREPARE_SRCLIST_ONLY;
+  if( isPrepareOnly ) sParse.prepFlags |= SQLITE_PREPARE_ONLY;
+  if( isSrcListOnly ) sParse.prepFlags |= SQLITE_PREPARE_SRCLIST_ONLY;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
