@@ -350,7 +350,7 @@ struct __db_lock {
 
 #if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 	int			frames;
-	void		*buf[MAX_FRAMES];
+	void		*buf[MAX_BERK_STACK_FRAMES];
 	int 		stack_gen;
 	DB_LOCK		*lock;
 	pthread_t	tid;

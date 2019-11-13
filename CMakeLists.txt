@@ -242,4 +242,16 @@ elseif(${COMDB2_PKG_TYPE} STREQUAL tgz)
   set(CPACK_GENERATOR "TGZ")
 endif()
 
+option(STACK_AT_GET_LOCK "Save a cheap-stack at every lock-get" OFF)
+mark_as_advanced(STACK_AT_GET_LOCK)
+if(STACK_AT_GET_LOCK)
+  add_definitions(-DSTACK_AT_GET_LOCK)
+endif()
+
+option(STACK_AT_DB_OPEN "Save a cheap-stack at every db_open" OFF)
+mark_as_advanced(STACK_AT_DB_OPEN)
+if(STACK_AT_DB_OPEN)
+  add_definitions(-DSTACK_AT_DB_OPEN)
+endif()
+
 include(CPack)
