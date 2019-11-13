@@ -24,7 +24,6 @@ void comdb2SetWriteFlag(int);
 
 #include "cdb2_constants.h"
 #include <logmsg.h>
-#include "sql.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
