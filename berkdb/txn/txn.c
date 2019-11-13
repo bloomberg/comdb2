@@ -369,7 +369,6 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		if (pthread_getspecific(txn_key) == NULL)
 			Pthread_setspecific(txn_key, (void *)txn);
 	}
-
 	return (0);
 
 err:

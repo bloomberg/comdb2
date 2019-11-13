@@ -2049,10 +2049,6 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                     /* start another child tran for schema changes */
                     irc = create_child_transaction(iq, *parent_trans,
                                                    &(iq->sc_tran));
-                } else {
-                    logmsg(LOGMSG_ERROR, "%s:%d/%d td %ld failed to create "
-                            "child tran\n", __func__, __LINE__, line,
-                            pthread_self());
                 }
             } else {
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
@@ -4710,8 +4706,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iirc = osql_bplog_schemachange(iq);
             if (iirc) {
                 rc = iirc;
-                logmsg(LOGMSG_ERROR, "%s:%d set needbackout\n", __func__,
-                        __LINE__);
                 needbackout = 1;
             }
         }
@@ -5914,8 +5908,6 @@ int get_blkmax(void) { return blkmax; }
 
 static uint64_t block_processor_ms = 0;
 
-int gbl_assert_toblock_nolock = 0;
-
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -5950,10 +5942,6 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     uint64_t end = gettimeofday_ms();
 
     bdb_assert_notran(thedb->bdb_env);
-
-    if (gbl_assert_toblock_nolock) {
-        bdb_assert_nolock(thedb->bdb_env);
-    }
 
     if (rc == 0) {
         osql_postcommit_handle(iq);

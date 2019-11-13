@@ -113,7 +113,6 @@ __lock_dbenv_create(dbenv)
 			__lock_id_set_logical_abort_pp;
 		dbenv->lock_put = __lock_put_pp;
 		dbenv->collect_locks = __lock_collect_pp;
-		dbenv->lock_assert_none = __lock_assert_none_pp;
 		dbenv->lock_stat = __lock_stat_pp;
 		dbenv->lock_locker_lockcount = __lock_locker_lockcount_pp;
 		dbenv->lock_locker_pagelockcount =
