@@ -156,6 +156,13 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return NULL;
 }
 
+int bdb_iam_master(bdb_state_type *bdb_state)
+{
+    char *master;
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL, NULL);
+    return (master == bdb_state->repinfo->myhost);
+}
+
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
                        uint32_t *gen, uint32_t *egen)
 {

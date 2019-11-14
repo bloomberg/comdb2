@@ -2160,4 +2160,7 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
 /* Abort if this thread has an open transaction */
 void bdb_assert_notran(bdb_state_type *bdb_state);
 
+/* Return 1 if this node is master, 0 otherwise */
+int bdb_iam_master(bdb_state_type *bdb_state);
+
 #endif
