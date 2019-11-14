@@ -4715,10 +4715,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /* recreate a transaction here */
         if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
             bdb_get_readlock(thedb->bdb_env, "tranddl", __func__, __LINE__);
-            /* at this point we have a transaction, which would prevent a
-            downgrade;
-            make sure I am still the master */
-            if (thedb->master != gbl_mynode) {
+
+            /* Grab bdb lock and check for mastership before creating
+             * a transaction: logical begins will write a log-message. */
+            if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
