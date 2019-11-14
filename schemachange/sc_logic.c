@@ -669,10 +669,13 @@ downgraded:
 int do_schema_change_tran_thd(sc_arg_t *arg)
 {
     int rc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
     thread_started("schema_change");
-    bdb_thread_event(thedb->bdb_env, 1);
+    bdb_thread_event(bdb_state, 1);
+    BDB_READLOCK("schema-change-tran");
     rc = do_schema_change_tran(arg);
-    bdb_thread_event(thedb->bdb_env, 0);
+    BDB_RELLOCK();
+    bdb_thread_event(bdb_state, 0);
     return rc;
 }
 
