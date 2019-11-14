@@ -87,6 +87,12 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
+option(STACK_AT_DB_OPEN "Save a cheap-stack at every db_open" OFF)
+mark_as_advanced(STACK_AT_DB_OPEN)
+if(STACK_AT_DB_OPEN)
+  add_definitions(-DSTACK_AT_DB_OPEN)
+endif()
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
@@ -243,18 +249,6 @@ elseif(${COMDB2_PKG_TYPE} STREQUAL rpm)
   set(CPACK_RPM_PACKAGE_LICENSE Various) #Apache?
 elseif(${COMDB2_PKG_TYPE} STREQUAL tgz)
   set(CPACK_GENERATOR "TGZ")
-endif()
-
-option(STACK_AT_GET_LOCK "Save a cheap-stack at every lock-get" OFF)
-mark_as_advanced(STACK_AT_GET_LOCK)
-if(STACK_AT_GET_LOCK)
-  add_definitions(-DSTACK_AT_GET_LOCK)
-endif()
-
-option(STACK_AT_DB_OPEN "Save a cheap-stack at every db_open" OFF)
-mark_as_advanced(STACK_AT_DB_OPEN)
-if(STACK_AT_DB_OPEN)
-  add_definitions(-DSTACK_AT_DB_OPEN)
 endif()
 
 include(CPack)
