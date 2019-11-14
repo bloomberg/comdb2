@@ -2084,7 +2084,7 @@ void sqlite3GenerateConstraintChecks(
                            regIdx, pIdx->nKeyCol); VdbeCoverage(v);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else{
-      sqlite3VdbeGoto(v, addrUniqueOk);
+      addrConflictCk = sqlite3VdbeGoto(v, addrUniqueOk);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
