@@ -4714,6 +4714,17 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* recreate a transaction here */
         if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
+            bdb_get_readlock(thedb->bdb_env, "tranddl", __func__, __LINE__);
+            /* at this point we have a transaction, which would prevent a
+            downgrade;
+            make sure I am still the master */
+            if (thedb->master != gbl_mynode) {
+                numerrs = 1;
+                rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                GOTOBACKOUT;
+            }
+
             int iirc = osql_create_transaction(
                 javasp_trans_handle, iq, &trans,
                 have_blkseq ? &parent_trans : NULL, &osql_needtransaction,
@@ -4722,17 +4733,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (!rc)
                     rc = iirc;
                 numerrs = 1;
+                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 GOTOBACKOUT;
             }
-
-            /* at this point we have a transaction, which would prevent a
-            downgrade;
-            make sure I am still the master */
-            if (thedb->master != gbl_mynode) {
-                numerrs = 1;
-                rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
-                GOTOBACKOUT;
-            }
+            /* we have a txn: this decrements the readlocks refcount */
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
 
         if (iq->tranddl) {
