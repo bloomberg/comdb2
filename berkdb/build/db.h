@@ -90,14 +90,14 @@ extern "C" {
  */
 
 
-#ifndef		__BIT_TYPES_DEFINED__
+#ifndef        __BIT_TYPES_DEFINED__
 #if defined _SUN_SOURCE || defined _HP_SOURCE
 typedef unsigned char u_int8_t;
 typedef unsigned short u_int16_t;
 typedef unsigned int u_int32_t;
 typedef unsigned long long u_int64_t;
 #endif
-#define		__BIT_TYPES_DEFINED__
+#define        __BIT_TYPES_DEFINED__
 #endif
 
 
@@ -151,7 +151,7 @@ struct __db_txn_active;	typedef struct __db_txn_active DB_TXN_ACTIVE;
 struct __db_txn_stat;	typedef struct __db_txn_stat DB_TXN_STAT;
 struct __db_txnmgr;	typedef struct __db_txnmgr DB_TXNMGR;
 struct __dbc;		typedef struct __dbc DBC;
-struct __dbc_ser;	typedef struct __dbc_ser DBCS;	  /* comdb2 addition */
+struct __dbc_ser;	typedef struct __dbc_ser DBCS;      /* comdb2 addition */
 struct __dbc_pause;	typedef struct __dbc_pause DBCPS;   /* comdb2 addition */
 struct __dbc_internal;	typedef struct __dbc_internal DBC_INTERNAL;
 struct __fh_t;		typedef struct __fh_t DB_FH;
@@ -160,7 +160,7 @@ struct __key_range;	typedef struct __key_range DB_KEY_RANGE;
 struct __mpoolfile;	typedef struct __mpoolfile MPOOLFILE;
 struct __mutex_t;	typedef struct __mutex_t DB_MUTEX;
 struct __heap;		typedef struct __heap HEAP;
-struct __dbenv_attr;	typedef struct __dbenv_attr DBENV_ATTR;
+struct __dbenv_attr;    typedef struct __dbenv_attr DBENV_ATTR;
 struct __dbenv_envmap;	typedef struct __dbenv_envmap DBENV_MAP;
 struct __lc_cache_entry; typedef struct __lc_cache_entry LC_CACHE_ENTRY;
 struct __lc_cache;	typedef struct __lc_cache LC_CACHE;
@@ -188,17 +188,17 @@ struct __db_trigger_subscription;
  *	Interfaces which use any of these common flags should never have
  *	interface specific flags in this range.
  */
-#define	DB_CREATE		  0x0000001	/* Create file as necessary. */
+#define	DB_CREATE	      0x0000001	/* Create file as necessary. */
 #define	DB_CXX_NO_EXCEPTIONS  0x0000002	/* C++: return error values. */
-#define	DB_FORCE		  0x0000004	/* Force (anything). */
-#define	DB_NOMMAP		  0x0000008	/* Don't mmap underlying file. */
-#define	DB_RDONLY		  0x0000010	/* Read-only (O_RDONLY). */
-#define	DB_RECOVER		  0x0000020	/* Run normal recovery. */
-#define	DB_THREAD		  0x0000040	/* Applications are threaded. */
-#define	DB_TRUNCATE		  0x0000080	/* Discard existing DB (O_TRUNC). */
-#define	DB_TXN_NOSYNC		  0x0000100	/* Do not sync log on commit. */
-#define	DB_TXN_NOT_DURABLE	0x0000200	/* Do not log changes. */
-#define	DB_USE_ENVIRON		  0x0000400	/* Use the environment. */
+#define	DB_FORCE	      0x0000004	/* Force (anything). */
+#define	DB_NOMMAP	      0x0000008	/* Don't mmap underlying file. */
+#define	DB_RDONLY	      0x0000010	/* Read-only (O_RDONLY). */
+#define	DB_RECOVER	      0x0000020	/* Run normal recovery. */
+#define	DB_THREAD	      0x0000040	/* Applications are threaded. */
+#define	DB_TRUNCATE	      0x0000080	/* Discard existing DB (O_TRUNC). */
+#define	DB_TXN_NOSYNC	      0x0000100	/* Do not sync log on commit. */
+#define	DB_TXN_NOT_DURABLE    0x0000200	/* Do not log changes. */
+#define	DB_USE_ENVIRON	      0x0000400	/* Use the environment. */
 #define	DB_USE_ENVIRON_ROOT   0x0000800	/* Use the environment if root. */
 
 /*
@@ -221,125 +221,125 @@ struct __db_trigger_subscription;
  * masks for the flags that can be OR'd into DB access method and cursor
  * operation values.
  */
-#define	DB_AUTO_COMMIT		  0x01000000	/* Implied transaction. */
-#define	DB_DIRTY_READ		  0x02000000	/* Dirty Read. */
-#define	DB_NO_AUTO_COMMIT	 0x04000000	/* Override env-wide AUTO-COMMIT. */
-#define DB_PAGE_ORDER		 0x08000000	/* Page order scan. */
-#define DB_DISCARD_PAGES	  0x10000000	/* Discard page-order pages. */
-#define DB_PAUSIBLE		   0x20000000	/* Discard page-order pages. */
-#define DB_TEMPTABLE		  0x40000000	/* btree is for a temp table */
-#define DB_OLCOMPACT		  0x80000000	/* online compact btree if necessary */
+#define	DB_AUTO_COMMIT	      0x01000000	/* Implied transaction. */
+#define	DB_DIRTY_READ	      0x02000000	/* Dirty Read. */
+#define	DB_NO_AUTO_COMMIT     0x04000000	/* Override env-wide AUTO-COMMIT. */
+#define DB_PAGE_ORDER         0x08000000	/* Page order scan. */
+#define DB_DISCARD_PAGES      0x10000000	/* Discard page-order pages. */
+#define DB_PAUSIBLE           0x20000000	/* Discard page-order pages. */
+#define DB_TEMPTABLE          0x40000000	/* btree is for a temp table */
+#define DB_OLCOMPACT          0x80000000	/* online compact btree if necessary */
 
 /*
  * Flags private to db_env_create.
  */
-#define	DB_RPCCLIENT		  0x0000001	/* An RPC client environment. */
+#define	DB_RPCCLIENT	      0x0000001	/* An RPC client environment. */
 
 /*
  * Flags private to db_create.
  */
-#define	DB_REP_CREATE		  0x0000001	/* Open of an internal rep database. */
-#define	DB_XA_CREATE		  0x0000002	/* Open in an XA environment. */
-#define DB_INDEX_CREATE	   0x0000004 /* Create with index priority. */
+#define	DB_REP_CREATE	      0x0000001	/* Open of an internal rep database. */
+#define	DB_XA_CREATE	      0x0000002	/* Open in an XA environment. */
+#define DB_INDEX_CREATE       0x0000004 /* Create with index priority. */
 
 /*
  * Flags private to DB_ENV->open.
  *	   Shared flags up to 0x0000800 */
-#define	DB_INIT_CDB		  0x0001000	/* Concurrent Access Methods. */
-#define	DB_INIT_LOCK		  0x0002000	/* Initialize locking. */
-#define	DB_INIT_LOG		  0x0004000	/* Initialize logging. */
-#define	DB_INIT_MPOOL		  0x0008000	/* Initialize mpool. */
-#define	DB_INIT_REP		  0x0010000	/* Initialize replication. */
-#define	DB_INIT_TXN		  0x0020000	/* Initialize transactions. */
-#define	DB_JOINENV		  0x0040000	/* Initialize all subsystems present. */
-#define	DB_LOCKDOWN		  0x0080000	/* Lock memory into physical core. */
-#define	DB_PRIVATE		  0x0100000	/* DB_ENV is process local. */
-#define	DB_RECOVER_FATAL	  0x0200000	/* Run catastrophic recovery. */
-#define	DB_RECOVER_NOCKP	  0x0400000	/* Do not write a checkpoint. */
-#define	DB_SYSTEM_MEM		  0x0400000	/* Use system-backed memory. */
+#define	DB_INIT_CDB	      0x0001000	/* Concurrent Access Methods. */
+#define	DB_INIT_LOCK	      0x0002000	/* Initialize locking. */
+#define	DB_INIT_LOG	      0x0004000	/* Initialize logging. */
+#define	DB_INIT_MPOOL	      0x0008000	/* Initialize mpool. */
+#define	DB_INIT_REP	      0x0010000	/* Initialize replication. */
+#define	DB_INIT_TXN	      0x0020000	/* Initialize transactions. */
+#define	DB_JOINENV	      0x0040000	/* Initialize all subsystems present. */
+#define	DB_LOCKDOWN	      0x0080000	/* Lock memory into physical core. */
+#define	DB_PRIVATE	      0x0100000	/* DB_ENV is process local. */
+#define	DB_RECOVER_FATAL      0x0200000	/* Run catastrophic recovery. */
+#define	DB_RECOVER_NOCKP      0x0400000	/* Do not write a checkpoint. */
+#define	DB_SYSTEM_MEM	      0x0400000	/* Use system-backed memory. */
 
 /*
  * Flags private to DB->open.
  *	   Shared flags up to 0x0000800 */
-#define	DB_EXCL			  0x0001000	/* Exclusive open (O_EXCL). */
-#define	DB_FCNTL_LOCKING	  0x0002000	/* UNDOC: fcntl(2) locking. */
-#define	DB_RDWRMASTER		  0x0004000	/* UNDOC: allow subdb master open R/W */
-#define	DB_WRITEOPEN		  0x0008000	/* UNDOC: open with write lock. */
-#define	DB_DATAFILE		  0x0010000	/* UNDOC: open datafile. */
+#define	DB_EXCL		      0x0001000	/* Exclusive open (O_EXCL). */
+#define	DB_FCNTL_LOCKING      0x0002000	/* UNDOC: fcntl(2) locking. */
+#define	DB_RDWRMASTER	      0x0004000	/* UNDOC: allow subdb master open R/W */
+#define	DB_WRITEOPEN	      0x0008000	/* UNDOC: open with write lock. */
+#define	DB_DATAFILE	      0x0010000	/* UNDOC: open datafile. */
 
 /*
  * Flags private to DB_ENV->txn_begin.
  *	   Shared flags up to 0x0000800 */
-#define DB_TXN_INTERNAL	   0x0000001
-#define DB_TXN_RECOVERY	   0x0000002
-#define	DB_TXN_NOWAIT		  0x0001000	/* Do not wait for locks in this TXN. */
-#define	DB_TXN_SYNC		  0x0002000	/* Always sync log on commit. */
-#define DB_TXN_REP_ACK		0x0010000 /* Rep should send an ACK */
+#define DB_TXN_INTERNAL       0x0000001
+#define DB_TXN_RECOVERY       0x0000002
+#define	DB_TXN_NOWAIT	      0x0001000	/* Do not wait for locks in this TXN. */
+#define	DB_TXN_SYNC	      0x0002000	/* Always sync log on commit. */
+#define DB_TXN_REP_ACK        0x0010000 /* Rep should send an ACK */
 #define DB_TXN_LOGICAL_BEGIN  0x0020000 /* Contains a logical begin */
 #define DB_TXN_LOGICAL_COMMIT 0x0040000 /* Contains a logical commit */
 #define DB_TXN_DONT_GET_REPO_MTX   0x0080000 /* Get the repo mutex on this commit */
-#define DB_TXN_SCHEMA_LOCK		 0x0100000 /* Get the schema-lock */
-#define DB_TXN_LOGICAL_GEN		 0x0200000 /* Contains generation info (txn_regop_rl) */
+#define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
+#define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
-#define	DB_ENCRYPT_AES		  0x0000001	/* AES, assumes SHA1 checksum */
+#define	DB_ENCRYPT_AES	      0x0000001	/* AES, assumes SHA1 checksum */
 
 /*
  * Flags private to DB_ENV->set_flags.
  *	   Shared flags up to 0x0000800 */
-#define	DB_CDB_ALLDB		  0x0001000	/* Set CDB locking per environment. */
-#define	DB_DIRECT_DB		  0x0002000	/* Don't buffer databases in the OS. */
-#define	DB_DIRECT_LOG		  0x0004000	/* Don't buffer log files in the OS. */
-#define	DB_LOG_AUTOREMOVE	 0x0008000	/* Automatically remove log files. */
-#define	DB_NOLOCKING		  0x0010000	/* Set locking/mutex behavior. */
-#define	DB_NOPANIC		  0x0020000	/* Set panic state per DB_ENV. */
-#define	DB_OVERWRITE		  0x0040000	/* Overwrite unlinked region files. */
+#define	DB_CDB_ALLDB	      0x0001000	/* Set CDB locking per environment. */
+#define	DB_DIRECT_DB	      0x0002000	/* Don't buffer databases in the OS. */
+#define	DB_DIRECT_LOG	      0x0004000	/* Don't buffer log files in the OS. */
+#define	DB_LOG_AUTOREMOVE     0x0008000	/* Automatically remove log files. */
+#define	DB_NOLOCKING	      0x0010000	/* Set locking/mutex behavior. */
+#define	DB_NOPANIC	      0x0020000	/* Set panic state per DB_ENV. */
+#define	DB_OVERWRITE	      0x0040000	/* Overwrite unlinked region files. */
 #define	DB_PANIC_ENVIRONMENT  0x0080000	/* Set panic state per environment. */
-#define	DB_REGION_INIT		  0x0100000	/* Page-fault regions on open. */
-#define	DB_TIME_NOTGRANTED	0x0200000	/* Return NOTGRANTED on timeout. */
+#define	DB_REGION_INIT	      0x0100000	/* Page-fault regions on open. */
+#define	DB_TIME_NOTGRANTED    0x0200000	/* Return NOTGRANTED on timeout. */
 #define	DB_TXN_WRITE_NOSYNC   0x0400000	/* Write, don't sync, on txn commit. */
-#define	DB_YIELDCPU		  0x0800000	/* Yield the CPU (a lot). */
+#define	DB_YIELDCPU	      0x0800000	/* Yield the CPU (a lot). */
 
-#define DB_ROWLOCKS	   0x10000000 /* Environment supports rowlocks */
-#define DB_OSYNC		  0x20000000
+#define DB_ROWLOCKS       0x10000000 /* Environment supports rowlocks */
+#define DB_OSYNC          0x20000000
 
 /*
  * Flags private to DB->set_feedback's callback.
  */
-#define	DB_UPGRADE		  0x0000001	/* Upgrading. */
-#define	DB_VERIFY		  0x0000002	/* Verifying. */
+#define	DB_UPGRADE	      0x0000001	/* Upgrading. */
+#define	DB_VERIFY	      0x0000002	/* Verifying. */
 
 /*
  * Flags private to DB_MPOOLFILE->open.
  *	   Shared flags up to 0x0000800 */
-#define	DB_DIRECT		  0x0001000	/* Don't buffer the file in the OS. */
-#define	DB_EXTENT		  0x0002000	/* UNDOC: dealing with an extent. */
-#define	DB_ODDFILESIZE		  0x0004000	/* Truncate file to N * pgsize. */
+#define	DB_DIRECT	      0x0001000	/* Don't buffer the file in the OS. */
+#define	DB_EXTENT	      0x0002000	/* UNDOC: dealing with an extent. */
+#define	DB_ODDFILESIZE	      0x0004000	/* Truncate file to N * pgsize. */
 
 /*
  * Flags private to DB->set_flags.
  */
-#define	DB_CHKSUM		  0x0000001	/* Do checksumming */
-#define	DB_DUP			  0x0000002	/* Btree, Hash: duplicate keys. */
-#define	DB_DUPSORT		  0x0000004	/* Btree, Hash: duplicate keys. */
-#define	DB_ENCRYPT		  0x0000008	/* Btree, Hash: duplicate keys. */
-#define	DB_RECNUM		  0x0000010	/* Btree: record numbers. */
-#define	DB_RENUMBER		  0x0000020	/* Recno: renumber on insert/delete. */
+#define	DB_CHKSUM	      0x0000001	/* Do checksumming */
+#define	DB_DUP		      0x0000002	/* Btree, Hash: duplicate keys. */
+#define	DB_DUPSORT	      0x0000004	/* Btree, Hash: duplicate keys. */
+#define	DB_ENCRYPT	      0x0000008	/* Btree, Hash: duplicate keys. */
+#define	DB_RECNUM	      0x0000010	/* Btree: record numbers. */
+#define	DB_RENUMBER	      0x0000020	/* Recno: renumber on insert/delete. */
 #define	DB_REVSPLITOFF	   0x0000040	/* Btree: turn off reverse splits. */
-#define	DB_SNAPSHOT		  0x0000080	/* Recno: snapshot the input. */
+#define	DB_SNAPSHOT	      0x0000080	/* Recno: snapshot the input. */
 
 /*
  * Flags private to the DB->stat methods.
  */
 #define	DB_STAT_CLEAR	   0x0000001	/* Clear stat after returning values. */
-#define DB_STAT_VERIFY	 0x0000002	/* check verify_lsn when catching up */
-#define DB_STAT_MINIMAL	0x0000004	/* Just get cache hit/miss */
+#define DB_STAT_VERIFY     0x0000002    /* check verify_lsn when catching up */
+#define DB_STAT_MINIMAL    0x0000004    /* Just get cache hit/miss */
 
 /*
  * Flags private to DB->join.
  */
-#define	DB_JOIN_NOSORT		  0x0000001	/* Don't try to optimize join. */
+#define	DB_JOIN_NOSORT	      0x0000001	/* Don't try to optimize join. */
 
 /*
  * Flags private to DB->verify.
@@ -361,15 +361,15 @@ struct __db_trigger_subscription;
 /*
  * Flags private to DB->set_rep_transport's send callback.
  */
-#define	DB_REP_NOBUFFER		  0x0000001	/* Do not buffer this message. */
-#define	DB_REP_PERMANENT		0x0000002	/* Important--app. may want to flush. */
-#define  DB_REP_LOGPROGRESS	  0x0000004   /* marks a new log record, not a commit though */
-#define DB_REP_FLUSH			0x0000008
+#define	DB_REP_NOBUFFER	      0x0000001	/* Do not buffer this message. */
+#define	DB_REP_PERMANENT        0x0000002	/* Important--app. may want to flush. */
+#define  DB_REP_LOGPROGRESS      0x0000004   /* marks a new log record, not a commit though */
+#define DB_REP_FLUSH            0x0000008
 
 /* Don't allow these to overlap with log_put flags */
-#define DB_REP_NODROP		   0x0001000
-#define DB_REP_TRACE		   0x0002000 /* Trace this through the net layer */
-#define DB_REP_SENDACK		  0x0004000
+#define DB_REP_NODROP           0x0001000
+#define DB_REP_TRACE           0x0002000 /* Trace this through the net layer */
+#define DB_REP_SENDACK          0x0004000
 
 /*******************************************************
  * Locking.
@@ -383,7 +383,7 @@ struct __db_trigger_subscription;
  * locking subsystem.
  */
 #define	DB_LOCK_NORUN		0
-#define	DB_LOCK_DEFAULT		 1	/* Default policy. */
+#define	DB_LOCK_DEFAULT         1	/* Default policy. */
 #define	DB_LOCK_EXPIRE		2	/* Only expire locks, no detection. */
 #define	DB_LOCK_MAXLOCKS	3	/* Abort txn with maximum # of locks. */
 #define	DB_LOCK_MINLOCKS	4	/* Abort txn with minimum # of locks. */
@@ -417,7 +417,7 @@ struct __db_trigger_subscription;
 
 /* Flag values for lock_id_flags(). */
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */
-#define DB_LOCK_ID_TRACK	0x002	/* Track this lockid */
+#define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
 
 /*
@@ -484,8 +484,8 @@ typedef enum  {
 
 /* Lock statistics structure. */
 struct __db_lock_stat {
-	/* locker ID can't be larger than DB_LOCK_MAXID (2^31 -1),
-	   so keep st_id and st_cur_maxid int32. */
+    /* locker ID can't be larger than DB_LOCK_MAXID (2^31 -1),
+       so keep st_id and st_cur_maxid int32. */
 	u_int32_t st_id;		/* Last allocated locker ID. */
 	u_int32_t st_cur_maxid;		/* Current maximum unused ID. */
 	u_int64_t st_maxlocks;		/* Maximum number of locks in table. */
@@ -535,7 +535,7 @@ struct __db_ilock {
 struct __db_lock_u {
 	roff_t		off;		/* Offset of the lock in the region */
 
-	void		*ilock_latch;	 /* Pointer to ilock-latch */
+    void        *ilock_latch;     /* Pointer to ilock-latch */
 
 	u_int32_t	ndx;		/* Index of the object referenced by
 					 * this lock; used for locking. */
@@ -599,8 +599,8 @@ struct __db_lsn {
 
 struct __db_ltran {
 	u_int64_t   tranid;
-	DB_LSN	  begin_lsn;
-	DB_LSN	  last_lsn;
+	DB_LSN      begin_lsn;
+	DB_LSN      last_lsn;
 };
 
 /*
@@ -616,14 +616,14 @@ struct __db_ltran {
 #define	DB_debug_FLAG		0x80000000
 
 struct __db_log_cursor_stat {
-	int incursor_count;
-	int ondisk_count;
-	int inregion_count;
-	unsigned long long incursorus;
-	unsigned long long ondiskus;
-	unsigned long long inregionus;
-	unsigned long long totalus;
-	unsigned long long lockwaitus;
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
+    unsigned long long incursorus;
+    unsigned long long ondiskus;
+    unsigned long long inregionus;
+    unsigned long long totalus;
+    unsigned long long lockwaitus;
 };
 
 /*
@@ -651,28 +651,28 @@ struct __db_log_cursor {
 					/* Methods. */
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
-	int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
-	int (*setflags) __P((DB_LOGC*, u_int32_t));
+    int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+    int (*setflags) __P((DB_LOGC*, u_int32_t));
 
-	/* Instrumentation for log stats */
-	int incursor_count;
-	int ondisk_count;
-	int inregion_count;
+    /* Instrumentation for log stats */
+    int incursor_count;
+    int ondisk_count;
+    int inregion_count;
 
-	u_int64_t incursorus;
-	u_int64_t ondiskus;
-	u_int64_t inregionus;
-	u_int64_t totalus;
-	u_int64_t lockwaitus;
+    u_int64_t incursorus;
+    u_int64_t ondiskus;
+    u_int64_t inregionus;
+    u_int64_t totalus;
+    u_int64_t lockwaitus;
 
 #define	DB_LOG_DISK		0x01	/* Log record came from disk. */
 #define	DB_LOG_LOCKED		0x02	/* Log region already locked */
 #define	DB_LOG_SILENT_ERR	0x04	/* Turn-off error messages. */
-#define DB_LOG_NO_PANIC		0x08	/* Don't panic on error. */
-#define DB_LOG_CUSTOM_SIZE  0x10	/* This cursor has a custom size */
+#define DB_LOG_NO_PANIC		0x08    /* Don't panic on error. */
+#define DB_LOG_CUSTOM_SIZE  0x10    /* This cursor has a custom size */
 	u_int32_t flags;
-	struct __db_log_cursor *next;
-	struct __db_log_cursor *prev;
+    struct __db_log_cursor *next;
+    struct __db_log_cursor *prev;
 };
 
 /* Log statistics structure. */
@@ -756,7 +756,7 @@ typedef enum {
 /* Per-process DB_MPOOLFILE information. */
 struct __db_mpoolfile {
 	DB_FH	  *fhp;		/* Underlying file handle. */
-	DB_FH	 *recp;		/* Recovery page file handle. */
+	DB_FH     *recp;        /* Recovery page file handle. */
 
 /* Protected by mpoolfile mutex */
 	struct {								\
@@ -766,7 +766,7 @@ struct __db_mpoolfile {
 
 	/* Lock-array for recovery pages. */
 	pthread_mutex_t *recp_lk_array;
-	int	   rec_idx;	  /* Current index for recover pages. */
+	int       rec_idx;      /* Current index for recover pages. */
 
 	/* Recovery page index lock. */
 	pthread_mutex_t recp_idx_lk;
@@ -797,8 +797,8 @@ struct __db_mpoolfile {
 	 * by checkpoint or sync threads when using DB_MPOOLFILE structures
 	 * to flush buffers from the cache.
 	 */
-	DB_ENV		   *dbenv;		/* Overlying DB_ENV. */
-	MPOOLFILE	  *mfp;		/* Underlying MPOOLFILE. */
+	DB_ENV	       *dbenv;		/* Overlying DB_ENV. */
+	MPOOLFILE      *mfp;		/* Underlying MPOOLFILE. */
 
 	u_int32_t	clear_len;	/* Cleared length on created pages. */
 	u_int8_t			/* Unique file ID. */
@@ -806,11 +806,11 @@ struct __db_mpoolfile {
 	int		ftype;		/* File type. */
 	int32_t		lsn_offset;	/* LSN offset in page. */
 	u_int32_t	gbytes, bytes;	/* Maximum file size. */
-	DBT		   *pgcookie;	/* Byte-string passed to pgin/pgout. */
+	DBT	       *pgcookie;	/* Byte-string passed to pgin/pgout. */
 	DB_CACHE_PRIORITY		/* Cache priority. */
 			priority;
 
-	void		   *addr;		/* Address of mmap'd region. */
+	void	       *addr;		/* Address of mmap'd region. */
 	size_t		len;		/* Length of mmap'd region. */
 
 	u_int32_t	config_flags;	/* Flags to DB_MPOOLFILE->set_flags. */
@@ -1033,8 +1033,8 @@ struct __db_txn {
 	int	  (*commit) __P((DB_TXN *, u_int32_t));
 	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
-			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
-			  u_int32_t, DB_LSN *, DB_LSN *, void *));
+		      u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
+		      u_int32_t, DB_LSN *, DB_LSN *, void *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
 	int	  (*prepare) __P((DB_TXN *, u_int8_t *));
@@ -1052,11 +1052,11 @@ struct __db_txn {
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 	u_int32_t	flags;
 
-	void	 *app_private;		/* pointer to bdb transaction object */
+	void     *app_private;		/* pointer to bdb transaction object */
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */
-	void			*pglogs_hashtbl;
+	void            *pglogs_hashtbl;
    pthread_mutex_t pglogs_mutex;
 };
 
@@ -1185,8 +1185,8 @@ struct __db_rep_stat {
 	u_int64_t lc_cache_misses;	/* Transaction commit records
 					 * NOT in cache */
 	int lc_cache_size;		/* Current size of lc cache */
-	uint32_t durable_gen;
-	DB_LSN durable_lsn;
+    uint32_t durable_gen;
+    DB_LSN durable_lsn;
 };
 
 
@@ -1364,8 +1364,8 @@ genid_hash *genid_hash_init(DB_ENV *dbenv, int sz);
 void genid_hash_resize(DB_ENV *dbenv, genid_hash **hpp, int szkb);
 void genid_hash_free(DB_ENV *dbenv, genid_hash *hp);
 void timeval_add(struct timeval *tvp,
-				  struct timeval *uvp,
-				  struct timeval *vvp);
+                  struct timeval *uvp,
+                  struct timeval *vvp);
 
 #define MAX_BERK_STACK_FRAMES 64
 

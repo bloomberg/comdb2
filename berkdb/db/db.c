@@ -954,7 +954,7 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 			if (t_ret != 0) { 
 					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
 					fileid_str(dbp->fileid, fid_str);
-					logmsg(LOGMSG_INFO, "dbreg_close failed for %s, "
+					logmsg(LOGMSG_DEBUG, "dbreg_close failed for %s, "
 							"txn is %p\n", fid_str, txn);
 
 				if (txn != NULL) {

@@ -103,12 +103,12 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->lg_handle, "DB_ENV->log_put", DB_INIT_LOG);
+	    dbenv->lg_handle, "DB_ENV->log_put", DB_INIT_LOG);
 
 	/* Validate arguments: check for allowed flags. */
 	if ((ret = __db_fchk(dbenv, "DB_ENV->log_put", flags,
-		DB_LOG_CHKPNT | DB_LOG_COMMIT |
-		DB_FLUSH | DB_LOG_NOCOPY | DB_LOG_PERM | DB_LOG_WRNOSYNC)) != 0)
+	    DB_LOG_CHKPNT | DB_LOG_COMMIT |
+	    DB_FLUSH | DB_LOG_NOCOPY | DB_LOG_PERM | DB_LOG_WRNOSYNC)) != 0)
 		return (ret);
 
 	/* DB_LOG_WRNOSYNC and DB_FLUSH are mutually exclusive. */
@@ -118,7 +118,7 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 	/* Replication clients should never write log records. */
 	if (IS_REP_CLIENT(dbenv)) {
 		__db_err(dbenv,
-			"DB_ENV->log_put is illegal on replication clients");
+		    "DB_ENV->log_put is illegal on replication clients");
 		if (gbl_abort_on_illegal_log_put)
 			abort();
 		return (EINVAL);

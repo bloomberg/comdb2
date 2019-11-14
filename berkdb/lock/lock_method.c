@@ -110,13 +110,13 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_id_free = __lock_id_free_pp;
 		dbenv->lock_id_has_waiters = __lock_id_has_waiters_pp;
 		dbenv->lock_id_set_logical_abort =
-			__lock_id_set_logical_abort_pp;
+		    __lock_id_set_logical_abort_pp;
 		dbenv->lock_put = __lock_put_pp;
 		dbenv->collect_locks = __lock_collect_pp;
 		dbenv->lock_stat = __lock_stat_pp;
 		dbenv->lock_locker_lockcount = __lock_locker_lockcount_pp;
 		dbenv->lock_locker_pagelockcount =
-			__lock_locker_pagelockcount_pp;
+		    __lock_locker_pagelockcount_pp;
 		dbenv->lock_vec = __lock_vec_pp;
 		dbenv->lock_to_dbt = __lock_to_dbt_pp;
 		dbenv->lock_update_tracked_writelocks_lsn =
