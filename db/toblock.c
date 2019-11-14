@@ -4703,7 +4703,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
+            bdb_get_readlock(thedb->bdb_env, "tranddl", __func__, __LINE__);
             iirc = osql_bplog_schemachange(iq);
+            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;
