@@ -239,6 +239,7 @@ extern int gbl_dump_cache_max_pages;
 extern int gbl_max_pages_per_cache_thread;
 extern int gbl_memp_dump_cache_threshold;
 extern int gbl_disable_ckp;
+extern int gbl_abort_on_illegal_log_put;
 
 extern long long sampling_threshold;
 
