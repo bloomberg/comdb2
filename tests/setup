@@ -146,7 +146,9 @@ setup_db() {
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    echo "logmsg level debug" >> ${LRL}
+    if [[ -n $SKIPDEBUG ]] ; then
+        echo "logmsg level debug" >> ${LRL}
+    fi
     echo "eventlog_nkeep 0" >> ${LRL}
 
     if [[ -f lrl ]]; then
