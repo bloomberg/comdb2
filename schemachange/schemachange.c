@@ -357,7 +357,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         } else {
             Pthread_mutex_lock(&s->mtxStart);
             rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran, arg);
+                                (void *(*)(void *))do_schema_change_tran_thd,
+                                arg);
             if (rc == 0) {
                 Pthread_cond_wait(&s->condStart, &s->mtxStart);
             }
