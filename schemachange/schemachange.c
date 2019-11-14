@@ -52,6 +52,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         abort();
     }
 
+    if (!bdb_iam_master(thedb->bdb_env)) {
+        sc_errf(s, "I am not master\n");
+        free_schema_change_type(s);
+        return SC_NOT_MASTER;
+    }
+
     /* if we're not the master node then we can't do schema change! */
     if (thedb->master != gbl_mynode) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
