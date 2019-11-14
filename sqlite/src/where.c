@@ -3740,7 +3740,9 @@ static i8 wherePathSatisfiesOrderBy(
       pLoop = pLast;
     }
     if( pLoop->wsFlags & WHERE_VIRTUALTABLE ){
-      if( pLoop->u.vtab.isOrdered ) obSat = obDone;
+      if( pLoop->u.vtab.isOrdered && (wctrlFlags & WHERE_DISTINCTBY)==0 ){
+        obSat = obDone;
+      }
       break;
     }else if( wctrlFlags & WHERE_DISTINCTBY ){
       pLoop->u.btree.nDistinctCol = 0;
@@ -5091,7 +5093,13 @@ WhereInfo *sqlite3WhereBegin(
       assert( pTabItem->iCursor==pLevel->iTabCur );
       testcase( pWInfo->eOnePass==ONEPASS_OFF && pTab->nCol==BMS-1 );
       testcase( pWInfo->eOnePass==ONEPASS_OFF && pTab->nCol==BMS );
-      if( pWInfo->eOnePass==ONEPASS_OFF && pTab->nCol<BMS && HasRowid(pTab) ){
+      if( pWInfo->eOnePass==ONEPASS_OFF 
+       && pTab->nCol<BMS
+       && (pTab->tabFlags & (TF_HasGenerated|TF_WithoutRowid))==0
+      ){
+        /* If we know that only a prefix of the record will be used,
+        ** it is advantageous to reduce the "column count" field in
+        ** the P4 operand of the OP_OpenRead/Write opcode. */
         Bitmask b = pTabItem->colUsed;
         int n = 0;
         for(; b; b=b>>1, n++){}

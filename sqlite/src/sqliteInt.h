@@ -1931,8 +1931,8 @@ struct Column {
 #define COLFLAG_SORTERREF 0x0010   /* Use sorter-refs with this column */
 #define COLFLAG_VIRTUAL   0x0020   /* GENERATED ALWAYS AS ... VIRTUAL */
 #define COLFLAG_STORED    0x0040   /* GENERATED ALWAYS AS ... STORED */
-#define COLFLAG_BUSY      0x0080   /* Blocks recursion on GENERATED columns */
-#define COLFLAG_NOTAVAIL  0x0100   /* STORED column not yet calculated */
+#define COLFLAG_NOTAVAIL  0x0080   /* STORED column not yet calculated */
+#define COLFLAG_BUSY      0x0100   /* Blocks recursion on GENERATED columns */
 #define COLFLAG_GENERATED 0x0060   /* Combo: _STORED, _VIRTUAL */
 #define COLFLAG_NOINSERT  0x0062   /* Combo: _HIDDEN, _STORED, _VIRTUAL */
 
@@ -3079,28 +3079,29 @@ struct Select {
 **     SF_MinMaxAgg  == NC_MinMaxAgg     == SQLITE_FUNC_MINMAX
 **     SF_FixedLimit == WHERE_USE_LIMIT
 */
-#define SF_Distinct       0x00001  /* Output should be DISTINCT */
-#define SF_All            0x00002  /* Includes the ALL keyword */
-#define SF_Resolved       0x00004  /* Identifiers have been resolved */
-#define SF_Aggregate      0x00008  /* Contains agg functions or a GROUP BY */
-#define SF_HasAgg         0x00010  /* Contains aggregate functions */
-#define SF_UsesEphemeral  0x00020  /* Uses the OpenEphemeral opcode */
-#define SF_Expanded       0x00040  /* sqlite3SelectExpand() called on this */
-#define SF_HasTypeInfo    0x00080  /* FROM subqueries have Table metadata */
-#define SF_Compound       0x00100  /* Part of a compound query */
-#define SF_Values         0x00200  /* Synthesized from VALUES clause */
-#define SF_MultiValue     0x00400  /* Single VALUES term with multiple rows */
-#define SF_NestedFrom     0x00800  /* Part of a parenthesized FROM clause */
-#define SF_MinMaxAgg      0x01000  /* Aggregate containing min() or max() */
-#define SF_Recursive      0x02000  /* The recursive part of a recursive CTE */
-#define SF_FixedLimit     0x04000  /* nSelectRow set by a constant LIMIT */
-#define SF_MaybeConvert   0x08000  /* Need convertCompoundSelectToSubquery() */
-#define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
-#define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
-#define SF_ComplexResult  0x40000  /* Result contains subquery or function */
-#define SF_WhereBegin     0x80000  /* Really a WhereBegin() call.  Debug Only */
+#define SF_Distinct      0x0000001 /* Output should be DISTINCT */
+#define SF_All           0x0000002 /* Includes the ALL keyword */
+#define SF_Resolved      0x0000004 /* Identifiers have been resolved */
+#define SF_Aggregate     0x0000008 /* Contains agg functions or a GROUP BY */
+#define SF_HasAgg        0x0000010 /* Contains aggregate functions */
+#define SF_UsesEphemeral 0x0000020 /* Uses the OpenEphemeral opcode */
+#define SF_Expanded      0x0000040 /* sqlite3SelectExpand() called on this */
+#define SF_HasTypeInfo   0x0000080 /* FROM subqueries have Table metadata */
+#define SF_Compound      0x0000100 /* Part of a compound query */
+#define SF_Values        0x0000200 /* Synthesized from VALUES clause */
+#define SF_MultiValue    0x0000400 /* Single VALUES term with multiple rows */
+#define SF_NestedFrom    0x0000800 /* Part of a parenthesized FROM clause */
+#define SF_MinMaxAgg     0x0001000 /* Aggregate containing min() or max() */
+#define SF_Recursive     0x0002000 /* The recursive part of a recursive CTE */
+#define SF_FixedLimit    0x0004000 /* nSelectRow set by a constant LIMIT */
+#define SF_MaybeConvert  0x0008000 /* Need convertCompoundSelectToSubquery() */
+#define SF_Converted     0x0010000 /* By convertCompoundSelectToSubquery() */
+#define SF_IncludeHidden 0x0020000 /* Include hidden columns in output */
+#define SF_ComplexResult 0x0040000 /* Result contains subquery or function */
+#define SF_WhereBegin    0x0080000 /* Really a WhereBegin() call.  Debug Only */
+#define SF_WinRewrite    0x0100000 /* Window function rewrite accomplished */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SF_ASTIncluded  0x1000000  /* AST Generated */
+#define SF_ASTIncluded   0x1000000 /* AST Generated */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -3746,7 +3747,7 @@ struct Walker {
   int (*xSelectCallback)(Walker*,Select*);  /* Callback for SELECTs */
   void (*xSelectCallback2)(Walker*,Select*);/* Second callback for SELECTs */
   int walkerDepth;                          /* Number of subqueries */
-  u8 eCode;                                 /* A small processing code */
+  u16 eCode;                                /* A small processing code */
   union {                                   /* Extra data for callback */
     NameContext *pNC;                         /* Naming context */
     int n;                                    /* A counter */
@@ -3762,6 +3763,7 @@ struct Walker {
     struct WindowRewrite *pRewrite;           /* Window rewrite context */
     struct WhereConst *pConst;                /* WHERE clause constants */
     struct RenameCtx *pRename;                /* RENAME COLUMN context */
+    struct Table *pTab;                       /* Table of generated column */
   } u;
 };
 
@@ -4208,6 +4210,9 @@ void sqlite3AddDefaultValue(Parse*,Expr*,const char*,const char*);
 void sqlite3AddCollateType(Parse*, Token*);
 void sqlite3AddGenerated(Parse*,Expr*,Token*);
 void sqlite3EndTable(Parse*,Token*,Token*,u8,Select*);
+#ifdef SQLITE_DEBUG
+  int sqlite3UriCount(const char*);
+#endif
 int sqlite3ParseUri(const char*,const char*,unsigned int*,
                     sqlite3_vfs**,char**,char **);
 #ifdef SQLITE_HAS_CODEC

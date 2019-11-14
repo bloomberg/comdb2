@@ -6600,8 +6600,8 @@ int sqlite3_sqlar_init(
 **
 *************************************************************************
 */
-
-
+#if !defined(SQLITEEXPERT_H)
+#define SQLITEEXPERT_H 1
 /* #include "sqlite3.h" */
 
 typedef struct sqlite3expert sqlite3expert;
@@ -6755,7 +6755,7 @@ const char *sqlite3_expert_report(sqlite3expert*, int iStmt, int eReport);
 */
 void sqlite3_expert_destroy(sqlite3expert*);
 
-
+#endif  /* !defined(SQLITEEXPERT_H) */
 
 /************************* End ../ext/expert/sqlite3expert.h ********************/
 /************************* Begin ../ext/expert/sqlite3expert.c ******************/
@@ -12212,9 +12212,7 @@ static const char *(azHelp[]) = {
   ".excel                   Display the output of next command in spreadsheet",
   ".exit ?CODE?             Exit this program with return-code CODE",
   ".expert                  EXPERIMENTAL. Suggest indexes for queries",
-/* Because explain mode comes on automatically now, the ".explain" mode
-** is removed from the help screen. It is still supported for legacy, however */
-/*".explain ?on|off|auto?   Turn EXPLAIN output mode on or off",*/
+  ".explain ?on|off|auto?   Change the EXPLAIN formatting mode.  Default: auto",
   ".filectrl CMD ...        Run various sqlite3_file_control() operations",
   "                           Run \".filectrl\" with no arguments for details",
   ".fullschema ?--indent?   Show schema and the content of sqlite_stat tables",

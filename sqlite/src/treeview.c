@@ -69,7 +69,7 @@ static void sqlite3TreeViewLine(TreeView *p, const char *zFormat, ...){
     va_start(ap, zFormat);
     sqlite3_str_vappendf(&acc, zFormat, ap);
     va_end(ap);
-    assert( acc.nChar>0 );
+    assert( acc.nChar>0 || acc.accError );
     sqlite3_str_append(&acc, "\n", 1);
   }
   sqlite3StrAccumFinish(&acc);
@@ -138,7 +138,7 @@ void sqlite3TreeViewSrcList(TreeView *pView, const SrcList *pSrc){
     StrAccum x;
     char zLine[100];
     sqlite3StrAccumInit(&x, 0, zLine, sizeof(zLine), 0);
-    sqlite3_str_appendf(&x, "{%d,*}", pItem->iCursor);
+    sqlite3_str_appendf(&x, "{%d:*}", pItem->iCursor);
     if( pItem->zDatabase ){
       sqlite3_str_appendf(&x, " %s.%s", pItem->zDatabase, pItem->zName);
     }else if( pItem->zName ){

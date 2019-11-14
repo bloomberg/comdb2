@@ -1125,8 +1125,12 @@ static void codeDeferredSeek(
     if( ai ){
       ai[0] = pTab->nCol;
       for(i=0; i<pIdx->nColumn-1; i++){
+        int x1, x2;
         assert( pIdx->aiColumn[i]<pTab->nCol );
-        if( pIdx->aiColumn[i]>=0 ) ai[pIdx->aiColumn[i]+1] = i+1;
+        x1 = pIdx->aiColumn[i];
+        x2 = sqlite3TableColumnToStorage(pTab, x1);
+        testcase( x1!=x2 );
+        if( x1>=0 ) ai[x2+1] = i+1;
       }
       sqlite3VdbeChangeP4(v, -1, (char*)ai, P4_INTARRAY);
     }
@@ -1954,35 +1958,46 @@ Bitmask sqlite3WhereCodeOneLoopStart(
                            iRowidReg, pPk->nKeyCol); VdbeCoverage(v);
     }
 
-    /* If pIdx is an index on one or more expressions, then look through
-    ** all the expressions in pWInfo and try to transform matching expressions
-    ** into reference to index columns.  Also attempt to translate references
-    ** to virtual columns in the table into references to (stored) columns
-    ** of the index.
-    **
-    ** Do not do this for the RHS of a LEFT JOIN. This is because the 
-    ** expression may be evaluated after OP_NullRow has been executed on
-    ** the cursor. In this case it is important to do the full evaluation,
-    ** as the result of the expression may not be NULL, even if all table
-    ** column values are.  https://www.sqlite.org/src/info/7fa8049685b50b5a
-    **
-    ** Also, do not do this when processing one index an a multi-index
-    ** OR clause, since the transformation will become invalid once we
-    ** move forward to the next index.
-    ** https://sqlite.org/src/info/4e8e4857d32d401f
-    */
-    if( pLevel->iLeftJoin==0 && (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0 ){
-      whereIndexExprTrans(pIdx, iCur, iIdxCur, pWInfo);
+    if( pLevel->iLeftJoin==0 ){
+      /* If pIdx is an index on one or more expressions, then look through
+      ** all the expressions in pWInfo and try to transform matching expressions
+      ** into reference to index columns.  Also attempt to translate references
+      ** to virtual columns in the table into references to (stored) columns
+      ** of the index.
+      **
+      ** Do not do this for the RHS of a LEFT JOIN. This is because the 
+      ** expression may be evaluated after OP_NullRow has been executed on
+      ** the cursor. In this case it is important to do the full evaluation,
+      ** as the result of the expression may not be NULL, even if all table
+      ** column values are.  https://www.sqlite.org/src/info/7fa8049685b50b5a
+      **
+      ** Also, do not do this when processing one index an a multi-index
+      ** OR clause, since the transformation will become invalid once we
+      ** move forward to the next index.
+      ** https://sqlite.org/src/info/4e8e4857d32d401f
+      */
+      if( (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0 ){
+        whereIndexExprTrans(pIdx, iCur, iIdxCur, pWInfo);
+      }
+  
+      /* If a partial index is driving the loop, try to eliminate WHERE clause
+      ** terms from the query that must be true due to the WHERE clause of
+      ** the partial index.
+      **
+      ** 2019-11-02 ticket 623eff57e76d45f6: This optimization does not work
+      ** for a LEFT JOIN.
+      */
+      if( pIdx->pPartIdxWhere ){
+        whereApplyPartialIndexConstraints(pIdx->pPartIdxWhere, iCur, pWC);
+      }
+    }else{
+      testcase( pIdx->pPartIdxWhere );
+      /* The following assert() is not a requirement, merely an observation:
+      ** The OR-optimization doesn't work for the right hand table of
+      ** a LEFT JOIN: */
+      assert( (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0 );
     }
-
-    /* If a partial index is driving the loop, try to eliminate WHERE clause
-    ** terms from the query that must be true due to the WHERE clause of
-    ** the partial index
-    */
-    if( pIdx->pPartIdxWhere ){
-      whereApplyPartialIndexConstraints(pIdx->pPartIdxWhere, iCur, pWC);
-    }
-
+  
     /* Record the instruction used to terminate the loop. */
     if( pLoop->wsFlags & WHERE_ONEROW ){
       pLevel->op = OP_Noop;

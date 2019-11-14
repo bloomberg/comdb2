@@ -483,7 +483,7 @@ static Expr *exprTableRegister(
   if( pExpr ){
     if( iCol>=0 && iCol!=pTab->iPKey ){
       pCol = &pTab->aCol[iCol];
-      pExpr->iTable = regBase + iCol + 1;
+      pExpr->iTable = regBase + sqlite3TableColumnToStorage(pTab,iCol) + 1;
       pExpr->affExpr = pCol->affinity;
       zColl = pCol->zColl;
       if( zColl==0 ) zColl = db->pDfltColl->zName;
@@ -932,7 +932,9 @@ void sqlite3FkCheck(
         Vdbe *v = sqlite3GetVdbe(pParse);
         int iJump = sqlite3VdbeCurrentAddr(v) + pFKey->nCol + 1;
         for(i=0; i<pFKey->nCol; i++){
-          int iReg = pFKey->aCol[i].iFrom + regOld + 1;
+          int iFromCol, iReg;
+          iFromCol = pFKey->aCol[i].iFrom;
+          iReg = sqlite3TableColumnToStorage(pFKey->pFrom,iFromCol) + regOld+1;
           sqlite3VdbeAddOp2(v, OP_IsNull, iReg, iJump); VdbeCoverage(v);
         }
         sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, -1);
@@ -1267,7 +1269,15 @@ static Trigger *fkActionTrigger(
             sqlite3ExprAlloc(db, TK_ID, &tNew, 0),
             sqlite3ExprAlloc(db, TK_ID, &tToCol, 0));
         }else if( action==OE_SetDflt ){
-          Expr *pDflt = pFKey->pFrom->aCol[iFromCol].pDflt;
+          Column *pCol = pFKey->pFrom->aCol + iFromCol;
+          Expr *pDflt;
+          if( pCol->colFlags & COLFLAG_GENERATED ){
+            testcase( pCol->colFlags & COLFLAG_VIRTUAL );
+            testcase( pCol->colFlags & COLFLAG_STORED );
+            pDflt = 0;
+          }else{
+            pDflt = pCol->pDflt;
+          }
           if( pDflt ){
             pNew = sqlite3ExprDup(db, pDflt, 0);
           }else{

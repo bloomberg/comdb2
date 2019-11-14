@@ -3143,7 +3143,7 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
       ** the column names from the SELECT statement that defines the view.
       */
       assert( pTable->aCol==0 );
-      pTable->nCol = pTable->nNVCol = pSelTab->nCol;
+      pTable->nCol = pSelTab->nCol;
       pTable->aCol = pSelTab->aCol;
       pSelTab->nCol = 0;
       pSelTab->aCol = 0;
@@ -3152,6 +3152,7 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
       pTable->nCol = 0;
       nErr++;
     }
+    pTable->nNVCol = pTable->nCol;
     sqlite3DeleteTable(db, pSelTab);
     sqlite3SelectDelete(db, pSel);
     EnableLookaside;
