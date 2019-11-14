@@ -154,7 +154,7 @@ __fop_lock_handle(dbenv, dbp, locker, mode, elock, flags)
 #endif
 	if (elock == NULL)
 		ret = __lock_get(dbenv, locker,
-			flags, &fileobj, mode, &dbp->handle_lock);
+		    flags, &fileobj, mode, &dbp->handle_lock);
 	else {
 		reqs[0].op = DB_LOCK_PUT;
 		reqs[0].lock = *elock;
