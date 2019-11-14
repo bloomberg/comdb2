@@ -1,1 +1,1 @@
-#assert_toblock_nolock on
+abort_on_illegal_log_put on
