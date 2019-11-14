@@ -18,7 +18,6 @@
  *  Snapshot/Serial sql transaction support;
  *
  */
-#include "limit_fortify.h"
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>

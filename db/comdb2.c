@@ -31,7 +31,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <berkdb/dbinc/queue.h>
 #include <limits.h>
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -976,14 +975,13 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c\n",
                    ii, usedb->ix_keylen[ii],
                    (usedb->ix_dupes[ii] ? 'y' : 'n'),
                    (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'),
                    (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
-                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {

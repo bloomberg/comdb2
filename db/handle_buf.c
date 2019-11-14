@@ -16,7 +16,6 @@
 
 /* comdb index front end */
 
-#include "limit_fortify.h"
 #include <stdio.h>
 #include <pthread.h>
 #include <stddef.h>
@@ -900,7 +899,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_mynode)
             snprintf(iq->corigin, sizeof(iq->corigin), "SLCL  %.8s PID %6.6d",
-                     fromtask, frompid);
+                     fromtask ? fromtask : "null", frompid);
         else
             snprintf(iq->corigin, sizeof(iq->corigin), "SRMT# %s PID %6.6d",
                      iq->frommach, frompid);
