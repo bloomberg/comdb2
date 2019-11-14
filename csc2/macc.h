@@ -320,7 +320,7 @@ typedef struct macc_globals_t {
 } macc_globals_t;
 
 
-extern macc_globals_t macc_globals;
+extern macc_globals_t *macc_globals;
 
 extern int fncs[MAXFUNCS];          /* functions                         */
 extern int func_jstfnd;             /*function # of jstfnd - needed for delete*/
@@ -378,7 +378,7 @@ char *eos(char *);
 
 #define TABLENAME opt_tblname
 #define MAINDBNAME opt_maindbname
-#define DBNAME macc_globals.opt_dbname
+#define DBNAME macc_globals->opt_dbname
 #define INCLDIR opt_incldir
 #define DTADIR opt_dtadir
 #define ACCNAME opt_accname

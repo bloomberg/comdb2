@@ -623,6 +623,7 @@ done:
         newdb->schema = NULL;
         freedb(newdb);
     }
+    dyns_cleanup();
     return rc;
 }
 
@@ -957,7 +958,10 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     db->sc_to = newdb =
         newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0);
 
-    if (newdb == NULL) return -1;
+    if (newdb == NULL) {
+        dyns_cleanup();
+        return -1;
+    }
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->odh = s->headers;
@@ -984,6 +988,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
+    dyns_cleanup();
     return 0;
 }
 /* Make sure that logical recovery has tables to work with */

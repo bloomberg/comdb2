@@ -32,6 +32,7 @@ enum dyns_cnst {
 };
 
 char *dyns_field_option_text(int option);
+void dyns_cleanup();
 int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename);
 int dyns_load_schema(char *filename, char *dbname, char *tblname);
 int dyns_form_key(int index, char *record, int recsz, char *key, int keysize);

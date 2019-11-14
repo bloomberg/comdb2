@@ -983,6 +983,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs,
                                    0);
             if (db == NULL) {
+                dyns_cleanup();
                 return -1;
             }
 
@@ -994,7 +995,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
             /* just got a bunch of data. remember it so key forming
                routines and SQL can get at it */
-            if (add_cmacc_stmt(db, 0)) {
+            rc = add_cmacc_stmt(db, 0);
+            dyns_cleanup();
+            if (rc) {
                 logmsg(LOGMSG_ERROR,
                        "Failed to load schema: can't process schema file %s\n",
                        tok);

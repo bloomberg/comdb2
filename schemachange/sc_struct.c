@@ -841,16 +841,19 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         if (newdb == NULL) {
             /* shouldn't happen */
             backout_schemas(table);
+            dyns_cleanup();
             return 1;
         }
         newdb->dbnum = db->dbnum;
         if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
             /* can happen if new schema has no .DEFAULT tag but needs one */
             backout_schemas(table);
+            dyns_cleanup();
             return 1;
         }
         newdb->meta = db->meta;
         newdb->dtastripe = gbl_dtastripe;
+        dyns_cleanup();
 
         changed = ondisk_schema_changed(table, newdb, NULL, NULL);
         /* let this fly, which will be ok for fastinit;

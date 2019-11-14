@@ -127,8 +127,10 @@ int add_table_to_environment(char *table, const char *csc2,
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
 
-    if (newdb == NULL) return SC_INTERNAL_ERROR;
-
+    if (newdb == NULL) {
+        dyns_cleanup();
+        return SC_INTERNAL_ERROR;
+    }
     newdb->dtastripe = gbl_dtastripe;
 
     newdb->iq = iq;
@@ -166,7 +168,8 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if ((rc = get_db_handle(newdb, trans))) goto err;
+    if ((rc = get_db_handle(newdb, trans)))
+        goto err;
 
     /* must re add the dbs if you're a physical replicant */
     if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
@@ -195,12 +198,14 @@ int add_table_to_environment(char *table, const char *csc2,
     if (s)
         s->newdb = newdb;
 
+    dyns_cleanup();
     return SC_OK;
 
 err:
     newdb->iq = NULL;
     backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
+    dyns_cleanup();
     return rc;
 }
 

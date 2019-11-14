@@ -44,6 +44,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
         exit(1);
     }
 
+    dyns_cleanup();
     return SC_OK;
 }
 
@@ -125,10 +126,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
 
 int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
 {
-    int rc;
-
-    rc =
-        dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
+    int rc = dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");
         return -1;
@@ -146,7 +144,7 @@ int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
     rc = compare_all_tags(db->tablename, stderr);
 
     backout_schemas(db->tablename);
-
+    dyns_cleanup();
     return rc;
 }
 

@@ -6634,23 +6634,23 @@ static struct field *get_field_position(struct schema *s, const char *name,
     return NULL;
 }
 
-static void update_fld_hints(dbtable *db)
+static void update_fld_hints(dbtable *tbl)
 {
-    struct schema *ondisk = db->schema;
+    struct schema *ondisk = tbl->schema;
     int n = ondisk->nmembers;
     uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
     for (int i = 0; i < n; ++i) {
         hints[i] = ondisk->member[i].len;
     }
     hints[n] = 0;
-    bdb_set_fld_hints(db->handle, hints);
+    bdb_set_fld_hints(tbl->handle, hints);
 }
 
-void set_bdb_option_flags(dbtable *db, int odh, int ipu, int isc, int ver,
+void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh)
 {
-    update_fld_hints(db);
-    bdb_state_type *handle = db->handle;
+    update_fld_hints(tbl);
+    bdb_state_type *handle = tbl->handle;
     bdb_set_odh_options(handle, odh, compr, blob_compr);
     bdb_set_inplace_updates(handle, ipu);
     bdb_set_instant_schema_change(handle, isc);
@@ -6971,11 +6971,13 @@ struct schema *create_version_schema(char *csc2, int version,
     /* get rid of temp table */
     delete_schema(ver_db->tablename);
     freedb(ver_db);
+    dyns_cleanup();
 
     return ver_schema;
 
 err:
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    dyns_cleanup();
     return NULL;
 }
 
@@ -7110,11 +7112,13 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     fix_lrl_ixlen_tran(tran);
     free(csc2);
     free(new_bdb_handle);
+    dyns_cleanup();
     return 0;
 
 err:
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
+    dyns_cleanup();
     return 1;
 }
 

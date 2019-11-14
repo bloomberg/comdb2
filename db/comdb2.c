@@ -2303,7 +2303,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
         /* Free the table name. */
         free(tblnames[i]);
+        dyns_cleanup();
     }
+    dyns_cleanup();
 
     /* we have to do this after all the meta table lookups so that the hack in
      * get_meta_int works */
@@ -3281,7 +3283,8 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
     if (tbl == NULL) {
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
-        return -1;
+        rc = -1;
+        goto err;
     }
     tbl->dbs_idx = dbenv->num_dbs;
     tbl->csc2_schema = strdup(schema);
@@ -3292,9 +3295,12 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
 
     if (add_cmacc_stmt(tbl, 0)) {
         logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
-        return -1;
+        rc = -1;
+        goto err;
     }
-    return 0;
+err:
+    dyns_cleanup();
+    return rc;
 }
 
 static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
