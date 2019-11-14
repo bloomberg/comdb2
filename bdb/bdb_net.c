@@ -779,8 +779,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         static time_t lastpr = 0;
         time_t now;
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_INFO, "%s: lease base time is %lu\n", __func__,
-                   colease.issue_time);
+            logmsg(LOGMSG_INFO, "%s: lease base time is %" PRIu64 "\n",
+                   __func__, colease.issue_time);
             lastpr = now;
         }
     }

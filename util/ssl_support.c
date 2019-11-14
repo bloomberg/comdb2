@@ -304,16 +304,15 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     /* Test read permission on certificate. */
     if (cert != NULL && (rc = access(cert, R_OK)) != 0) {
         ssl_sfeprint(err, n, my_ssl_eprintln,
-                     "Failed to read certificate %s: %s.",
-                     cert, strerror(rc));
+                     "Failed to read certificate %s: %s.", cert,
+                     strerror(errno));
         goto error;
     }
 
     if (key != NULL) {
         if ((rc = stat(key, &buf)) != 0) {
             ssl_sfeprint(err, n, my_ssl_eprintln,
-                         "Failed to access key %s: %s.",
-                         key, strerror(rc));
+                         "Failed to access key %s: %s.", key, strerror(errno));
             goto error;
         }
 
@@ -349,9 +348,8 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     /* Test read permission on cacert. */
     if (ca != NULL && (rc = access(ca, R_OK)) != 0) {
         /* User has provided us with root CA. */
-        ssl_sfeprint(err, n, my_ssl_eprintln,
-                     "Could not read cacert %s: %s.",
-                     ca, strerror(rc));
+        ssl_sfeprint(err, n, my_ssl_eprintln, "Could not read cacert %s: %s.",
+                     ca, strerror(errno));
         goto error;
     }
 
@@ -360,7 +358,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     if (crl != NULL && (rc = access(crl, R_OK)) != 0) {
         /* User has provided us with root CA. */
         ssl_sfeprint(err, n, my_ssl_eprintln, "Could not read CRL %s: %s.", crl,
-                     strerror(rc));
+                     strerror(errno));
         goto error;
     }
 #endif /* HAVE_CRL */

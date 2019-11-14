@@ -463,7 +463,7 @@ void sqllogger_process_message(char *line, int lline)
         if (rollat == 0)
             logmsg(LOGMSG_USER, "Turned off rolling\n");
         else {
-            logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
+            logmsg(LOGMSG_USER, "Rolling logs after %d bytes\n", (int)rollat);
         }
         sqllog_rollat_size = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {
@@ -512,7 +512,8 @@ void sqllogger_process_message(char *line, int lline)
         }
         sqllog_async_maxsize = size;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
-        logmsg(LOGMSG_USER, "async logged %ld dropped %ld size %d max %d\n",
+        logmsg(LOGMSG_USER,
+               "async logged %" PRId64 " dropped %" PRId64 " size %d max %d\n",
                async_nmessages, async_ndrops, async_size, async_maxsize);
     } else {
         logmsg(LOGMSG_ERROR, "Unknown sqllogger command\n");

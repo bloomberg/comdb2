@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 rewind_time=$(date +%s)
 # prevent commands from appearing too quick

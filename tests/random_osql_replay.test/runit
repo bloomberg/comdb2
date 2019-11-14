@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-
 bash -n "$0" | exit 1
 
 #set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 maxloop=5000
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
 
-getmaster()
-{
-    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
 master=`getmaster`
 # send random osql from replicant to master, master should not crash
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('test bad_osql')" &> test1.out

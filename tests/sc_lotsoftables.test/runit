@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 # Debug variable
 debug=0
 
@@ -15,12 +17,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 function assertcnt 
 {
@@ -45,33 +41,6 @@ function do_verify
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "Verify"
     fi
-}
-
-# Do schema changes
-function do_schema_changes
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t2.csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
 }
 
 
@@ -164,9 +133,6 @@ kill_restart_node()
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
     done
 }
-
-
-
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 

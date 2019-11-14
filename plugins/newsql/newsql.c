@@ -2155,6 +2155,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
+    extern size_t gbl_cached_output_buffer_max_bytes;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
@@ -2454,6 +2455,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
         }
+
+        /* Keep a reasonable amount of memory in the clnt. */
+        if (APPDATA->packed_capacity > gbl_cached_output_buffer_max_bytes) {
+            APPDATA->packed_capacity = 0;
+            free(APPDATA->packed_buf);
+            APPDATA->packed_buf = NULL;
+        }
+
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 

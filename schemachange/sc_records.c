@@ -174,11 +174,11 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
 
     data->cmembers->ndeadlocks = ndeadlocks;
     data->cmembers->nlockwaits = nlockwaits;
-    logmsg(
-        LOGMSG_DEBUG,
-        "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
-        __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
-        data->cmembers->thrcount);
+    logmsg(LOGMSG_DEBUG,
+           "%s: diff_deadlocks=%" PRId64 ", diff_lockwaits=%" PRId64
+           ", maxthr=%d, currthr=%d\n",
+           __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
+           data->cmembers->thrcount);
     increase_max_threads(
         &data->cmembers->maxthreads,
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));

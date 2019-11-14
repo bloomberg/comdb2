@@ -2605,7 +2605,7 @@ upgrade:
 			__os_clock(dbenv, &now, NULL);
 
 			if ((now - conftime) > 1) {
-				logmsg(LOGMSG_USER, "st_nconflicts is %ld\n",
+				logmsg(LOGMSG_USER, "st_nconflicts is %"PRId64"\n",
 				    region->stat.st_nconflicts);
 				conftime = now;
 			}

@@ -15,8 +15,6 @@ struct __bh;
 typedef struct __bh BH;
 struct __db_mpool_hash;
 typedef struct __db_mpool_hash DB_MPOOL_HASH;
-struct __db_mpreg;
-typedef struct __db_mpreg DB_MPREG;
 struct __mpool;
 typedef struct __mpool MPOOL;
 
@@ -52,9 +50,6 @@ struct __db_mpool {
 	/* These fields need to be protected for multi-threaded support. */
 	DB_MUTEX   *mutexp;		/* Structure thread lock. */
 
-					/* List of pgin/pgout routines. */
-	LIST_HEAD(__db_mpregh, __db_mpreg) dbregq;
-
 					/* List of DB_MPOOLFILE's. */
 	TAILQ_HEAD(__db_mpoolfileh, __db_mpoolfile) dbmfq;
 
@@ -70,19 +65,6 @@ struct __db_mpool {
 };
 
 /*
- * DB_MPREG --
- *	DB_MPOOL registry of pgin/pgout functions.
- */
-struct __db_mpreg {
-	LIST_ENTRY(__db_mpreg) q;	/* Linked list. */
-
-	int32_t ftype;			/* File type. */
-					/* Pgin, pgout routines. */
-	int (*pgin) __P((DB_ENV *, db_pgno_t, void *, DBT *));
-	int (*pgout) __P((DB_ENV *, db_pgno_t, void *, DBT *));
-};
-
-/*
  * NCACHE --
  *	Select a cache based on the file and the page number.  Assumes accesses
  *	are uniform across pages, which is probably OK.  What we really want to
@@ -93,7 +75,7 @@ struct __db_mpreg {
  *	more frequent than a random data page.
  */
 #define	NCACHE(mp, mf_offset, pgno)					\
-	(((pgno) ^ ((mf_offset) >> 3)) % ((MPOOL *)mp)->nreg)
+	(((pgno) ^ (((uintptr_t) mf_offset) >> 3)) % ((MPOOL *)mp)->nreg)
 
 /*
  * NBUCKET --
@@ -108,7 +90,7 @@ struct __db_mpreg {
  *	 good hashing.
  */
 #define	NBUCKET(mc, mf_offset, pgno)					\
-	(((pgno) ^ ((mf_offset) << 9)) % (mc)->htab_buckets)
+	(((pgno) ^ (((intptr_t)mf_offset) << 9)) % (mc)->htab_buckets)
 
 /*
  * MPOOL --
@@ -222,6 +204,8 @@ struct __mpoolfile {
 	/* Protected by MPOOLFILE mutex. */
 	u_int32_t mpf_cnt;		/* Ref count: DB_MPOOLFILEs. */
 	u_int32_t block_cnt;		/* Ref count: blocks in cache. */
+	LIST_HEAD(, __db_mpoolfile) dbmpf_list;
+
 
 	roff_t	  path_off;		/* File name location. */
 
@@ -336,7 +320,7 @@ struct __bh {
 	SH_TAILQ_ENTRY(__bh) hq;	/* MPOOL hash bucket queue. */
 
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */
-	roff_t	  mf_offset;		/* Associated MPOOLFILE offset. */
+	MPOOLFILE *mpf;
 
 	/* The begin LSN of the transaction that
 	   marked the page from clean to dirty. */

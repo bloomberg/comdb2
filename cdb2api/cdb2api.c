@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <inttypes.h>
 #include <alloca.h>
 #include <stdarg.h>
 #include <sbuf2.h>
@@ -240,15 +241,9 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 #include <dlfcn.h>
 #endif
 
-#if defined(__GNUC__) || defined(__IBMC__)
-#define UNLIKELY(x) __builtin_expect((x), 0)
-#else
-#define UNLIKELY(x) (x)
-#endif
-
 #define debugprint(fmt, args...)                                               \
     do {                                                                       \
-        if (UNLIKELY(hndl && hndl->debug_trace))                               \
+        if (hndl && hndl->debug_trace)                                         \
             fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
                     __func__, __LINE__, ##args);                               \
     } while (0);
@@ -2640,10 +2635,10 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
 
 retry:
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
-    debugprint("READ HDR b_read=%d, sizeof(hdr)=(%lu):\n", b_read, sizeof(hdr));
+    debugprint("READ HDR b_read=%d, sizeof(hdr)=(%zu):\n", b_read, sizeof(hdr));
 
     if (b_read != sizeof(hdr)) {
-        debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%lu):\n",
+        debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%zu):\n",
                    b_read, sizeof(hdr));
         rc = -1;
         goto after_callback;
@@ -3395,10 +3390,10 @@ int cdb2_close(cdb2_hndl_tp *hndl)
             if (curr - starttimems >= CDB2_AUTO_CONSUME_TIMEOUT_MS)
                 break;
         }
-        if (UNLIKELY(hndl->debug_trace)) {
+        if (hndl->debug_trace) {
             gettimeofday(&tv, NULL);
             uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
-            fprintf(stderr, "%s: auto consume %d records took %lu ms\n",
+            fprintf(stderr, "%s: auto consume %d records took %" PRIu64 " ms\n",
                     __func__, nrec, curr - starttimems);
         }
     }
@@ -5769,7 +5764,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 
         if (num_hosts < MAX_NODES) {
             if (strlen(hostname) >= sizeof(hndl->hosts[0]))
-                fprintf(stderr, "Hostname \"%s\" is too long, max %lu\n",
+                fprintf(stderr, "Hostname \"%s\" is too long, max %zu\n",
                         hostname, sizeof(hndl->hosts[0]));
             else if (port < -1 || port > USHRT_MAX)
                 fprintf(stderr, "Hostname \"%s\" invalid port number %d\n",
