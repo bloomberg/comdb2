@@ -952,6 +952,11 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 		else {
 			t_ret = __dbreg_close_id(dbp, txn);
 			if (t_ret != 0) { 
+					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+					fileid_str(dbp->fileid, fid_str);
+					logmsg(LOGMSG_INFO, "dbreg_close failed for %s, "
+							"txn is %p\n", fid_str, txn);
+
 				if (txn != NULL) {
 					/*
 					 * We're in a txn and the attempt to log the
@@ -971,10 +976,6 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 					if (deferred_closep != NULL)
 						*deferred_closep = 1;
 					return (t_ret);
-				} else {
-					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-					fileid_str(dbp->fileid, fid_str);
-					logmsg(LOGMSG_INFO, "dbreg_close failed for %s\n", fid_str);
 				}
 			}
 		}
