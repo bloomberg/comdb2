@@ -33,6 +33,7 @@
 #include "sc_schema.h"
 #include "crc32c.h"
 #include "comdb2_atomic.h"
+#include "bdb_api.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
@@ -43,6 +44,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     int rc;
 
     int maxcancelretry = 10;
+    
+    /* This function requires the bdb-lock */
+    if (bdb_lockref() <= 0) {
+        logmsg(LOGMSG_FATAL, "%s requires the bdb-lock\n",
+                __func__);
+        abort();
+    }
 
     /* if we're not the master node then we can't do schema change! */
     if (thedb->master != gbl_mynode) {
