@@ -822,6 +822,15 @@ __db_close(dbp, txn, flags)
 	return (ret);
 }
 
+static void fileid_str(u_int8_t *fileid, char *str)
+{
+	char *p = str;
+	u_int8_t *f = fileid;
+	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
+		sprintf(p, "%2.2x", (u_int)*f);
+	}
+}
+
 /*
  * __db_refresh --
  *	Refresh the DB structure, releasing any allocated resources.
@@ -941,26 +950,32 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 		if (F_ISSET(dbp, DB_AM_RECOVER))
 			t_ret = __dbreg_revoke_id(dbp, 0, DB_LOGFILEID_INVALID);
 		else {
-			if ((t_ret = __dbreg_close_id(dbp, txn)) != 0 &&
-			    txn != NULL) {
-				/*
-				 * We're in a txn and the attempt to log the
-				 * close failed;  let the txn subsystem know
-				 * that we need to destroy this dbp once we're
-				 * done with the abort, then bail from the
-				 * close.
-				 *
-				 * Note that if the attempt to put off the
-				 * close -also- fails--which it won't unless
-				 * we're out of heap memory--we're really
-				 * screwed.  Panic.
-				 */
-				if ((ret =
-				    __txn_closeevent(dbenv, txn, dbp)) != 0)
-					return (__db_panic(dbenv, ret));
-				if (deferred_closep != NULL)
-					*deferred_closep = 1;
-				return (t_ret);
+			t_ret = __dbreg_close_id(dbp, txn);
+			if (t_ret != 0) { 
+				if (txn != NULL) {
+					/*
+					 * We're in a txn and the attempt to log the
+					 * close failed;  let the txn subsystem know
+					 * that we need to destroy this dbp once we're
+					 * done with the abort, then bail from the
+					 * close.
+					 *
+					 * Note that if the attempt to put off the
+					 * close -also- fails--which it won't unless
+					 * we're out of heap memory--we're really
+					 * screwed.  Panic.
+					 */
+					if ((ret =
+								__txn_closeevent(dbenv, txn, dbp)) != 0)
+						return (__db_panic(dbenv, ret));
+					if (deferred_closep != NULL)
+						*deferred_closep = 1;
+					return (t_ret);
+				} else {
+					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+					fileid_str(dbp->fileid, fid_str);
+					logmsg(LOGMSG_INFO, "dbreg_close failed for %s\n", fid_str);
+				}
 			}
 		}
 
