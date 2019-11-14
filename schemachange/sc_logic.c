@@ -522,7 +522,7 @@ int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran);
 int do_drop_view(struct ireq *iq, struct schema_change_type *s,
                  tran_type *tran);
 
-int do_schema_change_tran(sc_arg_t *arg)
+static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
 {
     struct ireq *iq = arg->iq;
     tran_type *trans = arg->trans;
@@ -540,16 +540,16 @@ int do_schema_change_tran(sc_arg_t *arg)
         abort();
     }
 
+    Pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtxStart);
+    Pthread_cond_signal(&s->condStart);
+    Pthread_mutex_unlock(&s->mtxStart);
+
     if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
         logmsg(LOGMSG_INFO, "%s downgraded master\n", __func__);
         rc = SC_MASTER_DOWNGRADE;
         goto downgraded;
     }
-
-    Pthread_mutex_lock(&s->mtx);
-    Pthread_mutex_lock(&s->mtxStart);
-    Pthread_cond_signal(&s->condStart);
-    Pthread_mutex_unlock(&s->mtxStart);
 
     s->iq = iq;
     enum thrtype oldtype = prepare_sc_thread(s);
@@ -645,17 +645,20 @@ downgraded:
                    "%s: failed to set bdb schema change status, bdberr %d\n",
                    __func__, bdberr);
         }
-        reset_sc_thread(oldtype, s);
+        if (!no_reset)
+            reset_sc_thread(oldtype, s);
         Pthread_mutex_unlock(&s->mtx);
         return 0;
     } else if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
                rc == SC_PREEMPTED || rc == SC_PAUSED ||
                (!s->nothrevent && !s->finalize)) {
-        reset_sc_thread(oldtype, s);
+        if (!no_reset)
+            reset_sc_thread(oldtype, s);
         Pthread_mutex_unlock(&s->mtx);
         return rc;
     }
-    reset_sc_thread(oldtype, s);
+    if (!no_reset)
+        reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
         sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
@@ -666,6 +669,11 @@ downgraded:
     return rc;
 }
 
+int do_schema_change_tran(sc_arg_t *arg)
+{
+    return do_schema_change_tran_int(arg, 0);
+}
+
 int do_schema_change_tran_thd(sc_arg_t *arg)
 {
     int rc;
@@ -673,7 +681,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     thread_started("schema_change");
     bdb_thread_event(bdb_state, 1);
     BDB_READLOCK("schema-change-tran");
-    rc = do_schema_change_tran(arg);
+    rc = do_schema_change_tran_int(arg, 1);
     BDB_RELLOCK();
     bdb_thread_event(bdb_state, 0);
     return rc;
