@@ -7842,8 +7842,14 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         /* We have to check new. prefix for schemachange first.
          * See NOTE in bdb_is_new_sc_file()
          */
-        rc = bdb_is_new_sc_file(bdb_state, tran, bdb_state->name, file_version,
-                                bdberr);
+        /* Core is showing bdb_is_new_sc_file has tblname 0xffffffffffffffff ..
+         * maybe this is a race? */
+
+        if (bdb_state->name == (char *)0xffffffffffffffff)
+            abort();
+
+        rc = bdb_is_new_sc_file(bdb_state, tran, (const char *)bdb_state->name,
+                file_version, bdberr);
         if (rc == 1) {
             found_in_llmeta = 1;
             rc = 0;
