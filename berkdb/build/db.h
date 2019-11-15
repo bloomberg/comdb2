@@ -1422,7 +1422,7 @@ struct __db {
 	DBT	 my_rkey;		/* [Primary] key. */
 	DBT	 my_rdata;		/* Data. */
 
-#if defined (STACK_AT_DB_OPEN)
+#if defined (STACK_AT_DB_OPEN_CLOSE)
 	int  frames;
 	void *buf[MAX_BERK_STACK_FRAMES];
 	pthread_t tid;
