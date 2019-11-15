@@ -281,7 +281,7 @@ void sc_status(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "-------------------------\n");
         logmsg(LOGMSG_USER,
                "Schema change in progress for table %s "
-               "with seed 0x%lx\n",
+               "with seed 0x%" PRIx64 "\n",
                sctbl->tablename, sctbl->seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",

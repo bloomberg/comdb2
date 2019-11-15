@@ -1258,6 +1258,12 @@ REGISTER_TUNABLE("logmsg.level",
                  "All messages below this level will not be logged.",
                  TUNABLE_ENUM, NULL, READEARLY, logmsg_level_value, NULL,
                  logmsg_level_update, NULL);
+REGISTER_TUNABLE(
+    "logmsg.skiplevel",
+    "Skip appending level information to the log message. This was added to "
+    "keep up with the historical behavior (Default: on)",
+    TUNABLE_BOOLEAN, NULL, NOARG | READEARLY | INVERSE_VALUE | INTERNAL,
+    logmsg_prefix_level_value, NULL, logmsg_prefix_level_update, NULL);
 REGISTER_TUNABLE("logmsg.syslog", "Log messages to syslog.", TUNABLE_BOOLEAN,
                  NULL, NOARG | READEARLY, logmsg_syslog_value, NULL,
                  logmsg_syslog_update, NULL);
@@ -1864,4 +1870,9 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("cached_output_buffer_max_bytes",
+                 "Maximum size in bytes of the output buffer of an appsock "
+                 "thread.  (Default: 8 MiB)",
+                 TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

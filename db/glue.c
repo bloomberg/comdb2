@@ -4284,10 +4284,10 @@ void backend_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %lu\n", hits);
-    logmsg(LOGMSG_USER, "misses      %lu\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %lu\n", reads);
-    logmsg(LOGMSG_USER, "page writes %lu\n", writes);
+    logmsg(LOGMSG_USER, "hits        %" PRIu64 "\n", hits);
+    logmsg(LOGMSG_USER, "misses      %" PRIu64 "\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %" PRIu64 "\n", reads);
+    logmsg(LOGMSG_USER, "page writes %" PRIu64 "\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else

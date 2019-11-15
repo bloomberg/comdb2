@@ -40,7 +40,7 @@ On every machine in the cluster:
        flex \
        protobuf-c-compiler \
        liblz4-dev \
-       libncurses5-dev \
+       ncurses-dev  \
        libprotobuf-c-dev \
        libreadline-dev \
        libssl-dev \
@@ -51,10 +51,43 @@ On every machine in the cluster:
        zlib1g-dev
    ```
 
-   **CentOS 7**
+   **CentOS 7/8**
+
+   On CentOS 8, enable the PowerTools repository first:
 
    ```
-   sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
+   dnf config-manager --set-enabled PowerTools
+   ```
+
+   ```
+   yum install -y       \
+       gcc              \
+       gcc-c++          \
+       cmake3           \
+       make             \
+       protobuf-c       \
+       libunwind        \
+       libunwind-devel  \
+       protobuf-c-devel \
+       byacc            \
+       flex             \
+       openssl          \
+       openssl-devel    \
+       openssl-libs     \
+       readline-devel   \
+       sqlite           \
+       sqlite-devel     \
+       libuuid          \
+       libuuid-devel    \
+       zlib-devel       \
+       zlib             \
+       lz4-devel        \
+       gawk             \
+       tcl              \
+       epel-release     \
+       lz4              \
+       rpm-build        \
+       which
    ```
 
    **macOS High Sierra (experimental)**

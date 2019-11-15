@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Debug variable
 debug=0
 
@@ -13,27 +14,6 @@ fi
 
 # Number of insert_records function calls
 nins=0
-
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function do_verify
@@ -85,7 +65,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 
 insert_records 1 2000
-assertcnt 2000
+assertcnt t1 2000
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
 
@@ -102,12 +82,12 @@ if [[ "$ret" != 0 ]]; then
 fi
 
 wait
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 
 echo "Alter table to t1_1 version"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 
 
@@ -123,7 +103,7 @@ if [[ "$ret" != 0 ]]; then
 fi
 
 wait
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 
 
@@ -132,7 +112,7 @@ function do_alter_and_update (){
 #updates fail (deadlock?):
 #[update t1 set c=c+10000 where 1] failed with rc 304 unable to update record rc = 199
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" 
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" || touch alter.failed) &
@@ -146,7 +126,7 @@ fi
 
 
 wait
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 if [ -f alter.failed ] ; then
     failexit "Alter while updating where 1"
@@ -172,7 +152,7 @@ fi
 
 
 wait
-assertcnt 3000
+assertcnt t1 3000
 do_verify
 if [ -f rebuild.failed ] ; then
     failexit "Rebuild while updating where 1"
@@ -194,7 +174,7 @@ if [[ "$ret" != 0 ]]; then
 fi
 
 wait
-assertcnt 4000
+assertcnt t1 4000
 do_verify
 
 

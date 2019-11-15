@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Cursor moves testcase for comdb2
 ################################################################################
 
@@ -186,29 +187,11 @@ done
 
 ### Tests for CREATE UNIQUE INDEX with multiple NULL values
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
 function assertbadexitcode
 {
     rc=$1
     if [ $rc -eq 0 ] ; then
         failexit "exit code is now $rc but should not be 0"
-    fi
-}
-
-function assertres
-{
-    if [ $# != 2 ] ; then
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
     fi
 }
 

@@ -76,19 +76,25 @@ if [[ $? != 0 ]] ; then
     exit 1
 fi
 
+successful=1
 #run tests
 echo "Running sequence of selects"
 i=0; while (( $i != 1000 )); do
     $CDB2SQL_EXE $cdb2options $dbname default - < load.req
     result=$?
-    if [[ $? != 0 ]] ; then
+    if [[ $result != 0 ]] ; then
         echo "Select failed"
-        echo "FAILURE"
-        exit 1
+        successful=0
+        break
     fi
     let i=i+1;
 done
 
 $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+
+if (( $successful != 1 )) ; then
+    echo "FAILURE"
+    exit 1
+fi
 
 echo "SUCCESS"
