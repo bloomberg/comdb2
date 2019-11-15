@@ -1287,6 +1287,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     int rc;
     int i;
     int dtanum, strnum;
+    char fileid[21] = {0};
 
     print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
@@ -1302,6 +1303,10 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
         for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
+                bdb_state->dbp_data[dtanum][strnum]->get_fileid(
+                        bdb_state->dbp_data[dtanum][strnum], fileid);
+                logmsg(LOGMSG_USER, "%s closing fileid %s\n", __func__,
+                        fileid);
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
                     bdb_state->dbp_data[dtanum][strnum], flags);
                 if (0 != rc) {
@@ -1317,6 +1322,9 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
+            bdb_state->dbp_ix[i]->get_fileid(bdb_state->dbp_ix[i], fileid);
+            logmsg(LOGMSG_USER, "%s closing fileid %s\n", __func__,
+                    fileid);
             rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
