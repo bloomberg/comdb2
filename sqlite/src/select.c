@@ -88,6 +88,8 @@ extern void comdb2_register_offset(int, int, int);
 extern const char *comdb2_get_dbname(void);
 extern void comdb2_set_verify_remote_schemas(void);
 
+extern int gbl_legacy_column_name;
+
 static void _set_src_recording(
   Parse *pParse,
   Select *pSub
@@ -1937,8 +1939,8 @@ static void generateColumnNames(
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( srcName && p->op==TK_COLUMN ){
 #else /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-    /* TODO: introduce a tunable */
-    }else if( srcName && p->op==TK_COLUMN && isCompound==0 ){
+    }else if( srcName && p->op==TK_COLUMN &&
+              (isCompound==0 || unlikely(gbl_legacy_column_name==0)) ){
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       char *zCol;
       int iCol = p->iColumn;
