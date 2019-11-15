@@ -1936,7 +1936,7 @@ static void generateColumnNames(
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( srcName && p->op==TK_COLUMN ){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#else /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* TODO: introduce a tunable */
     }else if( srcName && p->op==TK_COLUMN && isCompound==0 ){
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
