@@ -56,10 +56,10 @@ char *strdup_readonly(
   size_t *pnStr
 ){
   char *z;
-  size_t nStr = 0;
+  size_t nStr;
   if( zStr==0 ) return 0;
   nStr = strlen(zStr);
-  z = memdup_readonly(zStr, nStr);
+  z = memdup_readonly(zStr, nStr + 1);
   if( z && pnStr ) *pnStr = nStr;
   return z;
 }
