@@ -348,13 +348,13 @@ err:
  * __db_get_fileid --
  *  Accessor for fileid
  *
- * PUBLIC: int __db_get_fileid __P((DB *, char *));
+ * PUBLIC: int __db_get_fileid __P((DB *, u_int8_t *));
  */
 
 int
 __db_get_fileid(dbp, fileid)
 	DB *dbp;
-	char *fileid;
+	u_int8_t *fileid;
 {
 	memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
 	return 0;
