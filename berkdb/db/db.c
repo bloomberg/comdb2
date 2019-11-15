@@ -45,9 +45,11 @@
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
+extern char **backtrace_symbols(void *const *, int);
 #else
 #define backtrace(A, B) 1
 #define backtrace_symbols_fd(A, B, C)
+#define backtrace_symbols(A, B)
 #endif
 #endif
 
@@ -1102,11 +1104,20 @@ never_opened:
 	}
 #if defined (STACK_AT_DB_OPEN_CLOSE)
 	dbp->frames = backtrace(dbp->buf, MAX_BERK_STACK_FRAMES);
-    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-    fileid_str(dbp->fileid, fid_str);
-    logmsg(LOGMSG_USER, "%ld closed %s\n", pthread_self(),
-            fid_str);
-    cheap_stack_trace();
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    char **strings;
+	fileid_str(dbp->fileid, fid_str);
+	logmsg(LOGMSG_USER, "%ld closed %s:", pthread_self(), fid_str);
+    strings = backtrace_symbols(dbp->buf, dbp->frames);
+    for (int j = 0; j < dbp->frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            logmsg(LOGMSG_USER, " %s", &p[1]);
+        }
+    }
+    logmsg(LOGMSG_USER, "\n");
+    free(strings);
 #endif
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
