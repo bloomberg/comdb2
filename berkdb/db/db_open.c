@@ -345,6 +345,22 @@ err:
 }
 
 /*
+ * __db_get_fileid --
+ *  Accessor for fileid
+ *
+ * PUBLIC: int __db_get_fileid __P((DB *, char *));
+ */
+
+int
+__db_get_fileid(dbp, fileid)
+	DB *dbp;
+	char *fileid;
+{
+	memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
+	return 0;
+}
+
+/*
  * __db_get_open_flags --
  *	Accessor for flags passed into DB->open call
  *
