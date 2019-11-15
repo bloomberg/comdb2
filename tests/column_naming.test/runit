@@ -5,8 +5,8 @@ expected_file_extn="expected"
 
 # switch the expected result file if we're running a generated test
 curdir=`basename ${PWD}`
-if [[ $curdir =~ "no_legacy_col_name_generated.test" ]]; then
-    expected_file_extn="expected.no_legacy"
+if [[ $curdir =~ "new_generated.test" ]]; then
+    expected_file_extn="expected.new"
 fi
 
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -e ${expected_file_extn}
