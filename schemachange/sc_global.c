@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <unistd.h>
 #include <ctrace.h>
 #include "schemachange.h"

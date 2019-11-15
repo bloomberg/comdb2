@@ -400,7 +400,6 @@ enum RCODES {
                 table */
     ERR_SC_COMMIT =
         314, /* schema change in its final stages; proxy should retry */
-    ERR_INDEX_DISABLED = 315, /* can't read from a disabled index */
     ERR_CONFIG_FAILED = 316,
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
@@ -490,9 +489,6 @@ enum {
     COMDB2_THR_EVENT_DONE_RDWR = 2,
     COMDB2_THR_EVENT_START_RDWR = 3
 };
-
-/* index disable flags */
-enum { INDEX_READ_DISABLED = 1, INDEX_WRITE_DISABLED = 2 };
 
 enum lclop {
     LCL_OP_ADD = 1,
@@ -657,7 +653,6 @@ typedef struct dbtable {
     signed char ix_datacopy[MAXINDEX];
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
-    signed char ix_disabled[MAXINDEX];
 
     shard_limits_t *sharding;
 
