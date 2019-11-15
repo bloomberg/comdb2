@@ -39,6 +39,17 @@
 
 #include "db_config.h"
 #include <stdlib.h>
+#include "cheapstack.h"
+
+#if defined (STACK_AT_DB_OPEN_CLOSE)
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
+#endif
 
 #ifndef lint
 static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $";
@@ -822,7 +833,7 @@ __db_close(dbp, txn, flags)
 	return (ret);
 }
 
-static void fileid_str(u_int8_t *fileid, char *str)
+static inline void fileid_str(u_int8_t *fileid, char *str)
 {
 	char *p = str;
 	u_int8_t *f = fileid;
@@ -1089,6 +1100,14 @@ never_opened:
 			ret = t_ret;
 		dbp->mpf = NULL;
 	}
+#if defined (STACK_AT_DB_OPEN_CLOSE)
+	dbp->frames = backtrace(dbp->buf, MAX_BERK_STACK_FRAMES);
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    fileid_str(dbp->fileid, fid_str);
+    logmsg(LOGMSG_USER, "%ld closed %s\n", pthread_self(),
+            fid_str);
+    cheap_stack_trace();
+#endif
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
