@@ -68,6 +68,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return rc;
     }
 
@@ -77,6 +78,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return SC_INTERNAL_ERROR;
     }
 
@@ -87,9 +89,11 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return -1;
     }
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    dyns_cleanup();
 
     /* create temporary tables.  to try to avoid strange issues always
      * use a unqiue prefix.  this avoids multiple histories for these
