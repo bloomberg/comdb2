@@ -574,6 +574,7 @@ int do_dryrun(struct schema_change_type *s)
         }
     }
 
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename)) {
         char *err;
         err = csc2_get_errors();
@@ -939,6 +940,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
     }
 
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;

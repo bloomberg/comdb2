@@ -28,6 +28,7 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
+#include "sc_struct.h"
 
 extern void free_cached_idx(uint8_t **cached_idx);
 

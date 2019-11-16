@@ -404,6 +404,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return rc;
     }
 
@@ -412,6 +413,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
@@ -419,10 +421,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     newdb->iq = iq;
 
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        dyns_cleanup();
         return -1;
     }
 
@@ -431,6 +434,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Sqlite syntax check failed\n");
         backout(newdb);
         cleanup_newdb(newdb);
+        dyns_cleanup();
         return SC_CSC2_ERROR;
     } else {
         sc_printf(s, "Sqlite syntax check succeeded\n");
@@ -438,6 +442,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     newdb->ix_blob = newdb->schema->ix_blob;
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    dyns_cleanup();
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {

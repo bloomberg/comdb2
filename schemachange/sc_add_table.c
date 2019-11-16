@@ -111,6 +111,7 @@ int add_table_to_environment(char *table, const char *csc2,
         return -1;
     }
 
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
 
     if (rc) {

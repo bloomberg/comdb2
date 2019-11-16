@@ -973,6 +973,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     return -1;
                 }
             }
+            printf("calling dyns_load_schema from %s\n", __func__);
             rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
@@ -996,11 +997,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             /* just got a bunch of data. remember it so key forming
                routines and SQL can get at it */
             rc = add_cmacc_stmt(db, 0);
-            dyns_cleanup();
             if (rc) {
                 logmsg(LOGMSG_ERROR,
                        "Failed to load schema: can't process schema file %s\n",
                        tok);
+                dyns_cleanup();
                 return -1;
             }
 
@@ -1009,8 +1010,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 logmsg(LOGMSG_ERROR,
                        "Failed to load check constraints for %s\n",
                        db->tablename);
+                dyns_cleanup();
                 return -1;
             }
+            dyns_cleanup();
         } else {
             logmsg(LOGMSG_ERROR, "Invalid table option\n");
             return -1;

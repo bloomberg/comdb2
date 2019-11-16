@@ -2248,6 +2248,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
         }
+        printf("calling dyns_load_schema_string from %s\n", __func__);
         rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
         if (rc) {
             logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -3275,6 +3276,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
        return -1;
     }
 
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);

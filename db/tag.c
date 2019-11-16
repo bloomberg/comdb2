@@ -6927,6 +6927,7 @@ struct schema *create_version_schema(char *csc2, int version,
     int rc;
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -7040,6 +7041,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         goto err;
     }
 
+    printf("calling dyns_load_schema_string from %s\n", __func__);
     rc = dyns_load_schema_string(csc2, db->dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
