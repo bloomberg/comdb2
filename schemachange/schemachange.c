@@ -1266,7 +1266,7 @@ error:
 /* shortcut for running table upgrade in a schemachange shell */
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
-                        int sync)
+                        bool sync)
 {
     struct schema_change_type *sc =
         calloc(1, sizeof(struct schema_change_type));

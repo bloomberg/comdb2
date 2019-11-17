@@ -22,9 +22,6 @@
 #include <queue.h>
 
 typedef struct sqlpool {
-    int curnthd; /* current number of threads in
-                    the pool */
-    int nbusy;
     pthread_mutex_t sqlqmtx;
     pthread_cond_t sqlqcnd;
     queue_type *sqlq;
@@ -33,13 +30,15 @@ typedef struct sqlpool {
        so just add it to this structure
        */
     long long sqlopendb_msspent;
-    int sqlopendb_ntimes;
-
     long long sqlopendb_fsql_msspent;
-    int sqlopendb_fsql_ntimes;
-
     long long sqlopendb_sqlengine_msspent;
+
+    int sqlopendb_ntimes;
+    int sqlopendb_fsql_ntimes;
     int sqlopendb_sqlengine_ntimes;
+
+    int curnthd; /* current number of threads in the pool */
+    int nbusy;
 
     unsigned long long num_errors;
     unsigned long long num_becomes;

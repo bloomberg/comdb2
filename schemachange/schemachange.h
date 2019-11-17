@@ -142,37 +142,36 @@ struct schema_change_type {
     int drop_view;
 
     /* ========== runtime members ========== */
-    int onstack; /* if 1 don't free */
-    int nothrevent;
-    int pagesize; /* pagesize override to use */
-    int showsp;
-    SBUF2 *sb; /* socket to sponsoring program */
-    int must_close_sb;
-    int use_old_blobs_on_rebuild;
-
-    int resume;           /* if we are trying to resume a schema change,
-                           * usually because there is a new master */
-    int retry_bad_genids; /* retrying a schema change (with full rebuild)
-                             because there are old genids in flight */
-    int dryrun;           /* comdb2sc.tsk -y */
-    int statistics;       /* comdb2sc.tsk <dbname> stat <table> */
-    int use_new_genids;   /* rebuilding old genids needs to
-                             get new genids to avoid name collission */
-    int finalize;      /* Whether the schema change should be committed */
-    int finalize_only; /* only commit the schema change */
-
     pthread_mutex_t mtx; /* mutex for thread sync */
     pthread_mutex_t mtxStart; /* mutex for thread start */
     pthread_cond_t condStart; /* condition var for thread sync */
-    int sc_rc;
-
+    SBUF2 *sb; /* socket to sponsoring program */
     struct ireq *iq;
     void *tran; /* transactional schemachange */
-
     struct schema_change_type *sc_next;
 
+    int pagesize; /* pagesize override to use */
+    int resume;           /* if we are trying to resume a schema change,
+                           * usually because there is a new master */
+    bool onstack:1; /* if 1 don't free */
+    bool showsp:1; /* used by plugins */
+    bool must_close_sb:1;
+    bool use_old_blobs_on_rebuild:1;
+
+    bool nothrevent:1;
+    bool retry_bad_genids:1; /* retrying a schema change (with full rebuild)
+                             because there are old genids in flight */
+    bool dryrun:1;           /* comdb2sc.tsk -y */
+    bool statistics:1;       /* comdb2sc.tsk <dbname> stat <table> */
+    bool use_new_genids:1;   /* rebuilding old genids needs to
+                             get new genids to avoid name collission */
+    bool finalize:1;      /* Whether the schema change should be committed */
+    bool finalize_only:1; /* only commit the schema change */
+    bool fix_tp_badvers:1;
+
+    int sc_rc;
     int usedbtablevers;
-    int fix_tp_badvers;
+
 
     /*********************** temporary fields for in progress
      * schemachange************/
@@ -192,17 +191,15 @@ struct schema_change_type {
 
     /*********************** temporary fields for table upgrade
      * ************************/
-    unsigned long long start_genid;
-
-    int already_finalized;
-
-    int logical_livesc;
-    int *sc_convert_done;
-    unsigned int hitLastCnt;
-    int got_tablelock;
-
     pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    int *sc_convert_done;
     void *curLsn;
+    unsigned long long start_genid;
+    unsigned int hitLastCnt;
+
+    bool already_finalized:1;
+    bool logical_livesc:1;
+    bool got_tablelock:1;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -210,7 +207,6 @@ struct schema_change_type {
      * *****************************/
 
     size_t packed_len;
-
     bool views_locked : 1;
 };
 
@@ -302,7 +298,7 @@ int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
                  int isqueuedb);
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
-                        int sync);
+                        bool sync);
 
 /* Packs a schema_change_type struct into an opaque binary buffer so that it can
  * be stored in the low level meta table and the schema change can be resumed by
