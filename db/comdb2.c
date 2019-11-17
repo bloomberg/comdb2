@@ -3280,6 +3280,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
+        rc = -1;
         goto err;
     }
     tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);

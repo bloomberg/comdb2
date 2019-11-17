@@ -78,35 +78,36 @@ int compute_all_data(int tidx)
 {
     int i = 0, off = 0, padk = 0, pad = 0, afterpad = 0;
     int j = 0, maxsym = 0, maxaln = 0, padbytes = 0;
+    struct table *tables = macc_globals->tables;
 
-    for (i = 0; i < macc_globals->tables[tidx].nsym; i++) {
-        if (i == macc_globals->un_start[macc_globals->tables[tidx].sym[i].un_idx]) {
+    for (i = 0; i < tables[tidx].nsym; i++) {
+        if (i == macc_globals->un_start[tables[tidx].sym[i].un_idx]) {
             /* do nothing */
         } else if (macc_globals->un_reset[i]) {
-            off = macc_globals->tables[tidx].sym[macc_globals->un_start[macc_globals->tables[tidx].sym[i].un_idx]].off;
+            off = tables[tidx].sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]].off;
         }
 
         /* NOW CHECK IF PADDING IS NECESSARY */
         padk = offsetpad(off, i, tidx); /* gets bytes for padding        */
-        macc_globals->tables[tidx].sym[i].padb = padk;
-        if (padk && strcmp(macc_globals->tables[tidx].table_tag, ONDISKTAG))
+        tables[tidx].sym[i].padb = padk;
+        if (padk && strcmp(tables[tidx].table_tag, ONDISKTAG))
             off += padk;
 
-        macc_globals->tables[tidx].sym[i].off = off; /* set offset for symbol         */
-        off += (macc_globals->tables[tidx].sym[i].szof);
+        tables[tidx].sym[i].off = off; /* set offset for symbol         */
+        off += (tables[tidx].sym[i].szof);
 
         /* if symbol is member of the untion, reset the size
            of the union to current symbol, if it is past current end.
            the size is stored in last symbol in the union. */
-        if (macc_globals->tables[tidx].sym[i].un_idx != -1) {
+        if (tables[tidx].sym[i].un_idx != -1) {
             /*fprintf(stderr, "(%d:%d) new off %d %d\n", i,
              * macc_globals->un_end[sym[i].un_idx],sym[macc_globals->un_end[sym[i].un_idx]].un_max_size,off);*/
-            for (j = 0; j < macc_globals->tables[tidx].sym[i].dpth; j++) {
-                char *curdpth = (char *)&macc_globals->tables[tidx].sym[i].dpth_tree[j];
+            for (j = 0; j < tables[tidx].sym[i].dpth; j++) {
+                char *curdpth = (char *)&tables[tidx].sym[i].dpth_tree[j];
                 if (curdpth[0] == 'u') {
                     int union_num = (int)(curdpth[1]);
-                    if (off > macc_globals->tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size)
-                        macc_globals->tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size = off;
+                    if (off > tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size)
+                        tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size = off;
                 }
             }
         }
@@ -117,32 +118,32 @@ int compute_all_data(int tidx)
            Reset 'off' to be the proper offset after the union
            */
         pad = afterpad = 0;
-        if (macc_globals->tables[tidx].sym[i].un_idx != -1 &&
-            i == macc_globals->un_end[macc_globals->tables[tidx].sym[i].un_idx]) {
-            int largest = largest_idx(tidx, macc_globals->tables[tidx].sym[i].un_idx);
+        if (tables[tidx].sym[i].un_idx != -1 &&
+            i == macc_globals->un_end[tables[tidx].sym[i].un_idx]) {
+            int largest = largest_idx(tidx, tables[tidx].sym[i].un_idx);
             if (character(tidx, largest)) {
                 afterpad = 0;
-                pad = macc_globals->tables[tidx].sym[i].un_max_size;
+                pad = tables[tidx].sym[i].un_max_size;
             } else {
-                pad = macc_globals->tables[tidx].sym[i].un_max_size;
-                if ((macc_globals->tables[tidx].sym[i].un_max_size %
-                     macc_globals->tables[tidx].sym[largest].size) != 0) {
-                    afterpad = macc_globals->tables[tidx].sym[largest].size -
-                               macc_globals->tables[tidx].sym[i].un_max_size %
-                                   macc_globals->tables[tidx].sym[largest].size;
-                    macc_globals->tables[tidx].sym[i].padaf =
-                        macc_globals->tables[tidx]
-                            .sym[macc_globals->un_end[macc_globals->tables[tidx].sym[i].un_idx]]
+                pad = tables[tidx].sym[i].un_max_size;
+                if ((tables[tidx].sym[i].un_max_size %
+                     tables[tidx].sym[largest].size) != 0) {
+                    afterpad = tables[tidx].sym[largest].size -
+                               tables[tidx].sym[i].un_max_size %
+                                   tables[tidx].sym[largest].size;
+                    tables[tidx].sym[i].padaf =
+                        tables[tidx]
+                            .sym[macc_globals->un_end[tables[tidx].sym[i].un_idx]]
                             .un_max_size -
-                        macc_globals->tables[tidx]
-                            .sym[macc_globals->un_start[macc_globals->tables[tidx].sym[i].un_idx]]
+                        tables[tidx]
+                            .sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]]
                             .off +
                         afterpad;
                 }
 
                 /*fprintf(stderr, "AFTERPAD %d %d\n", afterpad, pad);*/
             }
-            if (!strcmp(macc_globals->tables[tidx].table_tag, ONDISKTAG)) {
+            if (!strcmp(tables[tidx].table_tag, ONDISKTAG)) {
                 afterpad = 0;
             }
         }
@@ -157,24 +158,24 @@ int compute_all_data(int tidx)
      * alignment required */
     maxsym = 0;
     maxaln = 0;
-    for (j = 0; j < macc_globals->tables[tidx].nsym; j++) {
+    for (j = 0; j < tables[tidx].nsym; j++) {
         if ((!character(tidx, j) &&
-             (macc_globals->tables[tidx].sym[j].size >= macc_globals->tables[tidx].sym[maxsym].size)) ||
+             (tables[tidx].sym[j].size >= tables[tidx].sym[maxsym].size)) ||
             (character(tidx, maxsym) && !character(tidx, j)))
             maxsym = j;
-        if (macc_globals->tables[tidx].sym[j].align > macc_globals->tables[tidx].sym[maxaln].align)
+        if (tables[tidx].sym[j].align > tables[tidx].sym[maxaln].align)
             maxaln = j;
     }
     if (macc_globals->opt_reclen == 0 && !macc_globals->opt_macc2pack &&
-        strcmp(macc_globals->tables[tidx].table_tag, ONDISKTAG)) {
+        strcmp(tables[tidx].table_tag, ONDISKTAG)) {
         if (!character(tidx, maxsym)) {
             /* if structure does not have 4 bytes members, it
                still needs to be aligned on word boundary */
-            if (macc_globals->tables[tidx].sym[maxsym].size < 4) {
+            if (tables[tidx].sym[maxsym].size < 4) {
                 padbytes = offpad(off, 4);
             } else /* otherwise, just pad by max symbol */
             {
-                padbytes = offpad(off, macc_globals->tables[tidx].sym[maxsym].size);
+                padbytes = offpad(off, tables[tidx].sym[maxsym].size);
             }
             if (padbytes != 0) {
                 /*fprintf(stderr, "WARNING:CMACC STRUCTURE MAY NOT BE COMPATIBLE
@@ -182,10 +183,10 @@ int compute_all_data(int tidx)
             }
             /* we must also make sure we are padded by the maximum alignment
              * (which can be 8 if we have long longs) */
-            padbytes += offpad(off + padbytes, macc_globals->tables[tidx].sym[maxaln].align);
+            padbytes += offpad(off + padbytes, tables[tidx].sym[maxaln].align);
         }
         off += padbytes;
-        macc_globals->tables[tidx].table_padbytes = padbytes;
+        tables[tidx].table_padbytes = padbytes;
     }
     if (macc_globals->opt_reclen != 0) {
         if (off > macc_globals->opt_reclen) {
@@ -196,7 +197,7 @@ int compute_all_data(int tidx)
         }
 
         if (!character(tidx, maxsym) && !macc_globals->opt_macc2pack) {
-            padbytes = offpad(macc_globals->opt_reclen, macc_globals->tables[tidx].sym[maxsym].size);
+            padbytes = offpad(macc_globals->opt_reclen, tables[tidx].sym[maxsym].size);
             if (padbytes != 0) {
                 /*fprintf(stderr, "WARNING: CMACC STRUCTURE MAY NOT BE
                  * COMPATIBLE WITH MACC2 RECORD\n");*/
@@ -205,7 +206,7 @@ int compute_all_data(int tidx)
 
         padbytes += macc_globals->opt_reclen - off;
         off += padbytes;
-        macc_globals->tables[tidx].table_padbytes += padbytes;
+        tables[tidx].table_padbytes += padbytes;
     }
     /*printf("FINAL OFFSET %d %d Final PAD %d SYM %s %d\n",
      * off,opt_reclen,padbytes, sym[maxsym].nm, sym[maxsym].size);*/
@@ -223,8 +224,8 @@ int compute_all_data(int tidx)
     /* we're done with computations of unions and offsets, and padbytes */
     macc_globals->un_init = 1;
 
-    /* set macc_globals->tables size */
-    macc_globals->tables[tidx].table_size = off;
+    /* set tables size */
+    tables[tidx].table_size = off;
 
     macc_globals->bufszw = (off + 3) / 4;
     macc_globals->bufszb = macc_globals->bufszw * 4;
@@ -291,56 +292,57 @@ int largest_idx(int tidx, int unionnum)
 
 int offsetpad(int off, int idx, int tbl)
 {
-    if (macc_globals->tables[tbl].sym[idx].un_idx ==
+    struct table *tables = macc_globals->tables;
+    if (tables[tbl].sym[idx].un_idx ==
         -1) /*  if we're simple struct symbol, do regular pad, and return */
     {
-        int mostpad = offpad(off, macc_globals->tables[tbl].sym[idx].align);
-        macc_globals->tables[tbl].sym[idx].padex = mostpad;
+        int mostpad = offpad(off, tables[tbl].sym[idx].align);
+        tables[tbl].sym[idx].padex = mostpad;
         return mostpad;
     }
-    if (macc_globals->tables[tbl].sym[idx].un_idx != -1 &&
-        macc_globals->tables[tbl].sym[idx].caseno == -1) /* UNION symbol, but NOT CASE */
+    if (tables[tbl].sym[idx].un_idx != -1 &&
+        tables[tbl].sym[idx].caseno == -1) /* UNION symbol, but NOT CASE */
     {
         int mostpad = 0, i, lrgsz = idx;
         mostpad = offpad(
             off,
-            macc_globals->tables[tbl].sym[idx].align); /* compute padding for this symbol */
+            tables[tbl].sym[idx].align); /* compute padding for this symbol */
 
         for (i = 0; i < macc_globals->nsym; i++) {
-            if (macc_globals->tables[tbl].sym[i].un_idx == macc_globals->tables[tbl].sym[idx].un_idx) {
-                if (offpad(off, macc_globals->tables[tbl].sym[i].align) > mostpad)
+            if (tables[tbl].sym[i].un_idx == tables[tbl].sym[idx].un_idx) {
+                if (offpad(off, tables[tbl].sym[i].align) > mostpad)
                 /* find symbol in the table which need most */
                 { /* padding.  Use it to adjust pad bytes for */
                     mostpad =
-                        offpad(off, macc_globals->tables[tbl].sym[i].align); /* every symbol
+                        offpad(off, tables[tbl].sym[i].align); /* every symbol
                                                                   in a union. */
                     lrgsz = i; /* Also find largest non-string element     */
                 }
             }
         }
 
-        macc_globals->tables[tbl].sym[lrgsz].padex = mostpad;
-        for (i = 0; i < macc_globals->tables[tbl].nsym; i++) {
-            if (macc_globals->tables[tbl].sym[i].un_idx == macc_globals->tables[tbl].sym[lrgsz].un_idx) {
-                macc_globals->tables[tbl].sym[i].padex = macc_globals->tables[tbl].sym[lrgsz].padex;
+        tables[tbl].sym[lrgsz].padex = mostpad;
+        for (i = 0; i < tables[tbl].nsym; i++) {
+            if (tables[tbl].sym[i].un_idx == tables[tbl].sym[lrgsz].un_idx) {
+                tables[tbl].sym[i].padex = tables[tbl].sym[lrgsz].padex;
             }
         }
         /*printf("offset %d, mostpad %d maxsz %d align %d\n", off,
          * mostpad,sym[i].un_max_size, sym[idx].align);*/
         return (mostpad);
     }
-    if (macc_globals->tables[tbl].sym[idx].caseno != -1) {
+    if (tables[tbl].sym[idx].caseno != -1) {
         int i, mostpad = 0, largest = 0;
         largest = -1;
-        largest = largest_idx(tbl, macc_globals->tables[tbl].sym[idx].un_idx);
-        if (macc_globals->tables[tbl].sym[idx].padcs == -1) {
-            mostpad = offpad(off, macc_globals->tables[tbl].sym[largest].align);
-            for (i = 0; i < macc_globals->tables[tbl].nsym; i++) {
-                if (macc_globals->tables[tbl].sym[idx].un_idx == macc_globals->tables[tbl].sym[i].un_idx) {
-                    macc_globals->tables[tbl].sym[i].padcs = mostpad;
+        largest = largest_idx(tbl, tables[tbl].sym[idx].un_idx);
+        if (tables[tbl].sym[idx].padcs == -1) {
+            mostpad = offpad(off, tables[tbl].sym[largest].align);
+            for (i = 0; i < tables[tbl].nsym; i++) {
+                if (tables[tbl].sym[idx].un_idx == tables[tbl].sym[i].un_idx) {
+                    tables[tbl].sym[i].padcs = mostpad;
                 }
             }
-            macc_globals->tables[tbl].sym[idx].padex = mostpad;
+            tables[tbl].sym[idx].padex = mostpad;
             /*  printf("case1: offset %d, mostpad %d maxsz %d align %d largest
              * %d\n", off, mostpad, sym[i].un_max_size, sym[idx].align,
              * largest);*/
@@ -352,9 +354,9 @@ int offsetpad(int off, int idx, int tbl)
             mostpad = 0; /*sym[idx].padcs;*/
         } else           /* non-first member of case */
         {
-            mostpad = offpad(off, macc_globals->tables[tbl].sym[idx].align);
+            mostpad = offpad(off, tables[tbl].sym[idx].align);
         }
-        macc_globals->tables[tbl].sym[idx].padex = mostpad;
+        tables[tbl].sym[idx].padex = mostpad;
         /*printf("case: offset %d, mostpad %d maxsz %d align %d\n", off,
          * mostpad, sym[idx].un_max_size, sym[idx].align);*/
         return mostpad;

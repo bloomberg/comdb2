@@ -105,21 +105,19 @@ struct fieldopt {
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
 enum ct_type { CT_FKEY, CT_CHECK };
 
-extern struct constraint {
+struct constraint {
     char *consname;
     char *lclkey;
     int ncnstrts;
     int flags;
     char *table[MAXCNSTRTS];
     char *keynm[MAXCNSTRTS];
-} constraints[MAXCNSTRTS];
+};
 
-extern int nconstraints;
-
-extern struct check_constraint {
+struct check_constraint {
     char *consname;
     char *expr;
-} check_constraints[MAXCNSTRTS];
+};
 
 extern int n_check_constraints;
 
@@ -152,15 +150,14 @@ extern struct symbol {
     struct fieldopt fopts[FLDOPT_MAX]; /* field option structures */
 } symb[MAX];
 
-extern struct table {
+struct table {
     char table_tag[MAX_TAG_LEN + 1];
     int table_size;
     int table_type;
     int table_padbytes;
     int nsym;
     struct symbol sym[MAX];
-} tables[MAXTBLS];
-extern int ntables;
+};
 
 extern short cur_dpth[MAX_DEPTH];
 extern int dpth_idx;
@@ -174,22 +171,21 @@ extern int union_level;
 extern int ncluster;
 extern int cluster_nodes[MAX_CLUSTER];
 
-extern struct expression {
+struct expression {
     char *sym;
     char *symarr; /* if symbol is an array, stores dimensions...otherwise "" */
     int symnum;
     int opr;
     int num;
-} expr[EXPRMAX]; /* stores each piece of an expression */
+}; /* stores each piece of an expression */
 
-extern struct expr_table {/* stores name associated with an expression */
+struct expr_table {/* stores name associated with an expression */
     char *name;
     struct expression *expr;
     int elen; /* length of expression */
-} exprtab[EXPRTABMAX];
+};
 
 extern int et_p; /* pointer into exprtab[] */
-extern int ex_p; /* pointer into expr[] */
 
 extern int
     case_table[MAX]; /* cases must have an expression associated with it */
@@ -252,7 +248,7 @@ typedef struct macc_globals_t {
     struct expression expr[EXPRMAX];
     struct expr_table exprtab[EXPRTABMAX];
     int ex_p;
-    int et_p;
+    int et_p; /* pointer into expr[] */
 
     int func_jstfnd;
     int sorted[MAX];

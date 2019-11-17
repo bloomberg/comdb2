@@ -17,4 +17,4 @@ generated=$(for j in */*.testopts ; do
     echo $j $time
 done | sed 's#.test/#_#g; s#\.testopts#_generated.test#g;' )
 
-echo -e "${custom_times} \n${default_times} \n${generated}" | sort -k2 -t' ' -n | cut -f1 -d' '
+echo -e "${custom_times} \n${default_times} \n${generated}" | sort -k2 -t' ' -nr | cut -f1 -d' '
