@@ -2250,13 +2250,13 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
         printf("calling dyns_load_schema_string from %s\n", __func__);
         rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
+        free(csc2text);
+        csc2text = NULL;
         if (rc) {
             logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
                     __LINE__);
             break;
         }
-        free(csc2text);
-        csc2text = NULL;
         tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
@@ -3280,7 +3280,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
-        return -1;
+        goto err;
     }
     tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
     if (tbl == NULL) {

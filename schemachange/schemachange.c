@@ -550,7 +550,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
 
 int do_dryrun(struct schema_change_type *s)
 {
-    int rc;
+    int rc = 0;
     struct dbtable *db = NULL;
     struct dbtable *newdb = NULL;
     struct scinfo scinfo = {0};
@@ -559,18 +559,21 @@ int do_dryrun(struct schema_change_type *s)
     if (db == NULL) {
         if (s->alteronly) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
-            goto fail;
+            rc = -1;
+            goto done;
         } else if (s->fastinit) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
-            goto fail;
+            rc = -1;
+            goto done;
         }
     } else {
         if (s->addonly) {
             sbuf2printf(s->sb, ">Table %s already exists\n", s->tablename);
-            goto fail;
+            rc = -1;
+            goto done;
         } else if (s->fastinit) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
-            goto succeed;
+            goto done;
         }
     }
 
@@ -579,17 +582,19 @@ int do_dryrun(struct schema_change_type *s)
         char *err;
         err = csc2_get_errors();
         sc_errf(s, "%s", err);
-        goto fail;
+        rc = -1;
+        goto done;
     }
 
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
-        goto succeed;
+        goto done;
     }
 
     newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0, 1);
     if (!newdb) {
-        goto fail;
+        rc = -1;
+        goto done;
     }
 
     set_schemachange_options(s, db, &scinfo);
@@ -599,19 +604,14 @@ int do_dryrun(struct schema_change_type *s)
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
 
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
-        goto fail;
+        rc = -1;
+        goto done;
     }
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
-        goto fail;
+        rc = -1;
+        goto done;
     }
-
-succeed:
-    rc = 0;
-    goto done;
-
-fail:
-    rc = -1;
 
 done:
     if (rc == 0) {

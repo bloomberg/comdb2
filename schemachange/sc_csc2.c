@@ -130,6 +130,7 @@ int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
     int rc = dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");
+        dyns_cleanup();
         return -1;
     }
 
@@ -139,6 +140,7 @@ int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "schema_cmp: error creating schema from comparison text\n");
+        dyns_cleanup();
         return -1;
     }
 
