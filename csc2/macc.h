@@ -58,11 +58,11 @@ enum synctype {
 #define EXPRMAX 1024    /* maximum pieces of an expression */
 #define EXPRTABMAX 1024 /* maximum number of expressions */
 
-extern struct constant {
+struct constant {
     int value;
     short type;
     char *nm;
-} constants[MAX];
+};
 
 struct fieldopt {
     int opttype;
@@ -270,14 +270,12 @@ typedef struct macc_globals_t {
 } macc_globals_t;
 
 
-extern macc_globals_t *macc_globals;
-
 extern int any_errors;              /* flag                              */
 extern int current_line;            /* for printing errors               */
-
 extern char *blankchar;
-extern int opt_codestyle;
-extern char *opt_dbtag;
+extern struct constant constants[MAX];
+extern macc_globals_t *macc_globals;
+
 
 char *eos(char *);
 
