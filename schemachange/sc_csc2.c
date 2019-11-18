@@ -26,7 +26,6 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
                         int *foundix, struct ireq *iq)
 {
     /* load schema from string or file */
-    printf("calling dyns_load_schema_string from %s\n", __func__);
     int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;
@@ -126,11 +125,12 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
 
 int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
 {
-    printf("calling dyns_load_schema_string from %s\n", __func__);
+    printf("calling dyns_init_globals from %s\n", __func__);
+    dyns_init_globals();
     int rc = dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");
-        dyns_cleanup();
+        dyns_cleanup_globals();
         return -1;
     }
 
@@ -140,14 +140,14 @@ int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "schema_cmp: error creating schema from comparison text\n");
-        dyns_cleanup();
+        dyns_cleanup_globals();
         return -1;
     }
 
     rc = compare_all_tags(db->tablename, stderr);
 
     backout_schemas(db->tablename);
-    dyns_cleanup();
+    dyns_cleanup_globals();
     return rc;
 }
 

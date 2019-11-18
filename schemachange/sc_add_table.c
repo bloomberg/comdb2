@@ -111,7 +111,8 @@ int add_table_to_environment(char *table, const char *csc2,
         return -1;
     }
 
-    printf("calling dyns_load_schema_string from %s\n", __func__);
+    printf("calling dyns_init_globals from %s\n", __func__);
+    dyns_init_globals();
     rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
 
     if (rc) {
@@ -124,13 +125,13 @@ int add_table_to_environment(char *table, const char *csc2,
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
-        dyns_cleanup();
+        dyns_cleanup_globals();
         return SC_CSC2_ERROR;
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
 
     if (newdb == NULL) {
-        dyns_cleanup();
+        dyns_cleanup_globals();
         return SC_INTERNAL_ERROR;
     }
     newdb->dtastripe = gbl_dtastripe;
@@ -200,14 +201,14 @@ int add_table_to_environment(char *table, const char *csc2,
     if (s)
         s->newdb = newdb;
 
-    dyns_cleanup();
+    dyns_cleanup_globals();
     return SC_OK;
 
 err:
     newdb->iq = NULL;
     backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
-    dyns_cleanup();
+    dyns_cleanup_globals();
     return rc;
 }
 

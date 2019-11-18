@@ -14,7 +14,7 @@ int current_line;
 struct constant constants[MAX];
 
 
-void init_globals()
+void dyns_init_globals()
 {
     printf("AZ: %s entering\n", __func__);
     if (macc_globals) {
@@ -47,4 +47,10 @@ void init_globals()
     macc_globals->opt_schematype = 2;
     macc_globals->nconstraints = -1;
     macc_globals->n_check_constraints = -1;
+}
+
+void dyns_cleanup_globals() 
+{
+    free(macc_globals);
+    macc_globals = NULL;
 }

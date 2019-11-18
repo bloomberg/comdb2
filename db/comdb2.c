@@ -2248,7 +2248,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
         }
-        printf("calling dyns_load_schema_string from %s\n", __func__);
+        printf("calling dyns_init_globals from %s\n", __func__);
+        dyns_init_globals();
         rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
         free(csc2text);
         csc2text = NULL;
@@ -2304,9 +2305,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
         /* Free the table name. */
         free(tblnames[i]);
-        dyns_cleanup();
+        dyns_cleanup_globals();
     }
-    dyns_cleanup();
+    dyns_cleanup_globals();
 
     /* we have to do this after all the meta table lookups so that the hack in
      * get_meta_int works */
@@ -3276,7 +3277,8 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
        return -1;
     }
 
-    printf("calling dyns_load_schema_string from %s\n", __func__);
+    printf("calling dyns_init_globals from %s\n", __func__);
+    dyns_init_globals();
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
@@ -3302,7 +3304,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
         goto err;
     }
 err:
-    dyns_cleanup();
+    dyns_cleanup_globals();
     return rc;
 }
 

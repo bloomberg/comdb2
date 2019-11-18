@@ -973,11 +973,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     return -1;
                 }
             }
-            printf("calling dyns_load_schema from %s\n", __func__);
+            printf("calling dyns_init_globals from %s\n", __func__);
+            dyns_init_globals();
             rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
-                dyns_cleanup();
+                dyns_cleanup_globals();
                 return -1;
             }
 
@@ -985,7 +986,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs,
                                    0);
             if (db == NULL) {
-                dyns_cleanup();
+                dyns_cleanup_globals();
                 return -1;
             }
 
@@ -1002,7 +1003,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 logmsg(LOGMSG_ERROR,
                        "Failed to load schema: can't process schema file %s\n",
                        tok);
-                dyns_cleanup();
+                dyns_cleanup_globals();
                 return -1;
             }
 
@@ -1011,10 +1012,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 logmsg(LOGMSG_ERROR,
                        "Failed to load check constraints for %s\n",
                        db->tablename);
-                dyns_cleanup();
+                dyns_cleanup_globals();
                 return -1;
             }
-            dyns_cleanup();
+            dyns_cleanup_globals();
         } else {
             logmsg(LOGMSG_ERROR, "Invalid table option\n");
             return -1;

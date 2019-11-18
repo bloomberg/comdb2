@@ -1605,48 +1605,48 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].un_idx = -1;
     }
     if (tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].arr != 1 &&
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].arr != 0)
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].arr = -1;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm = name;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].arr != 0)
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].arr = -1;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm = name;
 
     if (siz != -1) {
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size = siz;
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof_cnst = sizcn;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size = siz;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof_cnst = sizcn;
     } else
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size = aln;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size = aln;
 
     lastidx = 0;
 
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].type = typ;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].caseno = macc_globals->current_case;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].type = typ;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].caseno = macc_globals->current_case;
     if (tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].caseno != -1) {
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].un_member = macc_globals->union_level;
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].un_idx = macc_globals->union_index;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].un_member = macc_globals->union_level;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].un_idx = macc_globals->union_index;
     }
 
     memcpy(tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dpth_tree, macc_globals->cur_dpth,
            sizeof(short) * macc_globals->dpth_idx);
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dpth = macc_globals->dpth_idx;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dpth = macc_globals->dpth_idx;
 
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dumped = 0;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padded = 0;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].align = aln;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padb = -1;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padex = 0;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padaf = 0;
-    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padcs = -1;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dumped = 0;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padded = 0;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].align = aln;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padb = -1;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padex = 0;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padaf = 0;
+    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].padcs = -1;
 
     if (siz != -1)
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof =
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof =
             arroff(tables[macc_globals->ntables].nsym,
-                   tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dim, rg) +
+                   tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dim, rg) +
             siz;
     /* vutf8 strings that don't have a specified length need to be treated
      * specially later on, everything else defaults to it's alignment */
     else if (typ != T_VUTF8)
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof =
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof =
             arroff(tables[macc_globals->ntables].nsym,
-                   tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dim, rg) +
+                   tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].dim, rg) +
             aln;
 /* This never belonged here anyway. */
 #if 0
@@ -1660,32 +1660,32 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             case T_BLOB:
                 /* server side blob is 5 bytes */
-                tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof=5;
-                tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size=5;
+                tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof=5;
+                tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size=5;
             default:
                 /* All other types have an extra byte ondisk - the null/not null byte */
-                tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof++;
-                tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size++;
+                tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].szof++;
+                tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size++;
                 break;
         }
     }
 #endif
     if (strlen(cmnt) == 0) {
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com = blankchar;
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com = blankchar;
     } else {
-        tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com =
+        tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com =
             (char *)csc2_malloc(strlen(cmnt) + 1);
         if (tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com == NULL) {
             csc2_error("ERROR: OUT OF MEMORY, SYMBOL %s!!!\n",
-                       tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm);
+                       tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm);
             csc2_error("ABORTING\n");
             return;
         }
         strcpy(tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].com, cmnt);
     }
-    for (i = 0; i < tables[ macc_globals->ntables].nsym; i++) {
+    for (i = 0; i < tables[macc_globals->ntables].nsym; i++) {
         if (!strcmp(tables[macc_globals->ntables].sym[i].nm,
-                    tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm)) {
+                    tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].nm)) {
             csc2_error( "Error at line %3d: DUPLICATE VARIABLE NAMES ARE "
                             "NOT ALLOWED (variable '%s')\n",
                     current_line, name);
@@ -1697,7 +1697,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     }
 
     /* Check for pointlessly short strings */
-    if (T_CSTR == typ && tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 2) {
+    if (T_CSTR == typ && tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 2) {
         csc2_error( "Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO "
                         "MUST BE AT LEAST 2 BYTES IN SIZE\n",
                 current_line);
@@ -1706,7 +1706,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                           current_line);
         any_errors++;
     } else if (T_PSTR == typ &&
-               tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 1) {
+               tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 1) {
         csc2_error(
                 "Error at line %3d: ZERO LENGTH PSTRINGS ARE NOT ALLOWED\n",
                 current_line);
@@ -1715,7 +1715,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             current_line);
         any_errors++;
     } else if (T_UCHAR == typ &&
-               tables[ macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 1) {
+               tables[macc_globals->ntables].sym[tables[macc_globals->ntables].nsym].size < 1) {
         csc2_error(
                 "Error at line %3d: ZERO LENGTH BYTE ARRAYS ARE NOT ALLOWED\n",
                 current_line);
@@ -1724,7 +1724,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             current_line);
         any_errors++;
     }
-    tables[ macc_globals->ntables].nsym++;
+    tables[macc_globals->ntables].nsym++;
 }
 
 void add_constant(char *name, int value, short type)
@@ -1803,7 +1803,7 @@ void start_table(char *tag, int preset)
     }
     strncpy(tables[macc_globals->ntables].table_tag, tag,
             sizeof(tables[macc_globals->ntables].table_tag) - 1);
-    tables[ macc_globals->ntables].table_tag[sizeof(tables[macc_globals->ntables].table_tag) - 1] = '\0';
+    tables[macc_globals->ntables].table_tag[sizeof(tables[macc_globals->ntables].table_tag) - 1] = '\0';
 }
 
 void end_table()
@@ -2120,7 +2120,7 @@ void start_rectypedef(char *rtname)
 
     if (macc_globals->union_index < (macc_globals->current_union - 1))
         macc_globals->union_index = macc_globals->current_union - 1;
-    macc_globals->un_start[macc_globals->union_index] = macc_globals->tables[ macc_globals->ntables].nsym;
+    macc_globals->un_start[macc_globals->union_index] = macc_globals->tables[macc_globals->ntables].nsym;
 
     if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
@@ -2402,6 +2402,10 @@ int macc_ferror(FILE *fh)
     return 0;
 }
 
+/*  Make sure you call dyns_init_globals(); before calling this function
+ *  in order to initialize the global structure on which this and other dyns_
+ *  functions rely.
+ */
 static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
@@ -2414,8 +2418,6 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     ifn = strchr(VER, '$');     /* clean up version text        */
     if (ifn)
         *ifn = 0;
-
-    init_globals();
 
     macc_globals->flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
@@ -3404,8 +3406,4 @@ void csc2_syntax_error(const char *fmt, ...)
     comdb2_free(out);
 }
 
-void dyns_cleanup() 
-{
-    free(macc_globals);
-    macc_globals = NULL;
-}
+

@@ -327,7 +327,6 @@ void strlower(char *s, int max);
 int process_array_(int dim[6], int rg[2], char *buf, int *arr, char *dim_cn[6]);
 int compute_all_data(int tidx);
 int gettable(char *tabletag);
-void init_globals();
 int compute_key_data(void);
 int yyparse();
 
