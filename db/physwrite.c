@@ -273,7 +273,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
                    int *updates, int *deletes, int *cupdates, int *cdeletes,
                    int *commit_file, int *commit_offset, uint32_t flags)
 {
-    int cnt = 0;
+    int cnt = 0, rc;
     struct physwrite_results_s results;
     Pthread_mutex_init(&results.lk, NULL);
     Pthread_cond_init(&results.cd, NULL);
