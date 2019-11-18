@@ -2,6 +2,7 @@
 #include "macc.h"
 #include "maccparse.h"
 #include <string.h>
+#include "cheapstack.h"
 
 
 char *blankchar = "";
@@ -17,8 +18,9 @@ void init_globals()
 {
     printf("AZ: %s entering\n", __func__);
     if (macc_globals) {
-        abort();
-        free(macc_globals);
+        cheap_stack_trace();
+        abort(); // TODO: maybe turn into a WARNING once certain that we dont leak
+                 // and then free(macc_globals);
     }
     any_errors = 0;
     current_line = 0;

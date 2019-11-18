@@ -977,6 +977,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
+                dyns_cleanup();
                 return -1;
             }
 
