@@ -750,31 +750,6 @@ typedef struct dbtable {
     unsigned long long *sc_genids; /* schemachange stripe pointers */
     struct dbstore dbstore[MAXCOLUMNS];
 
-    /* All writer threads have to grab the lock in read/write mode.  If a live
-     * schema change is in progress then they have to do extra stuff. */
-    pthread_rwlock_t sc_live_lk;
-    char *csc2_schema;
-    int csc2_schema_len;
-
-    /* count the number of updates and deletes done by schemachange
-     * when behind the cursor.  This helps us know how many
-     * records we've really done (since every update behind the cursor
-     * effectively means we have to go back and do that record again). */
-    uint32_t sc_adds;
-    uint32_t sc_deletes;
-    uint32_t sc_updates;
-
-    uint64_t sc_nrecs;
-    uint64_t sc_prev_nrecs;
-    unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
-    unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
-
-    /* csc2 schema version increased on instantaneous schemachange */
-    int schema_version;
-    /* tableversion is an ever increasing counter which is incremented for
-     * every schema change (add, alter, drop, etc.) but not for fastinit */
-    unsigned long long tableversion;
-
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
     /* is tag version compatible with ondisk schema */
@@ -782,6 +757,32 @@ typedef struct dbtable {
 
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
+
+    /* All writer threads have to grab the lock in read/write mode.  If a live
+     * schema change is in progress then they have to do extra stuff. */
+    pthread_rwlock_t sc_live_lk;
+    char *csc2_schema;
+
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+
+    uint32_t sc_adds;
+    uint32_t sc_deletes;
+    uint32_t sc_updates;
+
+    unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
+    unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
+
+    int csc2_schema_len; /* length of csc2_schema */
+    /* csc2 schema version increased on instantaneous schemachange */
+    int schema_version;
+    /* tableversion is an ever increasing counter which is incremented for
+     * every schema change (add, alter, drop, etc.) but not for fastinit */
+    unsigned long long tableversion;
 
     bool instant_schema_change:1;
     bool inplace_updates:1;

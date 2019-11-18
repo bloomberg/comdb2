@@ -1043,7 +1043,7 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
 
     int inplace_updates = 0;
     get_db_inplace_updates_tran(db, &inplace_updates, tran);
-    db->inplace_updates = db->inplace_updates;
+    db->inplace_updates = inplace_updates;
 
     get_db_datacopy_odh_tran(db, &datacopy_odh, tran);
 
