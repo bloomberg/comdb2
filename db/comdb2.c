@@ -1328,8 +1328,7 @@ static void *purge_old_files_thread(void *arg)
     return NULL;
 }
 
-/* remove every file that contains ".csc2" anywhere in its name.
-   this should be safe */
+/* Remove all csc2 files */
 static int clear_csc2_files(void)
 {
     char path[PATH_MAX] = {0};
@@ -1351,9 +1350,9 @@ static int clear_csc2_files(void)
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
 
-            ptr = strstr(dp->d_name, ".csc2");
+            ptr = strrchr(dp->d_name, '.');
 
-            if (ptr) {
+            if (ptr && (strncmp(ptr, ".csc2", sizeof(".csc2")) == 0)) {
                 int rc;
                 snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);
