@@ -1,22 +1,14 @@
 #ifndef __macc_h
 #define __macc_h
 
-#include <stdio.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <errno.h>
 #include "dynschemaload.h"
 #include <cdb2_constants.h>
 
 #include "mem.h"
 
-extern char *revision;
-
 #define ONDISKTAG ".ONDISK"
 #define DEFAULTTAG ".DEFAULT"
 
-extern char sync_names[4][8];
 enum synctype {
     SYNC_NONE = 0,
     SYNC_FULL = 1,
@@ -32,14 +24,9 @@ enum synctype {
 #define COMMENT_COLUMN 40     /* column for comments    */
 #define MAX_CLUSTER 16
 #define MAX_KEY_SIZE 512
-#define MAX_KEY_INDEX                                                          \
-    28 /* currently, we have 28 indeces in comdb2 due to buffer size           \
-          restrictions */
+#define MAX_KEY_INDEX 28 /* currently, we have 28 indeces in comdb2 due to buffer size restrictions */
 
-#define MAX_FIELDS_PER_KEY                                                     \
-    128 /* Limitation imposed by comdb2.                                       \
-           If increased, many changes must be made                             \
-           throughout comdb2. */
+#define MAX_FIELDS_PER_KEY 128 /* Limitation imposed by comdb2. If increased, many changes must be made throughout comdb2. */
 
 /*
    The largest possible buffer through comdb2_api right now is update by rrn in
@@ -60,19 +47,9 @@ enum synctype {
 #define MAX_DEPTH 32
 #define FORTRAN 1
 #define CLANG 3
-#define MACRO_USE                                                              \
-    1 /* whether we generate test program that uses macros 0=no, 1=yes*/
+#define MACRO_USE 1 /* whether we generate test program that uses macros 0=no, 1=yes*/
 #define NUMRESERVE 4
-#define ALIGNMENT                                                              \
-    8 /* byte size specifying how the record struct should be aligned */
-extern int
-    current_case; /* for determining which case (in rectype) the variable
-                     belongs to */
-extern int
-    current_union; /* for determining which union (if any) the variable is in */
-extern char *union_names[MAX]; /* array to store union names */
-extern int un_init;            /* determines whether unions were computed  */
-extern char *maccfuncpath;
+#define ALIGNMENT 8 /* byte size specifying how the record struct should be aligned */
 
 /* MAXINDEX HAS BECOME OBSOLETE - FOR NOW, JUST KLUDGE TO FIX */
 #define MAXKEYS 256  /* maximum # of keys with cases */
@@ -119,9 +96,7 @@ struct check_constraint {
     char *expr;
 };
 
-extern int n_check_constraints;
-
-extern struct symbol {
+struct symbol {
     char *nm;   /* symbol name                     */
     int dim[6]; /* # of elements in each dimension */
     char *
@@ -148,7 +123,7 @@ extern struct symbol {
     int dpth;
     int numfo; /* number of field options for this symbol */
     struct fieldopt fopts[FLDOPT_MAX]; /* field option structures */
-} symb[MAX];
+};
 
 struct table {
     char table_tag[MAX_TAG_LEN + 1];
@@ -158,18 +133,6 @@ struct table {
     int nsym;
     struct symbol sym[MAX];
 };
-
-extern short cur_dpth[MAX_DEPTH];
-extern int dpth_idx;
-extern unsigned int
-    un_start[MAX];               /* # of levels of union to start at this sym */
-extern unsigned int un_end[MAX]; /* # of levels of union to end at this sym */
-extern unsigned int un_reset[MAX]; /* reset offset flag for a union */
-extern unsigned int un_case[MAX];  /* reset offset flag for a case: */
-extern int union_index;
-extern int union_level;
-extern int ncluster;
-extern int cluster_nodes[MAX_CLUSTER];
 
 struct expression {
     char *sym;
@@ -185,13 +148,8 @@ struct expr_table {/* stores name associated with an expression */
     int elen; /* length of expression */
 };
 
-extern int et_p; /* pointer into exprtab[] */
 
-extern int
-    case_table[MAX]; /* cases must have an expression associated with it */
-extern int cn_p;     /* pointer into case_table[] */
-
-extern struct key {
+struct key {
     int sym;         /* # of symbol in table            */
     int stbl;        /* record table reference */
     int el[6];       /* element # for each dimension    */
@@ -205,19 +163,12 @@ extern struct key {
     int exprtype;
     int exprarraysz;
     char *where;
-} * keys[MAXKEYS], *workkey, *rngs[MAXRNGS];
+};
 
 enum KEYFLAGS {
     DESCEND = 1 /* this key piece is descending */
 };
 
-extern int workkeyflag;         /* work key's flag */
-extern int workkeypieceflag;    /* work key piece's flag */
-extern int keyixnum[MAXKEYS];   /* index # associated with a key */
-extern int keyexprnum[MAXKEYS]; /* case number associated with a key */
-
-extern int ixsize[MAXINDEX];  /* index size in comdbg */
-extern int ixflags[MAXINDEX]; /* flags for index */
 
 enum INDEXFLAGS {
     DUPKEY = 0x00000001,  /* duplicate key flag */
@@ -233,42 +184,44 @@ typedef struct macc_globals_t {
     struct check_constraint check_constraints[MAXCNSTRTS];
     struct symbol symb[MAX];
     struct table tables[MAXTBLS];
-    unsigned int un_start[MAX];
-    unsigned int un_end[MAX];
-    unsigned int un_reset[MAX];
-    unsigned int un_case[MAX];
+    unsigned int un_start[MAX];/* # of levels of union to start at this sym */
+    unsigned int un_end[MAX]; /* # of levels of union to end at this sym */
+    unsigned int un_reset[MAX]; /* reset offset flag for a union */
+    unsigned int un_case[MAX]; /* reset offset flag for a case: */
     short cur_dpth[MAX_DEPTH];
     int dpth_idx;
 
-    struct key *keys[MAXKEYS], *workkey, *rngs[MAXRNGS];
-    int keyixnum[MAXKEYS];
-    int keyexprnum[MAXKEYS];
-    int workkeyflag;
-    int workkeypieceflag;
+    struct key *keys[MAXKEYS];
+    struct key *workkey;
+    struct key *rngs[MAXRNGS];
+    int keyixnum[MAXKEYS];   /* index # associated with a key */
+    int keyexprnum[MAXKEYS]; /* case number associated with a key */
+    int workkeyflag; /* work key's flag */
+    int workkeypieceflag; /* work key piece's flag */
     struct expression expr[EXPRMAX];
     struct expr_table exprtab[EXPRTABMAX];
     int ex_p;
-    int et_p; /* pointer into expr[] */
+    int et_p; /* pointer into expr[] */ /* pointer into exprtab[] */
 
-    int func_jstfnd;
-    int sorted[MAX];
-    int nsym;
+    int func_jstfnd;             /*function # of jstfnd - needed for delete*/
+    int sorted[MAX];             /* array to keep symbol table sorted */
+    int nsym;                    /* # of symbols */
     int ntables;
-    int ncnst;
-    int prcnst;
-    int nrngs;
-    int nkeys;
-    int bufszb, bufszhw, bufszw;
-    int maxrngsz;
-    int rngrrnoff[MAXRNGS];
-    int current_case;
-    int current_union;
-    char *union_names[MAX];
+    int ncnst;                   /* # of constants */
+    int prcnst;                  /* # of private constants */
+    int nrngs;                   /* # of ranges */
+    int nkeys;                   /* # of keys */
+    int bufszb, bufszhw, bufszw; /* buffer size bytes/words */
+    int maxrngsz;                /* the biggest range's size */
+    int rngrrnoff[MAXRNGS];      /* rrn offset in rbuf for each range */
+    int current_case; /* for determining which case (in rectype) the variable belongs to */
+    int current_union; /* for determining which union (if any) the variable is in */
+    char *union_names[MAX]; /* array to store union names */
     int union_index;
     int union_level;
-    int un_init;
+    int un_init; /* determines whether unions were computed  */
     char *customcode;
-    char includename[256];
+    char includename[256];       /* tolower'ed include name           */
     char includefiles[MAX_INCLUDES][MAX_INC_NAME];
     int includetypes[MAX_INCLUDES];
     int nincludes;
@@ -276,9 +229,10 @@ typedef struct macc_globals_t {
     int spltpercnt[MAXINDEX];
 
     int case_table[MAX];   /* names of the cases */
-    int cn_p;              /* pointer into casenames[] */
-    int ixsize[MAXINDEX];  /* index size */
-    int ixflags[MAXINDEX]; /* index size */
+    /* cases must have an expression associated with it */
+    int cn_p;              /* pointer into casenames[] */ /* pointer into case_table[] */
+    int ixsize[MAXINDEX];  /* index size in comdbg */
+    int ixflags[MAXINDEX]; /* flags for index */
 
     int flag_anyname; /* allow any db name - normally restricted to xxDB*/
     int cluster_nodes[MAX_CLUSTER];
@@ -288,7 +242,7 @@ typedef struct macc_globals_t {
     char *opt_dtadir;
     char *opt_lrldir;
     char *opt_prefix;
-    int opt_cachesz;
+    /* int opt_cachesz; */
     int opt_dbnum;
     int opt_remote;
     char *opt_dbname;    /* database+table name */
@@ -304,7 +258,7 @@ typedef struct macc_globals_t {
                             ROUTINE, ALONG WITH SHORTCUTS */
     int opt_staticacc;   /* Create Access Routine to be static */
     int opt_noprefix;    /* Don't generate prefixes for variables */
-    int opt_threadsafe;  /* By default, access routine is thread-safe */
+    /* int opt_threadsafe;   By default, access routine is thread-safe */
     int opt_macc2pack;
     int opt_usenames;
     char *opt_filesfx; /* Include file suffix..By default disabled */
@@ -318,67 +272,14 @@ typedef struct macc_globals_t {
 
 extern macc_globals_t *macc_globals;
 
-extern int fncs[MAXFUNCS];          /* functions                         */
-extern int func_jstfnd;             /*function # of jstfnd - needed for delete*/
-extern int sorted[MAX];             /* array to keep symbol table sorted */
-extern int nsym;                    /* # of symbols                      */
-extern int ncnst;                   /* # of constants                    */
-extern int prcnst;                  /* # of private constants            */
-extern int nrngs;                   /* # of ranges                       */
-extern int nkeys;                   /* # of keys                         */
-extern int bufszb, bufszhw, bufszw; /* buffer size bytes/words           */
-extern int maxrngsz;                /* the biggest range's size          */
-extern int rngrrnoff[MAXRNGS];      /* rrn offset in rbuf for each range */
 extern int any_errors;              /* flag                              */
 extern int current_line;            /* for printing errors               */
-extern char includename[256];       /* tolower'ed include name           */
-extern char includefiles[MAX_INCLUDES][MAX_INC_NAME];
-extern int includetypes[MAX_INCLUDES];
-extern int nincludes;
-/* options */
-extern int createlv0;
-extern int ixblocksize[], lv0size[];
-extern int spltpercnt[];
 
-extern char *customcode;
 extern char *blankchar;
-extern char *opt_dbname;
-extern char opt_maindbname[64];
-extern char opt_tblname[64];
-extern char *opt_incldir;
-extern char *opt_dtadir;
-extern char *opt_lrldir;
-extern int opt_dbnum;
-extern int opt_remote;
-extern int opt_verbose;   /* 0=don't use verbose comments in .h */
-extern int opt_copycsc;   /* 0=don't copy .csc to .inc */
-extern char *opt_accname; /* different name for acc routine/.f */
-extern int opt_reclen;    /* optional record length in bytes */
-extern int flag_anyname;  /* command line arg flag */
-extern int opt_sntoremb;
-extern int opt_nicedbvalue;
-extern int opt_useglobals;
-extern int opt_staticacc;
-extern int opt_threadsafe;
-extern int opt_cachesz;
 extern int opt_codestyle;
-extern int opt_macc2pack;
-extern int opt_usenames;
-extern char *opt_filesfx;
-extern int opt_sync;
-extern int opt_setsql;
-extern int opt_schematype;
 extern char *opt_dbtag;
 
 char *eos(char *);
-
-#define TABLENAME opt_tblname
-#define MAINDBNAME opt_maindbname
-#define DBNAME macc_globals->opt_dbname
-#define INCLDIR opt_incldir
-#define DTADIR opt_dtadir
-#define ACCNAME opt_accname
-#define FUNC_JSTFND func_jstfnd
 
 extern void OUTINIT(FILE *fil, char lang);
 extern void OUT(char *fmt, ...);

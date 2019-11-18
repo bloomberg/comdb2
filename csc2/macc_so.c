@@ -2836,11 +2836,11 @@ int dyns_get_dtadir(char *dir, int len)
 /* database name */
 int dyns_get_db_name(char *name, int len)
 {
-    if (len <= strlen(DBNAME)) {
+    if (len <= strlen(macc_globals->opt_dbname)) {
         return -1;
     }
     bzero(name, len);
-    strcpy(name, DBNAME);
+    strcpy(name, macc_globals->opt_dbname);
     return 0;
 }
 
