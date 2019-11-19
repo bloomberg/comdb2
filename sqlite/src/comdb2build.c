@@ -416,7 +416,7 @@ static int comdb2CheckOpAccess(void) {
 
 int comdb2IsPrepareOnly(Parse* pParse)
 {
-    return pParse==NULL || pParse->prepare_only;
+    return pParse==NULL || (pParse->prepFlags & SQLITE_PREPARE_ONLY);
 }
 
 int comdb2AuthenticateUserOp(Parse* pParse)
