@@ -2275,7 +2275,18 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     if (hash_add(thd->stmt_caching_table, entry) != 0) {
         return -1;
     }
-    sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
+    int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
+    assert(rc == SQLITE_OK);
+    if (rc != SQLITE_OK) {
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_reset(%p) error, rc = %d\n",
+               __func__, entry->stmt, rc);
+    }
+    rc = sqlite3_clear_bindings(entry->stmt);
+    assert(rc == SQLITE_OK);
+    if (rc != SQLITE_OK) {
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_clear_bindings(%p) error, rc = %d\n",
+               __func__, entry->stmt, rc);
+    }
     void *list;
     if (sqlite3_bind_parameter_count(entry->stmt)) {
         list = &thd->param_stmt_list;
