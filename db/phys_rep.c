@@ -186,10 +186,10 @@ repl_loop:
 
         prev_info = info;
 
-        rc = snprintf(
-            sql_cmd, sql_cmd_len,
-            "select * from comdb2_transaction_logs('{%u:%u}'%s)",
-            info.file, info.offset, (gbl_blocking_physrep ? ", NULL, 1" : ""));
+        rc = snprintf(sql_cmd, sql_cmd_len,
+                      "select * from comdb2_transaction_logs('{%u:%u}'%s)",
+                      info.file, info.offset,
+                      (gbl_blocking_physrep ? ", NULL, 1" : ""));
         if (rc < 0 || rc >= sql_cmd_len)
             logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
 
