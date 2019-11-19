@@ -2248,7 +2248,6 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
         }
-        printf("calling dyns_init_globals from %s\n", __func__);
         dyns_init_globals();
         rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
         free(csc2text);
@@ -3277,7 +3276,6 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
        return -1;
     }
 
-    printf("calling dyns_init_globals from %s\n", __func__);
     dyns_init_globals();
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {

@@ -825,7 +825,6 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         struct dbtable *newdb;
         int changed = 0;
 
-        printf("calling dyns_init_globals from %s\n", __func__);
         dyns_init_globals();
         rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
         if (rc != 0) {

@@ -125,7 +125,6 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
 
 int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
 {
-    printf("calling dyns_init_globals from %s\n", __func__);
     dyns_init_globals();
     int rc = dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {

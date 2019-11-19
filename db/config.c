@@ -973,7 +973,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     return -1;
                 }
             }
-            printf("calling dyns_init_globals from %s\n", __func__);
             dyns_init_globals();
             rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
             if (rc != 0) {

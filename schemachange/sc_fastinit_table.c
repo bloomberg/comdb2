@@ -66,7 +66,6 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     }
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    printf("calling dyns_init_globals from %s\n", __func__);
     dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);

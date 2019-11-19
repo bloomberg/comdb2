@@ -16,10 +16,9 @@ struct constant constants[MAX];
 
 void dyns_init_globals()
 {
-    printf("AZ: %s entering\n", __func__);
-    if (macc_globals) {
+    if (macc_globals) { // We want to make sure that previous call cleaned up
         cheap_stack_trace();
-        abort(); // TODO: maybe turn into a WARNING once certain that we dont leak
+        abort(); // Maybe turn into a WARNING once certain that we dont leak
                  // and then free(macc_globals);
     }
     any_errors = 0;

@@ -402,7 +402,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    printf("calling dyns_init_globals from %s\n", __func__);
     dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         dyns_cleanup_globals();
@@ -413,9 +412,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 
     if (newdb == NULL) {
-        sc_errf(s, "Internal error\n");
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Internal error\n");
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
