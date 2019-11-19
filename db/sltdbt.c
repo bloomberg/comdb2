@@ -16,7 +16,6 @@
 
 /* comdb index front end */
 
-#include "limit_fortify.h"
 #include <ctype.h>
 #include <epochlib.h>
 #include "comdb2.h"

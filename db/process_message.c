@@ -24,7 +24,6 @@ extern int __berkdb_read_alarm_ms;
 
 #include <pthread.h>
 
-#include "limit_fortify.h"
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>

@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <strings.h>
 #include <errno.h>
 #include <poll.h>
@@ -6703,7 +6702,7 @@ const char *get_tablename_from_rpl(unsigned long long rqid, const uint8_t *rpl,
     const char *tablename;
 
     tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-    if (tableversion)
+    if (tableversion && tablename)
         *tableversion = dt.tableversion;
     return tablename;
 }
