@@ -811,14 +811,14 @@ static void *thdpool_thd(void *voidarg)
             UNLOCK(&pool->mutex);
         }
 
-        // before acquiring next request, yield
-        comdb2bma_yield_all();
-
-        // the yield operation has completed, update thread info again
+        // ready to perform yield operation, update thread info again
         LOCK(&pool->mutex) {
-            thd->persistent_info = "yield done.";
+            thd->persistent_info = "yielding...";
         }
         UNLOCK(&pool->mutex);
+
+        // before acquiring next request, yield
+        comdb2bma_yield_all();
     }
 thread_exit:
 
