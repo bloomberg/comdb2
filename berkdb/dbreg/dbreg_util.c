@@ -1113,41 +1113,62 @@ __bb_dbreg_print_dblist(dbenv, prncallback, userptr)
 	void (*prncallback)(void *userptr, const char *fmt, ...);
 	void *userptr;
 {
-	DB *dbp;
-	DB_LOG *dblp;
+    DB *ldbp;
 	FNAME *fnp;
 	int del, first;
 	char *name;
 
-	dblp = dbenv->lg_handle;
+    MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 	//LOG *lp = dblp->reginfo.primary;
     DB_MPOOL *dbmp = dbenv->mp_handle;
+	int longest_len = 0;
+
+	for (ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
+		name = (char*)R_ADDR(dbmp->reginfo, ldbp->mpf->mfp->path_off); 
+		int len = strlen(name);
+		if (longest_len < len)
+			longest_len = len;
+	}
 
 	prncallback(userptr, "__bb_dbreg_print_dblist ----------\n");
 	//MUTEX_LOCK(dbenv, &lp->fq_mutex);
-	MUTEX_LOCK(dbenv, dblp->mutexp);
+	for (first = 1, ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 
-    for (int i = 0; i < dblp->dbentry_cnt; i++) {
 	//for (first = 1, fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
 	    //fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
-		if (i == 0) {
-			prncallback(userptr, "  %-5s%-32s%-8s%-10s%-10s%s\n",
-					"ID", "Name", "Type", "Pgno", "Txnid", "DBP-Info");
+		if (first) {
+			first = 0;
+			char spaces[longest_len + 1] = "Name";
+			for(int i = 4; i < longest_len; i++)
+				spaces[i] = ' ';
+			spaces[longest_len] = '\0';
+
+			prncallback(userptr, "  %-5s%s%-8s%-10s%-10s%s\n",
+					"ID", spaces, "Type", "Pgno", "Txnid", "DBP-Info");
 		}
-        dbp = dblp->dbentry[i].dbp;
-        if (!dbp) continue;
-        /*
+		fnp = ldbp->log_filename;
 		if (fnp->name_off == INVALID_ROFF)
 			name = "";
 		else
-			name = R_ADDR(&dblp->reginfo, fnp->name_off);
+			name = (char*)R_ADDR(dbmp->reginfo, ldbp->mpf->mfp->path_off); 
 
+		int len = strlen(name);
+		char name_with_spaces[longest_len + 1];
+		for(int i = 0; i < longest_len; i++)
+			if (i < len)
+				name_with_spaces[i] = name[i];
+			else
+				name_with_spaces[i] = ' ';
+		name_with_spaces[longest_len] = '\0';
+
+        /*
 		dbp = fnp->id >= dblp->dbentry_cnt ? NULL :
 		    dblp->dbentry[fnp->id].dbp;
 		del = fnp->id >= dblp->dbentry_cnt ? 0 :
 		    dblp->dbentry[fnp->id].deleted;
             */
-        name = (char*)R_ADDR(dbmp->reginfo, dbp->mpf->mfp->path_off); 
         /*
 		prncallback(userptr,
 		    "  %-5ld%-32s %-8s%-10lu%-10lx%s %d %lx %lx\n",
@@ -1157,15 +1178,15 @@ __bb_dbreg_print_dblist(dbenv, prncallback, userptr)
 		    (u_long)(dbp == NULL ? 0 : dbp->flags));
             */
 		prncallback(userptr,
-		    "az:  %-5ld%-32s %-8s%-10lu%-10lx%s %d %lx %lx\n",
-		    0, name, __db_dbtype_to_string(dbp->type),
-		    (u_long)dbp->meta_pgno, 0,
-		    dbp == NULL ? "No DBP" : "DBP", NULL, P_TO_ULONG(dbp),
-		    (u_long)(dbp == NULL ? 0 : dbp->flags));
+		    "  %-5ld%-32s %-8s%-10lu%-10lx%s %d %lx %lx\n",
+		    (long)fnp->id, name_with_spaces, __db_dbtype_to_string(ldbp->type),
+		    (u_long)ldbp->meta_pgno, (u_long)fnp->create_txnid,
+		    ldbp == NULL ? "No DBP" : "DBP", NULL, P_TO_ULONG(ldbp),
+		    (u_long)(ldbp == NULL ? 0 : ldbp->flags));
     }
 
 	//MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-    MUTEX_THREAD_UNLOCK(dbenv, dblp->mutexp);
+    MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 	prncallback(userptr, "__bb_dbreg_print_dblist ^^^^^^^^^^\n");
 }
 
