@@ -2136,7 +2136,7 @@ int bdb_clear_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_build_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_print_mintruncate_min(bdb_state_type *bdb_state);
 
-void wait_for_sc_to_stop(const char *operation);
+void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run(void);
 
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);

@@ -176,7 +176,7 @@ static int propose_sc(struct schema_change_type *s)
 
 static int master_downgrading(struct schema_change_type *s)
 {
-    if (stopsc) {
+    if (get_stopsc(__func__, __LINE__)) {
         if (!s->nothrevent)
             backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
         if (s->sb) {
@@ -188,7 +188,6 @@ static int master_downgrading(struct schema_change_type *s)
         logmsg(
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
-        set_schema_change_in_progress(__func__, __LINE__, 0);
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;

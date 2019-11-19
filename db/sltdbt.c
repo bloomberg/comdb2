@@ -32,6 +32,7 @@
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
+#include "sc_global.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -138,7 +139,7 @@ static int handle_op_block(struct ireq *iq)
     if (gbl_readonly || gbl_readonly_sc) {
         /* ERR_REJECTED will force a proxy retry. This is essential to make live
          * schema change work reliably. */
-        if (gbl_schema_change_in_progress)
+        if (get_schema_change_in_progress(__func__, __LINE__))
             rc = ERR_REJECTED;
         else
             rc = ERR_READONLY;

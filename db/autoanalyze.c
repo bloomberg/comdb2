@@ -31,6 +31,7 @@
 #include <ctrace.h>
 #include <autoanalyze.h>
 #include <sqlstat1.h>
+#include "schemachange/sc_global.h"
 
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
@@ -95,8 +96,9 @@ void *auto_analyze_table(void *arg)
     }
     int rc;
 
-    for (int retries = 0; gbl_schema_change_in_progress && retries < 10;
-         retries++) {
+    for (int retries = 0;
+            get_schema_change_in_progress(__func__, __LINE__) &&
+            retries < 10; retries++) {
         sleep(5); // wait around for sequential fastinits to finish
     }
 
@@ -349,7 +351,7 @@ void *auto_analyze_main(void *unused)
     // for each table update the counters
     for (int i = 0; i < thedb->num_dbs; i++) {
         if (thedb->master != gbl_mynode ||
-            gbl_schema_change_in_progress) // should not be writing
+                get_schema_change_in_progress(__func__, __LINE__))
             break;
 
         struct dbtable *tbl = thedb->dbs[i];
@@ -396,7 +398,8 @@ void *auto_analyze_main(void *unused)
          * only one analyze at a time is allowed to run (auto_analyze_running)
          * we should not auto analyze if analyze_is_running (manually)
          */
-        if (!auto_analyze_running && !gbl_schema_change_in_progress &&
+        if (!auto_analyze_running &&
+            !get_schema_change_in_progress(__func__, __LINE__) &&
             !analyze_is_running() &&
             ((newautoanalyze_counter > min_ops &&
               now - tbl->aa_lastepoch > min_time) ||

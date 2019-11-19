@@ -548,7 +548,7 @@ int schema_change_abort_callback(void)
 {
     Pthread_mutex_lock(&gbl_sc_lock);
     /* if a schema change is in progress */
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         /* we should safely stop the sc here, but until we find a good way to do
          * that, just kill us */
         exit(1);

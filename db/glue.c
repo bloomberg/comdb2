@@ -2897,6 +2897,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     oldgen = dbenv->gen;
     dbenv->master = host;
 
+    bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
@@ -2906,7 +2907,10 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+
         trigger_clear_hash();
+        sc_clear_running();
+
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2932,7 +2936,9 @@ static int new_master_callback(void *bdb_handle, char *host)
         if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
+
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+        /* ??? */
         sc_set_running(NULL, 0, 0, NULL, 0);
         osql_repository_cancelall();
     }

@@ -127,7 +127,7 @@ static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
 extern void bdb_set_seqnum(void *);
 extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-extern void wait_for_sc_to_stop(const char *operation);
+extern void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
@@ -6418,7 +6418,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		wait_for_sc_to_stop("log-truncate");
+		wait_for_sc_to_stop("log-truncate", __func__, __LINE__);
 	}
 
 	Pthread_rwlock_wrlock(&dbenv->recoverlk);

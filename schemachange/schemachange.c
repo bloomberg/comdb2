@@ -247,7 +247,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             LOGMSG_INFO,
             "Resuming schema change: fetched seed 0x%llx, original node %s\n",
             seed, node ? node : "(unknown)");
-        if (stopsc) {
+        if (get_stopsc(__func__, __LINE__)) {
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
             free_schema_change_type(s);
@@ -1013,7 +1013,7 @@ int add_schema_change_tables()
 
     /* if a schema change is currently running don't try to resume one */
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         return 0;
     }

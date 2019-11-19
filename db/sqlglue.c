@@ -100,6 +100,7 @@
 
 #include "str0.h"
 #include "comdb2_atomic.h"
+#include "sc_global.h"
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
@@ -142,7 +143,6 @@ extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
 extern int gbl_fdb_track;
 extern int gbl_selectv_rangechk;
-extern volatile int gbl_schema_change_in_progress;
 
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
@@ -2243,9 +2243,11 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
         }
     }
 
+    int inprogress;
     if (thd->clnt->is_analyze &&
-        (gbl_schema_change_in_progress || get_analyze_abort_requested())) {
-        if (gbl_schema_change_in_progress)
+       (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
+         get_analyze_abort_requested())) {
+        if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
                     __func__);

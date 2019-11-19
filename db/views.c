@@ -35,6 +35,7 @@
 #include "cron_systable.h"
 #include "timepart_systable.h"
 #include "logical_cron.h"
+#include "sc_global.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -1917,7 +1918,7 @@ int views_cron_restart(timepart_views_t *views)
        if this is the case, abort the schema change */
     rc = pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
-        if (gbl_schema_change_in_progress) {
+        if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "
                                  "partition: aborting\n");
             gbl_sc_abort = 1;

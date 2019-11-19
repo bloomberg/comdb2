@@ -305,7 +305,7 @@ static inline int wait_to_resume(struct schema_change_type *s)
             sleep(1);
             stm--;
             /* give a chance for sc to stop */
-            if (stopsc) {
+            if (get_stopsc(__func__, __LINE__)) {
                 sc_errf(s, "master downgrading\n");
                 return SC_MASTER_DOWNGRADE;
             }
@@ -570,7 +570,7 @@ convert_records:
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
     if (s->resume && s->alteronly && !s->finalize_only) {
-        if (gbl_test_sc_resume_race && !stopsc) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
             sleep(5);
@@ -581,14 +581,14 @@ convert_records:
     MEMORY_SYNC;
 
     /* give a chance for sc to stop */
-    if (stopsc) {
+    if (get_stopsc(__func__, __LINE__)) {
         sc_errf(s, "master downgrading\n");
         change_schemas_recover(s->tablename);
         return SC_MASTER_DOWNGRADE;
     }
     reset_sc_stat();
     rc = wait_to_resume(s);
-    if (rc || stopsc) {
+    if (rc || get_stopsc(__func__, __LINE__)) {
         sc_errf(s, "master downgrading\n");
         return SC_MASTER_DOWNGRADE;
     }
@@ -623,7 +623,7 @@ convert_records:
     if (s->preempted != prev_preempted || rc == SC_PREEMPTED) {
         sc_errf(s, "SCHEMACHANGE PREEMPTED\n");
         return SC_PREEMPTED;
-    } else if (stopsc || rc == SC_MASTER_DOWNGRADE)
+    } else if (get_stopsc(__func__, __LINE__) || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc)
         rc = SC_CONVERSION_FAILED;
@@ -972,7 +972,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
     rc = upgrade_all_records(db, db->sc_genids, s);
     db->doing_upgrade = 0;
 
-    if (stopsc)
+    if (get_stopsc(__func__, __LINE__))
         rc = SC_MASTER_DOWNGRADE;
     else if (rc) {
         rc = SC_CONVERSION_FAILED;

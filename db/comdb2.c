@@ -1477,7 +1477,7 @@ void clean_exit(void)
     no_new_requests(thedb);
 
     print_all_time_accounting();
-    wait_for_sc_to_stop("exit");
+    wait_for_sc_to_stop("exit", __func__, __LINE__);
 
     /* let the lower level start advertising high lsns to go non-coherent
        - dont hang the master waiting for sync replication to an exiting
@@ -4300,7 +4300,7 @@ int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
-
+#include <sc_global.h>
 
 void *statthd(void *p)
 {
@@ -4510,7 +4510,7 @@ void *statthd(void *p)
         if (count % 5 == 0)
             update_metrics();
 
-        if (!gbl_schema_change_in_progress) {
+        if (!get_schema_change_in_progress(__func__, __LINE__)) {
             thresh = reqlog_diffstat_thresh();
             if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();

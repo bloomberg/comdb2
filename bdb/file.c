@@ -4301,8 +4301,9 @@ deadlock_again:
             }
 
             /* Don't print this trace during schemachange */
-            extern int gbl_schema_change_in_progress;
-            if (!gbl_schema_change_in_progress) {
+            extern int get_schema_change_in_progress(const char *func,
+                    int line);
+            if (!get_schema_change_in_progress(__func__, __LINE__)) {
                 int calc_pgsz = calc_pagesize(bdb_state->lrl);
                 if (calc_pgsz > x) {
                     logmsg(LOGMSG_WARN, "%s: Warning: Table %s has non-optimal page size. "
@@ -4911,10 +4912,6 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     set_repinfo_master_host(bdb_state, host, __func__, __LINE__);
 
     BDB_RELLOCK();
-
-    if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
 }
 
 static inline void bdb_set_read_only(bdb_state_type *bdb_state)
@@ -5141,7 +5138,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     }
 
     if (op != UPGRADE) {
-        wait_for_sc_to_stop("downgrade");
+        wait_for_sc_to_stop("downgrade", __func__, __LINE__);
         bdb_set_read_only(bdb_state);
     }
 
