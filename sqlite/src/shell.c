@@ -9722,6 +9722,7 @@ struct ShellState {
   int outCount;          /* Revert to stdout when reaching zero */
   int cnt;               /* Number of records displayed so far */
   int lineno;            /* Line number of last line read from in */
+  int openFlags;         /* Additional flags to open.  (SQLITE_OPEN_NOFOLLOW) */
   FILE *in;              /* Read commands from this stream */
   FILE *out;             /* Write results here */
   FILE *traceOut;        /* Output for sqlite3_trace() */
@@ -12263,6 +12264,7 @@ static const char *(azHelp[]) = {
   "        --maxsize N     Maximum size for --hexdb or --deserialized database",
 #endif
   "        --new           Initialize FILE to an empty database",
+  "        --nofollow      Do not follow symbolic links",
   "        --readonly      Open FILE readonly",
   "        --zip           FILE is a ZIP archive",
   ".output ?FILE?           Send output to FILE or stdout if FILE is omitted",
@@ -12827,7 +12829,7 @@ static void open_db(ShellState *p, int openFlags){
     switch( p->openMode ){
       case SHELL_OPEN_APPENDVFS: {
         sqlite3_open_v2(p->zDbFilename, &p->db, 
-           SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE, "apndvfs");
+           SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|p->openFlags, "apndvfs");
         break;
       }
       case SHELL_OPEN_HEXDB:
@@ -12840,12 +12842,14 @@ static void open_db(ShellState *p, int openFlags){
         break;
       }
       case SHELL_OPEN_READONLY: {
-        sqlite3_open_v2(p->zDbFilename, &p->db, SQLITE_OPEN_READONLY, 0);
+        sqlite3_open_v2(p->zDbFilename, &p->db,
+            SQLITE_OPEN_READONLY|p->openFlags, 0);
         break;
       }
       case SHELL_OPEN_UNSPEC:
       case SHELL_OPEN_NORMAL: {
-        sqlite3_open(p->zDbFilename, &p->db);
+        sqlite3_open_v2(p->zDbFilename, &p->db,
+           SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|p->openFlags, 0);
         break;
       }
     }
@@ -16743,6 +16747,7 @@ static int do_meta_command(char *zLine, ShellState *p){
     sqlite3_free(p->zFreeOnClose);
     p->zFreeOnClose = 0;
     p->openMode = SHELL_OPEN_UNSPEC;
+    p->openFlags = 0;
     p->szMax = 0;
     /* Check for command-line arguments */
     for(iName=1; iName<nArg && azArg[iName][0]=='-'; iName++){
@@ -16757,6 +16762,8 @@ static int do_meta_command(char *zLine, ShellState *p){
         p->openMode = SHELL_OPEN_APPENDVFS;
       }else if( optionMatch(z, "readonly") ){
         p->openMode = SHELL_OPEN_READONLY;
+      }else if( optionMatch(z, "nofollow") ){
+        p->openFlags |= SQLITE_OPEN_NOFOLLOW;
 #ifdef SQLITE_ENABLE_DESERIALIZE
       }else if( optionMatch(z, "deserialize") ){
         p->openMode = SHELL_OPEN_DESERIALIZE;
@@ -18677,6 +18684,7 @@ static const char zOptions[] =
   "   -multiplex           enable the multiplexor VFS\n"
 #endif
   "   -newline SEP         set output row separator. Default: '\\n'\n"
+  "   -nofollow            refuse to open symbolic links to database files\n"
   "   -nullvalue TEXT      set text string for NULL values. Default ''\n"
   "   -pagecache SIZE N    use N slots of SZ bytes each for page cache memory\n"
   "   -quote               set output mode to 'quote'\n"
@@ -18990,6 +18998,8 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
 #endif
     }else if( strcmp(z,"-readonly")==0 ){
       data.openMode = SHELL_OPEN_READONLY;
+    }else if( strcmp(z,"-nofollow")==0 ){
+      data.openFlags = SQLITE_OPEN_NOFOLLOW;
 #if !defined(SQLITE_OMIT_VIRTUALTABLE) && defined(SQLITE_HAVE_ZLIB)
     }else if( strncmp(z, "-A",2)==0 ){
       /* All remaining command-line arguments are passed to the ".archive"
@@ -19093,6 +19103,8 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
 #endif
     }else if( strcmp(z,"-readonly")==0 ){
       data.openMode = SHELL_OPEN_READONLY;
+    }else if( strcmp(z,"-nofollow")==0 ){
+      data.openFlags |= SQLITE_OPEN_NOFOLLOW;
     }else if( strcmp(z,"-ascii")==0 ){
       data.mode = MODE_Ascii;
       sqlite3_snprintf(sizeof(data.colSeparator), data.colSeparator,

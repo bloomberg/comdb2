@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.31.0"
 #define SQLITE_VERSION_NUMBER 3031000
-#define SQLITE_SOURCE_ID      "2019-11-14 21:25:34 42e53547fa96a84f07650c24127db7c54c1b3b4fdc1a114d25c4a053f70d378f"
+#define SQLITE_SOURCE_ID      "2019-11-19 14:47:49 c43e07fc4f7a6c19ae96234be11cbea01f4e20d386f6dc059922a960326ca4a0"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -544,6 +544,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_CANTOPEN_FULLPATH       (SQLITE_CANTOPEN | (3<<8))
 #define SQLITE_CANTOPEN_CONVPATH       (SQLITE_CANTOPEN | (4<<8))
 #define SQLITE_CANTOPEN_DIRTYWAL       (SQLITE_CANTOPEN | (5<<8)) /* Not Used */
+#define SQLITE_CANTOPEN_SYMLINK        (SQLITE_CANTOPEN | (6<<8))
 #define SQLITE_CORRUPT_VTAB            (SQLITE_CORRUPT | (1<<8))
 #define SQLITE_CORRUPT_SEQUENCE        (SQLITE_CORRUPT | (2<<8))
 #define SQLITE_READONLY_RECOVERY       (SQLITE_READONLY | (1<<8))
@@ -596,6 +597,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_OPEN_SHAREDCACHE      0x00020000  /* Ok for sqlite3_open_v2() */
 #define SQLITE_OPEN_PRIVATECACHE     0x00040000  /* Ok for sqlite3_open_v2() */
 #define SQLITE_OPEN_WAL              0x00080000  /* VFS only */
+#define SQLITE_OPEN_NOFOLLOW         0x01000000  /* Ok for sqlite3_open_v2() */
 
 /* Reserved:                         0x00F00000 */
 
@@ -1434,6 +1436,7 @@ struct sqlite3_vfs {
 #define SQLITE_ACCESS_EXISTS    0
 #define SQLITE_ACCESS_READWRITE 1   /* Used by PRAGMA temp_store_directory */
 #define SQLITE_ACCESS_READ      2   /* Unused */
+#define SQLITE_ACCESS_SYMLINK   3   /* Test if file is symbolic link */
 
 /*
 ** CAPI3REF: Flags for the xShmLock VFS method
