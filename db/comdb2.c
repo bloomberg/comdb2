@@ -31,7 +31,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <berkdb/dbinc/queue.h>
 #include <limits.h>
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -976,14 +975,13 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c\n",
                    ii, usedb->ix_keylen[ii],
                    (usedb->ix_dupes[ii] ? 'y' : 'n'),
                    (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'),
                    (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
-                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1330,8 +1328,7 @@ static void *purge_old_files_thread(void *arg)
     return NULL;
 }
 
-/* remove every file that contains ".csc2" anywhere in its name.
-   this should be safe */
+/* Remove all csc2 files */
 static int clear_csc2_files(void)
 {
     char path[PATH_MAX] = {0};
@@ -1353,9 +1350,9 @@ static int clear_csc2_files(void)
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
 
-            ptr = strstr(dp->d_name, ".csc2");
+            ptr = strrchr(dp->d_name, '.');
 
-            if (ptr) {
+            if (ptr && (strncmp(ptr, ".csc2", sizeof(".csc2")) == 0)) {
                 int rc;
                 snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);

@@ -20,7 +20,6 @@
    This is because the transaction needs to abort, and start over again.
    non-transactional can retry within glue code.
 */
-#include "limit_fortify.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -940,12 +939,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_addk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -994,12 +987,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED) {
-        if (iq->debug)
-            reqprintf(iq, "upd_key: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1032,11 +1019,6 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 {
     int rc, bdberr;
     void *bdb_handle;
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_delk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1448,12 +1430,6 @@ int ix_find_last_dup_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_last_dup_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = "bdb_fetch_lastdupe_recnum";
@@ -1495,12 +1471,6 @@ int ix_find_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_recnum";
@@ -1541,11 +1511,7 @@ int ix_next_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
+
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_next_recnum";
@@ -1597,12 +1563,6 @@ static int ix_find_int_ll(int auxdb, struct ireq *iq, int ixnum, void *key,
         args = &default_args;
     }
 
-    if (!auxdb && ixnum != -1 &&
-        (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "%s: ix %d read disabled", __func__, ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2329,13 +2289,6 @@ int ix_find_auxdb_by_key_tran(int auxdb, struct ireq *iq, void *key, int keylen,
     int bdberr;
     char *req;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[index] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_auxdb_by_key_tran: ix %d read disabled",
-                      index);
-        return ERR_INDEX_DISABLED;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2389,11 +2342,6 @@ static int ix_next_int_ll(int auxdb, int lookahead, struct ireq *iq, int ixnum,
         args = &default_args;
     }
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2643,11 +2591,6 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
     void *curlast = last;
     int numskips = 0;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     iq->gluewhere = "ix_prev_blobs_auxdb";
     if (!bdb_handle)
@@ -2836,11 +2779,6 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_prev_recnum";

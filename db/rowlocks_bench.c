@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <comdb2.h>
 #include <epochlib.h>
 

@@ -5,7 +5,6 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "limit_fortify.h"
 #include "db_config.h"
 
 #ifndef lint

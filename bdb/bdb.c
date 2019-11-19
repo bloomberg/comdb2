@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>

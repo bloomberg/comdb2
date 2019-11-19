@@ -16,7 +16,6 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
-#include "limit_fortify.h"
 
 #ifndef MYBDB5
 #include "bdb_api.h"
