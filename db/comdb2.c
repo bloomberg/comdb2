@@ -3328,28 +3328,27 @@ static int init_sqlite_tables(struct dbenv *dbenv)
 
 static int create_db(char *dbname, char *dir) {
    int rc;
+   char path[PATH_MAX + 1];
 
-   char *fulldir;
-   fulldir = realpath(dir, NULL);
+   char *fulldir = realpath(dir, path);
    if (fulldir == NULL) {
       rc = mkdir(dir, 0755);
       if (rc) {
-         logmsg(LOGMSG_FATAL, 
-               "%s doesn't exist, and couldn't create: %s\n", dir,
-               strerror(errno));
-         return -1;
+          logmsg(LOGMSG_FATAL, "%s doesn't exist, and couldn't create: %s\n",
+                 dir, strerror(errno));
+          return -1;
       }
-      fulldir = realpath(dir, NULL);
+      fulldir = realpath(dir, path);
       if (fulldir == NULL) {
-         logmsg(LOGMSG_FATAL, "Can't figure out full path for %s\n", dir);
-         return -1;
+          logmsg(LOGMSG_FATAL, "Can't figure out full path for %s\n", dir);
+          return -1;
       }
    }
    dir = fulldir;
    logmsg(LOGMSG_INFO, "Creating db in %s\n", dir);
-   setenv("COMDB2_DB_DIR", fulldir, 1);
+   setenv("COMDB2_DB_DIR", strdup(dir), 1);
 
-   if (init_db_dir(dbname, dir)) return -1;
+   if (init_db_dir(dbname, fulldir)) return -1;
 
    /* set up as a create run */
    gbl_local_mode = 1;
@@ -3507,7 +3506,9 @@ static int init(int argc, char **argv)
         }
 
         if (rc == 0 && (st.st_mode & S_IFDIR)) {
-            gbl_dbdir = realpath(".", NULL);
+            char path[PATH_MAX + 1];
+            if ((gbl_dbdir = realpath(".", path)) != NULL)
+                gbl_dbdir = strdup(gbl_dbdir);
         } else {
             /* can't access or can't find logs in current directory, assume db
              * isn't here */
