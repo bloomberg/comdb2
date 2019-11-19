@@ -1664,11 +1664,6 @@ REGISTER_TUNABLE("physrep_reconnect_penalty",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("verbose_physrep",
-                 "Print extended physrep trace.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("physrep_register_interval",
                  "Interval for physical replicant re-registration.  "
                  "(Default: 3600)",

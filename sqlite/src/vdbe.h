@@ -208,7 +208,11 @@ typedef struct VdbeOpList VdbeOpList;
 ** Additional non-public SQLITE_PREPARE_* flags
 */
 #define SQLITE_PREPARE_SAVESQL  0x80  /* Preserve SQL text */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_MASK     0x1f  /* Mask of public flags */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define SQLITE_PREPARE_MASK     0x0f  /* Mask of public flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Prototypes for the VDBE interface.  See comments on the implementation
