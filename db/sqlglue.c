@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include "sqloffload.h"
 #include "analyze.h"
 

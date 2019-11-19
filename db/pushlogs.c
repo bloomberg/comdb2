@@ -19,7 +19,6 @@
  * given lsn.
  */
 
-#include "limit_fortify.h"
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
