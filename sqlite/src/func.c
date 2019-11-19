@@ -450,6 +450,54 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   }
   sqlite3_result_int(context, i);
 }
+
+static void tableNamesFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  sqlite3 *db;
+  int wasPrepareOnly;
+  Parse sParse;
+  const char *zSql;
+  char *zErrMsg;
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
+  zSql = (const char *)sqlite3_value_text(argv[0]);
+  if( !zSql ) return;
+  db = sqlite3_context_db_handle(context);
+  wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
+  db->flags |= SQLITE_PrepareOnly;
+  memset(&sParse, 0, sizeof(Parse));
+  sParse.db = db;
+  sParse.prepFlags = SQLITE_PREPARE_ONLY|SQLITE_PREPARE_SRCLIST_ONLY;
+  zErrMsg = 0;
+  if( sqlite3RunParser(&sParse, zSql, &zErrMsg) ){
+    if( zErrMsg ){
+      sqlite3_result_error(context, zErrMsg, -1);
+      sqlite3DbFree(db, zErrMsg);
+    }
+    goto done;
+  }else if( zErrMsg ){ /* TODO: Is this ever possible? */
+    sqlite3DbFree(db, zErrMsg);
+  }
+  if( sParse.nSrcListOnly>0 ){
+    StrAccum str;
+    int i;
+    sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
+    for(i=0; i<sParse.nSrcListOnly; i++){
+      if( i>0 ) sqlite3_str_append(&str, " ", 1);
+      sqlite3_str_appendall(&str, sParse.azSrcListOnly[i]);
+    }
+    sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1, SQLITE_DYNAMIC);
+  }
+done:
+  if( !wasPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
+  if( sParse.pVdbe ){
+    sqlite3VdbeFinalize(sParse.pVdbe);
+    sParse.pVdbe = 0;
+  }
+  sqlite3ParserReset(&sParse);
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2603,6 +2651,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(comdb2_extract_table_names,
+                                 1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(printf,            -1, 0, 0, printfFunc       ),
     FUNCTION(unicode,            1, 0, 0, unicodeFunc      ),
