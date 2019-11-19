@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Debug variable
 debug=0
 
@@ -13,27 +14,6 @@ fi
 
 # Number of insert_records function calls
 nins=0
-
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function do_verify
@@ -317,13 +297,13 @@ echo "Test with insert, updates, deletes into t1"
 
 insert_records_oneshot 1 $INITCNT
 
-assertcnt $INITCNT
+assertcnt t1 $INITCNT
 do_verify
 
 NEWCNT=$((INITCNT*2))
 
 insert_records_oneshot $INITCNT $NEWCNT
-assertcnt $NEWCNT
+assertcnt t1 $NEWCNT
 do_verify
 
 > shouldhave.txt

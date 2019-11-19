@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>

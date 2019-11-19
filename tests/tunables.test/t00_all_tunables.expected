@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=935)
+(TUNABLES_COUNT=936)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -88,6 +88,7 @@
 (name='cache_lc_memlimit_tran', description='Limit per transaction memory used by LC cache', type='INTEGER', value='1048576', read_only='N')
 (name='cache_lc_trace_evictions', description='Print a message at the point of eviction', type='BOOLEAN', value='OFF', read_only='N')
 (name='cache_lc_trace_misses', description='Print a message on cache miss', type='BOOLEAN', value='OFF', read_only='N')
+(name='cached_output_buffer_max_bytes', description='Maximum size in bytes of the output buffer of an appsock thread.  (Default: 8 MiB)', type='INTEGER', value='8388608', read_only='N')
 (name='cachekb', description='', type='INTEGER', value='65536', read_only='Y')
 (name='cachekbmax', description='', type='INTEGER', value='0', read_only='Y')
 (name='cachekbmin', description='', type='INTEGER', value='65536', read_only='Y')

@@ -31,7 +31,7 @@ for i in `seq 1 10`; do
 done
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Run the reproducer another 100 times
 for i in `seq 1 100`; do
@@ -39,19 +39,19 @@ for i in `seq 1 100`; do
 done
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
 echo "$after/$before=$ratio"
 if [ $ratio -gt 1 ]; then
-  echo "ratio is $ratio" >&2
+  echo "leak 1 ratio is $ratio" >&2
   exit 1
 fi
 
 ######## Leak 2: Leaking dohsql_node_t.order_dir (DRQS 150091715) ########
 cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('sqlenginepool mint 1')"
-cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('sqlenginepool linger 0')"
+cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('sqlenginepool linger 1')"
 
 sleep 5
 
@@ -61,7 +61,8 @@ sleep 5
 kill $pid
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 while true; do cdb2sql $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
 pid=$!
@@ -69,13 +70,14 @@ sleep 120
 kill $pid
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $4}'`
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
 echo "$after/$before=$ratio"
 if [ $ratio -gt 1 ]; then
-  echo "ratio is $ratio" >&2
+  echo "leak 2 ratio is $ratio" >&2
   exit 1
 fi
 
@@ -83,4 +85,4 @@ fi
 # in the order-by cluase refers to a subquery (Thanks Mike!).
 # For instance, in the query below, the 2nd column in the order-by clause
 # is 'SELECT 1', and it would crash the database.
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT i, (SELECT 1) FROM t0 ORDER BY 1, 2'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT i, (SELECT 1) FROM t0 ORDER BY 1, 2' >/dev/null

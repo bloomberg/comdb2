@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
-
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
 if [ "x$dbnm" == "x" ] ; then
@@ -24,26 +22,6 @@ nrecs=2000
 
 # Max number of schema changes
 max_nusc=1000
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function do_verify
@@ -104,7 +82,7 @@ function do_rebuild
         let scnt=scnt+1
         do_verify
     done
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     return 0
 }
@@ -127,7 +105,7 @@ function delete_records
          fi
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $remaining
+         #assertcnt $tbl $remaining
          #sleep 0.1
     done
     end=$(date +%s)
@@ -147,7 +125,7 @@ function insert_records
             continue
         fi
 
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $1 -gt 0 ] ; then
             sleep 0.1
@@ -176,7 +154,7 @@ function run_test
     fi
     wait
 
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
     do_verify
 
     echo "deleting all records in background"
@@ -188,7 +166,7 @@ function run_test
     fi
     wait
 
-    assertcnt 0
+    assertcnt $tbl 0
 }
 
 echo "running test in machine $(hostname):${PWD}"

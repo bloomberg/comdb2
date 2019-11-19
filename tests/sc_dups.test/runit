@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Debug variable
 debug=0
 
@@ -39,7 +40,7 @@ function do_rebuild
         fi
         let scnt=scnt+1
         do_verify
-        assertcnt $nrecs
+        assertcnt $tbl $nrecs
     done
 
     return 0
@@ -75,21 +76,6 @@ function insert_records
 }
 
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 function do_verify
 {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
@@ -104,7 +90,7 @@ function run_test
 {
     insert_records 0
     # Print a count
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     # following will fail because of unique constraint violation
 
@@ -119,7 +105,7 @@ function run_test
     ret=$?
     kill -9 $upid
 
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     if [[ "$ret" == 0 ]]; then
         echo "Success!  Performed $nusc schema-changes."
@@ -139,7 +125,7 @@ function run_test
 
     ret=$?
     kill -9 $upid
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     if [[ "$ret" == 0 ]]; then
         echo "Success!  Performed $nusc schema-changes."

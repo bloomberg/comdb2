@@ -24,6 +24,8 @@
 #include "comdb2.h"
 #include "sql.h"
 #include "bdb_int.h"
+#include "md5.h"
+#include "tohex.h"
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -969,6 +971,40 @@ static void comdb2StartTimeFunc(
   extern int gbl_starttime;
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
+}
+
+static void md5Func(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    const unsigned char *s;
+    MD5Context ctx = {0};
+    char checksum[16];
+    char out[33];
+    unsigned int len;
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_TEXT:
+            s = sqlite3_value_text(argv[0]);
+            len = strlen((char*) s);
+            break;
+
+        case SQLITE_BLOB:
+            s = sqlite3_value_blob(argv[0]);
+            len = sqlite3_value_bytes(argv[0]);
+            break;
+
+        default:
+            return;
+    }
+
+    MD5Init(&ctx);
+    MD5Update(&ctx, (unsigned char*) s, len);
+    MD5Final((unsigned char*) checksum, &ctx);
+    util_tohex(out, (char*) checksum, sizeof(checksum));
+    sqlite3_result_text(context, strdup(out), 32, free);
 }
 
 static void comdb2UserFunc(
@@ -2638,6 +2674,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
+
+    FUNCTION(checksum_md5,          1, 0, 0, md5Func),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),

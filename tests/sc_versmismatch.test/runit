@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Remember if we've started the coprocess.
 stco=1
-
-# Debug variable
-debug=0
 
 dbnm=$1
 
@@ -26,21 +24,6 @@ function failexit
     echo "Failed $1"
     exit -1
 }
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 
 function do_verify
 {
@@ -71,7 +54,7 @@ INITCNT=1000
 
 function test1
 {
-    assertcnt $INITCNT
+    assertcnt t1 $INITCNT
     #cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 100')"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 100')"
     echo "Alter table to t1_2 version while inserting records"
@@ -92,7 +75,7 @@ function test1
     done
 
     echo assert count $j
-    assertcnt $j
+    assertcnt t1 $j
     if grep failed alter1.scout ; then
         failexit "alter1: see alter1.scout"
     fi
@@ -234,7 +217,7 @@ function test2
     echo "commit" >&${COPROC[1]}
     sleep 0.4
 
-    assertcnt $((INITCNT+2))
+    assertcnt t1 $((INITCNT+2))
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > post.txt
     echo "(a=300000, b='test1300000', c=400000)" >> pre.txt
     echo "(a=300002, b='test1300002', c=300002)" >> pre.txt

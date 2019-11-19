@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Debug variable
 debug=0
 
@@ -26,21 +27,6 @@ nrecs=2000
 # Max number of schema changes
 max_nusc=1000
 
-function failexit
-{
-    echo "Failure: $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 function do_verify
 {
@@ -190,7 +176,7 @@ function do_rebuild
         let scnt=scnt+1
         do_verify
     done
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     return 0
 }
@@ -211,7 +197,7 @@ function delete_records
          cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $foreigntbl where a = $j" >> delete_${foreigntbl}.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $remaining
+         #assertcnt $tbl $remaining
          #sleep 0.1
     done
     end=$(date +%s)
@@ -244,7 +230,7 @@ function insert_records
 
     while [[ $j -le $locnrecs ]]; do 
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$j, $((j*2)),$j)"  >> insert.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -276,7 +262,7 @@ function update_f
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set extrablb=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=x'3456' where a=$j"    >> update.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -354,7 +340,7 @@ function run_parallel_test
     EXTRA=$((nrecs*10)) 
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
-    assertcnt $((EXTRA))
+    assertcnt $tbl $((EXTRA))
 
 	echo "adding $nrecs foreign records"
     insert_foreign $nrecs
@@ -370,7 +356,7 @@ function run_parallel_test
     fi
     wait
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     echo "updating $nrecs records, field f"
@@ -384,7 +370,7 @@ function run_parallel_test
     fi
     wait
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
 
@@ -399,7 +385,7 @@ function run_parallel_test
     fi
     wait
 
-    assertcnt $EXTRA
+    assertcnt $tbl $EXTRA
     do_verify
 }
 
@@ -415,7 +401,7 @@ function run_compress_test
     EXTRA=$((nrecs*10))
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
-    assertcnt $((EXTRA))
+    assertcnt $tbl $((EXTRA))
 
 	echo "adding $nrecs foreign records"
     insert_foreign $nrecs
@@ -432,14 +418,14 @@ function run_compress_test
     fi
     wait
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     if [ $rebuild -eq 1 ] ; then
       remove_compression_rebuild $dbnm $tbl $upid
     fi
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     rebuild=1
@@ -455,12 +441,12 @@ function run_compress_test
     fi
     wait
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     remove_compression_rebuild $dbnm $tbl $upid
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
 
@@ -475,12 +461,12 @@ function run_compress_test
     fi
     wait
 
-    assertcnt $EXTRA
+    assertcnt $tbl $EXTRA
     do_verify
 
     remove_compression_rebuild $dbnm $tbl $upid
 
-    assertcnt $((EXTRA))
+    assertcnt $tbl $((EXTRA))
     do_verify
 }
 

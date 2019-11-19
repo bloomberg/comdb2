@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
-
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
 
@@ -86,26 +84,6 @@ function insert_records
     done
 }
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 function do_verify
 {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
@@ -137,7 +115,7 @@ tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1'
 
 insert_records
 
-assertcnt $nrecs
+assertcnt t1 $nrecs
 
 master=`getmaster`
 echo "Master is $master"
@@ -157,7 +135,7 @@ fi
 
 wait
 
-assertcnt $(( nrecs * 2 ))
+assertcnt t1 $(( nrecs * 2 ))
 assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
@@ -177,7 +155,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('t1')")
 
 insert_records
-assertcnt $nrecs
+assertcnt t1 $nrecs
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 10"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
@@ -195,7 +173,7 @@ fi
 
 wait
 
-assertcnt $nrecs
+assertcnt t1 $nrecs
 assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
@@ -205,7 +183,7 @@ cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
 
 do_schema_changes
-assertcnt $nrecs
+assertcnt t1 $nrecs
 assert_vers $(( tblver + 1 ))
 do_verify
 

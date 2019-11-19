@@ -1137,7 +1137,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
     }
     // now, actually create the temp table
-    *lk = calloc(1, sizeof(pthread_mutex_t));
+    *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
     lua_begin_step(sp->clnt, sp, stmt);

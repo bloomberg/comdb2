@@ -3487,7 +3487,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
 
     if (gbl_fdb_track_times) {
         now = gettimeofday_ms();
-        logmsg(LOGMSG_USER, "RRRRRR start now=%lu\n", now);
+        logmsg(LOGMSG_USER, "RRRRRR start now=%" PRIu64 "\n", now);
     }
 
     while (1) {
@@ -3504,10 +3504,12 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
             then = gettimeofday_ms();
 
             if (old == 0ULL) {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lu 0 %lu\n", now, then - now);
+                logmsg(LOGMSG_USER, "RRRRRR now=%" PRIu64 " 0 %" PRIu64 "\n",
+                       now, then - now);
             } else {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lu delta=%lu %lu\n", now,
-                       now - old, then - now);
+                logmsg(LOGMSG_USER,
+                       "RRRRRR now=%" PRIu64 " delta=%" PRIu64 " %" PRIu64 "\n",
+                       now, now - old, then - now);
             }
             old = now;
         }

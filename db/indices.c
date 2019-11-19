@@ -488,11 +488,6 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
     int rc;
 
     if (!do_inline) {
-        if ((iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-            if (iq->debug)
-                reqprintf(iq, "%s: ix %d write disabled", __func__, ixnum);
-            return 0;
-        }
         rc = insert_add_op(iq, opcode, rrn, ixnum, genid, ins_keys, blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
