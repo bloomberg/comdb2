@@ -149,6 +149,7 @@ repl_loop:
                 logmsg(LOGMSG_USER, "%s: forcing re-registration\n", __func__);
             }
         }
+
         if (repl_db_connected == 0) {
             if (find_new_repl_db() == 0) {
                 /* do truncation to start fresh */
@@ -178,72 +179,65 @@ repl_loop:
             continue;
 
         info = get_last_lsn(thedb->bdb_env);
-        if (info.file > 0) {
-            prev_info = info;
-
-            if (gbl_blocking_physrep) {
-                rc = snprintf(
-                    sql_cmd, sql_cmd_len,
-                    "select * from comdb2_transaction_logs('{%u:%u}', NULL, 1)",
-                    info.file, info.offset);
-            } else {
-                rc =
-                    snprintf(sql_cmd, sql_cmd_len,
-                             "select * from comdb2_transaction_logs('{%u:%u}')",
-                             info.file, info.offset);
-            }
-            if (rc < 0 || rc >= sql_cmd_len)
-                logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
-
-            if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
-                logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
-                close_repl_connection();
-                continue;
-            }
-
-            if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
-                if (gbl_verbose_physrep)
-                    logmsg(LOGMSG_USER, "%s can't find the next record\n",
-                           __func__);
-                close_repl_connection();
-                continue;
-            }
-
-            /* our log matches, so apply each record log received */
-            while (do_repl && !do_truncate &&
-                   (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
-                /* check the generation id to make sure the master hasn't
-                 * switched */
-                int64_t *rec_gen = (int64_t *)cdb2_column_value(repl_db, 2);
-                if (rec_gen && *rec_gen > highest_gen) {
-                    int64_t new_gen = *rec_gen;
-                    if (gbl_verbose_physrep) {
-                        logmsg(LOGMSG_USER,
-                               "%s: My master changed, set "
-                               "truncate flag\n",
-                               __func__);
-                        logmsg(LOGMSG_USER,
-                               "%s: gen: %" PRId64 ", rec_gen: %" PRId64 "\n",
-                               __func__, gen, *rec_gen);
-                    }
-                    do_truncate = 1;
-                    highest_gen = new_gen;
-                    goto repl_loop;
-                }
-                prev_info = handle_record(prev_info);
-            }
-
-            if (rc != CDB2_OK_DONE || do_truncate) {
-                do_truncate = 1;
-                continue;
-            }
+        if (info.file <= 0) {
+            sleep(1);
+            continue;
         }
 
+        prev_info = info;
+
+        rc = snprintf(sql_cmd, sql_cmd_len,
+                      "select * from comdb2_transaction_logs('{%u:%u}'%s)",
+                      info.file, info.offset,
+                      (gbl_blocking_physrep ? ", NULL, 1" : ""));
+        if (rc < 0 || rc >= sql_cmd_len)
+            logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
+
+        if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
+            logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
+            close_repl_connection();
+            continue;
+        }
+
+        if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
+            if (gbl_verbose_physrep)
+                logmsg(LOGMSG_USER, "%s can't find the next record\n",
+                       __func__);
+            close_repl_connection();
+            continue;
+        }
+
+        /* our log matches, so apply each record log received */
+        while (do_repl && !do_truncate &&
+               (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
+            /* check the generation id to make sure the master hasn't
+             * switched */
+            int64_t *rec_gen = (int64_t *)cdb2_column_value(repl_db, 2);
+            if (rec_gen && *rec_gen > highest_gen) {
+                int64_t new_gen = *rec_gen;
+                if (gbl_verbose_physrep) {
+                    logmsg(LOGMSG_USER,
+                           "%s: My master changed, set truncate flag\n",
+                           __func__);
+                    logmsg(LOGMSG_USER,
+                           "%s: gen: %" PRId64 ", rec_gen: %" PRId64 "\n",
+                           __func__, gen, *rec_gen);
+                }
+                do_truncate = 1;
+                highest_gen = new_gen;
+                goto repl_loop;
+            }
+            prev_info = handle_record(prev_info);
+        }
+
+        if (rc != CDB2_OK_DONE || do_truncate) {
+            do_truncate = 1;
+            continue;
+        }
         sleep(1);
     }
 
     close_repl_connection();
-
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     return NULL;
