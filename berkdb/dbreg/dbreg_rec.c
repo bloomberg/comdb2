@@ -370,7 +370,6 @@ __dbreg_open_file(dbenv, txn, argp, info)
 {
 	DB_ENTRY *dbe;
 	DB_LOG *lp;
-	DB *dbp;
 	u_int32_t id;
 	int ret;
 
@@ -400,40 +399,38 @@ __dbreg_open_file(dbenv, txn, argp, info)
 	else
 		dbe = NULL;
 
-	if (dbe != NULL) {
-		if ((dbp = dbe->dbp) != NULL) {
-			if (dbp->meta_pgno != argp->meta_pgno ||
-			    memcmp(dbp->fileid,
-				argp->uid.data, DB_FILE_ID_LEN) != 0) {
-				MUTEX_THREAD_UNLOCK(dbenv, lp->mutexp);
-				(void)__dbreg_revoke_id(dbp, 0,
-				    DB_LOGFILEID_INVALID);
-				if (F_ISSET(dbp, DB_AM_RECOVER))
-					__db_close(dbp, NULL, DB_NOSYNC);
-
-				goto reopen;
-			}
-
-			/*
-			 * We should only get here if we already have the
-			 * dbp from an openfiles pass, in which case, what's
-			 * here had better be the same dbp.
-			 */
-			DB_ASSERT(dbe->dbp == dbp);
+	if (dbe != NULL && dbe->dbp != NULL) {
+		DB *dbp = dbe->dbp;
+		if (dbp->meta_pgno != argp->meta_pgno ||
+			memcmp(dbp->fileid, argp->uid.data, DB_FILE_ID_LEN) != 0) {
 			MUTEX_THREAD_UNLOCK(dbenv, lp->mutexp);
+			(void)__dbreg_revoke_id(dbp, 0,
+				DB_LOGFILEID_INVALID);
+			if (F_ISSET(dbp, DB_AM_RECOVER))
+				__db_close(dbp, NULL, DB_NOSYNC);
 
-			/*
-			 * This is a successful open.  We need to record that
-			 * in the txnlist so that we know how to handle the
-			 * subtransaction that created the file system object.
-			 */
-			if (argp->id != TXN_INVALID &&
-			    __db_txnlist_update(dbenv, info,
-				argp->id, TXN_EXPECTED, NULL) == TXN_NOTFOUND)
-				(void)__db_txnlist_add(dbenv,
-				    info, argp->id, TXN_EXPECTED, NULL);
-			return (0);
+			goto reopen;
 		}
+
+		/*
+		 * We should only get here if we already have the
+		 * dbp from an openfiles pass, in which case, what's
+		 * here had better be the same dbp.
+		 */
+		DB_ASSERT(dbe->dbp == dbp);
+		MUTEX_THREAD_UNLOCK(dbenv, lp->mutexp);
+
+		/*
+		 * This is a successful open.  We need to record that
+		 * in the txnlist so that we know how to handle the
+		 * subtransaction that created the file system object.
+		 */
+		if (argp->id != TXN_INVALID &&
+			__db_txnlist_update(dbenv, info,
+			argp->id, TXN_EXPECTED, NULL) == TXN_NOTFOUND)
+			(void)__db_txnlist_add(dbenv,
+				info, argp->id, TXN_EXPECTED, NULL);
+		return (0);
 	}
 
 	MUTEX_THREAD_UNLOCK(dbenv, lp->mutexp);
