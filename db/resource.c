@@ -72,7 +72,7 @@ void initresourceman(const char *newlrlname)
     if (lrlname) // free before assigning new one
         free(lrlname);
 
-    lrlname = realpath(newlrlname, NULL);
+    lrlname = comdb2_realpath(newlrlname, NULL);
 
     /* lrl file is always known as "lrl" */
     if (lrlname)
