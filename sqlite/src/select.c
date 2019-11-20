@@ -88,6 +88,8 @@ extern void comdb2_register_offset(int, int, int);
 extern const char *comdb2_get_dbname(void);
 extern void comdb2_set_verify_remote_schemas(void);
 
+extern int gbl_legacy_column_name;
+
 static void _set_src_recording(
   Parse *pParse,
   Select *pSub
@@ -1881,6 +1883,10 @@ static void generateColumnTypes(
 static void generateColumnNames(
   Parse *pParse,      /* Parser context */
   Select *pSelect     /* Generate column names for this SELECT statement */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,
+  int useSpan         /* Use span for column names */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   Vdbe *v = pParse->pVdbe;
   int i;
@@ -1934,7 +1940,11 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( srcName && p->op==TK_COLUMN ){
+#else /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+    }else if( srcName && p->op==TK_COLUMN && useSpan==0 ){
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       char *zCol;
       int iCol = p->iColumn;
       pTab = p->y.pTab;
@@ -2794,6 +2804,13 @@ static int multiSelect(
         if( dest.eDest!=priorOp ){
           int iCont, iBreak, iStart;
           assert( p->pEList );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if (gbl_legacy_column_name && dest.eDest==SRT_Output ){
+            Select *pFirst = p;
+            while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+            generateColumnNames(pParse, pFirst, 1);
+          }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           iBreak = sqlite3VdbeMakeLabel(pParse);
           iCont = sqlite3VdbeMakeLabel(pParse);
           computeLimitRegisters(pParse, p, iBreak);
@@ -2866,6 +2883,14 @@ static int multiSelect(
         ** tables.
         */
         assert( p->pEList );
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if (gbl_legacy_column_name && dest.eDest==SRT_Output ){
+          Select *pFirst = p;
+          while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+          generateColumnNames(pParse, pFirst, 1);
+        }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         iBreak = sqlite3VdbeMakeLabel(pParse);
         iCont = sqlite3VdbeMakeLabel(pParse);
         computeLimitRegisters(pParse, p, iBreak);
@@ -3472,6 +3497,16 @@ static int multiSelectOrderBy(
   /* Jump to the this point in order to terminate the query.
   */
   sqlite3VdbeResolveLabel(v, labelEnd);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Set the number of output columns
+  */
+  if (gbl_legacy_column_name && pDest->eDest==SRT_Output ){
+    Select *pFirst = pPrior;
+    while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+    generateColumnNames(pParse, pFirst, 1);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Reassembly the compound query so that it will be freed correctly
   ** by the calling function */
@@ -4100,6 +4135,19 @@ static int flattenSubquery(
     ** We look at every expression in the outer query and every place we see
     ** "a" we substitute "x*3" and every place we see "b" we substitute "y+10".
     */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (gbl_legacy_column_name) {
+      ExprList *pList = pParent->pEList;
+      for(i=0; i<pList->nExpr; i++){
+        if( pList->a[i].zName==0 ){
+          char *zName = sqlite3DbStrDup(db, pList->a[i].zSpan);
+          sqlite3Dequote(zName);
+          pList->a[i].zName = zName;
+        }
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
     if( pSub->pOrderBy ){
       /* At this point, any non-zero iOrderByCol values indicate that the
       ** ORDER BY column expression is identical to the iOrderByCol'th
@@ -5783,9 +5831,19 @@ int sqlite3Select(
   }
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if (!gbl_legacy_column_name) {
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pDest->eDest==SRT_Output ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    generateColumnNames(pParse, p, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     generateColumnNames(pParse, p);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_WINDOWFUNC
   if( sqlite3WindowRewrite(pParse, p) ){
@@ -6774,6 +6832,15 @@ int sqlite3Select(
   ** successful coding of the SELECT.
   */
 select_end:
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Identify column names if results of the SELECT are to be output.
+   */
+  if (gbl_legacy_column_name && rc==SQLITE_OK && pDest->eDest==SRT_Output ){
+    generateColumnNames(pParse, p, 0);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   sqlite3ExprListDelete(db, pMinMaxOrderBy);
   sqlite3DbFree(db, sAggInfo.aCol);
   sqlite3DbFree(db, sAggInfo.aFunc);

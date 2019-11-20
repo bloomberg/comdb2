@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+expected_file_extn="expected"
+
+# switch the expected result file if we're running a generated test
+curdir=`basename ${PWD}`
+if [[ $curdir =~ "new_generated.test" ]]; then
+    expected_file_extn="expected.new"
+fi
+
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -e ${expected_file_extn}
+[ $? -eq 0 ] || exit 1
+exit 0

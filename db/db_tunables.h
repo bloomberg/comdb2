@@ -1500,6 +1500,12 @@ REGISTER_TUNABLE("random_elect_max_ms",
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
                  TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);
+REGISTER_TUNABLE(
+    "legacy_column_name",
+    "For compound statements, extract and use column name from the statement; "
+    "required for backwards compatibility. (default: on)",
+    TUNABLE_BOOLEAN, &gbl_legacy_column_name, NOARG | INTERNAL | READONLY, NULL,
+    NULL, NULL, NULL);
 REGISTER_TUNABLE("abort_on_reconstruct_failure",
                  "Abort database if snapshot fails to reconstruct a record.  "
                  "(Default: off)",
