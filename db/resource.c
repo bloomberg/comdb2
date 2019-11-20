@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+#include <bb_oscompat.h>
 #include <list.h>
 
 #include "comdb2.h"

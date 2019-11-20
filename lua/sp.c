@@ -63,6 +63,7 @@
 #include <logmsg.h>
 #include <tohex.h>
 #include <ctrace.h>
+#include <bb_oscompat.h>
 
 #ifdef WITH_RDKAFKA    
 
