@@ -763,6 +763,7 @@ struct sqlclntstate {
     uint8_t dirty[256]; /* We can track upto 2048 tables */
     char spname[MAX_SPNAME + 1];
     char user[MAX_USERNAME_LEN];
+    char origin_space[255];
 
     int8_t has_recording;
     int8_t is_retry; // 0|1|-1
@@ -826,8 +827,9 @@ struct sqlclntstate {
     uint8_t sent_data_to_client:1;
     uint8_t is_asof_snapshot:1;
     uint8_t had_lease_at_begin:1;
-    uint8_t have_extended_tm:1; // TODO: seems unused
-    uint8_t extended_tm:1; // TODO: seems unused
+    uint8_t have_extended_tm:1; // used in bbplugins
+    uint8_t extended_tm:1; // used in bbplugins
+    uint8_t wrong_db:1; // used in bbplugins
 };
 
 /* Query stats. */
