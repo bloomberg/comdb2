@@ -6,26 +6,42 @@
  * comdb2 data types - these should match the types in db/types.h
  */
 
+#define CLIENT_TYPES                                                           \
+XMACRO_CLIENT_TYPE(CLIENT_MINTYPE,     0, "min")                               \
+XMACRO_CLIENT_TYPE(CLIENT_UINT,        1, "uint")                              \
+XMACRO_CLIENT_TYPE(CLIENT_INT,         2, "int")                               \
+XMACRO_CLIENT_TYPE(CLIENT_REAL,        3, "real")                              \
+XMACRO_CLIENT_TYPE(CLIENT_CSTR,        4, "cstr")                              \
+XMACRO_CLIENT_TYPE(CLIENT_PSTR,        5, "pstr")                              \
+XMACRO_CLIENT_TYPE(CLIENT_BYTEARRAY,   6, "byte")                              \
+XMACRO_CLIENT_TYPE(CLIENT_PSTR2,       7, "pstr2")                             \
+XMACRO_CLIENT_TYPE(CLIENT_BLOB,        8, "blob")                              \
+XMACRO_CLIENT_TYPE(CLIENT_DATETIME,    9, "datetime")                          \
+XMACRO_CLIENT_TYPE(CLIENT_INTVYM,     10, "intervalym")                        \
+XMACRO_CLIENT_TYPE(CLIENT_INTVDS,     11, "intervalds")                        \
+XMACRO_CLIENT_TYPE(CLIENT_VUTF8,      12, "vutf8")                             \
+XMACRO_CLIENT_TYPE(CLIENT_BLOB2,      13, "blob2")                             \
+XMACRO_CLIENT_TYPE(CLIENT_DATETIMEUS, 14, "datetimeus")                        \
+XMACRO_CLIENT_TYPE(CLIENT_INTVDSUS,   15, "intervaldsus")                      \
+XMACRO_CLIENT_TYPE(CLIENT_MAXTYPE,    16, "max")
+
 /* CLIENT side types */
-enum {
-    CLIENT_MINTYPE = 0,
-    CLIENT_UINT = 1,
-    CLIENT_INT = 2,
-    CLIENT_REAL = 3,
-    CLIENT_CSTR = 4,
-    CLIENT_PSTR = 5,
-    CLIENT_BYTEARRAY = 6,
-    CLIENT_PSTR2 = 7,
-    CLIENT_BLOB = 8,
-    CLIENT_DATETIME = 9,
-    CLIENT_INTVYM = 10,
-    CLIENT_INTVDS = 11,
-    CLIENT_VUTF8 = 12,
-    CLIENT_BLOB2 = 13,
-    CLIENT_DATETIMEUS = 14,
-    CLIENT_INTVDSUS = 15,
-    CLIENT_MAXTYPE
-};
+#ifdef XMACRO_CLIENT_TYPE
+#   undef XMACRO_CLIENT_TYPE
+#endif
+#define XMACRO_CLIENT_TYPE(a, b, c) a,
+enum { CLIENT_TYPES };
+
+#undef XMACRO_CLIENT_TYPE
+#define XMACRO_CLIENT_TYPE(a, b, c) case a: client_type_to_str = c; break;
+#define CLIENT_TYPE_TO_STR(type)                                               \
+({                                                                             \
+    char *client_type_to_str  = "unknown";                                     \
+    switch (type) {                                                            \
+    CLIENT_TYPES                                                               \
+    }                                                                          \
+    client_type_to_str;                                                        \
+})
 
 /* ONDISK types */
 enum {

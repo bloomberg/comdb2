@@ -1,0 +1,14 @@
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+
+do_test funcs-1.0.0 {
+    execsql {
+        select checksum_md5('a');
+        select checksum_md5('abc');
+        select checksum_md5('');
+        select checksum_md5(x'');
+        select checksum_md5(x'abc0');
+        select checksum_md5(1);
+        select checksum_md5();
+    }
+} {0cc175b9c0f1b6a831c399e269772661 900150983cd24fb0d6963f7d28e17f72 d41d8cd98f00b204e9800998ecf8427e d41d8cd98f00b204e9800998ecf8427e 5e15bc9ddb253afbab639fba8ef14169 {} 1 {wrong number of arguments to function checksum_md5()}}

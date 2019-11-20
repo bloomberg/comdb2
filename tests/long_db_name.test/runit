@@ -4,6 +4,8 @@ bash -n "$0" | exit 1
 set -e
 set -x
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 # Debug variable
 debug=0
 
@@ -18,26 +20,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
-assertcnt ()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 assert_vers()
 {
@@ -71,33 +53,6 @@ do_verify()
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "Verify"
     fi
-}
-
-# Do schema changes
-do_schema_changes()
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t2.csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
 }
 
 # Update all records in the table
@@ -196,20 +151,6 @@ delete_records()
     echo "done updating round $nout"
 }
 
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
-}
-
-
-
 
 echo "Basic tests"
 
@@ -293,13 +234,13 @@ assert_schema t1 alltypes.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 update_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt $INITNUMREC
+assertcnt t1 $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"

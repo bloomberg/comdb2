@@ -447,12 +447,13 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     } else
         snprintf(rqid, sizeof(rqid), "%llx", sess->rqid);
 
-    reqlog_logf(reqlog, REQL_INFO,
-                "rqid %s node %s time %ldms rtrs %u queuetime=%dms \"%s\"\n",
-                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, sess->offhost,
-                U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
-                U2M(reqlog_get_queue_time(reqlog)),
-                sess->sql ? sess->sql : "()");
+    reqlog_logf(
+        reqlog, REQL_INFO,
+        "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
+        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid,
+        (sess->offhost ? sess->offhost : ""), U2M(sess->endus - sess->startus),
+        reqlog_get_retries(reqlog), U2M(reqlog_get_queue_time(reqlog)),
+        sess->sql ? sess->sql : "()");
 }
 
 /**
@@ -850,8 +851,8 @@ int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
                                                   : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
-        assert(sess->table);
-        fnd.tablename = sess->table;
+        assert(sess->tablename);
+        fnd.tablename = sess->tablename;
         fnd.tableversion = sess->tableversion;
         if ((sgenid = hash_find(sess->selectv_genids, &fnd)) != NULL)
             sgenid->get_writelock = 1;
@@ -862,12 +863,12 @@ int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
                                                   : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
-        assert(sess->table);
-        fnd.tablename = sess->table;
+        assert(sess->tablename);
+        fnd.tablename = sess->tablename;
         if (hash_find(sess->selectv_genids, &fnd) == NULL) {
             sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
             sgenid->genid = fnd.genid;
-            sgenid->tablename = sess->table;
+            sgenid->tablename = sess->tablename;
             sgenid->tableversion = sess->tableversion;
             sgenid->get_writelock = 0;
             hash_add(sess->selectv_genids, sgenid);

@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#include "limit_fortify.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>

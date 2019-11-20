@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -19,25 +18,6 @@ nrecs=100
 
 # Max number of schema changes
 max_nusc=100
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function do_verify
@@ -91,7 +71,7 @@ function insert_records
             continue
         fi
         let j=j+1
-        assertcnt $j
+        assertcnt $tbl $j
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
@@ -114,7 +94,7 @@ function run_test
     do_rebuild_track_pid $dbnm $tbl $ipid
     wait
 
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
     do_verify
 }
 

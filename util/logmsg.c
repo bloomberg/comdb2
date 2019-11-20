@@ -18,6 +18,7 @@ static loglvl level = LOGMSG_WARN;
 static int do_syslog = 0;
 static int do_time = 1;
 static int do_thread = 0;
+static int do_prefix_level = 1;
 static int ended_with_newline = 1;
 
 /* from io_override.c */
@@ -148,7 +149,8 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
             *s = 0;
             ended_with_newline = 1;
             /* Add a prefix for ERROR/FATAL messages. */
-            if (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL) {
+            if (do_prefix_level &&
+                (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
                 ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
             }
             ret += fprintf(f, "%s\n", msg);
@@ -161,7 +163,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     }
     if (*msg != 0) {
         /* Add a prefix for ERROR/FATAL messages. */
-        if (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL) {
+        if (do_prefix_level && (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
             ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
         }
         ret += fprintf(f, "%s", msg);
@@ -339,4 +341,15 @@ int logmsg_timestamp_update(void *unused, void *value)
 {
     logmsg_set_time(*(int *)value);
     return 0;
+}
+
+int logmsg_prefix_level_update(void *unused, void *value)
+{
+    do_prefix_level = *(int *)value;
+    return 0;
+}
+
+void *logmsg_prefix_level_value(void *unused)
+{
+    return &do_prefix_level;
 }

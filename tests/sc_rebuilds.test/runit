@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
-
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
 if [ "x$dbnm" == "x" ] ; then
@@ -25,23 +23,6 @@ nrecs=2000
 
 # Max number of schema changes
 max_nusc=1000
-
-function failexit
-{
-    echo "Failure: $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select count(*) from $tbl" )
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 
 function do_verify
 {
@@ -150,7 +131,7 @@ function do_rebuild
         let scnt=scnt+1
         do_verify
     done
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     return 0
 }
@@ -171,7 +152,7 @@ function delete_records
          cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $foreigntbl where a = $j" >> delete_${foreigntbl}.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $remaining
+         #assertcnt $tbl $remaining
          #sleep 0.1
     done
     end=$(date +%s)
@@ -204,7 +185,7 @@ function insert_records
 
     while [[ $j -le $locnrecs ]]; do 
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$j, $((j*2)),$j)"  >> insert.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -237,7 +218,7 @@ function update_f
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set extrablb=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=x'3456' where a=$j"    >> update.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -315,7 +296,7 @@ function run_plain_rebuilds
     EXTRA=$((nrecs*2)) 
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
-    assertcnt $((EXTRA))
+    assertcnt $tbl $((EXTRA))
 
 	echo "adding $nrecs foreign records"
     insert_foreign $nrecs
@@ -329,7 +310,7 @@ function run_plain_rebuilds
         failexit "Failed rebuilding $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl A"
@@ -337,7 +318,7 @@ function run_plain_rebuilds
         failexit "Failed rebuilding index A on $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl D"
@@ -345,28 +326,28 @@ function run_plain_rebuilds
         failexit "Failed rebuilding index D on $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding index fd on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding data on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding blobs on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
+    assertcnt $tbl $((EXTRA+nrecs))
     do_verify
 
 }
@@ -385,7 +366,7 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order full rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
+    assertcnt $tbl $cnt
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl options pageorder"
@@ -396,7 +377,7 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order data rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
+    assertcnt $tbl $cnt
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl options pageorder"
@@ -408,7 +389,7 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order datablob rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
+    assertcnt $tbl $cnt
     do_verify
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd options pageorder"
@@ -420,7 +401,7 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order index rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
+    assertcnt $tbl $cnt
     do_verify
 }
 

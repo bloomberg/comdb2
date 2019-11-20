@@ -133,6 +133,10 @@ public class Comdb2Handle extends AbstractConnection {
     boolean hasSendStack;
     boolean sendStack = true;
 
+    boolean isBeforeFirst = true;
+    boolean isFirst = false;
+    boolean isAfterLast = false;
+
     static class QueryItem {
         byte[] buffer;
         boolean isRead;
@@ -951,11 +955,10 @@ public class Comdb2Handle extends AbstractConnection {
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
-            Iterator<String> iter = sets.iterator();
-            while(iter.hasNext()) {
-                if (iter.next().toLowerCase().equals(lowerSql)) {
-                    return 0;
-                }
+            int ii = nSetsSent, len = sets.size();
+            for (; ii < len; ++ii) {
+                if (sets.get(ii).toLowerCase().equals(lowerSql))
+                    break;
             }
 
             if (isClientOnlySetCommand(lowerSql)) {
@@ -1029,6 +1032,10 @@ public class Comdb2Handle extends AbstractConnection {
         for ( ; retry < maxretries && !sslerr; ++retry) {
             tdlog(Level.FINEST, "executing retry loop with retry %d", retry);
             firstRecordRead = false;
+
+            isBeforeFirst = true;
+            isFirst = false;
+            isAfterLast = false;
 
             /* Add wait if we have tried on all the nodes. */
             if (retry > myDbHosts.size()) {
@@ -1586,25 +1593,43 @@ public class Comdb2Handle extends AbstractConnection {
 
     @Override
     public synchronized int next() {
+
+        if (isFirst)
+            isFirst = false;
+
         if (inTxn && !readIntransResults && !isRead) {
+            isAfterLast = true;
             return Errors.CDB2_OK_DONE;
         }
+
+        int rc;
 
         if (lastResp != null && !firstRecordRead) {
             last_non_logical_err = null;
             firstRecordRead = true;
 
-            if (lastResp.respType == 2)
-                return lastResp.errCode;
-
-            if (lastResp.respType == 3) {
+            if (lastResp.respType == 2) {
+                rc = lastResp.errCode;
+            } else if (lastResp.respType == 3) {
                 nSetsSent = sets.size();
-                return Errors.CDB2_OK_DONE;
+                rc = Errors.CDB2_OK_DONE;
+            } else {
+                rc = Errors.CDB2ERR_IO_ERROR;
             }
-            return Errors.CDB2ERR_IO_ERROR;
+        } else {
+            rc = next_int();
         }
 
-        return next_int();
+        if (rc == Errors.CDB2_OK_DONE)
+            isAfterLast = true;
+        else if (rc == Errors.CDB2_OK) {
+            if (isBeforeFirst) {
+                isBeforeFirst = false;
+                isFirst = true;
+            }
+        }
+
+        return rc;
     }
 
     private int next_int() {

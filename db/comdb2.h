@@ -98,6 +98,7 @@ typedef long long tranid_t;
 #include <cdb2_constants.h>
 #include <schema_lk.h>
 #include "perf.h"
+#include "constraints.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -399,7 +400,6 @@ enum RCODES {
                 table */
     ERR_SC_COMMIT =
         314, /* schema change in its final stages; proxy should retry */
-    ERR_INDEX_DISABLED = 315, /* can't read from a disabled index */
     ERR_CONFIG_FAILED = 316,
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
@@ -489,9 +489,6 @@ enum {
     COMDB2_THR_EVENT_DONE_RDWR = 2,
     COMDB2_THR_EVENT_START_RDWR = 3
 };
-
-/* index disable flags */
-enum { INDEX_READ_DISABLED = 1, INDEX_WRITE_DISABLED = 2 };
 
 enum lclop {
     LCL_OP_ADD = 1,
@@ -584,33 +581,6 @@ struct sqlmdbrectype {
     char sql[876];
 };
 
-#define MAXREF 64
-
-typedef struct {
-    short dbnum;
-    short ixnum;
-} fk_ref_type;
-
-typedef struct {
-    short num;
-    fk_ref_type ref[MAXREF];
-} fk_ref_array_type;
-
-typedef struct {
-    struct dbtable *lcltable;
-    char *consname;
-    char *lclkeyname;
-    int nrules;
-    int flags;
-    char *table[MAXCONSTRAINTS];
-    char *keynm[MAXCONSTRAINTS];
-} constraint_t;
-
-typedef struct {
-    char *consname;
-    char *expr;
-} check_constraint_t;
-
 struct managed_component {
     int dbnum;
     LINKC_T(struct managed_component) lnk;
@@ -683,7 +653,6 @@ typedef struct dbtable {
     signed char ix_datacopy[MAXINDEX];
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
-    signed char ix_disabled[MAXINDEX];
 
     shard_limits_t *sharding;
 

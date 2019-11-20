@@ -35,6 +35,7 @@
 #include <str0.h>
 
 extern int gbl_maxretries;
+extern int gbl_disable_access_controls;
 
 static bdb_state_type *llmeta_bdb_state = NULL; /* the low level meta table */
 
@@ -3825,7 +3826,7 @@ retry:
     p_buf_start = p_buf =
         malloc(LLMETA_SC_STATUS_DATA_LEN + schema_change_data_len);
     if (p_buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %lu\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                LLMETA_SC_STATUS_DATA_LEN + schema_change_data_len);
         *bdberr = BDBERR_MALLOC;
         goto backout;
@@ -5739,6 +5740,10 @@ static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
+    if (gbl_disable_access_controls) {
+        logmsg(LOGMSG_WARN, "**Bypassing user authentication**\n");
+        return 1;
+    }
     return bdb_feature_get_int(bdb_state, tran, bdberr, LLMETA_AUTHENTICATION);
 }
 
@@ -6494,12 +6499,13 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
-               flibc_ntohll(version));
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%" PRIu64 "\"\n",
+               tblname, flibc_ntohll(version));
         } break;
         case LLMETA_TABLE_NUM_SC_DONE: {
             unsigned long long version = *(unsigned long long *)data;
-            logmsg(LOGMSG_USER, "LLMETA_TABLE_NUM_SC_DONE version=\"%lu\"\n",
+            logmsg(LOGMSG_USER,
+                   "LLMETA_TABLE_NUM_SC_DONE version=\"%" PRIu64 "\"\n",
                    flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {
@@ -7888,8 +7894,9 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(const char *tblname, tran_type *tran,
-                             unsigned long long *version, int *bdberr)
+int bdb_table_version_select_verbose(const char *tblname, tran_type *tran,
+                                     unsigned long long *version, int *bdberr,
+                                     int verbose)
 {
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
@@ -7981,10 +7988,18 @@ retry:
     *version = *((unsigned long long *)fnddata);
     *version = flibc_ntohll(*version);
 
-    logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version, tblname);
+    if (verbose)
+        logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version,
+               tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_table_version_select(const char *tblname, tran_type *tran,
+                             unsigned long long *version, int *bdberr)
+{
+    return bdb_table_version_select_verbose(tblname, tran, version, bdberr, 1);
 }
 
 /* caller is responsible to free the memory

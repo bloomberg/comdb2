@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -528,10 +529,6 @@ function force_delay_master
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 100')"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 3"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 3"
-}
-
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
 # Trap to errquit if the user presses Ctrl-C

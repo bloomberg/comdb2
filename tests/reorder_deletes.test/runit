@@ -4,6 +4,8 @@ bash -n "$0" | exit 1
 #set -e
 set -x
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
     CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 
 fi
@@ -21,27 +23,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
-assertcnt ()
-{
-    local tbl=$1
-    local target=$2
-    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "tbl $tbl count is now $cnt but should be $target"
-    fi
-}
 
 assert_vers()
 {
@@ -83,33 +64,6 @@ do_verify()
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "Verify"
     fi
-}
-
-# Do schema changes
-do_schema_changes()
-{
-    typeset max=$1
-    typeset iter=0
-    typeset scnt=0
-
-    schema=t2.csc2
-
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "$dbnm alter t1 $schema"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
-        if [[ $? != 0 ]]; then
-
-            echo "Error schema-changing on iteration $scnt"
-            return 1
-
-        fi
-
-        let scnt=scnt+1
-
-    done
-
-    return 0
 }
 
 # Update all records in the table
@@ -188,18 +142,6 @@ delete_records()
         let j=j+1
     done
     echo "done updating round $nout"
-}
-
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
 }
 
 do_deletes()

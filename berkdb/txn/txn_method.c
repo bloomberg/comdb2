@@ -243,7 +243,7 @@ __txn_print_ltrans(dbenv, lt, f, flags)
 	FILE *f;
 	u_int32_t flags;
 {
-	logmsg(LOGMSG_USER, "LTRANID %016lx ACTIVE-TXN %4d\n", lt->ltranid,
+	logmsg(LOGMSG_USER, "LTRANID %016"PRIx64" ACTIVE-TXN %4d\n", lt->ltranid,
 	    lt->active_txn_count);
 }
 

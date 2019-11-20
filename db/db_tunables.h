@@ -474,6 +474,12 @@ REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("gofast", NULL, TUNABLE_BOOLEAN, &gbl_goslow,
                  INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "group_concat_memory_limit",
+    "Restrict GROUP_CONCAT from using more than this amount of memory; 0 "
+    "implies SQLITE_MAX_LENGTH, the limit imposed by sqlite. (Default: 0)",
+    TUNABLE_INTEGER, &gbl_group_concat_mem_limit, READONLY, NULL, NULL, NULL,
+    NULL);
 REGISTER_TUNABLE("heartbeat_check_time",
                  "Raise an error if no heartbeat for this amount of time (in "
                  "secs). (Default: 10 secs)",
@@ -1236,6 +1242,11 @@ REGISTER_TUNABLE("debug.omit_blob_write",
                  "Deliberately corrupt insertion randomly to debug db_verify", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_blob_write, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE(
+    "debug.skip_constraintscheck_on_insert",
+    "Deliberately allow insertion without constraint check to debug db_verify",
+    TUNABLE_BOOLEAN, &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL,
+    NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1247,6 +1258,12 @@ REGISTER_TUNABLE("logmsg.level",
                  "All messages below this level will not be logged.",
                  TUNABLE_ENUM, NULL, READEARLY, logmsg_level_value, NULL,
                  logmsg_level_update, NULL);
+REGISTER_TUNABLE(
+    "logmsg.skiplevel",
+    "Skip appending level information to the log message. This was added to "
+    "keep up with the historical behavior (Default: on)",
+    TUNABLE_BOOLEAN, NULL, NOARG | READEARLY | INVERSE_VALUE | INTERNAL,
+    logmsg_prefix_level_value, NULL, logmsg_prefix_level_update, NULL);
 REGISTER_TUNABLE("logmsg.syslog", "Log messages to syslog.", TUNABLE_BOOLEAN,
                  NULL, NOARG | READEARLY, logmsg_syslog_value, NULL,
                  logmsg_syslog_update, NULL);
@@ -1647,11 +1664,6 @@ REGISTER_TUNABLE("physrep_reconnect_penalty",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("verbose_physrep",
-                 "Print extended physrep trace.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("physrep_register_interval",
                  "Interval for physical replicant re-registration.  "
                  "(Default: 3600)",
@@ -1843,4 +1855,19 @@ REGISTER_TUNABLE("strict_double_quotes",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("waitalive_iterations",
+                 "Wait this many iterations for a "
+                 "socket to be usable.  (Default: 3)",
+                 TUNABLE_INTEGER, &gbl_waitalive_iterations,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("cached_output_buffer_max_bytes",
+                 "Maximum size in bytes of the output buffer of an appsock "
+                 "thread.  (Default: 8 MiB)",
+                 TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

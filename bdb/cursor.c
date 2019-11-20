@@ -478,8 +478,9 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
     }
 
     logmsg(LOGMSG_USER,
-           "Table scan for table '%s' skipcount = %lu nextcount = %lu "
-           "ratio = %lu (threshold = %d)\n",
+           "Table scan for table '%s' skipcount = %" PRIu64
+           " nextcount = %" PRIu64 " "
+           "ratio = %" PRIu64 " (threshold = %d)\n",
            cur->state->name, skipcount, nextcount, ratio,
            cur->state->attr->disable_pgorder_threshold);
 
@@ -529,7 +530,8 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
     if (ratio > cur->state->attr->disable_pgorder_threshold) {
         logmsg(LOGMSG_WARN,
                "Disable page-order tablescan for table %s skipcount = "
-               "%lu nextcount = %lu ratio = %lu%% threshold = %d%%\n",
+               "%" PRIu64 " nextcount = %" PRIu64 " ratio = %" PRIu64
+               "%% threshold = %d%%\n",
                cur->state->name, skipcount, nextcount, ratio,
                cur->state->attr->disable_pgorder_threshold);
 

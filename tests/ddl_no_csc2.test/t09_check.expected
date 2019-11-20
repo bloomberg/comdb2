@@ -71,7 +71,7 @@ constraints
 (name='CONS1', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i > 10')
 (name='$CONSTRAINT_9C3BA03F', type='CHECK', tablename=NULL, keyname=NULL, foreigntablename=NULL, foreignkeyname=NULL, iscascadingdelete=NULL, iscascadingupdate=NULL, expr='i < 100')
 [INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320
-[INSERT INTO t2 values(11)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '$KEY_877B2989'
+[INSERT INTO t2 values(11)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key '$KEY_877B2989'
 [INSERT INTO t2 values(111)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9C3BA03F' unable to add record rc = 320
 (rows inserted=3)
 [INSERT INTO t2 values(1)] failed with rc 403 CHECK constraint violation CHECK constraint failed for 'CONS1' unable to add record rc = 320

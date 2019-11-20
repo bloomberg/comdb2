@@ -481,6 +481,12 @@ done:
     return rc;
 }
 
+static void bdb_temp_table_reset(struct temp_table *tbl)
+{
+    tbl->rowid = 0;
+    tbl->num_mem_entries = 0;
+}
+
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
                                        struct temp_table *tbl, int *bdberr)
 {
@@ -529,10 +535,8 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     }
 
     tbl->tmpdb = db;
-    /* Start with rowid 2 */
-    tbl->rowid = 2;
 
-    tbl->num_mem_entries = 0;
+    bdb_temp_table_reset(tbl);
 
 done:
     return rc;
@@ -1542,6 +1546,8 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
+
+    bdb_temp_table_reset(tbl);
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);

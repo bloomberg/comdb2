@@ -30,7 +30,28 @@ pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
 extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
-int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
+int gbl_fingerprint_max_queries = 1000;
+
+static int free_fingerprint(void *obj, void *arg){
+    struct fingerprint_track *t = (struct fingerprint_track *)obj;
+    if (t != NULL) {
+        free(t->zNormSql);
+        free(t);
+    }
+    return 0;
+}
+
+int clear_fingerprints(void) {
+    int count = 0;
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    hash_for(gbl_fingerprint_hash, free_fingerprint, NULL);
+    hash_clear(gbl_fingerprint_hash);
+    hash_free(gbl_fingerprint_hash);
+    gbl_fingerprint_hash = NULL;
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    return count;
+}
 
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]) {

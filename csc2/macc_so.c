@@ -861,19 +861,6 @@ void key_add_tag(char *tag, char *exprname, char *where)
     key_add_comn(-1, tag, exprname, where);
 }
 
-void key_add(int ix, char *exprname) /* used by parser, adds a completed key */
-{
-    if (ix < 0 || ix >= MAX_KEY_INDEX) {
-        csc2_error("Error at line %3d: ILLEGAL INDEX #%d, VALID=0-%d\n",
-                current_line, ix, MAX_KEY_INDEX - 1);
-        csc2_syntax_error("Error at line %3d: ILLEGAL INDEX #%d, VALID=0-%d",
-                          current_line, ix, MAX_KEY_INDEX - 1);
-        any_errors++;
-        return;
-    }
-    key_add_comn(ix, NULL, exprname, NULL);
-}
-
 static void key_add_comn(int ix, char *tag, char *exprname,
                          char *where) /* used by parser, adds a completed key */
 {
@@ -2970,13 +2957,6 @@ static int dyns_get_field_info_comn(char *tag, int fidx, char *name,
 }
 
 /* load field options */
-
-int dyns_get_field_option(int fidx, int option, int *value_type, int *value_sz,
-                          void *valuebuf, int vbsz)
-{
-    return dyns_get_field_option_comn(NULL, fidx, option, value_type, value_sz,
-                                      valuebuf, vbsz);
-}
 
 int dyns_get_table_field_option(char *tag, int fidx, int option,
                                 int *value_type, int *value_sz, void *valuebuf,

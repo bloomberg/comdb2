@@ -12,6 +12,7 @@ static const char revid[] = "$Id: mp_register.c,v 11.24 2003/09/13 19:20:40 bost
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#include <assert.h>
 #endif
 
 #include "db_int.h"
@@ -64,40 +65,16 @@ __memp_register(dbenv, ftype, pgin, pgout)
 	int (*pgin) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 {
-	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
-	int ret;
 
-	dbmp = dbenv->mp_handle;
+	if (ftype == DB_FTYPE_SET)
+		ftype = DB_UNKNOWN;
 
-	/*
-	 * Chances are good that the item has already been registered, as the
-	 * DB access methods are the folks that call this routine.  If already
-	 * registered, just update the entry, although it's probably unchanged.
-	 */
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q))
-		if (mpreg->ftype == ftype) {
-			mpreg->pgin = pgin;
-			mpreg->pgout = pgout;
-			break;
-		}
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-	if (mpreg != NULL)
+    assert(ftype > 0 && ftype <= DB_TYPE_MAX);
+
+	if (dbenv->pgin[ftype] || dbenv->pgout[ftype])
 		return (0);
 
-	/* New entry. */
-	if ((ret = __os_malloc(dbenv, sizeof(DB_MPREG), &mpreg)) != 0)
-		return (ret);
-
-	mpreg->ftype = ftype;
-	mpreg->pgin = pgin;
-	mpreg->pgout = pgout;
-
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	LIST_INSERT_HEAD(&dbmp->dbregq, mpreg, q);
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-
+	dbenv->pgin[ftype] = pgin;
+	dbenv->pgout[ftype] = pgout;
 	return (0);
 }
