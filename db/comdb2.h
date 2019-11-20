@@ -1358,8 +1358,10 @@ struct ireq {
     /************/
     union {
     uint8_t region3; /* used for offsetof */
-    uint64_t startus; /* thread handling; start time stamp */
+    uint32_t sc_host;
     };
+    uint64_t sc_seed;
+    uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
@@ -1423,8 +1425,6 @@ struct ireq {
     tran_type *sc_tran;
     struct schema_change_type *sc_pending;
     double cost;
-    uint64_t sc_seed;
-    uint32_t sc_host;
 
     uint64_t txnsize;
     unsigned long long last_genid;

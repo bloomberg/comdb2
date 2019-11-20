@@ -724,17 +724,10 @@ struct sqlclntstate {
     int nDataDdl;
     int num_retry;
 
-    char password[MAX_PASSWORD_LEN];
-    /* UNUSED? char origin_space[255]; */
-    uint8_t dirty[256]; /* We can track upto 2048 tables */
-    char spname[MAX_SPNAME + 1];
-    char user[MAX_USERNAME_LEN];
-
-
-
     uint32_t init_gen;
     int ncontext;
     char **context;
+    char* origin_host;
 
     /* sharding scheme */
     dohsql_t *conns;
@@ -765,7 +758,11 @@ struct sqlclntstate {
     enum connection_state state;
     /* The node doesn't change.  The pid does as connections get donated.  We
      * latch both values here since conninfo is lost when connections are reset. */
-    char* origin_host;
+    char password[MAX_PASSWORD_LEN];
+    /* UNUSED? char origin_space[255]; */
+    uint8_t dirty[256]; /* We can track upto 2048 tables */
+    char spname[MAX_SPNAME + 1];
+    char user[MAX_USERNAME_LEN];
 
     int8_t has_recording;
     int8_t is_retry; // 0|1|-1
@@ -855,13 +852,13 @@ struct temptable {
 };
 
 struct Btree {
-    /* for debugging */
-    int btreeid;
     struct reqlogger *reqlogger;
 
     bdb_temp_hash *genid_hash; /* rrn hash for non dtastripe support */
 
     LISTC_T(BtCursor) cursors;
+    /* for debugging */
+    int btreeid;
 
     unsigned is_temporary : 1;
     unsigned is_hashtable : 1;
@@ -898,10 +895,7 @@ struct BtCursor {
     Btree *bt;
     struct dbtable *db;
 
-    int rootpage;
-
     /* various buffers: */
-    uint8_t writeTransaction; /* save tran type during cursor open */
     void *ondisk_buf;         /* ondisk data */
     void *ondisk_key; /* ondisk key. this is effectively also the pointer into
                          the index */
@@ -918,8 +912,10 @@ struct BtCursor {
     /* these are sqlite format buffers */
     void *dtabuf;
     int dtabuflen;
-    void *keybuf;
     int keybuflen;
+    void *keybuf;
+
+    int rootpage;
 
     int dtabuf_alloc;
     int keybuf_alloc;
@@ -931,12 +927,11 @@ struct BtCursor {
 
     int cursorid; /* for debugging */
     struct reqlogger *reqlogger;
+    unsigned long long genid;
+    struct KeyInfo *pKeyInfo;
     int rrn; /* record number */
     char sqlrrn[5];
     int sqlrrnlen;
-    unsigned long long genid;
-
-    struct KeyInfo *pKeyInfo;
 
     /* special case for master table: the table is fake,
        just keep track of which entry we are pointing to */
@@ -999,9 +994,11 @@ struct BtCursor {
     uint8_t is_btree_count;
 
     uint8_t on_list;
-
+    uint8_t writeTransaction; /* save tran type during cursor open */
+    unsigned char is_equality; /* sqlite will "hint" back if a SeekGE is
+                                  actually a SeekEQ */
+    uint8_t have_blob_descriptor;
     blob_status_t blob_descriptor;
-    int have_blob_descriptor;
 
     unsigned long long last_cached_genid;
 
@@ -1010,9 +1007,6 @@ struct BtCursor {
 
     /* cursor access range */
     CurRange *range;
-    unsigned char is_equality; /* sqlite will "hint" back if a SeekGE is
-                                  actually a SeekEQ */
-
     unsigned long long col_mask; /* tracking first 63 columns, if bit is set,
                                     column is needed */
 

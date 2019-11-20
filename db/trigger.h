@@ -12,10 +12,10 @@ struct consumer_base {
 };
 
 struct consumer_stat {
-    int has_stuff;
     size_t first_item_length;
     time_t epoch;
     int depth;
+    int has_stuff;
 };
 
 struct comdb2_queue_consumer {
