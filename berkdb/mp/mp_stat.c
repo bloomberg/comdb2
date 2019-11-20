@@ -395,9 +395,9 @@ __memp_dump_region(dbenv, area, fp)
 	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 	if (cnt < FMAP_ENTRIES)
-		fmap[cnt] = INVALID_ROFF;
+		fmap[cnt] = NULL;
 	else
-		fmap[FMAP_ENTRIES] = INVALID_ROFF;
+		fmap[FMAP_ENTRIES] = NULL;
 
 	/* Dump the memory pools. */
 	for (i = 0; i < mp->nreg; ++i) {
@@ -486,7 +486,7 @@ __memp_pbh(dbmp, bhp, fmap, fp)
 		if (fmap[i] == NULL || fmap[i] == bhp->mpf)
 			break;
 
-	if (fmap[i] == INVALID_ROFF)
+	if (fmap[i] == NULL)
 		(void)logmsgf(LOGMSG_USER, fp, "\t%5lu, %p, %2lu, %8lu [%lu,%lu] %lu",
 		    (u_long)bhp->pgno, bhp->mpf,
 		    (u_long)bhp->ref, (u_long)R_OFFSET(dbmp->reginfo, bhp),
