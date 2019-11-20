@@ -638,11 +638,10 @@ typedef struct dbtable {
 
     int dbnum; /* zero unless setup as comdbg table */
     int lrl; /*dat len in bytes*/
-    /*index*/
-    unsigned short nix; /*number of indices*/
     int numblobs;
     int nsqlix;
 
+    unsigned short nix; /*number of indices*/
     unsigned short ix_keylen[MAXINDEX]; /*key len in bytes*/
     signed char ix_dupes[MAXINDEX];
     signed char ix_recnums[MAXINDEX];
@@ -681,10 +680,6 @@ typedef struct dbtable {
     /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
-    unsigned aa_saved_counter; // zeroed out at autoanalyze
-    unsigned aa_counter_upd;   // counter which includes updates
-    unsigned aa_counter_noupd; // does not include updates
-    time_t aa_lastepoch;
 
     struct consumer *consumers[MAXCONSUMERS];
     /* Foreign key constraints */
@@ -701,24 +696,6 @@ typedef struct dbtable {
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
-
-    /* Expected average size of a queue item in bytes. */
-    int avgitemsz;
-    int queue_pagesize_override;
-
-    /* some queue stats */
-    unsigned int num_goose_adds;
-    unsigned int num_goose_consumes;
-
-    /* used by the queue goosing sub system */
-    int goose_consume_cnt;
-    int goose_add_cnt;
-
-    /* needed for foreign table support */
-    int dtastripe;
-    unsigned numextents;
-    int dbs_idx; /* index of us in dbenv->dbs[] */
-    int sc_live_logical;
 
     /* when we were blobstriped */
     unsigned long long blobstripe_genid;
@@ -770,6 +747,29 @@ typedef struct dbtable {
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
 
+    time_t aa_lastepoch;
+    unsigned aa_saved_counter; // zeroed out at autoanalyze
+    unsigned aa_counter_upd;   // counter which includes updates
+    unsigned aa_counter_noupd; // does not include updates
+
+    /* Expected average size of a queue item in bytes. */
+    int avgitemsz;
+    int queue_pagesize_override;
+
+    /* some queue stats */
+    unsigned int num_goose_adds;
+    unsigned int num_goose_consumes;
+
+    /* used by the queue goosing sub system */
+    int goose_consume_cnt;
+    int goose_add_cnt;
+
+    /* needed for foreign table support */
+    int dtastripe;
+    unsigned numextents;
+    int dbs_idx; /* index of us in dbenv->dbs[] */
+
+
     uint32_t sc_adds;
     uint32_t sc_deletes;
     uint32_t sc_updates;
@@ -777,6 +777,7 @@ typedef struct dbtable {
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
 
+    int sc_live_logical;
     int csc2_schema_len; /* length of csc2_schema */
     /* csc2 schema version increased on instantaneous schemachange */
     int schema_version;
