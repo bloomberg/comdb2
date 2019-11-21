@@ -684,6 +684,9 @@ errout:
     return SC_OK;
 }
 
+#define BACKOUT do { sc_errf(s, "%s:%d backing out\n", __func__, __LINE__); goto backout; } while (0);
+
+
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
@@ -695,10 +698,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     iq->usedb = db;
 
+    new_bdb_handle = newdb->handle;
+    old_bdb_handle = db->handle;
+
     if (iq && iq->tranddl > 1 &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
-        goto backout;
+        BACKOUT;
     }
 
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
@@ -721,7 +727,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);
-        goto backout;
+        sc_errf(s, "gbl_sc_abort=%d db->sc_abort=%d iq->sc_should_abort=%d\n",
+                gbl_sc_abort, db->sc_abort, iq->sc_should_abort);
+        BACKOUT;
     }
 
     /* All records converted ok.  Whether this is live schema change or
@@ -738,7 +746,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     rc = restore_constraint_pointers(db, newdb);
     if (rc != 0) {
         sc_errf(s, "Error restoring constraing pointers!\n");
-        goto backout;
+        BACKOUT;
     }
 
     /* from this point on failures should goto either backout if recoverable
@@ -755,11 +763,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         bdberr =
             bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
-            goto backout;
+            BACKOUT;
     }
 
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
-        goto backout;
+        BACKOUT;
 
     /* load new csc2 data */
     rc = load_new_table_schema_tran(thedb, transac,
@@ -767,11 +775,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");
-        goto backout;
+        BACKOUT;
     }
 
     if ((rc = set_header_and_properties(transac, newdb, s, 1, olddb_bthashsz)))
-        goto backout;
+        BACKOUT;
 
     /*update necessary versions and delete unnecessary files from newdb*/
     if (gbl_use_plan && newdb->plan) {
@@ -784,13 +792,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (rc)
-        goto backout;
+        BACKOUT;
 
     /* delete any new file versions this table has */
     if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
-        goto backout;
+        BACKOUT;
     }
 
     s->already_finalized = 1;
@@ -803,9 +811,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->plan = NULL;
     db->schema = clone_schema(newdb->schema);
-
-    new_bdb_handle = newdb->handle;
-    old_bdb_handle = db->handle;
 
     free_db_and_replace(db, newdb);
     fix_constraint_pointers(db, newdb);
@@ -824,15 +829,14 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (s->finalize) {
         if (create_sqlmaster_records(transac)) {
             sc_errf(s, "create_sqlmaster_records failed\n");
-            goto backout;
+            BACKOUT;
         }
         create_sqlite_master();
     }
 
     live_sc_off(db);
 
-    /* artificial sleep to aid testing */
-    if (s->commit_sleep) {
+    /* artificial sleep to aid testing */ if (s->commit_sleep) {
         sc_printf(s, "artificially sleeping for %d...\n", s->commit_sleep);
         logmsg(LOGMSG_INFO, "artificially sleeping for %d...\n",
                s->commit_sleep);
@@ -916,6 +920,7 @@ backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
     change_schemas_recover(/*s->tablename*/ db->tablename);
+    bdb_close_only_sc(new_bdb_handle, transac, &bdberr);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
