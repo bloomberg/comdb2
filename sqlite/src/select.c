@@ -1676,8 +1676,16 @@ static const char *columnTypeImpl(
   assert( pExpr!=0 );
   assert( pNC->pSrcList!=0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  assert( pExpr->op!=TK_AGG_COLUMN );  /* This routine runes before aggregates
+
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if ( !gbl_legacy_column_name ) {
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( pExpr->op!=TK_AGG_COLUMN );  /* This routine runs before aggregates
                                        ** are processed */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   switch( pExpr->op ){
     case TK_COLUMN: {
       /* The expression is a column. Locate the table the column is being
@@ -1934,8 +1942,14 @@ static void generateColumnNames(
     Expr *p = pEList->a[i].pExpr;
 
     assert( p!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if ( !gbl_legacy_column_name ) {
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( p->op!=TK_AGG_COLUMN );  /* Agg processing has not run yet */
     assert( p->op!=TK_COLUMN || p->y.pTab!=0 ); /* Covering idx not yet coded */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pEList->a[i].zName ){
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
