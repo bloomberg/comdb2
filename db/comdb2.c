@@ -3329,7 +3329,7 @@ static int create_db(char *dbname, char *dir) {
    int rc;
 
    char *fulldir;
-   fulldir = realpath(dir, NULL);
+   fulldir = comdb2_realpath(dir, NULL);
    if (fulldir == NULL) {
       rc = mkdir(dir, 0755);
       if (rc) {
@@ -3338,7 +3338,7 @@ static int create_db(char *dbname, char *dir) {
                strerror(errno));
          return -1;
       }
-      fulldir = realpath(dir, NULL);
+      fulldir = comdb2_realpath(dir, NULL);
       if (fulldir == NULL) {
          logmsg(LOGMSG_FATAL, "Can't figure out full path for %s\n", dir);
          return -1;
@@ -3506,7 +3506,7 @@ static int init(int argc, char **argv)
         }
 
         if (rc == 0 && (st.st_mode & S_IFDIR)) {
-            gbl_dbdir = realpath(".", NULL);
+            gbl_dbdir = comdb2_realpath(".", NULL);
         } else {
             /* can't access or can't find logs in current directory, assume db
              * isn't here */
