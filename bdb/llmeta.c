@@ -2455,8 +2455,8 @@ retry:
 
     parent = llmeta_bdb_state->parent;
     assert(parent);
-    if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
-        parent->gblcontext = version_num.version_num;
+    if (bdb_cmp_genids(version_num.version_num, get_gblcontext(parent)) > 0) {
+        set_gblcontext(parent, version_num.version_num);
     }
 
     *bdberr = BDBERR_NOERROR;
