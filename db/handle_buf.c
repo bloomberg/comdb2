@@ -835,7 +835,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->debug = debug_this_request(gbl_debug_until) || (debug && gbl_debug);
     iq->debug_now = iq->nowus = nowus;
     iq->dbenv = dbenv;
-    iq->rqid = rqid;
+    iq->fwd_tag_rqid = rqid;
 
     iq->p_buf_orig =
         p_buf; /* need this for optimized fast fail (skip blkstate) */
