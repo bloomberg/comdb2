@@ -273,14 +273,13 @@ done:
         int crc;
         crc = dbcp->c_close(dbcp);
         if (crc == DB_LOCK_DEADLOCK) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
-            goto done;
         } else if (crc) {
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_MISC;
             rc = -1;
-            goto done;
         }
     }
     if (dbt_key.data)
@@ -504,14 +503,13 @@ done:
         crc = dbcp->c_close(dbcp);
         if (crc) {
             if (crc == DB_LOCK_DEADLOCK) {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
                 *bdberr = DB_LOCK_DEADLOCK;
                 rc = -1;
-                goto done;
             } else {
                 logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
                 *bdberr = BDBERR_MISC;
                 rc = -1;
-                goto done;
             }
         }
     }
@@ -646,14 +644,13 @@ done:
         int crc;
         crc = dbcp->c_close(dbcp);
         if (crc == DB_LOCK_DEADLOCK) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
-            goto done;
         } else if (crc) {
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_MISC;
             rc = -1;
-            goto done;
         }
     }
     if (dbt_key.data && dbt_key.data != key)
