@@ -3886,13 +3886,13 @@ backout:
 static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
                   int *bdberr);
 
-int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
+int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
                                  void ***sc_data_out, int *num, int *bdberr)
 {
     void **data = NULL;
     int nkey = 0, rc = 1;
     llmetakey_t k = htonl(LLMETA_SCHEMACHANGE_STATUS);
-    llmeta_sc_status_data **status = NULL;
+    llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
 
     *num = 0;
@@ -3906,7 +3906,7 @@ int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
     }
     if (nkey == 0)
         return 0;
-    status = calloc(nkey, sizeof(llmeta_sc_status_data *));
+    status = calloc(nkey, sizeof(llmeta_sc_status_data) * nkey);
     if (status == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
         *bdberr = BDBERR_MALLOC;
@@ -3923,23 +3923,17 @@ int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
 
     for (int i = 0; i < nkey; i++) {
         const uint8_t *p_buf;
-        status[i] = malloc(sizeof(llmeta_sc_status_data));
-        if (status[i] == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-            *bdberr = BDBERR_MALLOC;
-            goto err;
-        }
-        p_buf = llmeta_sc_status_data_get(status[i], data[i],
+        p_buf = llmeta_sc_status_data_get(&status[i], data[i],
                                           (uint8_t *)(data[i]) +
                                               sizeof(llmeta_sc_status_data));
-        sc_data[i] = malloc(status[i]->sc_data_len);
+        sc_data[i] = malloc(status[i].sc_data_len);
         if (sc_data[i] == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
             *bdberr = BDBERR_MALLOC;
             goto err;
         }
 
-        memcpy(sc_data[i], p_buf, status[i]->sc_data_len);
+        memcpy(sc_data[i], p_buf, status[i].sc_data_len);
     }
 
     for (int i = 0; i < nkey; i++) {
@@ -3957,8 +3951,6 @@ err:
     for (int i = 0; i < nkey; i++) {
         if (data[i])
             free(data[i]);
-        if (status[i])
-            free(status[i]);
         if (sc_data[i])
             free(sc_data[i]);
     }
@@ -5004,7 +4996,7 @@ done:
 }
 
 int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
-                    const char *table, unsigned long long *genid,
+                    const char *tablename, unsigned long long *genid,
                     unsigned int *host, int *bdberr)
 {
     int rc;
@@ -5019,14 +5011,14 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, tablename, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
                __func__);
         logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
-               table);
+               tablename);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -5041,7 +5033,7 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
-                    const char *table, unsigned long long genid,
+                    const char *tablename, unsigned long long genid,
                     unsigned int host, int *bdberr)
 {
     int rc;
@@ -5068,20 +5060,20 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, tablename, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
                __func__);
         logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
-               table);
+               tablename);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
     }
 
-    rc = bdb_get_sc_seed(bdb_state, tran, table, &genid, &host, bdberr);
+    rc = bdb_get_sc_seed(bdb_state, tran, tablename, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
         if (*bdberr == BDBERR_FETCH_DTA) {
             rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key,
@@ -5111,7 +5103,7 @@ done:
 }
 
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
-                       const char *table, int *bdberr)
+                       const char *tablename, int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
@@ -5130,14 +5122,14 @@ int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 
     schema_change.file_type = LLMETA_SC_SEEDS;
     /*copy the table name and check its length so that we have a clean key*/
-    strncpy0(schema_change.dbname, table, sizeof(schema_change.dbname));
+    strncpy0(schema_change.dbname, tablename, sizeof(schema_change.dbname));
     schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
     if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
                __func__);
         logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
-               table);
+               tablename);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
@@ -6423,9 +6415,24 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_LOGICAL_LSN_LWM:
         logmsg(LOGMSG_USER, "LLMETA_LOGICAL_LSN_LWM\n");
         break;
-    case LLMETA_SC_SEEDS:
-        logmsg(LOGMSG_USER, "LLMETA_SC_SEEDS\n");
-        break;
+    case LLMETA_SC_SEEDS: {
+        struct llmeta_schema_change_type akey;
+
+        if (keylen < sizeof(akey) || datalen < sizeof(unsigned long long)) {
+            logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_IN_SCHEMA_CHANGE entry\n",
+                    __FILE__, __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+
+        p_buf_key =
+            llmeta_schema_change_type_get(&akey, p_buf_key, p_buf_end_key);
+
+       logmsg(LOGMSG_USER, "LLMETA_SC_SEEDS: table=\"%s\" seed=\"0x%llx\" %s\n",
+              akey.dbname, *(unsigned long long *)p_buf_data,
+               (datalen == 0) ? "done" : "in progress");
+
+    } break;
     case LLMETA_SC_START_LSN: {
         struct llmeta_schema_change_type akey;
         struct llmeta_db_lsn_data_type adata = {{0}};
