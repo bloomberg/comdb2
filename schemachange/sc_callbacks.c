@@ -80,7 +80,7 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
 
-    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0);
+    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0, 0);
 
     return rc;
 }
@@ -292,8 +292,11 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
-    if (usedb->sc_downgrading)
+    if (usedb->sc_downgrading) {
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
+    }
 
     if (usedb->sc_from != iq->usedb) {
         return 0;
@@ -906,6 +909,6 @@ done:
         }
     }
 
-    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
+    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0, 1);
     return rc; /* success */
 }

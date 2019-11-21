@@ -65,8 +65,9 @@ const char *get_sc_to_name();
 void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run();
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time);
-void sc_clear_running(void);
+                   time_t time, int replicant);
+void sc_clear_running(const char *func, int line);
+void sc_assert_clear(const char *func, int line);
 void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
 void sc_set_downgrading(struct schema_change_type *s);
@@ -83,7 +84,7 @@ void remove_ongoing_alter(struct schema_change_type *sc);
 struct schema_change_type *find_ongoing_alter(char *table);
 struct schema_change_type *preempt_ongoing_alter(char *table, int action);
 int get_schema_change_in_progress(const char *func, int line);
-void assert_thread_sc_not_inprogress(const char *func, int line);
+//void assert_thread_sc_not_inprogress(const char *func, int line);
 void clear_ongoing_alter();
 int get_stopsc(const char *func, int line);
 

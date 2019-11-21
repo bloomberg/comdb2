@@ -78,7 +78,10 @@ function insert_thread
     write_prompt $func "Running $func $tdno"
     while [[ ! -f $stopfile ]]; do
         table=$(randomtable)
+        echo "Inserter-$tdno inserting $maxrec records into table $table"
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "INSERT INTO $table SELECT * FROM generate_series(1, $maxrec)" >/dev/null 2>&1
+        r=$?
+        [[ $r != 0 ]] && echo "Inserter-$tdno failed insert"
         [[ $sleep_sec ]] && sleep $sleep_sec
     done
 }
@@ -96,11 +99,13 @@ function run_test
     typeset inserters=${4}
     typeset insertrecs=${5}
     typeset nocheckpoint=${6}
+    typeset dgcount=${7}
 
     # Locals
     typeset maxtime=300
     typeset downgrade=1
     typeset i=0
+    typeset downgrades=0
     typeset now=$(date +%s)
     typeset endtime=$(( now + maxtime ))
 
@@ -129,9 +134,12 @@ function run_test
     while [[ "$(date +%s)" -lt $endtime ]]; do
         sleep $downgrade_sleep
         if [[ $downgrade != 0 ]]; then
-            for node in $CLUSTER ; do
-                $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
-            done
+            if [[ $dgcount == 0 || $downgrades -lt $dgcount ]]; then
+                for node in $CLUSTER ; do
+                    $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
+                done
+                let downgrades=downgrades+1
+            fi
         fi
     done
     touch $stopfile
@@ -148,6 +156,7 @@ if [[ $DBNAME == *"lockordergenerated"* ]]; then
     export inserters=10
     export insertrecs=10
     export nocheckpoint=0
+    export dgcount=0
 else
     export tablecount=100
     export truncaters=1
@@ -156,8 +165,9 @@ else
     export inserters=1
     export insertrecs=10000
     export nocheckpoint=1
+    export dgcount=0
 fi
 
-run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint
+run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint $dgcount
 
 echo "Success"

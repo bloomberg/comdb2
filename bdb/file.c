@@ -4912,6 +4912,11 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     set_repinfo_master_host(bdb_state, host, __func__, __LINE__);
 
     BDB_RELLOCK();
+
+    if (bdb_state->callback->whoismaster_rtn)
+        (bdb_state->callback->whoismaster_rtn)(bdb_state,
+                                               bdb_state->repinfo->master_host,
+                                               0);
 }
 
 static inline void bdb_set_read_only(bdb_state_type *bdb_state)
@@ -5089,7 +5094,8 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
     /* notify the user that we are the master */
     if (bdb_state->callback->whoismaster_rtn) {
         (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
+                                               bdb_state->repinfo->master_host,
+                                               1);
     }
 
     /* master cannot be incoherent, that makes no sense.
@@ -5235,7 +5241,8 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     /* call the user with a NEWMASTER of -1 */
     if (bdb_state->callback->whoismaster_rtn)
         (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
+                                               bdb_state->repinfo->master_host,
+                                               1);
 
     allow_sc_to_run();
     BDB_RELLOCK();
@@ -5877,7 +5884,7 @@ static bdb_state_type *bdb_open_int(
 
         if (bdb_state->callback->whoismaster_rtn)
             (bdb_state->callback->whoismaster_rtn)(
-                bdb_state, bdb_state->repinfo->master_host);
+                bdb_state, bdb_state->repinfo->master_host, 1);
 
         logmsg(LOGMSG_INFO, "@LSN %u:%u\n",
                bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.file,

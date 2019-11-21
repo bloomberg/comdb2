@@ -260,7 +260,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     rc = sc_set_running(s->tablename, s->preempted ? 2 : 1, seed, node,
-                        time(NULL));
+                        time(NULL), 0);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
@@ -290,7 +290,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 return SC_CANT_SET_RUNNING;
             } else if (sc_set_running(s->tablename, 1,
                                       bdb_get_a_genid(thedb->bdb_env),
-                                      gbl_mynode, time(NULL)) != 0) {
+                                      gbl_mynode, time(NULL), 0) != 0) {
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
             }
@@ -315,6 +315,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->trans = trans;
     arg->iq = iq;
     arg->sc = iq->sc;
+    s->started = 0;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -360,7 +361,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                                 (void *(*)(void *))do_schema_change_tran_thd,
                                 arg);
             if (rc == 0) {
-                Pthread_cond_wait(&s->condStart, &s->mtxStart);
+                while (!s->started) {
+                    Pthread_cond_wait(&s->condStart, &s->mtxStart);
+                }
             }
             Pthread_mutex_unlock(&s->mtxStart);
         }
@@ -376,7 +379,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (arg)
                 free(arg);
             sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
-                           time(NULL));
+                           time(NULL), 0);
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
         } else {
@@ -461,7 +464,7 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
             sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
-                           time(NULL));
+                           time(NULL), 0);
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
         } else {
@@ -648,8 +651,11 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
-    if (iq->usedb->sc_downgrading)
+    if (iq->usedb->sc_downgrading) {
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
+    }
 
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
@@ -715,8 +721,11 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
 {
     int rc;
 
-    if (iq->usedb->sc_downgrading)
+    if (iq->usedb->sc_downgrading) {
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
+    }
 
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
@@ -804,8 +813,11 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
-    if (iq->usedb->sc_downgrading)
+    if (iq->usedb->sc_downgrading) {
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
+    }
 
     if (iq->usedb->sc_from != iq->usedb) {
         return 0;
@@ -1176,7 +1188,7 @@ int sc_timepart_add_table(const char *existingTableName,
     }
 
     if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
-                       gbl_mynode, time(NULL)) != 0) {
+                       gbl_mynode, time(NULL), 0) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1237,7 +1249,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     }
 
     if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
-                       gbl_mynode, time(NULL)) != 0) {
+                       gbl_mynode, time(NULL), 0) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

@@ -448,6 +448,8 @@ static int forward_longblock_to_master(struct ireq *iq,
         if (iq->debug)
             logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
                    mstr, getorigin(iq));
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
     }
 
@@ -514,6 +516,8 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
         if (iq->debug)
             logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
                    mstr, getorigin(iq));
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         return ERR_NOMASTER;
     }
 
@@ -1954,11 +1958,10 @@ int toblock(struct ireq *iq)
 
         if (mstr != gbl_mynode) {
             if (iq->sorese) {
-
                 /* Ask the replicant to retry against the new master. */
-                if (iq->sorese) {
-                    iq->sorese->rcout = ERR_NOMASTER;
-                }
+                iq->sorese->rcout = ERR_NOMASTER;
+                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                        __LINE__);
                 return ERR_REJECTED;
             }
             if (iq->is_socketrequest &&
@@ -2758,6 +2761,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                              __LINE__);
             if (thedb->master != gbl_mynode) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                        __LINE__);
                 outrc = ERR_NOMASTER;
                 fromline = __LINE__;
                 goto cleanup;
@@ -2789,6 +2794,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                              __LINE__);
             if (thedb->master != gbl_mynode) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                        __LINE__);
                 outrc = ERR_NOMASTER;
                 fromline = __LINE__;
                 goto cleanup;
@@ -2874,6 +2881,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              */
             if (thedb->master != gbl_mynode || irc == ERR_NOMASTER) {
                 numerrs = 1;
+                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                        __LINE__);
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 GOTOBACKOUT;
             }
@@ -4720,6 +4729,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              * a transaction: logical begins will write a log-message. */
             if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
                 numerrs = 1;
+                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                        __LINE__);
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 GOTOBACKOUT;

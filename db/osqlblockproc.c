@@ -244,9 +244,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     return 0;
 }
 
-
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time);
+                   time_t time, int fromnet);
 void sc_set_downgrading(struct schema_change_type *s);
 
 /**
@@ -284,8 +283,10 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0, 0);
             free_schema_change_type(sc);
+            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                    __LINE__);
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
             Pthread_mutex_lock(&sc->mtx);
@@ -297,7 +298,7 @@ int osql_bplog_schemachange(struct ireq *iq)
             Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0, 0);
             if (sc->sc_rc)
                 rc = ERR_SC;
             free_schema_change_type(sc);
@@ -309,6 +310,8 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc == ERR_NOMASTER) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
+        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                __LINE__);
         struct schema_change_type *next;
         sc = iq->sc_pending;
         while (sc != NULL) {
@@ -320,7 +323,7 @@ int osql_bplog_schemachange(struct ireq *iq)
                 freedb(sc->newdb);
                 sc->newdb = NULL;
             }
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0, 0);
             free_schema_change_type(sc);
             sc = next;
         }
@@ -1304,6 +1307,8 @@ static int process_this_session(
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
             reqlog_set_error(iq->reqlogger, "ERR_NOMASTER", ERR_NOMASTER);
+            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                    __LINE__);
             return ERR_NOMASTER /*OSQL_FAILDISPATCH*/;
         }
 
@@ -1569,7 +1574,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(sc->tablename, 0, 0, NULL, 0);
+            sc_set_running(sc->tablename, 0, 0, NULL, 0, 0);
             free_schema_change_type(sc);
             error = 1;
         }

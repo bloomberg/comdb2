@@ -218,7 +218,7 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(s->tablename, 0, s->iq->sc_seed, NULL, 0);
+    sc_set_running(s->tablename, 0, s->iq->sc_seed, NULL, 0, 0);
     if (do_free) {
         free_sc(s);
     }
@@ -541,6 +541,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
 
     Pthread_mutex_lock(&s->mtx);
     Pthread_mutex_lock(&s->mtxStart);
+    s->started = 1;
     Pthread_cond_signal(&s->condStart);
     Pthread_mutex_unlock(&s->mtxStart);
 
@@ -660,7 +661,7 @@ downgraded:
         reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
-        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
+        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0, 0);
         free_sc(s);
     } else {
         stop_and_free_sc(rc, s, 1 /*do_free*/);
@@ -896,7 +897,6 @@ int resume_schema_change(void)
     }
 
     /* if a schema change is currently running don't try to resume one */
-    sc_set_running(NULL, 0, 0, NULL, 0);
     clear_ongoing_alter();
 
     hash_t *tpt_sc_hash =
@@ -1500,7 +1500,7 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
+    sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL), 0);
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

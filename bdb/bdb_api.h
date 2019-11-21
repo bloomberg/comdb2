@@ -330,7 +330,8 @@ typedef int (*GETROOMFP)(bdb_state_type *bdb_handle, const char *host);
   updates directed elesewhere if you learned of a new master.
   do NOT call back into the bdb library from this routine.
 */
-typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host);
+typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host,
+        int assert_sc_clear);
 
 /*
   pass in a routine that will be called when the replication

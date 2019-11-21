@@ -90,7 +90,6 @@ inline int is_dta_being_rebuilt(struct scplan *plan)
 
 int gbl_verbose_set_sc_in_progress = 0;
 static pthread_mutex_t gbl_sc_progress_lk = PTHREAD_MUTEX_INITIALIZER;
-static __thread int sc_progress_thread_count;
 
 int get_stopsc(const char *func, int line)
 {
@@ -102,7 +101,7 @@ int get_stopsc(const char *func, int line)
         logmsg(LOGMSG_USER, "%s line %d %s returning %d\n", func, line,
                 __func__, ret);
     }
-    return stopsc;
+    return ret;
 }
 
 static int increment_schema_change_in_progress(const char *func, int line)
@@ -114,7 +113,6 @@ static int increment_schema_change_in_progress(const char *func, int line)
                 func, line);
     } else {
         val = (++gbl_schema_change_in_progress);
-        sc_progress_thread_count++;
         didit = 1;
     }
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
@@ -136,10 +134,9 @@ static int decrement_schema_change_in_progress(const char *func, int line)
     int val;
     Pthread_mutex_lock(&gbl_sc_progress_lk);
     val = (--gbl_schema_change_in_progress);
-    sc_progress_thread_count--;
-    if (gbl_schema_change_in_progress < 0 || sc_progress_thread_count < 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d gbl_sc_ip is %d sc_td_ip is %d\n", func,
-                line, gbl_schema_change_in_progress, sc_progress_thread_count);
+    if (gbl_schema_change_in_progress < 0) {
+        logmsg(LOGMSG_FATAL, "%s:%d gbl_sc_ip is %d\n", func,
+                line, gbl_schema_change_in_progress);
         abort();
     }
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
@@ -148,15 +145,6 @@ static int decrement_schema_change_in_progress(const char *func, int line)
                func, line, __func__, val);
     }
     return 0;
-}
-
-void assert_thread_sc_not_inprogress(const char *func, int line)
-{
-    if (sc_progress_thread_count > 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d sc_td_ip is %d\n", func, line,
-                sc_progress_thread_count);
-        abort();
-    }
 }
 
 int get_schema_change_in_progress(const char *func, int line)
@@ -270,7 +258,7 @@ static int freesc(void *obj, void *arg)
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time)
+                   time_t time, int replicant)
 {
     sc_table_t *sctbl = NULL;
 #ifdef DEBUG_SC
@@ -278,6 +266,8 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     comdb2_linux_cheap_stack_trace();
 #endif
     assert(running >= 0);
+    assert(table);
+
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
@@ -286,12 +276,31 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     assert(sc_tables);
 
+    if (thedb->master == gbl_mynode && replicant) {
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        logmsg(LOGMSG_ERROR, "%s master ignoring replicant req for %s seed "
+                "%"PRIx64"\n", __func__, table, seed);
+        return -1;
+    }
+
     if (thedb->master == gbl_mynode) {
-        if (running && table &&
-            (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
-            sctbl->seed != seed) {
-            sctbl->seed = seed;
-        } else if (!running && table &&
+        if (running &&
+            (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
+            if (sctbl->seed != seed) {
+                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+                logmsg(LOGMSG_ERROR,
+                        "%s sc seed 0x%" PRIx64 " already running against "
+                        "table %s, ignoring new-seed 0x%" PRIx64 "\n", __func__,
+                        sctbl->seed, table, seed);
+                return -1;
+            } else {
+                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+                logmsg(LOGMSG_ERROR,
+                        "%s sc seed 0x%" PRIx64 " already running against "
+                        "table %s\n", __func__, sctbl->seed, table);
+                return -1;
+            }
+        } else if (!running &&
                    (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
                    seed && sctbl->seed != seed) {
             Pthread_mutex_unlock(&schema_change_in_progress_mutex);
@@ -302,53 +311,56 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         }
     }
     if (running) {
-        /* We are master and already found it */
+        /* We are master and already found it. */
         if (sctbl) {
             Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return 0;
         }
+
+        /* These two (increment and add to hash) should stay in lockstep */
         if (increment_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n",
                     __func__, __LINE__);
             Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return -1;
         }
-        if (table) {
-            sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
-            assert(sctbl);
-            strcpy(sctbl->mem, table);
-            sctbl->tablename = sctbl->mem;
+        sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
+        assert(sctbl);
+        strcpy(sctbl->mem, table);
+        sctbl->tablename = sctbl->mem;
 
-            sctbl->seed = seed;
-            sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
-            sctbl->time = time;
-            hash_add(sc_tables, sctbl);
-        }
+        sctbl->seed = seed;
+        sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
+        sctbl->time = time;
+        hash_add(sc_tables, sctbl);
     } else { /* not running */
-        if (table && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
+        if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
             decrement_schema_change_in_progress(__func__, __LINE__);
         }
-
-        if (!table && !seed) {
-            gbl_sc_resume_start = 0;
-            sc_async_threads = 0;
-            hash_clear(sc_tables);
-            hash_free(sc_tables);
-            sc_tables = NULL;
-        }
     }
     ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
            "gbl_schema_change_in_progress %d\n",
-           table ? table : "", running, (unsigned long long)seed,
+           table, running, (unsigned long long)seed,
            get_schema_change_in_progress(__func__, __LINE__));
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
 
-/* We just upgraded to master: clear old schema-changes */
-void sc_clear_running(void)
+void sc_assert_clear(const char *func, int line)
+{
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    if (gbl_schema_change_in_progress != 0) {
+        logmsg(LOGMSG_FATAL, "%s:%d downgrading with outstanding sc\n",
+                func, line);
+        abort();
+    }
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+}
+
+/* We are upgrading to master: clear old schema-changes. */
+void sc_clear_running(const char *func, int line)
 {
 #ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
@@ -356,10 +368,16 @@ void sc_clear_running(void)
 #endif
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
 
-    assert(gbl_schema_change_in_progress == 0);
+    logmsg(LOGMSG_INFO, "%s:%d clear running sc %d to 0\n", func, line,
+            gbl_schema_change_in_progress);
+    gbl_schema_change_in_progress = 0;
+
+    /* This is called holding the bdb-lock in write mode */
     if (sc_tables) {
         hash_for(sc_tables, freesc, NULL);
+        hash_clear(sc_tables);
     }
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
 }
 
 void sc_status(struct dbenv *dbenv)

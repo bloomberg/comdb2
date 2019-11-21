@@ -610,6 +610,8 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 logmsg(LOGMSG_ERROR, "%s: [%llx][%s] master changed\n",
                        __func__, entry->rqid, comdb2uuidstr(entry->uuid, us));
             }
+            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                    __LINE__);
             goto done;
         }
     } /* done */
