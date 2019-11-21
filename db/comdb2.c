@@ -3348,7 +3348,8 @@ static int create_db(char *dbname, char *dir) {
    logmsg(LOGMSG_INFO, "Creating db in %s\n", dir);
    setenv("COMDB2_DB_DIR", fulldir, 1);
 
-   if (init_db_dir(dbname, dir)) return -1;
+   if (init_db_dir(dbname, dir)) { free(fulldir); return -1; }
+   free(fulldir);
 
    /* set up as a create run */
    gbl_local_mode = 1;
