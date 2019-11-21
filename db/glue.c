@@ -3178,15 +3178,18 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
 
     sc = (struct net_sc_msg *)dtap;
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
+    BDB_READLOCK("start_sc");
     rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time, 1, __func__,
             __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_RELLOCK();
 }
 
 static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3194,13 +3197,16 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
     sc = (struct net_sc_msg *)dtap;
 
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
 
+    BDB_READLOCK("stop_sc");
     rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0, 1, __func__, __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_RELLOCK();
 }
 
 static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
