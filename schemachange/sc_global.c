@@ -261,13 +261,25 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time, int replicant, const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
+    bdb_state_type *bdb_state = thedb->bdb_env;
 #ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
     int ref = bdb_lockref();
+    int got_lock = 0;
+    int rc = 0;
+
     assert(running >= 0);
     assert(table);
+
+    /* We don't have the bdblock in abort- get it now, and run only if we are
+     * still master */
+    if (!replicant && !running && !ref) {
+        BDB_READLOCK("sc_set_running");
+        ref = got_lock = 1;
+    }
+
     assert(ref > 0);
 
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
@@ -278,53 +290,60 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     assert(sc_tables);
 
+    if (thedb->master != gbl_mynode && !replicant) {
+        logmsg(LOGMSG_ERROR, "%s replicant ignoring master req for %s seed "
+                "%"PRIx64"\n", __func__, table, seed);
+        rc = -1;
+        goto done;
+    }
+
     if (thedb->master == gbl_mynode && replicant) {
-        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         logmsg(LOGMSG_ERROR, "%s master ignoring replicant req for %s seed "
                 "%"PRIx64"\n", __func__, table, seed);
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     if (thedb->master == gbl_mynode) {
         if (running &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             if (sctbl->seed != seed) {
-                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
                 logmsg(LOGMSG_ERROR,
                         "%s sc seed 0x%" PRIx64 " already running against "
                         "table %s, ignoring new-seed 0x%" PRIx64 "\n", __func__,
                         sctbl->seed, table, seed);
-                return -1;
+                rc = -1;
+                goto done;
             } else {
-                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
                 logmsg(LOGMSG_ERROR,
                         "%s sc seed 0x%" PRIx64 " already running against "
                         "table %s\n", __func__, sctbl->seed, table);
-                return -1;
+                rc = -1;
+                goto done;
             }
         } else if (!running &&
                    (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
                    seed && sctbl->seed != seed) {
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR,
                    "cannot stop schema change for table %s: wrong seed given\n",
                    table);
-            return -1;
+            rc = -1;
+            goto done;
         }
     }
     if (running) {
         /* We are master and already found it. */
         if (sctbl) {
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            return 0;
+            rc = 0;
+            goto done;
         }
 
         /* These two (increment and add to hash) should stay in lockstep */
         if (increment_schema_change_in_progress(func, line)) {
             logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n",
                     __func__, __LINE__);
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            return -1;
+            rc = -1;
+            goto done;
         }
         sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
         assert(sctbl);
@@ -346,8 +365,14 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
            "gbl_schema_change_in_progress %d\n",
            table, running, (unsigned long long)seed,
            get_schema_change_in_progress(__func__, __LINE__));
+
+    rc = 0;
+
+done:
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-    return 0;
+    if (got_lock)
+        BDB_RELLOCK();
+    return rc;
 }
 
 void sc_assert_clear(const char *func, int line)
