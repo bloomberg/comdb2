@@ -426,8 +426,9 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     if (bdb_state->attr->genid48_warn_threshold &&
         (SEED48_MAX - seed48) <= bdb_state->attr->genid48_warn_threshold &&
         (now = time(NULL)) > lastwarn) {
-        logmsg(LOGMSG_WARN, "%s: low-genid warning: this database has only "
-                            "%llu genids remaining\n",
+        logmsg(LOGMSG_WARN,
+               "%s: low-genid warning: this database has only "
+               "%llu genids remaining\n",
                __func__, SEED48_MAX - seed48);
         lastwarn = now;
     }
