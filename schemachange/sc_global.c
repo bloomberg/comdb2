@@ -258,15 +258,17 @@ static int freesc(void *obj, void *arg)
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time, int replicant)
+                   time_t time, int replicant, const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
 #ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
+    int ref = bdb_lockref();
     assert(running >= 0);
     assert(table);
+    assert(ref > 0);
 
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
@@ -318,7 +320,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         }
 
         /* These two (increment and add to hash) should stay in lockstep */
-        if (increment_schema_change_in_progress(__func__, __LINE__)) {
+        if (increment_schema_change_in_progress(func, line)) {
             logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n",
                     __func__, __LINE__);
             Pthread_mutex_unlock(&schema_change_in_progress_mutex);
@@ -337,7 +339,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
-            decrement_schema_change_in_progress(__func__, __LINE__);
+            decrement_schema_change_in_progress(func, line);
         }
     }
     ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "

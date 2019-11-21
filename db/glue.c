@@ -2928,7 +2928,8 @@ static int new_master_callback(void *bdb_handle, char *host,
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
-        sc_assert_clear(__func__, __LINE__);
+        if (oldmaster == gbl_mynode && host != gbl_mynode)
+            sc_assert_clear(__func__, __LINE__);
     }
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
@@ -3183,7 +3184,8 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
-    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time, 1);
+    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time, 1, __func__,
+            __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
@@ -3197,7 +3199,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
 
-    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0, 1);
+    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0, 1, __func__, __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 

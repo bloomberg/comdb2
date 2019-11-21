@@ -78,10 +78,10 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
-
-    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0, 0);
-
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
+                rc);
+    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0, 0,
+            __func__, __LINE__);
     return rc;
 }
 
@@ -909,6 +909,7 @@ done:
         }
     }
 
-    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0, 1);
+    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0, 1,
+            __func__, __LINE__);
     return rc; /* success */
 }

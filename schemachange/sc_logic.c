@@ -218,7 +218,8 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(s->tablename, 0, s->iq->sc_seed, NULL, 0, 0);
+    sc_set_running(s->tablename, 0, s->iq->sc_seed, NULL, 0, 0, __func__,
+            __LINE__);
     if (do_free) {
         free_sc(s);
     }
@@ -661,7 +662,8 @@ downgraded:
         reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
-        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0, 0);
+        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0, 0, __func__,
+                __LINE__);
         free_sc(s);
     } else {
         stop_and_free_sc(rc, s, 1 /*do_free*/);
@@ -1500,7 +1502,8 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL), 0);
+    sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL), 0,
+            __func__, __LINE__);
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);
