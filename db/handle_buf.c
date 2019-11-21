@@ -803,10 +803,11 @@ int handled_queue;
 int q_reqs_len(void) { return q_reqs.count; }
 
 static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
-                     uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
-                     char *frommach, int frompid, char *fromtask, int qtype,
-                     void *data_hndl, int luxref, unsigned long long rqid,
-                     void *p_sinfo, intptr_t curswap)
+                            uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                            char *frommach, int frompid, char *fromtask,
+                            int qtype, void *data_hndl, int luxref,
+                            unsigned long long rqid, void *p_sinfo,
+                            intptr_t curswap)
 {
     struct req_hdr hdr;
     uint64_t nowus;
@@ -911,7 +912,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     return 0;
 }
 
-
 int gbl_handle_buf_add_latency_ms = 0;
 
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
@@ -944,17 +944,19 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 #endif
 
         /* allocate a request for later dispatch to available thread */
-        LOCK(&lock) {
+        LOCK(&lock)
+        {
             iq = (struct ireq *)pool_getablk(p_reqs);
-        }UNLOCK(&lock);
+        }
+        UNLOCK(&lock);
         if (!iq) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
             return reterr(0, 0, iq, ERR_INTERNAL);
         }
 
         rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
-                       frommach, frompid, fromtask, qtype, data_hndl, luxref,
-                       rqid, p_sinfo, curswap);
+                              frommach, frompid, fromtask, qtype, data_hndl,
+                              luxref, rqid, p_sinfo, curswap);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return reterr(curswap, /*thd*/ 0, iq, rc);
@@ -1207,8 +1209,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         return NULL;
     }
 
-    rc = init_ireq_legacy(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
-                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    rc = init_ireq_legacy(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
+                          NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
     if (rc) {
         reterr(0, /*thd*/ 0, iq, rc);
         return NULL;
