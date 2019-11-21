@@ -8846,31 +8846,21 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
 
 /* obtain comdb2_rowid and optionally print it as a decimal string */
 int sqlite3BtreeGetGenId(
-  BtCursor *pCur,             /* IN: The BtCursor object being used. */
   unsigned long long rowId,   /* IN: Original rowId (from the BtCursor). */
   unsigned long long *pGenId, /* OUT, OPT: The genId, if requested. */
   char **pzGenId,             /* OUT, OPT: Modified genId as decimal string. */
   int *pnGenId                /* OUT, OPT: Size of string buffer. */
 ){
   unsigned long long prgenid; /* always printed & returned in big-endian */
-  assert( pCur );
-  assert( sizeof(pCur->rrn)<=sizeof(int) );
-  assert( sizeof(pCur->genid)<=sizeof(unsigned long long) );
   prgenid = flibc_htonll(rowId);
   if( pGenId ) *pGenId = prgenid;
   if( pzGenId && pnGenId ){
-    char *zGenId;
-    int nGenId = 25; /* "+2:+18446744073709551615\0" */
-    assert( ULLONG_MAX<=18446744073709551615ULL );
-    zGenId = sqlite3Malloc(nGenId);
-    if( zGenId==0 ){
+    char *zGenId = sqlite3_mprintf("2:%llu", prgenid);
+    if( zGenId==NULL ){
       return SQLITE_NOMEM;
     }
-    snprintf(zGenId, nGenId, "2:%llu", prgenid);
-    assert( *pzGenId==0 );
     *pzGenId = zGenId;
-    assert( *pnGenId==0 );
-    *pnGenId = nGenId;
+    *pnGenId = (int)strlen(zGenId); /* BUGFIX: Actual len for OP_Ne, etc. */
   }
   return SQLITE_OK;
 }
