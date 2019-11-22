@@ -1957,7 +1957,7 @@ static void generateColumnNames(
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( srcName && p->op==TK_COLUMN ){
 #else /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-    }else if( srcName && p->op==TK_COLUMN && useSpan==0 ){
+    }else if( srcName && p->op==TK_COLUMN && p->y.pTab && useSpan==0 ){
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       char *zCol;
       int iCol = p->iColumn;
