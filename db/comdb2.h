@@ -2590,8 +2590,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
 void upgrade_record_by_genid(struct dbtable *db, unsigned long long genid);
 void backend_thread_event(struct dbenv *dbenv, int event);
 void backend_cmd(struct dbenv *dbenv, char *line, int lline, int st);
-uint64_t calc_table_size(struct dbtable *db);
-uint64_t calc_table_size_analyze(struct dbtable *db);
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs);
 
 enum { WHOLE_BUFFER = -1 };
 

@@ -7084,6 +7084,23 @@ static size_t dirent_buf_size(const char *dir)
                                              : sizeof(struct dirent));
 }
 
+uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
+{
+    char tmpname[PATH_MAX];
+    struct stat st;
+
+    assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
+
+    snprintf(tmpname, sizeof(tmpname), "%s/%s.queuedb", bdb_state->dir,
+             bdb_state->name);
+    int rc = stat(tmpname, &st);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
+        return 0;
+    }
+    return st.st_size;
+}
+
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 {
     DIR *dh;
@@ -7101,8 +7118,8 @@ uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 
     *num_extents = 0;
 
-    if (bdb_state->bdbtype != BDBTYPE_QUEUE)
-        return 0;
+    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+        return bdb_queuedb_size(bdb_state);
 
     prefix_len = snprintf(extent_prefix, sizeof(extent_prefix),
                           "__dbq.%s.queue.", bdb_state->name);
