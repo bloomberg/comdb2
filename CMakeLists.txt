@@ -83,6 +83,12 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
+option(STACK_TAG_SCHEMA "Stack at add or remove a tag-schema" OFF)
+mark_as_advanced(STACK_TAG_SCHEMA)
+if(STACK_TAG_SCHEMA)
+    add_definitions(-DSTACK_TAG_SCHEMA)
+endif()
+
 option(STACK_AT_DB_OPEN_CLOSE "Save a cheap-stack at every db_open" OFF)
 mark_as_advanced(STACK_AT_DB_OPEN_CLOSE)
 if(STACK_AT_DB_OPEN_CLOSE)

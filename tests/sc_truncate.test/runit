@@ -78,7 +78,7 @@ function insert_thread
     write_prompt $func "Running $func $tdno"
     while [[ ! -f $stopfile ]]; do
         table=$(randomtable)
-        echo "Inserter-$tdno inserting $maxrec records into table $table"
+        write_prompt inserter-$tdno "Inserting $maxrec records into table $table"
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "INSERT INTO $table SELECT * FROM generate_series(1, $maxrec)" >/dev/null 2>&1
         r=$?
         [[ $r != 0 ]] && echo "Inserter-$tdno failed insert"

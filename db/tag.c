@@ -154,6 +154,11 @@ int schema_init(void)
     return 0;
 }
 
+#if defined STACK_TAG_SCHEMA
+void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
+        FILE *f);
+#endif
+
 void add_tag_schema(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
@@ -173,6 +178,9 @@ void add_tag_schema(const char *table, struct schema *schema)
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                            offsetof(struct schema, tag), 0);
         hash_add(gbl_tag_hash, tag);
+#if defined STACK_TAG_SCHEMA
+        comdb2_cheap_stack_one_line(__func__, __LINE__, table, NULL);
+#endif
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
     hash_add(tag->tags, schema);
@@ -192,6 +200,9 @@ void del_tag_schema(const char *table, const char *tagname)
     }
     struct schema *sc = hash_find(tag->tags, &tagname);
     if (sc) {
+#if defined STACK_TAG_SCHEMA
+        comdb2_cheap_stack_one_line(__func__, __LINE__, table, NULL);
+#endif
         hash_del(tag->tags, sc);
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
@@ -1403,6 +1414,9 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
                            offsetof(struct schema, tag), 0);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
         hash_add(gbl_tag_hash, tag);
+#if defined STACK_TAG_SCHEMA
+        comdb2_cheap_stack_one_line(__func__, __LINE__, table, NULL);
+#endif
     }
     sc = clone_schema(s);
     free(sc->tag);
@@ -6786,6 +6800,9 @@ void delete_schema(const char *tblname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &tblname);
+#if defined STACK_TAG_SCHEMA
+    comdb2_cheap_stack_one_line(__func__, __LINE__, tblname, NULL);
+#endif
     hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6809,9 +6826,15 @@ void rename_schema(const char *oldname, char *newname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
+#if defined STACK_TAG_SCHEMA
+    comdb2_cheap_stack_one_line(__func__, __LINE__, oldname, NULL);
+#endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
     dbt->tblname = newname;
+#if defined STACK_TAG_SCHEMA
+    comdb2_cheap_stack_one_line(__func__, __LINE__, newname, NULL);
+#endif
     hash_add(gbl_tag_hash, dbt);
     unlock_taglock();
 }

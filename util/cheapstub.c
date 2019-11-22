@@ -45,6 +45,29 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #define backtrace_symbols_fd(A, B, C)
 #endif
 
+static void cheapstackoneline(const char *func, int line, const char *msg,
+        FILE *f)
+{
+    if (f == NULL)
+        f=stdout;
+
+    pthread_t tid = pthread_self();
+    const char size = 32;
+    void *buf[size];
+    int n = backtrace(buf, size);
+    char **strings;
+    strings = backtrace_symbols(buf, n);
+    fprintf(f, "%s:%d tid %p %s", func, line, (void *)tid, msg ? msg : "");
+    for (int j = 0; j < n; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            fprintf(f, " %s", &p[1]);
+        }
+    }
+    fprintf(f, "\n");
+}
+
 static void cheapstub(FILE *f)
 {
     if (f == NULL)
@@ -96,4 +119,10 @@ void comdb2_linux_cheap_stack_trace(void)
 void comdb2_cheap_stack_trace_file(FILE *f)
 {
     cheapstub(f);
+}
+
+void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
+        FILE *f)
+{
+    cheapstackoneline(func, line, msg, f);
 }
