@@ -181,7 +181,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 goto done;
             } else if (rc) {
                 logmsg(LOGMSG_ERROR,
-                       "queuedb %s consumer %d genid %lx put rc %d\n",
+                       "queuedb %s consumer %d genid %" PRIx64 " put rc %d\n",
                        bdb_state->name, i, k.genid, rc);
                 *bdberr = BDBERR_MISC;
                 rc = -1;
@@ -448,7 +448,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
         goto done;
     }
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "next key is consumer %d genid %016lx\n",
+        logmsg(LOGMSG_USER, "next key is consumer %d genid %016" PRIx64 "\n",
                fndk.consumer, fndk.genid);
     if (fndk.consumer != consumer) {
         /* pretend we didn't find anything - the next record is meant for
@@ -609,7 +609,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         (fndk.genid != flibc_ntohll(qfnd.genid))) {
         logmsg(LOGMSG_ERROR,
                "%s: Trying to consume non-first item of queue %s genid: "
-               "%016llx first: %016lx consumer %d\n",
+               "%016llx first: %016" PRIx64 " consumer %d\n",
                __func__, bdb_state->name, qfnd.genid, fndk.genid, consumer);
         *bdberr = BDBERR_MISC;
         rc = -1;

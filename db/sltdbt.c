@@ -16,7 +16,6 @@
 
 /* comdb index front end */
 
-#include "limit_fortify.h"
 #include <ctype.h>
 #include <epochlib.h>
 #include "comdb2.h"
@@ -369,7 +368,7 @@ int handle_ireq(struct ireq *iq)
             if (iq->is_socketrequest) {
                 if (iq->sb == NULL) {
                     rc = offload_comm_send_blockreply(
-                        iq->frommach, iq->rqid, iq->p_buf_out_start,
+                        iq->frommach, iq->fwd_tag_rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                     free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {

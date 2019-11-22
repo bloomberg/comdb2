@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <unistd.h>
 #include <ctrace.h>
 #include "schemachange.h"
@@ -281,7 +280,7 @@ void sc_status(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "-------------------------\n");
         logmsg(LOGMSG_USER,
                "Schema change in progress for table %s "
-               "with seed 0x%lx\n",
+               "with seed 0x%" PRIx64 "\n",
                sctbl->tablename, sctbl->seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
@@ -291,7 +290,7 @@ void sc_status(struct dbenv *dbenv)
 
         if (db && db->doing_conversion)
             logmsg(LOGMSG_USER,
-                   "Conversion phase running %" PRId64 "converted\n",
+                   "Conversion phase running %" PRId64 " converted\n",
                    db->sc_nrecs);
         else if (db && db->doing_upgrade)
             logmsg(LOGMSG_USER, "Upgrade phase running %" PRId64 " upgraded\n",

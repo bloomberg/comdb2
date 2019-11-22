@@ -51,6 +51,19 @@ void *memdup_readonly(
   return p;
 }
 
+char *strdup_readonly(
+  const char *zStr,
+  size_t *pnStr
+){
+  char *z;
+  size_t nStr;
+  if( zStr==0 ) return 0;
+  nStr = strlen(zStr);
+  z = memdup_readonly(zStr, nStr + 1);
+  if( z && pnStr ) *pnStr = nStr;
+  return z;
+}
+
 void memdup_free(
   void *pMem,
   size_t nMem

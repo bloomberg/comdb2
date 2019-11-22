@@ -437,7 +437,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
             nsize += 10;
             temparr = realloc(arr, sizeof(systable_cron_scheds_t) * nsize);
             if (!temparr) {
-                logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
                        sizeof(systable_cron_scheds_t) * nsize);
                 cron_systable_schedulers_free(arr, narr);
                 arr = NULL;
@@ -499,7 +499,7 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
             nsize += sched->events.count;
             temparr = realloc(arr, sizeof(systable_cron_events_t) * nsize);
             if (!temparr) {
-                logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
                        sizeof(systable_cron_events_t) * nsize);
                 cron_systable_events_free(arr, narr);
                 nsize = narr = 0;

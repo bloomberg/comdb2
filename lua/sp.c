@@ -63,6 +63,7 @@
 #include <logmsg.h>
 #include <tohex.h>
 #include <ctrace.h>
+#include <bb_oscompat.h>
 
 #ifdef WITH_RDKAFKA    
 
@@ -1137,7 +1138,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
     }
     // now, actually create the temp table
-    *lk = calloc(1, sizeof(pthread_mutex_t));
+    *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
     lua_begin_step(sp->clnt, sp, stmt);
@@ -3462,7 +3463,7 @@ int db_csvcopy(Lua lua)
     strbuf *columns, *params, *sql;
 
     char path[PATH_MAX + 1];
-    char *fname = realpath(fname_orig, path);
+    char *fname = comdb2_realpath(fname_orig, path);
 
     int basedir_len = strlen(thedb->basedir);
 

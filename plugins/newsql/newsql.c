@@ -446,21 +446,32 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
                                                  int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    size_t alloc_sz;
     if (appdata == NULL) {
-        size_t types_sz = ncols * sizeof(appdata->type[0]);
-        appdata = calloc(1, sizeof(struct newsql_appdata) + types_sz);
+        alloc_sz =
+            sizeof(struct newsql_appdata) + ncols * sizeof(appdata->type[0]);
+        appdata = calloc(1, alloc_sz);
         clnt->appdata = appdata;
+        if (!appdata)
+            goto oom;
         appdata->capacity = ncols;
         appdata->send_intrans_response = 1;
     } else if (appdata->capacity < ncols) {
         size_t n = ncols + 32;
-        size_t types_sz = n * sizeof(appdata->type[0]);
-        appdata = realloc(appdata, sizeof(struct newsql_appdata) + types_sz);
+        alloc_sz = sizeof(struct newsql_appdata) + n * sizeof(appdata->type[0]);
+        appdata = realloc(appdata, alloc_sz);
         clnt->appdata = appdata;
+        if (!appdata)
+            goto oom;
         appdata->capacity = n;
     }
     appdata->count = ncols;
     return appdata;
+oom:
+    logmsg(LOGMSG_ERROR,
+           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           __func__, __LINE__, alloc_sz, errno, strerror(errno));
+    return NULL;
 }
 
 static void free_newsql_appdata(struct sqlclntstate *clnt)
@@ -1445,6 +1456,69 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
+int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
+{
+    int iswarn = 0;
+    double cost;
+    char *endp;
+
+    sqlstr += 11;
+    sqlstr = skipws(sqlstr);
+
+    if (strncasecmp(sqlstr, "warn", 4) == 0) {
+        sqlstr += 4;
+        sqlstr = skipws(sqlstr);
+        iswarn = 1;
+    }
+
+    if (strncasecmp(sqlstr, "maxcost", 7) == 0) {
+        sqlstr += 7;
+        sqlstr = skipws(sqlstr);
+        cost = strtod(sqlstr, &endp);
+        if (*endp != 0)
+            return 1;
+        if (iswarn) {
+            clnt->limits.maxcost_warn = cost;
+        } else {
+            clnt->limits.maxcost = cost;
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "tablescans", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 1;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 0;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.tablescans_warn = onoff;
+        } else {
+            clnt->limits.tablescans_ok = htonl(onoff);
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "temptables", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 0;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 1;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.temptables_warn = htonl(onoff);
+        } else {
+            clnt->limits.temptables_ok = htonl(onoff);
+        }
+        return 0;
+    } else
+        return 1;
+}
+
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                 CDB2SQLQUERY *sql_query)
@@ -1755,6 +1829,20 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 printf("setting clnt->osql_max_trans to %d\n",
                        clnt->osql_max_trans);
 #endif
+            } else if (strncasecmp(sqlstr, "groupconcatmemlimit",
+                                   sizeof("groupconcatmemlimit") - 1) == 0) {
+                sqlstr += sizeof("groupconcatmemlimit");
+                int sz = strtol(sqlstr, &endp, 10);
+                if (endp != sqlstr && sz >= 0)
+                    clnt->group_concat_mem_limit = sz;
+                else
+                    logmsg(LOGMSG_ERROR,
+                           "Error: bad value for groupconcatmemlimit %s\n",
+                           sqlstr);
+#ifdef DEBUG
+                printf("setting clnt->group_concat_mem_limit to %d\n",
+                       clnt->group_concat_mem_limit);
+#endif
             } else if (strncasecmp(sqlstr, "plannereffort", 13) == 0) {
                 sqlstr += 13;
                 int effort = strtol(sqlstr, &endp, 10);
@@ -1780,6 +1868,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     clnt->admin = 1;
                 }
+            } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
+                rc = handle_set_querylimits(sqlstr, clnt);
             } else {
                 rc = ii + 1;
             }
@@ -2130,6 +2220,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
+    extern size_t gbl_cached_output_buffer_max_bytes;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
@@ -2429,6 +2520,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
         }
+
+        /* Keep a reasonable amount of memory in the clnt. */
+        if (APPDATA->packed_capacity > gbl_cached_output_buffer_max_bytes) {
+            APPDATA->packed_capacity = 0;
+            free(APPDATA->packed_buf);
+            APPDATA->packed_buf = NULL;
+        }
+
         query = read_newsql_query(dbenv, &clnt, sb);
     }
 

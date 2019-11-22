@@ -1949,8 +1949,9 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
         logmsg(LOGMSG_WARN, "\n");
     }
 
-    logmsg(LOGMSG_WARN, "catching up (%d):: us: %s "
-                        " master : %s behind %lu\n",
+    logmsg(LOGMSG_WARN,
+           "catching up (%d):: us: %s "
+           " master : %s behind %" PRIu64 "\n",
            phase, lsn_to_str(our_lsn_str, our_lsn),
            lsn_to_str(master_lsn_str, master_lsn),
            subtract_lsn(bdb_state, master_lsn, our_lsn));
@@ -4571,23 +4572,8 @@ deadlock_again:
         bdb_state->master_cmpcontext = bdb_increment_slot(bdb_state, maxgenid);
         master_cmpcontext = bdb_state->master_cmpcontext;
 
-        if (maxgenid) {
-            if (bdb_state->parent)
-                bdb_state = bdb_state->parent;
-
-            if (bdb_state->gblcontext == -1ULL) {
-                logmsg(LOGMSG_ERROR, "ENV STATE IS -1\n");
-                cheap_stack_trace();
-            }
-
-            if (bdb_cmp_genids(master_cmpcontext, bdb_state->gblcontext) > 0) {
-                bdb_state->got_gblcontext = 1;
-                bdb_state->gblcontext = master_cmpcontext;
-
-                logmsg(LOGMSG_INFO, "setting gblcontext to  0x%08llx\n",
-                        bdb_state->gblcontext);
-            }
-        }
+        if (maxgenid)
+            set_gblcontext(bdb_state, master_cmpcontext);
     }
 
     return 0;
@@ -4767,19 +4753,18 @@ static void fix_context(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (bdb_state->gblcontext == -1ULL) {
-        logmsg(LOGMSG_ERROR, "%s: detected BAD context %llu, fixing\n", __func__,
-                bdb_state->gblcontext);
+    if (get_gblcontext(bdb_state) == -1ULL) {
+        logmsg(LOGMSG_ERROR, "%s: detected BAD context %llu, fixing\n",
+               __func__, get_gblcontext(bdb_state));
 
         /* sleep 1 sec to avoid dups, which are broken now! */
         sleep(1);
 
         correct_context = bdb_get_cmp_context(bdb_state);
-
-        bdb_state->gblcontext = correct_context;
+        set_gblcontext(bdb_state, correct_context);
 
         logmsg(LOGMSG_ERROR, "%s: FIXING context to %llx\n", __func__,
-                bdb_state->gblcontext);
+               correct_context);
     }
 }
 
@@ -5465,8 +5450,6 @@ static bdb_state_type *bdb_open_int(
             bdb_state->coherent_state[i] = STATE_COHERENT;
 
         Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
-
-        bdb_state->gblcontext = 0;
 
         bdb_lock_init(bdb_state);
 

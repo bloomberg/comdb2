@@ -5561,7 +5561,8 @@ add_blkseq:
                 if (iq->tranddl) {
                     if (backed_out) {
                         assert(trans == NULL);
-                        bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                        if (iq->sc_logical_tran)
+                            bdb_ltran_put_schema_lock(iq->sc_logical_tran);
                     } else {
                         assert(iq->sc_tran);
                         assert(trans != NULL);
@@ -5580,9 +5581,10 @@ add_blkseq:
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
-                    irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                               gbl_mynode, 0, 1, NULL, 0, NULL,
-                                               0);
+                    if (iq->sc_logical_tran)
+                        irc = trans_commit_logical(iq, iq->sc_logical_tran,
+                                                   gbl_mynode, 0, 1, NULL, 0,
+                                                   NULL, 0);
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
@@ -5971,7 +5973,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+        logmsg(LOGMSG_USER,
+               "%" PRIu64 " total time spent in the block processor\n",
                block_processor_ms);
     }
 

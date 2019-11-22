@@ -3331,11 +3331,19 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
-  int prepare_only;         /* Prepare-only mode, skip schema changes that
-                             * originate from DDL, etc.  This is primarily
-                             * of interest to the DDL integration code in
-                             * the "comdb2build.c" and "comdb2lua.c" files.
-                             */
+  int prepFlags;            /* Prepare-only mode flags, skip all schema changes
+                             * that originate from DDL, etc.  This is primarily
+                             * of interest to the DDL integration code in the
+                             * "comdb2build.c" and "comdb2lua.c" files.  It can
+                             * also be used to extract qualified table names
+                             * from an arbitrary SELECT query (useful for FDB
+                             * integration). */
+  int nSrcListOnly;         /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
+                             * enabled, this will contain the number of table
+                             * names in the azSrcListOnly array. */
+  char **azSrcListOnly;     /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
+                             * enabled, this will contain the table names
+                             * which were discovered in the SELECT query. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

@@ -399,12 +399,15 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     prn_stat(st_election_tiebreaker);
     prn_stat(st_election_votes);
 
-    logmsgf(LOGMSG_USER, out, "txn parallel: %ld\n", gbl_rep_trans_parallel);
-    logmsgf(LOGMSG_USER, out, "txn serial: %ld\n", gbl_rep_trans_serial);
-    logmsgf(LOGMSG_USER, out, "txn inline: %ld\n", gbl_rep_trans_inline);
-    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %ld\n",
+    logmsgf(LOGMSG_USER, out, "txn parallel: %" PRId64 "\n",
+            gbl_rep_trans_parallel);
+    logmsgf(LOGMSG_USER, out, "txn serial: %" PRId64 "\n",
+            gbl_rep_trans_serial);
+    logmsgf(LOGMSG_USER, out, "txn inline: %" PRId64 "\n",
+            gbl_rep_trans_inline);
+    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %" PRId64 "\n",
             gbl_rep_rowlocks_multifile);
-    logmsgf(LOGMSG_USER, out, "txn deadlocked: %ld\n",
+    logmsgf(LOGMSG_USER, out, "txn deadlocked: %" PRId64 "\n",
             gbl_rep_trans_deadlocked);
     prn_lstat(lc_cache_hits);
     prn_lstat(lc_cache_misses);
@@ -505,8 +508,8 @@ static void bdb_state_dump(FILE *out, const char *prefix,
     logmsgf(LOGMSG_USER, out, "%s->read_write = %d\n", prefix, bdb_state->read_write);
     logmsgf(LOGMSG_USER, out, "%s->master_cmpcontext = 0x%08llx\n", prefix,
             bdb_state->master_cmpcontext);
-    logmsgf(LOGMSG_USER, out, "%s->got_gblcontext = %d (gblcontext=0x%llx)\n", prefix,
-            bdb_state->got_gblcontext, bdb_state->gblcontext);
+    logmsgf(LOGMSG_USER, out, "%s->got_gblcontext = %d (gblcontext=0x%llx)\n",
+            prefix, bdb_state->got_gblcontext, get_gblcontext(bdb_state));
     logmsgf(LOGMSG_USER, out, "%s->genid_format = %s\n", prefix,
             genid_format_str(bdb_state->genid_format));
 
@@ -580,7 +583,8 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
 
         for (i = fsp; i != NULL && *i != NULL; ++i) {
             logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*i)->file_name);
-            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %"PRId64"\n", (*i)->st_pagesize);
+            logmsgf(LOGMSG_USER, out, "  st_pagesize   : %zu\n",
+                    (*i)->st_pagesize);
             logmsgf(LOGMSG_USER, out, "  st_map        : %"PRId64"\n", (*i)->st_map);
             logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %"PRId64"\n", (*i)->st_cache_hit);
             logmsgf(LOGMSG_USER, out, "  st_cache_miss : %"PRId64"\n", (*i)->st_cache_miss);
@@ -1189,8 +1193,8 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
             logmsg(LOGMSG_USER, "  %s ix %d   => %u\n", bdb_state->name, ix, npages);
         }
     }
-    logmsg(LOGMSG_USER, "total freelist pages for %s: %lu\n", bdb_state->name,
-           total_npages);
+    logmsg(LOGMSG_USER, "total freelist pages for %s: %" PRIu64 "\n",
+           bdb_state->name, total_npages);
     return total_npages;
 }
 
@@ -1211,7 +1215,7 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
             return;
         }
     }
-    logmsg(LOGMSG_USER, "total free pages: %lu\n", npages);
+    logmsg(LOGMSG_USER, "total free pages: %" PRIu64 "\n", npages);
 }
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
@@ -1410,7 +1414,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     }
 
     else if (tokcmp(tok, ltok, "gblcontext") == 0)
-        logmsg(LOGMSG_USER, "gblcontext = 0x%08llx\n", bdb_state->gblcontext);
+        logmsg(LOGMSG_USER, "gblcontext = 0x%08llx\n",
+               get_gblcontext(bdb_state));
 
     else if (tokcmp(tok, ltok, "cluster") == 0)
         netinfo_dump(out, bdb_state);

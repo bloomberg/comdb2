@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -31,21 +30,6 @@ function checkfailexit
 {
     if [[ -f failexit ]] ; then
         exit 1
-    fi
-}
-
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
     fi
 }
 
@@ -106,7 +90,7 @@ function do_rebuild
         fi
         let scnt=scnt+1
         do_verify
-        assertcnt $nrecs
+        assertcnt t1 $nrecs
     done
 
     return 0
@@ -125,7 +109,7 @@ function insert_records
             failexit "Inserting record $j "
         fi
         let j=j+1
-        assertcnt $j
+        assertcnt t1 $j
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
@@ -145,7 +129,7 @@ function run_test_one
     cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  {`cat t1_2.csc2 ` }"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c,d,e,f from t1" > out2.txt
-    assertcnt $nrecs
+    assertcnt t1 $nrecs
     do_verify
 
     if ! diff out1.txt out2.txt ; then
@@ -173,7 +157,7 @@ function run_test_two
     checkfailexit
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > out2.txt
-    assertcnt $nrecs
+    assertcnt t1 $nrecs
     do_verify
     mv insert.out insert2.out
 }

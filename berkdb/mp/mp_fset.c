@@ -92,10 +92,10 @@ __memp_fset(dbmfp, pgaddr, flags)
 
 	/* Convert the page address to a buffer header and hash bucket. */
 	bhp = (BH *)((u_int8_t *)pgaddr - SSZA(BH, buf));
-	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mf_offset, bhp->pgno);
+	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mpf, bhp->pgno);
 	c_mp = dbmp->reginfo[n_cache].primary;
 	hp = R_ADDR(&dbmp->reginfo[n_cache], c_mp->htab);
-	hp = &hp[NBUCKET(c_mp, bhp->mf_offset, bhp->pgno)];
+	hp = &hp[NBUCKET(c_mp, bhp->mpf, bhp->pgno)];
 
 	MUTEX_LOCK(dbenv, &hp->hash_mutex);
 

@@ -24,6 +24,8 @@
 #include "comdb2.h"
 #include "sql.h"
 #include "bdb_int.h"
+#include "md5.h"
+#include "tohex.h"
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -447,6 +449,54 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
      * sqlite3_result_error(context, "Interrupted", -1); */
   }
   sqlite3_result_int(context, i);
+}
+
+static void tableNamesFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  sqlite3 *db;
+  int wasPrepareOnly;
+  Parse sParse;
+  const char *zSql;
+  char *zErrMsg;
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
+  zSql = (const char *)sqlite3_value_text(argv[0]);
+  if( !zSql ) return;
+  db = sqlite3_context_db_handle(context);
+  wasPrepareOnly = (db->flags&SQLITE_PREPARE_ONLY)!=0;
+  db->flags |= SQLITE_PrepareOnly;
+  memset(&sParse, 0, sizeof(Parse));
+  sParse.db = db;
+  sParse.prepFlags = SQLITE_PREPARE_ONLY|SQLITE_PREPARE_SRCLIST_ONLY;
+  zErrMsg = 0;
+  if( sqlite3RunParser(&sParse, zSql, &zErrMsg) ){
+    if( zErrMsg ){
+      sqlite3_result_error(context, zErrMsg, -1);
+      sqlite3DbFree(db, zErrMsg);
+    }
+    goto done;
+  }else if( zErrMsg ){ /* TODO: Is this ever possible? */
+    sqlite3DbFree(db, zErrMsg);
+  }
+  if( sParse.nSrcListOnly>0 ){
+    StrAccum str;
+    int i;
+    sqlite3StrAccumInit(&str, db, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
+    for(i=0; i<sParse.nSrcListOnly; i++){
+      if( i>0 ) sqlite3_str_append(&str, " ", 1);
+      sqlite3_str_appendall(&str, sParse.azSrcListOnly[i]);
+    }
+    sqlite3_result_text(context, sqlite3StrAccumFinish(&str), -1, SQLITE_DYNAMIC);
+  }
+done:
+  if( !wasPrepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
+  if( sParse.pVdbe ){
+    sqlite3VdbeFinalize(sParse.pVdbe);
+    sParse.pVdbe = 0;
+  }
+  sqlite3ParserReset(&sParse);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -969,6 +1019,40 @@ static void comdb2StartTimeFunc(
   extern int gbl_starttime;
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
+}
+
+static void md5Func(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    const unsigned char *s;
+    MD5Context ctx = {0};
+    char checksum[16];
+    char out[33];
+    unsigned int len;
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_TEXT:
+            s = sqlite3_value_text(argv[0]);
+            len = strlen((char*) s);
+            break;
+
+        case SQLITE_BLOB:
+            s = sqlite3_value_blob(argv[0]);
+            len = sqlite3_value_bytes(argv[0]);
+            break;
+
+        default:
+            return;
+    }
+
+    MD5Init(&ctx);
+    MD5Update(&ctx, (unsigned char*) s, len);
+    MD5Final((unsigned char*) checksum, &ctx);
+    util_tohex(out, (char*) checksum, sizeof(checksum));
+    sqlite3_result_text(context, strdup(out), 32, free);
 }
 
 static void comdb2UserFunc(
@@ -2254,7 +2338,14 @@ static void groupConcatStep(
   if( pAccum ){
     sqlite3 *db = sqlite3_context_db_handle(context);
     int firstTerm = pAccum->mxAlloc==0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    struct sqlclntstate *clnt = get_sql_clnt();
+
+    pAccum->mxAlloc = (clnt && clnt->group_concat_mem_limit != 0) ?
+      clnt->group_concat_mem_limit : db->aLimit[SQLITE_LIMIT_LENGTH];
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pAccum->mxAlloc = db->aLimit[SQLITE_LIMIT_LENGTH];
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !firstTerm ){
       if( argc==2 ){
         zSep = (char*)sqlite3_value_text(argv[1]);
@@ -2268,6 +2359,14 @@ static void groupConcatStep(
     zVal = (char*)sqlite3_value_text(argv[0]);
     nVal = sqlite3_value_bytes(argv[0]);
     if( zVal ) sqlite3_str_append(pAccum, zVal, nVal);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    // NC: Attach an error message here as we do not want client to see the
+    // default error message 'transaction too big' emitted for ERR_TRAN_TOO_BIG,
+    // which SQLITE_TOOBIG later gets translated to.
+    if( clnt && pAccum->accError==SQLITE_TOOBIG ){
+      clnt->sqlite_errstr = "string or blob too big";
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 }
 #ifndef SQLITE_OMIT_WINDOWFUNC
@@ -2552,6 +2651,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(comdb2_extract_table_names,
+                                 1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(printf,            -1, 0, 0, printfFunc       ),
     FUNCTION(unicode,            1, 0, 0, unicodeFunc      ),
@@ -2623,6 +2724,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
+
+    FUNCTION(checksum_md5,          1, 0, 0, md5Func),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
