@@ -5846,7 +5846,15 @@ int sqlite3Select(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if (!gbl_legacy_column_name) {
+  u8 winInUse = 0;
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  if (p->pWin)
+    winInUse = 1;
+#endif /* SQLITE_OMIT_WINDOWFUNC */
+  /* If window function is in use, we don't honor gbl_legacy_column_name (
+   * as it's a new feature anyway).
+   */
+  if (winInUse || !gbl_legacy_column_name) {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pDest->eDest==SRT_Output ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
