@@ -1218,10 +1218,9 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
     logmsg(LOGMSG_USER, "total free pages: %" PRIu64 "\n", npages);
 }
 
-const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
+static const char *find_host_in_list(bdb_state_type *bdb_state, const char *host,
+                                     const char **hostlist, int nhosts) 
 {
-    int nhosts;
-    const char *hosts[REPMAX];
     size_t hlen = strlen(host);
     const char *fnd = NULL;
     int multiple = 0;
@@ -1234,21 +1233,36 @@ const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
     if (strncmp(me, host, hlen) == 0 && (me[hlen] == '.' || me[hlen] == 0))
         fnd = me;
 
-    nhosts = net_get_all_nodes(bdb_state->repinfo->netinfo, hosts);
     for (int i = 0; i < nhosts; i++) {
-        if (strncmp(hosts[i], host, hlen) == 0 &&
-            (hosts[i][hlen] == '.' || hosts[i][hlen] == 0)) {
+        if (strncmp(hostlist[i], host, hlen) == 0 &&
+            (hostlist[i][hlen] == '.' || hostlist[i][hlen] == 0)) {
             if (fnd) {
                 if (!multiple)
                     logmsg(LOGMSG_ERROR, "host matches multiple machines:\n");
                 multiple = 1;
-                logmsg(LOGMSG_ERROR, "   %s\n", hosts[i]);
+                logmsg(LOGMSG_ERROR, "   %s\n", hostlist[i]);
             } else
-                fnd = hosts[i];
+                fnd = hostlist[i];
         }
     }
     if (multiple)
         fnd = NULL;
+    return fnd;
+}
+
+extern netinfo_type *osql_get_netinfo(void);
+const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
+{
+    int nhosts;
+    const char *hosts[REPMAX];
+    const char *fnd = NULL;
+
+    nhosts = net_get_all_nodes(bdb_state->repinfo->netinfo, hosts);
+    fnd = find_host_in_list(bdb_state, host, hosts, nhosts);
+    if (fnd == NULL) {
+        nhosts = net_get_all_nodes(osql_get_netinfo(), hosts);
+        fnd = find_host_in_list(bdb_state, host, hosts, nhosts);
+    }
 
     return fnd;
 }
