@@ -326,8 +326,6 @@ extern size_t gbl_max_inmem_array_size;
 
 int gbl_page_order_table_scan = 0;
 
-extern int gbl_reorder_idx_writes;
-
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

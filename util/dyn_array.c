@@ -24,14 +24,15 @@
 #include "temptable.h"
 #include "ix_return_codes.h"
 
+#define MAX_ARR_SZ 1024*2024
 size_t gbl_max_inmem_array_size = MAX_ARR_SZ;
 
 
 static int
 dyn_array_keyval_cmpr_asc(const void *p1, const void *p2, void *p3)
 {
-    const key_val_t *kv1 = p1;
-    const key_val_t *kv2 = p2;
+    const kv_info_t *kv1 = p1;
+    const kv_info_t *kv2 = p2;
     dyn_array_t *arr = p3;
     char *buffer = arr->buffer;
     int res = 0;
@@ -100,7 +101,7 @@ int dyn_array_sort(dyn_array_t *arr)
         return 0; // nothing to sort
     }
 
-    qsort_r(arr->kv, arr->items, sizeof(key_val_t), dyn_array_keyval_cmpr_asc, arr);
+    qsort_r(arr->kv, arr->items, sizeof(kv_info_t), dyn_array_keyval_cmpr_asc, arr);
     return 0;
 }
 
@@ -127,7 +128,7 @@ static inline void transfer_to_temp_table(dyn_array_t *arr)
     for (int i = 0; i < arr->items; i++) {
         //logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
         char *buffer = arr->buffer;
-        key_val_t *kv = &arr->kv[i];
+        kv_info_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
         void *data = &buffer[kv->data_start];
         printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
@@ -164,7 +165,7 @@ static inline int do_transfer(dyn_array_t *arr)
 }
 
 
-/* a dynamic array element consists of a key_val_t element which
+/* a dynamic array element consists of a kv_info_t element which
  * stores the key length and start position in the buffer array
  * and data length and start position in the buffer array 
  * (start position is redundant because it is = key_start + key_len)
@@ -219,7 +220,7 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
     char *buffer = arr->buffer;
     void *keyloc = &buffer[arr->buffer_curr_offset];
     memcpy(keyloc, key, keylen);
-    key_val_t *kv = &arr->kv[arr->items++];
+    kv_info_t *kv = &arr->kv[arr->items++];
     kv->key_start = arr->buffer_curr_offset;
     kv->key_len = keylen;
     arr->buffer_curr_offset += keylen;
@@ -259,7 +260,7 @@ void dyn_array_dump(dyn_array_t *arr)
     for (int i = 0; i < arr->items; i++) {
         //logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
         char *buffer = arr->buffer;
-        key_val_t *kv = &arr->kv[i];
+        kv_info_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
         void hexdump(loglvl lvl, const char *key, int keylen);
         hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
@@ -303,7 +304,7 @@ void dyn_array_get_key(dyn_array_t *arr, void **key)
     if (arr->cursor >= arr->items) 
         abort();
     char *buffer = arr->buffer;
-    key_val_t *tmp = &arr->kv[arr->cursor];
+    kv_info_t *tmp = &arr->kv[arr->cursor];
     *key = &buffer[tmp->key_start];
 }
 
@@ -319,7 +320,7 @@ void dyn_array_get_kv(dyn_array_t *arr, void **key, void **data, int *datalen)
     if (arr->cursor >= arr->items) 
         abort();
     char *buffer = arr->buffer;
-    key_val_t *tmp = &arr->kv[arr->cursor];
+    kv_info_t *tmp = &arr->kv[arr->cursor];
     *key = &buffer[tmp->key_start];
     *datalen = tmp->data_len;
     if(tmp->data_len > 0)
