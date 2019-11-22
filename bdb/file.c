@@ -7088,6 +7088,9 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
     char tmpname[PATH_MAX];
     struct stat st;
+
+    assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
+
     snprintf(tmpname, sizeof(tmpname), "%s/%s.queuedb", bdb_state->dir,
              bdb_state->name);
     int rc = stat(tmpname, &st);

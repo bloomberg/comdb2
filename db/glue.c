@@ -5330,42 +5330,10 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size_analyze(struct dbtable *db)
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
 {
     int ii;
-    uint64_t returnsize;
-    returnsize = db->totalsize = 0;
-
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
-        for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
-            db->totalsize += db->ixsizes[ii];
-        }
-
-        returnsize = db->totalsize;
-
-        db->dtasize = bdb_data_size(db->handle, 0);
-        db->totalsize += db->dtasize;
-
-        for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
-            db->totalsize += db->blobsizes[ii];
-        }
-    } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUE) {
-        returnsize = db->totalsize =
-            bdb_queue_size(db->handle, &db->numextents);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
-                __func__, db->dbtype);
-    }
-
-    return returnsize;
-}
-
-uint64_t calc_table_size(struct dbtable *db)
-{
-    int ii;
+    uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
@@ -5377,6 +5345,7 @@ uint64_t calc_table_size(struct dbtable *db)
 
         db->dtasize = bdb_data_size(db->handle, 0);
         db->totalsize += db->dtasize;
+        size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
             db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
@@ -5389,7 +5358,10 @@ uint64_t calc_table_size(struct dbtable *db)
                 __func__, db->dbtype);
     }
 
-    return db->totalsize;
+    if (skip_blobs)
+        return size_without_blobs;
+    else
+        return db->totalsize;
 }
 
 void compr_print_stats()
