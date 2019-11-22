@@ -689,7 +689,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
         }
         UNLOCK(&lock);
     }
-    if (comdb2_ipc_sndbak) {
+    if (comdb2_ipc_sndbak && curswap) {
         /* curswap is just a pointer to the buffer */
         int *ibuf = (int *)curswap;
         ibuf += 2;
@@ -802,22 +802,17 @@ int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
 
-static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
-                     uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
-                     char *frommach, int frompid, char *fromtask, int qtype,
-                     void *data_hndl, int luxref, unsigned long long rqid,
-                     void *p_sinfo, intptr_t curswap)
+static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                            uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                            char *frommach, int frompid, char *fromtask,
+                            int qtype, void *data_hndl, int luxref,
+                            unsigned long long rqid, void *p_sinfo,
+                            intptr_t curswap)
 {
     struct req_hdr hdr;
     uint64_t nowus;
 
     nowus = comdb2_time_epochus();
-
-    if (iq == 0) {
-        errUNLOCK(&lock);
-        logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
-        return reterr(curswap, /*thd*/ 0, /*iq*/ 0, ERR_INTERNAL);
-    }
 
     /* set up request */
     const size_t len = sizeof(*iq) - offsetof(struct ireq, region3);
@@ -850,9 +845,8 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->curswap = curswap;
 
     if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
-        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
-        return reterr(curswap, /*thd*/ 0, iq, ERR_BADREQ);
+        return ERR_BADREQ;
     }
 
     iq->opcode = hdr.opcode;
@@ -887,15 +881,6 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->sorese.osqllog = NULL;
     iq->luxref = luxref;
 
-#if 0
-    Pulled this one out of init_req, it only adds to the confusion
-    This code was only triggered by create_ireq,i.e. create_sorese_ireq, called by sorese_rcvreq
-    when a new sorese request is received. 
-
-    if(qtype==REQ_OFFLOAD) {
-    }
-#endif
-
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_mynode)
             snprintf(iq->corigin, sizeof(iq->corigin), "SLCL  %.8s PID %6.6d",
@@ -906,10 +891,9 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     }
 
     if (luxref < 0 || luxref >= dbenv->num_dbs) {
-        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
-        return reterr(curswap, /*thd*/ 0, iq, ERR_REJECTED);
+        return ERR_REJECTED;
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
@@ -917,8 +901,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
     if (db_is_stopped()) {
-        errUNLOCK(&lock);
-        return reterr(curswap, NULL, iq, ERR_REJECTED);
+        return ERR_REJECTED;
     }
 
     if (gbl_debug_verify_tran)
@@ -954,21 +937,29 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         debug = 1;
     }
 
-    /* allocate a request for later dispatch to available thread */
 
-    Pthread_mutex_lock(&lock);
     if (iq == NULL) {
-        iq = (struct ireq *)pool_getablk(p_reqs);
 #if 0
         fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
 
-        rc = init_ireq(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
-                       frommach, frompid, fromtask, qtype, data_hndl, luxref,
-                       rqid, p_sinfo, curswap);
+        /* allocate a request for later dispatch to available thread */
+        LOCK(&lock)
+        {
+            iq = (struct ireq *)pool_getablk(p_reqs);
+        }
+        UNLOCK(&lock);
+        if (!iq) {
+            logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
+            return reterr(0, 0, iq, ERR_INTERNAL);
+        }
+
+        rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
+                              frommach, frompid, fromtask, qtype, data_hndl,
+                              luxref, rqid, p_sinfo, curswap);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
-            return rc;
+            return reterr(curswap, /*thd*/ 0, iq, rc);
         }
     } else {
 #if 0
@@ -976,6 +967,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 #endif
     }
 
+    Pthread_mutex_lock(&lock);
     {
         ++handled_queue;
 
@@ -1207,18 +1199,22 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         iq = (struct ireq *)pool_getablk(p_reqs);
     }
     UNLOCK(&lock);
-
 #if 0
     fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-    if (iq == NULL) {
+
+    if (!iq) {
+        reterr(0, 0, iq, ERR_INTERNAL);
         logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
-    }
-    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
-                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
-    if (rc)
-        /* init_ireq unlocks on error */
         return NULL;
+    }
+
+    rc = init_ireq_legacy(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
+                          NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    if (rc) {
+        reterr(0, /*thd*/ 0, iq, rc);
+        return NULL;
+    }
 
     iq->sorese = *sorese;
     iq->is_sorese = 1;
