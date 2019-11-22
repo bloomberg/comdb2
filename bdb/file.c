@@ -7092,7 +7092,7 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
              bdb_state->name);
     int rc = stat(tmpname, &st);
     if (rc) {
-        fprintf(stderr, "stat(%s) rc %d\n", tmpname, rc);
+        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
         return 0;
     }
     return st.st_size;
