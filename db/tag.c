@@ -185,7 +185,9 @@ void add_tag_schema(const char *table, struct schema *schema)
     }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
-
+#if defined STACK_TAG_SCHEMA
+    comdb2_cheap_stack_one_line(__func__, __LINE__, schema->tag, NULL);
+#endif
     unlock_taglock();
 }
 
@@ -204,6 +206,9 @@ void del_tag_schema(const char *table, const char *tagname)
         comdb2_cheap_stack_one_line(__func__, __LINE__, table, NULL);
 #endif
         hash_del(tag->tags, sc);
+#if defined STACK_TAG_SCHEMA
+        comdb2_cheap_stack_one_line(__func__, __LINE__, tagname, NULL);
+#endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
             free(sc->datacopy);
@@ -1430,10 +1435,16 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     if (old) {
         listc_rfl(&tag->taglist, old);
         hash_del(tag->tags, old);
+#if defined STACK_TAG_SCHEMA
+        comdb2_cheap_stack_one_line(__func__, __LINE__, sc->tag, NULL);
+#endif
         freeschema(old);
     }
 
     hash_add(tag->tags, sc);
+#if defined STACK_TAG_SCHEMA
+    comdb2_cheap_stack_one_line(__func__, __LINE__, sc->tag, NULL);
+#endif
     unlock_taglock();
 }
 
