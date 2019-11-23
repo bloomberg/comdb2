@@ -80,7 +80,8 @@ void analyze_set_headroom(uint64_t headroom)
 {
     if (headroom < 1 || 100 < headroom) {
         logmsg(LOGMSG_ERROR,
-               "Invalid headroom %lu. Needs to be between 0 and 100%%\n",
+               "Invalid headroom %" PRIu64
+               ". Needs to be between 0 and 100%%\n",
                headroom);
         return;
     }
@@ -259,6 +260,10 @@ err:
 int sampler_close(sampler_t *sampler)
 {
     int unused;
+
+    if (sampler == NULL)
+        return 0;
+
     (void)bdb_temp_table_close(sampler->bdb_state, sampler->tmptbl, &unused);
     free(sampler->data);
     free(sampler);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -530,10 +531,6 @@ function force_delay_master
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 3"
 }
 
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
 # Trap to errquit if the user presses Ctrl-C
 trap "errquit \"Cancelling test on INT EXIT\"" INT EXIT
 
@@ -724,7 +721,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t1.txt select_t1_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t1.txt select_t1_final.txt}' to see the error."
 
     exit 1
 
@@ -747,7 +744,7 @@ if [[ "0" != "$wr" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t2 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t2.txt select_t2_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t2.txt select_t2_final.txt}' to see the error."
 
     exit 1
 
@@ -770,7 +767,7 @@ if [[ "0" != "$wr" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t3 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff $(pwd)/{select_t3.txt select_t3_final.txt}' to see the error."
+    echo "Run 'diff ${PWD}/{select_t3.txt select_t3_final.txt}' to see the error."
 
     exit 1
 

@@ -1164,8 +1164,8 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     {
       sqlite3_stmt *pStmt = 0;
       while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
-        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
-               __FILE__, __LINE__, db, sqlite3_sql(pStmt));
+        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> %p {%s}\n",
+               __FILE__, __LINE__, db, pStmt, sqlite3_sql(pStmt));
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3462,22 +3462,8 @@ int sqlite3_open(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int rc;
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_start(void);
-  sqlite_init_start();
-#endif
-
-  rc = openDatabase(zFilename, ppDb,
+  return openDatabase(zFilename, ppDb,
                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0, thd);
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_end(void);
-  sqlite_init_end();
-#endif
-
-  return rc;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return openDatabase(zFilename, ppDb,
                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0);

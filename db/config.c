@@ -47,6 +47,9 @@ extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
+extern int gbl_fingerprint_max_queries;
+
+int gbl_disable_access_controls;
 
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
@@ -73,6 +76,7 @@ static struct option long_options[] = {
     {"dir", required_argument, NULL, 0},
     {"tunable", required_argument, NULL, 0},
     {"version", no_argument, NULL, 'v'},
+    {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text = {
@@ -92,6 +96,7 @@ static const char *help_text = {
     "        --tunable                  override tunable\n"
     "        --help                     displays this help text and exit\n"
     "        --version                  displays version information and exit\n"
+    "        --insecure                 disable access controls\n"
     "\n"
     "        NAME                       database name\n"
     "        LRLFILE                    lrl configuration file\n"
@@ -307,57 +312,61 @@ void clear_deferred_options(void)
     }
 }
 
-static char *legacy_options[] = {"disallow write from beta if prod",
-                                 "noblobstripe",
-                                 "nullsort high",
-                                 "dont_sort_nulls_with_header",
-                                 "nochecksums",
-                                 "off fix_cstr",
-                                 "no_null_blob_fix",
-                                 "no_static_tag_blob_fix",
-                                 "dont_forbid_ulonglong",
-                                 "dont_init_with_ondisk_header",
-                                 "dont_init_with_instant_schema_change",
-                                 "dont_init_with_inplace_updates",
-                                 "dont_prefix_foreign_keys",
-                                 "dont_superset_foreign_keys",
-                                 "disable_inplace_blobs",
-                                 "disable_inplace_blob_optimization",
-                                 "disable_osql_blob_optimization",
-                                 "nocrc32c",
-                                 "enable_tagged_api",
-                                 "nokeycompr",
-                                 "norcache",
-                                 "usenames",
-                                 "setattr DIRECTIO 0",
-                                 "berkattr elect_highest_committed_gen 0",
-                                 "unnatural_types 1",
-                                 "enable_sql_stmt_caching none",
-                                 "on accept_on_child_nets",
-                                 "env_messages",
-                                 "off return_long_column_names",
-                                 "ddl_cascade_drop 0",
-                                 "setattr NET_SEND_GBLCONTEXT 1",
-                                 "setattr ENABLE_SEQNUM_GENERATIONS 0",
-                                 "setattr MASTER_LEASE 0",
-                                 "setattr SC_DONE_SAME_TRAN 0",
-                                 "logmsg notimestamp",
-                                 "queuedb_genid_filename off",
-                                 "decoupled_logputs off",
-                                 "init_with_time_based_genids",
-                                 "logmsg level info",
-                                 "logput window 1",
-                                 "osql_send_startgen off",
-                                 "create_default_user",
-                                 "allow_negative_column_size",
-                                 "osql_check_replicant_numops off",
-                                 "reorder_socksql_no_deadlock off",
-                                 "disable_tpsc_tblvers",
-                                 "on disable_etc_services_lookup",
-                                 "off osql_odh_blob",
-                                 "legacy_schema on",
-                                 "online_recovery off",
-                                 "clean_exit_on_sigterm off"};
+static char *legacy_options[] = {
+    "allow_negative_column_size",
+    "berkattr elect_highest_committed_gen 0",
+    "clean_exit_on_sigterm off",
+    "create_default_user",
+    "ddl_cascade_drop 0",
+    "decoupled_logputs off",
+    "disable_inplace_blob_optimization",
+    "disable_inplace_blobs",
+    "disable_osql_blob_optimization",
+    "disable_tpsc_tblvers",
+    "disallow write from beta if prod",
+    "dont_forbid_ulonglong",
+    "dont_init_with_inplace_updates",
+    "dont_init_with_instant_schema_change",
+    "dont_init_with_ondisk_header",
+    "dont_prefix_foreign_keys",
+    "dont_sort_nulls_with_header",
+    "dont_superset_foreign_keys",
+    "enable_sql_stmt_caching none",
+    "enable_tagged_api",
+    "env_messages",
+    "init_with_time_based_genids",
+    "legacy_schema on",
+    "logmsg level info",
+    "logmsg notimestamp",
+    "logmsg skiplevel",
+    "logput window 1",
+    "noblobstripe",
+    "nochecksums",
+    "nocrc32c",
+    "nokeycompr",
+    "no_null_blob_fix",
+    "norcache",
+    "no_static_tag_blob_fix",
+    "nullfkey off",
+    "nullsort high",
+    "off fix_cstr",
+    "off osql_odh_blob",
+    "off return_long_column_names",
+    "on accept_on_child_nets",
+    "on disable_etc_services_lookup",
+    "online_recovery off",
+    "osql_check_replicant_numops off",
+    "osql_send_startgen off",
+    "queuedb_genid_filename off",
+    "reorder_socksql_no_deadlock off",
+    "setattr DIRECTIO 0",
+    "setattr ENABLE_SEQNUM_GENERATIONS 0",
+    "setattr MASTER_LEASE 0",
+    "setattr NET_SEND_GBLCONTEXT 1",
+    "setattr SC_DONE_SAME_TRAN 0",
+    "unnatural_types 1",
+    "usenames",
+};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -721,7 +730,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
                     logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %lu)\n", ltok,
+                           "host %.*s name too long (expected < %zu)\n", ltok,
                            tok, sizeof(nodename));
                     return -1;
                 }
@@ -1120,54 +1129,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         }
     } else if (lrltokignore(tok, ltok) == 0) {
         /* ignore this line */
-    } else if (tokcmp(tok, ltok, "sql_tranlevel_default") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Need to specify default type for sql_tranlevel_default\n");
-            return -1;
-        }
-        if (ltok == 6 && !strncasecmp(tok, "comdb2", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_COMDB2;
-            logmsg(LOGMSG_INFO, "sql default mode is comdb2\n");
-
-        } else if (ltok == 5 && !strncasecmp(tok, "block", 5)) {
-            gbl_sql_tranlevel_default = (gbl_upgrade_blocksql_2_socksql)
-                                            ? SQL_TDEF_SOCK
-                                            : SQL_TDEF_BLOCK;
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-        } else if ((ltok == 9 && !strncasecmp(tok, "blocksock", 9)) ||
-                   tokcmp(tok, ltok, "default") == 0) {
-            gbl_upgrade_blocksql_2_socksql = 1;
-            if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
-                gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-            }
-            logmsg(LOGMSG_INFO, "sql default mode is %s\n",
-                   (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
-                                                                : "blocksql");
-            gbl_use_block_mode_status_code = 0;
-        } else if (ltok == 5 && !strncasecmp(tok, "recom", 5)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-            logmsg(LOGMSG_INFO, "sql default mode is read committed\n");
-
-        } else if (ltok == 8 && !strncasecmp(tok, "snapshot", 8)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-            logmsg(LOGMSG_INFO, "sql default mode is snapshot isolation\n");
-
-        } else if (ltok == 6 && !strncasecmp(tok, "serial", 6)) {
-            gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
-            logmsg(LOGMSG_INFO, "sql default mode is serializable\n");
-
-        } else {
-            logmsg(LOGMSG_ERROR,
-                   "The default sql mode \"%s\" is not supported, "
-                   "defaulting to socksql\n",
-                   tok);
-            gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
-        }
-        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     } else if (tokcmp(tok, ltok, "proxy") == 0) {
         char *proxy_line;
         tok = segline(line, len, &st, &ltok);
@@ -1287,6 +1248,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         cdb2_hndl_tp *hndl;
         /* replicate_from <db_name> [dbs to query] */
+        if (gbl_exit)
+            return -1;
+
         if (gbl_is_physical_replicant) {
             logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
                                  "can only replicate from a single source\n");
@@ -1350,6 +1314,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                gbl_deferred_phys_update);
         free(wait);
 
+    } else if (tokcmp(tok, ltok, "max_query_fingerprints") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected max query fingerprints\n");
+            return -1;
+        }
+        gbl_fingerprint_max_queries = toknum(tok, ltok);
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;

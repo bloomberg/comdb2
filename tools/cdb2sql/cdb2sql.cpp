@@ -167,36 +167,26 @@ static const char *usage_text =
     "@strblobs            Display blobs as strings\n"
     "@time                Toggle between time modes\n";
 
-void cdb2sql_usage(int exit_val)
+void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
 const char *level_one_words[] = {
-  "@",
-  "ALTER", "ANALYZE",
-  "BEGIN",
-  "COMMIT",
-  "CREATE",
-  "DELETE", "DROP", "DRYRUN",
-  "EXEC", "EXPLAIN",
-  "INSERT",
-  "PUT",
-  "REBUILD",
-  "ROLLBACK",
-  "SELECT", "SELECTV", "SET",
-  "TRUNCATE",
-  "UPDATE",
-  "WITH", NULL,  // must be terminated by NULL
+    "@",        "ALTER",  "ANALYZE", "BEGIN",   "COMMIT",   "CREATE", "DELETE",
+    "DROP",     "DRYRUN", "EXEC",    "EXPLAIN", "INSERT",   "PUT",    "REBUILD",
+    "ROLLBACK", "SELECT", "SELECTV", "SET",     "TRUNCATE", "UPDATE", "WITH",
+    NULL,  // must be terminated by NULL
 };
 
 const char *char_atglyph_words[] = {
-    "cdb2_close", "desc",     "hexblobs", "ls", "redirect", "row_sleep",
-    "send",       "strblobs", "time",     NULL, // must be terminated by NULL
+    "bind", "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
+    "row_sleep",  "send", "strblobs", "time",
+    NULL,  // must be terminated by NULL
 };
 
-static char *char_atglyph_generator(const char *text, int state)
+static char *char_atglyph_generator(const char *text, const int state)
 {
     static int list_index, len;
     const char *name;
@@ -213,8 +203,12 @@ static char *char_atglyph_generator(const char *text, int state)
     return (NULL); // If no names matched, then return NULL.
 }
 
-// Generator function for word completion.
-static char *level_one_generator(const char *text, int state)
+/* Generator function for word completion.
+ * NB: this is called by rl_completion_matches() over and over again
+ * with state 0 or 1 depending on if it is the first time or subsequent times:
+ *   list_index is set to 0 the first time and incremented on subsequent calls
+ */
+static char *level_one_generator(const char *text, const int state)
 {
     static int list_index, len;
     const char *name;
@@ -224,14 +218,33 @@ static char *level_one_generator(const char *text, int state)
     }
     while ((name = level_one_words[list_index]) != NULL) {
         list_index++;
-        if (len == 0 || strncasecmp (name, text, len) == 0) {
-            return strdup (name);
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
         }
     }
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *db_generator(int state, const char *sql)
+
+const char *ls_words[] = { "tables", "systables", "views", NULL};
+static char *ls_generator(const char *text, const int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the length of text
+        list_index = 0;
+        len = strlen (text);
+    }
+    while ((name = ls_words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
+        }
+    }
+    return (NULL); // If no names matched, then return NULL.
+}
+
+static char *db_generator(const int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -312,7 +325,7 @@ static char *db_generator(int state, const char *sql)
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *tunables_generator(const char *text, int state)
+static char *tunables_generator(const char *text, const int state)
 {
     char sql[256];
     if (*text)
@@ -327,7 +340,22 @@ static char *tunables_generator(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator_no_systables(const char *text, int state)
+static char *tables_generator(const char *text, const int state)
+{
+    char sql[256];
+    if (*text)
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+                "SELECT tablename FROM comdb2_tables "
+                "WHERE tablename LIKE '%s%%'",
+                text);
+    else
+        snprintf(sql, sizeof(sql), "SELECT tablename FROM comdb2_tables");
+
+    return db_generator(state, sql);
+}
+
+static char *generic_generator_no_systables(const char *text, const int state)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -338,7 +366,7 @@ static char *generic_generator_no_systables(const char *text, int state)
     return db_generator(state, sql);
 }
 
-static char *generic_generator(const char *text, int state)
+static char *generic_generator(const char *text, const int state)
 {
     char sql[256];
     //TODO: escape text
@@ -387,11 +415,15 @@ static char **my_completion (const char *text, int start, int end)
     }
 
     // TODO: Detect if we are in multiline
+    
+    static char *(*generator)(const char *text, const int state) = NULL;
+
     if (endptr == bgn) { // we were in the middle of the first word
         if (*bgn == '@')
-            return rl_completion_matches(text, &char_atglyph_generator);
+            generator = &char_atglyph_generator;
         else
-            return rl_completion_matches(text, &level_one_generator);
+            generator = &level_one_generator;
+        return rl_completion_matches(text, generator);
     }
 
     // endptr points to a space, find end of previous word
@@ -405,11 +437,17 @@ static char **my_completion (const char *text, int start, int end)
     lastw++;
 
     if (strncasecmp(lastw, "TUNABLE", sizeof("TUNABLE") - 1) == 0)
-        return rl_completion_matches(text, &tunables_generator);
+        generator = &tunables_generator;
     else if (strncasecmp(lastw, "FROM", sizeof("FROM") - 1) == 0)
-        return rl_completion_matches(text, &generic_generator);
+        generator = &generic_generator;
+    else if (strncasecmp(lastw, "ls", sizeof("ls") - 1) == 0)
+        generator = &ls_generator;
+    else if (strncasecmp(lastw, "desc", sizeof("desc") - 1) == 0)
+        generator = &tables_generator;
     else
-        return rl_completion_matches(text, &generic_generator_no_systables);
+        generator = &generic_generator_no_systables;
+
+    return rl_completion_matches(text, generator);
 }
 
 static bool skip_history(const char *line)
@@ -520,6 +558,7 @@ int fromhex(uint8_t *out, const uint8_t *in, size_t len)
     }
     return 0;
 }
+
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
@@ -1188,7 +1227,7 @@ int process_bind(const char *sql)
 
     if (debug_trace)
         fprintf(stderr, "binding: type %d, param %s, value %s\n", type,
-                parameter, value);
+                parameter, sql /* sql now points to the actual value. */);
     if (isdigit(parameter[0])) {
         int index = atoi(parameter);
         if (index <= 0)
@@ -1208,7 +1247,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int ncols;
     int col;
     FILE *out = stdout;
-    char cmd[60];
     int startms = now_ms();
 
     if (printmode & DISP_STDERR)
@@ -1258,43 +1296,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
             if (rc) {
                 fprintf(stderr, "failed to run set getcost 1\n");
                 return 1;
-            }
-        }
-
-        /*
-          Check and set user and password if they have been specified using
-          the environment variables.
-
-          Note: It is good to report the user about the use of environment
-          variables to set user/password to avoid any surprises.
-        */
-        if (getenv("COMDB2_USER")) {
-            int length = snprintf(cmd, sizeof(cmd), "set user %s",
-                                  getenv("COMDB2_USER"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_USER too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set user using COMDB2_USER, "
-                                "exiting\n");
-                return 1;
-            } else {
-                printf("Set user using COMDB2_USER\n");
-            }
-        }
-
-        if (getenv("COMDB2_PASSWORD")) {
-            int length = snprintf(cmd, sizeof(cmd), "set password %s",
-                                  getenv("COMDB2_PASSWORD"));
-            if (length >= sizeof(cmd)) {
-                fprintf(stderr, "COMDB2_PASSWORD too long, ignored\n");
-            } else if ((length < 0) ||
-                       ((cdb2_run_statement(cdb2h, cmd)) != 0)) {
-                fprintf(stderr, "Failed to set password using "
-                                "COMDB2_PASSWORD, exiting\n");
-                return 1;
-            } else {
-                printf("Set password using COMDB2_PASSWORD\n");
             }
         }
     }

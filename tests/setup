@@ -146,7 +146,10 @@ setup_db() {
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    echo "logmsg level debug" >> ${LRL}
+    if [[ -z $SKIPDEBUG ]] ; then
+        echo "logmsg level debug" >> ${LRL}
+    fi
+    echo "eventlog_nkeep 0" >> ${LRL}
 
     if [[ -f lrl ]]; then
         cat lrl >> ${LRL}
@@ -198,6 +201,11 @@ setup_db() {
         table=${csc2%%.csc2}
         cp $PWD/$csc2 $DBDIR/
     done >> ${LRL}
+
+    mkdir -p $DBDIR/rulesets
+    for ruleset in $(ls *.ruleset 2>/dev/null); do
+        cp $PWD/$ruleset $DBDIR/rulesets/
+    done
 
     mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
     cd $DBDIR >/dev/null

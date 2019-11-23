@@ -122,3 +122,19 @@ select name, csc2 from sqlite_master where name = "s"
 select "drop self-referenced table"
 drop table s
 select name, csc2 from sqlite_master where name = "s"
+
+select "tests for nullfkey (enabled by default)";
+create table t1(i int unique)$$
+create table t2(i int unique, foreign key (i) references t1(i))$$
+# the following insert must fail
+insert into t2 values(1);
+insert into t1 values(1);
+insert into t2 values(1);
+# the following delete must fail
+delete from t1 where i=1;
+insert into t2 values(null);
+insert into t1 values(null);
+select * from t1 order by i;
+select * from t2 order by i;
+drop table t2;
+drop table t1;

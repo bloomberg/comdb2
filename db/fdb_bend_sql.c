@@ -61,7 +61,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
        dispatch the sql
        NOTE: this waits for statement termination
     */
-    rc = dispatch_sql_query(clnt);
+    rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
 
     return rc;
 }
@@ -824,6 +824,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_inserted++;
+    clnt->nrows++;
 
 done:
 
@@ -872,6 +873,7 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_deleted++;
+    clnt->nrows++;
 
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
@@ -961,6 +963,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_updated++;
+    clnt->nrows++;
 
 done:
 

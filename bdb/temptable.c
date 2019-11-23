@@ -84,7 +84,7 @@ struct hashobj {
     unsigned char data[/*len*/];
 };
 
-int gbl_temptable_count;
+uint32_t gbl_temptable_count;
 
 static char *get_stack_backtrace(void)
 {
@@ -481,6 +481,12 @@ done:
     return rc;
 }
 
+static void bdb_temp_table_reset(struct temp_table *tbl)
+{
+    tbl->rowid = 0;
+    tbl->num_mem_entries = 0;
+}
+
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
                                        struct temp_table *tbl, int *bdberr)
 {
@@ -529,10 +535,8 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     }
 
     tbl->tmpdb = db;
-    /* Start with rowid 2 */
-    tbl->rowid = 2;
 
-    tbl->num_mem_entries = 0;
+    bdb_temp_table_reset(tbl);
 
 done:
     return rc;
@@ -636,7 +640,7 @@ done:
 #endif
     ++gbl_temptable_created;
 
-    if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
+    if (tbl != NULL) ATOMIC_ADD32(gbl_temptable_count, 1);
 
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
@@ -1368,7 +1372,8 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
     rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &dbcur, 0);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "bdb_temp_table_init_temp_db couldnt get cursor\n");
+        logmsg(LOGMSG_FATAL,
+               "bdb_temp_table_truncate_temp_db couldnt get cursor\n");
         exit(1);
     }
 
@@ -1517,7 +1522,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
             bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
             bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
             bdb_state->temp_stats->st_pages += tmp->st_pages;
-            ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty,
+            ATOMIC_ADD32(bdb_state->temp_stats->st_page_dirty,
                        tmp->st_page_dirty);
             bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
             bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
@@ -1541,6 +1546,8 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
     }
+
+    bdb_temp_table_reset(tbl);
 
     if (gbl_temptable_pool_capacity > 0) {
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
@@ -1610,7 +1617,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         bdb_state->temp_stats->st_rw_evict_skip += tmp->st_rw_evict_skip;
         bdb_state->temp_stats->st_page_trickle += tmp->st_page_trickle;
         bdb_state->temp_stats->st_pages += tmp->st_pages;
-        ATOMIC_ADD(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
+        ATOMIC_ADD32(bdb_state->temp_stats->st_page_dirty, tmp->st_page_dirty);
         bdb_state->temp_stats->st_page_clean += tmp->st_page_clean;
         bdb_state->temp_stats->st_hash_buckets += tmp->st_hash_buckets;
         bdb_state->temp_stats->st_hash_searches += tmp->st_hash_searches;
@@ -1687,7 +1694,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 #endif
 
     if (rc == 0) {
-        ATOMIC_ADD(gbl_temptable_count, -1);
+        ATOMIC_ADD32(gbl_temptable_count, -1);
     } else {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close(%p) rc %d\n",
                __func__, tbl, rc);
@@ -2186,7 +2193,8 @@ inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cu
     return -1;
 }
 
-void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
+void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur,
+                               int level)
 {
     int rc = 0;
     int bdberr = 0;
@@ -2196,7 +2204,7 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
     int dtasize_sd;
     char *dta_sd;
 
-    logmsg(LOGMSG_USER, "TMPTABLE:\n");
+    logmsg(level, "TMPTABLE:\n");
     rc = bdb_temp_table_first(bdb_state, cur, &bdberr);
     while (!rc) {
 
@@ -2205,11 +2213,11 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
         dta_sd = bdb_temp_table_data(cur);
         dtasize_sd = bdb_temp_table_datasize(cur);
 
-        logmsg(LOGMSG_USER, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
-        hexdump(LOGMSG_USER, key_sd, keysize_sd);
-        logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-        hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
-        logmsg(LOGMSG_USER, "\"\n");
+        logmsg(level, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
+        hexdump(level, key_sd, keysize_sd);
+        logmsg(level, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
+        hexdump(level, dta_sd, dtasize_sd);
+        logmsg(level, "\"\n");
 
         rowid++;
 

@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -4288,7 +4287,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
         field_idx = field; /* find_field_idx_in_tag(from, to_field->name);*/
         from_field = &from->member[field_idx];
 
-        if (nulls && stype_is_null(inbuf + from_field->offset)) {
+        if (nulls && field_is_null(from, from_field, inbuf)) {
             *nulls = 1;
         }
 
@@ -5991,6 +5990,11 @@ int get_schema_blob_count(const char *table, const char *ctag)
     return sc->numblobs;
 }
 
+int get_numblobs(const dbtable *tbl)
+{
+    return tbl->schema->numblobs;
+}
+
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
 {
     int ii;
@@ -7127,6 +7131,8 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
     }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
     return 0;
 }
 
@@ -7424,7 +7430,8 @@ int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf,
 
     decimals = 0;
     for (i = 0; i < s->nmembers; i++) {
-        decimals++;
+        if (s->member[i].type == SERVER_DECIMAL)
+            decimals++;
     }
 
     if (outbuf && outlen && (outbuf_max < 4 * decimals)) {

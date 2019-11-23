@@ -1219,7 +1219,8 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
     out->file = file;
     out->func = func;
     out->line = line;
-    out->debug = 0;
+
+    out->debug = (debug_master_switch | debug_switches[find_switch_index(name)]);
 
 #ifdef PER_THREAD_MALLOC
     out->refs = 0;
@@ -2823,10 +2824,10 @@ int comdb2bma_mark_unlocked(comdb2bma ma)
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */
 /* blob allocator limit */
-size_t gbl_blobmem_cap = -1;
+size_t gbl_blobmem_cap = SIZE_MAX;
 /* blobs whose size are larger than the threshold are allocated by blob
  * allocator */
-unsigned gbl_blob_sz_thresh_bytes = -1;
+uint32_t gbl_blob_sz_thresh_bytes = UINT32_MAX;
 /* blob allocator */
 comdb2bma blobmem;
 /* } COMDB2 GLOBAL BLOB MEMORY ALLOCATOR */

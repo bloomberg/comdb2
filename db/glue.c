@@ -20,7 +20,6 @@
    This is because the transaction needs to abort, and start over again.
    non-transactional can retry within glue code.
 */
-#include "limit_fortify.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -710,13 +709,15 @@ int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 {
     db_seqnum_type seqnum;
+    int rc = -1;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
 
-    bdb_get_myseqnum(bdb_handle, (void *)&seqnum);
-
-    return trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
-                                     0 /*adaptive*/, &seqnum);
+    if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
+        rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
+                                       0 /*adaptive*/, &seqnum);
+    }
+    return rc;
 }
 
 int trans_commit_logical_tran(void *trans, int *bdberr)
@@ -938,12 +939,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_addk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -992,12 +987,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED) {
-        if (iq->debug)
-            reqprintf(iq, "upd_key: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1030,11 +1019,6 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 {
     int rc, bdberr;
     void *bdb_handle;
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_delk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1446,12 +1430,6 @@ int ix_find_last_dup_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_last_dup_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = "bdb_fetch_lastdupe_recnum";
@@ -1493,12 +1471,6 @@ int ix_find_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_recnum";
@@ -1539,11 +1511,7 @@ int ix_next_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
+
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_next_recnum";
@@ -1595,12 +1563,6 @@ static int ix_find_int_ll(int auxdb, struct ireq *iq, int ixnum, void *key,
         args = &default_args;
     }
 
-    if (!auxdb && ixnum != -1 &&
-        (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "%s: ix %d read disabled", __func__, ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2327,13 +2289,6 @@ int ix_find_auxdb_by_key_tran(int auxdb, struct ireq *iq, void *key, int keylen,
     int bdberr;
     char *req;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[index] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_auxdb_by_key_tran: ix %d read disabled",
-                      index);
-        return ERR_INDEX_DISABLED;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2387,11 +2342,6 @@ static int ix_next_int_ll(int auxdb, int lookahead, struct ireq *iq, int ixnum,
         args = &default_args;
     }
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2641,11 +2591,6 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
     void *curlast = last;
     int numskips = 0;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     iq->gluewhere = "ix_prev_blobs_auxdb";
     if (!bdb_handle)
@@ -2834,11 +2779,6 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_prev_recnum";
@@ -3180,176 +3120,6 @@ void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-/* yuk. */
-static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
-                                 char **table, char **csc2, char **fname,
-                                 char **aname)
-{
-    int tlen, flen;
-    char *dta = (char *)dtap;
-    char **fvar = NULL;
-    int offset;
-    int origlen;
-
-    *table = NULL;
-    *csc2 = NULL;
-    *fname = NULL;
-    *aname = NULL;
-
-    if (dtalen < 8) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    memcpy(&tlen, dta, sizeof(int));
-    memcpy(&flen, dta + sizeof(int), sizeof(int));
-
-    if (dtalen < 2 * sizeof(int) + tlen + flen) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    /* length of original data before I added the advisory file name */
-    origlen = 2 * sizeof(int) + tlen + flen;
-
-    if (flen > 0) {
-        offset = 2 * sizeof(int) + tlen;
-        if (flen >= 6 && memcmp(dta + offset, "<CSC2>", 6) == 0) {
-            flen -= 6;
-            offset += 6;
-            fvar = csc2;
-        } else {
-            fvar = fname;
-        }
-        *fvar = malloc(flen + 1);
-        if (!*fvar) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*fvar, dta + offset, flen);
-        (*fvar)[flen] = '\0';
-    }
-
-    *table = malloc(tlen + 1);
-    if (!*table) {
-        if (*fvar)
-            free(*fvar);
-        logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-    memcpy(*table, dta + 2 * sizeof(int), tlen);
-    (*table)[tlen] = '\0';
-
-    if (dtalen > origlen) {
-        /* the extra data is the advised file name. */
-        int anamelen = dtalen - origlen;
-        *aname = malloc(anamelen + 1);
-        if (!*aname) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            if (*fvar)
-                free(*fvar);
-            free(*table);
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*aname, dta + origlen, anamelen);
-        (*aname)[anamelen] = '\0';
-    }
-
-    return 0;
-}
-
-void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
-                        void *dtap, int dtalen)
-{
-    char *table;
-    char *csc2;
-    char *fname;
-    char *aname;
-    int rc;
-    int rc2;
-
-    rc = decode_schema_net_msg(hndl, dtap, dtalen, &table, &csc2, &fname,
-                               &aname);
-    if (rc != 0)
-        return;
-
-    if (fname || aname) {
-        logmsg(LOGMSG_ERROR, "%s: fname and aname no longer supported\n", __func__);
-
-        net_ack_message(hndl, 1);
-        if (table)
-            free(table);
-        if (csc2)
-            free(csc2);
-        if (fname)
-            free(fname);
-        if (aname)
-            free(aname);
-        return;
-    }
-
-    rc = reload_schema(table, csc2, NULL);
-
-    rc2 = create_sqlmaster_records(NULL);
-    if (rc2) {
-        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
-    }
-    create_sqlite_master(); /* create sql statements */
-
-    net_ack_message(hndl, rc || rc2);
-
-    if (table)
-        free(table);
-    if (csc2)
-        free(csc2);
-}
-
-void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
-                  void *dtap, int dtalen)
-{
-    int len, free_handle;
-    char table[MAXTABLELEN];
-    char *dta = (char *)dtap;
-    struct dbtable *db;
-    int bdberr;
-
-    memset(table, 0, sizeof(table));
-    if (dtalen < 2 * sizeof(int)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(&len, dta, sizeof(int));
-    if (dtalen < 2 * sizeof(int) + len) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(table, dta + sizeof(int), len);
-    memcpy(&free_handle, dta + sizeof(int) + len, sizeof(int));
-    logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
-
-    db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
-    if (db == NULL) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    bdb_close_only(db->handle, &bdberr);
-    logmsg(LOGMSG_DEBUG, "net_close_db bdb_close_only %d\n", bdberr);
-    if (free_handle) {
-        bdb_free(db->handle, &bdberr);
-        db->handle = NULL;
-        logmsg(LOGMSG_DEBUG, "net_close_db bdb_free %d\n", bdberr);
-    }
-    if (net_ack_message(hndl, 0)) {
-        logmsg(LOGMSG_DEBUG, 
-               "net_close_db: Error sending back the acknoledgement\n");
-    }
-}
-
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
@@ -3416,34 +3186,6 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
-                                            char *fromnode, int usertype,
-                                            void *dtap, int dtalen,
-                                            uint8_t is_tcp)
-{
-    int rc;
-    struct net_morestripe_msg *msg;
-    msg = dtap;
-
-    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
-        logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
-                dtalen);
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    apply_new_stripe_settings(msg->newdtastripe, msg->newblobstripe);
-
-    rc = open_all_dbs();
-    if (rc != 0) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    fix_blobstripe_genids(NULL);
-    net_ack_message(hndl, 0);
-}
-
 void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
                    void *dtap, int dtalen, uint8_t is_tcp)
 {
@@ -3505,6 +3247,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
                       void *dtap, int dtalen, uint8_t is_tcp)
 {
+    /* TODO: Does nothing?  Refactor to remove it? */
 }
 
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
@@ -4479,10 +4222,10 @@ void backend_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %lu\n", hits);
-    logmsg(LOGMSG_USER, "misses      %lu\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %lu\n", reads);
-    logmsg(LOGMSG_USER, "page writes %lu\n", writes);
+    logmsg(LOGMSG_USER, "hits        %" PRIu64 "\n", hits);
+    logmsg(LOGMSG_USER, "misses      %" PRIu64 "\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %" PRIu64 "\n", reads);
+    logmsg(LOGMSG_USER, "page writes %" PRIu64 "\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else
@@ -5055,6 +4798,26 @@ void flush_db(void)
     bdb_flush(thedb->bdb_env, &rc);
 }
 
+void dump_cache(const char *file, int max_pages)
+{
+    bdb_dump_cache_to_file(thedb->bdb_env, file, max_pages);
+}
+
+void load_cache(const char *file)
+{
+    bdb_load_cache(thedb->bdb_env, file);
+}
+
+void load_cache_default(void)
+{
+    bdb_load_cache_default(thedb->bdb_env);
+}
+
+void dump_cache_default(void)
+{
+    bdb_dump_cache_default(thedb->bdb_env);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*          LITE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -5567,42 +5330,10 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size_analyze(struct dbtable *db)
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
 {
     int ii;
-    uint64_t returnsize;
-    returnsize = db->totalsize = 0;
-
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
-        for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
-            db->totalsize += db->ixsizes[ii];
-        }
-
-        returnsize = db->totalsize;
-
-        db->dtasize = bdb_data_size(db->handle, 0);
-        db->totalsize += db->dtasize;
-
-        for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
-            db->totalsize += db->blobsizes[ii];
-        }
-    } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUE) {
-        returnsize = db->totalsize =
-            bdb_queue_size(db->handle, &db->numextents);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
-                __func__, db->dbtype);
-    }
-
-    return returnsize;
-}
-
-uint64_t calc_table_size(struct dbtable *db)
-{
-    int ii;
+    uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
@@ -5614,6 +5345,7 @@ uint64_t calc_table_size(struct dbtable *db)
 
         db->dtasize = bdb_data_size(db->handle, 0);
         db->totalsize += db->dtasize;
+        size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
             db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
@@ -5626,7 +5358,10 @@ uint64_t calc_table_size(struct dbtable *db)
                 __func__, db->dbtype);
     }
 
-    return db->totalsize;
+    if (skip_blobs)
+        return size_without_blobs;
+    else
+        return db->totalsize;
 }
 
 void compr_print_stats()

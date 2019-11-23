@@ -357,7 +357,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
 int release_locks_int(const char *trace, const char *func, int line);
 
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
-                            int *dirty, enum log_ops log_op, int *bdberr)
+                            int *dirty, log_ops_t log_op, int *bdberr)
 {
     extern int gbl_sql_release_locks_in_update_shadows;
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
@@ -1012,4 +1012,28 @@ int bdb_osql_destroy(int *bdberr)
     rc = bdb_osql_log_repo_destroy(bdberr);
 
     return rc;
+}
+
+int bdb_osql_cursor_reset(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+    int rc = 0;
+    int bdberr = 0;
+
+    if (cur->skip) {
+        rc = bdb_temp_table_close_cursor(bdb_state, cur->skip, &bdberr);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: close cursor %d %d\n", __func__, rc,
+                   bdberr);
+        cur->skip = NULL;
+    }
+
+    return rc;
+}
+
+void bdb_osql_cursor_set(bdb_cursor_ifn_t *pcur_ifn, tran_type *shadow_tran)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+
+    cur->shadow_tran = shadow_tran;
 }

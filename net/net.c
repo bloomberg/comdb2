@@ -840,7 +840,8 @@ void print_netdelay(void)
     const char *status = "no";
     if (d && delay <= net_delay_max)
         status = "yes";
-    logmsg(LOGMSG_USER, "netdelay=> delay:%.1fms delayed:%lu delaying:%s\n", delay,
+    logmsg(LOGMSG_USER,
+           "netdelay=> delay:%.1fms delayed:%" PRIu64 " delaying:%s\n", delay,
            net_delayed, status);
 }
 
@@ -1389,7 +1390,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        int node = 0;
+        int node = machine_num(tmp_host_ptr->host);
         p_buf = buf_put(&node, sizeof(int), p_buf, p_buf_end);
     }
     /* write long hostnames */
@@ -1478,7 +1479,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
     /* fill in node numbers */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        int node = 0;
+        int node = machine_num(tmp_host_ptr->host);
         p_buf = buf_put(&node, sizeof(int), p_buf, p_buf_end);
     }
 
@@ -1604,9 +1605,9 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
         add_millisecs_to_timespec(&waittime, 1000);
 
         if (loops > 0) {
-            logmsg(LOGMSG_ERROR, "%s thread %lu waiting for net count to drop"
-                                 " to %u enqueued buffers or %lu bytes (%d "
-                                 "loops)\n",
+            logmsg(LOGMSG_ERROR,
+                   "%s thread %lu waiting for net count to drop"
+                   " to %u enqueued buffers or %" PRIu64 " bytes (%d loops)\n",
                    __func__, pthread_self(), queue_threshold, byte_threshold,
                    loops);
         }
@@ -2508,8 +2509,8 @@ void print_all_udp_stat(netinfo_type *netinfo_ptr)
         printf("node:%s port:%5d recv:%7llu sent:%7lu %s\n", ptr->host, port,
                recv, sent, print_addr(&sin, buf1));
 #else
-        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7lu %s\n", ptr->host, port,
-               sent, print_addr(&sin, buf1));
+        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7" PRIu64 " %s\n",
+               ptr->host, port, sent, print_addr(&sin, buf1));
 #endif
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -2538,8 +2539,9 @@ void print_node_udp_stat(char *prefix, netinfo_type *netinfo_ptr,
     struct in_addr addr = host_node_ptr->addr;
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
-    logmsg(LOGMSG_USER, "%snode:%s port:%5d recv:%7lu sent:%7lu [%s]\n", prefix,
-           host, port, recv, sent, inet_ntoa(addr));
+    logmsg(LOGMSG_USER,
+           "%snode:%s port:%5d recv:%7" PRIu64 " sent:%7" PRIu64 " [%s]\n",
+           prefix, host, port, recv, sent, inet_ntoa(addr));
 }
 
 ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
@@ -4475,23 +4477,23 @@ int net_check_bad_subnet_lk(int ii)
 
     if (!last_bad_subnet_time) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%" PRIu64 " %s Not set %d %s\n",
-                   pthread_self(), __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%p %s Not set %d %s\n", (void *)pthread_self(),
+                   __func__, ii, subnet_suffices[ii]);
         goto out;
     }
 
     if (last_bad_subnet_time + subnet_blackout_timems < comdb2_time_epochms()) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%" PRIu64 " %s Clearing out net %d %s\n",
-                   pthread_self(), __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%p %s Clearing out net %d %s\n",
+                   (void *)pthread_self(), __func__, ii, subnet_suffices[ii]);
         last_bad_subnet_time = 0;
         goto out;
     }
 
     if (ii == last_bad_subnet_idx) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%" PRIu64 " %s Bad net %d %s\n",
-                   pthread_self(), __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%p %s Bad net %d %s\n", (void *)pthread_self(),
+                   __func__, ii, subnet_suffices[ii]);
         rc = 1;
     }
 out:
@@ -4522,11 +4524,9 @@ void net_set_bad_subnet(const char *subnet)
             last_bad_subnet_time = comdb2_time_epochms();
             last_bad_subnet_idx = i;
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER,
-                       "%" PRIu64 " %s Marking %s bad, idx %d time %" PRId64
-                       "\n",
-                       pthread_self(), __func__, subnet_suffices[i],
-                       last_bad_subnet_idx, last_bad_subnet_time);
+                logmsg(LOGMSG_USER, "%p %s Marking %s bad, idx %d time %d\n",
+                       (void *)pthread_self(), __func__, subnet_suffices[i],
+                       last_bad_subnet_idx, (int)last_bad_subnet_time);
         }
     }
     Pthread_mutex_unlock(&subnet_mtx);
@@ -4546,8 +4546,9 @@ void net_clipper(const char *subnet, int is_disable)
             else
                 time(&now);
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n",
-                       pthread_self(), (is_disable) ? "Disabling" : "Enabling",
+                logmsg(LOGMSG_USER, "0x%p %s subnet %s time %ld\n",
+                       (void *)pthread_self(),
+                       (is_disable) ? "Disabling" : "Enabling",
                        subnet_suffices[i], now);
 
             if (is_disable == 0) {
@@ -4661,8 +4662,9 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                 continue;
         }
 
-        char *rephostname =
-            alloca(strlen(host_node_ptr->host) + strlen(subnet) + 1);
+        int loc_len = strlen(host_node_ptr->host) + strlen(subnet);
+        char tmp_hostname[loc_len + 1];
+        char *rephostname = tmp_hostname;
         strcpy(rephostname, host_node_ptr->host);
         if (subnet[0]) {
             strcat(rephostname, subnet);
@@ -4707,10 +4709,31 @@ int net_get_port_by_service(const char *dbname)
     return ntohs(port);
 }
 
+int gbl_waitalive_iterations = 3;
+
+void wait_alive(int fd)
+{
+    int iter = gbl_waitalive_iterations, i;
+    for (i = 0; i < iter; i++) {
+        int error = 0;
+        socklen_t len = sizeof(error);
+        int retval = getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len);
+        if (retval == 0 && error == 0) {
+            if (i > 0) {
+                logmsg(LOGMSG_ERROR, "%s returning after %d iterations %dms\n",
+                       __func__, i, i * 10);
+            }
+            return;
+        }
+        poll(NULL, 0, 10);
+    }
+}
+
 static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
+    socklen_t len;
     int fd;
     int rc;
     int flag = 1;
@@ -4718,8 +4741,6 @@ static void *connect_thread(void *arg)
 
     thread_started("connect thread");
     THREAD_TYPE(__func__);
-
-    int len;
 
     int flags;
     struct pollfd pfd;
@@ -4833,26 +4854,34 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
-#ifdef NODELAY
-        flag = 1;
-        rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        sizeof(int));
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on new fd %d: %d %s\n",
-                    __func__, fd, errno, strerror(errno));
-            exit(1);
-        }
+#if defined _SUN_SOURCE
+        wait_alive(fd);
 #endif
-        flag = 1;
-        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
-                        sizeof(int));
+
+        int on = 1;
+        len = sizeof(on);
+        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, 
-                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, fd, errno, strerror(errno));
-            exit(1);
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                   __func__, fd, errno, strerror(errno));
+
+            close(fd);
+            goto again;
         }
 
+#ifdef NODELAY
+        flag = 1;
+        len = sizeof(flag);
+        rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn off nagel on new fd %d: %d %s\n", __func__,
+                   fd, errno, strerror(errno));
+            close(fd);
+            goto again;
+        }
+#endif
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
         if (rc == -1 && errno == EINPROGRESS) {
             /*wait for connect event */
@@ -4916,7 +4945,7 @@ static void *connect_thread(void *arg)
         }
 
         len = sizeof(err);
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, (socklen_t *)&len)) {
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)) {
             logmsgperror("tcplib:lclconn:getsockopt");
 #ifndef _HP_SOURCE
             exit(1);
@@ -5093,13 +5122,9 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
 static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
-    size_t lcl_len = sizeof(lcl_addr_inet);
-
-    /* get local address of connection */
-    int ret =
-        getsockname(host_node_ptr->fd, (struct sockaddr_in *)&lcl_addr_inet,
-                    (socklen_t *)&lcl_len);
-    if (ret != 0) {
+    socklen_t lcl_len = sizeof(lcl_addr_inet);
+    if (getsockname(host_node_ptr->fd, (struct sockaddr *)&lcl_addr_inet,
+                    &lcl_len)) {
         logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
                host_node_ptr->fd);
         return 0;
@@ -5334,10 +5359,10 @@ static inline int findpeer(int fd, char *addr, int len)
 {
     int rc;
     struct sockaddr_in peeraddr;
-    int pl = sizeof(struct sockaddr_in);
+    socklen_t pl = sizeof(struct sockaddr_in);
 
     /* find peer ip */
-    rc = getpeername(fd, (struct sockaddr *)&peeraddr, (socklen_t *)&pl);
+    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &pl);
     if (rc) {
         snprintf(addr, len, "<unknown>");
         return -1;
@@ -5460,7 +5485,8 @@ static void *accept_thread(void *arg)
     connect_and_accept_t *ca;
     pthread_t tid;
     char paddr[64];
-    size_t clilen;
+    socklen_t clilen;
+    socklen_t len;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
@@ -5501,6 +5527,10 @@ static void *accept_thread(void *arg)
             listenfd = netinfo_ptr->myfd;
         else
             listenfd = netinfo_ptr->myfd = net_listen(netinfo_ptr->myport);
+        if (listenfd < 0) {
+            logmsg(LOGMSG_FATAL, "Could not get listenfd\n");
+            exit(1);
+        }
     }
 
     netinfo_ptr->accept_thread_created = 1;
@@ -5513,8 +5543,7 @@ static void *accept_thread(void *arg)
         if (portmux_fds) {
             new_fd = portmux_accept(portmux_fds, -1);
         } else {
-            new_fd = accept(listenfd, (struct sockaddr *)&cliaddr,
-                            (socklen_t *)&clilen);
+            new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
         }
         if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
             logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
@@ -5526,9 +5555,12 @@ static void *accept_thread(void *arg)
             continue;
         }
 
+#if defined _SUN_SOURCE
+        wait_alive(new_fd);
+#endif
+
         if(portmux_fds) {
-            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr,
-                             (socklen_t *)&clilen);
+            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
                        "Failed to get peer address, error: %d %s\n", errno,
@@ -5544,14 +5576,10 @@ static void *accept_thread(void *arg)
         }
 
 #ifdef NODELAY
-        /* We've seen unexplained EINVAL errors here.  Be extremely defensive
-         * and always reset flag to 1 before calling this function. */
         flag = 1;
-        rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                        sizeof(int));
-        /* Note: don't complain on EINVAL.  There's a legitimate condition where
-           the requester drops the socket according to manpages. */
-        if (rc != 0 && errno != EINVAL) {
+        len = sizeof(flag);
+        rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                     "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
                     "%s\n",
@@ -5561,41 +5589,47 @@ static void *accept_thread(void *arg)
         }
 #endif
 
-        flag = 1;
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&flag,
-                        sizeof(int));
+        int on = 1;
+        len = sizeof(on);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
+            close(new_fd);
+            continue;
         }
 
 #ifdef TCPBUFSZ
         tcpbfsz = (8 * 1024 * 1024);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz,
-                        sizeof(tcpbfsz));
+        len = sizeof(tcpbfsz);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
         if (rc < 0) {
-            logmsg(LOGMSG_FATAL, "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
+            close(new_fd);
+            continue;
         }
 
         tcpbfsz = (8 * 1024 * 1024);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz,
-                        sizeof(tcpbfsz));
+        len = sizeof(tcpbfsz);
+        rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
         if (rc < 0) {
-            logmsg(LOGMSG_FATAL, 
-                    "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
-            exit(1);
+            logmsg(LOGMSG_ERROR,
+                   "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
+                   __func__, new_fd, errno, strerror(errno));
+            close(new_fd);
+            continue;
         }
 #endif
 
 #ifdef NOLINGER
         linger_data.l_onoff = 0;
         linger_data.l_linger = 1;
+        len = sizeof(linger_data);
         if (setsockopt(new_fd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                       sizeof(linger_data)) != 0) {
+                       len) != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off linger on new_fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
             close(new_fd);
@@ -6624,8 +6658,8 @@ int net_listen(int port)
     int listenfd;
     int tcpbfsz;
     int reuse_addr;
+    socklen_t len;
     struct linger linger_data;
-    int keep_alive;
     int flag;
     int rc;
 
@@ -6643,10 +6677,13 @@ int net_listen(int port)
         return -1;
     }
 
+#if defined _SUN_SOURCE
+    wait_alive(listenfd);
+#endif
 #ifdef NODELAY
     flag = 1;
-    rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                    sizeof(int));
+    len = sizeof(flag);
+    rc = setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldnt turn off nagel on listenfd %d: %d %s\n",
                 __func__, listenfd, errno, strerror(errno));
@@ -6656,7 +6693,8 @@ int net_listen(int port)
 
 #ifdef TCPBUFSZ
     tcpbfsz = (8 * 1024 * 1024);
-    rc = setsockopt(listenfd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, sizeof(tcpbfsz));
+    len = sizeof(tcpbfsz);
+    rc = setsockopt(listenfd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, 
                 "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
@@ -6665,7 +6703,8 @@ int net_listen(int port)
     }
 
     tcpbfsz = (8 * 1024 * 1024);
-    rc = setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, sizeof(tcpbfsz));
+    len = sizeof(tcpbfsz);
+    rc = setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, 
                 "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
@@ -6676,8 +6715,9 @@ int net_listen(int port)
 
     /* allow reuse of local addresses */
     reuse_addr = 1;
+    len = sizeof(reuse_addr);
     if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse_addr,
-                   sizeof(reuse_addr)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set reuseaddr %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
@@ -6686,8 +6726,9 @@ int net_listen(int port)
 #ifdef NOLINGER
     linger_data.l_onoff = 0;
     linger_data.l_linger = 1;
+    len = sizeof(linger_data);
     if (setsockopt(listenfd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                   sizeof(linger_data)) != 0) {
+                   len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
@@ -6695,9 +6736,9 @@ int net_listen(int port)
 #endif
 
     /* enable keepalive timer. */
-    keep_alive = 1;
-    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive,
-                   sizeof(keep_alive)) != 0) {
+    int on = 1;
+    len = sizeof(on);
+    if (setsockopt(listenfd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len) != 0) {
         logmsg(LOGMSG_ERROR, "%s: coun't set keepalive %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;

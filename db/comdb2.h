@@ -34,7 +34,7 @@
 
 enum { IOTIMEOUTMS = 10000 };
 
-typedef struct dbtable dbtable;
+struct dbtable;
 struct consumer;
 struct thr_handle;
 struct reqlogger;
@@ -98,6 +98,7 @@ typedef long long tranid_t;
 #include <cdb2_constants.h>
 #include <schema_lk.h>
 #include "perf.h"
+#include "constraints.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -399,7 +400,6 @@ enum RCODES {
                 table */
     ERR_SC_COMMIT =
         314, /* schema change in its final stages; proxy should retry */
-    ERR_INDEX_DISABLED = 315, /* can't read from a disabled index */
     ERR_CONFIG_FAILED = 316,
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
@@ -407,6 +407,7 @@ enum RCODES {
     ERR_CHECK_CONSTRAINT = 320,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
+    ERR_QUERY_REJECTED = 451,
     ERR_INCOHERENT =
         996, /* prox2 understands it should retry another node for 996 */
     ERR_SQL_PREPARE = 1003,
@@ -489,9 +490,6 @@ enum {
     COMDB2_THR_EVENT_START_RDWR = 3
 };
 
-/* index disable flags */
-enum { INDEX_READ_DISABLED = 1, INDEX_WRITE_DISABLED = 2 };
-
 enum lclop {
     LCL_OP_ADD = 1,
     LCL_OP_DEL = 2,
@@ -540,6 +538,9 @@ struct rawnodestats {
     unsigned sql_rows;
 
     struct time_metric *svc_time; /* <-- offsetof */
+
+    pthread_mutex_t lk;
+    hash_t *fingerprints;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
@@ -579,33 +580,6 @@ struct sqlmdbrectype {
     int rootpage;
     char sql[876];
 };
-
-#define MAXREF 64
-
-typedef struct {
-    short dbnum;
-    short ixnum;
-} fk_ref_type;
-
-typedef struct {
-    short num;
-    fk_ref_type ref[MAXREF];
-} fk_ref_array_type;
-
-typedef struct {
-    struct dbtable *lcltable;
-    char *consname;
-    char *lclkeyname;
-    int nrules;
-    int flags;
-    char *table[MAXCONSTRAINTS];
-    char *keynm[MAXCONSTRAINTS];
-} constraint_t;
-
-typedef struct {
-    char *consname;
-    char *expr;
-} check_constraint_t;
 
 struct managed_component {
     int dbnum;
@@ -679,7 +653,6 @@ typedef struct dbtable {
     signed char ix_datacopy[MAXINDEX];
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
-    signed char ix_disabled[MAXINDEX];
 
     shard_limits_t *sharding;
 
@@ -794,9 +767,9 @@ typedef struct dbtable {
      * when behind the cursor.  This helps us know how many
      * records we've really done (since every update behind the cursor
      * effectively means we have to go back and do that record again). */
-    unsigned sc_adds;
-    unsigned sc_deletes;
-    unsigned sc_updates;
+    uint32_t sc_adds;
+    uint32_t sc_deletes;
+    uint32_t sc_updates;
 
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
@@ -1216,7 +1189,9 @@ typedef struct snap_uid {
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
+enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5) + 4 + 64 };
+
+BB_COMPILE_TIME_ASSERT(snap_uid_size, sizeof(snap_uid_t) == SNAP_UID_LENGTH);
 
 /*
    lrl tunables that control this:
@@ -1297,7 +1272,7 @@ struct ireq {
     uint8_t *p_buf_out;           /* pointer to current pos in output buf */
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
-    unsigned long long rqid;
+    unsigned long long fwd_tag_rqid;
     int frompid;
     int debug;
     int opcode;
@@ -1320,7 +1295,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
-    uint64_t startus; /*thread handling*/
+    uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
@@ -1680,7 +1655,7 @@ extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
 extern volatile int gbl_dbopen_gen;
-extern volatile int gbl_analyze_gen;
+extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 extern volatile int gbl_schema_change_in_progress;
 extern int gbl_sc_report_freq;
@@ -1728,6 +1703,7 @@ extern int gbl_pushlogs_after_sc;
 extern int gbl_prefault_verbose;
 extern int gbl_ftables;
 extern int gbl_check_client_tags;
+extern int gbl_strict_dbl_quotes;
 
 extern int gbl_max_tables_info;
 
@@ -2431,6 +2407,10 @@ int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
 int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
 
 void flush_db(void);
+void dump_cache(const char *file, int max_pages);
+void load_cache(const char *file);
+void load_cache_default(void);
+void dump_cache_default(void);
 int compare_all_tags(const char *table, FILE *out);
 int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
@@ -2610,8 +2590,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
 void upgrade_record_by_genid(struct dbtable *db, unsigned long long genid);
 void backend_thread_event(struct dbenv *dbenv, int event);
 void backend_cmd(struct dbenv *dbenv, char *line, int lline, int st);
-uint64_t calc_table_size(struct dbtable *db);
-uint64_t calc_table_size_analyze(struct dbtable *db);
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs);
 
 enum { WHOLE_BUFFER = -1 };
 
@@ -2872,6 +2851,7 @@ int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
 void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt);
+void reqlog_set_startprcs(struct reqlogger *logger, uint64_t start);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
@@ -2884,6 +2864,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
+uint64_t reqlog_get_queue_time(const struct reqlogger *logger);
 void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
@@ -2891,7 +2872,10 @@ void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
-int reqlog_get_error_code(struct reqlogger *logger);
+void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
+const char *reqlog_get_origin(const struct reqlogger *logger);
+int reqlog_get_retries(const struct reqlogger *logger);
+int reqlog_get_error_code(const struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
@@ -3378,8 +3362,6 @@ extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
-void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...);
-const char *reqlog_get_origin(struct reqlogger *logger);
 void berkdb_iopool_process_message(char *line, int lline, int st);
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
@@ -3598,6 +3580,9 @@ extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
+extern int gbl_prioritize_queries;
+extern int gbl_debug_force_thdpool_priority;
+extern int gbl_verbose_prioritize_queries;
 
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;
@@ -3645,4 +3630,6 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 #endif /* !INCLUDED_COMDB2_H */

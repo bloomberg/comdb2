@@ -1,0 +1,14 @@
+drop table if exists t
+create table t(i int)$$
+insert into t values(1)
+create procedure implicit_txn version 'sptest' {
+local function main()
+    -- delete rows twice
+    local stmt = db:prepare("delete from t")
+    stmt:exec()
+    stmt:exec()
+end
+}$$
+select count(*) from t
+exec procedure implicit_txn()
+select count(*) from t

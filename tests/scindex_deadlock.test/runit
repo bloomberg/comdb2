@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
 
@@ -14,11 +15,6 @@ function getmaster {
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 function do_verify
 {
@@ -29,21 +25,6 @@ function do_verify
 
     if ! grep succeeded verify.out > /dev/null ; then
         failexit "verify $tbl failed"
-    fi
-}
-
-function assertcnt 
-{
-    tbl=$1
-    target=$2
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count of $tbl is now $cnt but should be $target"
     fi
 }
 

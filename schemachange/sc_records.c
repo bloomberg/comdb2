@@ -37,43 +37,42 @@
 int gbl_logical_live_sc = 0;
 
 extern int gbl_partial_indexes;
-
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
-static inline void increase_max_threads(int *maxthreads, int sc_threads)
+static inline void increase_max_threads(uint32_t *maxthreads, int sc_threads)
 {
     if (*maxthreads >= sc_threads) return;
-    ATOMIC_ADD((*maxthreads), 1);
+    ATOMIC_ADD32_PTR(maxthreads, 1);
 }
 
 // Decrease max threads to do SC -- called when add_record gets an abort
 // Used to backoff SC by having fewer threads running, decreasing contention
 // We use atomic add here, since it may be called from multiple threads at once
 // We also make certain that maxthreads does not go less than 1
-static inline void decrease_max_threads(int *maxthreads)
+static inline void decrease_max_threads(uint32_t *maxthreads)
 {
     if (*maxthreads <= 1) return;
     /* ADDING -1 */
-    if (ATOMIC_ADD((*maxthreads), -1) < 1) XCHANGE((*maxthreads), 1);
+    if (ATOMIC_ADD32_PTR(maxthreads, -1) < 1) XCHANGE32((*maxthreads), 1);
 }
 
 // increment number of rebuild threads in use
 // if we are at capacity, then return 1 for failure
 // if we were successful we return 0
-static inline int use_rebuild_thr(int *thrcount, int *maxthreads)
+static inline int use_rebuild_thr(uint32_t *thrcount, uint32_t *maxthreads)
 {
     if (*thrcount >= *maxthreads) return 1;
-    ATOMIC_ADD((*thrcount), 1);
+    ATOMIC_ADD32_PTR(thrcount, 1);
     return 0;
 }
 
 // decrement number of rebuild threads in use
-static inline void release_rebuild_thr(int *thrcount)
+static inline void release_rebuild_thr(uint32_t *thrcount)
 {
     assert(*thrcount >= 1);
     /* ADDING -1 */
-    ATOMIC_ADD((*thrcount), -1);
+    ATOMIC_ADD32_PTR(thrcount, -1);
 }
 
 /* Return true if there were writes to table undergoing SC (data->from)
@@ -106,7 +105,7 @@ static inline void print_final_sc_stat(struct convert_record_data *data)
 static inline int print_aggregate_sc_stat(struct convert_record_data *data,
                                           int now, int sc_report_freq)
 {
-    int copy_total_lasttime = data->cmembers->total_lasttime;
+    uint32_t copy_total_lasttime = data->cmembers->total_lasttime;
 
     /* Do work without locking */
     if (now < copy_total_lasttime + sc_report_freq) return 0;
@@ -116,7 +115,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
      * to print. If it failed, another thread is doing that work.
      */
 
-    bool res = CAS(data->cmembers->total_lasttime, copy_total_lasttime, now);
+    bool res = CAS32(data->cmembers->total_lasttime, copy_total_lasttime, now);
     if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
@@ -150,7 +149,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
 
 static inline void lkcounter_check(struct convert_record_data *data, int now)
 {
-    int copy_lasttime = data->cmembers->lkcountercheck_lasttime;
+    uint32_t copy_lasttime = data->cmembers->lkcountercheck_lasttime;
     int lkcounter_freq = bdb_attr_get(data->from->dbenv->bdb_attr,
                                       BDB_ATTR_SC_CHECK_LOCKWAITS_SEC);
     /* Do work without locking */
@@ -160,15 +159,12 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      * if this thread successful in setting, it can continue
      * to adjust num threads. If it failed, another thread is doing that work.
      */
-    bool res = CAS(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
+    bool res = CAS32(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
     if (!res) return;
 
     /* check lock waits -- there is no way to differentiate lock waits because
-     * of
-     * writes, with the exception that if there were writes in the last n
-     * seconds
-     * we may have been slowing them down.
-     */
+     * of writes, with the exception that if there were writes in the last n
+     * seconds we may have been slowing them down.  */
 
     int64_t ndeadlocks = 0, nlockwaits = 0;
     bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, NULL, &nlockwaits, NULL);
@@ -178,11 +174,11 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
 
     data->cmembers->ndeadlocks = ndeadlocks;
     data->cmembers->nlockwaits = nlockwaits;
-    logmsg(
-        LOGMSG_DEBUG,
-        "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
-        __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
-        data->cmembers->thrcount);
+    logmsg(LOGMSG_DEBUG,
+           "%s: diff_deadlocks=%" PRId64 ", diff_lockwaits=%" PRId64
+           ", maxthr=%d, currthr=%d\n",
+           __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
+           data->cmembers->thrcount);
     increase_max_threads(
         &data->cmembers->maxthreads,
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
@@ -1098,7 +1094,7 @@ err:
 
     if (data->live) delay_sc_if_needed(data, &ss);
 
-    ATOMIC_ADD(data->from->sc_nrecs, 1);
+    ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
@@ -1247,7 +1243,6 @@ cleanup:
 
 cleanup_no_msg:
     convert_record_data_cleanup(data);
-
     if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     /* restore our  thread type to what it was before */
@@ -1761,7 +1756,7 @@ static int upgrade_records(struct convert_record_data *data)
         break;
     } // end of rc check
 
-    ATOMIC_ADD(data->from->sc_nrecs, 1);
+    ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
     data->sc_genids[data->stripe] = genid;
     now = comdb2_time_epoch();

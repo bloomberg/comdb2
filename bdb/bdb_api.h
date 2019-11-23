@@ -659,12 +659,9 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
 
 /* commit the transaction referenced by the tran handle.  return a
    seqnum that is guaranteed to be greater or equal to the seqnum
-   needed to have this commit reflected in your database */
-int bdb_tran_commit_with_seqnum(bdb_state_type *bdb_state, tran_type *tran,
-                                seqnum_type *seqnum, int *bdberr);
-
-/* same, but also return an estimate of the transaction size in unspecified
- * units */
+   needed to have this commit reflected in your database
+   also return an estimate of the transaction size in unspecified
+   units */
 int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
                                      seqnum_type *seqnum, uint64_t *out_txnsize,
                                      int *bdberr);
@@ -1035,6 +1032,19 @@ int bdb_rebuild_done(bdb_state_type *bdb_handle);
 
 /* force a flush to disk of all in memory stuff */
 int bdb_flush(bdb_state_type *bdb_handle, int *bdberr);
+
+/* Serialize cache to this file */
+int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
+                           int max_pages);
+
+/* Load from serialized cache */
+int bdb_load_cache(bdb_state_type *bdb_state, const char *file);
+
+/* Load default cache */
+int bdb_load_cache_default(bdb_state_type *bdb_state);
+
+/* Flush default cache */
+int bdb_dump_cache_default(bdb_state_type *bdb_state);
 
 /* force a flush to disk of all in memory stuff , but don't force a checkpoint
  */
@@ -1501,7 +1511,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
 
-int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
+int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
                                  void ***sc_data_out, int *num, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
@@ -1615,7 +1625,7 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long genid,
                     unsigned int host, int *bdberr);
 int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
-                    const char *table, unsigned long long *genid,
+                    const char *tablename, unsigned long long *genid,
                     unsigned int *host, int *bdberr);
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                        const char *table, int *bdberr);
@@ -1675,23 +1685,6 @@ int bdb_user_password_set(tran_type *, char *user, char *passwd);
 int bdb_user_password_check(char *user, char *passwd, int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
-
-int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
-    int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
-                            void *keyout, int *keysz),
-    int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
-                                   int bloboffs[16], int *nblobs),
-    int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver),
-    int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,
-                                    int blobno),
-    void (*free_blob_buffer_callback)(void *parm),
-    unsigned long long (*verify_indexes_callback)(void *parm, void *dta,
-                                                  void *blob_parm),
-    void *callback_parm, 
-    int (*lua_callback)(void *, const char *), void *lua_params, 
-    void *callback_blob_buf, int progress_report_seconds,
-    int attempt_fix);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
@@ -1814,7 +1807,7 @@ bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
 int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
                                  int trak, int *bdberr);
 
-void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
+int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
 
@@ -1996,6 +1989,9 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  */
 int bdb_table_version_select(const char *name, tran_type *tran,
                              unsigned long long *version, int *bdberr);
+int bdb_table_version_select_verbose(const char *name, tran_type *tran,
+                                     unsigned long long *version, int *bdberr,
+                                     int verbose);
 
 void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);
 /* get list of queues */

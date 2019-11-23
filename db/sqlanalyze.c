@@ -46,7 +46,7 @@ static int analyze_thread_memory = 1048576;
 extern void reset_aa_counter(char *tblname);
 
 /* global is-running flag */
-volatile int analyze_running_flag = 0;
+uint32_t analyze_running_flag = 0;
 static int analyze_abort_requested = 0;
 
 /* global enable / disable switch */
@@ -817,7 +817,7 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
     /* grab the size of the table */
-    int64_t totsiz = calc_table_size_analyze(tbl);
+    int64_t totsiz = calc_table_size(tbl, 1);
 
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);
@@ -1003,7 +1003,7 @@ static inline int check_stat1(SBUF2 *sb)
 static inline int set_analyze_running(SBUF2 *sb)
 {
     analyze_abort_requested = 0; 
-    int old = XCHANGE(analyze_running_flag, 1); // set analyze_running_flag
+    uint32_t old = XCHANGE32(analyze_running_flag, 1); // set analyze_running_flag
     if (1 == old) // analyze_running_flag was already 1, so bail out
     {
         sbuf2printf(sb, ">%s: analyze is already running\n", __func__);

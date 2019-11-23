@@ -2,17 +2,13 @@
 bash -n "$0" | exit 1
 
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 RESTART_DELAY=35
 INITNUMREC=100
 NUMREC=300
 
-# Debug variable
-debug=0
-
-dbnm=$1
-
-if [ "x$dbnm" == "x" ] ; then
+if [ "x${DBNAME}" == "x" ] ; then
     echo "need a DB name"
     exit 1
 fi
@@ -30,33 +26,16 @@ failexit()
     exit -1
 }
 
-
-assertcnt()
-{
-    target=$1
-    cnt=$(cdb2sql --tabs --host $node $dbnm "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
 assert_vers()
 {
     tbl=$1
     target=$2
-    newver=$(cdb2sql --tabs --host $node $dbnm "select table_version('$tbl')")
+    newver=$(cdb2sql --tabs --host $node ${DBNAME} "select table_version('$tbl')")
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
     tblver=$newver
 }
-
 
 assert_schema()
 {
@@ -64,10 +43,10 @@ assert_schema()
     schema=$2
 
     echo "make sure that the current schema is $schema"
-    cdb2sql --tabs --host $node $dbnm "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
+    cdb2sql --tabs --host $node ${DBNAME} "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
 
     if ! diff -Bw schema.out $schema ; then 
-        cdb2sql --tabs --host $node $dbnm 'select * from sqlite_master' > sqlite_master.out
+        cdb2sql --tabs --host $node ${DBNAME} 'select * from sqlite_master' > sqlite_master.out
         failexit "final schema is not same as $schema: diff schema.out $schema"
     fi
 }
@@ -82,7 +61,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql --host $node $dbnm "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        cdb2sql --host $node ${DBNAME} "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -123,7 +102,7 @@ insert_records_with_bind()
 @bind CDB2_CSTRING v_alltypes_decimal32 $((1-2*(j%2)))0000$j
 @bind CDB2_CSTRING v_alltypes_decimal64 $((1-2*(j%2)))0000000$j
 @bind CDB2_CSTRING v_alltypes_decimal128 $((1-2*(j%2)))000000000000000$j
-insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_cstring, alltypes_pstring, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql --host $node $dbnm - &>> $insfl
+insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_cstring, alltypes_pstring, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql --host $node ${DBNAME} - &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -144,7 +123,7 @@ update_records()
     echo "" > $updfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql --host $node $dbnm "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
+        cdb2sql --host $node ${DBNAME} "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -169,7 +148,7 @@ update_records_with_bind()
         echo "
 @bind CDB2_INTEGER v_alltypes_u_short $j
 @bind CDB2_INTEGER v_alltypes_int $jpone
-update t1 set alltypes_u_int=1+@v_alltypes_u_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql --host $node $dbnm - &>> $updfl
+update t1 set alltypes_u_int=1+@v_alltypes_u_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql --host $node ${DBNAME} - &>> $updfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -191,7 +170,7 @@ delete_records()
     echo "" > $delfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql --host $node $dbnm "delete from t1 where alltypes_u_short=$j"  &>> $delfl
+        cdb2sql --host $node ${DBNAME} "delete from t1 where alltypes_u_short=$j"  &>> $delfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -203,63 +182,63 @@ delete_records()
 }
 
 # Make sure we talk to the same host
-node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
+node=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "SELECT comdb2_host()"`
 export CDB2_HOST="$node"
 
 echo "Test with insert, SC should not fail"
 
-cdb2sql --host $node $dbnm "exec procedure sys.cmd.send('debg 0')"
-cdb2sql --host $node $dbnm "create table t1  { `cat alltypes.csc2 ` }"
+cdb2sql --host $node ${DBNAME} "exec procedure sys.cmd.send('debg 0')"
+cdb2sql --host $node ${DBNAME} "create table t1  { `cat alltypes.csc2 ` }"
 
-cdb2sql --host $node $dbnm "select * from t2"
+cdb2sql --host $node ${DBNAME} "select * from t2"
 
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 update_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt $INITNUMREC
+assertcnt t1 $INITNUMREC
 
 let NEWSTRT=$((INITNUMREC+1))
 insert_records_with_bind $NEWSTRT $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 #update_records_with_bind $NEWSTRT $NEWNUMREC
-#assertcnt $NEWNUMREC
+#assertcnt t1 $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSBUILDDIR}/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > cdb2api_caller.out
 
-cdb2sql --host $node $dbnm "select * from t1 order by alltypes_u_short" > orig.txt
+cdb2sql --host $node ${DBNAME} "select * from t1 order by alltypes_u_short" > orig.txt
 
 
-cluster=`cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+cluster=`cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
-cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("flush")'
-cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("reql events roll")'
+cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("flush")'
+cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("reql events roll")'
 
 set +e
 
-#cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("exit")'
+#cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("exit")'
 sleep 10
 
 if [ $node != `hostname` ] ; then
     ssh -o StrictHostKeyChecking=no $node "ls -ltr $TESTDIR/var/log/cdb2/ | grep events"
-    logfl=`ssh -o StrictHostKeyChecking=no $node "ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1"`
+    logfl=`ssh -o StrictHostKeyChecking=no $node "ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep ${DBNAME} | tail -1"`
     logfl=`ssh -o StrictHostKeyChecking=no $node "find $TESTDIR/var/log/cdb2/ | grep $logfl"`
     logflunziped=${node}.events.unzipped
     ssh -o StrictHostKeyChecking=no $node wc $logfl
     ssh -o StrictHostKeyChecking=no $node "zcat $logfl" > $logflunziped
 else
     ls -ltr $TESTDIR/var/log/cdb2/ | grep events
-    logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
+    logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep ${DBNAME} | tail -1`
     logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
     logflunziped=events.unzipped
     wc $logfl

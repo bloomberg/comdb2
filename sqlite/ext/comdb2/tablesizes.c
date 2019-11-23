@@ -123,7 +123,7 @@ static int systblTblSizeColumn(
       break;
     }
     case STTS_SIZE: {
-      calc_table_size(pDb);
+      calc_table_size(pDb, 0);
       sqlite3_result_int64(ctx, (sqlite3_int64)pDb->totalsize);
     }
   }

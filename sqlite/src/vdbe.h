@@ -208,7 +208,11 @@ typedef struct VdbeOpList VdbeOpList;
 ** Additional non-public SQLITE_PREPARE_* flags
 */
 #define SQLITE_PREPARE_SAVESQL  0x80  /* Preserve SQL text */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PREPARE_MASK     0x1f  /* Mask of public flags */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define SQLITE_PREPARE_MASK     0x0f  /* Mask of public flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Prototypes for the VDBE interface.  See comments on the implementation
@@ -300,7 +304,11 @@ u8 sqlite3VdbePrepareFlags(Vdbe*);
 void sqlite3VdbeSetSql(Vdbe*, const char *z, int n, u8);
 #ifdef SQLITE_ENABLE_NORMALIZE
 void sqlite3VdbeAddDblquoteStr(sqlite3*,Vdbe*,const char*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*,int);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeUsesDoubleQuotedString(Vdbe*,const char*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 void sqlite3VdbeSwap(Vdbe*,Vdbe*);
 VdbeOp *sqlite3VdbeTakeOpArray(Vdbe*, int*, int*);

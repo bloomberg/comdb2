@@ -39,6 +39,15 @@ extern int gbl_block_blockseq_poll;
 int osql_blkseq_init(void);
 
 /**
+ * Main function to do same as osql_blkseq_register snap_info was passed
+ * - check to see if the cnonce exists
+ * - if this is a replay, return OSQL_BLOCKSEQ_REPLAY
+ * - if this is NOT a replay, insert the seq and return OSQL_BLOCKSEQ_FIRST
+ *
+ */
+int osql_blkseq_register_cnonce(struct ireq *iq);
+
+/**
  * Main function
  * - check to see if the seq exists
  * - if this is a replay, return OSQL_BLOCKSEQ_REPLAY

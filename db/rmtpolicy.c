@@ -69,27 +69,10 @@ const char *get_mach_class_str(char *host)
     return mach_class_class2name(get_mach_class(host));
 }
 
-static int disable_rmt_dbupdates(const char *mach)
-{
-    enum mach_class rmtclass, myclass;
-
-    rmtclass = get_mach_class(mach);
-    myclass = get_my_mach_class();
-
-    if (rmtclass == CLASS_TEST && rmtclass != CLASS_BETA &&
-        myclass != CLASS_TEST)
-        return 1;
-    return 0;
-}
-
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 {
-
     enum mach_class rmtclass;
     int ix = nodeix(host);
-
-    if (disable_rmt_dbupdates(host))
-        return 0;
 
     if (btst(pol->explicit_disallow_machs, ix))
         return 0;
@@ -321,4 +304,34 @@ ignore:
 bad:
     logmsg(LOGMSG_ERROR, "bad command <%*.*s>\n", lline, lline, line);
     return -1;
+}
+
+void dump_policy_structure(const struct rmtpol *pol)
+{
+    logmsg(LOGMSG_USER, "Policy '%s'\n", pol->descr);
+    for (int i = 0; i < sizeof(pol->explicit_disallow_machs); i++) {
+        if (btst(pol->explicit_disallow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_disallow mach %d\n", i);
+    }
+    for (int i = 0; i < sizeof(pol->explicit_allow_machs); i++) {
+        if (btst(pol->explicit_allow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_allow mach %d\n", i);
+    }
+
+    int c = 0;
+    while (++c <= 6) { // start from dev
+        if (btst(&pol->explicit_disallow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_disallow class %s\n",
+                   mach_class_class2name(c));
+        if (btst(&pol->explicit_allow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_allow class %s\n",
+                   mach_class_class2name(c));
+    }
+}
+
+void dump_remote_policy()
+{
+    dump_policy_structure(&write_pol);
+    dump_policy_structure(&brd_pol);
+    dump_policy_structure(&cluster_pol);
 }

@@ -92,10 +92,10 @@ __memp_fset(dbmfp, pgaddr, flags)
 
 	/* Convert the page address to a buffer header and hash bucket. */
 	bhp = (BH *)((u_int8_t *)pgaddr - SSZA(BH, buf));
-	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mf_offset, bhp->pgno);
+	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mpf, bhp->pgno);
 	c_mp = dbmp->reginfo[n_cache].primary;
 	hp = R_ADDR(&dbmp->reginfo[n_cache], c_mp->htab);
-	hp = &hp[NBUCKET(c_mp, bhp->mf_offset, bhp->pgno)];
+	hp = &hp[NBUCKET(c_mp, bhp->mpf, bhp->pgno)];
 
 	MUTEX_LOCK(dbenv, &hp->hash_mutex);
 
@@ -103,13 +103,13 @@ __memp_fset(dbmfp, pgaddr, flags)
 	if (LF_ISSET(DB_MPOOL_CLEAN) &&
 	    F_ISSET(bhp, BH_DIRTY) && !F_ISSET(bhp, BH_DIRTY_CREATE)) {
 		DB_ASSERT(hp->hash_page_dirty != 0);
-		ATOMIC_ADD(hp->hash_page_dirty, -1);
-		ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
+		ATOMIC_ADD32(hp->hash_page_dirty, -1);
+		ATOMIC_ADD32(c_mp->stat.st_page_dirty, -1);
 		F_CLR(bhp, BH_DIRTY);
 	}
 	if (LF_ISSET(DB_MPOOL_DIRTY) && !F_ISSET(bhp, BH_DIRTY)) {
-		ATOMIC_ADD(hp->hash_page_dirty, 1);
-		ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
+		ATOMIC_ADD32(hp->hash_page_dirty, 1);
+		ATOMIC_ADD32(c_mp->stat.st_page_dirty, 1);
 		F_SET(bhp, BH_DIRTY);
 		/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
 		if (dbenv->tx_perfect_ckp)

@@ -3,25 +3,11 @@ bash -n "$0" | exit 1
 
 set -e
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 ################################################################################
-
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
-
-
-# debug=1
 
 # args
 dbnm=$1
-
 
 cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
 create table t1 {
@@ -86,6 +72,8 @@ wait
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select i as value from t1 order by i" > content1.out
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(1,499)' > content2.out
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(502,1000)' >> content2.out
+
+set +e
 
 if ! diff $PWD/{content1.out,content2.out} ; then 
     failexit "content not what it is supposed to be"

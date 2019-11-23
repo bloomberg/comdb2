@@ -19,3 +19,16 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'analyze t 100'
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select sample from sqlite_stat4' >stat4.actual
 
 diff stat4.actual stat4.expected
+
+# test analyze abort
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+# force random recover deadlock to slow down the analyze
+cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("random_lock_release_interval 100")'
+# analyze in the background
+cdb2sql $dbnm --host $host 'analyze t 100' &
+# wait for it to be dispatched
+sleep 2
+# abort
+cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("analyze abort")'
+
+wait

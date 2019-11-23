@@ -310,16 +310,11 @@ struct sqlite3_value {
   u8  eSubtype;       /* Subtype for this value */
   int n;              /* Number of characters in string value, excluding '\0' */
   char *z;            /* String or BLOB value */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3 *db;        /* The associated database connection */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* ShallowCopy only needs to copy the information above */
   char *zMalloc;      /* Space to hold MEM_Str or MEM_Blob if szMalloc>0 */
   int szMalloc;       /* Size of the zMalloc allocation */
   u32 uTemp;          /* Transient storage for serial_type in OP_MakeRecord */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   sqlite3 *db;        /* The associated database connection */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   void (*xDel)(void*);/* Destructor for Mem.z - only valid if MEM_Dyn */
 #ifdef SQLITE_DEBUG
   Mem *pScopyFrom;    /* This Mem is a shallow copy of pScopyFrom */
@@ -586,6 +581,9 @@ struct Vdbe {
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oeFlag;              /* ON CONFLICT action */
   u8 upsertIdx;           /* ON CONFLICT target */
+  i64 luaStartTime;       /* start time for Lua running a query */
+  i64 luaRows;            /* number of rows processed by Lua */
+  double luaSavedCost;    /* saved cost for this Lua thread */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

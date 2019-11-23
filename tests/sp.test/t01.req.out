@@ -362,16 +362,16 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (1=1)
 (out='Verify succeeded.')
 (2=2)
-(out='Usage: verify("<table>")')
-[exec procedure sys.cmd.verify()] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed.
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+[exec procedure sys.cmd.verify()] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (3=3)
-(out='Usage: verify("<table>")')
-[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed.
+(out='Usage: verify("<table>" [,"serial"|"parallel"|"data"|"blobs"|"indices",["verbose"]])')
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (4=4)
 [exec procedure sys.cmd.verify(\"nonexistent\")] failed with rc -3 bad argument -> \"nonexistent\")
 (5=5)
 (out='Table "nonexistent" does not exist.')
-[exec procedure sys.cmd.verify("nonexistent")] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed.
+[exec procedure sys.cmd.verify("nonexistent")] failed with rc -3 [sys.comdb_verify(tbl, mode, ver...]:2: Verify failed.
 (6=6)
 (version='sptest')
 (i=1, count(*)=20)
@@ -1781,6 +1781,5 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (exec_rc=23, prepare_rc=23, ddl='DROP LUA TRIGGER no_ddl_proc1')
 (exec_rc=23, prepare_rc=23, ddl='CREATE LUA CONSUMER no_ddl_proc1 ON (TABLE no_ddl_t1 FOR INSERT OF x)')
 (exec_rc=23, prepare_rc=23, ddl='DROP LUA CONSUMER no_ddl_proc1')
-(exec_rc=23, prepare_rc=23, ddl='DROP TIME PARTITION test_drop_tp')
 ($0='{"emoji":"hello world 😁"}')
 ($0='{"emoji":"hello world 😁"}')

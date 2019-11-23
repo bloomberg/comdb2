@@ -31,7 +31,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <berkdb/dbinc/queue.h>
 #include <limits.h>
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -131,6 +130,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "metrics.h"
 #include "time_accounting.h"
 #include <build/db.h>
+#include "comdb2_ruleset.h"
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -146,6 +146,7 @@ int gbl_sqlite_sortermult = 1;
 
 int gbl_sqlite_sorter_mem = 300 * 1024 * 1024; /* 300 meg */
 
+int gbl_strict_dbl_quotes = 0;
 int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
@@ -160,6 +161,7 @@ int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 extern int gbl_dump_fsql_response;
+struct ruleset *gbl_ruleset = NULL;
 
 void myctrace(const char *c) { ctrace("%s", c); }
 
@@ -249,7 +251,7 @@ int gbl_nice = 0;
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
 
-int gbl_nullfkey = 0;
+int gbl_nullfkey = 1;
 
 /* Default fast sql timeouts */
 int gbl_sqlwrtimeoutms = 10000;
@@ -337,6 +339,7 @@ int gbl_debug_verify_tran = 0;
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
+int gbl_debug_skip_constraintscheck_on_insert;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -350,16 +353,16 @@ int gbl_init_with_compr = BDB_COMPRESS_CRLE;
 int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;
 
-unsigned int gbl_nsql;
+uint32_t gbl_nsql;
 long long gbl_nsql_steps;
 
-unsigned int gbl_nnewsql;
+uint32_t gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
-unsigned int gbl_masterrejects = 0;
+uint32_t gbl_masterrejects = 0;
 
 volatile int gbl_dbopen_gen = 0;
-volatile int gbl_analyze_gen = 0;
+volatile uint32_t gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 
 int gbl_sqlhistsz = 25;
@@ -650,6 +653,7 @@ int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
 int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 
@@ -727,11 +731,13 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_prioritize_queries = 1;
 int gbl_verbose_normalized_queries = 0;
+int gbl_verbose_prioritize_queries = 0;
 int gbl_stable_rootpages_test = 0;
 
 /* Only allows the ability to enable: must be enabled on a session via 'set' */
-int gbl_allow_incoherent_sql = 1;
+int gbl_allow_incoherent_sql = 0;
 
 char *gbl_dbdir = NULL;
 static int gbl_backend_opened = 0;
@@ -748,9 +754,6 @@ double gbl_pg_compact_thresh = 0;
 int gbl_pg_compact_latency_ms = 0;
 int gbl_large_str_idx_find = 1;
 int gbl_abort_invalid_query_info_key;
-
-extern int gbl_allow_user_schema;
-extern int gbl_uses_password;
 
 extern int gbl_direct_count;
 extern int gbl_parallel_count;
@@ -791,6 +794,7 @@ inline int getkeyrecnums(const dbtable *tbl, int ixnum)
         return -1;
     return tbl->ix_recnums[ixnum] != 0;
 }
+
 inline int getkeysize(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -971,14 +975,13 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c\n",
                    ii, usedb->ix_keylen[ii],
                    (usedb->ix_dupes[ii] ? 'y' : 'n'),
                    (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'),
                    (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
-                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1325,8 +1328,7 @@ static void *purge_old_files_thread(void *arg)
     return NULL;
 }
 
-/* remove every file that contains ".csc2" anywhere in its name.
-   this should be safe */
+/* Remove all csc2 files */
 static int clear_csc2_files(void)
 {
     char path[PATH_MAX] = {0};
@@ -1348,9 +1350,9 @@ static int clear_csc2_files(void)
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
 
-            ptr = strstr(dp->d_name, ".csc2");
+            ptr = strrchr(dp->d_name, '.');
 
-            if (ptr) {
+            if (ptr && (strncmp(ptr, ".csc2", sizeof(".csc2")) == 0)) {
                 int rc;
                 snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);
@@ -2431,7 +2433,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
         }
 
         sbuf2printf(sbfile,
-                    "table %s %d\n\tdata files: %016llx\n\tblob files\n",
+                    "table %s %d\n\tdata files: %016" PRIx64 "\n\tblob files\n",
                     dbenv->dbs[i]->tablename, dbenv->dbs[i]->lrl,
                     flibc_htonll(version_num));
 
@@ -2449,7 +2451,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tblob num %d: %016llx\n", j,
+            sbuf2printf(sbfile, "\t\tblob num %d: %016" PRIx64 "\n", j,
                         flibc_htonll(version_num));
         }
 
@@ -2468,7 +2470,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                 goto done;
             }
 
-            sbuf2printf(sbfile, "\t\tindex num %d: %016llx\n", j,
+            sbuf2printf(sbfile, "\t\tindex num %d: %016" PRIx64 "\n", j,
                         flibc_htonll(version_num));
         }
     }
@@ -2512,12 +2514,12 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
+        logmsg(LOGMSG_INFO,
+               "table %s\n\tdata files: %016" PRIx64 "\n\tblob files\n",
                p_db->tablename, flibc_htonll(version_num));
     else
-        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
-               p_db->tablename,
-               (long long unsigned int)flibc_htonll(version_num));
+        ctrace("table %s\n\tdata files: %016" PRIx64 "\n\tblob files\n",
+               p_db->tablename, flibc_htonll(version_num));
 
     /* print the blobs' version numbers */
     for (i = 1; i <= p_db->numblobs; ++i) {
@@ -2536,11 +2538,11 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016" PRIx64 "\n", i,
                    flibc_htonll(version_num));
         else
-            ctrace("\t\tblob num %d: %016llx\n", i,
-                   (long long unsigned int)flibc_htonll(version_num));
+            ctrace("\t\tblob num %d: %016" PRIx64 "\n", i,
+                   flibc_htonll(version_num));
     }
 
     /* print the indicies' version numbers */
@@ -2562,11 +2564,11 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016" PRIx64 "\n", i,
                    flibc_htonll(version_num));
         else
-            ctrace("\t\tindex num %d: %016llx\n", i,
-                   (long long unsigned int)flibc_htonll(version_num));
+            ctrace("\t\tindex num %d: %016" PRIx64 "\n", i,
+                   flibc_htonll(version_num));
     }
 
     return 0;
@@ -3327,7 +3329,7 @@ static int create_db(char *dbname, char *dir) {
    int rc;
 
    char *fulldir;
-   fulldir = realpath(dir, NULL);
+   fulldir = comdb2_realpath(dir, NULL);
    if (fulldir == NULL) {
       rc = mkdir(dir, 0755);
       if (rc) {
@@ -3336,7 +3338,7 @@ static int create_db(char *dbname, char *dir) {
                strerror(errno));
          return -1;
       }
-      fulldir = realpath(dir, NULL);
+      fulldir = comdb2_realpath(dir, NULL);
       if (fulldir == NULL) {
          logmsg(LOGMSG_FATAL, "Can't figure out full path for %s\n", dir);
          return -1;
@@ -3504,7 +3506,7 @@ static int init(int argc, char **argv)
         }
 
         if (rc == 0 && (st.st_mode & S_IFDIR)) {
-            gbl_dbdir = realpath(".", NULL);
+            gbl_dbdir = comdb2_realpath(".", NULL);
         } else {
             /* can't access or can't find logs in current directory, assume db
              * isn't here */
@@ -4470,9 +4472,11 @@ void *statthd(void *p)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
                            (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %" PRIu64,
+                           diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %" PRIu64,
+                           diff_bpool_misses);
                 if (diff_conns)
                     logmsg(LOGMSG_USER, " connects %"PRId64, diff_conns);
                 if (diff_curr_conns)
@@ -4493,7 +4497,7 @@ void *statthd(void *p)
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
-            if ((thresh > 0) && (count == thresh)) { /* every thresh-seconds */
+            if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
                 diff_qtrap = nqtrap - last_report_nqtrap;
                 diff_fstrap = nfstrap - last_report_nfstrap;
@@ -4745,25 +4749,8 @@ void *statthd(void *p)
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
-            }
 
-            if (count % 60 == 0) {
-                /* dump here */
-                quantize_ctrace(q_min, "Tagged requests this minute");
-                quantize_clear(q_min);
-                quantize_ctrace(q_sql_min, "SQL requests this minute");
-                quantize_clear(q_sql_min);
-                quantize_ctrace(q_sql_steps_min, "SQL steps this minute");
-                quantize_clear(q_sql_steps_min);
-            }
-            if (count % 3600 == 0) {
-                /* dump here */
-                quantize_ctrace(q_hour, "Tagged requests this hour");
-                quantize_clear(q_hour);
-                quantize_ctrace(q_sql_hour, "SQL requests this hour");
-                quantize_clear(q_sql_hour);
-                quantize_ctrace(q_sql_steps_hour, "SQL steps this hour");
-                quantize_clear(q_sql_steps_hour);
+                dump_client_sql_data(statlogger, 1);
             }
         }
 
@@ -6051,9 +6038,14 @@ const char *comdb2_get_dbname(void)
     return thedb->envname;
 }
 
-int sc_ready(void)
+int backend_opened(void)
 {
     return gbl_backend_opened;
+}
+
+int sc_ready(void)
+{
+    return backend_opened();
 }
 
 static void create_service_file(const char *lrlname)

@@ -25,6 +25,7 @@
 #include <list.h>
 #include <plhash.h>
 #include <bpfunc.h>
+#include <compile_time_assert.h>
 
 #include <genid.h>
 #include <net_types.h>
@@ -533,14 +534,15 @@ static int destroy_tablecursor(bdb_state_type *bdb_env, struct temp_cursor *cur,
     if (cur) {
         rc = bdb_temp_table_close_cursor(bdb_env, cur, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to close cursor bdberr=%d\n", __func__,
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close cursor rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
     }
 
     if (tbl) {
         rc = bdb_temp_table_close(bdb_env, tbl->table, bdberr);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: fail to bdberr=%d\n", __func__, *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: fail to close tbl rc=%d bdberr=%d\n",
+                   __func__, rc, *bdberr);
 
         free(tbl);
     }
@@ -1646,6 +1648,7 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     return rc;
 }
 
+/* Think of this function as if it were called process_local_shadtbl_del */
 static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops)
 {
@@ -2668,12 +2671,6 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-#ifdef _AIX
-#pragma options align = packed
-#else
-#pragma pack(1)
-#endif
-
 typedef struct recgenid_key {
     int tablename_len;
     char tablename[MAXTABLELEN];
@@ -2681,15 +2678,12 @@ typedef struct recgenid_key {
     unsigned long long genid;
 } recgenid_key_t;
 
+BB_COMPILE_TIME_ASSERT(recgenid_key_size,
+                       sizeof(recgenid_key_t) == 4 + MAXTABLELEN + 4 + 8);
+
 #define RECGENID_KEY_PACKED_LEN(k)                                             \
     (sizeof((k).tablename_len) + (k).tablename_len +                           \
      sizeof((k).tableversion) + sizeof((k).genid))
-
-#ifdef _AIX
-#pragma options align = full
-#else
-#pragma pack() /* return to normal alignment */
-#endif
 
 static void *pack_recgenid_key(recgenid_key_t *key, uint8_t *buf, size_t len)
 {
@@ -3080,7 +3074,7 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 
     bpfunc_data = malloc(bpfunc_data_len);
     if (!bpfunc_data) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %ld\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu\n", __func__,
                bpfunc_data_len);
         return -1;
     }
@@ -3295,7 +3289,7 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
-    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+    return listc_empty(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
            !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl;
 }
 

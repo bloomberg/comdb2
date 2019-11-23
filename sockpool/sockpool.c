@@ -58,6 +58,7 @@
 #endif
 
 pthread_mutex_t sockpool_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_ready;
 
 /* This bit gets set by sockpool.tsk when it starts up to indicate that it is
  * available to receive sockets. */

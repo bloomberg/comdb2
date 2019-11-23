@@ -541,20 +541,7 @@ done_with_init:
 */
 int sqlite3Init(sqlite3 *db, char **pzErrMsg)
 {
-   int rc;
-
-#ifdef DEBUG_SQLITE_MEMORY
-   extern void sqlite_init_start(void);
-   sqlite_init_start();
-#endif
-
-   rc = sqlite3InitTable(db, pzErrMsg, NULL);
-
-#ifdef DEBUG_SQLITE_MEMORY
-   extern void sqlite_init_end(void);
-   sqlite_init_end();
-#endif
-   return rc;
+   return sqlite3InitTable(db, pzErrMsg, NULL);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -680,6 +667,15 @@ void sqlite3ParserReset(Parse *pParse){
   sqlite3 *db = pParse->db;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pParse->ast ) ast_destroy(&pParse->ast, db);
+  if( pParse->azSrcListOnly ){
+    int i;
+    for(i=0; i<pParse->nSrcListOnly; i++){
+      sqlite3DbFree(db, pParse->azSrcListOnly[i]);
+      pParse->azSrcListOnly[i] = 0;
+    }
+    sqlite3DbFree(db, pParse->azSrcListOnly);
+    pParse->azSrcListOnly = 0;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, pParse->aLabel);
   sqlite3ExprListDelete(db, pParse->pConstExpr);
@@ -716,7 +712,7 @@ static int sqlite3Prepare(
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sParse.prepare_only = isPrepareOnly;
+  sParse.prepFlags = prepFlags;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */

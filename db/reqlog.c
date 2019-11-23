@@ -73,6 +73,8 @@
 #include "eventlog.h"
 #include "reqlog_int.h"
 
+#include <tohex.h>
+
 /*
 ** ugh - constants are variable
 ** comdb2 assumption #define MAXNODES 32768
@@ -123,7 +125,7 @@ int sqldbgflag = 0;
 
 static void log_all_events(struct reqlogger *logger, struct output *out);
 
-void sltdbt_get_stats(int *n_reqs, int *l_reqs)
+inline void sltdbt_get_stats(int *n_reqs, int *l_reqs)
 {
     *n_reqs = norm_reqs;
     *l_reqs = long_reqs;
@@ -1446,6 +1448,7 @@ void reqlog_new_request(struct ireq *iq)
     }
 
     logger->startus = iq->nowus;
+    logger->startprcsus = logger->startus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
     if (iq->is_fromsocket) {
@@ -1456,13 +1459,18 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
+inline void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
 {
     if (sqlstmt) {
         if (logger->stmt) free(logger->stmt);
         logger->stmt = strdup(sqlstmt);
     }
     if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
+}
+
+inline void reqlog_set_startprcs(struct reqlogger *logger, uint64_t val)
+{
+    logger->startprcsus = val;
 }
 
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
@@ -1473,9 +1481,10 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = comdb2_time_epochus();
+    logger->startprcsus = logger->startus;
     reqlog_start_request(logger);
 
-    logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
+    logger->nsqlreqs = ATOMIC_LOAD32(gbl_nnewsql);
     if (sqlstmt)
         reqlog_set_sql(logger, sqlstmt);
 }
@@ -1559,7 +1568,8 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                     expanded_fp);
     }
 
-    dumpf(logger, out, " from %s rc %d\n", reqorigin(logger), logger->rc);
+    dumpf(logger, out, " rqid %s from %s rc %d\n", logger->id,
+          reqorigin(logger), logger->rc);
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1596,6 +1606,111 @@ static void log_header(struct reqlogger *logger, struct output *out,
     log_header_ll(logger, out);
     Pthread_mutex_unlock(&out->mutex);
     Pthread_mutex_unlock(&rules_mutex);
+}
+
+static void print_str(const char *data, int len, char *s, int n)
+{
+    int need = len + 3; // space for ''
+    if (n < need) {
+        int half = (n - 5) / 2; /* minus '..' and NUL */
+        snprintf(s, n, "'%.*s..%.*s'", half, data, half, data + len - half);
+    } else {
+        snprintf(s, n, "'%.*s'", len, data);
+    }
+}
+
+static void print_blob(const char *data, int len, char *s, int n)
+{
+    int need = (len * 2) + 4; // space for x''
+
+    if (n < need) {
+        int half = (n - 6) / 2; /* minus x'..' and NULL */
+        char buf0[half + 1], buf1[half + 1];
+        half /= 2;
+        util_tohex(buf0, data, half);
+        util_tohex(buf1, data + len - half, half);
+        snprintf(s, n, "x'%s..%s'", buf0, buf1);
+    } else {
+        char buf[len * 2 + 1];
+        util_tohex(buf, data, len);
+        snprintf(s, n, "x'%s'", buf);
+    }
+}
+
+static void print_ym(const intv_t *tv,  char *s, int n)
+{
+    const intv_ym_t *ym = &tv->u.ym;
+    snprintf(s, n, "%s%u-%2.2u", tv->sign == -1 ? "-" : "", ym->years, ym->months);
+}
+
+static void print_ds(const intv_t *tv, char *s, int n)
+{
+    const intv_ds_t *ds = &tv->u.ds;
+    snprintf(s, n, "%s%u %2.2u:%2.2u:%2.2u.%.*u", tv->sign == -1 ? "- " : "",
+             ds->days, ds->hours, ds->mins, ds->sec, ds->prec, ds->frac);
+}
+
+
+static void log_params(struct reqlogger *logger)
+{
+    struct sqlclntstate *clnt = logger->clnt;
+    int n = param_count(clnt);
+    if (n <= 0) return;
+    reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
+    struct param_data p = {0};
+    for (int i = 0; i < n; ++i) {
+        if (param_value(clnt, &p, i) != 0) {
+            continue;
+        }
+        int len;
+        char value[64];
+        char *type = CLIENT_TYPE_TO_STR(p.type);
+        if (p.null || p.type == COMDB2_NULL_TYPE) {
+            snprintf(value, sizeof(value), "null");
+        } else
+        switch (p.type) {
+        case CLIENT_UINT:
+        case CLIENT_INT:
+            snprintf(value, sizeof(value), "%"PRId64, p.u.i);
+            break;
+        case CLIENT_REAL:
+            snprintf(value, sizeof(value), "%f", p.u.r);
+            break;
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_VUTF8:
+            print_str(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_BYTEARRAY:
+        case CLIENT_BLOB:
+        case CLIENT_BLOB2:
+            print_blob(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_DATETIME:
+        case CLIENT_DATETIMEUS: {
+            dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
+            break; }
+        case CLIENT_INTVYM:
+            print_ym(&p.u.tv, value, sizeof(value));
+            break;
+        case CLIENT_INTVDS:
+        case CLIENT_INTVDSUS:
+            print_ds(&p.u.tv, value, sizeof(value));
+            break;
+        default:
+            value[0] = 0;
+            break;
+        }
+        if (p.pos)
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3d indx=%-16d value=%s", i,
+                        type, p.len, p.pos, value);
+        else
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3d name=%-16s value=%s", i,
+                        type, p.len, p.name, value);
+    }
 }
 
 static void log_all_events(struct reqlogger *logger, struct output *out)
@@ -1703,12 +1818,12 @@ static int indblrange(const struct dblrange *range, double value)
     }
 }
 
-void reqlog_set_cost(struct reqlogger *logger, double cost)
+inline void reqlog_set_cost(struct reqlogger *logger, double cost)
 {
     if (logger) logger->sqlcost = cost;
 }
 
-void reqlog_set_rows(struct reqlogger *logger, int rows)
+inline void reqlog_set_rows(struct reqlogger *logger, int rows)
 {
     if (logger) logger->sqlrows = rows;
 }
@@ -1718,7 +1833,7 @@ uint64_t reqlog_current_us(struct reqlogger *logger)
     return (comdb2_time_epochus() - logger->startus);
 }
 
-void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
+inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
 {
     if (idlen == sizeof(uuid_t))
         comdb2uuidstr(id, logger->id);
@@ -1767,7 +1882,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->rc = rc;
 
     logger->durationus =
-        (comdb2_time_epochus() - logger->startus) + logger->queuetimeus;
+        (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1895,6 +2010,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
 
     if (logger->durationus >= M2U(long_request_thresh)) {
+        if (logger->clnt) {
+            log_params(logger);
+        }
 
         log_header(logger, long_request_out, 1);
         long_reqs++;
@@ -1998,7 +2116,7 @@ int reqlog_truncate()
     return reqltruncate;
 }
 
-void reqlog_set_truncate(int val)
+inline void reqlog_set_truncate(int val)
 {
     reqltruncate = val;
     logmsg(LOGMSG_USER, "truncate %s\n", reqltruncate ? "enabled" : "disabled");
@@ -2022,6 +2140,11 @@ void init_clientstats_table()
 
 #define UNKNOWN_NAME "Unknown"
 #define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
+
+static int hash_free_element(void *elem, void *unused) {
+    free(elem);
+    return 0;
+}
 
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
@@ -2047,6 +2170,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
     memcpy(entry->mem + task_len, stack, stack_len);
     entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
     entry->node = node;
+    Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
     Pthread_rwlock_wrlock(&clientstats_lk);
     {
@@ -2094,6 +2218,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
+                    Pthread_mutex_destroy(&old_entry->rawtotals.lk);
+                    if (old_entry->rawtotals.fingerprints) {
+                        hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
+                        hash_free(old_entry->rawtotals.fingerprints);
+                    }
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
@@ -2678,22 +2807,27 @@ void reqlog_set_origin(struct reqlogger *logger, const char *fmt, ...)
     logger->origin[sizeof(logger->origin) - 1] = 0;
 }
 
-const char *reqlog_get_origin(struct reqlogger *logger)
+inline const char *reqlog_get_origin(const struct reqlogger *logger)
 {
     return logger->origin;
 }
 
-void reqlog_set_vreplays(struct reqlogger *logger, int replays)
+inline void reqlog_set_vreplays(struct reqlogger *logger, int replays)
 {
     if (logger) logger->vreplays = replays;
 }
 
-void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
+inline void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
+inline uint64_t reqlog_get_queue_time(const struct reqlogger *logger)
+{
+    return logger->queuetimeus;
+}
+
+inline void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
 {
     if (logger == NULL)
         return;
@@ -2712,7 +2846,7 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
 {
     logger->event_type = evtype;
 }
@@ -2727,30 +2861,189 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
     logger->sqltables[logger->ntables++] = strdup(table);
 }
 
-void reqlog_set_error(struct reqlogger *logger, const char *error,
-                      int error_code)
+inline void reqlog_set_error(struct reqlogger *logger, const char *error,
+                             int error_code)
 {
     logger->error = strdup(error);
     logger->error_code = error_code;
 }
 
-int reqlog_get_error_code(struct reqlogger *logger)
+inline int reqlog_get_error_code(const struct reqlogger *logger)
 {
     return logger->error_code;
 }
 
-void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)
+inline void reqlog_set_path(struct reqlogger *logger,
+                            struct client_query_stats *path)
 {
     logger->path = path;
 }
 
-void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
+inline void reqlog_set_context(struct reqlogger *logger, int ncontext,
+                               char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;
 }
 
-void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
+inline void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     logger->clnt = clnt;
+}
+
+inline int reqlog_get_retries(const struct reqlogger *logger)
+{
+    return logger->iq ? logger->iq->retries : 0;
+}
+
+struct dump_client_sql_options  {
+    struct reqlogger *logger;
+    int do_snap;
+    nodestats_t *st;
+    char fingerprint[FINGERPRINTSZ*2+1];
+};
+
+static int print_client_fingerprint(struct reqlogger *logger, char *host, char *task, char *fp, int64_t count, int64_t cost, int64_t time, int64_t rows) {
+    reqlog_logf(logger, REQL_INFO, "host=%s task=%s fp=%s count=%"PRId64" cost=%"PRId64" time=%"PRId64 " rows=%"PRId64"\n", host, task, fp, count, cost, time, rows);
+    return 0;
+}
+
+static int dump_client_fingerprint(void *ent, void *arg) {
+    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
+    struct query_count *cnt = (struct query_count*) ent;
+    char fingerprint[FINGERPRINTSZ*2+1];
+
+    util_tohex(fingerprint, cnt->fingerprint, FINGERPRINTSZ);
+    if (options->do_snap) {
+        if (cnt->count != cnt->last_count || cnt->cost != cnt->last_cost || cnt->timems != cnt->last_timems || cnt->rows != cnt->last_rows) {
+            print_client_fingerprint(options->logger, options->st->host, options->st->task, fingerprint,
+                        cnt->count - cnt->last_count,
+                        cnt->cost - cnt->last_cost,
+                        cnt->timems - cnt->last_timems,
+                        cnt->rows - cnt->last_rows);
+            cnt->last_count = cnt->count;
+            cnt->last_cost = cnt->cost;
+            cnt->last_rows = cnt->rows;
+            cnt->last_timems = cnt->timems;
+        }
+    }
+    else {
+        print_client_fingerprint(options->logger, options->st->host, options->st->task, fingerprint, cnt->count, cnt->cost, cnt->timems, cnt->rows);
+    }
+    return 0;
+}
+
+static int dump_client_sql_data_single(void *ent, void *arg) {
+    nodestats_t *st = (nodestats_t*) ent;
+    struct dump_client_sql_options *options = (struct dump_client_sql_options*) arg;
+    options->st = st;
+    Pthread_mutex_lock(&st->rawtotals.lk);
+    if (st->rawtotals.fingerprints)
+        hash_for(st->rawtotals.fingerprints, dump_client_fingerprint, arg);
+    Pthread_mutex_unlock(&st->rawtotals.lk);
+    return 0;
+}
+
+void dump_client_sql_data(struct reqlogger *logger, int do_snapshot) {
+    struct dump_client_sql_options options = { .do_snap = do_snapshot, .logger = logger };
+    Pthread_rwlock_wrlock(&clientstats_lk);
+    if (clientstats)
+        hash_for(clientstats, dump_client_sql_data_single, &options);
+    Pthread_rwlock_unlock(&clientstats_lk);
+}
+
+void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems) {
+    Pthread_mutex_lock(&stats->lk);
+    if (stats->fingerprints == NULL) {
+        // TODO: where does this get destroyed?
+        stats->fingerprints = hash_init_o(offsetof(struct query_count, fingerprint), FINGERPRINTSZ);
+        if (stats->fingerprints == NULL)
+            abort();
+    }
+    struct query_count *ct = hash_find(stats->fingerprints, fingerprint);
+    if (ct == NULL) {
+        ct = calloc(1, sizeof(struct query_count));
+        memcpy(ct->fingerprint, fingerprint, FINGERPRINTSZ);
+        hash_add(stats->fingerprints, ct);
+    }
+    ct->count++;
+    ct->rows += rows;
+    ct->cost += cost;
+    ct->timems += timems;
+    Pthread_mutex_unlock(&stats->lk);
+}
+
+struct client_sql_systable_options {
+    struct client_sql_systable_data *stats;
+    int nstats;
+    int nalloced;
+
+    nodestats_t *st; 
+};
+
+
+int gather_client_sql_data_fingerprint(void *ent, void *arg) {
+    struct client_sql_systable_options *opt = (struct client_sql_systable_options*) arg;
+    struct query_count *cnt = (struct query_count*) ent;
+
+    if (opt->nstats == opt->nalloced) {
+        opt->nalloced = opt->nalloced * 2 + 16;
+        void *p = realloc(opt->stats, sizeof(struct client_sql_systable_data) * opt->nalloced);
+        if (p == NULL)
+            return 1;
+        opt->stats = p;
+    }
+    opt->stats[opt->nstats].host = opt->st->host;
+    opt->stats[opt->nstats].task = strdup(opt->st->task);
+    util_tohex(opt->stats[opt->nstats].fp, cnt->fingerprint, FINGERPRINTSZ);
+    opt->stats[opt->nstats].count = cnt->count;
+    opt->stats[opt->nstats].cost = cnt->cost;
+    opt->stats[opt->nstats].rows = cnt->rows;
+    opt->stats[opt->nstats].timems = cnt->timems;
+    opt->nstats++;
+    return 0;
+}
+
+int gather_client_sql_data_single(void *ent, void *arg) {
+    struct client_sql_systable_options *opt = (struct client_sql_systable_options*) arg;
+    nodestats_t *st = (nodestats_t*) ent;
+    opt->st = st;
+    Pthread_mutex_lock(&st->rawtotals.lk);
+    int rc = 0;
+    if (st->rawtotals.fingerprints)
+        rc = hash_for(st->rawtotals.fingerprints, gather_client_sql_data_fingerprint, arg);
+    Pthread_mutex_unlock(&st->rawtotals.lk);
+    return rc;
+}
+
+void free_client_sql_data(void *data, int npoints);
+
+int gather_client_sql_data(void **data_out, int *npoints) {
+    struct client_sql_systable_options opt = {0};
+
+    *npoints = 0;
+
+    Pthread_rwlock_wrlock(&clientstats_lk);
+    int rc = 0;
+    if (clientstats)
+        rc = hash_for(clientstats, gather_client_sql_data_single, &opt);
+    Pthread_rwlock_unlock(&clientstats_lk);
+    if (rc)
+        free_client_sql_data(opt.stats, opt.nstats);
+    else {
+        *npoints = opt.nstats;
+        *data_out = opt.stats;
+        for (int i = 0; i < opt.nstats; i++)
+            opt.stats[i].fingerprint = opt.stats[i].fp;
+    }
+
+    return rc;
+}
+
+void free_client_sql_data(void *data, int npoints) {
+    struct client_sql_systable_data *stats = (struct client_sql_systable_data*) data;
+    for (int i = 0; i < npoints; i++) {
+        free(stats[i].task);
+    }
+    free(stats);
 }

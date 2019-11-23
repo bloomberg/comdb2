@@ -1,0 +1,15 @@
+[drop table if exists t5] rc 0
+[create table t5 {
+    schema {
+        int id
+        decimal32 dec
+        double num
+    }
+    keys {
+        "ID" = id + dec
+    }
+}] rc 0
+(rows inserted=1)
+[insert into t5 values(1, 5, 10)] rc 0
+(id=1, dec='5', num=10.000000)
+[select * from t5] rc 0

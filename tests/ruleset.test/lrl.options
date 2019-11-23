@@ -1,0 +1,5 @@
+strict_double_quotes 1
+verbose_normalized_queries
+verbose_prioritize_queries 1
+sqlenginepool maxt 1
+sqlenginepool maxq 1

@@ -80,9 +80,9 @@
 #endif
 
 int (*comdb2_ipc_swapnpasdb_sinfo)(struct ireq *) = 0;
+void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
-
 extern pthread_t gbl_invalid_tid;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_osql_verify_retries_max;
@@ -94,6 +94,14 @@ extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
+extern int gbl_reorder_idx_writes;
+extern int gbl_print_blockp_stats;
+extern int gbl_dump_blkseq;
+extern __thread int send_prefault_udp;
+extern void delay_if_sc_resuming(struct ireq *iq);
+extern unsigned int gbl_delayed_skip;
+
+int gbl_osql_snap_info_hashcheck = 1;
 
 #if 0
 #define GOTOBACKOUT                                                            \
@@ -475,6 +483,15 @@ static int forward_longblock_to_master(struct ireq *iq,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        /* Don't change anything in request for socket-fstsnd. */
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -536,6 +553,14 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
+        if (comdb2_ipc_setrmtdbmc) {
+            if (iq->origdb->dbnum)
+                comdb2_ipc_setrmtdbmc(iq->origdb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+            else
+                comdb2_ipc_setrmtdbmc(thedb->dbnum, mstr, req_len,
+                                      iq->p_buf_out_start);
+        }
         rc = comdb2_ipc_swapnpasdb_sinfo(iq);
     }
 
@@ -758,8 +783,6 @@ static void block_state_free(block_state_t *p_blkstate)
     p_blkstate->p_buf_saved_start = NULL;
 }
 
-extern int gbl_dump_blkseq;
-
 unsigned long long blkseq_replay_count = 0;
 unsigned long long blkseq_replay_error_count = 0;
 
@@ -787,9 +810,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (!replay_data) {
 
-        if (!iq->have_snap_info)
+        if (!iq->have_snap_info) {
             assert( (seqlen == (sizeof(fstblkseq_t))) || 
                     (seqlen == (sizeof(uuid_t))));
+        }
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
@@ -1091,8 +1115,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         logmsg(LOGMSG_USER,
-               "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
-               "rcout=%d\n",
+               "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
@@ -2344,8 +2367,6 @@ static int extract_blkseq2(struct ireq *iq, block_state_t *p_blkstate,
 
 static pthread_rwlock_t commit_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-extern __thread int send_prefault_udp;
-extern void delay_if_sc_resuming(struct ireq *iq);
 
 void handle_postcommit_bpfunc(struct ireq *iq)
 {
@@ -2642,6 +2663,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (lrc)
         return lrc;
 
+    uint64_t strt = comdb2_time_epochus();
+    reqlog_set_queue_time(iq->reqlogger, strt - iq->startus);
+    reqlog_set_startprcs(iq->reqlogger, strt);
+
     /* adding this back temporarily so I can get blockop counts again. this
        really just belongs in the main loop (should get its own logger event
        flag and logger events for this flag should be reset in the case of a
@@ -2718,9 +2743,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && iq->have_snap_info) {
+            if (gbl_osql_snap_info_hashcheck) {
+                // the goal here is to stall until the original transaction
+                // has finished that way we can retrieve the outcome from blkseq
+                osql_blkseq_register_cnonce(iq);
+            }
+
             void *replay_data = NULL;
             int replay_len = 0;
-            int findout;
             bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
                              __LINE__);
             if (thedb->master != gbl_mynode) {
@@ -2729,11 +2759,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 fromline = __LINE__;
                 goto cleanup;
             }
-            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                      iq->snap_info.key, iq->snap_info.keylen,
-                                      &replay_data, &replay_len);
-            if (findout == 0) {
-                logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
+            int found;
+            found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                    iq->snap_info.key, iq->snap_info.keylen,
+                                    &replay_data, &replay_len);
+            if (!found) {
+                logmsg(LOGMSG_WARN,
+                       "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
@@ -4762,7 +4794,26 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     ixout = -1;
     errout = 0;
 
-    if (delayed || gbl_goslow) {
+    if (delayed || gbl_goslow || osql_is_index_reorder_on(iq->osql_flags)) {
+
+        if (osql_is_index_reorder_on(iq->osql_flags)) {
+            if (iq->debug)
+                reqpushprefixf(iq, "process_defered_table:");
+            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,
+                                       &errout);
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+
+            if (rc != 0) {
+                opnum = blkpos; /* so we report the failed blockop accurately */
+                err.blockop_num = blkpos;
+                err.errcode = errout;
+                err.ixnum = ixout;
+                numerrs = 1;
+                reqlog_set_error(iq->reqlogger, "Process Defered Table", rc);
+                GOTOBACKOUT;
+            }
+        }
 
         if (iq->debug)
             reqpushprefixf(iq, "delayed_key_adds: %p", trans);
@@ -4788,8 +4839,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (iq->debug)
             reqpushprefixf(iq, "verify_del_constraints: %p", trans);
-        rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    blobs, &verror);
+        rc = verify_del_constraints(iq, p_blkstate, trans, blobs, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -4806,8 +4856,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->debug)
             reqpushprefixf(iq, "verify_add_constraints: %p", trans);
 
-        rc = verify_add_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    &verror);
+        rc = verify_add_constraints(iq, p_blkstate, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -4823,7 +4872,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     } /* end delayed */
     else {
-        extern unsigned int gbl_delayed_skip;
         ++gbl_delayed_skip;
     }
 
@@ -5512,7 +5560,8 @@ add_blkseq:
                 if (iq->tranddl) {
                     if (backed_out) {
                         assert(trans == NULL);
-                        bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                        if (iq->sc_logical_tran)
+                            bdb_ltran_put_schema_lock(iq->sc_logical_tran);
                     } else {
                         assert(iq->sc_tran);
                         assert(trans != NULL);
@@ -5531,9 +5580,10 @@ add_blkseq:
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
-                    irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                               gbl_mynode, 0, 1, NULL, 0, NULL,
-                                               0);
+                    if (iq->sc_logical_tran)
+                        irc = trans_commit_logical(iq, iq->sc_logical_tran,
+                                                   gbl_mynode, 0, 1, NULL, 0,
+                                                   NULL, 0);
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
@@ -5834,6 +5884,7 @@ add_blkseq:
         }
     }
 
+    fromline = __LINE__;
 cleanup:
     logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
            did_replay, fromline);
@@ -5877,18 +5928,18 @@ static uint64_t block_processor_ms = 0;
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *p_blkstate)
 {
-    int now, rc, prcnt = 0, prmax = 0;
-    uint64_t start, end;
-    extern int gbl_print_blockp_stats;
+    int rc, prcnt = 0, prmax = 0;
     static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
-    static int blkcnt = 0, lastpr = 0;
+    static int blkcnt = 0;
+    static uint64_t lastpr = 0;
+
+    uint64_t start = gettimeofday_ms();
 
     Pthread_mutex_lock(&blklk);
     blkcnt++;
-
-    if (((now = comdb2_time_epoch()) - lastpr) > 1) {
+    if (start - lastpr > 1000) {
         prcnt = blkcnt;
-        lastpr = now;
+        lastpr = start;
     }
 
     if (blkcnt > blkmax)
@@ -5899,13 +5950,13 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%d threads are in the block processor, max is %d\n",
-                prcnt, prmax);
+        logmsg(LOGMSG_USER,
+               "%d threads are in the block processor, max is %d\n", prcnt,
+               prmax);
     }
 
-    start = gettimeofday_ms();
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
-    end = gettimeofday_ms();
+    uint64_t end = gettimeofday_ms();
 
     if (rc == 0) {
         osql_postcommit_handle(iq);
@@ -5921,7 +5972,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+        logmsg(LOGMSG_USER,
+               "%" PRIu64 " total time spent in the block processor\n",
                block_processor_ms);
     }
 

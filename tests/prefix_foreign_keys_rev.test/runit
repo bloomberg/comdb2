@@ -62,9 +62,6 @@ for testcase in $files ; do
     # see if the prefix has changed
     new_batch=${testcase%%_*}
 
-    # set output
-    output=$testcase.res
-    
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
 
@@ -73,51 +70,32 @@ for testcase in $files ; do
 
     fi
 
-    # applying a filter to change
-    # from
-    #   [insert into t3 values(3,99)] 443 failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'a'
-    # to
-    #   [insert into t3 values(3,99)] failed with rc 3
-    #sed "s/[0-9]* \(failed with rc [0-9]*\).*/\1/g" ${output}.1 > $output
-    cdb2sql -s -f $new_batch ${CDB2_OPTIONS} $a_dbn default &> ${output}
+    res_file=$testcase.res
 
-    # get testcase output
-    testcase_output=$(cat $output)
+    expected_file=$testcase.out
 
-    # alt output
-    testcase_output_alt=""
-    testcase_output_alt_2=""
-
-    if [[ -f "$testcase.out.alt" ]]; then
-
-        testcase_output_alt=$(cat $testcase.out.alt)
-
+    # switch the expected result file if we're running a generated test
+    curdir=`basename ${PWD}`
+    if [[ $curdir =~ "no_nullfkey_generated.test" ]]; then
+        expected_file=$expected_file.no_nullfkey
     fi
 
-    if [[ -f "$testcase.out.alt.2" ]]; then
-
-        testcase_output_alt_2=$(cat $testcase.out.alt.2)
-
-    fi
-
-    # get expected output
-    expected_output=$(cat $testcase.out)
+    cdb2sql -s -f $new_batch ${CDB2_OPTIONS} $a_dbn default &> $res_file
 
     # verify 
-    if [[   "$testcase_output" != "$expected_output" && "$testcase_output" != "$testcase_output_alt" && "$testcase_output" != "$testcase_output_alt_2" ]]; then
-
-        echo "  ^^^^^^^^^^^^"
-        echo "The above testcase (${testcase}) has failed!!!"
-        echo " "
-        echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
-        echo " "
-        diff $testcase.out $output
-        echo " "
+    cmd="diff $expected_file $res_file"
+    $cmd > /dev/null
+    if [[  $? -eq 0 ]]; then
+        echo "passed $testname"
+    else
+        echo "failed $testname"
+        echo "see diffs here: $HOSTNAME"
+        echo "> diff ${PWD}/{$expected_file,$res_file}"
+        diff ${PWD}/{$expected_file,$res_file}
+        echo
         exit 1
-
     fi
-
 done
+echo
+exit 0
 
-echo "Testcase passed."

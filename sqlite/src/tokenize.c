@@ -692,6 +692,18 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
     lastTokenParsed = tokenType;
     zSql += n;
     assert( db->mallocFailed==0 || pParse->rc!=SQLITE_OK || startedWithOom );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pParse->prepFlags&SQLITE_PREPARE_SRCLIST_ONLY ){
+      if( pParse->rc!=SQLITE_OK ){
+        if( pParse->zErrMsg ){
+          sqlite3DbFree(db, pParse->zErrMsg);
+          pParse->zErrMsg = 0;
+        }
+        pParse->rc = SQLITE_OK;
+        break;
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pParse->rc!=SQLITE_OK ) break;
   }
   assert( nErr==0 );
@@ -786,6 +798,11 @@ static void addSpaceSeparator(sqlite3_str *pStr){
 char *sqlite3Normalize(
   Vdbe *pVdbe,       /* VM being reprepared */
   const char *zSql   /* The original SQL string */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId      /* Zero if double quoted strings should always be
+                      * treated as identifiers when there is no Vdbe
+                      * available */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   sqlite3 *db;       /* The database connection */
   int i;             /* Next unread byte of zSql[] */
@@ -798,7 +815,11 @@ char *sqlite3Normalize(
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db = sqlite3VdbeDb(pVdbe);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   tokenType = -1;
   nParen = iStartIN = nParenAtIN = 0;
   pStr = sqlite3_str_new(db);
@@ -852,12 +873,20 @@ char *sqlite3Normalize(
         iStartIN = 0;
         j = pStr->nChar;
         if( sqlite3Isquote(zSql[i]) ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          char *zId = sqlite3_mprintf("%.*s", n, zSql+i);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           char *zId = sqlite3DbStrNDup(db, zSql+i, n);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           int nId;
           int eType = 0;
           if( zId==0 ) break;
           sqlite3Dequote(zId);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId) ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;

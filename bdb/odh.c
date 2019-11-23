@@ -585,15 +585,16 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                                  .outsz = odh->length};
                 rc = decompressComdb2RLE(&rle);
                 if (rc || rle.outsz != odh->length) {
-                    logmsg(LOGMSG_ERROR, "%s:ERROR decompressComdb2RLE rc: %d "
-                                    "outsz: %lu expected: %u\n",
-                            __func__, rc, rle.outsz, odh->length);
+                    logmsg(LOGMSG_ERROR,
+                           "%s:ERROR decompressComdb2RLE rc: %d "
+                           "outsz: %zu expected: %u\n",
+                           __func__, rc, rle.outsz, odh->length);
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_LZ4) {
-                rc = LZ4_decompress_fast((char *)from + ODH_SIZE, to,
-                                         odh->length);
-                if (rc != fromlen - ODH_SIZE) {
+                rc = LZ4_decompress_safe((char *)from + ODH_SIZE, to,
+                                         (fromlen - ODH_SIZE), odh->length);
+                if (rc != odh->length) {
                     goto err;
                 }
             }
@@ -663,7 +664,7 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)buflen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(buf, &odh);
@@ -689,7 +690,7 @@ int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)fromlen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(from, &odh_in);

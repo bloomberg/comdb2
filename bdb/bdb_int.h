@@ -76,7 +76,7 @@ enum {
 };
 
 /* snapisol log ops */
-enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 };
+typedef enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 } log_ops_t;
 
 /* These are the fields of the ondisk header.  This is not the ondisk
  * representation but a convenient format for passing the header around in
@@ -893,7 +893,13 @@ struct bdb_state_tag {
 
     pthread_mutex_t pending_broadcast_lock;
 
-    unsigned long long gblcontext;
+    union {
+        unsigned long long orig; /* original time-based format */
+        struct {
+            uint16_t lo16; /* stripe + update-id in network byte order */
+            uint64_t hi48; /* incrementing rowid in host byte order */
+        } genid48;         /* GENID48 format */
+    } gblcontext;
 
     void (*signal_rtoff)(void);
 
@@ -1307,8 +1313,6 @@ extern void __db_cprint(DB *db);
 #endif
 
 void bdb_queue_init_priv(bdb_state_type *bdb_state);
-
-unsigned long long bdb_get_gblcontext(bdb_state_type *bdb_state);
 
 int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 

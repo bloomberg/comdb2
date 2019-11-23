@@ -205,7 +205,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
 
     strcpy(s->original_master_node, gbl_mynode);
-    unsigned long long seed;
+    unsigned long long seed = 0;
     const char *node = gbl_mynode;
     if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
@@ -215,11 +215,19 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     } else if (s->resume) {
         unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
-        if ((rc = fetch_schema_change_seed(s, thedb, &seed, &host))) {
+        if ((rc = fetch_sc_seed(s->tablename, thedb, &seed, &host))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
             return rc;
         }
+        if (seed == 0 && host == 0)
+            return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
+        logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
+               seed, host);
+        logmsg(
+            LOGMSG_WARN,
+            "Resuming previously restarted schema change, disabling plan.\n");
+
         node = get_hostname_with_crc32(thedb->bdb_env, host);
         logmsg(
             LOGMSG_INFO,
@@ -300,7 +308,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    __func__, __LINE__);
             sleep(5);
         }
-        ATOMIC_ADD(gbl_sc_resume_start, 1);
+        ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
     /*
     ** if s->partialuprecs, we're going radio silent from this point forward

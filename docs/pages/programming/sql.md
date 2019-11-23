@@ -37,12 +37,20 @@ without the use of long term read locks through the use of Multi Version Concurr
 also guarantees lack of phantoms. Before using snapshot isolation, you must add enable_snapshot_isolation 
 to your lrl file.
 
-**NOTE**: if any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application 
-needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests.  A 
+The optional ```AS OF DATETIME``` clause begins a transaction with a snapshot of the database as
+it existed as of the given time. The snapshot only has the effects of transactions that committed
+before that time. Using ```AS OF DATETIME``` requires the transaction being in ```SNAPSHOT ISOLATION```
+mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```SNAPSHOT ISOLATION```
+requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
+isolation was enabled will not work. A snapshot is only available if enough transaction logs are
+online to find commits before the specified time. The time provided must unquoted date in ISO 8601
+format or Unix time.
+
+**NOTE**: If any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application
+needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests. A
 transaction that calls ```COMMIT``` or ```ROLLBACK``` is considered complete, regardless of any errors returned.
 The next statement that runs on the same connection will be in a new transaction.
 
-The optional AS OF DATETIME clause begins a transaction with a snapshot of the database as it existing as of the given time. The snapshot only has the effects of transactions that committed before that time. Using AS OF DATETIME requires the transaction being in SNAPSHOT ISOLATION mode (set with SET TRANSACTION SNAPSHOT ISOLATION). Note that enabling SNAPSHOT ISOLATION requires the enable_snapshot_isolation lrl tunable. Snapshots requested from before snapshot isolation was enabled will not work. A snapshot is only available if enough transaction logs are online to find commits before the specified time.
 
 
 ### COMMIT
@@ -333,17 +341,17 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in **version R7**, follows the usual standard data
+The second approach, added in version `7.0`, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using this syntax implicitly creates a ```UNIQUE``` index
 named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
 
 Comdb2 allows creation of indexes only on fields with fixed-sized types. For
 instance, an attempt to create index on a blob or vutf8 field would result in
-error. In termns of syntax, ```indexes on expressions``` need a little extra
+error. In terms of syntax, ```indexes on expressions``` need a little extra
 care in Comdb2. The expression *must* be casted to a fixed-sized type.
 
-```
+```sql
 CREATE TABLE t1(`json` VUTF8(128),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
@@ -437,7 +445,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in **version R7**, supports the usual standard data
+The second approach, added in version `7.0`, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -485,8 +493,12 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0. Indexes on
-expression cannot be currently created via this command.
+table. The support for ```CREATE INDEX``` was added in version `7.0`.
+
+```sql
+CREATE INDEX idx ON t1(CAST(UPPER(c) AS cstring(100)));
+CREATE UNIQUE INDEX idx ON t2(CAST(i+j AS int));
+```
 
 ### DROP INDEX
 
@@ -495,7 +507,7 @@ expression cannot be currently created via this command.
 The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
 INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
-same name. The support for ```DROP INDEX``` was added in version 7.0.
+same name. The support for ```DROP INDEX``` was added in version `7.0`.
 
 ### CREATE VIEW
 
@@ -682,6 +694,13 @@ do not need to be quoted. For example, ```SET USER mike``` is correct.  ```SET U
 This sets the current connection's transaction level.  See 
 [transaction levels](transaction_model.html#isolation-levels-and-artifacts) for more details
 
+### SET TRANSACTION CHUNK
+
+This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
+the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
+as a sequence of small lock-footprint transactions.  Another common use-case is periodic data-set clean-up, replacing 
+the legacy comdb2del tool.  Currently requires a client specified ```BEGIN ... COMMIT``` transaction.
+
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
@@ -777,6 +796,9 @@ Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#cli
 ### SET SSL_CRL
 
 Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_MIN_TLS_VER
+Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
 ## Common syntax rules
 
@@ -934,3 +956,4 @@ partition_info |
 comdb2_host | Returns the hostname on which this query is executing.
 comdb2_dbname | Returns the name of the connected database.
 comdb2_prevquerycost | Returns the cost of the previously executed query, when possible.
+comdb2_user() | Returns the name of the current authenticated user for the session.

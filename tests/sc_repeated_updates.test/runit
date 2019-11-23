@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -46,19 +45,6 @@ function checkfailexit
         rm failexit
         exit 1
     fi
-}
-
-function assertcnt 
-{
-    target=$1
-    comment=$2
-    a=$RANDOM
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "select * from $tbl" > select_$a.out
-    cnt=$(wc -l select_$a.out | awk '{print $1}')
-    if [[ $cnt != $target ]] ; then
-        failexit "$comment: count is $cnt but should be $target"
-    fi
-    rm select_$a.out
 }
 
 
@@ -117,7 +103,7 @@ function update_same_record
         if [[ $rc -ne 0 ]] ; then
             failexit "update_same_record: this update should succeed but error $rc was returned"
         fi
-        assertcnt $nrecs "update_same_record"
+        assertcnt $tbl $nrecs "update_same_record"
         let j=j+1
     done
     succ=`grep -c "rows updated=1" update1.out`
@@ -138,7 +124,7 @@ function update_same_record_fail
 
     while [[ $j -lt $loc_recs ]]; do 
         $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update3.out 2>&1
-        assertcnt $nrecs "update_same_record_fail"
+        assertcnt $tbl $nrecs "update_same_record_fail"
         let j=j+1
     done
     failed=`grep -c failed update3.out`
@@ -168,7 +154,7 @@ function update_records
                 failexit "update_records: this update should succeed but error $rc was returned"
             fi
             let j=j+1
-            assertcnt $nrecs "update_records"
+            assertcnt $tbl $nrecs "update_records"
             #sleep 0.1
         done
         let t=t+1
@@ -197,7 +183,7 @@ function update_records_fail
             failexit "update_records_fail: this update should not succeed"
         fi
         let j=j+1
-        assertcnt $nrecs "update_records_fail"
+        assertcnt $tbl $nrecs "update_records_fail"
         #sleep 0.1
     done
 
@@ -242,7 +228,7 @@ function run_test
     $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
 
     insert_records 0 
-    assertcnt $nrecs "run_test"
+    assertcnt $tbl $nrecs "run_test"
     do_verify
 
 
@@ -254,7 +240,7 @@ function run_test
     fi
     wait
 
-    assertcnt $nrecs "run_test"
+    assertcnt $tbl $nrecs "run_test"
 
 
 
@@ -267,7 +253,7 @@ function run_test
     fi
     wait
 
-    assertcnt $nrecs "run_test"
+    assertcnt $tbl $nrecs "run_test"
 
 
 
@@ -279,7 +265,7 @@ function run_test
     fi
     wait
 
-    assertcnt $nrecs "run_test"
+    assertcnt $tbl $nrecs "run_test"
 
 
 
@@ -291,7 +277,7 @@ function run_test
     fi
     wait
 
-    assertcnt $nrecs "run_test"
+    assertcnt $tbl $nrecs "run_test"
 }
 
 function exiting {

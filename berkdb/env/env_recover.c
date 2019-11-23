@@ -974,6 +974,9 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	hi_txn = TXN_MAXIMUM;
 	txninfo = NULL;
 
+	if (trunclsn)
+		(*trunclsn) = (*max_lsn);
+
 	pass = "initial";
 
 	/*

@@ -51,6 +51,8 @@ inline static void free_sp_versions(systbl_sps_cursor *c){
   if(!c->pVer) return;
   for (int i = 0; i < c->nVers; ++i)
     if (c->pVer[i].cVer) free(c->pVer[i].cVer); // bdb owns this memory
+  /* c->defaultVer.cVer is allocated in berkdb. Free it. */
+  free(c->defaultVer.cVer);
   sqlite3_free(c->pVer);
   c->pVer = NULL;
 }
@@ -74,6 +76,10 @@ static void get_sp_versions(systbl_sps_cursor *c) {
   }
   c->nVers = i;
 
+  /* cvers is an array of version string pointers, allocated in llmeta.
+     We do not need it. */
+  free(cvers);
+
   c->defaultVer.sVer = 0;
   c->defaultVer.cVer = NULL;
   int rc;
@@ -85,8 +91,8 @@ static void get_sp_versions(systbl_sps_cursor *c) {
 }
 
 static void get_server_versioned_sps(char ***a, int *x) {
-  char old_sp[MAX_SPNAME];
-  char new_sp[MAX_SPNAME];
+  char old_sp[MAX_SPNAME] = {0};
+  char new_sp[MAX_SPNAME] = {0};
   old_sp[0] = 127;
   char **names = NULL;
   int n = 0;

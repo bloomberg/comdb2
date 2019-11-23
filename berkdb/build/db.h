@@ -25,12 +25,14 @@
 #include <pthread.h>
 
 #include <list.h>
+#include <priority_queue.h>
 #include <pool.h>
 #include <plhash.h>
 #include <dlmalloc.h>
 #include <thdpool.h>
 #include <mem_berkdb.h>
 #include <sys/time.h>
+#include <sbuf2.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -755,6 +757,12 @@ struct __db_mpoolfile {
 	DB_FH	  *fhp;		/* Underlying file handle. */
 	DB_FH     *recp;        /* Recovery page file handle. */
 
+/* Protected by mpoolfile mutex */
+	struct {								\
+		DB_MPOOLFILE *le_next;	/* next element */			\
+		DB_MPOOLFILE **le_prev;	/* address of previous next element */	\
+	} mpfq;
+
 	/* Lock-array for recovery pages. */
 	pthread_mutex_t *recp_lk_array;
 	int       rec_idx;      /* Current index for recover pages. */
@@ -876,7 +884,7 @@ struct __db_mpool_stat {
 	u_int64_t st_page_trickle;	/* Pages written by memp_trickle. */
 	u_int64_t st_pages;		/* Total number of pages. */
 	u_int64_t st_page_clean;	/* Clean pages. */
-	int32_t   st_page_dirty;	/* Dirty pages. */
+	uint32_t  st_page_dirty;	/* Dirty pages. */
 	u_int64_t st_hash_buckets;	/* Number of hash buckets. */
 	u_int64_t st_hash_searches;	/* Total hash chain searches. */
 	u_int64_t st_hash_longest;	/* Longest hash chain searched. */
@@ -1189,7 +1197,8 @@ typedef enum {
 	DB_HASH=2,
 	DB_RECNO=3,
 	DB_QUEUE=4,
-	DB_UNKNOWN=5			/* Figure it out on open. */
+	DB_UNKNOWN=5,			/* Figure it out on open. */
+	DB_TYPE_MAX=6
 } DBTYPE;
 
 #define	DB_RENAMEMAGIC	0x030800	/* File has been renamed. */
@@ -1381,6 +1390,7 @@ struct __db {
 	DB_MPOOLFILE *mpf;		/* Backing buffer pool. */
 
 	DB_MUTEX *mutexp;		/* Synchronization for free threading */
+	DB_MUTEX *free_mutexp;		/* Synchronization for free threading */
 
 	char *fname, *dname;		/* File/database passed to DB->open. */
 	u_int32_t open_flags;		/* Flags passed to DB->open. */
@@ -1660,6 +1670,15 @@ struct __db {
 	 * recovery to update the page hash
 	 */
 	DB *peer;
+
+	/* DB **revpeer points back to the recovery dbp.  It allows us
+	 * to set it's peer pointer to NULL if the table is closed.
+	 */
+
+	DB **revpeer;
+	int revpeer_count;
+
+	int is_free;
 
 	genid_hash *pg_hash;
 
@@ -2341,6 +2360,10 @@ struct __db_env {
 	int  (*memp_stat) __P((DB_ENV *,
 		DB_MPOOL_STAT **, DB_MPOOL_FSTAT ***, u_int32_t));
 	int  (*memp_sync) __P((DB_ENV *, DB_LSN *));
+	int  (*memp_dump) __P((DB_ENV *, SBUF2 *, u_int64_t maxpages));
+	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
+	int  (*memp_dump_default) __P((DB_ENV *, u_int32_t));
+	int  (*memp_load_default) __P((DB_ENV *));
 	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
 
 	void *rep_handle;		/* Replication handle and methods. */
@@ -2475,7 +2498,9 @@ struct __db_env {
 	pthread_mutex_t recover_lk;
 	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
-	pthread_rwlock_t ser_lk;
+	pthread_mutex_t ser_lk;
+	pthread_cond_t ser_cond;
+	int ser_count;
 	int lsn_chain;
 
 	/* overrides for minwrite deadlock */
@@ -2535,10 +2560,11 @@ struct __db_env {
 	/* Stable LSN: must be acked by majority of cluster. */
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
+    uint32_t rep_gen;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
-
+    int (*replicant_generation) __P((DB_ENV *, uint32_t *));
 	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
@@ -2556,6 +2582,9 @@ struct __db_env {
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+
+	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 };
 
 #ifndef DB_DBM_HSEARCH
@@ -2878,6 +2907,7 @@ struct __ltrans_descriptor {
 };
 
 int __checkpoint_open(DB_ENV *dbenv, const char *db_home);
+int __page_cache_set_path(DB_ENV *dbenv, const char *db_home);
 int __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout);
 int __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery);
@@ -2909,7 +2939,8 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-	void *work, int queue_override, char *persistent_info, uint32_t flags);
+	void *work, int queue_override, char *persistent_info, uint32_t flags,
+        priority_t priority);
 
 
 typedef struct {

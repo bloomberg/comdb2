@@ -4,4 +4,4 @@ set user mohit
 set password mohit
 create table '0123456789012345678901234'(i int)$$
 create table '01234567890123456789012345'(i int)$$
-select * from comdb2_tables;
+select * from comdb2_tables order by tablename;

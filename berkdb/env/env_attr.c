@@ -1,4 +1,3 @@
-#include "limit_fortify.h"
 #include "db_config.h"
 
 #include "db_int.h"

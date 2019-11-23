@@ -165,6 +165,7 @@ static void *watchdog_thread(void *arg)
     while (!gbl_ready)
         sleep(1);
 
+    int test_io_time = 0;
     while (!db_is_stopped()) {
         gbl_epoch_time = comdb2_time_epoch();
 
@@ -316,8 +317,16 @@ static void *watchdog_thread(void *arg)
                to do. */
             bdb_flush_up_to_lsn(thedb->bdb_env, 1, 0);
 
-            if (bdb_watchdog_test_io(thedb->bdb_env))
-                its_bad = 1;
+            if (gbl_epoch_time - test_io_time >
+                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TEST_IO_TIME)) {
+                if (bdb_watchdog_test_io(thedb->bdb_env)) {
+                    logmsg(LOGMSG_FATAL,
+                           "%s:bdb_watchdog_test_io failed - aborting\n",
+                           __func__);
+                    abort();
+                }
+                test_io_time = gbl_epoch_time;
+            }
 
             /* if nothing was bad, update the timestamp */
             if (!its_bad && !its_bad_slow) {

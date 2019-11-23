@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#include "limit_fortify.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -380,10 +379,9 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
              * unlikely, but possible).  The worst that can happen is we'll
              * get an error, or wrong information. */
             struct sockaddr_in peeraddr;
-            int len = sizeof(peeraddr);
+            socklen_t len = sizeof(peeraddr);
             char addrstr[64];
-            if (getpeername(fd, (struct sockaddr *)&peeraddr,
-                            (socklen_t *)&len) < 0)
+            if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0)
                 SNPRINTF(buf, szbuf, pos, ", fd %d (getpeername:%s)", fd,
                          strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,

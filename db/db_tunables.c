@@ -37,6 +37,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_waitalive_iterations;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
@@ -117,6 +118,7 @@ extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
+extern int gbl_toblock_random_deadlock_trans;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
@@ -205,6 +207,10 @@ extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
+extern int gbl_random_thdpool_work_timeout;
+extern int gbl_thdpool_queue_only;
+extern int gbl_random_sql_work_delayed;
+extern int gbl_random_sql_work_rejected;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
@@ -220,11 +226,19 @@ extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
 extern int gbl_forbid_remote_admin;
 extern int gbl_abort_on_dta_lookup_error;
+extern int gbl_osql_snap_info_hashcheck;
 extern int gbl_debug_children_lock;
 extern int gbl_serialize_reads_like_writes;
 extern int gbl_long_log_truncation_warn_thresh_sec;
 extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_snapshot_serial_verify_retry;
+extern int gbl_cache_flush_interval;
+extern int gbl_load_cache_threads;
+extern int gbl_load_cache_max_pages;
+extern int gbl_dump_cache_max_pages;
+extern int gbl_max_pages_per_cache_thread;
+extern int gbl_memp_dump_cache_threshold;
+extern int gbl_disable_ckp;
 
 extern long long sampling_threshold;
 
@@ -301,11 +315,19 @@ extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
 int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
 
+extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_skip_constraintscheck_on_insert;
+extern int eventlog_nkeep;
+
+int gbl_page_order_table_scan = 0;
+size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*
   =========================================================
@@ -695,7 +717,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
-
 static int netconndumptime_update(void *context, void *value)
 {
     int val = *(int *)value;
@@ -791,8 +812,6 @@ int ctrace_set_rollat(void *unused, void *value);
 static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
-    case SQL_TDEF_COMDB2: return "COMDB2";
-    case SQL_TDEF_BLOCK: return "BLOCK";
     case SQL_TDEF_SOCK: return "BLOCKSOCK";
     case SQL_TDEF_RECOM: return "RECOM";
     case SQL_TDEF_SNAPISOL: return "SNAPSHOT ISOLATION";
@@ -816,6 +835,10 @@ static int sql_tranlevel_default_update(void *context, void *value)
     if (tok == NULL) {
         logmsg(LOGMSG_USER, "expected transaction level\n");
         return 1;
+    } else if (tokcmp(tok, ltok, "comdb2") == 0 ||
+               tokcmp(tok, ltok, "block") == 0 ||
+               tokcmp(tok, ltok, "prefer_blocksock") == 0) {
+        return 0; /* nop */
     } else if (tokcmp(tok, ltok, "blocksock") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
@@ -825,12 +848,11 @@ static int sql_tranlevel_default_update(void *context, void *value)
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
-        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+        logmsg(LOGMSG_ERROR, "bad transaction level:%s\n", tok);
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-    logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
+    logmsg(LOGMSG_USER, "default transaction level:%s\n",
            (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
@@ -839,6 +861,20 @@ static int pbkdf2_iterations_update(void *context, void *value)
 {
     (void)context;
     return set_pbkdf2_iterations(*(int *)value);
+}
+
+static int page_order_table_scan_update(void *context, void *value)
+{
+    if ((*(int *)value) == 0) {
+        gbl_page_order_table_scan = 0;
+    } else {
+        gbl_page_order_table_scan = 1;
+    }
+    bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN,
+                 gbl_page_order_table_scan);
+    logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
+           (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
 }
 
 /* Routines for the tunable system itself - tunable-specific

@@ -119,6 +119,6 @@ EOF
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT * FROM self ORDER BY b' >self
-sleep 5 ### Allow trigger to fire.
+sleep 10 ### Allow trigger to fire.
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT * FROM mirror ORDER BY b' >mirror
 diff self mirror

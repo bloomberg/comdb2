@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
 set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 sleeptime=10
 dbnm=$1
@@ -16,28 +15,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
 function do_verify
 {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
@@ -46,7 +23,6 @@ function do_verify
         failexit "Verify"
     fi
 }
-
 
 
 function insert_records
@@ -79,7 +55,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create procedure upd_date {$(cat upd_date
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create lua trigger upd_date on (table t1 for update)"
 
 insert_records 1 200
-assertcnt 200
+assertcnt t1 200
 one=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,dt from t1 where a = 1")
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows1.txt
 

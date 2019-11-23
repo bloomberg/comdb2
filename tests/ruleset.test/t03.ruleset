@@ -1,0 +1,3 @@
+version 1
+
+rule 10 action REJECT flags {PRINT STOP}; mode {REGEXP NOCASE}; sql ^DROP .*$; action UNREJECT

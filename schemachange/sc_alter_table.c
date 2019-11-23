@@ -377,7 +377,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct scinfo scinfo;
 
 #ifdef DEBUG_SC
-    printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
+    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
     gbl_use_plan = 1;
@@ -547,7 +547,7 @@ convert_records:
             sleep(5);
         }
         if (gbl_sc_resume_start > 0)
-            ATOMIC_ADD(gbl_sc_resume_start, -1);
+            ATOMIC_ADD32(gbl_sc_resume_start, -1);
     }
     MEMORY_SYNC;
 
