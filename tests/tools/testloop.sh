@@ -44,9 +44,12 @@ function mail_error
     [[ "$debug" == "1" ]] && set -x
     [[ $domail == "0" ]] && return 
 
-    text="$1"
+    echo "Mailing failure"
+    print_status > status.txt
+    echo "$1" > body.txt
     for addr in $email ; do
-        mail -s "$text" -r testloop@$DOMAIL $addr < $l
+        mail -s "TESTCASE FAILURE STATUS" -r testloop@$DOMAIN $addr < status.txt
+        mail -s "TESTCASE FAILURE" -r testloop@$DOMAIN $addr < body.txt
     done
 }
 
