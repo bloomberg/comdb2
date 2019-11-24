@@ -701,6 +701,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     new_bdb_handle = newdb->handle;
     old_bdb_handle = db->handle;
 
+    if ((rc = bdb_lock_table_write(db->handle, transac)) != 0) {
+        sc_errf(s, "Error getting tablelock: %d\n", rc);
+        BACKOUT;
+    }
+
     if (iq && iq->tranddl > 1 &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
@@ -710,7 +715,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
 
-    bdb_lock_table_write(db->handle, transac);
     sc_printf(s, "[%s] Got table write lock OK\n", s->tablename);
 
     s->got_tablelock = 1;
