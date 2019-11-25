@@ -5,6 +5,8 @@
 
 DOMAIN=comdb2-d1.org
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export CHECK_DB_AT_FINISH=1
+export CORE_ON_FAILURE=1
 export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
