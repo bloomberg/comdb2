@@ -84,6 +84,10 @@ if [[ -n ${DEBUGGER} ]]; then
         DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
         INTERACTIVE_DEBUG=0
         ;;    
+    mutrace)   # mutex contention detection tool
+        DEBUG_PREFIX="mutrace "
+        INTERACTIVE_DEBUG=0
+        ;;    
     *)
         DEBUG_PREFIX=${DEBUGGER}
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
