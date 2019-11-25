@@ -159,12 +159,10 @@ void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
         FILE *f);
 #endif
 
-void add_tag_schema(const char *table, struct schema *schema)
+static void add_tag_schema_lk(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
     struct schema *fnd;
-
-    lock_taglock();
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -193,19 +191,23 @@ void add_tag_schema(const char *table, struct schema *schema)
     snprintf(msg, sizeof(msg), "%s:%s", table, schema->tag);
     comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
 #endif
+}
+
+void add_tag_schema(const char *table, struct schema *schema)
+{
+    lock_taglock();
+    add_tag_schema_lk(table, schema);
     unlock_taglock();
 }
 
-void del_tag_schema(const char *table, const char *tagname)
+static void del_tag_schema_lk(const char *table, const char *tagname)
 {
-    lock_taglock();
-
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (tag == NULL) {
-        unlock_taglock();
-        return; /* doesn't exist */
-    }
+    if (tag == NULL)
+        return;
+
     struct schema *sc = hash_find(tag->tags, &tagname);
+
     if (sc) {
         hash_del(tag->tags, sc);
 #if defined STACK_TAG_SCHEMA
@@ -219,23 +221,30 @@ void del_tag_schema(const char *table, const char *tagname)
             sc->datacopy = NULL;
         }
     }
-    /* doesn't exist? */
+}
+
+void del_tag_schema(const char *table, const char *tagname)
+{
+    lock_taglock();
+    del_tag_schema_lk(table, tagname);
     unlock_taglock();
+}
+
+static struct schema *find_tag_schema_lk(const char *table, const char *tagname)
+{
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
+    if (unlikely(tag == NULL))
+        return NULL;
+    struct schema *s = hash_find_readonly(tag->tags, &tagname);
+    return s;
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
+    struct schema *s;
     lock_taglock_read();
-
-    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (unlikely(tag == NULL)) {
-        unlock_taglock();
-        return NULL;
-    }
-    struct schema *s = hash_find_readonly(tag->tags, &tagname);
-
+    s = find_tag_schema_lk(table, tagname);
     unlock_taglock();
-
     return s;
 }
 
@@ -1457,9 +1466,12 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
     struct field *from_field, *to_field;
     int rc;
 
-    from = find_tag_schema(table, fromtag);
-    if (from == NULL)
+    lock_taglock();
+    from = find_tag_schema_lk(table, fromtag);
+    if (from == NULL) {
+        unlock_taglock();
         return -1;
+    }
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
@@ -1498,6 +1510,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
             }
             free(to->tag);
             free(to);
+            unlock_taglock();
             return -1;
         }
         to->member[field].offset = offset;
@@ -1508,7 +1521,11 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
-    add_tag_schema(table, to);
+
+    del_tag_schema_lk(table, newtag);
+    add_tag_schema_lk(table, to);
+
+    unlock_taglock();
     return 0;
 }
 
