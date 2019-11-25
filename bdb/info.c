@@ -1315,7 +1315,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         " reptrcan       - turn off replication trace on all nodes",
         " oslog #        - set os_namemangle log level (0=none, 1=normal, "
         "2=spew)",
-        " dblist         - dump berkeley's dblist",
+        " dblist         - dump berkeley's list of open files",
+        " alldblist      - dump all of the entries in berkeley's dblist structure",
         " curlist        - dump berkeley's cursor list for all dbs",
         " curcount       - dump count of berkeley cursors allocated",
 #ifdef BERKDB_46
@@ -1739,6 +1740,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
 
     else if (tokcmp(tok, ltok, "dblist") == 0) {
         __bb_dbreg_print_dblist(bdb_state->dbenv, printf_wrapper, out);
+    } else if (tokcmp(tok, ltok, "alldblist") == 0) {
+        __bb_dbreg_print_all_dblist(bdb_state->dbenv, printf_wrapper, out);
     } else if (tokcmp(tok, ltok, "dbs") == 0) {
         bdb_dump_table_dbregs(bdb_state);
     }
