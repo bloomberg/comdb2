@@ -756,7 +756,8 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
 
-    stop_and_free_sc(rc, s, 0 /*free_sc*/);
+    if (!s->nothrevent)
+        stop_and_free_sc(rc, s, 0 /*free_sc*/);
     return rc;
 }
 
