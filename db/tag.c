@@ -162,6 +162,7 @@ void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
 void add_tag_schema(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
+    struct schema *fnd;
 
     lock_taglock();
 
@@ -179,6 +180,11 @@ void add_tag_schema(const char *table, struct schema *schema)
                            offsetof(struct schema, tag), 0);
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
+    }
+    if ((fnd = hash_find_readonly(tag->tags, schema->tag)) != NULL) {
+        logmsg(LOGMSG_FATAL, "%s:%d dup add corrupts schema-hash\n", __func__,
+                __LINE__);
+        abort();
     }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
@@ -6808,6 +6814,7 @@ void delete_schema(const char *tblname)
 #if defined STACK_TAG_SCHEMA
     comdb2_cheap_stack_one_line(__func__, __LINE__, tblname, NULL);
 #endif
+    assert(dbt != NULL);
     hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
