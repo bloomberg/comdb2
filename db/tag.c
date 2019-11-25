@@ -181,7 +181,7 @@ void add_tag_schema(const char *table, struct schema *schema)
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
-    if ((fnd = hash_find_readonly(tag->tags, schema->tag)) != NULL) {
+    if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
         logmsg(LOGMSG_FATAL, "%s:%d dup add corrupts schema-hash\n", __func__,
                 __LINE__);
         abort();
