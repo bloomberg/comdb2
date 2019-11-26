@@ -157,6 +157,11 @@ int schema_init(void)
 #if defined STACK_TAG_SCHEMA
 void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
         FILE *f);
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+#else
+#define backtrace(A, B) 1
+#endif
 #endif
 
 static void add_tag_schema_lk(const char *table, struct schema *schema)
@@ -190,6 +195,9 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
     char msg[256];
     snprintf(msg, sizeof(msg), "%s:%s", table, schema->tag);
     comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
+
+    schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
+    schema->tid = pthread_self();
 #endif
 }
 
@@ -1432,11 +1440,6 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
                            offsetof(struct schema, tag), 0);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
         hash_add(gbl_tag_hash, tag);
-#if defined STACK_TAG_SCHEMA
-        char msg[256];
-        snprintf(msg, sizeof(msg), "%s:%s", table, name);
-        comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
-#endif
     }
     sc = clone_schema(s);
     free(sc->tag);
@@ -1454,6 +1457,14 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     }
 
     hash_add(tag->tags, sc);
+#if defined STACK_TAG_SCHEMA
+    char msg[256];
+    snprintf(msg, sizeof(msg), "%s:%s", table, name);
+    comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
+
+    sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+    sc->tid = pthread_self();
+#endif
     unlock_taglock();
 }
 
@@ -6339,13 +6350,6 @@ void commit_schemas(const char *tblname)
     }
 
     sc = dbt->taglist.top;
-    while (sc != NULL) {
-        tmp = sc->lnk.next;
-        /* printf("]]]]]] %p %s\n", sc, sc->tag); */
-        sc = tmp;
-    }
-
-    sc = dbt->taglist.top;
     hash_clear(dbt->tags);
     while (sc != NULL) {
         tmp = sc->lnk.next;
@@ -6423,6 +6427,14 @@ void commit_schemas(const char *tblname)
             sc = NULL;
         } else {
             hash_add(dbt->tags, sc);
+#if defined STACK_TAG_SCHEMA
+            char msg[256];
+            snprintf(msg, sizeof(msg), "%s:%s", tblname, sc->tag);
+            comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
+
+            sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+            sc->tid = pthread_self();
+#endif
         }
         sc = tmp;
     }
