@@ -814,6 +814,20 @@ struct bdb_state_tag {
                                      they are not. */
     DB *dbp_ix[MAXINDEX];                    /* handle for the ixN files */
 
+    DB *dbp_qconsume; /* Currently, this is used for queuedb databases only.
+                       * In those cases, this is the old data file, which is
+                       * used for consuming.  It general, it will be deleted
+                       * automatically by the queuedb subsystem when all of
+                       * its content has been fully consumed.  This will be
+                       * NULL if content should be consumed from the primary
+                       * data file instead. */
+
+    pthread_mutex_t queuedb_lock; /* This is used by the queuedb subsystem
+                                   * to protect access to the dbp_data and
+                                   * dbp_qconsume fields during consume and
+                                   * add operations (i.e. just in case they
+                                   * need to be swapped, etc). */
+
     pthread_key_t tid_key;
 
     int numthreads;

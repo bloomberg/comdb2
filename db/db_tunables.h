@@ -1489,6 +1489,11 @@ REGISTER_TUNABLE("queuedb_genid_filename",
                  "Use genid in queuedb filenames.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_queuedb_genid_filename, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("queuedb_file_threshold",
+                 "Maximum queuedb file size (in MB) before enqueueing to the "
+                 "alternate file.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_queuedb_file_threshold, READONLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("random_election_timeout",
                  "Use a random timeout in election.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
