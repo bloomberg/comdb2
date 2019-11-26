@@ -875,26 +875,33 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
         parse_lua_funcs(a);
     } else if (tokcmp(tok, ltok, "queuedb") == 0) {
-        char **slot = &qdbs[0];
-        while (*slot)
-            ++slot;
-        tok = segtok(line, len, &st, &ltok);
-        *slot = tokdup(tok, ltok);
-        struct dbtable **qdb = &dbenv->qdbs[0];
-        while (*qdb)
-            ++qdb;
-        char *name = get_qdb_name(*slot);
-        if (name == NULL) {
-            logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   *slot);
+        int nqdbs = thedb->num_qdbs;
+        qdbs = realloc(qdbs, (nqdbs + 1) * sizeof(char *));
+        if (qdbs == NULL) {
+            logmsgperror("realloc");
             return -1;
         }
-        *qdb = newqdb(dbenv, name, 65536, 65536, 1);
-        if (*qdb == NULL) {
+        thedb->qdbs = realloc(thedb->qdbs, (nqdbs + 1) * sizeof(dbtable *));
+        if (thedb->qdbs == NULL) {
+            logmsgperror("realloc");
+            return -1;
+        }
+        tok = segtok(line, len, &st, &ltok);
+        qdbs[nqdbs] = tokdup(tok, ltok);
+        char *name = get_qdb_name(qdbs[nqdbs]);
+        if (name == NULL) {
+            logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
+                   qdbs[nqdbs]);
+            return -1;
+        }
+        dbtable *qdb = newqdb(dbenv, name, 65536, 65536, 1);
+        if (qdb == NULL) {
             logmsg(LOGMSG_ERROR, "newqdb failed for:%s\n", name);
             return -1;
         }
         free(name);
+        thedb->qdbs[nqdbs] = qdb;
+        ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {
         /*
          * variants:

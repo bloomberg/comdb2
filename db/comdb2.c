@@ -1610,8 +1610,9 @@ void cleanup_newdb(dbtable *tbl)
         free(tbl->sqlixuse);
         tbl->sqlixuse = NULL;
     }
+    if (tbl->dbtype == DBTYPE_QUEUEDB)
+        Pthread_rwlock_destroy(&tbl->consumer_lk);
     free(tbl);
-    tbl = NULL;
 }
 
 dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
@@ -2983,12 +2984,12 @@ static int llmeta_set_qdb(const char *file)
     long end = ftell(f);
     fseek(f, here, SEEK_SET);
     n = end - here;
-    char config[n];
+    char config[n + 1];
     if (fread(config, n, 1, f) == 0) {
         fclose(f);
         return -1;
     }
-    config[n - 1] = 0;
+    config[n] = 0;
     // Save to LLMETA
     int rc, bdberr;
     if ((rc = bdb_llmeta_add_queue(thedb->bdb_env, NULL, name, config, ndests,
@@ -3063,11 +3064,11 @@ static int init_db_dir(char *dbname, char *dir)
 
 static int llmeta_set_qdbs(void)
 {
-    if (qdbs == NULL)
-        return 0;
     int rc = 0;
-    while (*qdbs && (rc = llmeta_set_qdb(*qdbs++)) == 0)
-        ;
+    for (int i = 0; i != thedb->num_qdbs; ++i) {
+        if ((rc = llmeta_set_qdb(qdbs[i])) != 0)
+            break;
+    }
     return rc;
 }
 
