@@ -904,8 +904,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         return ERR_REJECTED;
     }
 
-    if (gbl_debug_verify_tran)
-        iq->transflags |= TRAN_VERIFY;
     if (iq->frommach == NULL)
         iq->frommach = intern(gbl_mynode);
 
