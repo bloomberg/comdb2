@@ -1162,7 +1162,6 @@ static int tolongblock_req_pre_hdr_int(struct ireq *iq,
     }
 
     iq->errstrused = req.flags & BLKF_ERRSTAT;
-    iq->transflags = req.flags;
 
     p_blkstate->source_host = NULL;
 
@@ -1223,7 +1222,6 @@ int tolongblock(struct ireq *iq)
     blkstate.longblock_single = 0;
 
     iq->errstrused = 0;
-    iq->transflags = 0;
 
     /* fill blkstate's type specific fields */
     switch (iq->opcode) {
@@ -1856,7 +1854,6 @@ static int toblock_req_int(struct ireq *iq, block_state_t *p_blkstate)
     }
 
     iq->errstrused = req.flags & BLKF_ERRSTAT;
-    iq->transflags = req.flags;
 
     if ((rc = block_state_set_end(iq, p_blkstate, req.offset)))
         return rc;
@@ -4292,7 +4289,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = ERR_BADREQ;
                 GOTOBACKOUT;
             }
-            iq->transflags = p_setflags.flags;
             break;
         }
 

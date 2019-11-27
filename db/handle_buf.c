@@ -900,9 +900,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     if (iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
-    if (db_is_stopped()) {
-        return ERR_REJECTED;
-    }
 
     if (iq->frommach == NULL)
         iq->frommach = intern(gbl_mynode);
@@ -924,6 +921,10 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     struct thd *thd;
     int numwriterthreads;
     struct dbq_entry_t *newent = NULL;
+
+    if (db_is_stopped()) {
+        return ERR_REJECTED;
+    }
 
     net_delay(frommach);
 

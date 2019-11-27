@@ -1365,7 +1365,6 @@ struct ireq {
     /* if we replicated then these get updated */
     int reptimems;
     int timeoutms;
-    int transflags; /* per-transaction flags */
 
     /* more stats - number of retries done under this request */
     int retries;
