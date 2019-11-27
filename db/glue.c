@@ -240,7 +240,6 @@ static struct dbenv *dbenv_from_ireq(const struct ireq *iq)
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
 {
     memset(iq, 0, sizeof(struct ireq));
-    iq->transflags = 0;
     iq->is_fake = 1;
     iq->dbenv = dbenv;
     iq->use_handle = get_bdb_handle_ireq(iq, auxdb);

@@ -156,13 +156,6 @@ enum STMT_CACHE_FLAGS {
     STMT_CACHE_ALL = 2 /* cache all the queries */
 };
 
-enum TRAN_FLAGS {
-    TRAN_NO_SYNC =
-        1 /* don't wait for acks for this transaction (be careful...) */
-    ,
-    TRAN_VERIFY = 2 /* before commit verify all the keys */
-};
-
 enum OPCODES {
     OP_DBINFO = 0 /*rmtdb info req*/
     ,
@@ -1372,7 +1365,6 @@ struct ireq {
     /* if we replicated then these get updated */
     int reptimems;
     int timeoutms;
-    int transflags; /* per-transaction flags */
 
     /* more stats - number of retries done under this request */
     int retries;
@@ -1636,7 +1628,6 @@ extern int gbl_context_in_key; /* whether to drop find context in last
                                   key found (in dtastripe mode) */
 extern int gbl_ready;          /* gets set just before waitft is called
                                   and never gets unset */
-extern int gbl_debug_verify_tran;
 extern int gbl_queue_debug;
 extern unsigned gbl_goose_add_rate;
 extern unsigned gbl_goose_consume_rate;
