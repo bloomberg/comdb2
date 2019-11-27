@@ -27,9 +27,10 @@
 #include "osqlcomm.h"
 #include "comdb2uuid.h"
 #include <alloca.h>
-#include <logmsg.h>
-#include <locks_wrap.h>
-#include <tohex.h>
+#include "logmsg.h"
+#include "locks_wrap.h"
+#include "tohex.h"
+#include "comdb2_atomic.h"
 
 struct osql_repository {
 
@@ -38,14 +39,13 @@ struct osql_repository {
     pthread_rwlock_t hshlck; /* protect the hash */
 
     int cancelall; /* set this if we want to prevent new blocksqls */
-    pthread_mutex_t cancelall_mtx; /* cancelall mutex */
 
     struct dbenv *dbenv; /* dbenv */
 };
 
 static osql_repository_t *theosql_obj = NULL;
 
-static osql_repository_t *get_theosql(void)
+static inline osql_repository_t *get_theosql(void)
 {
     return theosql_obj;
 }
@@ -66,8 +66,6 @@ int osql_repository_init(void)
         return -1;
     }
 
-    Pthread_mutex_init(&tmp->cancelall_mtx, NULL);
-
     Pthread_rwlock_init(&tmp->hshlck, NULL);
 
     /* init the client hash */
@@ -76,7 +74,6 @@ int osql_repository_init(void)
 
     if (!tmp->rqs) {
         logmsg(LOGMSG_ERROR, "%s: unable to create hash\n", __func__);
-        Pthread_mutex_destroy(&tmp->cancelall_mtx);
         Pthread_rwlock_destroy(&tmp->hshlck);
         free(tmp);
         return -1;
@@ -369,14 +366,12 @@ int osql_repository_put(osql_sess_t *sess, int release_repository_lock)
 void osql_set_cancelall(int disable)
 {
     osql_repository_t *theosql = get_theosql();
-    if (theosql) {
-        Pthread_mutex_lock(&theosql->cancelall_mtx);
-        theosql->cancelall = disable;
-        Pthread_mutex_unlock(&theosql->cancelall_mtx);
+    if (!theosql)
+        return;
 
-        if (disable)
-            osql_repository_cancelall();
-    }
+    XCHANGE32(theosql->cancelall, disable);
+    if (disable)
+        osql_repository_cancelall();
 }
 
 /**
@@ -494,7 +489,10 @@ int osql_repository_terminatenode(char *host)
  * transactions
  *
  */
-int osql_repository_cancelall(void) { return osql_repository_terminatenode(0); }
+inline int osql_repository_cancelall(void)
+{ 
+    return osql_repository_terminatenode(0);
+}
 
 /**
  * Returns true if all requests are being
@@ -504,17 +502,12 @@ int osql_repository_cancelall(void) { return osql_repository_terminatenode(0); }
  */
 int osql_repository_cancelled(void)
 {
-    int cancelall = 0;
-
     osql_repository_t *theosql = get_theosql();
     /* Becomes null when the db is exiting. */
     if (!theosql)
         return 1;
-    Pthread_mutex_lock(&theosql->cancelall_mtx);
-    if (theosql->cancelall)
-        cancelall = 1;
-    Pthread_mutex_unlock(&theosql->cancelall_mtx);
 
+    int cancelall = ATOMIC_LOAD32(theosql->cancelall);
     return cancelall;
 }
 

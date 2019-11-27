@@ -161,7 +161,7 @@ for testcase in $files ; do
 
 done
 
-egrep -i "ctrl engine has wrong state" $TESTDIR/logs/*db
+egrep -i "ctrl engine has wrong state" $TESTDIR/logs/sp*.db
 if [[ $? == 0 ]]; then
     echo "error: corrupted transaction state detected"
     exit 1

@@ -1511,7 +1511,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
 
-int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
+int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
                                  void ***sc_data_out, int *num, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
@@ -1625,7 +1625,7 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long genid,
                     unsigned int host, int *bdberr);
 int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
-                    const char *table, unsigned long long *genid,
+                    const char *tablename, unsigned long long *genid,
                     unsigned int *host, int *bdberr);
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                        const char *table, int *bdberr);

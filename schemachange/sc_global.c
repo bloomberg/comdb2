@@ -290,7 +290,7 @@ void sc_status(struct dbenv *dbenv)
 
         if (db && db->doing_conversion)
             logmsg(LOGMSG_USER,
-                   "Conversion phase running %" PRId64 "converted\n",
+                   "Conversion phase running %" PRId64 " converted\n",
                    db->sc_nrecs);
         else if (db && db->doing_upgrade)
             logmsg(LOGMSG_USER, "Upgrade phase running %" PRId64 " upgraded\n",

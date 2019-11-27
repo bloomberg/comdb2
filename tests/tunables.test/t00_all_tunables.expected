@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=936)
+(TUNABLES_COUNT=935)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -543,7 +543,6 @@
 (name='null_blob_fix', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='nullfkey', description='Do not enforce foreign key constraints for null keys. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='num_contexts', description='', type='INTEGER', value='16', read_only='Y')
-(name='num_qdbs', description='', type='INTEGER', value='0', read_only='Y')
 (name='num_record_converts', description='During schema changes, pack this many records into a transaction. (Default: 100)', type='INTEGER', value='100', read_only='Y')
 (name='num_write_retries', description='number of times to retry writes on ENOSPC', type='INTEGER', value='128', read_only='N')
 (name='numberkdbcaches', description='Split the cache into this many segments.', type='INTEGER', value='0', read_only='N')

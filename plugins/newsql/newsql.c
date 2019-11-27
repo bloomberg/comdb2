@@ -1456,6 +1456,69 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
+int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
+{
+    int iswarn = 0;
+    double cost;
+    char *endp;
+
+    sqlstr += 11;
+    sqlstr = skipws(sqlstr);
+
+    if (strncasecmp(sqlstr, "warn", 4) == 0) {
+        sqlstr += 4;
+        sqlstr = skipws(sqlstr);
+        iswarn = 1;
+    }
+
+    if (strncasecmp(sqlstr, "maxcost", 7) == 0) {
+        sqlstr += 7;
+        sqlstr = skipws(sqlstr);
+        cost = strtod(sqlstr, &endp);
+        if (*endp != 0)
+            return 1;
+        if (iswarn) {
+            clnt->limits.maxcost_warn = cost;
+        } else {
+            clnt->limits.maxcost = cost;
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "tablescans", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 1;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 0;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.tablescans_warn = onoff;
+        } else {
+            clnt->limits.tablescans_ok = htonl(onoff);
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "temptables", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 0;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 1;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.temptables_warn = htonl(onoff);
+        } else {
+            clnt->limits.temptables_ok = htonl(onoff);
+        }
+        return 0;
+    } else
+        return 1;
+}
+
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                 CDB2SQLQUERY *sql_query)
@@ -1805,6 +1868,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     clnt->admin = 1;
                 }
+            } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
+                rc = handle_set_querylimits(sqlstr, clnt);
             } else {
                 rc = ii + 1;
             }
