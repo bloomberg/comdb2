@@ -3677,7 +3677,12 @@ expr_code_doover:
         ** constant.
         */
         int iReg = sqlite3ExprCodeTarget(pParse, pExpr->pLeft,target);
-        int aff = sqlite3TableColumnAffinity(pExpr->y.pTab, pExpr->iColumn);
+        int aff;
+        if( pExpr->y.pTab ){
+          aff = sqlite3TableColumnAffinity(pExpr->y.pTab, pExpr->iColumn);
+        }else{
+          aff = pExpr->affExpr;
+        }
         if( aff>SQLITE_AFF_BLOB ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
           static const char zAff[] = "B\000C\000D\000E"

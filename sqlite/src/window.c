@@ -787,8 +787,20 @@ static int selectWindowRewriteExprCb(Walker *pWalker, Expr *pExpr){
 
     case TK_AGG_FUNCTION:
     case TK_COLUMN: {
-      Expr *pDup = sqlite3ExprDup(pParse->db, pExpr, 0);
-      p->pSub = sqlite3ExprListAppend(pParse, p->pSub, pDup);
+      int iCol = -1;
+      if( p->pSub ){
+        int i;
+        for(i=0; i<p->pSub->nExpr; i++){
+          if( 0==sqlite3ExprCompare(0, p->pSub->a[i].pExpr, pExpr, -1) ){
+            iCol = i;
+            break;
+          }
+        }
+      }
+      if( iCol<0 ){
+        Expr *pDup = sqlite3ExprDup(pParse->db, pExpr, 0);
+        p->pSub = sqlite3ExprListAppend(pParse, p->pSub, pDup);
+      }
       if( p->pSub ){
         assert( ExprHasProperty(pExpr, EP_Static)==0 );
         ExprSetProperty(pExpr, EP_Static);
@@ -797,11 +809,11 @@ static int selectWindowRewriteExprCb(Walker *pWalker, Expr *pExpr){
         memset(pExpr, 0, sizeof(Expr));
 
         pExpr->op = TK_COLUMN;
-        pExpr->iColumn = p->pSub->nExpr-1;
+        pExpr->iColumn = (iCol<0 ? p->pSub->nExpr-1: iCol);
         pExpr->iTable = p->pWin->iEphCsr;
         pExpr->y.pTab = p->pTab;
       }
-
+      if( pParse->db->mallocFailed ) return WRC_Abort;
       break;
     }
 
@@ -1267,6 +1279,7 @@ void sqlite3WindowLink(Select *pSel, Window *pWin){
 ** Identical window objects can be processed in a single scan.
 */
 int sqlite3WindowCompare(Parse *pParse, Window *p1, Window *p2, int bFilter){
+  if( NEVER(p1==0) || NEVER(p2==0) ) return 1;
   if( p1->eFrmType!=p2->eFrmType ) return 1;
   if( p1->eStart!=p2->eStart ) return 1;
   if( p1->eEnd!=p2->eEnd ) return 1;
