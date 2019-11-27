@@ -994,11 +994,6 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     else
         sc->live = 1;
 
-    if (OPT_ON(opt, READ_ONLY))
-        sc->live = 0;
-    else
-        sc->live = 1;
-
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 

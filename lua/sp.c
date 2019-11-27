@@ -63,6 +63,7 @@
 #include <logmsg.h>
 #include <tohex.h>
 #include <ctrace.h>
+#include <bb_oscompat.h>
 
 #ifdef WITH_RDKAFKA    
 
@@ -3462,7 +3463,7 @@ int db_csvcopy(Lua lua)
     strbuf *columns, *params, *sql;
 
     char path[PATH_MAX + 1];
-    char *fname = realpath(fname_orig, path);
+    char *fname = comdb2_realpath(fname_orig, path);
 
     int basedir_len = strlen(thedb->basedir);
 

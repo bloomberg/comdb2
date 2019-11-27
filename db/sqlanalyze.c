@@ -817,7 +817,7 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
     /* grab the size of the table */
-    int64_t totsiz = calc_table_size_analyze(tbl);
+    int64_t totsiz = calc_table_size(tbl, 1);
 
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);

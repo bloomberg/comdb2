@@ -893,7 +893,13 @@ struct bdb_state_tag {
 
     pthread_mutex_t pending_broadcast_lock;
 
-    unsigned long long gblcontext;
+    union {
+        unsigned long long orig; /* original time-based format */
+        struct {
+            uint16_t lo16; /* stripe + update-id in network byte order */
+            uint64_t hi48; /* incrementing rowid in host byte order */
+        } genid48;         /* GENID48 format */
+    } gblcontext;
 
     void (*signal_rtoff)(void);
 
@@ -1302,13 +1308,15 @@ extern void __bb_dbreg_print_dblist(DB_ENV *dbenv,
                                     void (*prncallback)(void *userptr,
                                                         const char *fmt, ...),
                                     void *userptr);
+extern void __bb_dbreg_print_all_dblist(DB_ENV *dbenv,
+                                    void (*prncallback)(void *userptr,
+                                                        const char *fmt, ...),
+                                    void *userptr);
 #if 0
 extern void __db_cprint(DB *db);
 #endif
 
 void bdb_queue_init_priv(bdb_state_type *bdb_state);
-
-unsigned long long bdb_get_gblcontext(bdb_state_type *bdb_state);
 
 int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 

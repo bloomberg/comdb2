@@ -567,19 +567,6 @@ static int file_update(void *context, void *value)
     return 0;
 }
 
-extern char **qdbs;
-
-static int num_qdbs_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    int val = *(int *)value;
-
-    *(int *)tunable->var = val;
-    thedb->qdbs = calloc(val, sizeof(struct dbtable *));
-    qdbs = calloc(val + 1, sizeof(char *));
-    return 0;
-}
-
 static int lk_verify(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
