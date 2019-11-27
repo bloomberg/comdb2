@@ -5656,6 +5656,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->wrong_db = 0;
     set_sent_data_to_client(clnt, 0, __func__, __LINE__);
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
+    clnt->sqltick = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)

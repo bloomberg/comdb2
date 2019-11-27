@@ -880,7 +880,7 @@ static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
 struct newsqlheader {
     int type;
     int compression;
-    int state; /* Node state */
+    int state; /* query state */
     int length;
 };
 
@@ -2674,7 +2674,7 @@ retry:
             int unused;
             (void)unused;
             callbackrc =
-                cdb2_invoke_callback(hndl, e, 1, CDB2_STATE, hdr.state);
+                cdb2_invoke_callback(hndl, e, 1, CDB2_QUERY_STATE, hdr.state);
             PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
         }
         goto retry;
@@ -6441,7 +6441,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         case CDB2_RETURN_VALUE:
             rc = va_arg(ap, void *);
             break;
-        case CDB2_STATE:
+        case CDB2_QUERY_STATE:
             state = va_arg(ap, int);
             break;
         default:
@@ -6466,7 +6466,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         case CDB2_RETURN_VALUE:
             argv[i] = (void *)(intptr_t)rc;
             break;
-        case CDB2_STATE:
+        case CDB2_QUERY_STATE:
             argv[i] = (void *)(intptr_t)state;
             break;
         default:

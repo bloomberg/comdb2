@@ -208,11 +208,9 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       if (pCur->flags & TRANLOG_FLAGS_BLOCK &&
               !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
           do {
-
               /* Tick up. Return an error if sql_tick() fails
-                 (peer dropped connection, reached max query time, etc.) */
-              rc = comdb2_sql_tick();
-              if (rc != 0)
+                 (peer dropped connection, max query time reached, etc.) */
+              if ((rc = comdb2_sql_tick()) != 0)
                   return rc;
 
               struct timespec ts;

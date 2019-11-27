@@ -8,7 +8,9 @@
 
 const char *db, *tier;
 int nheartbeats;
+int laststate = 1;
 
+/* Check a heartbeat. If no progress has been made within 2 seconds, abort. */
 static void *processing_heartbeat(cdb2_hndl_tp *hndl, void *user_arg,
                                   int argc, void **argv)
 {
@@ -17,13 +19,14 @@ static void *processing_heartbeat(cdb2_hndl_tp *hndl, void *user_arg,
 
     int state = (intptr_t)argv[0];
 
-    if (!state) {
-        puts("neither lsn nor sqltick is advancing!");
+    if (!state && !laststate) {
+        puts("Not making progress in 2 seconds!");
         abort();
     }
 
     printf("Received non-zero state in %p.\n", (void *)pthread_self());
 
+    laststate = state;
     ++nheartbeats;
 
     return NULL;
@@ -35,7 +38,7 @@ void *consumer(void *_)
     cdb2_open(&h, db, tier, 0);
     cdb2_event *e = cdb2_register_event(h, CDB2_AT_RECEIVE_HEARTBEAT, 0,
                                         processing_heartbeat, NULL,
-                                        1, CDB2_STATE);
+                                        1, CDB2_QUERY_STATE);
     cdb2_run_statement(h, "exec procedure w()");
     cdb2_unregister_event(h, e);
     cdb2_close(h);
@@ -52,15 +55,21 @@ static int TEST_heartbeat_events()
 
     cdb2_open(&h, db, tier, 0);
     e = cdb2_register_event(h, CDB2_AT_RECEIVE_HEARTBEAT, 0,
-                            processing_heartbeat, NULL, 1, CDB2_STATE);
+                            processing_heartbeat, NULL, 1, CDB2_QUERY_STATE);
 
-    /* Test sql */
+    /*************************************************
+     *           Testcase 1: SELECT SLEEP(N)         *
+     *************************************************/
+
     rc = cdb2_run_statement(h, "SELECT SLEEP(10)");
     if (rc != 0)
         return rc;
     while ((rc = cdb2_next_record(h)) == CDB2_OK);
 
-    /* Test consumer */
+    /*************************************************
+     *           Testcase 2: Consumers               *
+     *************************************************/
+
     rc = cdb2_run_statement(h, "create table c (i int)");
     if (rc != 0)
         return rc;
@@ -71,7 +80,23 @@ static int TEST_heartbeat_events()
     if (rc != 0)
         return rc;
 
-    /* Test comdb2_transaction_logs */
+    /*************************************************
+     *   Testcase 2A: A consumer with no events      *
+     *************************************************/
+    pthread_create(&t1, NULL, consumer, NULL);
+
+    /*************************************************
+     *   Testcase 2B: A consumer registering         *
+     *                itself with master             *
+     *************************************************/
+    pthread_create(&t2, NULL, consumer, NULL);
+
+    sleep(10);
+
+    /*************************************************
+     *      Testcase 3: comdb2_transaction_logs      *
+     *************************************************/
+
     cdb2_run_statement(h, "set maxquerytime 10");
     cdb2_run_statement(h, "select * from comdb2_transaction_logs where flags = 1");
     while (cdb2_next_record(h) == CDB2_OK);
@@ -79,14 +104,7 @@ static int TEST_heartbeat_events()
     cdb2_unregister_event(h, e);
     cdb2_close(h);
 
-    /* Test dbq_poll */
-    pthread_create(&t1, NULL, consumer, NULL);
-
-    /* Test trigger register */
-    pthread_create(&t2, NULL, consumer, NULL);
-
-    sleep(10);
-
+    /* Make sure heartbeats were indeed checked. */
     return (nheartbeats == 0);
 }
 

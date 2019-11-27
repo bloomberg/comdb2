@@ -59,7 +59,7 @@ static int newsql_has_parallel_sql(struct sqlclntstate *);
 struct newsqlheader {
     int type;        /*  newsql request/response type */
     int compression; /*  Some sort of compression done? */
-    int state;       /*  State of the node */
+    int state;       /*  query state - whether it's progressing, etc. */
     int length;      /*  length of response */
 };
 
@@ -616,21 +616,15 @@ static int newsql_flush(struct sqlclntstate *clnt)
 
 static int newsql_heartbeat(struct sqlclntstate *clnt)
 {
-    int file, offset, state;
+    int state;
 
     if (!clnt->heartbeat)
         return 0;
     if (!clnt->ready_for_heartbeats)
         return 0;
 
-    bdb_get_lsn_node(thedb->bdb_env, gbl_mynode, &file, &offset);
-
-    state = gbl_sqltick > clnt->progress.sqltick ||
-            file > clnt->progress.file ||
-            (file == clnt->progress.file && offset > clnt->progress.offset);
-    clnt->progress.sqltick = gbl_sqltick;
-    clnt->progress.file = file;
-    clnt->progress.offset = offset;
+    state = (clnt->sqltick > clnt->sqltick_last_seen);
+    clnt->sqltick_last_seen = clnt->sqltick;
 
     return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
                            state);

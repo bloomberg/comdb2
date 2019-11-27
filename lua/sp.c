@@ -691,9 +691,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     struct qfound f = {0};
     int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
     Pthread_mutex_unlock(q->lock);
-
     comdb2_sql_tick();
-
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
         return dbq_pushargs(L, q, &f);

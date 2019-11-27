@@ -288,7 +288,7 @@ typedef enum cdb2_event_arg {
     CDB2_PORT,
     CDB2_SQL,
     CDB2_RETURN_VALUE,
-    CDB2_STATE
+    CDB2_QUERY_STATE
 } cdb2_event_arg;
 
 typedef struct cdb2_event cdb2_event;
