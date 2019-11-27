@@ -638,9 +638,8 @@ typedef struct dbtable {
 
     int dbnum; /* zero unless setup as comdbg table */
     int lrl; /*dat len in bytes*/
-    int numblobs;
-    int nsqlix;
 
+    /*index*/
     unsigned short nix; /*number of indices*/
     unsigned short ix_keylen[MAXINDEX]; /*key len in bytes*/
     signed char ix_dupes[MAXINDEX];
@@ -657,6 +656,8 @@ typedef struct dbtable {
     struct schema **ixschema;
     char *sql;
     char **ixsql;
+    int nsqlix;
+    int numblobs;
 
     /*backend db engine handle*/
     bdb_state_type *handle;
@@ -847,8 +848,8 @@ struct dbenv {
     pthread_mutex_t log_delete_counter_mutex;
 
     int dbnum;
-    int nsiblings;
     /*sibling info*/
+    int nsiblings;
     char *sibling_hostname[MAXSIBLINGS];
     int sibling_node[MAXSIBLINGS];  /* currently not used */
     int sibling_flags[MAXSIBLINGS]; /* currently not used */

@@ -94,7 +94,6 @@
 #include "fdb_bend_sql.h"
 #include "fdb_access.h"
 #include "sqllog.h"
-#include <stdbool.h>
 #include <quantize.h>
 #include <intern_strings.h>
 
@@ -1378,7 +1377,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     return 0;
 }
 
-static inline void set_asof_snapshot(struct sqlclntstate *clnt, bool val,
+static inline void set_asof_snapshot(struct sqlclntstate *clnt, uint8_t val,
                                      const char *func, int line)
 {
     clnt->is_asof_snapshot = val;
@@ -1408,7 +1407,7 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     return 0;
 }
 
-void set_sent_data_to_client(struct sqlclntstate *clnt, bool val,
+void set_sent_data_to_client(struct sqlclntstate *clnt, uint8_t val,
                              const char *func, int line)
 {
     clnt->sent_data_to_client = val;
