@@ -2,3 +2,8 @@ schema
 {
    int  id
 }
+
+keys
+{
+    dup "id" = id
+}

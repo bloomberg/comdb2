@@ -51,8 +51,6 @@ struct osql_sess {
                                     prevents freeing rq while reader_thread gets a new reply for
                                     it
                                   */
-    pthread_mutex_t clients_mtx; /* mutex for clients */
-
     int terminate; /* gets set if anything goes wrong w/ the session and we need
                       to abort */
     int dispatched; /* Set when session is dispatched to handle_buf */

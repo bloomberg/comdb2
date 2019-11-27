@@ -198,6 +198,9 @@ static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
             if (time(NULL) - ckp->timestamp < min_keep_logs_age) {
                 Pthread_mutex_unlock(&ckp_lst_mtx);
                 return 0;
+            } else {
+                Pthread_mutex_unlock(&ckp_lst_mtx);
+                return 1;
             }
         }
     }
@@ -1012,7 +1015,8 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
                      int *bdberr)
 {
     DB_TXN *tid = tran ? tran->tid : NULL;
-    char *orig_name;
+    char *saved_name;
+    char *saved_origname; /* certain sc set this, preserve */
     int rc;
 
     rc = close_dbs_flush(bdb_state, tid);
@@ -1021,21 +1025,25 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
         return -1;
     }
 
+    saved_origname = bdb_state->origname;
+    bdb_state->origname = NULL;
     rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        bdb_state->origname = saved_origname;
         return -1;
     }
 
-    orig_name = bdb_state->name;
+    saved_name = bdb_state->name;
     bdb_state->name = newname;
     rc = open_dbs(bdb_state, 1, 1, 0, tid);
     if (rc != 0) {
-        bdb_state->name = orig_name;
+        bdb_state->name = saved_name;
+        bdb_state->origname = saved_origname;
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
     }
-    bdb_state->name = orig_name;
+    bdb_state->name = saved_name;
     bdb_state->isopen = 1;
 
     return 0;
@@ -4572,23 +4580,8 @@ deadlock_again:
         bdb_state->master_cmpcontext = bdb_increment_slot(bdb_state, maxgenid);
         master_cmpcontext = bdb_state->master_cmpcontext;
 
-        if (maxgenid) {
-            if (bdb_state->parent)
-                bdb_state = bdb_state->parent;
-
-            if (bdb_state->gblcontext == -1ULL) {
-                logmsg(LOGMSG_ERROR, "ENV STATE IS -1\n");
-                cheap_stack_trace();
-            }
-
-            if (bdb_cmp_genids(master_cmpcontext, bdb_state->gblcontext) > 0) {
-                bdb_state->got_gblcontext = 1;
-                bdb_state->gblcontext = master_cmpcontext;
-
-                logmsg(LOGMSG_INFO, "setting gblcontext to  0x%08llx\n",
-                        bdb_state->gblcontext);
-            }
-        }
+        if (maxgenid)
+            set_gblcontext(bdb_state, master_cmpcontext);
     }
 
     return 0;
@@ -4768,19 +4761,18 @@ static void fix_context(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (bdb_state->gblcontext == -1ULL) {
-        logmsg(LOGMSG_ERROR, "%s: detected BAD context %llu, fixing\n", __func__,
-                bdb_state->gblcontext);
+    if (get_gblcontext(bdb_state) == -1ULL) {
+        logmsg(LOGMSG_ERROR, "%s: detected BAD context %llu, fixing\n",
+               __func__, get_gblcontext(bdb_state));
 
         /* sleep 1 sec to avoid dups, which are broken now! */
         sleep(1);
 
         correct_context = bdb_get_cmp_context(bdb_state);
-
-        bdb_state->gblcontext = correct_context;
+        set_gblcontext(bdb_state, correct_context);
 
         logmsg(LOGMSG_ERROR, "%s: FIXING context to %llx\n", __func__,
-                bdb_state->gblcontext);
+               correct_context);
     }
 }
 
@@ -5466,8 +5458,6 @@ static bdb_state_type *bdb_open_int(
             bdb_state->coherent_state[i] = STATE_COHERENT;
 
         Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
-
-        bdb_state->gblcontext = 0;
 
         bdb_lock_init(bdb_state);
 
@@ -7102,6 +7092,23 @@ static size_t dirent_buf_size(const char *dir)
                                              : sizeof(struct dirent));
 }
 
+uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
+{
+    char tmpname[PATH_MAX];
+    struct stat st;
+
+    assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
+
+    snprintf(tmpname, sizeof(tmpname), "%s/%s.queuedb", bdb_state->dir,
+             bdb_state->name);
+    int rc = stat(tmpname, &st);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
+        return 0;
+    }
+    return st.st_size;
+}
+
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 {
     DIR *dh;
@@ -7119,8 +7126,8 @@ uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 
     *num_extents = 0;
 
-    if (bdb_state->bdbtype != BDBTYPE_QUEUE)
-        return 0;
+    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+        return bdb_queuedb_size(bdb_state);
 
     prefix_len = snprintf(extent_prefix, sizeof(extent_prefix),
                           "__dbq.%s.queue.", bdb_state->name);

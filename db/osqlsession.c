@@ -28,6 +28,7 @@
 #include <net_types.h>
 
 #include "debug_switches.h"
+#include "comdb2_atomic.h"
 
 #include <uuid/uuid.h>
 #include "str0.h"
@@ -102,13 +103,9 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
        since we removed the hash entry, no new messages are added
      */
     if (!rc) {
-        Pthread_mutex_lock(&sess->clients_mtx);
-        while (sess->clients > 0) {
-            Pthread_mutex_unlock(&sess->clients_mtx);
+        while (ATOMIC_LOAD32(sess->clients) > 0) {
             poll(NULL, 0, 10);
-            Pthread_mutex_lock(&sess->clients_mtx);
         }
-        Pthread_mutex_unlock(&sess->clients_mtx);
 
         _destroy_session(psess, 0);
     }
@@ -156,10 +153,8 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     case 2:
         Pthread_mutex_destroy(&rq->mtx);
     case 3:
-        Pthread_mutex_destroy(&rq->clients_mtx);
-    case 4:
         Pthread_mutex_destroy(&rq->completed_lock);
-    case 5:
+    case 4:
         free(rq);
     }
 
@@ -206,7 +201,6 @@ inline unsigned long long osql_sess_getrqid(osql_sess_t *sess)
  */
 int osql_sess_addclient(osql_sess_t *sess)
 {
-    Pthread_mutex_lock(&sess->clients_mtx);
 #if 0
    uuidstr_t us;
    comdb2uuidstr(sess->uuid, us);
@@ -214,9 +208,7 @@ int osql_sess_addclient(osql_sess_t *sess)
          sess, sess->rqid, us, sess->completed, pthread_self(), sess->clients+1, sess->iq);
 #endif
 
-    sess->clients++;
-
-    Pthread_mutex_unlock(&sess->clients_mtx);
+    ATOMIC_ADD32(sess->clients, 1);
 
     return 0;
 }
@@ -228,8 +220,6 @@ int osql_sess_addclient(osql_sess_t *sess)
  */
 int osql_sess_remclient(osql_sess_t *sess)
 {
-    Pthread_mutex_lock(&sess->clients_mtx);
-
 #if 0
    uuidstr_t us;
    comdb2uuidstr(sess->uuid, us);
@@ -237,16 +227,14 @@ int osql_sess_remclient(osql_sess_t *sess)
          sess, sess->rqid, us, sess->completed, pthread_self(), sess->clients-1, sess->iq);
 #endif
 
-    sess->clients--;
+    int loc_clients = ATOMIC_ADD32(sess->clients, -1);
 
-    if (sess->clients < 0) {
+    if (loc_clients < 0) {
         uuidstr_t us;
         fprintf(stderr,
                 "%s: BUG ALERT, session %llu %s freed one too many times\n",
                 __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
-
-    Pthread_mutex_unlock(&sess->clients_mtx);
 
     return 0;
 }
@@ -659,13 +647,9 @@ int osql_session_testterminate(void *obj, void *arg)
         }
 
         /* step 2) wait for current reader threads to go away */
-        Pthread_mutex_lock(&sess->clients_mtx);
-        while (sess->clients > 0) {
-            Pthread_mutex_unlock(&sess->clients_mtx);
+        while (ATOMIC_LOAD32(sess->clients) > 0) {
             poll(NULL, 0, 10);
-            Pthread_mutex_lock(&sess->clients_mtx);
         }
-        Pthread_mutex_unlock(&sess->clients_mtx);
         /* NOTE: at this point there will be no other bplog updates coming from
            this
            sorese session; the session might still be worked on; if that is the
@@ -780,7 +764,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 #endif
 
     /* init sync fields */
-    Pthread_mutex_init(&sess->clients_mtx, NULL);
     Pthread_mutex_init(&sess->completed_lock, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
     Pthread_cond_init(&sess->cond, NULL);

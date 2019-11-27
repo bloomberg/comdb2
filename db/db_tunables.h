@@ -813,8 +813,6 @@ REGISTER_TUNABLE("nullsort", NULL, TUNABLE_ENUM,
 */
 REGISTER_TUNABLE("num_contexts", NULL, TUNABLE_INTEGER, &gbl_num_contexts,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("num_qdbs", NULL, TUNABLE_INTEGER, &db->num_qdbs, READONLY,
-                 NULL, NULL, num_qdbs_update, NULL);
 REGISTER_TUNABLE("num_record_converts",
                  "During schema changes, pack this many records into a "
                  "transaction. (Default: 100)",

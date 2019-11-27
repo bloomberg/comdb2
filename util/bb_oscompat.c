@@ -21,8 +21,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <limits.h>
+#include <stdlib.h>
 
 #include <bb_oscompat.h>
+#include <logmsg.h>
+#include <mem_util.h>
+#include <mem_override.h>
 
 static int os_gethostbyname(char **name_ptr, struct in_addr *addr)
 {
@@ -101,4 +106,21 @@ int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
     int rc;
     return readdir_r(d, buf, dent);
 #endif
+}
+
+char *comdb2_realpath(const char *path, char *resolved_path)
+{
+    char *rv, *rpath;
+    rpath = resolved_path;
+    if (rpath == NULL) {
+        rpath = malloc(PATH_MAX + 1);
+        if (rpath == NULL) {
+            logmsgperror("malloc");
+            return NULL;
+        }
+    }
+    rv = realpath(path, rpath);
+    if (rv == NULL && resolved_path == NULL)
+        free(rpath);
+    return rv;
 }

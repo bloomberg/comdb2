@@ -472,27 +472,22 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
     return newdb;
 }
 
-int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
+int fetch_sc_seed(const char *tablename, struct dbenv *thedb,
                              unsigned long long *stored_sc_genid,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename,
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, tablename,
                              stored_sc_genid, stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
         logmsg(LOGMSG_ERROR,
-               "Can't retrieve schema change seed, aborting rc %d bdberr %d\n",
+               "Can't retrieve schema change seed, rc %d bdberr %d\n",
                rc, bdberr);
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
-               *stored_sc_genid, *stored_sc_host);
-        logmsg(
-            LOGMSG_WARN,
-            "Resuming previously restarted schema change, disabling plan.\n");
     }
 
     return SC_OK;
@@ -1254,8 +1249,8 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 
-    oldsize = calc_table_size(olddb);
-    newsize = calc_table_size(newdb);
+    oldsize = calc_table_size(olddb, 0);
+    newsize = calc_table_size(newdb, 0);
 
     if (newsize > oldsize)
         diff = oldsize / 3; /* newdb already larger; assume 33% growth */
