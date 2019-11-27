@@ -144,36 +144,35 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
 
-retry:
+    while(!thedb->master || entry->master != thedb->master && retry < 60)
+    {
+        poll(NULL, 0, 500);
+        retry++;
+    }
 
-    /* insert entry */
-    Pthread_rwlock_wrlock(&checkboard->rwlock);
+    if (!thedb->master) {
+        logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
+        return -1;
+    }
 
     /* making sure we're adding the correct master */
-    if (entry->master != thedb->master) {
+    if (entry->master != thedb->master)
         entry->master = clnt->osql.host = thedb->master;
-        if (!entry->master) {
-            Pthread_rwlock_unlock(&checkboard->rwlock);
-            if (retry < 60) /* 60*500 = 30 seconds */
-            {
-                poll(NULL, 0, 500);
-                retry++;
-                goto retry;
-            }
-            logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
-            return -1;
-        }
-    }
 
     if (clnt->osql.host == gbl_mynode) {
         clnt->osql.host = 0;
     }
-    if (entry->master == 0)
-        entry->master = gbl_mynode;
+    assert(entry->master != 0);
+
+    /* insert entry */
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
+
     if (entry->rqid == OSQL_RQID_USE_UUID)
         rc = hash_add(checkboard->rqsuuid, entry);
     else
         rc = hash_add(checkboard->rqs, entry);
+
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n", __func__,
@@ -181,8 +180,6 @@ retry:
     }
 
     clnt->osql.sess_blocksock = entry;
-
-    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
         int fd = 0;
