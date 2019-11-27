@@ -198,6 +198,9 @@ static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
             if (time(NULL) - ckp->timestamp < min_keep_logs_age) {
                 Pthread_mutex_unlock(&ckp_lst_mtx);
                 return 0;
+            } else {
+                Pthread_mutex_unlock(&ckp_lst_mtx);
+                return 1;
             }
         }
     }
