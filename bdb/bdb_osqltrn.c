@@ -233,7 +233,7 @@ int bdb_is_timestamp_recoverable(bdb_state_type *bdb_state, int32_t timestamp)
     return 1;
 }
 
-unsigned int bdb_osql_trn_count = 0;
+unsigned int bdb_osql_trn_total_count = 0;
 
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
         uint32_t *durable_file, uint32_t *durable_offset, uint32_t *durable_gen);
@@ -383,7 +383,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     }
 
     listc_abl(&trn_repo->trns, trn);
-    ++bdb_osql_trn_count;
+    ++bdb_osql_trn_total_count;
 
     if (trn->trak)
         logmsg(LOGMSG_USER, "TRK_TRN: registered %p rc=%d for shadow=%p genid=%llx "
@@ -630,7 +630,7 @@ int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
     return 0;
 }
 
-int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr)
+void bdb_osql_trn_count_clients(int *count, int lock_repo)
 {
     *count = 0;
 
@@ -647,25 +647,15 @@ int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr)
     if (lock_repo) {
         Pthread_mutex_unlock(&trn_repo_mtx);
     }
-
-    return 0;
 }
 
 void bdb_osql_trn_clients_status()
 {
-    int rc, bdberr;
-    int count;
-    rc = bdberr = 0;
-
     Pthread_mutex_lock(&trn_repo_mtx);
-
-    rc = bdb_osql_trn_count_clients(&count, 0, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
-    } else {
-        logmsg(LOGMSG_USER, "snapshot registered: %u\n", bdb_osql_trn_count);
-        logmsg(LOGMSG_USER, "active snapshot: %u\n", count);
-    }
+    int count;
+    bdb_osql_trn_count_clients(&count, 0);
+    logmsg(LOGMSG_USER, "snapshot registered: %u\n", bdb_osql_trn_total_count);
+    logmsg(LOGMSG_USER, "active snapshot: %u\n", count);
 
     Pthread_mutex_unlock(&trn_repo_mtx);
 }
