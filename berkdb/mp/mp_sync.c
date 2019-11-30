@@ -548,6 +548,7 @@ static struct thdpool *trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
 
+int gbl_trickle_sync_counter_max = 20;
 
 static void
 trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
@@ -564,7 +565,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	DB_MUTEX *mutexp;
 	MPOOLFILE *mfp;
 	int ar_cnt, hb_lock, i, j, pass, remaining, ret;
-	int wait_cnt, write_cnt, wrote;
+	int wait_cnt, write_cnt, wrote, sleeps=0;
 	int sgio, gathered, delay_write;
 	db_pgno_t off_gather;
 
@@ -727,11 +728,14 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		    "... bhp->ref_sync is %d (waiting for it to go to 0)\n",
 			    bhp->ref_sync);
 			(void)__os_sleep(dbenv, 1, 0);
+			sleeps++;
 		}
 #else
 		for (wait_cnt = 1;
-		    bhp->ref_sync != 0 && wait_cnt < 4; ++wait_cnt)
+		    bhp->ref_sync != 0 && wait_cnt < 4; ++wait_cnt) {
 			(void)__os_sleep(dbenv, 1, 0);
+			sleeps++;
+		}
 #endif
 
 		MUTEX_LOCK(dbenv, mutexp);
@@ -742,8 +746,16 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		 * with this buffer no matter what happens.
 		 */
 		if (bhp->ref_sync == 0) {
+			sleeps = 0;
 			--remaining;
 			bharray[i].track_hp = NULL;
+		} else {
+			if (gbl_trickle_sync_counter_max > 0 && sleeps >=
+					gbl_trickle_sync_counter_max) {
+				logmsg(LOGMSG_FATAL, "%s exceeded max-sync time: aborting\n",
+						__func__);
+				abort();
+			}
 		}
 
 		/*
