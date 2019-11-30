@@ -40,20 +40,22 @@ extern const char *CHR_TMPSVOP;
 #define ACCUMULATE_TIMING(NAME, CODE)                                          \
     do {                                                                       \
         struct timeval __tv1;                                                  \
-        gettimeofday(&__tv1, NULL);                                            \
+        if(gbl_ready && !already_timing) {                                     \
+            gettimeofday(&__tv1, NULL);                                        \
+        }                                                                      \
         CODE;                                                                  \
-        if(gbl_ready && !already_timing) { \
-            already_timing = 1; \
-            struct timeval __tv2;                                                  \
-            gettimeofday(&__tv2, NULL);                                            \
-            int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;              \
-            int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                     \
-            accumulate_time(#NAME, __sec_part + __usec_part);                       \
-            already_timing = 0; \
-        } \
+        if(gbl_ready && !already_timing) {                                     \
+            already_timing = 1; /* stop from recurring */                      \
+            struct timeval __tv2;                                              \
+            gettimeofday(&__tv2, NULL);                                        \
+            unsigned int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;          \
+            unsigned int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                 \
+            accumulate_time(#NAME, __sec_part + __usec_part);                  \
+            already_timing = 0;                                                \
+        }                                                                      \
     } while (0);
 
-void accumulate_time(const char *name, int us);
+void accumulate_time(const char *name, unsigned int us);
 
 void print_time_accounting(const char *name);
 void print_all_time_accounting();

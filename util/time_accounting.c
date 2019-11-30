@@ -53,7 +53,7 @@ int chrono_stop(struct timeval *tv)
 }
 
 // add time accounting to appropriate slot
-void accumulate_time(const char *name, int us)
+void accumulate_time(const char *name, unsigned int us)
 {
     //printf("%s adding %s\n", __func__, name);
     const char *iptr = intern(name);
@@ -180,7 +180,7 @@ const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};
 uint64_t gbl_chron_times[CHR_MAX];
 
 // add time accounting to appropriate slot
-void accumulate_time(int el, int us)
+void accumulate_time(int el, unsigned int us)
 {
     ATOMIC_ADD64(gbl_chron_times[el], us);
 }
