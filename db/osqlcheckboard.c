@@ -240,10 +240,10 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
     if (!entry) {
+        Pthread_rwlock_unlock(&checkboard->rwlock);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-        Pthread_rwlock_unlock(&checkboard->rwlock);
         return 0;
     }
 
@@ -314,6 +314,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
+        Pthread_rwlock_unlock(&checkboard->rwlock);
         /* This happens naturally for example
            if the client drops the connection while block processor
            is sending back the result
@@ -325,7 +326,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         uuidstr_t us;
         ctrace("%s: received result for missing session %llu %s\n", __func__,
                rqid, comdb2uuidstr(uuid, us));
-        Pthread_rwlock_unlock(&checkboard->rwlock);
         return -1;
     }
 
@@ -622,9 +622,9 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
+        Pthread_rwlock_unlock(&checkboard->rwlock);
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
-        Pthread_rwlock_unlock(&checkboard->rwlock);
         return -1;
     }
 
@@ -656,10 +656,10 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
     if (!entry) {
+        Pthread_rwlock_unlock(&checkboard->rwlock);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-        Pthread_rwlock_unlock(&checkboard->rwlock);
         return -1;
     }
 
