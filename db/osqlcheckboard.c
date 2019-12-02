@@ -140,26 +140,27 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     }
 #endif
 
-    while((!thedb->master || entry->master != thedb->master) && retry < 60)
-    {
-        poll(NULL, 0, 500);
-        retry++;
-    }
-
-    if (!thedb->master) {
-        logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
-        free(entry);
-        return -1;
-    }
-
     /* making sure we're adding the correct master */
-    if (entry->master != thedb->master)
-        entry->master = clnt->osql.host = thedb->master;
+    if (entry->master != thedb->master) {
+        while((entry->master = clnt->osql.host = thedb->master) == 0 && retry < 60)
+        {
+            poll(NULL, 0, 500);
+            retry++;
+        }
+        if (retry >= 60) {
+            logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
+            free(entry);
+            return -1;
+        }
+    }
 
     if (clnt->osql.host == gbl_mynode) {
         clnt->osql.host = 0;
     }
-    assert(entry->master != 0);
+
+    if (entry->master == 0)
+        entry->master = gbl_mynode;
+
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
 
