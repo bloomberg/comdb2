@@ -492,7 +492,6 @@ long n_missed;
 
 int n_commits;
 long long n_commit_time; /* in micro seconds.*/
-pthread_mutex_t commit_stat_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int n_retries_transaction_active = 0;
 int n_retries_transaction_done = 0;
