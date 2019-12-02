@@ -8,3 +8,7 @@
 (test='==== test 2 ====')
 (rows inserted=1)
 (i=1)
+(test='==== test 3 ====')
+(rows inserted=1)
+(i=1, i=1)
+(i=1, i=1)
