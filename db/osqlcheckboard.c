@@ -78,22 +78,21 @@ int osql_checkboard_init(void)
     osql_checkboard_t *tmp = NULL;
 
     /* create repository if none */
-    if (!checkboard) {
+    if (checkboard)
+        return 0;
 
-        tmp = (osql_checkboard_t *)calloc(1, sizeof(osql_checkboard_t));
+    tmp = (osql_checkboard_t *)calloc(1, sizeof(osql_checkboard_t));
 
-        tmp->rqs = hash_init(sizeof(unsigned long long));
-        if (!tmp->rqs) {
-            free(tmp);
-            logmsg(LOGMSG_ERROR, "%s: error init hash\n", __func__);
-            return -1;
-        }
-        tmp->rqsuuid =
-            hash_init_o(offsetof(osql_sqlthr_t, uuid), sizeof(uuid_t));
-
-        Pthread_rwlock_init(&tmp->rwlock, NULL);
-        checkboard = tmp;
+    tmp->rqs = hash_init(sizeof(unsigned long long));
+    if (!tmp->rqs) {
+        free(tmp);
+        logmsg(LOGMSG_ERROR, "%s: error init hash\n", __func__);
+        return -1;
     }
+    tmp->rqsuuid = hash_init_o(offsetof(osql_sqlthr_t, uuid), sizeof(uuid_t));
+
+    Pthread_rwlock_init(&tmp->rwlock, NULL);
+    checkboard = tmp;
 
     return 0;
 }
@@ -141,9 +140,6 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     }
 #endif
 
-    Pthread_mutex_init(&entry->mtx, NULL);
-    Pthread_cond_init(&entry->cond, NULL);
-
     while(!thedb->master || entry->master != thedb->master && retry < 60)
     {
         poll(NULL, 0, 500);
@@ -152,6 +148,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     if (!thedb->master) {
         logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
+        free(entry);
         return -1;
     }
 
@@ -163,6 +160,8 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
         clnt->osql.host = 0;
     }
     assert(entry->master != 0);
+    Pthread_mutex_init(&entry->mtx, NULL);
+    Pthread_cond_init(&entry->cond, NULL);
 
     /* insert entry */
     Pthread_rwlock_wrlock(&checkboard->rwlock);
