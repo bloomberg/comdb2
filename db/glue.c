@@ -89,7 +89,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "time_accounting.h"
-
+#include <seqnum_wait.h>
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
@@ -211,6 +211,24 @@ static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
     }
 
     return bdb_handle;
+}
+
+// making below function non-static to be used in seqnum_wait.c
+void *bdb_handle_from_ireq(const struct ireq *iq)
+{
+    if (iq->usedb)
+        return iq->usedb->handle;
+    return thedb->bdb_env;
+}
+
+// making below function non static , to be used in seqnum_wait.c
+struct dbenv *dbenv_from_ireq(const struct ireq *iq)
+{
+    struct dbtable *db = iq->usedb;
+    if (db)
+        return db->dbenv;
+    else
+        return iq->dbenv;
 }
 
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
@@ -567,7 +585,8 @@ static const char *sync_to_str(int sync)
     }
 }
 
-static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
+//making below function non static to be used in sltdbt.c
+int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                                      struct ireq *iq, char *source_node,
                                      int timeoutms, int adaptive,
                                      db_seqnum_type *ss)
@@ -614,6 +633,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
     case REP_SYNC_FULL:
         iq->gluewhere = "bdb_wait_for_seqnum_from_all";
+        
         if (adaptive)
             rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(
                 bdb_handle, (seqnum_type *)ss, iq->txnsize, &iq->timeoutms);
@@ -636,6 +656,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                    rc);
             rc = 0;
         }
+
         break;
 
     case REP_SYNC_ROOM:
@@ -702,13 +723,15 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int blkkeylen, int release_schema_lk)
 {
     int rc;
-    db_seqnum_type ss;
+    db_seqnum_type *ss;
     char *cnonce = NULL;
     int cn_len;
     void *bdb_handle = thedb->bdb_env;
-
-    memset(&ss, -1, sizeof(ss));
-
+    struct dbenv *dbenv = dbenv_from_ireq(iq);
+    extern int gbl_async_dist_commit;
+    ss = (db_seqnum_type *)malloc(sizeof(db_seqnum_type));
+    //memset(&ss, -1, sizeof(ss));
+    memset(ss, -1, sizeof(db_seqnum_type));
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
@@ -727,19 +750,45 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     }
 
     if (rc != 0) {
+        free(ss);
         return rc;
     }
 
-    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
-                                   timeoutms, adaptive, &ss);
+    /*
+     * If gbl_async_dist_commits is on, AND
+     * If request is sorese_type , AND
+     * If durable_lsns are not enabled, then we return... Distributed commit happens later.
+     */
+    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese.type && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
+        //grab a pointer to ss and return rc
+        iq->commit_seqnum = ss;
+        iq->should_enqueue = 1;
+        return rc;
+    }
+
+    /*
+     * If gbl_async_dist_commits is on, AND
+     * If request is sorese_type , AND
+     * If durable_lsns are not enabled, then we return... Distributed commit happens later.
+     */
+    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese.type && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
+        //grab a pointer to ss and return rc
+        iq->commit_seqnum = ss;
+        iq->should_enqueue = 1;
+        return rc;
+    }
+
+    rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
+                                   timeoutms, adaptive, ss);
 
     if (cnonce) {
-        DB_LSN *lsn = (DB_LSN *)&ss;
+        DB_LSN *lsn = (DB_LSN *)ss;
         logmsg(LOGMSG_USER,
                "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
                __func__, __LINE__, lsn->file, lsn->offset, rc);
     }
-
+    // We finished distributed commit here. We no longer need the commit seqnum. Freeing it here.. 
+    free(ss);
     return rc;
 }
 

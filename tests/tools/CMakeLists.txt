@@ -65,6 +65,11 @@ add_exe(verify_atomics_work verify_atomics_work.c)
 
 target_link_libraries(stepper util mem dlmalloc util)
 target_link_libraries(test_threadpool util mem dlmalloc util)
+target_link_libraries(cdb2_open util)
+target_link_libraries(cdb2_close_early util)
+
+target_link_libraries(stepper util mem dlmalloc util)
+target_link_libraries(test_threadpool util mem dlmalloc util)
 
 list(APPEND common-deps
   ${READLINE_LIBRARIES}
