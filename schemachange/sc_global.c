@@ -106,7 +106,7 @@ int get_stopsc(const char *func, int line)
 
 static int increment_schema_change_in_progress(const char *func, int line)
 {
-    int val, didit=0;
+    int val=0, didit=0;
     Pthread_mutex_lock(&gbl_sc_progress_lk);
     if (stopsc) {
         logmsg(LOGMSG_ERROR, "%s line %d ignoring in-progress\n",
