@@ -53,6 +53,7 @@ set(src
   utilmisc.c
   walkback.c
   xstring.c
+  gettimeofday_ms.c
 )
 if(WITH_SSL)
   list(APPEND src ssl_support.c)

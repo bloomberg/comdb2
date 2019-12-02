@@ -187,8 +187,10 @@ int bdb_attr_get(bdb_attr_type *bdb_attr, int attr)
 #define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
     case BDB_ATTR_##NAME:                                                      \
         return bdb_attr->name;
+    
 #define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
     case BDB_ATTR_##NAME: return bdb_attr->name;
+
     switch (attr) {
 #include "attr.h"
     default:
