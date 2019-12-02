@@ -107,14 +107,15 @@ extern pthread_mutex_t delay_lock;
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_print_deadlock_cycles;
 
-static void adjust_maxwthreadpenalty(
-    int *totpen_p, double lcl_penaltyincpercent_d, int retries)
+static void adjust_maxwthreadpenalty(int *totpen_p,
+                                     double lcl_penaltyincpercent_d,
+                                     int retries)
 {
     Pthread_mutex_lock(&delay_lock);
 
     int penaltyinc;
     penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-        (lcl_penaltyincpercent_d / retries);
+                 (lcl_penaltyincpercent_d / retries);
 
     if (penaltyinc <= 0) {
         /* at least one less writer */
@@ -181,8 +182,7 @@ retry:
             goto retry;
         }
 
-        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n",
-               retries);
+        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
         thd_dump();
     }
 
