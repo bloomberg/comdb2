@@ -947,7 +947,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    if ((foundix = getdbidxbyname(s->tablename)) < 0) {
+    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
         logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         abort();
     }
