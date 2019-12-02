@@ -35,7 +35,6 @@
 
 static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
-static int clear_messages(osql_sess_t *sess);
 
 /**
  * Saves the current sql in a buffer for our use. Reusing the buffer
@@ -122,27 +121,12 @@ static int free_selectv_genids(void *obj, void *arg)
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
     osql_sess_t *rq = *prq;
-    uuidstr_t us;
 
-    free_blob_buffers(rq->blobs, MAXBLOBS);
     switch (phase) {
     case 0:
-#ifdef TEST_OSQL
-        fprintf(stderr, "[%llu %s] FREEING QUEUE\n", rq->rqid,
-                comdb2uuidstr(rq->uuid, us));
-#endif
         if (rq->req)
             free(rq->req);
 
-        /* queue might not be empty; be nice and free its objects */
-        {
-            int cleared = clear_messages(rq);
-            if (cleared && debug_switch_osql_verbose_clear())
-                fprintf(stderr, "%llu %s cleared %d messages\n", rq->rqid,
-                        comdb2uuidstr(rq->uuid, us), cleared);
-        }
-
-        queue_free(rq->que);
         if (rq->selectv_writelock_on_update) {
             hash_for(rq->selectv_genids, free_selectv_genids, NULL);
             hash_clear(rq->selectv_genids);
@@ -159,20 +143,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     }
 
     *prq = NULL;
-}
-
-static int clear_messages(osql_sess_t *sess)
-{
-
-    char *tmp = NULL;
-    int cnt = 0;
-
-    while ((tmp = queue_next(sess->que)) != NULL) {
-        free(tmp);
-        cnt++;
-    }
-
-    return cnt;
 }
 
 /**
@@ -256,11 +226,6 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
     return 0;
 }
 
-/**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_bindreq(osql_sess_t *sess, char *host) { sess->offhost = host; }
 
 /**
  * Mark session duration and reported result.
@@ -709,12 +674,6 @@ static int osql_poke_replicant(osql_sess_t *sess)
 }
 
 /**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_setnode(osql_sess_t *sess, char *host) { sess->offhost = host; }
-
-/**
  * Get the cached sql request
  *
  */
@@ -767,13 +726,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     Pthread_mutex_init(&sess->completed_lock, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
     Pthread_cond_init(&sess->cond, NULL);
-
-    /* init queue of messages */
-    sess->que = queue_new();
-    if (!sess->que) {
-        _destroy_session(&sess, 1);
-        return NULL;
-    }
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
@@ -891,31 +843,9 @@ int osql_process_selectv(osql_sess_t *sess,
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);
 }
 
-char *osql_sess_tag(osql_sess_t *sess)
-{
-    return sess->tag;
-}
-
-void *osql_sess_tagbuf(osql_sess_t *sess)
-{
-    return sess->tagbuf;
-}
-
-int osql_sess_tagbuf_len(osql_sess_t *sess)
-{
-    return sess->tagbuflen;
-}
-
 void osql_sess_set_reqlen(osql_sess_t *sess, int len)
 {
     sess->reqlen = len;
-}
-
-void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
-                             int *nblobs)
-{
-    *blobs = sess->blobs;
-    *nblobs = sess->numblobs;
 }
 
 int osql_sess_reqlen(osql_sess_t *sess)

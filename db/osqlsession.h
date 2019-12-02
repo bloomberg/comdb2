@@ -35,8 +35,6 @@ struct osql_sess {
     /* request part */
     unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
-    queue_type *que; /* queue of received messages */
-    int maxquesz;    /* the maximum entries in the queue  */
 
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
@@ -70,14 +68,6 @@ struct osql_sess {
 
     int reqlen;      /* length of request */
     const char *sql; /* if set, pointer to sql string (part of req) */
-    int sql_allocd;  /* if set, we need to free sql when destroying */
-    char *tag; /* dynamic tag header describing query parameter bindings */
-    void *
-        tagbuf; /* buffer containing query bind parameter values (described by
-                   tag) */
-    int tagbuflen; /* size of tagbuf */
-    blob_buffer_t blobs[MAXBLOBS];
-    int numblobs;
 
     /* this are set for each session retry */
     time_t initstart; /* when this was first started */
@@ -146,12 +136,6 @@ int osql_sess_addclient(osql_sess_t *sess);
  *
  */
 int osql_sess_remclient(osql_sess_t *sess);
-
-/**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_setnode(osql_sess_t *sess, char *host);
 
 /**
  * Mark session duration and reported result.
@@ -261,12 +245,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
                                    int *replaced, bool is_reorder_on);
 
-char *osql_sess_tag(osql_sess_t *sess);
-void *osql_sess_tagbuf(osql_sess_t *sess);
-int osql_sess_tagbuf_len(osql_sess_t *sess);
 void osql_sess_set_reqlen(osql_sess_t *sess, int len);
-void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
-                             int *nblobs);
 int osql_sess_reqlen(osql_sess_t *sess);
 
 /**
