@@ -238,11 +238,11 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
-    if (!(entry)) {
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
+    if (!entry) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
-                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
+        logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
+               __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         Pthread_rwlock_unlock(&checkboard->rwlock);
         return 0;
     }
@@ -295,13 +295,12 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
  * Checks the checkboard for sql session "rqid"
  * Returns true or false depending on whether sesssion exists
  */
-bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                     bool lock)
+bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
 {
     if (!checkboard)
         return 0;
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, lock);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
     return entry != NULL;
 }
 
@@ -313,7 +312,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
         /* This happens naturally for example
            if the client drops the connection while block processor
@@ -621,7 +620,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
@@ -655,7 +654,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
     if (!entry) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,

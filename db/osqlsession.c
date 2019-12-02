@@ -693,7 +693,7 @@ static int osql_poke_replicant(osql_sess_t *sess)
     }
 
     /* checkup local listings */
-    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
+    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid);
 
     if (found || sess->xerr.errval)
         return 0;

@@ -691,7 +691,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
-    if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
+    if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),

@@ -5503,7 +5503,7 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
         return;
     }
 
-    found = osql_chkboard_sqlsession_exists(poke.rqid, uuid, 1);
+    found = osql_chkboard_sqlsession_exists(poke.rqid, uuid);
 
     /* TODO: we could send something back... but in tough times this will
      * not make it nevertheless */
@@ -5555,7 +5555,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid, 1);
+    found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid);
 
     /* TODO: we could send something back... but in tough times this will
      * not make it nevertheless */
