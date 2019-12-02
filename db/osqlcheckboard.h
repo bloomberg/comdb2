@@ -55,6 +55,7 @@ struct osql_sqlthr {
                          never */
     int last_checked; /* poking support: when was the loast poke sent */
     struct sqlclntstate *clnt; /* cache clnt */
+    int in_use;       /* in use counter to allow for safe deleting */
 };
 typedef struct osql_sqlthr osql_sqlthr_t;
 

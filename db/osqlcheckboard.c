@@ -35,7 +35,8 @@
 #include "bdb_api.h"
 #include "comdb2uuid.h"
 #include <net_types.h>
-#include <logmsg.h>
+#include "logmsg.h"
+#include "comdb2_atomic.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -54,6 +55,9 @@ static osql_checkboard_t *checkboard = NULL;
 
 /* will get rdlock on checkboard->rwlock if parameter lock is set
  * if caller already has rwlock, call this func with lock = false
+ *
+ * If calling with lock == false, make sure you don't dereference 
+ * pointer returned because it may be freed from under you.
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
                                                        uuid_t uuid, bool lock)
@@ -234,6 +238,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (clnt->osql.rqid == 0)
         return 0;
 
+retry:
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     osql_sqlthr_t *entry =
@@ -244,6 +249,12 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         return 0;
+    }
+
+    if (ATOMIC_LOAD32(entry->in_use) > 0) {
+        Pthread_rwlock_unlock(&checkboard->rwlock);
+        usleep(1); // tiny sleep for concurrent thread to finish using entry
+        goto retry;
     }
 
     if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
@@ -323,12 +334,15 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         return -1;
     }
 
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
+    Pthread_rwlock_unlock(&checkboard->rwlock);
+
+    Pthread_mutex_lock(&entry->mtx);
+
     if (errstat)
         entry->err = *errstat;
     else
         bzero(&entry->err, sizeof(entry->err));
-
-    Pthread_mutex_lock(&entry->mtx);
 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
@@ -347,8 +361,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_rwlock_unlock(&checkboard->rwlock);
+    ATOMIC_ADD32(entry->in_use, -1);
 
     return 0;
 }
@@ -622,6 +635,9 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         return -1;
     }
 
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
+    Pthread_rwlock_unlock(&checkboard->rwlock);
+
     Pthread_mutex_lock(&entry->mtx);
 
     entry->status = status;
@@ -629,8 +645,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     entry->last_updated = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_rwlock_unlock(&checkboard->rwlock);
+    ATOMIC_ADD32(entry->in_use, -1);
 
     return 0;
 }
@@ -657,6 +672,9 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         return -1;
     }
 
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
+    Pthread_rwlock_unlock(&checkboard->rwlock);
+
     Pthread_mutex_lock(&entry->mtx);
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* reset these time */
@@ -667,8 +685,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->mtx);
 
-    Pthread_rwlock_unlock(&checkboard->rwlock);
-
+    ATOMIC_ADD32(entry->in_use, -1);
     return 0;
 }
 
