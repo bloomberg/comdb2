@@ -328,8 +328,6 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         }
     }
 
-    Pthread_mutex_lock(&trn_repo_mtx);
-
     if (!trn_repo)
         goto done;
 
@@ -376,14 +374,28 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to create backfill active trans, rc %d\n",
                     __func__, __LINE__, rc);
+            Pthread_mutex_destroy(&trn->log_mtx);
             free(trn);
             trn = NULL;
             goto done;
         }
     }
 
+    Pthread_mutex_lock(&trn_repo_mtx);
+
+    if (!trn_repo) {
+        // cleanup the above
+        Pthread_mutex_destroy(&trn->log_mtx);
+        free(trn);
+        trn = NULL;
+        Pthread_mutex_unlock(&trn_repo_mtx);
+        goto done;
+    }
+
     listc_abl(&trn_repo->trns, trn);
     ++bdb_osql_trn_total_count;
+
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     if (trn->trak)
         logmsg(LOGMSG_USER, "TRK_TRN: registered %p rc=%d for shadow=%p genid=%llx "
@@ -392,7 +404,6 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                 shadow_tran->birth_lsn.file, shadow_tran->birth_lsn.offset);
 
 done:
-    Pthread_mutex_unlock(&trn_repo_mtx);
 
     if (gbl_new_snapisol) {
         shadow_tran->pglogs_queue_hash =
@@ -515,7 +526,8 @@ done:
         if (rc) {
             logmsg(LOGMSG_ERROR, "fail to backfill %d %d\n", rc, *bdberr);
             Pthread_mutex_lock(&trn_repo_mtx);
-            listc_rfl(&trn_repo->trns, trn);
+            if (trn_repo)
+                listc_rfl(&trn_repo->trns, trn);
             Pthread_mutex_destroy(&trn->log_mtx);
             free(trn);
             Pthread_mutex_unlock(&trn_repo_mtx);
@@ -535,23 +547,21 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
 {
 
     int rc = 0;
-    int exit = 0;
 
     Pthread_mutex_lock(&trn_repo_mtx);
 
-    if (trn_repo)
-        listc_rfl(&trn_repo->trns, trn);
-    else
-        exit = 1;
+    if (!trn_repo) {
+        Pthread_mutex_unlock(&trn_repo_mtx);
+        return 0;
+    }
+
+    listc_rfl(&trn_repo->trns, trn);
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     /*
     fprintf( stderr, "%d %s:%d UNregistered %p\n",
           pthread_self(), __FILE__, __LINE__, trn->shadow_tran);
      */
-
-    Pthread_mutex_unlock(&trn_repo_mtx);
-    if (exit)
-        return 0;
 
     /* clean the logs if we point to anything */
     if (trn->first) {
