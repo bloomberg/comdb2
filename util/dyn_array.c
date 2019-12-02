@@ -26,6 +26,7 @@
 
 #define MAX_ARR_SZ 1024*2024
 size_t gbl_max_inmem_array_size = MAX_ARR_SZ;
+void hexdump(loglvl lvl, const char *key, int keylen);
 
 
 static int
@@ -258,14 +259,10 @@ void dyn_array_dump(dyn_array_t *arr)
 {
     assert(arr->is_initialized);
     for (int i = 0; i < arr->items; i++) {
-        //logmsg(LOGMSG_ERROR, "AZ: %d: ", i); 
         char *buffer = arr->buffer;
         kv_info_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
-        void hexdump(loglvl lvl, const char *key, int keylen);
-        //hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
-        //printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
-        //logmsg(LOGMSG_ERROR, "\n");
+        logmsg(LOGMSG_USER, "%d: %d %d\n", i, *(int *)key, kv->key_len);
     }
 }
 
