@@ -140,7 +140,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     }
 #endif
 
-    while(!thedb->master || entry->master != thedb->master && retry < 60)
+    while((!thedb->master || entry->master != thedb->master) && retry < 60)
     {
         poll(NULL, 0, 500);
         retry++;
