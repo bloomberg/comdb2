@@ -1293,7 +1293,6 @@ static inline void fileid_str(u_int8_t *fileid, char *str)
 	}
 }
 
-
 /* According to the berkdb docs, after the DB/DBENV close() functions have
  * been called the handle can no longer be used regardless of the outcome.
  * Hence this function will now never fail - although it may spit out errors.
@@ -1312,7 +1311,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
-        logmsg(LOGMSG_INFO, "%s:%d %s not open, not closing\n", __func__,
+        logmsg(LOGMSG_DEBUG, "%s:%d %s not open, not closing\n", __func__,
                 __LINE__, bdb_state->name);
         return 0;
     }
@@ -1327,7 +1326,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                 bdb_state->dbp_data[dtanum][strnum]->get_fileid(
                         bdb_state->dbp_data[dtanum][strnum], fileid);
                 fileid_str(fileid, fid_str);
-                logmsg(LOGMSG_INFO, "%s:%d  closing fileid %s\n", __func__,
+                logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__,
                         __LINE__, fid_str);
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
                     bdb_state->dbp_data[dtanum][strnum], flags);
@@ -1338,20 +1337,20 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                            db_strerror(rc));
                 }
             } else {
-                logmsg(LOGMSG_INFO, "%s:%d not closing dtafile %d stripe %d "
+                logmsg(LOGMSG_DEBUG, "%s:%d not closing dtafile %d stripe %d "
                         "(NULL ptr)\n", __func__, __LINE__, dtanum, strnum);
             }
         }
     }
 
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
-        logmsg(LOGMSG_INFO, "%s:%d  looking through table %s numix %d\n",
+        logmsg(LOGMSG_DEBUG, "%s:%d  looking through table %s numix %d\n",
                 __func__, __LINE__, bdb_state->name, bdb_state->numix);
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
             bdb_state->dbp_ix[i]->get_fileid(bdb_state->dbp_ix[i], fileid);
             fileid_str(fileid, fid_str);
-            logmsg(LOGMSG_INFO, "%s:%d closing fileid %s\n", __func__,
+            logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
                     __LINE__, fid_str);
             rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
             if (rc != 0) {

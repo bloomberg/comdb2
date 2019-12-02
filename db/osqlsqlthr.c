@@ -729,7 +729,7 @@ retry:
             goto retry;
         } else {
             logmsg(LOGMSG_ERROR, "%s: no master for %llu!\n", __func__, osql->rqid);
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+            logmsg(LOGMSG_DEBUG, "%s %d returning ERR_NOMASTER\n", __func__,
                     __LINE__);
             errstat_set_rc(&osql->xerr, ERR_NOMASTER);
             errstat_set_str(&osql->xerr, "No master available");
@@ -1057,7 +1057,7 @@ retry:
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
                 logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
                        __func__, __LINE__);
-                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
+                logmsg(LOGMSG_DEBUG, "%s %d returning ERR_NOMASTER\n", __func__,
                         __LINE__);
                 osql->xerr.errval = ERR_NOMASTER;
             }
