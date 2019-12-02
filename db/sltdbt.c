@@ -152,13 +152,16 @@ static int handle_op_block(struct ireq *iq)
         return rc;
     }
     if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
-        return ERR_READONLY;
+        rc = ERR_READONLY;
+        return rc;
     }
 
     iq->where = "toblock";
-    int retries = 0;
-    int totpen = 0;
-    double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+
+    retries = 0;
+    totpen = 0;
+
+    gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
 retry:
     startus = comdb2_time_epochus();
@@ -191,9 +194,25 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                adjust_maxwthreadpenalty(&totpen, lcl_penaltyincpercent_d,
-                                         iq->retries);
+                Pthread_mutex_lock(&delay_lock);
+
+                penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
+                             (gbl_penaltyincpercent_d / iq->retries);
+
+                if (penaltyinc <= 0) {
+                    /* at least one less writer */
+                    penaltyinc = 1;
+                }
+
+                if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
+                    penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
+
+                gbl_maxwthreadpenalty += penaltyinc;
+                totpen += penaltyinc;
+
+                Pthread_mutex_unlock(&delay_lock);
             }
+
             iq->usedb = iq->origdb;
 
             n_retries++;
@@ -204,7 +223,8 @@ retry:
             goto retry;
         }
 
-        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
+        logmsg(LOGMSG_WARN, "*ERROR* toblock too much contention count %d\n",
+               retries);
         thd_dump();
     }
 
@@ -213,14 +233,13 @@ retry:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-    if (rc)
-        osql_blkseq_unregister(iq);
+    osql_blkseq_unregister(iq);
 
-    if (totpen) {
-        Pthread_mutex_lock(&delay_lock);
-        gbl_maxwthreadpenalty -= totpen;
-        Pthread_mutex_unlock(&delay_lock);
-    }
+    Pthread_mutex_lock(&delay_lock);
+
+    gbl_maxwthreadpenalty -= totpen;
+
+    Pthread_mutex_unlock(&delay_lock);
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
