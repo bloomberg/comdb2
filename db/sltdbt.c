@@ -242,13 +242,13 @@ retry:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-        osql_blkseq_unregister(iq);
+    osql_blkseq_unregister(iq);
 
-        Pthread_mutex_lock(&delay_lock);
+    Pthread_mutex_lock(&delay_lock);
 
-        gbl_maxwthreadpenalty -= totpen;
+    gbl_maxwthreadpenalty -= totpen;
 
-        Pthread_mutex_unlock(&delay_lock);
+    Pthread_mutex_unlock(&delay_lock);
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
