@@ -179,8 +179,6 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
     }
 
-    clnt->osql.sess_blocksock = entry;
-
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
         int fd = 0;
         char filename[256];
@@ -263,8 +261,6 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
                    entry->rqid, comdb2uuidstr(clnt->osql.uuid, us), rc);
         }
     }
-
-    clnt->osql.sess_blocksock = NULL;
 
     if (clnt->osql.logsb) {
         sbuf2close(clnt->osql.logsb);

@@ -146,9 +146,6 @@ typedef struct osqlstate {
 
     SBUF2 *logsb; /* help debugging */
 
-    osql_sqlthr_t *
-        sess_blocksock; /* pointer to osql thread registration entry */
-
     /* == sqlclntstate == */
 
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,

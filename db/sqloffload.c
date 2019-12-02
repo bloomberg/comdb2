@@ -679,10 +679,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         }
     }
 
-    /* fields we don't control, make sure they are 0 */
-    if (clnt->osql.sess_blocksock)
-        logmsg(LOGMSG_ERROR, "sess_blocksock field is not cleared!\n");
-
     if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
         clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
