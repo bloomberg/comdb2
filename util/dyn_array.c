@@ -131,7 +131,7 @@ static inline void transfer_to_temp_table(dyn_array_t *arr)
         kv_info_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
         void *data = &buffer[kv->data_start];
-        printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
+        //printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
         int bdberr;
         int rc = bdb_temp_table_insert(arr->bdb_env, arr->temp_table_cur,
                 key, kv->key_len, data, kv->data_len, &bdberr);
@@ -141,7 +141,7 @@ static inline void transfer_to_temp_table(dyn_array_t *arr)
 
 static inline int do_transfer(dyn_array_t *arr) 
 {
-    logmsg(LOGMSG_ERROR, "time to spill to temp table");
+    //logmsg(LOGMSG_ERROR, "time to spill to temp table");
     assert(arr->using_temp_table == 0);
     assert(arr->temp_table == NULL);
     assert(arr->temp_table_cur == NULL);
@@ -263,9 +263,9 @@ void dyn_array_dump(dyn_array_t *arr)
         kv_info_t *kv = &arr->kv[i];
         void *key = &buffer[kv->key_start];
         void hexdump(loglvl lvl, const char *key, int keylen);
-        hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
+        //hexdump(LOGMSG_ERROR, (const char *)key, kv->key_len);
         //printf("%d: %d %d\n", i, *(int *)key, kv->key_len);
-        logmsg(LOGMSG_ERROR, "\n");
+        //logmsg(LOGMSG_ERROR, "\n");
     }
 }
 
