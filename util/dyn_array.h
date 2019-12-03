@@ -37,7 +37,12 @@ typedef struct bdb_state_tag bdb_state_type;
  * Using this type of layout is beneficial for larger keys and larger values.
  */
 
+struct dyn_array_t;
+
 typedef struct {
+#if !(defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
+    struct dyn_array_t *arr;
+#endif
     int key_len;
     int key_start;
     int data_len;
@@ -45,14 +50,14 @@ typedef struct {
 } kv_info_t;
 
 
-/* Note that the intention for a dyamic array is to store things consecutively
+/* Note that the intention for a dyamic array is to store things consecutively.
  * If you want items to be sorted you call sort() on the dynamic array.
  * However if the array spills to a temp_table then it will be automatically
  * sorted (so call to sort it explicitly is a noop) but it will be slower since
  * inserts into the temp_table btrees are more expensive and also 
  * nexts on the temp_table cursor are much slower than nexts on the array.
  */
-typedef struct {
+typedef struct dyn_array_t {
     kv_info_t *kv;
     void *buffer;
     //comparator function, if not set will use memcmp

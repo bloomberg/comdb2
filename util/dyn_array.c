@@ -28,6 +28,7 @@
 size_t gbl_max_inmem_array_size = MAX_ARR_SZ;
 void hexdump(loglvl lvl, const char *key, int keylen);
 
+#if (defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
 
 static int
 dyn_array_keyval_cmpr_asc(const void *p1, const void *p2, void *p3)
@@ -46,6 +47,27 @@ dyn_array_keyval_cmpr_asc(const void *p1, const void *p2, void *p3)
     }
     return res;
 }
+
+#else
+
+static int
+dyn_array_keyval_cmpr_asc(const void *p1, const void *p2)
+{
+    const kv_info_t *kv1 = p1;
+    const kv_info_t *kv2 = p2;
+    dyn_array_t *arr = kv1->arr;
+    char *buffer = arr->buffer;
+    int res = 0;
+    void *key1 = &buffer[kv1->key_start];
+    void *key2 = &buffer[kv2->key_start];
+    if (arr->compar) {
+        res = arr->compar(NULL, kv1->key_len, key1, kv2->key_len, key2);
+    } else {
+        res = memcmp(key1, key2, kv1->key_len < kv2->key_len ? kv1->key_len : kv2->key_len);
+    }
+    return res;
+}
+#endif
 
 void dyn_array_close(dyn_array_t *arr)
 {
@@ -102,7 +124,11 @@ int dyn_array_sort(dyn_array_t *arr)
         return 0; // nothing to sort
     }
 
+#if (defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
     qsort_r(arr->kv, arr->items, sizeof(kv_info_t), dyn_array_keyval_cmpr_asc, arr);
+#else
+    qsort(arr->kv, arr->items, sizeof(kv_info_t), dyn_array_keyval_cmpr_asc);
+#endif
     return 0;
 }
 
@@ -187,6 +213,8 @@ static inline int init_internal_buffers(dyn_array_t *arr)
     return 0;
 }
 
+/* key and data get appended at the end of the buffer
+ */
 static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void *data, int datalen)
 {
     if (arr->using_temp_table) {
@@ -226,6 +254,9 @@ static inline int append_to_array(dyn_array_t *arr, void *key, int keylen, void 
     kv->key_len = keylen;
     arr->buffer_curr_offset += keylen;
     kv->data_len = datalen;
+#if !(defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
+    kv->arr = arr;
+#endif
 
     if(datalen > 0) {
         void *dataloc = &buffer[arr->buffer_curr_offset];
