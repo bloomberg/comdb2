@@ -1864,17 +1864,12 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("ref_sync_pollms", "Set pollms for ref_sync thread.  "
-        "(Default: 250)",
-                 TUNABLE_INTEGER, &gbl_ref_sync_pollms, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+                 "(Default: 250)", TUNABLE_INTEGER, &gbl_ref_sync_pollms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("ref_sync_iterations", "Set iterations for ref_sync thread.  "
-                "(Default: 4)",
-                 TUNABLE_INTEGER, &gbl_ref_sync_iterations, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
-
-
-
+                 "(Default: 4)", TUNABLE_INTEGER, &gbl_ref_sync_iterations,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "Maximum size in bytes of the output buffer of an appsock "
