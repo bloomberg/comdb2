@@ -546,6 +546,9 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     Pthread_cond_signal(&s->condStart);
     Pthread_mutex_unlock(&s->mtxStart);
 
+    enum thrtype oldtype = prepare_sc_thread(s);
+    int detached = 0;
+
     if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
         logmsg(LOGMSG_INFO, "%s downgraded master\n", __func__);
         rc = SC_MASTER_DOWNGRADE;
@@ -553,8 +556,6 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     }
 
     s->iq = iq;
-    enum thrtype oldtype = prepare_sc_thread(s);
-    int detached = 0;
 
     if (s->alteronly == SC_ALTER_PENDING || s->preempted == SC_ACTION_RESUME)
         detached = 1;
