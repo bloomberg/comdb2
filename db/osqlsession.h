@@ -92,12 +92,6 @@ struct osql_sess {
     bool selectv_writelock_on_update : 1;
 };
 
-enum {
-    SESS_PENDING,
-    SESS_DONE_OK,
-    SESS_DONE_ERROR_REPEATABLE,
-    SESS_DONE_ERROR
-};
 
 enum { REQ_OPTION_QUERY_LIMITS = 1 };
 
@@ -145,14 +139,6 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
                            osql_sess_t *sess, struct errstat *xerr);
 
 /**
- * Check if there was a delay in receiving rows from
- * replicant, and if so, poke the sql session to detect
- * if this is still in progress
- *
- */
-int osql_sess_test_slow(osql_sess_t *sess);
-
-/**
  * Returns
  * - total time (tottm)
  * - last roundtrip time (rtt)
@@ -165,22 +151,6 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs);
  * Log query to the reqlog
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
-
-/**
- * Checks if a session is complete;
- * Returns:
- * - SESS_DONE_OK, if the session completed successfully
- * - SESS_DONE_ERROR_REPEATABLE, if the session is completed
- *   but finished with an error that allows repeating the request
- * - SESS_DONE_ERROR, if the session completed with an unrecoverable error
- * - SESS_PENDING, otherwise
- *
- * xerr is set to point to session errstat so that blockproc can retrieve
- * individual session error, if any.
- *
- *
- */
-int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr);
 
 /**
  * Print summary session
