@@ -3531,7 +3531,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
-int getdbidxbyname(const char *p_name);
+int getdbidxbyname_ll(const char *p_name);
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran);

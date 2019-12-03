@@ -1844,7 +1844,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     sc->usedbtablevers = comdb2_table_version(sc->tablename);
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb && getdbidxbyname(sc->tablename) < 0) { // view
+        if (usedb && getdbidxbyname_ll(sc->tablename) < 0) { // view
             unsigned long long version = 0;
             char *viewname = timepart_newest_shard(sc->tablename, &version);
             sc->usedbtablevers = version;
