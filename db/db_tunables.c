@@ -243,6 +243,8 @@ extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
+extern int gbl_ref_sync_pollms;
+extern int gbl_ref_sync_iterations;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;
