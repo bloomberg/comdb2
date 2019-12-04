@@ -67,12 +67,6 @@ extern int gbl_time_osql;
 int osql_bplog_start(struct ireq *iq, osql_sess_t *sess);
 
 /**
- * Wait for all pending osql sessions of this transaction to
- * finish
- */
-int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err);
-
-/**
  * Apply all schema changes
  */
 int osql_bplog_schemachange(struct ireq *iq);

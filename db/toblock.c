@@ -4671,15 +4671,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         int tmpnops = 0;
         int needbackout = 0;
 
-        rc = osql_bplog_finish_sql(iq, &err);
-        if (rc) {
-            /* this is hacky but I don't wanna mess around with toblock return
-               code path
-               create a transaction and backout */
-            numerrs = 1;
-            needbackout = 1;
-        }
-
         if (iq->tranddl) {
             int iirc;
             if (trans) {

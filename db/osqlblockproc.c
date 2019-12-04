@@ -248,82 +248,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     return 0;
 }
 
-/* Wait for pending sessions to finish;
-   If any request has failed because of deadlock, repeat */
-int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int error = 0;
-    struct errstat generr = {0}, *xerr;
-    int rc = 0;
-    int stop_time = 0;
-    iq->timings.req_alldone = osql_log_time();
-
-    if (tran->iscomplete) // already complete this is a replicant replay??
-        return 0;
-
-    /* if the session finished with deadlock on replicant, or failed
-       session, resubmit it */
-
-    rc = osql_sess_test_complete(tran->sess, &xerr);
-    switch (rc) {
-    case SESS_DONE_OK:
-        tran->iscomplete = 1;
-        break;
-    case SESS_DONE_ERROR_REPEATABLE:
-        /* generate a new id for this session */
-        if (iq->sorese.type) {
-            /* this is socksql, recom, snapisol or serial; no retry here
-             */
-            generr.errval = ERR_INTERNAL;
-            strncpy0(generr.errstr, "master cancelled transaction",
-                     sizeof(generr.errstr));
-            xerr = &generr;
-            error = 1;
-            break;
-        }
-        break;
-    case SESS_DONE_ERROR:
-        error = 1;
-        break;
-    case SESS_PENDING:
-        rc = osql_sess_test_slow(tran->sess);
-        if (rc)
-            return rc;
-        break;
-    }
-
-    /* please stop !!! */
-    if (db_is_stopped()) {
-        if (stop_time == 0) {
-            stop_time = comdb2_time_epoch();
-        } else {
-            if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                comdb2_time_epoch()) {
-                logmsg(LOGMSG_ERROR,
-                       "blocksql session closing early, db stopped\n");
-                return ERR_NOMASTER;
-            }
-        }
-    }
-
-    if (bdb_lock_desired(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
-               pthread_self(), __FILE__, __LINE__);
-        err->blockop_num = 0;
-        err->errcode = ERR_NOMASTER;
-        err->ixnum = 0;
-        return ERR_NOMASTER;
-    }
-
-    if (error) {
-        iq->errstat.errval = xerr->errval;
-        errstat_cat_str(&iq->errstat, errstat_get_str(xerr));
-        return xerr->errval;
-    }
-
-    return 0;
-}
 
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
@@ -937,6 +861,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
+            tran->iscomplete = true;
             rc = handle_buf_sorese(thedb, iq, debug);
         }
         osql_sess_unlock_complete(sess);
