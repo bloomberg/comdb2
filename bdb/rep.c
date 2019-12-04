@@ -2597,7 +2597,13 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
     // set the max_lsn_so_far
     Pthread_mutex_lock(&max_lsn_so_far_lk);
-    set_max_lsn(&max_lsn_so_far,&seqnum->lsn);
+    //set_max_lsn(&max_lsn_so_far,&seqnum->lsn);
+    if(log_compare(&seqnum->lsn, &max_lsn_so_far) > 0){
+        //logmsg(LOGMSG_USER, "Changing max_lsn\n");
+        max_lsn_so_far.file = seqnum->lsn.file;
+        max_lsn_so_far.offset = seqnum->lsn.offset;
+    }
+    //logmsg(LOGMSG_USER,"max_lsn unchanged\n");
     Pthread_mutex_unlock(&max_lsn_so_far_lk);
     // increase new_lsns 
     new_lsns += 1;
