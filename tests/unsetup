@@ -158,7 +158,7 @@ unsetup_db() {
 
 
     if [[ -z "$CLUSTER" ]]; then
-        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("debug timings")'
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("debug timings")'
 
         cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
         sleep 1
