@@ -132,10 +132,9 @@ void berk_memp_sync_alarm_ms(int);
 #include "metrics.h"
 #include "time_accounting.h"
 #include <build/db.h>
-#include<seqnum_wait.h>
+#include <seqnum_wait.h>
 #include "comdb2_ruleset.h"
 
-#include<seqnum_wait.h>
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
@@ -4011,10 +4010,13 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb, NULL);
 
     // Setting up async seqnum_wait 
-    if(gbl_async_dist_commit){
+    if (gbl_async_dist_commit) {
         rc = seqnum_wait_gbl_mem_init();
-        if(rc){
-            logmsg(LOGMSG_ERROR, "Error while initialising seqnum_wait... Waiting for seqnums will happen sequentially %d\n", rc);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "Error while initialising seqnum_wait... Waiting for "
+                   "seqnums will happen sequentially %d\n",
+                   rc);
             abort(); 
         }
     }
@@ -5566,7 +5568,7 @@ int main(int argc, char **argv)
                 strerror(rc));
         return 1;
     }
-    //CLEAN UP SEQNUM_STUFF
+    // CLEAN UP SEQNUM_STUFF
     seqnum_wait_cleanup();
     return 0;
 }

@@ -1,7 +1,7 @@
 #ifndef INCLUDED_SEQNUM_WAIT_H
 #define INCLUDED_SEQNUM_WAIT_H
-#include<comdb2.h>
-#include<errstat.h>
+#include <comdb2.h>
+#include <errstat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pthread.h>
@@ -62,7 +62,7 @@
 
 // Copied this #define from rep.c. Make sure to mirror changes
 #define MILLISEC 1000
-enum seqnum_wait_state{
+enum seqnum_wait_state {
     INIT,
     FIRST_ACK,
     GOT_FIRST_ACK,
@@ -70,10 +70,11 @@ enum seqnum_wait_state{
     COMMIT,
     FREE
 };
-struct seqnum_wait{
+struct seqnum_wait {
     LINKC_T(struct seqnum_wait) lsn_lnk;
     LINKC_T(struct seqnum_wait) absolute_ts_lnk;
-    enum seqnum_wait_state cur_state;           // Cur state of the work item designating progress made on this work item. 
+    enum seqnum_wait_state cur_state; // Cur state of the work item designating
+                                      // progress made on this work item. 
     int  now, cntbytes;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
@@ -86,9 +87,9 @@ struct seqnum_wait{
     int numfailed;
     int outrc;
     int num_incoh;
-    int next_ts;              // timestamp in the future when this item has to be "worked" on
+    int next_ts; // timestamp in the future when this item has to be "worked" on
     struct timespec wait_time;
-    int start_time , end_time;
+    int start_time, end_time;
     int we_used;
     const char *base_node;
     char str[80];
@@ -105,16 +106,18 @@ struct seqnum_wait{
     int got_ack_from_atleast_one_node;
 };
 
-typedef struct{
+typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     int size;
     LISTC_T(struct seqnum_wait) lsn_list;
     LISTC_T(struct seqnum_wait) absolute_ts_list;
     uint64_t next_commit_timestamp;
-}seqnum_wait_queue;
+} seqnum_wait_queue;
 // Add work item to seqnum_wait_queue.
-int add_to_seqnum_wait_queue(bdb_state_type* bdb_state,seqnum_type *seqnum,struct dbenv *dbenv,sorese_info_t *sorese, errstat_t *errstat,int rc);
+int add_to_seqnum_wait_queue(bdb_state_type* bdb_state,seqnum_type *seqnum,
+                             struct dbenv *dbenv,sorese_info_t *sorese,
+                             errstat_t *errstat,int rc);
 int seqnum_wait_gbl_mem_init();
 void seqnum_wait_cleanup();
 
