@@ -97,7 +97,7 @@ int bdb_queuedb_best_pagesize(int avg_item_sz)
 int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
-    DB *db;
+    DB *db = bdb_state->dbp_data[0][0];
     struct queuedb_key k;
     int rc;
     DBT dbt_key = {0}, dbt_data = {0};
@@ -140,7 +140,6 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     }
 
     *bdberr = BDBERR_NOERROR;
-    db = bdb_state->dbp_data[0][0];
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (btst(&bdb_state->active_consumers, i)) {
             uint8_t key[QUEUEDB_KEY_LEN];
@@ -201,6 +200,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
+    DB *db = bdb_state->dbp_data[0][0];
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     int rc;
@@ -211,8 +211,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
     /* this API is a little nutty... */
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
-                                           &dbcp, 0);
+    rc = db->cursor(db, NULL, &dbcp, 0);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -303,8 +302,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                     int *bdberr)
 {
-
-    if (bdb_state->dbp_data[0][0] == NULL) { // trigger dropped?
+    DB *db = bdb_state->dbp_data[0][0];
+    if (db == NULL) { // trigger dropped?
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -325,8 +324,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
-                                           &dbcp, 0);
+    rc = db->cursor(db, NULL, &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;
         goto done;
@@ -520,6 +518,7 @@ done:
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const void *prevfnd, int *bdberr)
 {
+    DB *db = bdb_state->dbp_data[0][0];
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
     struct queuedb_key k;
@@ -573,8 +572,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     dbt_key.data = key;
     dbt_key.size = QUEUEDB_KEY_LEN;
 
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], tran->tid,
-                                           &dbcp, 0);
+    rc = db->cursor(db, tran->tid, &dbcp, 0);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         goto done;
