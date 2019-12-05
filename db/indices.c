@@ -1356,7 +1356,6 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
 
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_USER, "+++duplicate key constraint error from %s:%d\n",__func__,__LINE__);
                 reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
                           "add key constraint "
                           "duplicate key '%s' on "
