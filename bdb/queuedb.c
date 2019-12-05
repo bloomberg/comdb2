@@ -97,6 +97,8 @@ static DB *bdb_queuedb_get_dbp_for_other(bdb_state_type *bdb_state)
 
 void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state)
 {
+    if (gbl_debug_queuedb)
+        logmsg(LOGMSG_USER, ">>> bdb_queuedb_setup_dbps %s\n", bdb_state->name);
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
     if (qstate != NULL) {
         // TBD: Actually, this needs to detect if a second file exists...
@@ -107,6 +109,8 @@ void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state)
 
 void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state)
 {
+    if (gbl_debug_queuedb)
+        logmsg(LOGMSG_USER, ">>> bdb_queuedb_cleanup_dbps %s\n", bdb_state->name);
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
     if (qstate != NULL) {
         DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
