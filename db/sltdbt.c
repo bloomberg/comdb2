@@ -42,12 +42,11 @@ extern int glblroute_get_buffer_capacity(int *bf);
 extern int sorese_send_commitrc(struct ireq *iq, int rc);
 
 void (*comdb2_ipc_sndbak_len_sinfo)(struct ireq *, int) = 0;
-int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,
-                             struct dbenv *dbenv,sorese_info_t *sorese,
-                             errstat_t *errstat,int rc);
+int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,struct dbenv *dbenv,sorese_info_t *sorese, errstat_t *errstat,int rc);
 int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
-                              struct ireq *iq, char *source_node,int timeoutms,
-                              int adaptive,db_seqnum_type *ss);
+                                     struct ireq *iq, char *source_node,
+                                     int timeoutms, int adaptive,
+                                     db_seqnum_type *ss);
 
 void *bdb_handle_from_ireq(const struct ireq *iq);
 struct dbenv *dbenv_from_ireq(const struct ireq *iq);
@@ -335,7 +334,7 @@ int handle_ireq(struct ireq *iq)
             rc = opcode->opcode_handler(iq);
 
             /* Record the tablename (aka table) for this op */
-            if (iq->usedb && iq->usedb->tablename) {
+            if ( iq->usedb && iq->usedb->tablename) {
                 reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
             }
         }
@@ -344,37 +343,30 @@ int handle_ireq(struct ireq *iq)
     if (rc == RC_INTERNAL_FORWARD) {
         rc = 0;
     } 
-    /* SNDBAK RESPONSE */
-    if (iq->debug) {
-        reqprintf(iq, "iq->reply_len=%td RC %d\n",
-                  (ptrdiff_t) (iq->p_buf_out - iq->p_buf_out_start), rc);
+        /* SNDBAK RESPONSE */
+        if (iq->debug) {
+            reqprintf(iq, "iq->reply_len=%td RC %d\n",
+                      (ptrdiff_t) (iq->p_buf_out - iq->p_buf_out_start), rc);
         }
 
         /* pack data at tail of reply */
         pack_tail(iq);
         int enqueued = 0;
         if (iq->sorese.type) {
-            bdb_state_type *bdb_handle = 
-                (bdb_state_type *)bdb_handle_from_ireq(iq);
+            bdb_state_type *bdb_handle = (bdb_state_type *)bdb_handle_from_ireq(iq);
             struct dbenv *dbenv = (struct dbenv *)dbenv_from_ireq(iq);
-            // For now we intend to support asynchronous distributed commit only
-            // for sorese type AND if durable lsns are not enabled
+            // For now we intend to support asynchronous distributed commit only for sorese type AND if durable lsns are not enabled
             if(iq->should_enqueue){ 
-                enqueued = add_to_seqnum_wait_queue(
-                        bdb_handle, (seqnum_type *)iq->commit_seqnum, dbenv,
-                        &iq->sorese,&iq->errstat,rc);
-                if (enqueued) {
+                enqueued = add_to_seqnum_wait_queue(bdb_handle, (seqnum_type *)iq->commit_seqnum, dbenv, &iq->sorese,&iq->errstat,rc);
+                if(enqueued){
                     free(iq->commit_seqnum);
                     goto cleanup;
                 }
                 // We didn't farm off distributed commit. So we do it here
-                rc = 
-                    trans_wait_for_seqnum_int(bdb_handle,dbenv, iq,gbl_mynode,
-                            -1,1,iq->commit_seqnum);
-               // We can free commit_seqnum here as :
-               // 1.) We haven't farmed off for distributed commit.
-               // 2.) We have performed distributed commit in line , and no
-               // longer need the commit_seqnum.
+                rc = trans_wait_for_seqnum_int(bdb_handle,dbenv, iq,gbl_mynode,-1,1,iq->commit_seqnum);
+               //We can free commit_seqnum here as :
+               //1.) We haven't farmed off for distributed commit.
+               //2.) We have performed distributed commit in line , and no longer need the commit_seqnum.
                free(iq->commit_seqnum);
             }
             /* we don't have a socket or a buffer for that matter,
@@ -464,19 +456,20 @@ int handle_ireq(struct ireq *iq)
         }
 cleanup:
 
-    /* Unblock anybody waiting for stuff that was added in this transaction. */
-    clear_trans_from_repl_list(iq->repl_list);
+        /* Unblock anybody waiting for stuff that was added in this transaction. */
+        clear_trans_from_repl_list(iq->repl_list);
 
-    /* records were added to queues, and we committed successfully.  wake
-     * up queue consumers. */
-    if (rc == 0 && iq->num_queues_hit > 0) {
-        if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
-            /* good heavens.  wake up all consumers */
-            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
-        } else {
-            unsigned ii;
-            for (ii = 0; ii < iq->num_queues_hit; ii++)
-                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
+        /* records were added to queues, and we committed successfully.  wake
+         * up queue consumers. */
+        if (rc == 0 && iq->num_queues_hit > 0) {
+            if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
+                /* good heavens.  wake up all consumers */
+                dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
+            } else {
+                unsigned ii;
+                for (ii = 0; ii < iq->num_queues_hit; ii++)
+                    dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
+            }
         }
     }
 
@@ -489,13 +482,22 @@ cleanup:
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
 
-    if (iq->sorese.type) {
-        if (iq->p_buf_out_start) {
-            free(iq->p_buf_out_start);
-            iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-            iq->p_buf_in_end = iq->p_buf_in = NULL;
+        /* Finish off logging. */
+        if (iq->blocksql_tran) {
+            osql_bplog_reqlog_queries(iq);
         }
-    }
+        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+        release_node_stats(NULL, NULL, iq->frommach);
+            if (gbl_print_deadlock_cycles)
+                osql_snap_info = NULL;
+
+            if (iq->sorese.type) {
+                if (iq->p_buf_out_start) {
+                    free(iq->p_buf_out_start);
+                    iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
+                    iq->p_buf_in_end = iq->p_buf_in = NULL;
+                }
+            }
 
     /* Make sure we do not leak locks */
     bdb_checklock(thedb->bdb_env); 

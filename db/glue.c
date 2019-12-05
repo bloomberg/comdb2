@@ -587,8 +587,9 @@ static const char *sync_to_str(int sync)
 
 //making below function non static to be used in sltdbt.c
 int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
-                              struct ireq *iq, char *source_node, int timeoutms,
-                              int adaptive, db_seqnum_type *ss)
+                                     struct ireq *iq, char *source_node,
+                                     int timeoutms, int adaptive,
+                                     db_seqnum_type *ss)
 {
     int rc = 0;
     int sync;
@@ -632,7 +633,7 @@ int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
     case REP_SYNC_FULL:
         iq->gluewhere = "bdb_wait_for_seqnum_from_all";
-
+        
         if (adaptive)
             rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(
                 bdb_handle, (seqnum_type *)ss, iq->txnsize, &iq->timeoutms);
@@ -729,7 +730,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     extern int gbl_async_dist_commit;
     ss = (db_seqnum_type *)malloc(sizeof(db_seqnum_type));
-    // memset(&ss, -1, sizeof(ss));
+    //memset(&ss, -1, sizeof(ss));
     memset(ss, -1, sizeof(db_seqnum_type));
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
@@ -756,17 +757,25 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     /*
      * If gbl_async_dist_commits is on, AND
      * If request is sorese_type , AND
-     * If durable_lsns are not enabled, then we return... Distributed commit
-     * happens later.
+     * If durable_lsns are not enabled, then we return... Distributed commit happens later.
      */
-    if(!(((seqnum_type *)ss)->lsn.file==0 &&
-         ((seqnum_type *)ss)->lsn.offset==0) &&
-       gbl_async_dist_commit && iq->sorese.type &&
-       !((bdb_state_type *)bdb_handle)->attr->durable_lsns) {
-       // grab a pointer to ss and return rc
-       iq->commit_seqnum = ss;
-       iq->should_enqueue = 1;
-       return rc;
+    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese.type && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
+        //grab a pointer to ss and return rc
+        iq->commit_seqnum = ss;
+        iq->should_enqueue = 1;
+        return rc;
+    }
+
+    /*
+     * If gbl_async_dist_commits is on, AND
+     * If request is sorese_type , AND
+     * If durable_lsns are not enabled, then we return... Distributed commit happens later.
+     */
+    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese.type && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
+        //grab a pointer to ss and return rc
+        iq->commit_seqnum = ss;
+        iq->should_enqueue = 1;
+        return rc;
     }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
@@ -778,8 +787,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
                __func__, __LINE__, lsn->file, lsn->offset, rc);
     }
-    // We finished distributed commit here. We no longer need the commit seqnum.
-    // Freeing it here.. 
+    // We finished distributed commit here. We no longer need the commit seqnum. Freeing it here.. 
     free(ss);
     return rc;
 }
