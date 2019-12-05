@@ -1932,13 +1932,9 @@ REGISTER_TUNABLE("debug_queuedb",
                  NULL, NULL);
 
 REGISTER_TUNABLE("async_dist_commit", 
-                 "Enable asynchronous wait for replicants to catch up with "
-                 "master. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL,
-                 NULL);
+                 "Enable asynchronous wait for replicants to catch up with master. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
-                 "Maximum number of transactions that can be outstanding i.e"
-                 "waiting on asynchronous distributed commit. (Default : 8)",
-                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans,
-                 0, NULL, NULL, NULL, NULL);
+                 "Maximum number of transactions that can be outstanding i.e waiting on asynchronous distributed commit. (Default : 8)",
+                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
