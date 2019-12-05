@@ -35,11 +35,18 @@
 /* TODO: this is in db-land, not bdb.... */
 #define MAXCONSUMERS 32
 
+#define BDB_QUEUEDB_GET_DBP_ZERO(a)  ((a)->dbp_data[0][0])
+
 extern void fsnapf(FILE *, void *, int);
 
 struct bdb_queue_priv {
     uint64_t genid;
     struct bdb_queue_stats stats;
+
+    pthread_mutex_t dbp_lock;
+    DB *dbp_secondary;
+    DB *dbp_add;
+    DB *dbp_other;
 };
 
 struct queuedb_key {
@@ -76,15 +83,47 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     return p_buf;
 }
 
+static DB *bdb_queuedb_get_dbp_for_add(bdb_state_type *bdb_state)
+{
+    struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    return qstate->dbp_add;
+}
+
+static DB *bdb_queuedb_get_dbp_for_other(bdb_state_type *bdb_state)
+{
+    struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    return qstate->dbp_other;
+}
+
+void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state)
+{
+    struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    if (qstate != NULL) {
+        // TBD: Actually, this needs to detect if a second file exists...
+        qstate->dbp_add = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+        qstate->dbp_other = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    }
+}
+
+void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state)
+{
+    struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    if (qstate != NULL) {
+        DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+        if ((qstate->dbp_secondary != NULL) && (qstate->dbp_secondary != db)) {
+            // TBD: Close...
+            qstate->dbp_secondary = NULL;
+        }
+    }
+}
+
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state)
 {
-    struct bdb_queue_priv *qstate;
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_init_priv %s\n", bdb_state->name);
     bdb_state->qpriv = calloc(1, sizeof(struct bdb_queue_priv));
-    qstate = bdb_state->qpriv;
     /* read max, use? use genids, with guarantee they'll never decrement? */
-    qstate->genid = 0;
+    // bdb_state->qstate->genid = 0; /* CALLOC'd */
 }
 
 /* btree, so rely on our usual page size suggester */
@@ -97,7 +136,7 @@ int bdb_queuedb_best_pagesize(int avg_item_sz)
 int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
-    DB *db = bdb_state->dbp_data[0][0];
+    DB *db = bdb_queuedb_get_dbp_for_add(bdb_state);
     struct queuedb_key k;
     int rc;
     DBT dbt_key = {0}, dbt_data = {0};
@@ -200,7 +239,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
-    DB *db = bdb_state->dbp_data[0][0];
+    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     int rc;
@@ -302,7 +341,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                     int *bdberr)
 {
-    DB *db = bdb_state->dbp_data[0][0];
+    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
     if (db == NULL) { // trigger dropped?
         *bdberr = BDBERR_BADARGS;
         return -1;
@@ -518,7 +557,7 @@ done:
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const void *prevfnd, int *bdberr)
 {
-    DB *db = bdb_state->dbp_data[0][0];
+    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
     struct queuedb_key k;

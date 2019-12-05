@@ -3,6 +3,9 @@
 
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state);
 
+void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state);
+void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state);
+
 /* don't need, we'll have a single consumer per queue? */
 int bdb_queuedb_consumer(bdb_state_type *bdb_state, int consumer, int active,
                          int *bdberr);
