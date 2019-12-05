@@ -2651,14 +2651,13 @@ int typestr_to_type(const char *ctype)
     }
 }
 
-static int is_with_statement(char *sql)
+static int is_with_statement(struct sqlite3_stmt *stmt)
 {
-    if (!sql)
-        return 0;
-    sql = skipws(sql);
-    if (strncasecmp(sql, "with", 4) == 0)
-        return 1;
-    return 0;
+    Vdbe *pVdbe = (Vdbe *)stmt;
+    if (pVdbe == NULL) return 0;
+    Parse *pParse = pVdbe->pParse;
+    if (pParse == NULL) return 0;
+    return pParse->pWith != NULL;
 }
 
 static void compare_estimate_cost(sqlite3_stmt *stmt)
@@ -3746,11 +3745,12 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     return 0;
 }
 
-static int skip_response_int(struct sqlclntstate *clnt, int from_error)
+static int skip_response_int(struct sqlclntstate *clnt,
+                             struct sqlite3_stmt *stmt, int from_error)
 {
     if (clnt->osql.replay == OSQL_RETRY_DO)
         return 1;
-    if (clnt->isselect || is_with_statement(clnt->sql))
+    if (clnt->isselect || is_with_statement(stmt))
         return 0;
     if (in_client_trans(clnt)) {
         if (from_error && !clnt->had_errors) /* send on first error */
@@ -3763,19 +3763,21 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
     return 0; /* single stmt by itself (read or write) */
 }
 
-static int skip_response(struct sqlclntstate *clnt)
+static int skip_response(struct sqlclntstate *clnt,
+                         struct sqlite3_stmt *stmt)
 {
-    return skip_response_int(clnt, 0);
+    return skip_response_int(clnt, stmt, 0);
 }
 
-static int skip_response_error(struct sqlclntstate *clnt)
+static int skip_response_error(struct sqlclntstate *clnt,
+                               struct sqlite3_stmt *stmt)
 {
-    return skip_response_int(clnt, 1);
+    return skip_response_int(clnt, stmt, 1);
 }
 
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
-    if (clnt->osql.sent_column_data || skip_response(clnt))
+    if (clnt->osql.sent_column_data || skip_response(clnt, stmt))
         return 0;
     clnt->osql.sent_column_data = 1;
     return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
@@ -3800,7 +3802,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     /* TODO: we can be more precise and retry things at a later LSN so long as
      * nothing has overwritten the original readsets */
-    if (clnt->isselect || is_with_statement(clnt->sql)) {
+    if (clnt->isselect || is_with_statement(stmt)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
     clnt->has_recording |= v->recording;
@@ -3896,7 +3898,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
     if (rc != 0) {
-        if (!skip_response_error(clnt)) {
+        if (!skip_response_error(clnt, rec->stmt)) {
             send_run_error(clnt, errstr, rc);
         }
         clnt->had_errors = 1;
@@ -3904,7 +3906,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
-        if (!skip_response(clnt)) {
+        if (!skip_response(clnt, rec->stmt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
             write_response(clnt, RESPONSE_EFFECTS, 0, 1);
