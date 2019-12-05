@@ -185,9 +185,8 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
     if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
-        logmsg(LOGMSG_FATAL, "%s:%d dup add corrupts schema-hash\n", __func__,
-                __LINE__);
-        abort();
+        hash_del(tag->tags, fnd);
+        free(fnd);
     }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
