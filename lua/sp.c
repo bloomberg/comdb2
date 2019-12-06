@@ -3363,9 +3363,11 @@ static int dbstmt_emit(Lua L)
 
 static int dbstmt_close(Lua L)
 {
+    SP sp = getsp(L);
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
-    donate_stmt(getsp(L), dbstmt);
+    lua_end_step(sp->clnt, sp, dbstmt->stmt);
+    donate_stmt(sp, dbstmt);
     return 0;
 }
 
