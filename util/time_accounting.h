@@ -50,7 +50,7 @@ extern const char *CHR_TMPSVOP;
             gettimeofday(&__tv2, NULL);                                        \
             unsigned int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;          \
             unsigned int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                 \
-            accumulate_time(#NAME, __sec_part + __usec_part);                  \
+            accumulate_time(NAME, __sec_part + __usec_part);                  \
             already_timing = 0;                                                \
         }                                                                      \
     } while (0);

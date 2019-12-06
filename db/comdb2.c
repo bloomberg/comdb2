@@ -5388,6 +5388,8 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
+    extern void time_accounting_init();
+    time_accounting_init();
 
     /* Initialize plugin tunables. */
     register_plugin_tunables();

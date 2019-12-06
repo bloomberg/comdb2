@@ -37,7 +37,7 @@
     do {                                                                       \
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
-        ACCUMULATE_TIMING(FUNC(__VA_ARGS__),                           \
+        ACCUMULATE_TIMING(LKWRAP_FIRST(#__VA_ARGS__),                           \
             rc = FUNC(__VA_ARGS__);                                            \
         );                                                                      \
         if (rc != 0) {                                                         \
