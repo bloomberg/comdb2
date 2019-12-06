@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <flibc.h>
 #include "endian_core.h"
+#include <build/db.h>
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
@@ -95,7 +96,7 @@ static DB *bdb_queuedb_get_dbp_for_other(bdb_state_type *bdb_state)
     return qstate->dbp_other;
 }
 
-void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state)
+void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, DB_TXN *tid)
 {
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_setup_dbps %s\n", bdb_state->name);
@@ -107,15 +108,21 @@ void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state)
     }
 }
 
-void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state)
+void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state, DB_TXN *tid)
 {
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_cleanup_dbps %s\n", bdb_state->name);
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
     if (qstate != NULL) {
-        DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-        if ((qstate->dbp_secondary != NULL) && (qstate->dbp_secondary != db)) {
-            // TBD: Close...
+        DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+        DB *db2 = qstate->dbp_secondary;
+        if ((db2 != NULL) && (db2 != db1)) {
+            int rc = db2->close(db2, DB_NOSYNC);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: error closing %s: %d %s\n", __func__,
+                       bdb_state->name, rc, db_strerror(rc));
+            }
             qstate->dbp_secondary = NULL;
         }
     }

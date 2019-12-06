@@ -1298,7 +1298,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         bdb_trigger_close(bdb_state);
-        bdb_queuedb_cleanup_dbps(bdb_state);
+        bdb_queuedb_cleanup_dbps(bdb_state, tid);
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
@@ -4388,7 +4388,7 @@ deadlock_again:
         }
         bdb_state->dbp_data[0][0] = dbp;
         if (bdbtype == BDBTYPE_QUEUEDB) {
-            bdb_queuedb_setup_dbps(bdb_state);
+            bdb_queuedb_setup_dbps(bdb_state, tid);
         }
     }
 
