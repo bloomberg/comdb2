@@ -96,7 +96,7 @@ static DB *bdb_queuedb_get_dbp_for_other(bdb_state_type *bdb_state)
     return qstate->dbp_other;
 }
 
-void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, DB_TXN *tid)
+void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid)
 {
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_setup_dbps %s\n", bdb_state->name);
@@ -108,7 +108,7 @@ void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, DB_TXN *tid)
     }
 }
 
-void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state, DB_TXN *tid)
+void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state, void *tid)
 {
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_cleanup_dbps %s\n", bdb_state->name);
