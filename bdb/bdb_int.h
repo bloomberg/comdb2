@@ -387,47 +387,12 @@ struct tran_tag {
 
     unsigned int trigger_epoch;
 
-    /* this is tested in rep.c to see if net needs to flush/wait */
-    signed char is_about_to_commit;
-
-    signed char aborted;
-
-    signed char rep_handle_dead; /* must reopen all  db cursors after abort */
-
-    /* set if we are a top level transaction (ie, not a child) */
-    signed char master;
-
-    /* Set if we were created from the replication stream */
-    signed char reptxn;
-
-    signed char wrote_begin_record;
-    signed char committed_begin_record;
-    signed char get_schema_lock;
-    signed char single_physical_transaction;
-
-    /* log support */
-    signed char trak; /* set this to enable tracking */
-
-    signed char is_rowlocks_trans;
-
-    /* if the txn intends to write, this tells us to get write
-       locks when we read */
-    signed char write_intent;
-
     /* Open cursors under this transaction. */
     LISTC_T(bdb_cursor_ifn_t) open_cursors;
-
-    /* Committed the child transaction. */
-    signed char committed_child;
 
     /* total shadow rows */
     int shadow_rows;
 
-    /* Set to 1 if we got the bdb lock */
-    int got_bdb_lock;
-
-    /* Set to 1 if this is a schema change txn */
-    int schema_change_txn;
     struct tran_tag *sc_parent_tran;
 
     /* Tables that this tran touches (for logical redo sc) */
@@ -447,16 +412,6 @@ struct tran_tag {
      */
     int numchildren;
 
-    /* Set to 1 if this txn touches a logical live sc table */
-    int force_logical_commit;
-
-    /* Send the master periodic 'acks' after this many physical commits */
-    int request_ack;
-
-    int check_shadows;
-
-    int micro_commit;
-
     /* Rowlocks commit support */
     pool_t *rc_pool;
     DBT **rc_list;
@@ -467,6 +422,44 @@ struct tran_tag {
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
     u_int32_t flags;
+
+    /* this is tested in rep.c to see if net needs to flush/wait */
+    unsigned is_about_to_commit:1;
+    unsigned aborted:1;
+    unsigned rep_handle_dead:1; /* must reopen all  db cursors after abort */
+
+    /* set if we are a top level transaction (ie, not a child) */
+    unsigned master:1;
+
+
+    /* Set if we were created from the replication stream */
+    unsigned reptxn:1;
+
+    unsigned wrote_begin_record:1;
+    unsigned committed_begin_record:1;
+    unsigned get_schema_lock:1;
+    unsigned single_physical_transaction:1;
+    unsigned trak:1; /* set this to enable tracking */
+
+    unsigned is_rowlocks_trans:1;
+
+    /* Committed the child transaction. */
+    unsigned committed_child:1;
+
+    /* Send the master periodic 'acks' after this many physical commits */
+    unsigned request_ack:1;
+
+    /* Set to 1 if this is a schema change txn */
+    unsigned schema_change_txn:1;
+
+    /* Set to 1 if we got the bdb lock */
+    unsigned got_bdb_lock:1;
+
+    /* Set to 1 if this txn touches a logical live sc table */
+    unsigned force_logical_commit:1;
+    unsigned check_shadows:1;
+    unsigned micro_commit:1;
+
 };
 
 struct seqnum_t {

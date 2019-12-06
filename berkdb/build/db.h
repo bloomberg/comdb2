@@ -2548,9 +2548,9 @@ struct __db_env {
 	LC_CACHE lc_cache;
 
 	int  (*set_is_tmp_tbl) __P((DB_ENV *, int));
-	int is_tmp_tbl;
+	unsigned is_tmp_tbl:1;
 
-	int use_sys_malloc;
+	unsigned use_sys_malloc:1;
 	int  (*set_use_sys_malloc) __P((DB_ENV *, int));
 
 	/* keep a copy here to enhance locality */

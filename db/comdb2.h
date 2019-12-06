@@ -778,7 +778,6 @@ typedef struct dbtable {
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
 
-    int sc_live_logical;
     int csc2_schema_len; /* length of csc2_schema */
     /* csc2 schema version increased on instantaneous schemachange */
     int schema_version;
@@ -786,6 +785,7 @@ typedef struct dbtable {
      * every schema change (add, alter, drop, etc.) but not for fastinit */
     unsigned long long tableversion;
 
+    unsigned sc_live_logical:1;
     unsigned instant_schema_change:1;
     unsigned inplace_updates:1;
     unsigned odh:1;
