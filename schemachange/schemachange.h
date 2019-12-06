@@ -153,21 +153,21 @@ struct schema_change_type {
     int pagesize; /* pagesize override to use */
     int resume;           /* if we are trying to resume a schema change,
                            * usually because there is a new master */
-    uint8_t onstack:1; /* if 1 don't free */
-    uint8_t showsp:1; /* used by plugins */
-    uint8_t must_close_sb:1;
-    uint8_t use_old_blobs_on_rebuild:1;
+    unsigned onstack:1; /* if 1 don't free */
+    unsigned showsp:1; /* used by plugins */
+    unsigned must_close_sb:1;
+    unsigned use_old_blobs_on_rebuild:1;
 
-    uint8_t nothrevent:1;
-    uint8_t retry_bad_genids:1; /* retrying a schema change (with full rebuild)
+    unsigned nothrevent:1;
+    unsigned retry_bad_genids:1; /* retrying a schema change (with full rebuild)
                              because there are old genids in flight */
-    uint8_t dryrun:1;           /* comdb2sc.tsk -y */
-    uint8_t statistics:1;       /* comdb2sc.tsk <dbname> stat <table> */
-    uint8_t use_new_genids:1;   /* rebuilding old genids needs to
+    unsigned dryrun:1;           /* comdb2sc.tsk -y */
+    unsigned statistics:1;       /* comdb2sc.tsk <dbname> stat <table> */
+    unsigned use_new_genids:1;   /* rebuilding old genids needs to
                              get new genids to avoid name collission */
-    uint8_t finalize:1;      /* Whether the schema change should be committed */
-    uint8_t finalize_only:1; /* only commit the schema change */
-    uint8_t fix_tp_badvers:1;
+    unsigned finalize:1;      /* Whether the schema change should be committed */
+    unsigned finalize_only:1; /* only commit the schema change */
+    unsigned fix_tp_badvers:1;
 
     int sc_rc;
     int usedbtablevers;
@@ -197,9 +197,9 @@ struct schema_change_type {
     unsigned long long start_genid;
     unsigned int hitLastCnt;
 
-    uint8_t already_finalized:1;
-    uint8_t logical_livesc:1;
-    uint8_t got_tablelock:1;
+    unsigned already_finalized:1;
+    unsigned logical_livesc:1;
+    unsigned got_tablelock:1;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -207,7 +207,7 @@ struct schema_change_type {
      * *****************************/
 
     size_t packed_len;
-    uint8_t views_locked : 1;
+    unsigned views_locked : 1;
 };
 
 struct ireq;
