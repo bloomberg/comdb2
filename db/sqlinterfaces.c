@@ -1407,7 +1407,7 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     return 0;
 }
 
-void set_sent_data_to_client(struct sqlclntstate *clnt, uint8_t val,
+void set_sent_data_to_client(struct sqlclntstate *clnt, unsigned val,
                              const char *func, int line)
 {
     clnt->sent_data_to_client = val;
@@ -5652,6 +5652,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->context = NULL;
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
+    clnt->wrong_db = 0;
     set_sent_data_to_client(clnt, 0, __func__, __LINE__);
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
     clnt->sqltick = 0;

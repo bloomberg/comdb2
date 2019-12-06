@@ -786,24 +786,24 @@ typedef struct dbtable {
      * every schema change (add, alter, drop, etc.) but not for fastinit */
     unsigned long long tableversion;
 
-    bool instant_schema_change:1;
-    bool inplace_updates:1;
-    bool odh:1;
-    bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
-    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
-    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
-    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+    unsigned instant_schema_change:1;
+    unsigned inplace_updates:1;
+    unsigned odh:1;
+    unsigned has_datacopy_ix:1; /* set to 1 if we have datacopy indexes */
+    unsigned ix_partial:1;      /* set to 1 if we have partial indexes */
+    unsigned ix_expr:1;         /* set to 1 if we have indexes on expressions */
+    unsigned ix_blob:1;         /* set to 1 if blobs are involved in indexes */
 
-    bool sc_abort : 1;
-    bool sc_downgrading : 1;
+    unsigned sc_abort:1;
+    unsigned sc_downgrading:1;
 
     /* boolean value set to nonzero if table rebuild is in progress */
-    bool doing_conversion : 1;
+    unsigned doing_conversion:1;
     /* boolean value set to nonzero if table upgrade is in progress */
-    bool doing_upgrade : 1;
+    unsigned doing_upgrade:1;
 
-    bool disableskipscan : 1;
-    bool do_local_replication : 1;
+    unsigned disableskipscan:1;
+    unsigned do_local_replication:1;
 } dbtable;
 
 struct dbview {
@@ -1282,10 +1282,6 @@ struct osql_sess {
     hash_t *selectv_genids;
     unsigned long long last_genid; // remember updrec/insrec genid for qblobs
     unsigned long long ins_seq; // remember key seq for inserts into ins tmptbl
-    uint16_t tbl_idx;
-    bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
-    bool is_reorder_on : 1;
-    bool selectv_writelock_on_update : 1;
 
     /* from sorese */
     const char *host; /* sql machine, 0 is local */
@@ -1294,7 +1290,11 @@ struct osql_sess {
     int rcout;        /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool is_delayed;
+    uint16_t tbl_idx;
+    unsigned last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
+    unsigned is_reorder_on : 1;
+    unsigned selectv_writelock_on_update : 1;
+    unsigned is_delayed : 1;
 };
 typedef struct osql_sess osql_sess_t;
 
@@ -1458,22 +1458,22 @@ struct ireq {
     int written_row_count;
 
     /* Client endian flags. */
-    uint8_t client_endian;
+    unsigned client_endian:2; // currently can be 1|2
 
-    bool have_client_endian : 1;
-    bool is_fake : 1;
-    bool is_dumpresponse : 1;
-    bool is_fromsocket : 1;
-    bool is_socketrequest : 1;
-    bool is_block2positionmode : 1;
+    unsigned have_client_endian:1;
+    unsigned is_fake:1;
+    unsigned is_dumpresponse:1;
+    unsigned is_fromsocket:1;
+    unsigned is_socketrequest:1;
+    unsigned is_block2positionmode:1;
 
-    bool errstrused : 1;
-    bool vfy_genid_track : 1;
-    bool have_blkseq : 1;
+    unsigned errstrused:1;
+    unsigned vfy_genid_track:1;
+    unsigned have_blkseq:1;
 
-    bool sc_locked : 1;
-    bool have_snap_info : 1;
-    bool sc_should_abort : 1;
+    unsigned sc_locked:1;
+    unsigned have_snap_info:1;
+    unsigned sc_should_abort:1;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

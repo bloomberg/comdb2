@@ -2164,7 +2164,7 @@ struct __db_env {
 	time_t		 tx_timestamp;	/* Recover to specific timestamp. */
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
 	db_timeout_t	 tx_timeout;	/* Timeout for transactions. */
-	uint8_t		 tx_perfect_ckp:1;	/* 1: Use perfect ckp. 0: Don't */
+	unsigned		 tx_perfect_ckp:1;	/* 1: Use perfect ckp. 0: Don't */
 
 	/*******************************************************
 	 * Private: owned by DB.

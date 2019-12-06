@@ -298,7 +298,7 @@ int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
                  int isqueuedb);
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
-                        uint8_t sync);
+                        bool sync);
 
 /* Packs a schema_change_type struct into an opaque binary buffer so that it can
  * be stored in the low level meta table and the schema change can be resumed by

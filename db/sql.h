@@ -190,10 +190,10 @@ typedef struct osqlstate {
                             (i.e. already translated */
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
-    uint8_t is_reorder_on : 1;
+    unsigned is_reorder_on:1;
 
     /* set to 1 if we have already called osql_sock_start in socksql mode */
-    uint8_t sock_started : 1;
+    unsigned sock_started:1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -681,7 +681,7 @@ struct sqlclntstate {
     struct stored_proc *sp;
     struct spversion_t spversion;
 
-    int debug_sqlclntstate;
+    int debug_sqlclntstate; // set to pthread_self()
     int last_check_time;
     int query_timeout;
     int statement_timedout;
@@ -734,7 +734,6 @@ struct sqlclntstate {
     int nconns;
     int conns_idx;
     int shard_slice;
-    int heartbeat_lock;
 
     uint32_t start_gen;
     int recover_deadlock_rcode;
@@ -766,70 +765,71 @@ struct sqlclntstate {
     char origin_space[255];
 
     int8_t has_recording;
-    int8_t is_retry; // 0|1|-1
-    int8_t is_explain; // 0|1|2
-    int8_t verify_remote_schemas; // 0|1|2
+    unsigned is_retry:2; // 0|1|-1
+    unsigned is_explain:2; // 0|1|2
+    unsigned verify_remote_schemas:2; // 0|1|2
 
-    uint8_t heartbeat:1;
-    uint8_t ready_for_heartbeats:1;
-    uint8_t no_more_heartbeats:1;
-    uint8_t done:1;
-    uint8_t using_case_insensitive_like:1; // looks like it is never set
-    uint8_t want_stored_procedure_trace:1; // sp related
-    uint8_t want_stored_procedure_debug:1; // sp related
+    unsigned heartbeat_lock:1;
+    unsigned heartbeat:1;
+    unsigned ready_for_heartbeats:1;
+    unsigned no_more_heartbeats:1;
+    unsigned done:1;
+    unsigned using_case_insensitive_like:1; // looks like it is never set
+    unsigned want_stored_procedure_trace:1; // sp related
+    unsigned want_stored_procedure_debug:1; // sp related
 
-    uint8_t must_close_sb:1;
+    unsigned must_close_sb:1;
     /* THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1) AND THE
      * EXIT(=0) in a sql transaction marked by a succesfull call to BeginTrans,
      * and Commit/Rollback respectively THIS DOES NOT MATCH THE CLIENT
      * TRANSACTION EXCERPT FOR SINGULAR STATEMENTS; STATE OF A CLIENT
      * TRANSACTION IS KEPT HERE */
-    uint8_t intrans:1; 
+    unsigned intrans:1; 
 
-    uint8_t stop_this_statement:1;
-    uint8_t exec_lua_thread:1;
-    uint8_t have_user:1;
-    uint8_t have_password:1;
-    uint8_t is_x509_user:1; /* True if the user is retrieved
+    unsigned stop_this_statement:1;
+    unsigned exec_lua_thread:1;
+    unsigned have_user:1;
+    unsigned have_password:1;
+    unsigned is_x509_user:1; /* True if the user is retrieved
                                from a client certificate. */
     /* to remain compatible with blocksql: if a user starts a transaction, we
      * need to pend the first error until a commit is issued.  any statements
      * past the first error are ignored. */
-    uint8_t had_errors:1;
-    uint8_t no_transaction:1;
-    uint8_t in_client_trans:1; /* clnt is in a client transaction (ie. client ran
+    unsigned had_errors:1;
+    unsigned no_transaction:1;
+    unsigned in_client_trans:1; /* clnt is in a client transaction (ie. client ran
                             "begin" but not yet commit or rollback */
-    uint8_t pageordertablescan:1;
-    uint8_t verifyretry_off:1;
-    uint8_t prepare_only:1;
-    uint8_t isUnlocked:1;
-    uint8_t isselect:1;   /* track if the query is a select query.*/
-    uint8_t added_to_hist:1;
-    uint8_t is_readonly:1;
-    uint8_t is_hasql_retry:1;
-    uint8_t statement_query_effects:1;
-    uint8_t isadmin:1;
-    uint8_t is_expert:1;
-    uint8_t translevel_changed:1;
-    uint8_t need_recover_deadlock:1;
-    uint8_t emitting_flag:1;
-    uint8_t verify_indexes:1;
-    uint8_t has_sqliterow:1;
-    uint8_t get_cost:1;
-    uint8_t high_availability_flag:1;
-    uint8_t hasql_on:1;
-    uint8_t is_analyze:1;
-    uint8_t is_overlapping:1;
-    uint8_t gen_changed:1;
-    uint8_t skip_peer_chk:1;
-    uint8_t queue_me:1;
-    uint8_t fail_dispatch:1;
-    uint8_t sent_data_to_client:1;
-    uint8_t is_asof_snapshot:1;
-    uint8_t had_lease_at_begin:1;
-    uint8_t have_extended_tm:1; // used in bbplugins
-    uint8_t extended_tm:1; // used in bbplugins
-    uint8_t wrong_db:1; // used in bbplugins
+    unsigned pageordertablescan:1;
+    unsigned verifyretry_off:1;
+    unsigned prepare_only:1;
+    unsigned isUnlocked:1;
+    unsigned isselect:1;   /* track if the query is a select query.*/
+    unsigned added_to_hist:1;
+    unsigned is_readonly:1;
+    unsigned is_hasql_retry:1;
+    unsigned statement_query_effects:1;
+    unsigned isadmin:1;
+    unsigned is_expert:1;
+    unsigned translevel_changed:1;
+    unsigned need_recover_deadlock:1;
+    unsigned emitting_flag:1;
+    unsigned verify_indexes:1;
+    unsigned has_sqliterow:1;
+    unsigned get_cost:1;
+    unsigned high_availability_flag:1;
+    unsigned hasql_on:1;
+    unsigned is_analyze:1;
+    unsigned is_overlapping:1;
+    unsigned gen_changed:1;
+    unsigned skip_peer_chk:1;
+    unsigned queue_me:1;
+    unsigned fail_dispatch:1;
+    unsigned sent_data_to_client:1;
+    unsigned is_asof_snapshot:1;
+    unsigned had_lease_at_begin:1;
+    unsigned have_extended_tm:1; // used in bbplugins
+    unsigned extended_tm:1; // used in bbplugins
+    unsigned wrong_db:1; // used in bbplugins
 };
 
 /* Query stats. */
@@ -862,9 +862,9 @@ struct Btree {
     /* for debugging */
     int btreeid;
 
-    unsigned is_temporary : 1;
-    unsigned is_hashtable : 1;
-    unsigned is_remote : 1;
+    unsigned is_temporary:1;
+    unsigned is_hashtable:1;
+    unsigned is_remote:1;
 
     hash_t *temp_tables;
     int num_temp_tables;
