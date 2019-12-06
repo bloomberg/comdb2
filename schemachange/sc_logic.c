@@ -530,12 +530,6 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     struct schema_change_type *s = arg->sc;
     free(arg);
 
-    if (bdb_lockref() <= 0) {
-        logmsg(LOGMSG_FATAL, "%s requires the bdb-lock\n",
-                __func__);
-        abort();
-    }
-
     if (iq == NULL) {
         abort();
     }
@@ -683,9 +677,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     bdb_state_type *bdb_state = thedb->bdb_env;
     thread_started("schema_change");
     bdb_thread_event(bdb_state, 1);
-    BDB_READLOCK("schema-change-tran");
     rc = do_schema_change_tran_int(arg, 1);
-    BDB_RELLOCK();
     bdb_thread_event(bdb_state, 0);
     return rc;
 }
