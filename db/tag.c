@@ -185,6 +185,7 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
     if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
+        listc_rfl(&tag->taglist, fnd);
         hash_del(tag->tags, fnd);
         free(fnd);
     }

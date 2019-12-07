@@ -361,14 +361,20 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             decrement_schema_change_in_progress(func, line);
         }
     }
-    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
-           "gbl_schema_change_in_progress %d\n",
-           table, running, (unsigned long long)seed,
-           get_schema_change_in_progress(__func__, __LINE__));
-
     rc = 0;
 
 done:
+    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d from %s:%d rc=%d\n",
+           table, running, (unsigned long long)seed,
+           get_schema_change_in_progress(__func__, __LINE__), func, line, rc);
+
+    /* I think there's a place that decrements this without waiting for 
+     * the async sc thread to complete (which is wrong) */
+    logmsg(LOGMSG_INFO, "sc_set_running(table=%s running=%d seed=0x%llx): from "
+            "%s:%d rc=%d\n", table, running, (unsigned long long)seed, func,
+            line, rc);
+
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     if (got_lock)
         BDB_RELLOCK();
