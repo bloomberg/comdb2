@@ -1496,9 +1496,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return BLOCK2_SQL;
-
     case OSQL_SOCK_REQ:
         return BLOCK2_SOCK_SQL;
 
