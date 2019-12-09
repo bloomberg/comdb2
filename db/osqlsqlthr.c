@@ -642,18 +642,6 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
 }
 
 /**
- * Called when all rows are retrieved
- * Informs block process that the sql processing is over
- * and it can start processing bloplog
- *
- */
-int osql_block_commit(struct sql_thread *thd)
-{
-
-    return osql_send_commit_logic(thd->clnt, 0, NET_OSQL_BLOCK_RPL);
-}
-
-/**
  * This is called on the replicant node and starts a sosql session,
  * which creates a blockprocessor peer on the master node
  * Returns ok if the packet is sent successful to the master

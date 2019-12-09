@@ -33,7 +33,6 @@
 #include <uuid/uuid.h>
 #include "str0.h"
 
-static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
 
 /**
@@ -555,36 +554,6 @@ int osql_session_testterminate(void *obj, void *arg)
         }
     }
     return 0;
-}
-
-static int osql_poke_replicant(osql_sess_t *sess)
-{
-    uuidstr_t us;
-
-    ctrace("Poking %s from %s for rqid %llx %s\n", sess->offhost, gbl_mynode,
-           sess->rqid, comdb2uuidstr(sess->uuid, us));
-
-    if (sess->offhost) {
-
-        int rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
-                                     NET_OSQL_POKE);
-        return rc;
-    }
-
-    /* checkup local listings */
-    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
-
-    if (found || sess->xerr.errval)
-        return 0;
-
-    /* ideally this should never happen, i.e.  a local request should be
-     * either dispatch successfully or reported as failure, not disappear
-     * JIC, here we mark it MIA */
-    sess->xerr.errval = OSQL_NOOSQLTHR;
-    snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
-             "Missing sql session %llx %s in local mode", sess->rqid,
-             comdb2uuidstr(sess->uuid, us));
-    return -1;
 }
 
 /**

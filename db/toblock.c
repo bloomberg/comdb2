@@ -4755,7 +4755,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /* FOR DEADLOCK ON THE SERVER,
          * WE'RE NOT REPEATING THE SQL PROCESSING PART
          * INSTEAD WE JUST REPLAY THE BPLOG
-         * we set osql_retry so that we ignore BLOCK2_SQL, BLOCK2_SOSQL,
+         * we set osql_retry so that we ignore  BLOCK2_SOSQL,
          * BLOCK2_RECOM, BLOCK2_SNAPISOL, BLOCK2_SERIAL if we retry
          *
          * we don't retry successful sql session; we do this here

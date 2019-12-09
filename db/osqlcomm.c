@@ -2887,11 +2887,6 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
                                int usertype, void *dtap, int dtalen,
                                uint8_t is_tcp);
 static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *node);
-static void net_osql_poked(void *hndl, void *uptr, char *fromnode, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp);
-static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromnode,
-                                int usertype, void *dtap, int dtalen,
-                                uint8_t is_tcp);
 static void net_osql_master_check(void *hndl, void *uptr, char *fromnode,
                                   int usertype, void *dtap, int dtalen,
                                   uint8_t is_tcp);
@@ -2914,7 +2909,6 @@ static int offload_net_send(const char *tohost, int usertype, void *data,
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
-static int osql_check_version(int type);
 static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens);
@@ -3002,11 +2996,6 @@ int osql_comm_init(struct dbenv *dbenv)
     }
 
     /* sqloffload handler */
-    net_register_handler(tmp->handle_sibling, NET_OSQL_BLOCK_RPL,
-                         "osql_block_rpl", net_osql_rpl);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_BLOCK_RPL_UUID,
-                         "osql_block_rpl_uuid", net_osql_rpl);
-
     net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_REQ,
                          "osql_sock_req", net_sosql_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_SOCK_RPL,
@@ -3031,8 +3020,6 @@ int osql_comm_init(struct dbenv *dbenv)
 
     net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL, "hbeat_sql",
                          net_osql_heartbeat);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_POKE, "osql_poke",
-                         net_osql_poked);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK,
                          "osql_master_check", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED,
@@ -3068,8 +3055,6 @@ int osql_comm_init(struct dbenv *dbenv)
 
     net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL_UUID,
                          "hbeat_sql_uuid", net_osql_heartbeat);
-    net_register_handler(tmp->handle_sibling, NET_OSQL_POKE_UUID,
-                         "osql_poke_uuid", net_osql_poked_uuid);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK_UUID,
                          "osql_master_check_uuid", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED_UUID,
@@ -3472,14 +3457,6 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
 static int osql_net_type_to_net_uuid_type(int type)
 {
     switch (type) {
-    case NET_OSQL_BLOCK_REQ:
-        return NET_OSQL_BLOCK_REQ_UUID;
-    case NET_OSQL_BLOCK_REQ_PARAMS:
-        return NET_OSQL_BLOCK_REQ_PARAMS_UUID;
-    case NET_OSQL_BLOCK_REQ_COST:
-        return NET_OSQL_BLOCK_REQ_COST_UUID;
-    case NET_OSQL_BLOCK_RPL:
-        return NET_OSQL_BLOCK_RPL_UUID;
     case NET_OSQL_SOCK_REQ:
         return NET_OSQL_SOCK_REQ_UUID;
     case NET_OSQL_SOCK_RPL:
@@ -3500,8 +3477,6 @@ static int osql_net_type_to_net_uuid_type(int type)
         return NET_OSQL_SERIAL_RPL_UUID;
     case NET_HBEAT_SQL:
         return NET_HBEAT_SQL_UUID;
-    case NET_OSQL_POKE:
-        return NET_OSQL_POKE_UUID;
     case NET_OSQL_MASTER_CHECK:
         return NET_OSQL_MASTER_CHECK_UUID;
     case NET_OSQL_MASTER_CHECKED:
@@ -4893,37 +4868,6 @@ int osql_process_message_decom(char *host)
     return 0;
 }
 
-/**
- * Signalling sql thread to cancel the sql session
- * This is called only for blocksql, when the request fails to be dispatched
- *
- */
-static void osql_blocksql_failed_dispatch(netinfo_type *netinfo_ptr,
-                                          char *tohost, unsigned long long rqid,
-                                          uuid_t uuid, int rc)
-{
-
-    osql_done_xerr_t rpl_xerr = {{0}};
-    uint8_t buf[sizeof(rpl_xerr)];
-    uint8_t *p_buf = buf;
-    uint8_t *p_buf_end = p_buf + sizeof(rpl_xerr);
-
-    rpl_xerr.hd.type = OSQL_XERR;
-    rpl_xerr.hd.sid = rqid;
-
-    rpl_xerr.dt.errval = rc;
-    strncpy0(rpl_xerr.dt.errstr, "cannot dispatch sql request",
-             sizeof(rpl_xerr.dt.errstr));
-
-    if (!(osqlcomm_done_xerr_type_put(&rpl_xerr, p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                "osqlcomm_done_xerr_type_put");
-        return;
-    }
-
-    offload_net_send(tohost, NET_OSQL_BLOCK_RPL, &buf, sizeof(rpl_xerr), 1);
-}
-
 /* We seem to be adding more and more things to be passed through osql requests.
    This
    packs multiple things into a request.  Note: buf must be a properly packed
@@ -4998,8 +4942,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
                 rqlen += blobs[i].length;
             }
         }
-    } else if (type == OSQL_BLOCK_REQ_COST)
-        rqlen += sizeof(int);
+    }
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_req_t *r_uuid_ptr;
@@ -5061,13 +5004,9 @@ void *osql_create_request(const char *sql, int sqlen, int type,
     }
 
     p_buf = buf_no_net_put(sql, sqlen, p_buf, p_buf_end);
-    if (type == OSQL_BLOCK_REQ_COST)
+    if (tag) {
+        /* this is dummy. */
         p_buf = buf_put(&queryid, sizeof(queryid), p_buf, p_buf_end);
-    else {
-        if (tag) {
-            /* this is dummy. */
-            p_buf = buf_put(&queryid, sizeof(queryid), p_buf, p_buf_end);
-        }
     }
     if (tag) {
         p_buf = buf_put(&taglen, sizeof(taglen), p_buf, p_buf_end);
@@ -5480,113 +5419,6 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
     }
 }
 
-/* remote poke */
-static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
-                           void *dtap, int dtalen, uint8_t is_tcp)
-{
-    osql_poke_t poke;
-    bool found = false;
-    int rc = 0;
-    uuid_t uuid;
-
-    comdb2uuid_clear(uuid);
-
-    if (db_is_stopped()) {
-        /* don't do anything, we're going down */
-        return;
-    }
-
-    uint8_t *p_buf = dtap;
-    uint8_t *p_buf_end = p_buf + dtalen;
-    if (!(osqlcomm_poke_type_get(&poke, p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: invalid data length\n", __func__);
-        return;
-    }
-
-    found = osql_chkboard_sqlsession_exists(poke.rqid, uuid, 1);
-
-    /* TODO: we could send something back... but in tough times this will
-     * not make it nevertheless */
-    if (found)
-        return;
-
-    /* not found so send a done with an error, lost request */
-    uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
-    p_buf = buf;
-    p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
-    osql_done_xerr_t rpl;
-
-    rpl.hd.type = OSQL_XERR;
-    rpl.hd.sid = poke.rqid;
-    rpl.dt.errval = OSQL_NOOSQLTHR;
-    uuidstr_t us;
-    /* TODO:NOENV:uuid - should come from new msg type */
-    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-             "Missing sql session %llx %s on %s\n", poke.rqid,
-             comdb2uuidstr(uuid, us), gbl_mynode);
-
-    osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
-
-    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf, sizeof(buf),
-                               1))) {
-        logmsg(LOGMSG_ERROR,
-               "%s: error writting record to master in offload mode rc=%d!\n",
-               __func__, rc);
-    }
-}
-
-static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
-                                int usertype, void *dtap, int dtalen,
-                                uint8_t is_tcp)
-{
-    uint8_t *p_buf = dtap;
-    uint8_t *p_buf_end = p_buf + dtalen;
-    osql_poke_uuid_t poke;
-    bool found = false;
-    int rc = 0;
-
-    if (db_is_stopped()) {
-        /* don't do anything, we're going down */
-        return;
-    }
-
-    if (!(osqlcomm_poke_uuid_type_get(&poke, p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: invalid data length\n", __func__);
-        return;
-    }
-
-    found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid, 1);
-
-    /* TODO: we could send something back... but in tough times this will
-     * not make it nevertheless */
-    if (found)
-        return;
-
-    /* not found so send a done with an error, lost request */
-    uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
-    p_buf = buf;
-    p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-    osql_done_xerr_uuid_t rpl;
-
-    rpl.hd.type = OSQL_XERR;
-    comdb2uuidcpy(rpl.hd.uuid, poke.uuid);
-    rpl.dt.errval = OSQL_NOOSQLTHR;
-    uuidstr_t us;
-
-    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-             "Missing sql session %s on %s\n", comdb2uuidstr(poke.uuid, us),
-             gbl_mynode);
-
-    osqlcomm_done_xerr_uuid_type_put(&rpl, p_buf, p_buf_end);
-
-    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
-                               sizeof(buf), 1))) {
-        logmsg(LOGMSG_ERROR,
-               "%s: error writting record to master in offload mode rc=%d!\n",
-               __func__, rc);
-    }
-}
-
 static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
                                   int usertype, void *dtap, int dtalen,
                                   uint8_t is_tcp)
@@ -5810,10 +5642,6 @@ static void *osql_heartbeat_thread(void *arg)
 static int net_local_route_packet(int usertype, void *data, int datalen)
 {
     switch (usertype) {
-    case NET_OSQL_BLOCK_RPL:
-    case NET_OSQL_BLOCK_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
-        break;
     case NET_OSQL_SOCK_REQ:
     case NET_OSQL_SOCK_REQ_COST:
     case NET_OSQL_SOCK_REQ_UUID:
@@ -5870,12 +5698,10 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
                                         int *taillens)
 {
     switch (usertype) {
-    case NET_OSQL_BLOCK_RPL:
     case NET_OSQL_SOCK_RPL:
     case NET_OSQL_RECOM_RPL:
     case NET_OSQL_SNAPISOL_RPL:
     case NET_OSQL_SERIAL_RPL:
-    case NET_OSQL_BLOCK_RPL_UUID:
     case NET_OSQL_SOCK_RPL_UUID:
     case NET_OSQL_RECOM_RPL_UUID:
     case NET_OSQL_SNAPISOL_RPL_UUID:
@@ -6122,12 +5948,6 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
     }
 
     return rc;
-}
-
-/* we redefine this function as more osql versions are added */
-static int osql_check_version(int type)
-{
-    return type != OSQL_BLOCK_REQ && type != OSQL_SOCK_REQ;
 }
 
 /* reader
@@ -7876,10 +7696,6 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
 static int netrpl2req(int netrpltype)
 {
     switch (netrpltype) {
-    case NET_OSQL_BLOCK_RPL:
-    case NET_OSQL_BLOCK_RPL_UUID:
-        return OSQL_BLOCK_REQ;
-
     case NET_OSQL_SOCK_RPL:
     case NET_OSQL_SOCK_RPL_UUID:
         return OSQL_SOCK_REQ;
