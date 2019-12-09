@@ -549,7 +549,7 @@ static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
 int gbl_ref_sync_pollms = 250;
 int gbl_ref_sync_iterations = 4;
-int gbl_ref_sync_wait_txnlist = 1;
+int gbl_ref_sync_wait_txnlist = 0;
 
 #define MAX_TXNARRAY 64
 void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count);
