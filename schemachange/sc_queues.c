@@ -548,7 +548,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         unsigned long long ver = 0;
-        if (bdb_get_file_version_qdb(db->handle, tran, &ver, &bdberr) == 0) {
+        if (bdb_get_file_version_qdb(db->handle, tran, 0, &ver, &bdberr) == 0) {
             sc_del_unused_files_tran(db, tran);
         } else {
             rc = bdb_del(db->handle, tran, &bdberr);
