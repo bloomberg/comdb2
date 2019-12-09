@@ -292,7 +292,7 @@ enum BLOCK_OPS {
     BLOCK2_QADD = 808,
     BLOCK2_QCONSUME = 809,
     BLOCK2_TZ = 810,
-    BLOCK2_SQL = 811,    /* obsolete */
+    BLOCK2_SQL = 811, /* obsolete */
     BLOCK2_DELOLDER = 812,
     BLOCK2_TRAN = 813,
     BLOCK2_MODNUM = 814,
@@ -301,7 +301,7 @@ enum BLOCK_OPS {
     BLOCK2_RECOM = 817,
     BLOCK2_UPDBYKEY = 818,
     BLOCK2_SERIAL = 819,
-    BLOCK2_SQL_PARAMS = 820,    /* obsolete */
+    BLOCK2_SQL_PARAMS = 820, /* obsolete */
     BLOCK2_DBGLOG_COOKIE = 821,
     BLOCK2_PRAGMA = 822,
     BLOCK2_SNAPISOL = 823,

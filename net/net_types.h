@@ -35,15 +35,15 @@ enum {
                               must be llmeta */
     NET_OSQL_POKE = 130,   /* obsolete */
     NET_OSQL_SIGNAL = 131, /* this goes only on offload net */
-    NET_OSQL_SERIAL_REQ = 132, /* this goes only on offload net */
-    NET_OSQL_SERIAL_RPL = 133, /* this goes only on offload net */
+    NET_OSQL_SERIAL_REQ = 132,       /* this goes only on offload net */
+    NET_OSQL_SERIAL_RPL = 133,       /* this goes only on offload net */
     NET_OSQL_BLOCK_REQ_PARAMS = 134, /* obsolete */
-    NET_OSQL_ECHO_PING = 135,      /* latency debug instrumentation */
-    NET_OSQL_ECHO_PONG = 136,      /*  - "" - */
-    NET_OSQL_BLOCK_REQ_COST = 137, /* obsolete */
-    NET_OSQL_SOCK_REQ_COST = 138,  /* like SOCK_REQ, but passes dbglog ids */
-    NET_OSQL_SNAPISOL_REQ = 139,   /* this goes only on offload net */
-    NET_OSQL_SNAPISOL_RPL = 140,   /* this goes only on offload net */
+    NET_OSQL_ECHO_PING = 135,        /* latency debug instrumentation */
+    NET_OSQL_ECHO_PONG = 136,        /*  - "" - */
+    NET_OSQL_BLOCK_REQ_COST = 137,   /* obsolete */
+    NET_OSQL_SOCK_REQ_COST = 138,    /* like SOCK_REQ, but passes dbglog ids */
+    NET_OSQL_SNAPISOL_REQ = 139,     /* this goes only on offload net */
+    NET_OSQL_SNAPISOL_RPL = 140,     /* this goes only on offload net */
     NET_RELOAD_LUA = 141, /* Delete the cached lua machines at load time */
     NET_OSQL_MASTER_CHECK = 142,   /* this goes only on offload net */
     NET_OSQL_MASTER_CHECKED = 143, /* this goes only on offload net */
@@ -59,10 +59,10 @@ enum {
      * requests by uuid instead of
      * rqid.  They are sent when gbl_noenv_messages is enabled */
     NET_OSQL_UUID_REQUEST_MIN = 151,
-    NET_OSQL_BLOCK_REQ_UUID = 152, /* obsolete */
+    NET_OSQL_BLOCK_REQ_UUID = 152,        /* obsolete */
     NET_OSQL_BLOCK_REQ_PARAMS_UUID = 153, /* obsolete */
-    NET_OSQL_BLOCK_REQ_COST_UUID = 154, /* obsolete */
-    NET_OSQL_BLOCK_RPL_UUID = 155, /* obsolete */
+    NET_OSQL_BLOCK_REQ_COST_UUID = 154,   /* obsolete */
+    NET_OSQL_BLOCK_RPL_UUID = 155,        /* obsolete */
     NET_OSQL_SOCK_REQ_UUID = 156,
     NET_OSQL_SOCK_RPL_UUID = 157,
     NET_OSQL_SIGNAL_UUID = 158,
