@@ -796,6 +796,7 @@ void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
     set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
+/* helper function to reload csc2 schema */
 static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *csc2, char *table)
 {
     int bdberr;

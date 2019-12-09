@@ -2028,10 +2028,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
                     continue;
                 }
 
-                struct schema *s;
-                dyns_init_globals();
-                s = create_version_schema(csc2text, v, tbl->dbenv);
-                dyns_cleanup_globals();
+                struct schema *s =
+                    create_version_schema(csc2text, v, tbl->dbenv);
 
                 if (s == NULL) {
                     free(csc2text);

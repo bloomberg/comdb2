@@ -470,9 +470,7 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     s->sb = sb;
     int sv_onstack = s->onstack;
     s->onstack = 1;
-    dyns_init_globals();
     f->rc = do_dryrun(s);
-    dyns_cleanup_globals();
     s->onstack = sv_onstack;
     sbuf2close(sb);
 

@@ -577,6 +577,7 @@ int do_dryrun(struct schema_change_type *s)
         }
     }
 
+    dyns_init_globals();
     if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename)) {
         char *err;
         err = csc2_get_errors();
@@ -623,6 +624,7 @@ done:
         newdb->schema = NULL;
         freedb(newdb);
     }
+    dyns_cleanup_globals();
     return rc;
 }
 
