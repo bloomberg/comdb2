@@ -578,6 +578,7 @@ struct sqlclntstate {
     uint8_t ready_for_heartbeats;
     uint8_t no_more_heartbeats;
     uint8_t done;
+    unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
     int deadlock_recovered;

@@ -58,6 +58,7 @@ add_exe(selectv_deadlock selectv_deadlock.c)
 add_exe(selectv_rcode selectv_rcode.c)
 add_exe(api_libs api_libs.c)
 add_exe(updater updater.c testutil.c)
+add_exe(smartbeats smartbeats.c)
 
 target_link_libraries(stepper util mem dlmalloc util)
 
