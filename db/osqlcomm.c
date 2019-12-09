@@ -50,7 +50,6 @@
 #include <compat.h>
 #include <unistd.h>
 
-#define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
 
 #define UNK_ERR_SEND_RETRY 10
@@ -94,7 +93,6 @@ typedef struct osql_blknds {
 typedef struct osql_comm {
     void *
         handle_sibling; /* pointer to netinfo structure supporting offloading */
-    osql_blknds_t blkout; /* blackout structure */
 } osql_comm_t;
 
 typedef struct osql_poke {
@@ -2883,9 +2881,6 @@ static void net_snapisol_req(void *hndl, void *uptr, char *fromnode,
 static void net_serial_req(void *hndl, void *uptr, char *fromnode, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp);
 
-static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
-                               int usertype, void *dtap, int dtalen,
-                               uint8_t is_tcp);
 static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *node);
 static void net_osql_master_check(void *hndl, void *uptr, char *fromnode,
                                   int usertype, void *dtap, int dtalen,
@@ -2912,8 +2907,6 @@ static int offload_net_send_tail(const char *tohost, int usertype, void *data,
 static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens);
-static int get_blkout(time_t now, char *nodes[REPMAX], int *nds);
-
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype);
 static int netrpl2req(int netrpltype);
@@ -3106,9 +3099,6 @@ int osql_comm_init(struct dbenv *dbenv)
     if (debug_switch_net_verbose())
         net_trace(tmp->handle_sibling, 1);
 
-    tmp->blkout.delta = BLKOUT_DEFAULT_DELTA;
-    tmp->blkout.delta_hbeat = gbl_osql_heartbeat_alert;
-
     thecomm_obj = tmp;
 
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
@@ -3140,38 +3130,6 @@ void osql_comm_destroy(void)
     if (g_osql_ready)
         logmsg(LOGMSG_ERROR, "Osql module was not disabled yet!\n");
     thecomm_obj = NULL;
-}
-
-/**
- * Disable temporarily replicant "node"
- * "node" will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_comm_blkout_node(const char *host)
-{
-
-    osql_blknds_t *blk = NULL;
-    int i = 0;
-    int len = 0;
-
-    osql_comm_t *comm = get_thecomm();
-    if (!comm)
-        return -1;
-
-    blk = &comm->blkout;
-
-    len = blk->n;
-
-    for (i = 0; i < len; i++) {
-        if (host == blk->nds[i]) {
-            blk->times[i] = time(NULL); /* refresh blackout */
-            break;
-        }
-    }
-
-    return 0;
 }
 
 int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
@@ -5946,47 +5904,6 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
     }
 
     return rc;
-}
-
-/* reader
-   because it we don't delete entries
-   this is lockless
-
-   we add nodes that have a recent heartbeat
-   and are not marked as blackout
- */
-static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
-{
-
-    osql_blknds_t *blk = NULL;
-    int i = 0, j = 0;
-    int len = 0;
-
-    osql_comm_t *comm = get_thecomm();
-    if (!comm)
-        return -1;
-
-    blk = &comm->blkout;
-
-    len = blk->n;
-
-    for (i = 0; i < len; i++) {
-        if ((now - blk->heartbeat[i] < blk->delta_hbeat) &&
-            (now - blk->times[i] >= blk->delta)) {
-            nodes[j++] = blk->nds[i];
-        }
-    }
-
-    *nds = j;
-
-#if 0
-   printf("%s: got %d nodes: ", __func__, *nds);
-   for(i=0;i<*nds;i++)
-      printf("%d ", nodes[i]);
-   printf("\n");
-#endif
-
-    return 0;
 }
 
 /* Replicant callback.  Note: this is a bit kludgy.

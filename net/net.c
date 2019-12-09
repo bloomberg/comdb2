@@ -6414,14 +6414,13 @@ void net_register_stop_thread_callback(netinfo_type *info,
     info->stop_thread_callback = callback;
 }
 
-static char *net_get_osql_node_ll(netinfo_type *netinfo_ptr,
-                                  char *blk_nodes[REPMAX], int n_blknodes)
+/* pick a sibling for sql offloading */
+char *net_get_osql_node(netinfo_type *netinfo_ptr)
 {
     host_node_type *ptr, *nodes[REPMAX]; /* 16 siblings, more than reasonable
                                           * replicated cluster */
     int nnodes = 0;
     int index = 0;
-    int ix = 0;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
@@ -6436,17 +6435,6 @@ static char *net_get_osql_node_ll(netinfo_type *netinfo_ptr,
 
         /* is rtcpu-ed? */
         if (machine_is_up(ptr->host) != 1)
-            continue;
-
-        /* is blackout ? */
-        for (ix = 0; ix < n_blknodes; ix++) {
-            if (blk_nodes[ix] != ptr->host)
-                break;
-        }
-
-        /* blacklist is actually whitelist */
-        if (n_blknodes && ix >= n_blknodes)
-            // didn't find node in white-list
             continue;
 
         if (nnodes >= REPMAX)
@@ -6474,22 +6462,6 @@ static char *net_get_osql_node_ll(netinfo_type *netinfo_ptr,
     }
 
     return nodes[index]->host;
-}
-
-/* pick a sibling for sql offloading */
-char *net_get_osql_node(netinfo_type *netinfo_ptr)
-{
-    return net_get_osql_node_ll(netinfo_ptr, NULL, 0);
-}
-
-/*
-   pick a sibling for sql offloading using blackout list
-   UPDATE: meaning change, the blkout list will contain valid nodes!
- */
-char *net_get_osql_node_blkout(netinfo_type *netinfo_ptr, char *nodes[REPMAX],
-                               int lnodes)
-{
-    return net_get_osql_node_ll(netinfo_ptr, nodes, lnodes);
 }
 
 char *net_get_mynode(netinfo_type *netinfo_ptr)
