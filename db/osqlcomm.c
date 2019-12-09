@@ -5005,10 +5005,8 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 
     p_buf = buf_no_net_put(sql, sqlen, p_buf, p_buf_end);
     if (tag) {
-        /* this is dummy. */
-        p_buf = buf_put(&queryid, sizeof(queryid), p_buf, p_buf_end);
-    }
-    if (tag) {
+        p_buf = buf_put(&queryid, sizeof(queryid), p_buf,
+                        p_buf_end); /* this is dummy. */
         p_buf = buf_put(&taglen, sizeof(taglen), p_buf, p_buf_end);
         p_buf = buf_no_net_put(tag, taglen, p_buf, p_buf_end);
         p_buf = buf_put(&tagbuflen, sizeof(tagbuflen), p_buf, p_buf_end);
