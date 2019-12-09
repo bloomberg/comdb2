@@ -6447,11 +6447,13 @@ void commit_schemas(const char *tblname)
         int i = 0;
         int count = to_be_freed.count;
 
-        s = malloc(sizeof(struct schema *) * count);
+        s = calloc(sizeof(struct schema *), count);
         sc = listc_rtl(&to_be_freed);
         while (sc) {
             if (db->schema != sc)
                 s[i++] = sc;
+            else
+                count--;
             sc = listc_rtl(&to_be_freed);
         }
 
