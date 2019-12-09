@@ -564,9 +564,12 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_lua_afunc(s);
     else if (s->fastinit && s->drop_table)
         rc = do_ddl(do_drop_table, finalize_drop_table, iq, s, trans, drop);
-    else if (s->fastinit)
+    else if (s->fastinit) {
+        dyns_init_globals();
         rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, s, trans,
                     fastinit);
+        dyns_cleanup_globals();
+    }
     else if (s->addonly)
         rc = do_ddl(do_add_table, finalize_add_table, iq, s, trans, add);
     else if (s->rename)
@@ -574,8 +577,11 @@ int do_schema_change_tran(sc_arg_t *arg)
                     rename_table);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
-    else if (s->type == DBTYPE_TAGGED_TABLE)
+    else if (s->type == DBTYPE_TAGGED_TABLE) {
+        dyns_init_globals();
         rc = do_ddl(do_alter_table, finalize_alter_table, iq, s, trans, alter);
+        dyns_cleanup_globals();
+    }
     else if (s->type == DBTYPE_QUEUE)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)

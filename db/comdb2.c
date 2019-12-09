@@ -2028,8 +2028,10 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
                     continue;
                 }
 
-                struct schema *s =
-                    create_version_schema(csc2text, v, tbl->dbenv);
+                struct schema *s;
+                dyns_init_globals();
+                s = create_version_schema(csc2text, v, tbl->dbenv);
+                dyns_cleanup_globals();
 
                 if (s == NULL) {
                     free(csc2text);
@@ -3276,18 +3278,16 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
        return -1;
     }
 
-    dyns_init_globals();
+    // dyns_init_globals() is called by the caller, cleanup as well
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
-        rc = -1;
-        goto err;
+        return -1;
     }
     tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
     if (tbl == NULL) {
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
-        rc = -1;
-        goto err;
+        return -1;
     }
     tbl->dbs_idx = dbenv->num_dbs;
     tbl->csc2_schema = strdup(schema);
@@ -3298,12 +3298,9 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
 
     if (add_cmacc_stmt(tbl, 0)) {
         logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
-        rc = -1;
-        goto err;
+        return -1;
     }
-err:
-    dyns_cleanup_globals();
-    return rc;
+    return 0;
 }
 
 static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
@@ -3323,11 +3320,15 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
 static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
+    dyns_init_globals();
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
+    dyns_cleanup_globals();
     if (rc)
         return rc;
     /* There's no 2 or 3.  There used to be 2.  There was never 3. */
+    dyns_init_globals();
     rc = init_sqlite_table(dbenv, "sqlite_stat4");
+    dyns_cleanup_globals();
     if (rc)
         return rc;
     return 0;
