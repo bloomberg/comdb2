@@ -2209,11 +2209,12 @@ int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long version_num, int *bdberr)
+                             int file_num, unsigned long long version_num,
+                             int *bdberr)
 {
     return bdb_new_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num,
+                                version_num, bdberr);
 }
 
 /* update all of the db's file's version numbers, usually called when first
@@ -2490,11 +2491,12 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long *version_num, int *bdberr)
+                             int file_num, unsigned long long *version_num,
+                             int *bdberr)
 {
     return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num,
+                                version_num, bdberr);
 }
 
 int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,

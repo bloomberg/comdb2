@@ -638,18 +638,18 @@ int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
 
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
-                             int create, char *name, size_t len)
+                             int file_num, int create, char *name, size_t len)
 {
     unsigned long long ver;
     int rc, bdberr;
     if (create && gbl_queuedb_genid_filename) {
         ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
-        rc = bdb_new_file_version_qdb(bdb_state, tran, ver, &bdberr);
+        rc = bdb_new_file_version_qdb(bdb_state, tran, file_num, ver, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             return -1;
         }
     }
-    if (bdb_get_file_version_qdb(bdb_state, tran, &ver, &bdberr) == 0) {
+    if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver, &bdberr) == 0) {
         snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name, ver);
     } else {
         snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
@@ -4288,7 +4288,7 @@ deadlock_again:
         int rc = 0;
         switch (bdbtype) {
         case BDBTYPE_QUEUEDB:
-            rc = form_queuedb_name(bdb_state, &tran, create, tmpname,
+            rc = form_queuedb_name(bdb_state, &tran, 0, create, tmpname,
                                    sizeof(tmpname));
             break;
         case BDBTYPE_QUEUE:
@@ -6447,7 +6447,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         char name[PATH_MAX];
-        form_queuedb_name(bdb_state, tran, 0, name, sizeof(name));
+        form_queuedb_name(bdb_state, tran, 0, 0, name, sizeof(name));
         rc = bdb_del_file(bdb_state, tid, name, bdberr);
     }
 
@@ -7856,7 +7856,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         /* try to find the file version amongst the active data files */
         for (i = 0; i < bdb_state->numdtafiles; ++i) {
             if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-                rc = bdb_get_file_version_qdb(bdb_state, tran, &version_num,
+                rc = bdb_get_file_version_qdb(bdb_state, tran, i, &version_num,
                                               bdberr);
             } else {
                 rc = bdb_get_file_version_data(bdb_state, tran, i, &version_num,

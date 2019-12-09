@@ -1408,7 +1408,7 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr);
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr);
-int bdb_new_file_version_qdb(bdb_state_type *, tran_type *,
+int bdb_new_file_version_qdb(bdb_state_type *, tran_type *, int file_num,
                              unsigned long long version, int *bdberr);
 
 int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -1419,7 +1419,7 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr);
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
-int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
+int bdb_get_file_version_qdb(bdb_state_type *, tran_type *, int file_num,
                              unsigned long long *version, int *bdberr);
 int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
                                       int file_num,
