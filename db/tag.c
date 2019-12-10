@@ -6958,6 +6958,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
@@ -6972,13 +6973,12 @@ struct schema *create_version_schema(char *csc2, int version,
     /* get rid of temp table */
     delete_schema(ver_db->tablename);
     freedb(ver_db);
-    dyns_cleanup_globals();
 
     return ver_schema;
 
 err:
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     dyns_cleanup_globals();
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
 
@@ -7088,6 +7088,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     old_bdb_handle = db->handle;
@@ -7114,13 +7115,12 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     fix_lrl_ixlen_tran(tran);
     free(csc2);
     free(new_bdb_handle);
-    dyns_cleanup_globals();
     return 0;
 
 err:
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
-    dyns_cleanup_globals();
     return 1;
 }
 
