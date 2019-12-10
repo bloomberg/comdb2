@@ -547,7 +547,7 @@ static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
 int gbl_ref_sync_pollms = 250;
 int gbl_ref_sync_iterations = 4;
-int gbl_ref_sync_wait_txnlist = 1;
+int gbl_ref_sync_wait_txnlist = 0;
 
 #define MAX_TXNARRAY 64
 void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count);
@@ -972,7 +972,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 		if (txncnt) {
 			int c = 0, cnt;
-			while((cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
+			while(gbl_ref_sync_wait_txnlist &&
+					(cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
 				c++;
 				if (c > 2) {
 					fprintf(stderr, "%s: waiting for %d txns to complete, cnt %d\n",

@@ -1778,7 +1778,7 @@ REGISTER_TUNABLE("ref_sync_iterations",
 
 REGISTER_TUNABLE("ref_sync_wait_txnlist",
                  "Wait for running txns to complete on sync failure.  "
-                 "(Default: on)",
+                 "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_ref_sync_wait_txnlist,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
