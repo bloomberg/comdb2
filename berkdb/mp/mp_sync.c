@@ -974,7 +974,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 		if (txncnt) {
 			int c = 0, cnt;
-			while((cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
+			while(gbl_ref_sync_wait_txnlist &&
+                    (cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
 				c++;
 				if (c > 2) {
 					fprintf(stderr, "%s: waiting for %d txns to complete, cnt %d\n",
