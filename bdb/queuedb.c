@@ -4,6 +4,7 @@
 #include <string.h>
 #include <strings.h>
 #include <stddef.h>
+#include <sys/stat.h>
 
 #include <pthread.h>
 #include <bb_stdint.h>
@@ -103,8 +104,8 @@ static int bdb_queuedb_is_file_empty(DB *db, tran_type *tran)
     if (rc == DB_NOTFOUND) {
         rc = 1; /* NOTE: Confirmed empty. */
     } else if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: c_get berk %s rc %d\n",
-               __func__, bdb_state->name, rc);
+        logmsg(LOGMSG_ERROR, "%s: c_get berk rc %d\n",
+               __func__, rc);
         rc = 0; /* TODO: Safe failure choice here is non-empty? */
     } else {
         rc = 0; /* NOTE: Confirmed non-empty. */
@@ -116,7 +117,7 @@ done:
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
         }
     }
-    if (dbt_key.data && dbt_key.data != key)
+    if (dbt_key.data)
         free(dbt_key.data);
     if (dbt_data.data)
         free(dbt_data.data);
