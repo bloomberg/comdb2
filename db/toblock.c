@@ -5576,10 +5576,12 @@ add_blkseq:
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
-                    if (iq->sc_logical_tran)
+                    if (iq->sc_logical_tran) {
+                        assert(iq->sc_running == 0);
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
                                                    gbl_mynode, 0, 1, NULL, 0,
                                                    NULL, 0);
+                    }
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
