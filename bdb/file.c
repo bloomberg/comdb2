@@ -4284,14 +4284,14 @@ deadlock_again:
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
+            if (create && (rc = form_queuedb_name(bdb_state, &tran, dtanum, 0,
+                                                  tmpname, sizeof(tmpname)))) {
+                if (dtanum > 0) break;
+            }
             if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, create,
                                         tmpname, sizeof(tmpname)))) {
-                if (dtanum > 0) {
-                    break;
-                } else {
-                    if (tid) tid->abort(tid);
-                    return rc;
-                }
+                if (tid) tid->abort(tid);
+                return rc;
             }
             if (create) {
                 char new[PATH_MAX];
