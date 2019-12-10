@@ -3011,8 +3011,6 @@ int osql_comm_init(struct dbenv *dbenv)
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_RPL,
                          "osql_serial_rpl", net_osql_rpl);
 
-    net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL, "hbeat_sql",
-                         net_osql_heartbeat);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK,
                          "osql_master_check", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED,
@@ -3046,8 +3044,6 @@ int osql_comm_init(struct dbenv *dbenv)
     net_register_handler(tmp->handle_sibling, NET_OSQL_SERIAL_RPL_UUID,
                          "osql_serial_rpl_uuid", net_osql_rpl);
 
-    net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL_UUID,
-                         "hbeat_sql_uuid", net_osql_heartbeat);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECK_UUID,
                          "osql_master_check_uuid", net_osql_master_check);
     net_register_handler(tmp->handle_sibling, NET_OSQL_MASTER_CHECKED_UUID,
@@ -5328,51 +5324,6 @@ static void net_startthread_rtn(void *arg)
 static void net_stopthread_rtn(void *arg)
 {
     bdb_thread_event((bdb_state_type *)arg, 0);
-}
-
-/* the only hook inserting in the blkout list (i.e. reader_thread)
-   times is written also by block proc threads
- */
-static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
-                               int usertype, void *dtap, int dtalen,
-                               uint8_t is_tcp)
-{
-
-    osql_blknds_t *blk = NULL;
-    int i = 0;
-
-    /* if we are not the master, don't do nothing */
-    osql_comm_t *comm = get_thecomm();
-    if (!comm || !g_osql_ready || gbl_mynode != thedb->master)
-        return;
-
-    /* TODO: maybe look into the packet we got! */
-
-    blk = &comm->blkout;
-
-    /* OBSOLETE: this is brain-damaged scheme, but i want it out now.
-       i need a write lock because I am adding nodes dynamically
-       instead I should maybe add the nodes statically from the
-       sanc list; on the other side, this makes easier moving one db
-       from one cluster to another
-       UPDATE: I am not offloading to nodes not present into this list
-       therefore I will not blackout nodes not present here. Therefore this
-       is the only writer, and it is safe to add an entry lockless as long as
-       blk->n is the last to be updated.
-     */
-    for (i = 0; i < blk->n; i++) {
-        if (blk->nds[i] == fromnode) {
-            blk->heartbeat[i] = time(NULL);
-            break;
-        }
-    }
-    if (i == blk->n) {
-        /* not present, simply add it */
-        blk->nds[i] = fromnode;
-        blk->heartbeat[i] = time(NULL);
-        blk->times[i] = 0;
-        blk->n++;
-    }
 }
 
 static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
