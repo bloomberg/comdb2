@@ -24,13 +24,12 @@ enum synctype {
 #define COMMENT_COLUMN 40     /* column for comments    */
 #define MAX_CLUSTER 16
 #define MAX_KEY_SIZE 512
-#define MAX_KEY_INDEX                                                          \
-    28 /* currently, we have 28 indeces in comdb2 due to buffer size           \
-          restrictions */
+/* currently, we have 28 indeces in comdb2 due to buffer size restrictions */
+#define MAX_KEY_INDEX  28 
 
-#define MAX_FIELDS_PER_KEY                                                     \
-    128 /* Limitation imposed by comdb2. If increased, many changes must be    \
-           made throughout comdb2. */
+/* Limitation imposed by comdb2. If increased, many changes must be
+made throughout comdb2. */
+#define MAX_FIELDS_PER_KEY 128 
 
 /*
    The largest possible buffer through comdb2_api right now is update by rrn in
@@ -51,11 +50,11 @@ enum synctype {
 #define MAX_DEPTH 32
 #define FORTRAN 1
 #define CLANG 3
-#define MACRO_USE                                                              \
-    1 /* whether we generate test program that uses macros 0=no, 1=yes*/
+/* whether we generate test program that uses macros 0=no, 1=yes*/
+#define MACRO_USE 1
 #define NUMRESERVE 4
-#define ALIGNMENT                                                              \
-    8 /* byte size specifying how the record struct should be aligned */
+/* byte size specifying how the record struct should be aligned */
+#define ALIGNMENT 8
 
 /* MAXINDEX HAS BECOME OBSOLETE - FOR NOW, JUST KLUDGE TO FIX */
 #define MAXKEYS 256  /* maximum # of keys with cases */
