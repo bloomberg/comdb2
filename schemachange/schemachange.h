@@ -213,6 +213,7 @@ struct schema_change_type {
     size_t packed_len;
 
     bool views_locked : 1;
+    bool is_osql : 1;
 };
 
 struct ireq;

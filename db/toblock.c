@@ -5582,6 +5582,7 @@ add_blkseq:
                                                    gbl_mynode, 0, 1, NULL, 0,
                                                    NULL, 0);
                     }
+                    assert(iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);

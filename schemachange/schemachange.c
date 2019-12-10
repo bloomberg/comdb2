@@ -461,13 +461,10 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
         rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                             finalize_schema_change_thd_tran, arg);
         if (rc) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(LOGMSG_FATAL,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
-            sc_set_running(iq, s->tablename, 0, iq->sc_seed, gbl_mynode,
-                           time(NULL), 0, __func__, __LINE__);
-            free_schema_change_type(s);
-            rc = SC_ASYNC_FAILED;
+            abort();
         } else {
             rc = SC_ASYNC;
         }

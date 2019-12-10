@@ -6300,10 +6300,15 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     iq->sc = sc;
     sc->iq = iq;
+    sc->is_osql = 1;
     if (sc->db == NULL) {
         sc->db = get_dbtable_by_name(sc->tablename);
     }
     sc->tran = NULL;
+
+    /* Increment counter here- don't care about mastership in that routine.
+     * We will create a pending list & do this part in a separate loop. */
+    /*
     if (sc->db)
         iq->usedb = sc->db;
 
@@ -6325,6 +6330,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         rc = timepart_foreach_shard(sc->tablename,
                                     start_schema_change_tran_wrapper, &arg, 0);
     }
+    */
     iq->usedb = NULL;
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
@@ -6514,6 +6520,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->db)
                 iq->usedb = iq->sc->db;
+            assert(iq->sc->nothrevent);
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {

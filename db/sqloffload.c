@@ -735,6 +735,11 @@ extern int gbl_readonly_sc;
 int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
         const char *host, time_t time, int fromnet, const char *func, int line);
 
+/* Must reset running before distributed commit */
+static void osql_reset_running(struct ireq *iq)
+{
+}
+
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr = 0;
@@ -800,8 +805,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 sc_del_unused_files(iq->sc->db);
             if (iq->sc->fastinit && !iq->sc->drop_table)
                 autoanalyze_after_fastinit(iq->sc->tablename);
-            sc_set_running(iq, iq->sc->tablename, 0, iq->sc_seed, NULL, 0, 0,
-                    __func__, __LINE__);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
@@ -821,8 +824,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
             sc_next = iq->sc->sc_next;
-            sc_set_running(iq, iq->sc->tablename, 0, iq->sc_seed, NULL, 0, 0,
-                    __func__, __LINE__);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
