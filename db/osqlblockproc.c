@@ -85,7 +85,6 @@ struct blocksql_tran {
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
     pthread_cond_t cond;
-    int dowait; /* mark this when session completes to avoid loosing signal */
     int delayed;
     int rows;
     bool iscomplete;
@@ -236,8 +235,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
             bdb_temp_table_set_cmp_func(tran->db_ins,
                                         osql_bplog_instbl_key_cmp);
     }
-
-    tran->dowait = 1;
 
     iq->timings.req_received = osql_log_time();
     iq->tranddl = 0;
