@@ -4283,25 +4283,81 @@ deadlock_again:
             }
         }
     }
-    if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB ||
-        bdbtype == BDBTYPE_LITE) {
-        int rc = 0;
+    if (bdbtype == BDBTYPE_QUEUEDB) {
+        for (dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
+            if (form_queuedb_name(bdb_state, &tran, dtanum, create,
+                                  tmpname, sizeof(tmpname))) {
+                if (tid) tid->abort(tid);
+                return rc;
+            }
+            if (create) {
+                char new[PATH_MAX];
+                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
+                unlink(bdb_trans(tmpname, new));
+            }
+            /*
+             * NOTE: For queuedb, all files after the first one are optional
+             *       and may not actually exist.
+             */
+            struct stat sb; /* NOT USED */
+            if ((dtanum > 0) && (stat(tmpname, &sb) != 0)) {
+                print(bdb_state, "stopping at %s, it does not exist\n",
+                      tmpname);
+                break;
+            }
+            rc = db_create(&dbp, bdb_state->dbenv, 0);
+            if (rc != 0) {
+                logmsg(LOGMSG_FATAL, "db_create %s: %s\n", tmpname,
+                       db_strerror(rc));
+                exit(1);
+            }
+            set_some_flags(bdb_state, dbp, tmpname);
+            if (bdb_state->pagesize_override > 0) {
+                pagesize = bdb_state->pagesize_override;
+            } else {
+                pagesize = bdb_state->attr->pagesizedta;
+            }
+            rc = dbp->set_pagesize(dbp, pagesize);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "unable to set pagesize on dta to %d\n",
+                       pagesize);
+            }
+            print(bdb_state, "opening %s\n", tmpname);
+            rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
+                           db_mode);
+            if (rc != 0) {
+                if (rc == DB_LOCK_DEADLOCK) {
+                    logmsg(LOGMSG_FATAL, "deadlock in open\n");
+                    exit(1);
+                }
+                print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
+                      tmpname, rc, db_strerror(rc));
+                rc = dbp->close(dbp, 0);
+                if (rc != 0) {
+                    logmsg(LOGMSG_ERROR,
+                           "bdp_dta->close(%s) failed: rc=%d %s\n",
+                           tmpname, rc, db_strerror(rc));
+                }
+                if (tid) tid->abort(tid);
+                return -1;
+            }
+            rc = dbp->get_pagesize(dbp, &x);
+            if (rc != 0) {
+                logmsg(LOGMSG_FATAL, "unable to get pagesize for dta\n");
+                exit(1);
+            }
+            bdb_state->dbp_data[dtanum][0] = dbp;
+        }
+        bdb_queuedb_setup_dbps(bdb_state, tid);
+    }
+    if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_LITE) {
         switch (bdbtype) {
-        case BDBTYPE_QUEUEDB:
-            rc = form_queuedb_name(bdb_state, &tran, 0, create, tmpname,
-                                   sizeof(tmpname));
-            break;
         case BDBTYPE_QUEUE:
             snprintf(tmpname, sizeof(tmpname), "XXX.%s.queue", bdb_state->name);
             break;
         case BDBTYPE_LITE:
             snprintf(tmpname, sizeof(tmpname), "XXX.%s.dta", bdb_state->name);
             break;
-        }
-        if (rc) {
-            if (tid)
-                tid->abort(tid);
-            return rc;
         }
 
         if (create) {
@@ -4311,7 +4367,7 @@ deadlock_again:
         }
 
         DB *dbp;
-        rc = db_create(&dbp, bdb_state->dbenv, 0);
+        int rc = db_create(&dbp, bdb_state->dbenv, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "db_create: %s\n", db_strerror(rc));
             exit(1);
@@ -4387,9 +4443,6 @@ deadlock_again:
             bdb_state->queue_item_sz = (size_t)sz;
         }
         bdb_state->dbp_data[0][0] = dbp;
-        if (bdbtype == BDBTYPE_QUEUEDB) {
-            bdb_queuedb_setup_dbps(bdb_state, tid);
-        }
     }
 
     if (bdbtype == BDBTYPE_TABLE) {

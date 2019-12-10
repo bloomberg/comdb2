@@ -267,6 +267,14 @@ enum {
                              even better, with 4k pages, we shouldnt be
                              using record sizes more than 900k or so.
                             */
+
+    BDB_QUEUEDB_MAX_FILES = 2 /* how many files could a QueueDB have?  for
+                               * now, this value should always be two.  the
+                               * first file should always be the one being
+                               * consumed from and the second file should
+                               * always be the one being added to.  there
+                               * may be no second file if the first one has
+                               * not exceeded its size limit. */
 };
 
 enum COMPRESS {
