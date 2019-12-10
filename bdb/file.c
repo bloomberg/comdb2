@@ -638,7 +638,8 @@ int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
 
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
-                             int file_num, int create, char *name, size_t len)
+                             int file_num, int create, char *name, size_t len,
+                             int fail_on_no_version)
 {
     unsigned long long ver;
     int rc, bdberr;
@@ -651,6 +652,8 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
     }
     if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver, &bdberr) == 0) {
         snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name, ver);
+    } else if (fail_on_no_version) {
+        return -1;
     } else {
         snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
     }
@@ -4285,11 +4288,11 @@ deadlock_again:
     if (bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             if (create && (rc = form_queuedb_name(bdb_state, &tran, dtanum, 0,
-                                                  tmpname, sizeof(tmpname)))) {
+                                               tmpname, sizeof(tmpname), 1))) {
                 if (dtanum > 0) break;
             }
             if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, create,
-                                        tmpname, sizeof(tmpname)))) {
+                                        tmpname, sizeof(tmpname), 0))) {
                 if (tid) tid->abort(tid);
                 return rc;
             }
@@ -6499,7 +6502,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             char name[PATH_MAX];
-            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
+            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name), 0);
             /*
              * NOTE: For queuedb, all files after the first one are optional
              *       and may not actually exist.
