@@ -89,9 +89,6 @@ REGISTER_TUNABLE("blocksql_grace",
                  "being killed (and returning an error). (Default: 10sec)",
                  TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("blocksql_throttle", NULL, TUNABLE_INTEGER,
-                 &g_osql_blocksql_parallel_max, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("broken_max_rec_sz", NULL, TUNABLE_INTEGER,
                  &gbl_broken_max_rec_sz, READONLY, NULL, NULL,
                  broken_max_rec_sz_update, NULL);

@@ -118,18 +118,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
                                 int sqlqlen, const char *tzname, int reqtype,
                                 char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid);
-/**
- * Signal blockprocessor that one has completed
- * For now this is used only for
- *
- */
-int osql_bplog_session_is_done(struct ireq *iq);
-
-/**
- * Set parallelism threshold
- *
- */
-void osql_bplog_setlimit(int limit);
 
 /**
  * Log the strings for each completed blocksql request for the

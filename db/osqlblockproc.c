@@ -68,7 +68,6 @@
 #include <ctrace.h>
 #include "intern_strings.h"
 
-int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
@@ -1115,12 +1114,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     *pp_buf_end = p_buf;
     return 0;
 }
-
-/**
- * Set parallelism threshold
- *
- */
-void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 
 /************************* INTERNALS
  * ***************************************************/
