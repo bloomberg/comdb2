@@ -1682,6 +1682,9 @@ more:
 							"Unable to get prev of [%lu][%lu]",
 							(u_long)lsn.file,
 							(u_long)lsn.offset);
+                    /* This behavior might be wrong */
+                    logmsg(LOGMSG_INFO, "%s:%d sending DB_REP_OUTDATED\n",
+                            __func__, __LINE__);
 					ret = DB_REP_OUTDATED;
 					/* Tell the replicant he's outdated. */
 					if (gbl_verbose_fills) {
@@ -2067,6 +2070,9 @@ notfound:
 			 * the same environment and we'll say so.
 			 */
 			ret = DB_REP_OUTDATED;
+            logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                    __func__, __LINE__);
+
 			if (rp->lsn.file != 1)
 				__db_err(dbenv,
 					"Too few log files to sync with master");
@@ -2095,6 +2101,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 	case REP_VERIFY_FAIL:
 		rep->stat.st_outdated++;
 		ret = DB_REP_OUTDATED;
+        logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                __func__, __LINE__);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_REQ:

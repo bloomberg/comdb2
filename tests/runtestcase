@@ -319,12 +319,17 @@ fi
 if [[ -n "$cr" ]] ; then
     echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
+    successful=-1
+    rc=-1
 elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
+    successful=-1
+    rc=-1
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
+    rc=-1
 elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
     echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}

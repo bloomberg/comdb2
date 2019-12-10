@@ -5,6 +5,8 @@
 
 DOMAIN=comdb2-d1.org
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+COREPATTERN=$(</proc/sys/kernel/core_pattern)
+COREDIR=$(dirname $COREPATTERN)
 export CHECK_DB_AT_FINISH=1
 export CORE_ON_FAILURE=1
 export DUMPLOCK_ON_TIMEOUT=1
@@ -186,6 +188,18 @@ while :; do
                 echo "Jepsen broke error: continuing"
                 let jbroke=jbroke+1
                 err=0
+            fi
+
+            if [[ -n "$CLUSTER" ]]; then
+                for node in $CLUSTER ; do
+                    cnt=$(ssh $node ls -l $COREDIR | egrep core | wc -l)
+                    if [[ $cnt != "0" ]]; then
+                        echo "found core, failing test"
+                        err=1
+                    fi
+                done
+            else
+                cnt=$(ssh $node ls -l $COREDIR | egrep core | wc -l)
             fi
 
             if [[ $err == 1 ]]; then

@@ -1467,6 +1467,7 @@ struct ireq {
     bool sc_should_abort : 1;
 
     int written_row_count;
+    int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
