@@ -4284,8 +4284,8 @@ deadlock_again:
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-            if (form_queuedb_name(bdb_state, &tran, dtanum, create,
-                                  tmpname, sizeof(tmpname))) {
+            if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, create,
+                                        tmpname, sizeof(tmpname)))) {
                 if (dtanum > 0) {
                     break;
                 } else {
@@ -4365,7 +4365,7 @@ deadlock_again:
         }
 
         DB *dbp;
-        int rc = db_create(&dbp, bdb_state->dbenv, 0);
+        rc = db_create(&dbp, bdb_state->dbenv, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "db_create: %s\n", db_strerror(rc));
             exit(1);
