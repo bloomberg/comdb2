@@ -4326,6 +4326,10 @@ deadlock_again:
             print(bdb_state, "opening %s\n", tmpname);
             rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                            db_mode);
+            logmsg(
+                LOGMSG_DEBUG,
+                "dbp->open %s type=%d dbp=%p txn=%p rc %d flags=0x%X\n",
+                tmpname, dbp->type, dbp, tid, rc, dbp->flags);
             if (rc != 0) {
                 if (rc == DB_LOCK_DEADLOCK) {
                     logmsg(LOGMSG_FATAL, "deadlock in open\n");
