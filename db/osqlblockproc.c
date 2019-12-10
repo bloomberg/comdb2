@@ -1549,25 +1549,6 @@ void osql_bplog_time_done(struct ireq *iq)
     logmsg(LOGMSG_USER, "%s]\n", msg);
 }
 
-void osql_set_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            t->delayed = 1;
-    }
-}
-
-int osql_get_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            return t->delayed;
-    }
-    return 1;
-}
-
 /**
  * Throw bplog to /dev/null, sql does not need this
  *

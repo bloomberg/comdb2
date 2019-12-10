@@ -132,10 +132,6 @@ int osql_bplog_reqlog_queries(struct ireq *iq);
  */
 void osql_bplog_time_done(struct ireq *);
 
-int osql_get_delayed(struct ireq *);
-
-void osql_set_delayed(struct ireq *);
-
 /**
  * Throw bplog to /dev/null, sql does not need this
  *
