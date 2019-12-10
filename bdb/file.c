@@ -6506,8 +6506,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             char name[PATH_MAX];
-            rc = form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
-            if (rc != 0) break; /* impossible for non-create */
+            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
             /*
              * NOTE: For queuedb, all files after the first one are optional
              *       and may not actually exist.
