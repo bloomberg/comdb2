@@ -6504,9 +6504,22 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
             if (0 != bdb_del_ix_int(bdb_state, tid, i, bdberr))
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        char name[PATH_MAX];
-        form_queuedb_name(bdb_state, tran, 0, 0, name, sizeof(name));
-        rc = bdb_del_file(bdb_state, tid, name, bdberr);
+        for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
+            char name[PATH_MAX];
+            rc = form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
+            if (rc != 0) break; /* impossible for non-create */
+            /*
+             * NOTE: For queuedb, all files after the first one are optional
+             *       and may not actually exist.
+             */
+            struct stat sb; /* NOT USED */
+            if ((dtanum > 0) && (stat(name, &sb) != 0)) {
+                print(bdb_state, "stopping at %s, it does not exist\n", name);
+                break;
+            }
+            rc = bdb_del_file(bdb_state, tid, name, bdberr);
+            if (rc != 0) break;
+        }
     }
 
     return rc;
