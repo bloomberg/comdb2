@@ -259,7 +259,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    rc = sc_set_running(s->tablename, s->preempted ? 2 : 1, seed, node,
+    rc = sc_set_running(iq, s->tablename, s->preempted ? 2 : 1, seed, node,
                         time(NULL), 0, __func__, __LINE__);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
@@ -288,7 +288,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
-            } else if (sc_set_running(s->tablename, 1,
+            } else if (sc_set_running(iq, s->tablename, 1,
                                       bdb_get_a_genid(thedb->bdb_env),
                                       gbl_mynode, time(NULL), 0, __func__,
                                       __LINE__) != 0) {
@@ -379,7 +379,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
             if (arg)
                 free(arg);
-            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+            sc_set_running(iq, s->tablename, 0, iq->sc_seed, gbl_mynode,
                            time(NULL), 0, __func__, __LINE__);
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
@@ -464,7 +464,7 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
-            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+            sc_set_running(iq, s->tablename, 0, iq->sc_seed, gbl_mynode,
                            time(NULL), 0, __func__, __LINE__);
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
@@ -1188,7 +1188,7 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+    if (sc_set_running(NULL, sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
                        gbl_mynode, time(NULL), 0, __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
@@ -1249,7 +1249,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+    if (sc_set_running(NULL, sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
                        gbl_mynode, time(NULL), 0, __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");

@@ -3186,8 +3186,8 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     sc->time = flibc_ntohll(sc->time);
 
     BDB_READLOCK("start_sc");
-    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time, 1, __func__,
-            __LINE__);
+    rc = sc_set_running(NULL, sc->table, 1, sc->seed, sc->host, sc->time, 1,
+            __func__, __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
     BDB_RELLOCK();
 }
@@ -3204,7 +3204,8 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     sc->seed = flibc_ntohll(sc->seed);
 
     BDB_READLOCK("stop_sc");
-    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0, 1, __func__, __LINE__);
+    rc = sc_set_running(NULL, sc->table, 0, sc->seed, NULL, 0, 1, __func__,
+            __LINE__);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
     BDB_RELLOCK();
 }

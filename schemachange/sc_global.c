@@ -257,8 +257,8 @@ static int freesc(void *obj, void *arg)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time, int replicant, const char *func, int line)
+int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
+        const char *host, time_t time, int replicant, const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -272,6 +272,14 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
 
     assert(running >= 0);
     assert(table);
+
+    if (!iq) {
+        return 0;
+    }
+
+    if (iq) {
+        assert(!replicant);
+    }
 
     /* We don't have the bdblock in abort- get it now, and run only if we are
      * still master */
@@ -290,6 +298,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     }
     assert(sc_tables);
 
+    /*
     if (thedb->master != gbl_mynode && !replicant) {
         logmsg(LOGMSG_ERROR, "%s replicant ignoring master req for %s seed "
                 "%"PRIx64"\n", __func__, table, seed);
@@ -303,8 +312,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         rc = -1;
         goto done;
     }
+    */
 
-    if (thedb->master == gbl_mynode) {
+    //if (thedb->master == gbl_mynode) {
+    if (1) {
         if (running &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             if (sctbl->seed != seed) {
