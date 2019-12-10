@@ -87,6 +87,50 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     return p_buf;
 }
 
+static int bdb_queuedb_is_file_empty(DB *db, tran_type *tran)
+{
+    int rc;
+    DBC *dbcp = NULL;
+    DBT dbt_key = {0}, dbt_data = {0};
+
+    rc = db->cursor(db, tran->tid, &dbcp, 0);
+    if (rc != 0) {
+        rc = 0; /* TODO: Safe failure choice here is non-empty? */
+        goto done;
+    }
+    dbt_data.flags = dbt_key.flags = DB_DBT_MALLOC;
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
+    if (rc == DB_NOTFOUND) {
+        rc = 1; /* NOTE: Confirmed empty. */
+    } else if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: c_get berk %s rc %d\n",
+               __func__, bdb_state->name, rc);
+        rc = 0; /* TODO: Safe failure choice here is non-empty? */
+    } else {
+        rc = 0; /* NOTE: Confirmed non-empty. */
+    }
+done:
+    if (dbcp) {
+        int crc = dbcp->c_close(dbcp);
+        if (crc) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+        }
+    }
+    if (dbt_key.data && dbt_key.data != key)
+        free(dbt_key.data);
+    if (dbt_data.data)
+        free(dbt_data.data);
+    return rc;
+}
+
+static int bdb_queuedb_is_db_full(DB *db)
+{
+    if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
+    struct stat sb;
+    if (stat(db->fname, &sb) != 0) return 0; /* cannot detect, assume no? */
+    return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
+}
+
 static DB *bdb_queuedb_get_dbp_for_add(bdb_state_type *bdb_state)
 {
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
