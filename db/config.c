@@ -563,7 +563,8 @@ static int lrltokignore(char *tok, int ltok)
     return 1;
 }
 
-static int new_table_from_schema(struct dbenv *dbenv, char *tblname, char *fname, int dbnum, char *tok)
+static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
+                                 char *fname, int dbnum, char *tok)
 {
     int rc;
     struct dbtable *db;
@@ -590,21 +591,18 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname, char *fname
     rc = add_cmacc_stmt(db, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR,
-                "Failed to load schema: can't process schema file %s\n",
-                tok);
+               "Failed to load schema: can't process schema file %s\n", tok);
         return -1;
     }
 
     /* Initialize table's check constraint members. */
     if (init_check_constraints(db)) {
-        logmsg(LOGMSG_ERROR,
-                "Failed to load check constraints for %s\n",
-                db->tablename);
+        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+               db->tablename);
         return -1;
     }
     return 0;
 }
-
 
 #define parse_lua_funcs(pfx)                                                   \
     do {                                                                       \

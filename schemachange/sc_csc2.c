@@ -132,7 +132,8 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
 static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
                       const char *csc2cmp)
 {
-    int rc = dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
+    int rc =
+        dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");
         return -1;

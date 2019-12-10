@@ -4,7 +4,6 @@
 #include <string.h>
 #include "cheapstack.h"
 
-
 char *blankchar = "";
 char sync_names[4][8] = {"none", "full", "normal", "source"};
 
@@ -12,7 +11,6 @@ macc_globals_t *macc_globals;
 int any_errors;
 int current_line;
 struct constant constants[MAX];
-
 
 void dyns_init_globals()
 {
@@ -40,15 +38,17 @@ void dyns_init_globals()
     macc_globals->union_index = -1;
     macc_globals->union_level = -1;
     /* macc_globals->opt_cachesz = 300; */
-    /* macc_globals->opt_noprefix = 2;     Don't generate prefixes for variables */
+    /* macc_globals->opt_noprefix = 2;     Don't generate prefixes for variables
+     */
     /* macc_globals->opt_threadsafe = 1; */
-    macc_globals->opt_filesfx = ""; /* Include file suffix..By default disabled */
+    macc_globals->opt_filesfx =
+        ""; /* Include file suffix..By default disabled */
     macc_globals->opt_schematype = 2;
     macc_globals->nconstraints = -1;
     macc_globals->n_check_constraints = -1;
 }
 
-void dyns_cleanup_globals() 
+void dyns_cleanup_globals()
 {
     free(macc_globals);
     macc_globals = NULL;

@@ -4050,7 +4050,8 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                "ipu %s",
                tbl->tablename, tbl->schema_version, tbl->odh ? "yes" : "no",
                tbl->instant_schema_change ? "yes" : "no",
-               datacopy_odh ? "yes" : "no", tbl->inplace_updates ? "yes" : "no");
+               datacopy_odh ? "yes" : "no",
+               tbl->inplace_updates ? "yes" : "no");
     }
 
     if (gbl_create_mode) {

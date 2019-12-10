@@ -797,7 +797,8 @@ void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
 }
 
 /* helper function to reload csc2 schema */
-static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *csc2, char *table)
+static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
+                              const char *csc2, char *table)
 {
     int bdberr;
     void *old_bdb_handle, *new_bdb_handle;
@@ -846,7 +847,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *c
     old_bdb_handle = db->handle;
 
     logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
-            bdb_isopen(db->handle));
+           bdb_isopen(db->handle));
 
     /* the master doesn't tell the replicants to close the db
      * ahead of time */
@@ -858,13 +859,14 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *c
 
     /* reopen db */
     newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix,
-            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
-    logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
-            newdb->handle, bdberr);
-    if (bdberr != 0 || newdb->handle == NULL) return 1;
+        table, thedb->basedir, newdb->lrl, newdb->nix,
+        (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
+    logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n", newdb->handle,
+           bdberr);
+    if (bdberr != 0 || newdb->handle == NULL)
+        return 1;
 
     new_bdb_handle = newdb->handle;
 
@@ -891,8 +893,8 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *c
 
     rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__,
-                __LINE__, rc, bdberr);
+        logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__, __LINE__,
+               rc, bdberr);
     db->handle = old_bdb_handle;
 
     memset(newdb, 0xff, sizeof(struct dbtable));
@@ -905,7 +907,6 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *c
     free(new_bdb_handle);
     return 0;
 }
-
 
 /* threads must be stopped for this to work
  * if there were changes on disk and we are NOT using low level meta table

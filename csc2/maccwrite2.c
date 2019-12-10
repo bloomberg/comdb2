@@ -84,7 +84,9 @@ int compute_all_data(int tidx)
         if (i == macc_globals->un_start[tables[tidx].sym[i].un_idx]) {
             /* do nothing */
         } else if (macc_globals->un_reset[i]) {
-            off = tables[tidx].sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]].off;
+            off = tables[tidx]
+                      .sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]]
+                      .off;
         }
 
         /* NOW CHECK IF PADDING IS NECESSARY */
@@ -106,8 +108,12 @@ int compute_all_data(int tidx)
                 char *curdpth = (char *)&tables[tidx].sym[i].dpth_tree[j];
                 if (curdpth[0] == 'u') {
                     int union_num = (int)(curdpth[1]);
-                    if (off > tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size)
-                        tables[tidx].sym[macc_globals->un_end[union_num]].un_max_size = off;
+                    if (off > tables[tidx]
+                                  .sym[macc_globals->un_end[union_num]]
+                                  .un_max_size)
+                        tables[tidx]
+                            .sym[macc_globals->un_end[union_num]]
+                            .un_max_size = off;
                 }
             }
         }
@@ -133,10 +139,12 @@ int compute_all_data(int tidx)
                                    tables[tidx].sym[largest].size;
                     tables[tidx].sym[i].padaf =
                         tables[tidx]
-                            .sym[macc_globals->un_end[tables[tidx].sym[i].un_idx]]
+                            .sym[macc_globals
+                                     ->un_end[tables[tidx].sym[i].un_idx]]
                             .un_max_size -
                         tables[tidx]
-                            .sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]]
+                            .sym[macc_globals
+                                     ->un_start[tables[tidx].sym[i].un_idx]]
                             .off +
                         afterpad;
                 }
@@ -190,14 +198,16 @@ int compute_all_data(int tidx)
     }
     if (macc_globals->opt_reclen != 0) {
         if (off > macc_globals->opt_reclen) {
-            logmsg(LOGMSG_ERROR, " **** ERROR: RECORD LEN IS %d BYTES; "
-                            "YOU SPECIFIED A RECLEN OF %d BYTES.\n",
-                    off, macc_globals->opt_reclen);
+            logmsg(LOGMSG_ERROR,
+                   " **** ERROR: RECORD LEN IS %d BYTES; "
+                   "YOU SPECIFIED A RECLEN OF %d BYTES.\n",
+                   off, macc_globals->opt_reclen);
             return -1;
         }
 
         if (!character(tidx, maxsym) && !macc_globals->opt_macc2pack) {
-            padbytes = offpad(macc_globals->opt_reclen, tables[tidx].sym[maxsym].size);
+            padbytes =
+                offpad(macc_globals->opt_reclen, tables[tidx].sym[maxsym].size);
             if (padbytes != 0) {
                 /*fprintf(stderr, "WARNING: CMACC STRUCTURE MAY NOT BE
                  * COMPATIBLE WITH MACC2 RECORD\n");*/
@@ -243,7 +253,8 @@ int compute_key_data(void)
             lastix = macc_globals->keyixnum[i];
             macc_globals->ixsize[lastix] = -1;
         }
-        j = wholekeysize(macc_globals->keys[i]); /* figure out largest index size */
+        j = wholekeysize(
+            macc_globals->keys[i]); /* figure out largest index size */
         if (j > macc_globals->ixsize[lastix]) {
             macc_globals->ixsize[lastix] = j;
         }
@@ -255,8 +266,10 @@ int case_first(int tidx, int symb)
 {
     int i;
     for (i = 0; i < macc_globals->tables[tidx].nsym; i++) {
-        if ((macc_globals->tables[tidx].sym[symb].un_idx == macc_globals->tables[tidx].sym[i].un_idx) &&
-            (macc_globals->tables[tidx].sym[symb].caseno == macc_globals->tables[tidx].sym[i].caseno)) {
+        if ((macc_globals->tables[tidx].sym[symb].un_idx ==
+             macc_globals->tables[tidx].sym[i].un_idx) &&
+            (macc_globals->tables[tidx].sym[symb].caseno ==
+             macc_globals->tables[tidx].sym[i].caseno)) {
             return i;
         }
     }
@@ -269,7 +282,8 @@ int largest_idx(int tidx, int unionnum)
     endidx = macc_globals->un_end[unionnum];
     startidx = macc_globals->un_start[unionnum];
     for (i = 0; i < macc_globals->current_union; i++) {
-        if (macc_globals->un_start[i] == startidx && macc_globals->un_end[i] > endidx) {
+        if (macc_globals->un_start[i] == startidx &&
+            macc_globals->un_end[i] > endidx) {
             endidx = macc_globals->un_end[i];
         }
     }
@@ -281,7 +295,8 @@ int largest_idx(int tidx, int unionnum)
         } else if (character(tidx, i))
             continue;
 
-        if (macc_globals->tables[tidx].sym[i].size > macc_globals->tables[tidx].sym[largest].size) {
+        if (macc_globals->tables[tidx].sym[i].size >
+            macc_globals->tables[tidx].sym[largest].size) {
             largest = i;
         }
     }

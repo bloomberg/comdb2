@@ -122,7 +122,7 @@ void start_constraint_list(char *keyname)
         any_errors++;
         return;
     }
-    struct constraint *constraints = macc_globals->constraints; 
+    struct constraint *constraints = macc_globals->constraints;
     constraints[macc_globals->nconstraints].flags = 0;
     constraints[macc_globals->nconstraints].ncnstrts = 0;
     constraints[macc_globals->nconstraints].lclkey = keyname;
@@ -133,22 +133,25 @@ void set_constraint_mod(int start, int op, int type)
     if (type == 0)
         return;
     if (op == 0)
-        macc_globals->constraints[macc_globals->nconstraints].flags |= CT_UPD_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |=
+            CT_UPD_CASCADE;
     else if (op == 1)
-        macc_globals->constraints[macc_globals->nconstraints].flags |= CT_DEL_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |=
+            CT_DEL_CASCADE;
 }
 
 void set_constraint_name(char *name, enum ct_type type)
 {
     int i;
-    struct constraint *constraints = macc_globals->constraints; 
+    struct constraint *constraints = macc_globals->constraints;
     for (i = 0; i < macc_globals->nconstraints; i++) {
         if (constraints[i].consname &&
             !strcasecmp(macc_globals->constraints[i].consname, name)) {
             DUP_CONSTRAINT_NAME_ERR(name);
         }
     }
-    struct check_constraint *check_constraints = macc_globals->check_constraints;
+    struct check_constraint *check_constraints =
+        macc_globals->check_constraints;
     for (i = 0; i < macc_globals->n_check_constraints; i++) {
         if (check_constraints[i].consname &&
             !strcasecmp(check_constraints[i].consname, name)) {
@@ -172,12 +175,13 @@ void set_constraint_name(char *name, enum ct_type type)
 
 void add_constraint(char *tbl, char *key)
 {
-    struct constraint *constraints = macc_globals->constraints; 
+    struct constraint *constraints = macc_globals->constraints;
     int cidx = constraints[macc_globals->nconstraints].ncnstrts;
     if (cidx >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
                    "(MAX: %d)\n",
-                   macc_globals->constraints[macc_globals->nconstraints].lclkey, MAXCNSTRTS);
+                   macc_globals->constraints[macc_globals->nconstraints].lclkey,
+                   MAXCNSTRTS);
         any_errors++;
         return;
     }
@@ -195,7 +199,8 @@ void add_check_constraint(char *expr)
     while (*expr && isspace(*expr)) {
         expr++;
     }
-    macc_globals->check_constraints[macc_globals->n_check_constraints].expr = expr;
+    macc_globals->check_constraints[macc_globals->n_check_constraints].expr =
+        expr;
 }
 
 int constant(char *var)
@@ -221,7 +226,10 @@ int numix() /* count # of indices */
     return nix + 1;
 }
 
-int numkeys() /* count # of conditional keys */ { return macc_globals->nkeys; }
+int numkeys() /* count # of conditional keys */
+{
+    return macc_globals->nkeys;
+}
 
 int numdim(int dm[6]) /* COUNTS # OF DIMS IN A DM ARRAY */
 {
@@ -423,7 +431,8 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
             if (!lcldsktag) {
                 int ondskidx = 0, k = 0;
 
-                for (ondskidx = 0; ondskidx < macc_globals->ntables; ondskidx++) {
+                for (ondskidx = 0; ondskidx < macc_globals->ntables;
+                     ondskidx++) {
                     if (!strcmp(tables[ondskidx].table_tag, ONDISKTAG)) {
                         break;
                     }
@@ -574,7 +583,9 @@ int arroff(int s, int el[6], int rg[2])
 { /* GIVEN ELEMENT# and CHAR RG  */
     int i, j, mul;
 
-    for (i = (6 - 1), j = 0, mul = macc_globals->tables[macc_globals->ntables].sym[s].size; i >= 0; i--) {
+    for (i = (6 - 1), j = 0,
+        mul = macc_globals->tables[macc_globals->ntables].sym[s].size;
+         i >= 0; i--) {
         if (macc_globals->tables[macc_globals->ntables].sym[s].dim[i] == -1)
             continue;
 
@@ -621,7 +632,8 @@ int addtokey(int sym, int tbl, int dim[6],
     if (!macc_globals->workkey) {
         macc_globals->workkey = nk; /* empty list */
     } else {
-        for (kp = macc_globals->workkey; kp->cmp; kp = kp->cmp) { /* add to end of list */
+        for (kp = macc_globals->workkey; kp->cmp;
+             kp = kp->cmp) { /* add to end of list */
             keyfields++;
         }
         if (keyfields >= MAX_FIELDS_PER_KEY) {
@@ -747,9 +759,11 @@ int get_union_size(int un)
                 if (macc_globals->symb[i].szof > largest)
                     largest = macc_globals->symb[i].szof;
             } else {
-                int cs = macc_globals->symb[i].caseno, csize = 0, j = 0, first = -1;
+                int cs = macc_globals->symb[i].caseno, csize = 0, j = 0,
+                    first = -1;
                 for (j = 0; j < macc_globals->nsym; j++) {
-                    if (macc_globals->symb[j].caseno == cs && macc_globals->symb[j].un_member == un) {
+                    if (macc_globals->symb[j].caseno == cs &&
+                        macc_globals->symb[j].un_member == un) {
                         csize += macc_globals->symb[j].szof;
                         if (first != -1)
                             csize += macc_globals->symb[j].padb;
@@ -770,17 +784,23 @@ int get_prev_sym(int idx)
     if (idx > 0) {
         if (macc_globals->symb[idx - 1].un_member == -1)
             return (idx - 1);
-        else if (macc_globals->symb[idx].un_member != -1 && macc_globals->symb[idx].caseno == -1) {
+        else if (macc_globals->symb[idx].un_member != -1 &&
+                 macc_globals->symb[idx].caseno == -1) {
             int decr = idx - 1;
-            while (macc_globals->symb[decr].un_member == macc_globals->symb[idx].un_member && decr >= 0)
+            while (macc_globals->symb[decr].un_member ==
+                       macc_globals->symb[idx].un_member &&
+                   decr >= 0)
                 decr--;
             if (decr < 0)
                 return -1;
             return decr;
         } else if (macc_globals->symb[idx].caseno != -1) {
             for (i = idx; i >= 0; i--) {
-                if (macc_globals->symb[i].un_member == macc_globals->symb[idx].un_member &&
-                    macc_globals->symb[i].caseno == macc_globals->symb[idx].caseno && i != idx) {
+                if (macc_globals->symb[i].un_member ==
+                        macc_globals->symb[idx].un_member &&
+                    macc_globals->symb[i].caseno ==
+                        macc_globals->symb[idx].caseno &&
+                    i != idx) {
                     return i;
                 }
             }
@@ -793,9 +813,12 @@ int get_case_size(int csn)
 {
     int cs = macc_globals->symb[csn].caseno, csize = 0, j, first = -1;
     for (j = 0; j < macc_globals->nsym; j++) {
-        if ((macc_globals->symb[csn].un_member == macc_globals->symb[j].un_member) &&
-            (macc_globals->symb[j].caseno == cs) && (macc_globals->symb[j].caseno != -1)) {
-            /*printf(" %s %d %d\n", macc_globals->symb[j].nm, macc_globals->symb[j].szof, macc_globals->symb[j].padb);*/
+        if ((macc_globals->symb[csn].un_member ==
+             macc_globals->symb[j].un_member) &&
+            (macc_globals->symb[j].caseno == cs) &&
+            (macc_globals->symb[j].caseno != -1)) {
+            /*printf(" %s %d %d\n", macc_globals->symb[j].nm,
+             * macc_globals->symb[j].szof, macc_globals->symb[j].padb);*/
             csize += macc_globals->symb[j].szof;
             if (first != -1 && macc_globals->symb[j].padb != -1)
                 csize += macc_globals->symb[j].padb;
@@ -836,11 +859,20 @@ void key_setdup() /* used by parser, sets duplicate flag */
     macc_globals->workkeyflag |= DUPKEY;
 }
 
-void key_setrecnums(void) { macc_globals->workkeyflag |= RECNUMS; }
+void key_setrecnums(void)
+{
+    macc_globals->workkeyflag |= RECNUMS;
+}
 
-void key_setprimary(void) { macc_globals->workkeyflag |= PRIMARY; }
+void key_setprimary(void)
+{
+    macc_globals->workkeyflag |= PRIMARY;
+}
 
-void key_setdatakey(void) { macc_globals->workkeyflag |= DATAKEY; }
+void key_setdatakey(void)
+{
+    macc_globals->workkeyflag |= DATAKEY;
+}
 
 void key_setuniqnulls(void)
 {
@@ -857,7 +889,8 @@ void key_piece_clear() /* used by parser, clears work key */
 
 void key_piece_setdescend()
 {
-    macc_globals->workkeypieceflag |= DESCEND; /* set DESCEND flag for key piece */
+    macc_globals->workkeypieceflag |=
+        DESCEND; /* set DESCEND flag for key piece */
 }
 
 void key_add_tag(char *tag, char *exprname, char *where)
@@ -885,12 +918,14 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         }
     }
 #if 1
-    if ((macc_globals->workkeyflag & DUPKEY) && (macc_globals->workkeyflag & PRIMARY)) {
+    if ((macc_globals->workkeyflag & DUPKEY) &&
+        (macc_globals->workkeyflag & PRIMARY)) {
         csc2_error("ERROR: DUPLICATES NOT ALLOWED ON PRIMARY KEY\n");
         any_errors++;
         return;
     }
-    if ((macc_globals->workkeyflag & DUPKEY) && (macc_globals->workkeyflag & UNIQNULLS)) {
+    if ((macc_globals->workkeyflag & DUPKEY) &&
+        (macc_globals->workkeyflag & UNIQNULLS)) {
         csc2_error("ERROR: DUPLICATES NOT ALLOWED ON UNIQUE NULLS\n");
         any_errors++;
         return;
@@ -904,7 +939,8 @@ static void key_add_comn(int ix, char *tag, char *exprname,
                 lastix = macc_globals->keyixnum[ii];
             ix = macc_globals->keyixnum[ii];
 #if 1
-            if (macc_globals->ixflags[ix] & PRIMARY && macc_globals->workkeyflag & PRIMARY) {
+            if (macc_globals->ixflags[ix] & PRIMARY &&
+                macc_globals->workkeyflag & PRIMARY) {
                 csc2_error("ERROR: PRIMARY KEY ALREADY SPECIFIED.  CANNOT HAVE "
                            ">1 PRIMARY KEYS (%s)\n",
                            tag);
@@ -979,7 +1015,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         if (exprnum == -1) { /* no expression */
             if (macc_globals->keyexprnum[ii] == -1) {
                 csc2_error("Error at line %3d: TWO KEYS FOR INDEX %d!\n",
-                        current_line, macc_globals->keyixnum[ii]);
+                           current_line, macc_globals->keyixnum[ii]);
                 csc2_syntax_error("Error at line %3d: TWO KEYS FOR INDEX %d!",
                                   current_line, macc_globals->keyixnum[ii]);
                 any_errors++;
@@ -992,33 +1028,39 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     }
 
     if (ii < macc_globals->nkeys) { /* insert into proper slot */
-        memmove(macc_globals->keys + ii + 1, macc_globals->keys + ii, (macc_globals->nkeys - ii) * sizeof(macc_globals->keys[0]));
+        memmove(macc_globals->keys + ii + 1, macc_globals->keys + ii,
+                (macc_globals->nkeys - ii) * sizeof(macc_globals->keys[0]));
         memmove(macc_globals->keyixnum + ii + 1, macc_globals->keyixnum + ii,
                 (macc_globals->nkeys - ii) * sizeof(macc_globals->keyixnum[0]));
-        memmove(macc_globals->keyexprnum + ii + 1, macc_globals->keyexprnum + ii,
-                (macc_globals->nkeys - ii) * sizeof(macc_globals->keyexprnum[0]));
+        memmove(
+            macc_globals->keyexprnum + ii + 1, macc_globals->keyexprnum + ii,
+            (macc_globals->nkeys - ii) * sizeof(macc_globals->keyexprnum[0]));
     }
 
-    macc_globals->keys[ii] = macc_globals->workkey;        /* remember key */
-    macc_globals->keyixnum[ii] = ix;         /* remember ix number associated with key */
-    macc_globals->keyexprnum[ii] = exprnum;  /* remember expr assoc with key */
+    macc_globals->keys[ii] = macc_globals->workkey; /* remember key */
+    macc_globals->keyixnum[ii] =
+        ix; /* remember ix number associated with key */
+    macc_globals->keyexprnum[ii] = exprnum; /* remember expr assoc with key */
     macc_globals->ixflags[ix] = macc_globals->workkeyflag; /* remember flags */
     if (tag != NULL) {
         int jj = 0;
         strupper(tag);
         for (jj = 0; jj < macc_globals->nkeys; jj++) {
-            if (macc_globals->keyixnum[jj] != ix && !strcasecmp(tag, macc_globals->keys[jj]->keytag)) {
+            if (macc_globals->keyixnum[jj] != ix &&
+                !strcasecmp(tag, macc_globals->keys[jj]->keytag)) {
                 csc2_error("Error at line %3d: CANT HAVE SAME TAG '%s' "
-                                "FOR INDICES %d AND %d!\n",
-                        current_line, tag, ix, macc_globals->keyixnum[jj]);
+                           "FOR INDICES %d AND %d!\n",
+                           current_line, tag, ix, macc_globals->keyixnum[jj]);
                 csc2_syntax_error("Error at line %3d: CANT HAVE SAME TAG '%s' "
                                   "FOR INDICES %d AND %d!",
-                                  current_line, tag, ix, macc_globals->keyixnum[jj]);
+                                  current_line, tag, ix,
+                                  macc_globals->keyixnum[jj]);
                 any_errors++;
                 return;
             }
         }
-        strncpy0(macc_globals->keys[ii]->keytag, tag, sizeof(macc_globals->keys[ii]->keytag));
+        strncpy0(macc_globals->keys[ii]->keytag, tag,
+                 sizeof(macc_globals->keys[ii]->keytag));
     } else {
         sprintf(macc_globals->keys[ii]->keytag, "DEFAULT_ix_%d", ix);
     }
@@ -1095,7 +1137,8 @@ void key_piece_add(char *buf,
         if (!macc_globals->workkey) {
             macc_globals->workkey = nk; /* empty list */
         } else {
-            for (kp = macc_globals->workkey; kp->cmp; kp = kp->cmp) { /* add to end of list */
+            for (kp = macc_globals->workkey; kp->cmp;
+                 kp = kp->cmp) { /* add to end of list */
                 keyfields++;
             }
             if (keyfields >= MAX_FIELDS_PER_KEY) {
@@ -1599,8 +1642,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         *cp = 0;
     if (unionflag) {
         macc_globals->un_reset[tables[ntables].nsym]++;
-        tables[ntables].sym[tables[ntables].nsym].un_member = macc_globals->union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx = macc_globals->union_index;
+        tables[ntables].sym[tables[ntables].nsym].un_member =
+            macc_globals->union_level;
+        tables[ntables].sym[tables[ntables].nsym].un_idx =
+            macc_globals->union_index;
     } else {
         tables[ntables].sym[tables[ntables].nsym].un_member = -1;
         tables[ntables].sym[tables[ntables].nsym].un_idx = -1;
@@ -1619,14 +1664,17 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     lastidx = 0;
 
     tables[ntables].sym[tables[ntables].nsym].type = typ;
-    tables[ntables].sym[tables[ntables].nsym].caseno = macc_globals->current_case;
+    tables[ntables].sym[tables[ntables].nsym].caseno =
+        macc_globals->current_case;
     if (tables[ntables].sym[tables[ntables].nsym].caseno != -1) {
-        tables[ntables].sym[tables[ntables].nsym].un_member = macc_globals->union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx = macc_globals->union_index;
+        tables[ntables].sym[tables[ntables].nsym].un_member =
+            macc_globals->union_level;
+        tables[ntables].sym[tables[ntables].nsym].un_idx =
+            macc_globals->union_index;
     }
 
-    memcpy(tables[ntables].sym[tables[ntables].nsym].dpth_tree, macc_globals->cur_dpth,
-           sizeof(short) * macc_globals->dpth_idx);
+    memcpy(tables[ntables].sym[tables[ntables].nsym].dpth_tree,
+           macc_globals->cur_dpth, sizeof(short) * macc_globals->dpth_idx);
     tables[ntables].sym[tables[ntables].nsym].dpth = macc_globals->dpth_idx;
 
     tables[ntables].sym[tables[ntables].nsym].dumped = 0;
@@ -1804,7 +1852,8 @@ void start_table(char *tag, int preset)
     }
     strncpy(tables[macc_globals->ntables].table_tag, tag,
             sizeof(tables[macc_globals->ntables].table_tag) - 1);
-    tables[macc_globals->ntables].table_tag[sizeof(tables[macc_globals->ntables].table_tag) - 1] = '\0';
+    tables[macc_globals->ntables]
+        .table_tag[sizeof(tables[macc_globals->ntables].table_tag) - 1] = '\0';
 }
 
 void end_table()
@@ -2083,7 +2132,8 @@ void start_union(char *name)
     macc_globals->current_union++;
     if (macc_globals->union_index < (macc_globals->current_union - 1))
         macc_globals->union_index = macc_globals->current_union - 1;
-    macc_globals->un_start[macc_globals->union_index] = macc_globals->tables[macc_globals->ntables].nsym;
+    macc_globals->un_start[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym;
 
     if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
@@ -2102,7 +2152,8 @@ void start_union(char *name)
 void end_union()
 {
     unionflag = 0;
-    macc_globals->un_end[macc_globals->union_index] = macc_globals->tables[macc_globals->ntables].nsym - 1;
+    macc_globals->un_end[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym - 1;
     macc_globals->union_index--;
     macc_globals->union_level--;
     macc_globals->dpth_idx--;
@@ -2121,7 +2172,8 @@ void start_rectypedef(char *rtname)
 
     if (macc_globals->union_index < (macc_globals->current_union - 1))
         macc_globals->union_index = macc_globals->current_union - 1;
-    macc_globals->un_start[macc_globals->union_index] = macc_globals->tables[macc_globals->ntables].nsym;
+    macc_globals->un_start[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym;
 
     if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
@@ -2146,7 +2198,8 @@ void start_rectypedef(char *rtname)
 
 void end_rectypedef()
 {
-    macc_globals->un_end[macc_globals->union_index] = macc_globals->tables[macc_globals->ntables].nsym - 1;
+    macc_globals->un_end[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym - 1;
     macc_globals->union_index--;
     macc_globals->union_level--;
     macc_globals->dpth_idx -= 2;
@@ -2174,11 +2227,13 @@ void start_case(char *txt)
     }
     /*	printf("CASE %s %d\n", txt, i);*/
 
-    macc_globals->case_table[macc_globals->cn_p] = i; /* add to case name table */
+    macc_globals->case_table[macc_globals->cn_p] =
+        i; /* add to case name table */
     macc_globals->current_case = macc_globals->cn_p;
     nested_rectype[ncases]++;
     macc_globals->cn_p++;
-    macc_globals->un_reset[macc_globals->tables[macc_globals->ntables].nsym]++; /* add to union reset table */
+    macc_globals->un_reset[macc_globals->tables[macc_globals->ntables]
+                               .nsym]++; /* add to union reset table */
 
     if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
@@ -2194,7 +2249,8 @@ void start_case(char *txt)
             dpth_info[0] = 'c';
             dpth_info[1] = (u_char)macc_globals->current_case;
         } else {
-            dpth_info = (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
+            dpth_info =
+                (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
             dpth_info[0] = 'c';
             dpth_info[1] = (u_char)macc_globals->current_case;
         }
@@ -2205,7 +2261,10 @@ void start_case(char *txt)
     }
 }
 
-void expr_clear() { macc_globals->ex_p = 0; }
+void expr_clear()
+{
+    macc_globals->ex_p = 0;
+}
 
 void expr_add_pc(char *sym, int op, int num)
 {
@@ -2261,14 +2320,15 @@ void expr_assoc_name(char *name)
     struct expr_table *exprtab = macc_globals->exprtab;
     exprtab[macc_globals->et_p].name = name;
     exprtab[macc_globals->et_p].elen = macc_globals->ex_p;
-    exprtab[macc_globals->et_p].expr =
-        (struct expression *)csc2_malloc(sizeof(struct expression) * macc_globals->ex_p);
+    exprtab[macc_globals->et_p].expr = (struct expression *)csc2_malloc(
+        sizeof(struct expression) * macc_globals->ex_p);
     if (exprtab[macc_globals->et_p].expr == 0) {
         logmsgperror("expr_assoc_name(): saving expression");
         any_errors++;
         return;
     }
-    memcpy(exprtab[macc_globals->et_p].expr, macc_globals->expr, sizeof(struct expression) * macc_globals->ex_p);
+    memcpy(exprtab[macc_globals->et_p].expr, macc_globals->expr,
+           sizeof(struct expression) * macc_globals->ex_p);
     macc_globals->et_p++;
 }
 
@@ -2282,9 +2342,9 @@ void resolve_case_names()
                 exprtab[i].expr[j].symnum =
                     getsymbol(ONDISKTAG, exprtab[i].expr[j].sym, &tidx);
                 if (exprtab[i].expr[j].symnum == -1) {
-                    exprtab[i].expr[j].symnum =
-                        getsymbol((macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG,
-                                  exprtab[i].expr[j].sym, &tidx);
+                    exprtab[i].expr[j].symnum = getsymbol(
+                        (macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG,
+                        exprtab[i].expr[j].sym, &tidx);
                 }
                 if (exprtab[i].expr[j].symnum == -1) {
                     csc2_error("ERROR: Unresolved variable: '%s"
@@ -2292,9 +2352,10 @@ void resolve_case_names()
                                exprtab[i].expr[j].sym, exprtab[i].name);
                     any_errors++;
                 }
-                for (k = exprtab[i].expr[j].symnum + 1; k < macc_globals->nsym; k++) {
+                for (k = exprtab[i].expr[j].symnum + 1; k < macc_globals->nsym;
+                     k++) {
                     if (strcmp(exprtab[i].expr[j].sym,
-                               macc_globals->tables[ tidx].sym[k].nm) == 0) {
+                               macc_globals->tables[tidx].sym[k].nm) == 0) {
                         csc2_error("ERROR: Condition %s Symbol Name is Found "
                                    "More Than Once! '%s'\n",
                                    exprtab[i].name, exprtab[i].expr[j].sym);
@@ -2429,8 +2490,10 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     sprintf(fullname, "%s_%s", dbname, tablename);
     macc_globals->opt_dbname = fullname;
     macc_globals->opt_copycsc = 0;
-    strncpy0(macc_globals->opt_maindbname, dbname, sizeof(macc_globals->opt_maindbname));
-    strncpy0(macc_globals->opt_tblname, tablename, sizeof(macc_globals->opt_tblname));
+    strncpy0(macc_globals->opt_maindbname, dbname,
+             sizeof(macc_globals->opt_maindbname));
+    strncpy0(macc_globals->opt_tblname, tablename,
+             sizeof(macc_globals->opt_tblname));
 
     /* check args for an input filename or any options */
     if (schematxt) {
@@ -2592,7 +2655,8 @@ int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)
         lastix = macc_globals->keyixnum[i];
         if (macc_globals->keyixnum[i] != index)
             continue;
-        strncpy(tag, macc_globals->keys[i]->keytag, MIN(tlen, sizeof(macc_globals->keys[i]->keytag)));
+        strncpy(tag, macc_globals->keys[i]->keytag,
+                MIN(tlen, sizeof(macc_globals->keys[i]->keytag)));
         *where = macc_globals->keys[i]->where;
         return 0;
     }
@@ -2823,7 +2887,10 @@ int dyns_get_idx_piece_count(int index)
 }
 
 /* database number of this schema */
-int dyns_get_db_num(void) { return macc_globals->opt_dbnum; }
+int dyns_get_db_num(void)
+{
+    return macc_globals->opt_dbnum;
+}
 
 /* data directory of this schema */
 int dyns_get_dtadir(char *dir, int len)
@@ -2907,8 +2974,8 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
     if (dyns_is_field_array(fidx) < 0)
         return -1;
     *nodims = 0;
-    for (i = 0;
-         macc_globals->tables[tidx].sym[fidx].dim[i] != -1 && i < ((6 > ndims) ? ndims : 6);
+    for (i = 0; macc_globals->tables[tidx].sym[fidx].dim[i] != -1 &&
+                i < ((6 > ndims) ? ndims : 6);
          i++) {
         ldims[i] = macc_globals->tables[tidx].sym[fidx].dim[i];
         *nodims = *nodims + 1;
@@ -3151,7 +3218,8 @@ static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
         if (i >= ndpthsinfo) {
             return 1;
         }
-        curdpth = (char *)(&(macc_globals->tables[tidx].sym[fidx].dpth_tree[i]));
+        curdpth =
+            (char *)(&(macc_globals->tables[tidx].sym[fidx].dpth_tree[i]));
         memset(&dpthinfo[*ndpthout], 0, sizeof(dpth_t));
         dpthinfo[*ndpthout].struct_type =
             ((curdpth[0] == 'u') ? FLDDPTH_UNION : FLDDPTH_STRUCT);
@@ -3217,7 +3285,10 @@ int dyns_field_type(int fidx)
     }
 }
 
-int dyns_get_table_count(void) { return macc_globals->ntables; }
+int dyns_get_table_count(void)
+{
+    return macc_globals->ntables;
+}
 
 int dyns_get_table_tag_size(char *tabletag)
 {
@@ -3406,5 +3477,3 @@ void csc2_syntax_error(const char *fmt, ...)
     strbuf_append(syntax_errors, out);
     comdb2_free(out);
 }
-
-
