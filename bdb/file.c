@@ -642,7 +642,7 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
 {
     unsigned long long ver;
     int rc, bdberr;
-    if (create && gbl_queuedb_genid_filename) {
+    if (create && (gbl_queuedb_genid_filename || gbl_queuedb_file_threshold > 0)) {
         ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
         rc = bdb_new_file_version_qdb(bdb_state, tran, file_num, ver, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
@@ -1298,7 +1298,6 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         bdb_trigger_close(bdb_state);
-        bdb_queuedb_cleanup_dbps(bdb_state, tid);
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
@@ -4287,23 +4286,17 @@ deadlock_again:
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             if (form_queuedb_name(bdb_state, &tran, dtanum, create,
                                   tmpname, sizeof(tmpname))) {
-                if (tid) tid->abort(tid);
-                return rc;
+                if (dtanum > 0) {
+                    break;
+                } else {
+                    if (tid) tid->abort(tid);
+                    return rc;
+                }
             }
             if (create) {
                 char new[PATH_MAX];
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
-            }
-            /*
-             * NOTE: For queuedb, all files after the first one are optional
-             *       and may not actually exist.
-             */
-            struct stat sb; /* NOT USED */
-            if ((dtanum > 0) && (stat(tmpname, &sb) != 0)) {
-                print(bdb_state, "stopping at %s, it does not exist\n",
-                      tmpname);
-                break;
             }
             DB *dbp;
             rc = db_create(&dbp, bdb_state->dbenv, 0);

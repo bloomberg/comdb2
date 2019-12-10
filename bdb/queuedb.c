@@ -40,7 +40,9 @@ extern int gbl_queuedb_file_threshold;
 #define MAXCONSUMERS 32
 
 #define BDB_QUEUEDB_GET_DBP_ZERO(a)  ((a)->dbp_data[0][0])
-#define BDB_IS_PRIMARY_QUEUEDB(a,b)  ((b) == BDB_QUEUEDB_GET_DBP_ZERO(a))
+#define BDB_QUEUEDB_GET_DBP_ONE(a)   ((a)->dbp_data[1][0])
+#define BDB_IS_CONSUME_QUEUEDB(a,b)  ((b) == BDB_QUEUEDB_GET_DBP_ZERO(a))
+#define BDB_IS_ADD_QUEUEDB(a,b)      ((b) == BDB_QUEUEDB_GET_DBP_ONE(a))
 
 extern void fsnapf(FILE *, void *, int);
 
@@ -49,9 +51,8 @@ struct bdb_queue_priv {
     struct bdb_queue_stats stats;
 
     pthread_mutex_t dbp_lock;
-    DB *dbp_secondary;
+    DB *dbp_consume;
     DB *dbp_add;
-    DB *dbp_other;
 };
 
 struct queuedb_key {
@@ -88,7 +89,7 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     return p_buf;
 }
 
-static int bdb_queuedb_is_file_empty(DB *db, tran_type *tran)
+static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)
 {
     int rc;
     DBC *dbcp = NULL;
@@ -104,8 +105,7 @@ static int bdb_queuedb_is_file_empty(DB *db, tran_type *tran)
     if (rc == DB_NOTFOUND) {
         rc = 1; /* NOTE: Confirmed empty. */
     } else if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: c_get berk rc %d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: c_get berk rc %d\n", __func__, rc);
         rc = 0; /* TODO: Safe failure choice here is non-empty? */
     } else {
         rc = 0; /* NOTE: Confirmed non-empty. */
@@ -126,10 +126,16 @@ done:
 
 static int bdb_queuedb_is_db_full(DB *db)
 {
-    if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
     struct stat sb;
+    if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
     if (stat(db->fname, &sb) != 0) return 0; /* cannot detect, assume no? */
     return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
+}
+
+static DB *bdb_queuedb_get_dbp_for_consume(bdb_state_type *bdb_state)
+{
+    struct bdb_queue_priv *qstate = bdb_state->qpriv;
+    return qstate->dbp_consume;
 }
 
 static DB *bdb_queuedb_get_dbp_for_add(bdb_state_type *bdb_state)
@@ -138,29 +144,14 @@ static DB *bdb_queuedb_get_dbp_for_add(bdb_state_type *bdb_state)
     return qstate->dbp_add;
 }
 
-static DB *bdb_queuedb_get_dbp_for_other(bdb_state_type *bdb_state)
+static void bdb_queuedb_maybe_switch_consume_dbp(bdb_state_type *bdb_state)
 {
-    struct bdb_queue_priv *qstate = bdb_state->qpriv;
-    return qstate->dbp_other;
+    // TBD
 }
 
 static void bdb_queuedb_maybe_switch_add_dbp(bdb_state_type *bdb_state)
 {
-    if (gbl_queuedb_file_threshold > 0) {
-        struct bdb_queue_priv *qstate = bdb_state->qpriv;
-        if (BDB_IS_PRIMARY_QUEUEDB(bdb_state, qstate->dbp_add)) {
-
-
-
-
-
-        }
-    }
-}
-
-static void bdb_queuedb_maybe_switch_other_dbp(bdb_state_type *bdb_state)
-{
-
+    // TBD
 }
 
 void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid)
@@ -169,29 +160,10 @@ void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_setup_dbps %s\n", bdb_state->name);
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
     if (qstate != NULL) {
-        // TBD: Actually, this needs to detect if a second file exists...
-        qstate->dbp_add = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-        qstate->dbp_other = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-    }
-}
-
-void bdb_queuedb_cleanup_dbps(bdb_state_type *bdb_state, void *tid)
-{
-    if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, ">>> bdb_queuedb_cleanup_dbps %s\n", bdb_state->name);
-    struct bdb_queue_priv *qstate = bdb_state->qpriv;
-    if (qstate != NULL) {
         DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-        DB *db2 = qstate->dbp_secondary;
-        if ((db2 != NULL) && (db2 != db1)) {
-            int rc = db2->close(db2, DB_NOSYNC);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: error closing %s: %d %s\n", __func__,
-                       bdb_state->name, rc, db_strerror(rc));
-            }
-            qstate->dbp_secondary = NULL;
-        }
+        DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+        qstate->dbp_consume = db1;
+        qstate->dbp_add = (db2 != NULL) ? db2 : db1;
     }
 }
 
@@ -318,8 +290,8 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
-    bdb_queuedb_maybe_switch_other_dbp(bdb_state);
-    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
+    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
+    DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     int rc;
@@ -421,8 +393,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                     int *bdberr)
 {
-    bdb_queuedb_maybe_switch_other_dbp(bdb_state);
-    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
+    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
+    DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     if (db == NULL) { // trigger dropped?
         *bdberr = BDBERR_BADARGS;
         return -1;
@@ -638,8 +610,8 @@ done:
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const void *prevfnd, int *bdberr)
 {
-    bdb_queuedb_maybe_switch_other_dbp(bdb_state);
-    DB *db = bdb_queuedb_get_dbp_for_other(bdb_state);
+    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
+    DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
     struct queuedb_key k;
