@@ -845,11 +845,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    /* if we received a too early, check the coherency and mark blackout node */
-    if (xerr && xerr->errval == OSQL_TOOEARLY) {
-        osql_comm_blkout_node(sess->offhost);
-    }
-
     debug = debug_this_request(gbl_debug_until);
     if (gbl_who > 0 && gbl_debug) {
         debug = 1;
