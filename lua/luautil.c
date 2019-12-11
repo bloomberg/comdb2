@@ -546,10 +546,10 @@ int luabb_dbtype_from_tvalue(TValue *t)
     return DBTYPES_MAXTYPE;
 }
 
-/* assumes obj at idx is UDATA */
 int luabb_isnumber(Lua l, int idx)
 {
     const TValue *o = index2adr(l, idx);
+    if (!ttisuserdata(o)) return 0;
     lua_dbtypes_t *bb = luabb_todbpointer(o);
     switch (bb->dbtype) {
     case DBTYPES_INTEGER:
