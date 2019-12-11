@@ -46,7 +46,7 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
                       const char *csc2path);
 /* Create an external lrl file with the db's table defs */
 int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
-                          const char *p_lrl_fname_out, char *p_table_names[],
+                          const char *p_lrl_fname_out, const char *p_table_names[],
                           char *p_csc2_paths[], int table_nums[],
                           size_t num_tables, char *out_lrl_dir, int has_sp,
                           int has_timepartitions);

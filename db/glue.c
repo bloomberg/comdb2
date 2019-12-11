@@ -201,7 +201,7 @@ static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
 
     if (iq->usedb) {
         if (auxdb == AUXDB_NONE)
-            reqlog_usetable(iq->reqlogger, iq->usedb->tablename);
+            reqlog_usetable(iq->reqlogger, iq->usedb->tablename_ip);
         return get_bdb_handle(iq->usedb, auxdb);
     }
 
@@ -3536,8 +3536,8 @@ int open_auxdbs(struct dbtable *db, int force_create)
         snprintf(name, sizeof(name), "comdb2_meta");
         snprintf(litename, sizeof(litename), "comdb2_metalite");
     } else {
-        snprintf(name, sizeof(name), "%s.meta", db->tablename);
-        snprintf(litename, sizeof(litename), "%s.metalite", db->tablename);
+        snprintf(name, sizeof(name), "%s.meta", db->tablename_ip);
+        snprintf(litename, sizeof(litename), "%s.metalite", db->tablename_ip);
     }
 
     ctrace("bdb_open_more: opening <%s>\n", name);
@@ -3857,7 +3857,7 @@ static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
         return;
 
     char *str = NULL;
-    int rc = bdb_get_table_parameter_tran(tbl->tablename, "disableskipscan",
+    int rc = bdb_get_table_parameter_tran(tbl->tablename_ip, "disableskipscan",
                                           &str, tran);
     if (rc != 0) {
         tbl->disableskipscan = 0;
@@ -3894,13 +3894,13 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         db = dbenv->dbs[ii];
 
         if (db->dbnum)
-            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename,
+            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename_ip,
                    db->dbnum);
         else
-            logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
+            logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename_ip);
 
         db->handle = bdb_open_more_tran(
-            db->tablename, dbenv->basedir, db->lrl, db->nix,
+            db->tablename_ip, dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
             db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* main record + n blobs */
@@ -3911,7 +3911,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                 logmsg(
                     LOGMSG_ERROR,
                     "bdb_open:failed to open table %s/%s, rcode %d, IGNORING\n",
-                    dbenv->basedir, db->tablename, bdberr);
+                    dbenv->basedir, db->tablename_ip, bdberr);
                 /* this is a hack, lets just leak it */
                 if (ii == dbenv->num_dbs - 1) {
                     dbenv->dbs[ii] = NULL;
@@ -3925,7 +3925,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
             }
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open table %s/%s, rcode %d\n",
-                   dbenv->basedir, db->tablename, bdberr);
+                   dbenv->basedir, db->tablename_ip, bdberr);
 
             return -1;
         }
@@ -3934,7 +3934,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
         int pagesize;
         db = dbenv->qdbs[ii];
-        logmsg(LOGMSG_INFO, "open queue '%s'\n", db->tablename);
+        logmsg(LOGMSG_INFO, "open queue '%s'\n", db->tablename_ip);
 
         /* Work out best page size for the expected average item size. */
         if (db->queue_pagesize_override) {
@@ -3949,13 +3949,13 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         }
 
         db->handle = bdb_open_more_queue(
-            db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
+            db->tablename_ip, dbenv->basedir, db->avgitemsz, pagesize,
             dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, tran,
             &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
-                   dbenv->basedir, db->tablename, bdberr);
+                   dbenv->basedir, db->tablename_ip, bdberr);
             return -1;
         }
     }
@@ -4032,7 +4032,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
                    "Building bthash for table %s, size %dkb per stripe\n",
-                   tbl->tablename, bthashsz);
+                   tbl->tablename_ip, bthashsz);
             bdb_handle_dbp_add_hash(tbl->handle, bthashsz);
         }
 
@@ -4048,7 +4048,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               tbl->tablename, tbl->schema_version, tbl->odh ? "yes" : "no",
+               tbl->tablename_ip, tbl->schema_version, tbl->odh ? "yes" : "no",
                tbl->instant_schema_change ? "yes" : "no",
                datacopy_odh ? "yes" : "no",
                tbl->inplace_updates ? "yes" : "no");
@@ -4126,9 +4126,9 @@ void fix_blobstripe_genids(tran_type *tran)
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
-                       db->blobstripe_genid, db->tablename);
+                       db->blobstripe_genid, db->tablename_ip);
             } else {
-                ctrace("no blobstripe genid for table %s\n", db->tablename);
+                ctrace("no blobstripe genid for table %s\n", db->tablename_ip);
             }
         }
     }
@@ -4151,7 +4151,7 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
                 logmsg(
                     LOGMSG_ERROR,
                     "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
-                    dbenv->basedir, db->tablename, consumern, bdberr);
+                    dbenv->basedir, db->tablename_ip, consumern, bdberr);
                 return -1;
             }
         }
@@ -4556,7 +4556,7 @@ static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr1,
     if (db->dbenv->meta) {
         bzero(&hdr2, sizeof(struct metahdr2));
         memcpy(&hdr2.hdr1, hdr1, sizeof(struct metahdr));
-        snprintf(hdr2.keystr, sizeof(hdr2.keystr), "/%s", db->tablename);
+        snprintf(hdr2.keystr, sizeof(hdr2.keystr), "/%s", db->tablename_ip);
         keysize = sizeof(struct metahdr2);
         metahdr2_type_put(&hdr2, p_hdr2_buf, p_hdr2_buf_end);
         hdr = &p_metahdr2;
@@ -4685,7 +4685,7 @@ static int meta_get_tran(tran_type *tran, struct dbtable *db, struct metahdr *ke
     if (db->dbenv->meta) {
         bzero(&key2, sizeof(struct metahdr2));
         memcpy(&key2.hdr1, key1, sizeof(struct metahdr));
-        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename);
+        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename_ip);
         metahdr2_type_put(&key2, p_hdr2_buf, p_hdr2_buf_end);
         key = &p_metahdr2;
     } else {
@@ -4745,7 +4745,7 @@ static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
     if (db->dbenv->meta) {
         bzero(&key2, sizeof(struct metahdr2));
         memcpy(&key2.hdr1, key1, sizeof(struct metahdr));
-        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename);
+        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename_ip);
         metahdr2_type_put(&key2, p_hdr2_buf, p_hdr2_buf_end);
         key = &p_metahdr2;
     } else {
@@ -5315,7 +5315,7 @@ void diagnostics_dump_dta(struct dbtable *db, int dtanum)
 
     char *filename;
     filename =
-        comdb2_location("debug", "%s.dump_dta%d.txt", db->tablename, dtanum);
+        comdb2_location("debug", "%s.dump_dta%d.txt", db->tablename_ip, dtanum);
     fh = fopen(filename, "w");
     if (!fh) {
         logmsg(LOGMSG_ERROR, "diagnostics_dump_dta: cannot open %s: %s\n", filename,
@@ -5389,7 +5389,7 @@ void compr_print_stats()
         struct dbtable *db = thedb->dbs[ii];
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
-        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
+        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename_ip);
         logmsg(LOGMSG_USER, "ODH: %3s Compress: %-8s Blob compress: %-8s  in-place updates: "
                "%-3s  instant schema change: %-3s",
                odh ? "yes" : "no", bdb_algo2compr(compr),
@@ -5405,27 +5405,27 @@ void print_tableparams()
     int ii;
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *db = thedb->dbs[ii];
-        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
+        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename_ip);
 
         int bdberr = 0;
         int coveragevalue = 0;
         long long thresholdvalue = 0;
         int rc = 0;
 
-        rc = bdb_get_analyzecoverage_table(NULL, db->tablename, &coveragevalue,
+        rc = bdb_get_analyzecoverage_table(NULL, db->tablename_ip, &coveragevalue,
                                            &bdberr);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "bdb_get_analyzecoverage_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
 
-        rc = bdb_get_analyzethreshold_table(NULL, db->tablename,
+        rc = bdb_get_analyzethreshold_table(NULL, db->tablename_ip,
                                             &thresholdvalue, &bdberr);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "bdb_get_analyzethreshold_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
 
         char *disableskipscanval = NULL;
-        bdb_get_table_parameter(db->tablename, "disableskipscan",
+        bdb_get_table_parameter(db->tablename_ip, "disableskipscan",
                                 &disableskipscanval);
 
         if (coveragevalue >= 0)
@@ -5446,7 +5446,7 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(NULL, db->tablename, &tableparams,
+        bdb_get_table_csonparameters(NULL, db->tablename_ip, &tableparams,
                                      &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
@@ -5630,7 +5630,7 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs)
 {
-    char *table = iq->usedb->tablename;
+    const char *table = iq->usedb->tablename_ip;
     struct schema *sch;
     struct field *fld;
     int i;
@@ -5868,7 +5868,7 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr)
     //select needs to be done with the same transaction to avoid 
     //undetectable deadlock for writing and reading from same thread
     unsigned long long version;
-    rc = bdb_table_version_select(db->tablename, trans, &version, bdberr);
+    rc = bdb_table_version_select(db->tablename_ip, trans, &version, bdberr);
     if (rc || *bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, *bdberr);
@@ -5889,7 +5889,7 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     unsigned long long version;
     int rc;
 
-    rc = bdb_table_version_select(db->tablename, tran, &version, &bdberr);
+    rc = bdb_table_version_select(db->tablename_ip, tran, &version, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, bdberr);
@@ -5901,7 +5901,6 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname)
 {
-    char *oldname;
     int rc;
     int odh;
     int compress;
@@ -5935,8 +5934,8 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
             return rc;
     }
 
-    oldname = db->tablename;
-    db->tablename = (char *)newname;
+    const char *oldname = db->tablename_ip;
+    db->tablename_ip = intern(newname);
 
     rc = put_db_odh(db, tran, odh);
     if (rc)
@@ -5957,7 +5956,7 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
         rc = put_db_bthash(db, tran, bthashsz);
 
 done:
-    db->tablename = oldname;
+    db->tablename_ip = oldname;
 
     return rc;
 }
@@ -6004,7 +6003,6 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
 {
     struct dbtable *pDb;
     struct sql_thread *thd;
-    char *tablename;
     int bdberr;
     int rc;
 
@@ -6012,7 +6010,7 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
 
     while (*tabId < thedb->num_dbs) {
         pDb = thedb->dbs[*tabId];
-        tablename = pDb->tablename;
+        const char *tablename = pDb->tablename_ip;
         rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
                                        tablename, ACCESS_READ, &bdberr);
         if (rc == 0)

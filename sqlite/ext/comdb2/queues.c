@@ -85,7 +85,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   char *spname = NULL;
 
   dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
-  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename);
+  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename_ip);
   if (spname) {
       strcpy(pCur->spname, spname);
       free(spname);

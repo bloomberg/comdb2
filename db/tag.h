@@ -296,7 +296,7 @@ void *get_field_ptr_in_buf(struct schema *sc, int idx, const void *buf);
 int is_tag_ondisk_sc(struct schema *sc);
 int is_tag_ondisk(const char *table, const char *tag);
 int fixup_verified_record(const char *dbname, const char *from, char *to);
-void backout_schemas(char *tblname);
+void backout_schemas(const char *tblname);
 int broadcast_resume_threads(void);
 int have_all_schemas(void);
 const char *strtype(int type);

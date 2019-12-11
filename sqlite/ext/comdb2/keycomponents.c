@@ -162,7 +162,7 @@ static int systblFieldsColumn(
 
   switch( i ){
     case STFIELD_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename_ip, -1, NULL);
       break;
     }
     case STFIELD_KEY: {

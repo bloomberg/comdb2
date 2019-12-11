@@ -2468,18 +2468,18 @@ int macc_ferror(FILE *fh)
  *  in order to initialize the global structure on which this and other dyns_
  *  functions rely.
  */
-static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
-                                char *tablename)
+static int dyns_load_schema_int(const char *filename, char *schematxt, const char *dbname,
+                                const char *tablename)
 {
-    char *ifn = NULL;
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
 
     char VER[16];
     strcpy(VER, revision + 10); /* get my version               */
-    ifn = strchr(VER, '$');     /* clean up version text        */
-    if (ifn)
-        *ifn = 0;
+    char *verp = NULL;
+    verp = strchr(VER, '$');     /* clean up version text        */
+    if (verp)
+        *verp = 0;
 
     macc_globals->flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
@@ -2497,11 +2497,11 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
 
     /* check args for an input filename or any options */
     if (schematxt) {
-        ifn = dbname;
         ischematext = schematxt;
         ipos = 0;
         iusestr = 1;
     } else if (filename) {
+        const char *ifn = NULL;
         ifn = filename;
         if (ifn) {
             yyin = fopen(ifn, "r");
@@ -2535,12 +2535,12 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     return 0;
 }
 
-int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename)
+int dyns_load_schema_string(char *schematxt, const char *dbname, const char *tablename)
 {
     return dyns_load_schema_int(NULL, schematxt, dbname, tablename);
 }
 
-int dyns_load_schema(char *filename, char *dbname, char *tablename)
+int dyns_load_schema(const char *filename, const char *dbname, const char *tablename)
 {
     return dyns_load_schema_int(filename, NULL, dbname, tablename);
 }

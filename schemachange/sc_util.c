@@ -28,7 +28,7 @@ int close_all_dbs_tran(tran_type *tran)
         rc = bdb_close_only_sc(db->handle, tran, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n",
-                   db->tablename, bdberr);
+                   db->tablename_ip, bdberr);
             return -1;
         }
     }
@@ -52,7 +52,7 @@ int open_all_dbs_tran(void *tran)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR,
                    "morestripe: failed reopening table '%s': %d\n",
-                   db->tablename, bdberr);
+                   db->tablename_ip, bdberr);
             return -1;
         }
     }
@@ -86,7 +86,7 @@ int check_sc_ok(struct schema_change_type *s)
     return 0;
 }
 
-int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr)
+int llmeta_get_dbnum_tran(void *tran, const char *tablename, int *bdberr)
 {
     int rc;
     int dbnums[MAX_NUM_TABLES];
@@ -120,7 +120,7 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
 /* careful this can cause overflows, do not use */
 char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[])
 {
-    sprintf(tmpname, "%s%s", prefix, db->tablename);
+    sprintf(tmpname, "%s%s", prefix, db->tablename_ip);
 
     return tmpname;
 }

@@ -110,7 +110,7 @@ static int systblTablesColumn(
 ){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  char *x = pDb->tablename;
+  const char *x = pDb->tablename_ip;
 
   sqlite3_result_text(ctx, x, -1, NULL);
   return SQLITE_OK;

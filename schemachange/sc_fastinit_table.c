@@ -86,7 +86,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     newdb->iq = iq;
 
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
-        backout_schemas(newdb->tablename);
+        backout_schemas(newdb->tablename_ip);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
         dyns_cleanup_globals();
@@ -151,7 +151,7 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
             sc_pending = iq->sc_pending;
             while (sc_pending != NULL) {
                 if (strcasecmp(sc_pending->tablename,
-                               cnstrt->lcltable->tablename) == 0)
+                               cnstrt->lcltable->tablename_ip) == 0)
                     break;
                 sc_pending = sc_pending->sc_next;
             }

@@ -93,7 +93,7 @@ int osql_comm_send_poke(char *tonode, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb,
+                    const char *tablename, int type, SBUF2 *logsb,
                     unsigned long long version);
 
 /**

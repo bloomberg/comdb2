@@ -2080,7 +2080,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     if (iq->debug && iq->usedb) {
         /* TODO print trans twice? No parent_trans? */
         reqprintf(iq, "%p:START TRANSACTION OSQL ID %p DB %d '%s'", *trans,
-                  *trans, iq->usedb->dbnum, iq->usedb->tablename);
+                  *trans, iq->usedb->dbnum, iq->usedb->tablename_ip);
     }
 
     if (parent_trans)
@@ -2891,7 +2891,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /* TODO print trans twice? No parent_trans? */
         reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'",
                   (int)pthread_self(), trans, iq->usedb->dbnum,
-                  iq->usedb->tablename);
+                  iq->usedb->tablename_ip);
     }
 
     delay_if_sc_resuming(
@@ -3471,7 +3471,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                use record to form and delete other keys */
             snprintf(client_tag, MAXTAGLEN, ".DEFAULT_IX_0");
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_0");
-            rc = ctag_to_stag_buf(iq->usedb->tablename, client_tag,
+            rc = ctag_to_stag_buf(iq->usedb->tablename_ip, client_tag,
                                   (const char *)iq->p_buf_in, WHOLE_BUFFER,
                                   nulls, ondisk_tag, key, 0, NULL);
             if (rc == -1) {
@@ -3847,7 +3847,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             /* convert key */
             bzero(nulls, sizeof(nulls));
-            rc = ctag_to_stag_buf(iq->usedb->tablename, ".DEFAULT_IX_0",
+            rc = ctag_to_stag_buf(iq->usedb->tablename_ip, ".DEFAULT_IX_0",
                                   (const char *)p_keydat, WHOLE_BUFFER, nulls,
                                   ".ONDISK_IX_0", key, 0, NULL);
             if (rc == -1) {
@@ -3976,13 +3976,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                    capture comdb clients that are trying to verify
                    only a prefix of the row (size < .default rowsize)
                  */
-                int rowsz = get_size_of_schema_by_name(iq->usedb->tablename,
+                int rowsz = get_size_of_schema_by_name(iq->usedb->tablename_ip,
                                                        ".DEFAULT");
                 if (rowsz != vlen) {
                     logmsg(
                         LOGMSG_ERROR,
                         "%s: %s prefix bug, client sz=%d, default-tag sz=%d\n",
-                        getorigin(iq), iq->usedb->tablename, newlen, rowsz);
+                        getorigin(iq), iq->usedb->tablename_ip, newlen, rowsz);
                 }
             }
 
@@ -4074,7 +4074,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
             if (iq->debug)
                 reqprintf(iq, "DB NUM %d '%s'", use.dbnum,
-                          iq->usedb->tablename);
+                          iq->usedb->tablename_ip);
             break;
         }
 
@@ -4124,7 +4124,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
 
                 if (iq->debug)
-                    reqprintf(iq, "DB '%s'", iq->usedb->tablename);
+                    reqprintf(iq, "DB '%s'", iq->usedb->tablename_ip);
             } else {
                 iq->usedb = getdbbynum(usekl.dbnum);
                 if (iq->usedb == 0) {
@@ -4138,7 +4138,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
                 if (iq->debug)
                     reqprintf(iq, "DB NUM %d '%s'", usekl.dbnum,
-                              iq->usedb->tablename);
+                              iq->usedb->tablename_ip);
             }
             break;
         }
@@ -4353,7 +4353,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 break;
             }
             dtalen =
-                get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
+                get_size_of_schema_by_name(iq->usedb->tablename_ip, ".ONDISK");
 
             if (!trans) {
                 if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
@@ -4394,7 +4394,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %d %s genid %016llx rc "
                                   "%d\n",
-                              delolder.timestamp, iq->usedb->tablename, genid,
+                              delolder.timestamp, iq->usedb->tablename_ip, genid,
                               rc);
                 if (rc) {
                     fromline = __LINE__;
@@ -4403,7 +4403,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %s none found\n",
-                              iq->usedb->tablename);
+                              iq->usedb->tablename_ip);
                 rc = ERR_NO_RECORDS_FOUND;
             }
             free(rec);
@@ -4648,7 +4648,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             // thread.
             // otherwise use upgrade_record shortcut.
             if (uptbl.nrecs > 1) {
-                rc = start_table_upgrade(iq->dbenv, iq->usedb->tablename,
+                rc = start_table_upgrade(iq->dbenv, iq->usedb->tablename_ip,
                                          uptbl.genid, 0, uptbl.nrecs, 1);
                 if (rc != 0)
                     GOTOBACKOUT;
@@ -5980,7 +5980,7 @@ static int keyless_range_delete_formkey(void *record, size_t record_len,
     snprintf(index_tag_name, sizeof(index_tag_name), ".ONDISK_IX_%d",
              index_num);
 
-    rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", record,
+    rc = stag_to_stag_buf(iq->usedb->tablename_ip, ".ONDISK", record,
                           index_tag_name, index, NULL);
     if (rc == -1) {
         if (iq->debug)
@@ -6035,12 +6035,12 @@ static int keyless_range_delete_post_delete(void *record, size_t record_len,
         int rc;
         struct javasp_rec *jrec;
         jrec = javasp_alloc_rec(record, record_len,
-                                rngdel_info->iq->usedb->tablename);
+                                rngdel_info->iq->usedb->tablename_ip);
         if (rngdel_info->saveblobs)
             javasp_rec_set_blobs(jrec, rngdel_info->oldblobs);
         rc = javasp_trans_tagged_trigger(
             rngdel_info->javasp_trans_handle, JAVASP_TRANS_LISTEN_AFTER_DEL,
-            jrec, NULL, rngdel_info->iq->usedb->tablename);
+            jrec, NULL, rngdel_info->iq->usedb->tablename_ip);
         javasp_dealloc_rec(jrec);
         if (rngdel_info->iq->debug)
             reqprintf(rngdel_info->iq,
@@ -6113,12 +6113,12 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(iq->dbenv->bdb_env, trans,
-                                             iq->usedb->tablename,
+                                             iq->usedb->tablename_ip,
                                              nodeix(iq->frommach), bdberr);
         if (rc <= 0) {
             reqerrstr(iq, ERR_ACCESS,
                       "Read access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->tablename, iq->corigin, *bdberr);
+                      iq->usedb->tablename_ip, iq->corigin, *bdberr);
             return ERR_ACCESS;
         }
     }
@@ -6132,12 +6132,12 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(iq->dbenv->bdb_env, trans,
-                                              iq->usedb->tablename,
+                                              iq->usedb->tablename_ip,
                                               nodeix(iq->frommach), bdberr);
         if (rc <= 0) {
             reqerrstr(iq, ERR_ACCESS,
                       "Write access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->tablename, iq->corigin, *bdberr);
+                      iq->usedb->tablename_ip, iq->corigin, *bdberr);
             return ERR_ACCESS;
         }
     }

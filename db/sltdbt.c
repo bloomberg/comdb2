@@ -73,7 +73,7 @@ void req_stats(struct dbtable *db)
         if (db->typcnt[ii]) {
             if (hdr == 0) {
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
-                       db->tablename);
+                       db->tablename_ip);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
@@ -83,7 +83,7 @@ void req_stats(struct dbtable *db)
         if (db->blocktypcnt[jj]) {
             if (hdr == 0) {
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
-                       db->tablename);
+                       db->tablename_ip);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
@@ -94,7 +94,7 @@ void req_stats(struct dbtable *db)
         if (db->blockosqltypcnt[jj]) {
             if (hdr == 0) {
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
-                       db->tablename);
+                       db->tablename_ip);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),
@@ -286,8 +286,8 @@ int handle_ireq(struct ireq *iq)
             rc = opcode->opcode_handler(iq);
 
             /* Record the tablename (aka table) for this op */
-            if (iq->usedb && iq->usedb->tablename) {
-                reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
+            if (iq->usedb && iq->usedb->tablename_ip) {
+                reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename_ip);
             }
         }
     }

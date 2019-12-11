@@ -323,12 +323,12 @@ void print_netinfo(netinfo_type *netinfo_ptr);
 */
 int net_send_tail(netinfo_type *netinfo,
                   const char *host, /* send to this node */
-                  int usertype, void *dta, int dtalen, int nodelay, void *tail,
+                  int usertype, void *dta, int dtalen, int nodelay, const void *tail,
                   int tailen);
 
 int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
                    void *data, int datalen, int nodelay, int numtails,
-                   void **tails, int *taillens);
+                   const void **tails, int *taillens);
 
 /* pick a sibling for sql offloading */
 char *net_get_osql_node(netinfo_type *netinfo_ptr);

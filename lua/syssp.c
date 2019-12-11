@@ -97,7 +97,7 @@ static int db_comdbg_tables(Lua L) {
                 lua_createtable(L, 8, 0); 
 
                 lua_pushstring(L, "tablename");
-                lua_pushstring(L, db->tablename);
+                lua_pushstring(L, db->tablename_ip);
                 lua_settable(L, -3);
 
                 lua_pushstring(L, "dbnum");

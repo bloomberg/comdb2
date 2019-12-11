@@ -56,7 +56,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     char *newname = strdup(s->newtable);
     int rc = 0;
     int bdberr = 0;
-    char *oldname = NULL;
+    const char *oldname = NULL;
 
     assert(s->rename);
     if (!newname) {
@@ -82,19 +82,19 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
                                    db->schema_version, &bdberr);
     if (rc) {
         sc_errf(s, "Failed to rename metadata structure for %s\n",
-                db->tablename);
+                db->tablename_ip);
         goto tran_error;
     }
 
     /* update the table options */
     rc = rename_table_options(tran, db, newname);
     if (rc) {
-        sc_errf(s, "Failed to rename table options for %s\n", db->tablename);
+        sc_errf(s, "Failed to rename table options for %s\n", db->tablename_ip);
         goto tran_error;
     }
 
     /* fragile, handle with care */
-    oldname = db->tablename;
+    oldname = db->tablename_ip;
     rc = rename_db(db, newname);
     if (rc) {
         /* crash the schema change, next master will hopefully have more memory
@@ -114,7 +114,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     /* set table version for the renamed name */
     rc = table_version_set(tran, newname, db->tableversion + 1);
     if (rc) {
-        sc_errf(s, "Failed to set table version for %s\n", db->tablename);
+        sc_errf(s, "Failed to set table version for %s\n", db->tablename_ip);
         goto tran_error;
     }
 
@@ -129,9 +129,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     gbl_sc_commit_count++;
 
     live_sc_off(db);
-
-    if (oldname)
-        free(oldname);
 
     return rc;
 

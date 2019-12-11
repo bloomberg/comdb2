@@ -632,7 +632,7 @@ typedef struct timepart_views timepart_views_t;
 typedef struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
-    char *tablename;
+    const char *tablename_ip; /* intern pointer to tablename */
     struct ireq *iq; /* iq used at sc time */
 
     int dbnum; /* zero unless setup as comdbg table */
@@ -2378,8 +2378,8 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);
 
 struct dbtable *find_table(const char *table);
-int bt_hash_table(char *table, int szkb);
-int del_bt_hash_table(char *table);
+int bt_hash_table(const char *table, int szkb);
+int del_bt_hash_table(const char *table);
 int stat_bt_hash_table(char *table);
 int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
@@ -2387,7 +2387,7 @@ int add_cmacc_stmt(struct dbtable *db, int alt);
 int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
 
 void cleanup_newdb(struct dbtable *);
-struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
+struct dbtable *newdb_from_schema(struct dbenv *env, const char *tblname, char *fname,
                              int dbnum, int dbix, int is_foreign);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
@@ -2397,7 +2397,7 @@ void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int add_db(struct dbtable *db);
-void delete_db(char *db_name);
+void delete_db(const char *db_name);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,

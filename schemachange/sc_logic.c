@@ -229,7 +229,7 @@ static int set_original_tablename(struct schema_change_type *s)
 {
     struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db) {
-        strncpy0(s->tablename, db->tablename, sizeof(s->tablename));
+        strncpy0(s->tablename, db->tablename_ip, sizeof(s->tablename));
         return 0;
     }
     return 1;
@@ -891,14 +891,14 @@ int resume_schema_change(void)
         // unset downgrading flag
         thedb->dbs[i]->sc_downgrading = 0;
 
-        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename_ip,
                                      &packed_sc_data, &packed_sc_data_len,
                                      &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_WARN,
                    "resume_schema_change: failed to discover "
                    "whether table: %s is in the middle of a schema change\n",
-                   thedb->dbs[i]->tablename);
+                   thedb->dbs[i]->tablename_ip);
             continue;
         }
 
@@ -908,7 +908,7 @@ int resume_schema_change(void)
             logmsg(LOGMSG_WARN,
                    "resume_schema_change: table: %s is in the middle of a "
                    "schema change, resuming...\n",
-                   thedb->dbs[i]->tablename);
+                   thedb->dbs[i]->tablename_ip);
 
             s = new_schemachange_type();
             if (!s) {
@@ -928,7 +928,7 @@ int resume_schema_change(void)
             free(packed_sc_data);
 
             if (scabort) {
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename_ip,
                                               NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
@@ -1059,11 +1059,11 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     int bdberr;
     int nbytes;
 
-    nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename);
+    nbytes = snprintf(NULL, 0, "%s%s", prefix, db->tablename_ip);
     if (nbytes <= 0) nbytes = 2;
     nbytes++;
     tmpname = malloc(nbytes);
-    snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename);
+    snprintf(tmpname, nbytes, "%s%s", prefix, db->tablename_ip);
 
     db->handle = NULL;
 
@@ -1244,7 +1244,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
 
     for (i = 0; i < 1000; i++) {
         if (!s->retry_bad_genids)
-            sc_printf(s, "removing temp table for <%s>\n", newdb->tablename);
+            sc_printf(s, "removing temp table for <%s>\n", newdb->tablename_ip);
         if ((rc = bdb_del(newdb->handle, tran, &bdberr)) ||
             bdberr != BDBERR_NOERROR) {
             rc = -1;
@@ -1278,7 +1278,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
     if (rc != 0) {
         sc_errf(s, "Still failed to delete temp table for %s.  I am giving up "
                    "and going home.",
-                newdb->tablename);
+                newdb->tablename_ip);
         iq->usedb = usedb_sav;
         return -1;
     }
@@ -1316,7 +1316,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
     if ((rc = put_db_compress_blobs(db, tran, ba)) != 0) goto out;
     if ((rc = trans_commit(iq, tran, gbl_mynode)) == 0) {
         logmsg(LOGMSG_USER, "%s -- TABLE:%s  REC COMP:%s  BLOB COMP:%s\n",
-               __func__, db->tablename, bdb_algo2compr(ra), bdb_algo2compr(ba));
+               __func__, db->tablename_ip, bdb_algo2compr(ra), bdb_algo2compr(ba));
     } else {
         sbuf2printf(iq->sb, ">%s -- trans_commit rc:%d\n", __func__, rc);
     }
@@ -1440,7 +1440,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 delete_db(s->tablename);
             }
             if (s->newdb) {
-                backout_schemas(s->newdb->tablename);
+                backout_schemas(s->newdb->tablename_ip);
             }
         } else if (s->db) {
             if (s->already_finalized)
@@ -1448,7 +1448,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             else if (s->newdb) {
                 backout_constraint_pointers(s->newdb, s->db);
             }
-            change_schemas_recover(s->db->tablename);
+            change_schemas_recover(s->db->tablename_ip);
         }
         /* TODO: (NC) Also delete view? */
         sc_del_unused_files_tran(s->db, tran);

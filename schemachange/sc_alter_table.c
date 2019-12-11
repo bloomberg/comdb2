@@ -79,7 +79,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
     }
     if (changed < 0) {
         /* some errors during constraint verifications */
-        backout_schemas(newdb->tablename);
+        backout_schemas(newdb->tablename_ip);
         resume_threads(thedb); /* can now restart stopped threads */
 
         /* these checks should be present in dryrun_int as well */
@@ -287,7 +287,7 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
 
 static void backout(struct dbtable *db)
 {
-    backout_schemas(db->tablename);
+    backout_schemas(db->tablename_ip);
     live_sc_off(db);
 }
 
@@ -348,15 +348,15 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
             char namebuf1[128];
             char namebuf2[128];
             form_new_style_name(namebuf1, sizeof(namebuf1), newixs,
-                                newixs->csctag + offset, newdb->tablename);
+                                newixs->csctag + offset, newdb->tablename_ip);
             form_new_style_name(namebuf2, sizeof(namebuf2), oldixs,
-                                oldixs->csctag, olddb->tablename);
+                                oldixs->csctag, olddb->tablename_ip);
             logmsg(LOGMSG_INFO,
                    "ix %d changing name so INSERTING into sqlite_stat* "
                    "idx='%s' where tbl='%s' and idx='%s' \n",
-                   ixnum, newixs->csctag + offset, newdb->tablename,
+                   ixnum, newixs->csctag + offset, newdb->tablename_ip,
                    oldixs->csctag);
-            add_idx_stats(newdb->tablename, namebuf2, namebuf1);
+            add_idx_stats(newdb->tablename_ip, namebuf2, namebuf1);
         }
     }
 }
@@ -417,7 +417,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Internal error\n");
         return SC_INTERNAL_ERROR;
     }
-    newdb->schema_version = get_csc2_version(newdb->tablename);
+    newdb->schema_version = get_csc2_version(newdb->tablename_ip);
 
     newdb->iq = iq;
 
@@ -613,11 +613,11 @@ convert_records:
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
-                  db->tablename, s->convert_sleep);
+                  db->tablename_ip, s->convert_sleep);
         logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
-        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename_ip, s->convert_sleep);
     }
 
 errout:
@@ -730,7 +730,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (newdb->schema_version == 1) {
         /* newdb's version has been reset */
         bdberr =
-            bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
+            bdb_reset_csc2_version(transac, db->tablename_ip, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
@@ -740,7 +740,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* load new csc2 data */
     rc = load_new_table_schema_tran(thedb, transac,
-                                    /*s->tablename*/ db->tablename, s->newcsc2);
+                                    /*s->tablename*/ db->tablename_ip, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");
@@ -788,7 +788,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     fix_constraint_pointers(db, newdb);
 
     /* update tags in memory */
-    commit_schemas(/*s->tablename*/ db->tablename);
+    commit_schemas(/*s->tablename*/ db->tablename_ip);
     update_dbstore(db); // update needs to occur after refresh of hashtbl
 
     MEMORY_SYNC;
@@ -818,11 +818,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename_ip,
                newdb->schema_version);
     }
 
-    llmeta_dump_mapping_table_tran(transac, thedb, db->tablename, 1);
+    llmeta_dump_mapping_table_tran(transac, thedb, db->tablename_ip, 1);
 
     sc_printf(s, "Schema change ok\n");
 
@@ -840,7 +840,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
          BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
         if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
-            rc = table_version_set(transac, db->tablename,
+            rc = table_version_set(transac, db->tablename_ip,
                                    s->usedbtablevers + 1);
             db->tableversion = s->usedbtablevers + 1;
         } else
@@ -851,7 +851,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         }
     } else {
         if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
-            rc = table_version_set(transac, db->tablename, s->usedbtablevers);
+            rc = table_version_set(transac, db->tablename_ip, s->usedbtablevers);
             db->tableversion = s->usedbtablevers;
         } else
             db->tableversion = table_version_select(db, transac);
@@ -863,7 +863,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (olddb_bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->tablename, olddb_bthashsz);
+               db->tablename_ip, olddb_bthashsz);
         bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
     }
 
@@ -892,11 +892,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-    change_schemas_recover(/*s->tablename*/ db->tablename);
+    change_schemas_recover(/*s->tablename*/ db->tablename_ip);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->tablename, db->schema_version, db->instant_schema_change,
+           db->tablename_ip, db->schema_version, db->instant_schema_change,
            db->lrl, db->odh, db->handle);
 
     return -1;
@@ -986,7 +986,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         rc = trans_start_sc(&iq, NULL, &tran);
         if (rc != 0) continue;
 
-        rc = mark_schemachange_over_tran(s->db->tablename, tran);
+        rc = mark_schemachange_over_tran(s->db->tablename_ip, tran);
         if (rc != 0) continue;
 
         rc = trans_commit(&iq, tran, gbl_mynode);

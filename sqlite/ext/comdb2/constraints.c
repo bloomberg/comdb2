@@ -215,7 +215,7 @@ static int systblFKeyConstraintsColumn(sqlite3_vtab_cursor *cur,
         break;
     }
     case STCON_TABLE: {
-        sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+        sqlite3_result_text(ctx, pDb->tablename_ip, -1, NULL);
         break;
     }
     case STCON_KEY: {

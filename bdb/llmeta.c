@@ -1285,7 +1285,7 @@ int bdb_llmeta_set_tables(
                              * transaction for all actions, if it is NULL a
                              * new transaction will be
                              * created internally */
-    char **tblnames,        /* the table names to add */
+    const char **tblnames,  /* the table names to add */
     const int *dbnums,      /* the table's dbnums to add (or 0 if the table
                              * does not have a dbnum */
     int numdbs,             /* number of tables passed in */
@@ -5340,14 +5340,14 @@ backout:
 }
 
 int bdb_tbl_access_write_set(bdb_state_type *bdb_state, tran_type *input_trans,
-                             char *tblname, char *username, int *bdberr)
+                             const char *tblname, char *username, int *bdberr)
 {
     return bdb_tbl_access_set(bdb_state, input_trans, tblname, username,
                               ACCESS_WRITE, bdberr);
 }
 
 int bdb_tbl_access_read_set(bdb_state_type *bdb_state, tran_type *input_trans,
-                            char *tblname, char *username, int *bdberr)
+                            const char *tblname, char *username, int *bdberr)
 {
     return bdb_tbl_access_set(bdb_state, input_trans, tblname, username,
                               ACCESS_READ, bdberr);
@@ -5747,7 +5747,7 @@ int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
-                              char *tblname, char *username, int access_mode,
+                              const char *tblname, char *username, int access_mode,
                               int *bdberr)
 {
     uint8_t key[LLMETA_IXLEN] = {0};
@@ -5788,14 +5788,14 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
 }
 
 int bdb_tbl_access_write_get(bdb_state_type *bdb_state, tran_type *input_trans,
-                             char *tblname, char *username, int *bdberr)
+                             const char *tblname, char *username, int *bdberr)
 {
     return bdb_tbl_access_get(bdb_state, input_trans, tblname, username,
                               ACCESS_WRITE, bdberr);
 }
 
 int bdb_tbl_access_read_get(bdb_state_type *bdb_state, tran_type *input_trans,
-                            char *tblname, char *username, int *bdberr)
+                            const char *tblname, char *username, int *bdberr)
 {
     return bdb_tbl_access_get(bdb_state, input_trans, tblname, username,
                               ACCESS_READ, bdberr);
@@ -8591,7 +8591,7 @@ done:
 }
 
 int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
-                          char *queue, int *bdberr)
+                          const char *queue, int *bdberr)
 {
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_buf, *p_buf_end;
@@ -8663,7 +8663,7 @@ int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
     return rc;
 }
 
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
+int bdb_llmeta_get_queue(const char *qname, char **config, int *ndests, char ***dests,
                          int *bdberr)
 {
     struct queue_key qk = {0};

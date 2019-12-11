@@ -442,7 +442,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 
     tbl->seq = 0;
     tbl->env = env;
-    strncpy0(tbl->tablename, db->tablename, sizeof(tbl->tablename));
+    strncpy0(tbl->tablename, db->tablename_ip, sizeof(tbl->tablename));
     tbl->tableversion = db->tableversion;
     tbl->nix = db->nix;
     tbl->ix_expr = db->ix_expr;
@@ -596,7 +596,7 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-               pCur->db->tablename);
+               pCur->db->tablename_ip);
         return -1;
     }
 
@@ -664,7 +664,7 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-               pCur->db->tablename);
+               pCur->db->tablename_ip);
         return -1;
     }
 
@@ -926,7 +926,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->upd_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-               pCur->db->tablename);
+               pCur->db->tablename_ip);
         return -1;
     }
 
@@ -1075,7 +1075,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-               pCur->db->tablename);
+               pCur->db->tablename_ip);
         return -1;
     }
 
@@ -1442,7 +1442,7 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
 
     LISTC_FOR_EACH(&clnt->osql.shadtbls, tbl, linkv)
     {
-        if (strcasecmp(tbl->tablename, db->tablename) == 0) {
+        if (strcasecmp(tbl->tablename, db->tablename_ip) == 0) {
             ret = tbl;
             break;
         }
@@ -2179,7 +2179,7 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             memcpy(key, thd->clnt->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK",
+            rc = stag_to_stag_buf(pCur->db->tablename_ip, ".ONDISK",
                                   pCur->ondisk_buf, namebuf, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "insert_record:stag_to_stag_buf ix %d\n", ix);
@@ -2275,7 +2275,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
         if (gbl_expressions_indexes && db->ix_expr) {
             memcpy(key, thd->clnt->idxDelete[ix], db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, namebuf, key,
+            rc = stag_to_stag_buf(db->tablename_ip, ".ONDISK", dta, namebuf, key,
                                   NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "%s:stag_to_stag_buf ix %d\n", __func__, ix);
@@ -2702,12 +2702,12 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 
     if (!osql->verify_tbl || !osql->verify_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting verify table for \'%s\'\n",
-               __func__, pCur->db->tablename);
+               __func__, pCur->db->tablename_ip);
         return -1;
     }
 
-    key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    key.tablename_len = strlen(pCur->db->tablename_ip) + 1;
+    strncpy0(key.tablename, pCur->db->tablename_ip, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
@@ -2717,7 +2717,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
-               __func__, pCur->db->tablename);
+               __func__, pCur->db->tablename_ip);
         return -1;
     }
 
@@ -2750,8 +2750,8 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
         return -1;
     }
 
-    key.tablename_len = strlen(pCur->db->tablename) + 1;
-    strncpy0(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    key.tablename_len = strlen(pCur->db->tablename_ip) + 1;
+    strncpy0(key.tablename, pCur->db->tablename_ip, sizeof(key.tablename));
     key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
@@ -2761,7 +2761,7 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     if (packed_key == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: error packing record genid key for table \'%s\'\n",
-               __func__, pCur->db->tablename);
+               __func__, pCur->db->tablename_ip);
         return -1;
     }
 

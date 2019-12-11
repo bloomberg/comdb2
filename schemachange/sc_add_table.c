@@ -55,7 +55,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
     if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
-            newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
+            newdb->tablename_ip, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
@@ -63,7 +63,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle = bdb_open_more_tran(
-            newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
+            newdb->tablename_ip, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
@@ -72,7 +72,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
 
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open table %s/%s, rcode %d\n",
-               thedb->basedir, newdb->tablename, bdberr);
+               thedb->basedir, newdb->tablename_ip, bdberr);
         return SC_BDB_ERROR;
     }
 
@@ -201,7 +201,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
 err:
     newdb->iq = NULL;
-    backout_schemas(newdb->tablename);
+    backout_schemas(newdb->tablename_ip);
     cleanup_newdb(newdb);
     return rc;
 }
@@ -295,7 +295,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
+    if ((rc = bdb_table_version_select(db->tablename_ip, tran, &db->tableversion,
                                        &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
@@ -305,7 +305,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;
         if ((rc = prepare_table_version_one(tran, db, &ver_one))) return rc;
-        add_tag_schema(db->tablename, ver_one);
+        add_tag_schema(db->tablename_ip, ver_one);
     }
 
     gbl_sc_commit_count++;

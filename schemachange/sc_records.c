@@ -93,7 +93,7 @@ static inline void print_final_sc_stat(struct convert_record_data *data)
     sc_printf(
         data->s,
         "[%s] TOTAL converted %lld sc_adds %d sc_updates %d sc_deletess %d\n",
-        data->from->tablename,
+        data->from->tablename_ip,
         data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates +
                                 data->from->sc_deletes),
         data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
@@ -127,7 +127,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
         sc_printf(data->s,
                   "[%s] >> adds %u upds %d dels %u extra genids "
                   "%u\n",
-                  data->from->tablename, data->from->sc_adds,
+                  data->from->tablename_ip, data->from->sc_adds,
                   data->from->sc_updates, data->from->sc_deletes,
                   data->from->sc_adds + data->from->sc_updates);
 
@@ -140,7 +140,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
     sc_printf(data->s,
               "[%s] progress TOTAL %lld +%lld actual "
               "progress total %lld rate %lld r/s\n",
-              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff,
+              data->from->tablename_ip, data->from->sc_nrecs, total_nrecs_diff,
               data->from->sc_nrecs -
                   (data->from->sc_adds + data->from->sc_updates),
               total_nrecs_diff / sc_report_freq);
@@ -209,7 +209,7 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
     if (!s->resume) {
         /* if we may have to resume this schema change, clear the progress in
          * llmeta */
-        if (bdb_clear_high_genid(NULL /*input_trans*/, db->tablename,
+        if (bdb_clear_high_genid(NULL /*input_trans*/, db->tablename_ip,
                                  db->dtastripe, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "init_sc_genids: failed to clear high "
@@ -241,7 +241,7 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             if (rc == 1)
                 sc_genids[stripe] = 0ULL;
         } else
-            rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
+            rc = bdb_get_high_genid(db->tablename_ip, stripe, &sc_genids[stripe],
                                     &bdberr);
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "init_sc_genids: failed to find newest genid for "
@@ -250,7 +250,7 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             free(rec);
             return -1;
         }
-        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", db->tablename,
+        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", db->tablename_ip,
                   stripe, sc_genids[stripe]);
     }
 
@@ -423,7 +423,7 @@ static int report_sc_progress(struct convert_record_data *data, int now)
         sc_printf(data->s,
                   "[%s] progress stripe %d changed genids %u progress %lld"
                   " recs +%lld (%lld r/s)\n",
-                  data->from->tablename, data->stripe, data->n_genids_changed,
+                  data->from->tablename_ip, data->stripe, data->n_genids_changed,
                   data->nrecs, diff_nrecs, diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
@@ -460,7 +460,7 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
         /* convert current.  this converts blob fields, but we need to make sure
          * we add the right blobs separately. */
         rc = convert_server_record_cachedmap(
-            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
+            data->to->tablename_ip, data->tagmap, dta, data->rec->recbuf, data->s,
             data->from->schema, data->to->schema, data->wrblb,
             sizeof(data->wrblb) / sizeof(data->wrblb[0]));
         if (rc) {
@@ -689,7 +689,7 @@ static int convert_record(struct convert_record_data *data)
                 sc_printf(
                     data->s,
                     "[%s] finished converting stripe %d, last genid %llx\n",
-                    data->from->tablename, data->stripe,
+                    data->from->tablename_ip, data->stripe,
                     data->sc_genids[data->stripe]);
                 return 0;
             }
@@ -709,13 +709,13 @@ static int convert_record(struct convert_record_data *data)
             rc = 0;
             if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
+                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename_ip,
                                                data->stripe, -1ULL, &bdberr);
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
             sc_printf(data->s,
                       "[%s] finished stripe %d, setting genid %llx, rc %d\n",
-                      data->from->tablename, data->stripe,
+                      data->from->tablename_ip, data->stripe,
                       data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
@@ -845,7 +845,7 @@ static int convert_record(struct convert_record_data *data)
             return -2;
         }
         rc = check_and_repair_blob_consistency(
-            &data->iq, data->iq.usedb->tablename, ".ONDISK", &data->blb, dta);
+            &data->iq, data->iq.usedb->tablename_ip, ".ONDISK", &data->blb, dta);
 
         if (data->s->force_rebuild || data->s->use_old_blobs_on_rebuild) {
             for (int ii = 0; ii < data->from->numblobs; ii++) {
@@ -949,7 +949,7 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->to->tablename_ip, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
@@ -1138,7 +1138,7 @@ void *convert_records_thd(struct convert_record_data *data)
     data->outrc = -1;
     data->curkey = data->key1;
     data->lastkey = data->key2;
-    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to->tablename_ip, ".NEW..ONDISK");
     data->dta_buf = malloc(data->from->lrl);
     if (!data->dta_buf) {
         sc_errf(data->s, "convert_records_thd: ran out of memory trying to "
@@ -1222,7 +1222,7 @@ cleanup:
         sc_printf(data->s,
                   "[%s] successfully converted %lld records with %d retries "
                   "stripe %d\n",
-                  data->from->tablename, data->nrecs, data->totnretries,
+                  data->from->tablename_ip, data->nrecs, data->totnretries,
                   data->stripe);
     } else {
         if (gbl_sc_abort || data->from->sc_abort ||
@@ -1310,18 +1310,18 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         for (ii = 0; ii < data.blb.numcblobs; ii++) {
             data.blb.cblob_disk_ixs[ii] = ii;
             data.blb.cblob_tag_ixs[ii] =
-                get_schema_blob_field_idx(data.from->tablename, ".ONDISK", ii);
+                get_schema_blob_field_idx(data.from->tablename_ip, ".ONDISK", ii);
         }
         for (ii = 0; ii < data.to->numblobs; ii++) {
             int map;
             map =
-                tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
-                                           ii, data.from->tablename, ".ONDISK");
+                tbl_blob_no_to_tbl_blob_no(data.to->tablename_ip, ".NEW..ONDISK",
+                                           ii, data.from->tablename_ip, ".ONDISK");
             if (map < 0 && map != -3) {
                 sc_errf(data.s,
                         "convert_all_records: error mapping blob %d "
                         "from %s:%s to %s:%s blob_no_to_blob_no rcode %d\n",
-                        ii, data.from->tablename, ".ONDISK", data.to->tablename,
+                        ii, data.from->tablename_ip, ".ONDISK", data.to->tablename_ip,
                         ".NEW..ONDISK", map);
                 return -1;
             }
@@ -1476,14 +1476,14 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             if (sc_genids[ii] == -1ULL) {
                 sc_printf(threadData[ii].s, "[%s] stripe %d was done\n",
-                          from->tablename, threadData[ii].stripe);
+                          from->tablename_ip, threadData[ii].stripe);
                 threadSkipped[ii] = 1;
                 continue;
             } else
                 threadSkipped[ii] = 0;
 
             sc_printf(threadData[ii].s, "[%s] starting thread for stripe: %d\n",
-                      from->tablename, threadData[ii].stripe);
+                      from->tablename_ip, threadData[ii].stripe);
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
@@ -1496,7 +1496,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 sc_errf(threadData[ii].s,
                         "[%s] starting thread failed for"
                         " stripe: %d with return code: %d\n",
-                        from->tablename, threadData[ii].stripe, rc);
+                        from->tablename_ip, threadData[ii].stripe, rc);
 
                 outrc = -1;
                 break;
@@ -1554,7 +1554,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     if (s->logical_livesc) {
         if (outrc == 0) {
             sc_printf(s, "[%s] All convert threads finished\n",
-                      from->tablename);
+                      from->tablename_ip);
         }
         stop_sc_redo_wait(from->handle, s);
     }
@@ -1918,7 +1918,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             thread_data[idx] = data;
             thread_data[idx].stripe = idx;
             sc_printf(thread_data[idx].s,
-                      "[%s] starting thread for stripe: %d\n", db->tablename,
+                      "[%s] starting thread for stripe: %d\n", db->tablename_ip,
                       thread_data[idx].stripe);
 
             rc = pthread_create(&thread_data[idx].tid, &attr,
@@ -2462,7 +2462,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                               "add key constraint duplicate key '%s' on table "
                               "'%s' index %d",
                               get_keynm_from_db_idx(data->to, ixfailnum),
-                              data->to->tablename, ixfailnum);
+                              data->to->tablename_ip, ixfailnum);
                 else
                     reqerrstr(data->s->iq, ERR_SC,
                               "unable to add record rc = %d", rc);
@@ -2476,7 +2476,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!is_dta_being_rebuilt(data->to->plan)) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+        rc = bdb_set_high_genid(data->trans, data->to->tablename_ip, genid,
                                 &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
@@ -3156,7 +3156,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
     /* init all buffer needed by this thread to do logical redo so we don't need
      * to malloc & free every single time */
-    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to->tablename_ip, ".NEW..ONDISK");
     data->iq.usedb = data->to;
     data->blob_hash = hash_init_o(offsetof(struct blob_recs, genid),
                                   sizeof(unsigned long long));
@@ -3347,7 +3347,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             sc_printf(s,
                       "[%s] logical redo at LSN [%u][%u] transactions done "
                       "+%lld (%lld txn/s). Redo List Size: %d\n",
-                      data->from->tablename, curLsn.file, curLsn.offset,
+                      data->from->tablename_ip, curLsn.file, curLsn.offset,
                       diff_nrecs, diff_nrecs / copy_sc_report_freq,
                       sc_redo_size(bdb_state));
         }

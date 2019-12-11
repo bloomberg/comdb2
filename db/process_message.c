@@ -371,7 +371,7 @@ void print_dbs(struct dbenv *dbenv)
     for (i = 0; i < dbenv->num_dbs; i++) {
         if (dbenv->dbs[i]->dbnum > 0)
             logmsg(LOGMSG_USER, "managing db %-5d '%s'\n", dbenv->dbs[i]->dbnum,
-                   dbenv->dbs[i]->tablename);
+                   dbenv->dbs[i]->tablename_ip);
     }
 }
 
@@ -1694,9 +1694,9 @@ clipper_usage:
             for (ii = 0; ii < thedb->num_dbs; ii++) {
                 if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
                     int version;
-                    version = get_csc2_version(thedb->dbs[ii]->tablename);
+                    version = get_csc2_version(thedb->dbs[ii]->tablename_ip);
                     logmsg(LOGMSG_USER, "table %s is at csc2 version %d\n",
-                           thedb->dbs[ii]->tablename, version);
+                           thedb->dbs[ii]->tablename_ip, version);
                 }
             }
         } else if (tokcmp(tok, ltok, "dumpcsc2") == 0) {
@@ -1727,10 +1727,10 @@ clipper_usage:
             } else {
                 char *csc2 = NULL;
                 int rc, len;
-                rc = get_csc2_file(db->tablename, version, &csc2, &len);
+                rc = get_csc2_file(db->tablename_ip, version, &csc2, &len);
                 logmsg(LOGMSG_ERROR,
                        "Table '%s' get schema returned rcode %d\n",
-                       db->tablename, rc);
+                       db->tablename_ip, rc);
                 if (csc2) {
                     logmsg(LOGMSG_USER, "%s\n", csc2);
                     free(csc2);
@@ -2287,7 +2287,7 @@ clipper_usage:
         /* All tables */
         for (idb = 0; idb < dbenv->num_dbs; idb++) {
             db = dbenv->dbs[idb];
-            if (bt_hash_table(db->tablename, szkb) != 0)
+            if (bt_hash_table(db->tablename_ip, szkb) != 0)
                 return -1;
         }
 
@@ -2325,7 +2325,7 @@ clipper_usage:
         /* All tables */
         for (idb = 0; idb < dbenv->num_dbs; idb++) {
             db = dbenv->dbs[idb];
-            if (del_bt_hash_table(db->tablename) != 0)
+            if (del_bt_hash_table(db->tablename_ip) != 0)
                 return -1;
         }
 
@@ -2393,7 +2393,7 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "dumptags") == 0) {
         int i;
         for (i = 0; i < thedb->num_dbs; i++)
-            debug_dump_tags(thedb->dbs[i]->tablename);
+            debug_dump_tags(thedb->dbs[i]->tablename_ip);
     } else if (tokcmp(tok, ltok, "screportfreq") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
@@ -3233,7 +3233,7 @@ clipper_usage:
                 rc = bdb_find_oldest_genid(iq.usedb->handle, NULL, stripe, buf,
                                            &reclen, 64 * 1024, &genid, &ver,
                                            &bdberr);
-                logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename,
+                logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename_ip,
                        stripe);
                 if (rc == 0)
                    logmsg(LOGMSG_USER, "%016llx %d", genid, bdb_genid_timestamp(genid));
@@ -3738,7 +3738,7 @@ clipper_usage:
             logmsg(LOGMSG_USER,
                    "table:%s  odh:%s  instant_schema_change:%s  "
                    "inplace_updates:%s  version:%d\n",
-                   db->tablename, YESNO(db->instant_schema_change),
+                   db->tablename_ip, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh),
                    db->schema_version);
         } else {
@@ -3938,9 +3938,8 @@ clipper_usage:
             /* All tables */
             for (ii = 0; ii < dbenv->num_dbs; ii++) {
                 db = dbenv->dbs[ii];
-                table = db->tablename;
                 int pgscan = bdb_get_page_scan_for_table(db->handle);
-                logmsg(LOGMSG_USER, "Page-order tablescan for table '%s' is %s\n", table,
+                logmsg(LOGMSG_USER, "Page-order tablescan for table '%s' is %s\n", db->tablename_ip,
                        pgscan ? "enabled" : "disabled");
             }
 
@@ -4317,7 +4316,7 @@ clipper_usage:
         logmsg(LOGMSG_USER, "%-30s %10s\n", "table", "localrep?");
         for (i = 0; i < thedb->num_dbs; i++) {
             db = thedb->dbs[i];
-            logmsg(LOGMSG_USER, "%-30s %10s\n", db->tablename,
+            logmsg(LOGMSG_USER, "%-30s %10s\n", db->tablename_ip,
                    db->do_local_replication ? "YES" : "NO");
         }
     } else if (tokcmp(tok, ltok, "transtat") == 0) {
@@ -5013,14 +5012,14 @@ static void dump_table_sizes(struct dbenv *dbenv)
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
         total += calc_table_size(db, 0);
-        len = strlen(db->tablename);
+        len = strlen(db->tablename_ip);
         if (len > maxtblname)
             maxtblname = len;
     }
     for (ndb = 0; ndb < dbenv->num_qdbs; ndb++) {
         db = dbenv->qdbs[ndb];
         total += calc_table_size(db, 0);
-        len = strlen(db->tablename);
+        len = strlen(db->tablename_ip);
         if (len > maxtblname)
             maxtblname = len;
     }
@@ -5035,7 +5034,7 @@ static void dump_table_sizes(struct dbenv *dbenv)
         else
             percent = 0;
         logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname,
-               db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               db->tablename_ip, fmt_size(b, sizeof(b), db->totalsize),
                (int)percent);
         logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
         for (ii = 0; ii < db->nix; ii++) {
@@ -5055,7 +5054,7 @@ static void dump_table_sizes(struct dbenv *dbenv)
         else
             percent = 0;
         logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n",
-               maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               maxtblname, db->tablename_ip, fmt_size(b, sizeof(b), db->totalsize),
                (int)percent, db->numextents);
     }
     if (total > 0)
@@ -5088,7 +5087,7 @@ void ixstats(struct dbenv *dbenv)
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
-        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename);
+        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename_ip);
         for (ix = 0; ix < db->nix; ix++) {
             logmsg(LOGMSG_USER, "  ix %2d:   %lld steps  %lld sql steps\n", ix,
                    db->ixuse[ix], db->sqlixuse[ix]);
@@ -5103,7 +5102,7 @@ void curstats(struct dbenv *dbenv)
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
-        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->tablename,
+        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->tablename_ip,
                db->sqlcur_ix, db->sqlcur_cur);
     }
 }

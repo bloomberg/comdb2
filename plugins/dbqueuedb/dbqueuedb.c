@@ -213,7 +213,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
 
     if (!checkonly && db && (db->dbtype != DBTYPE_QUEUEDB)) {
         logmsg(LOGMSG_ERROR, "%s: %s is not a queue\n", __func__,
-               db->tablename);
+               db->tablename_ip);
         rc = -1;
         goto done;
     }
@@ -221,7 +221,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     if (!checkonly && (consumern < 0 || consumern >= MAXCONSUMERS)) {
         logmsg(LOGMSG_ERROR,
                "%s: %s consumer number %d out of range\n",
-               __func__, db->tablename, consumern);
+               __func__, db->tablename_ip, consumern);
         rc = -1;
         goto done;
     }
@@ -231,7 +231,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
             logmsg(
                 LOGMSG_ERROR,
                 "%s: %s consumer number %d in use already\n",
-                __func__, db->tablename, consumern);
+                __func__, db->tablename_ip, consumern);
             rc = -1;
             goto done;
         } else {
@@ -276,7 +276,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     } else {
         logmsg(LOGMSG_ERROR, "%s: %s consumer number %d has "
                              "unknown delivery method '%s'\n",
-               __func__, db->tablename, consumern, method);
+               __func__, db->tablename_ip, consumern, method);
         free(consumer);
         rc = -1;
         goto done;
@@ -328,7 +328,7 @@ static int set_consumern_options(struct dbtable *db, int consumern,
         return set_consumer_options(consumer, opts);
     else {
         logmsg(LOGMSG_ERROR, "Bad consumer number %d for queue %s\n", consumern,
-               db->tablename);
+               db->tablename_ip);
         return -1;
     }
 }
@@ -348,7 +348,7 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
     tok = strtok_r(copy, delims, &lasts);
     while (tok) {
         logmsg(LOGMSG_USER, "Queue %s consumer %d option '%s'\n",
-               consumer->db->tablename, consumer->consumern, tok);
+               consumer->db->tablename_ip, consumer->consumern, tok);
 
         tok = strtok_r(NULL, delims, &lasts);
     }
@@ -526,7 +526,7 @@ static int stat_callback(int consumern, size_t length,
 static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
-        logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
+        logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename_ip);
     else {
         int ii;
         struct ireq iq;
@@ -540,14 +540,14 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
         iq.usedb = db;
 
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
-               db->tablename);
+               db->tablename_ip);
         if (!walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
         dbq_walk(&iq, flags, stat_callback, stats);
 
-        logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
+        logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename_ip);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
         logmsg(LOGMSG_USER, "  geese consumed  %u\n", db->num_goose_consumes);
         logmsg(LOGMSG_USER, "  bdb get bdbstats   %u log %u phys\n",
@@ -689,7 +689,7 @@ static void queue_flush(struct dbtable *db, int consumern)
     iq.usedb = db;
 
     logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
-           db->tablename, consumern);
+           db->tablename_ip, consumern);
 
     if (db->dbenv->master != gbl_mynode) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
@@ -727,7 +727,7 @@ static void queue_flush(struct dbtable *db, int consumern)
 
     logmsg(LOGMSG_INFO,
            "Done flush for queue '%s' consumer %d, flushed %d items\n",
-           db->tablename, consumern, nflush);
+           db->tablename_ip, consumern, nflush);
 }
 
 struct flush_thd_data {

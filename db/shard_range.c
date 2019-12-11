@@ -50,7 +50,7 @@ void shard_range_create(struct Parse *pParser, const char *tblname,
     if (!db)
         return;
 
-    pTab = sqlite3FindTableCheckOnly(pParser->db, db->tablename, "main");
+    pTab = sqlite3FindTableCheckOnly(pParser->db, db->tablename_ip, "main");
     if (!pTab)
         abort(); /* this should not happen, we are past table lookup */
 
@@ -174,7 +174,7 @@ int comdb2_shard_table_constraints(Parse *pParser, const char *zName,
         return SHARD_NOERR;
 
     /* get the table */
-    pTab = sqlite3FindTableCheckOnly(pParser->db, db->tablename, "main");
+    pTab = sqlite3FindTableCheckOnly(pParser->db, db->tablename_ip, "main");
 
 #if 0
     /* limits, limits */

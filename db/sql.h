@@ -514,7 +514,7 @@ int get_client_retries(struct sqlclntstate *);
 
 struct clnt_ddl_context {
     /* Name of the table */
-    char *name;
+    const char *name;
     /* Pointer to a comdb2_ddl_context */
     void *ctx;
     /* Memory allocator of the comdb2_ddl_context */

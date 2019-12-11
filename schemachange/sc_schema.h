@@ -88,6 +88,6 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 
 int self_referenced_only(struct dbtable *db);
 
-void change_schemas_recover(char *table);
+void change_schemas_recover(const char *table);
 
 #endif

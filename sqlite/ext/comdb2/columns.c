@@ -139,7 +139,7 @@ static int systblColumnsColumn(
 
   switch( i ){
     case STCOL_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename_ip, -1, NULL);
       break;
     }
     case STCOL_COLUMN: {

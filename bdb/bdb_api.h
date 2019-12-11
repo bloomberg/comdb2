@@ -1360,7 +1360,7 @@ int bdb_get_checkpoint_time(bdb_state_type *bdb_state);
 int bdb_have_llmeta();
 int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
                     int create_override, int *bdberr);
-int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,
+int bdb_llmeta_set_tables(tran_type *input_trans, const char **tblnames,
                           const int *dbnums, int numdbs, int *bdberr);
 int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
                           size_t maxnumtbls, int *fndnumtbls, int *bdberr);
@@ -1645,14 +1645,14 @@ enum {
 };
 
 int bdb_tbl_access_write_set(bdb_state_type *bdb_state, tran_type *input_trans,
-                             char *tblname, char *username, int *bdberr);
+                             const char *tblname, char *username, int *bdberr);
 int bdb_tbl_access_write_get(bdb_state_type *bdb_state, tran_type *input_trans,
-                             char *tblname, char *username, int *bdberr);
+                             const char *tblname, char *username, int *bdberr);
 
 int bdb_tbl_access_read_set(bdb_state_type *bdb_state, tran_type *input_trans,
-                            char *tblname, char *username, int *bdberr);
+                            const char *tblname, char *username, int *bdberr);
 int bdb_tbl_access_read_get(bdb_state_type *bdb_state, tran_type *input_trans,
-                            char *tblname, char *username, int *bdberr);
+                            const char *tblname, char *username, int *bdberr);
 
 int bdb_tbl_access_userschema_set(bdb_state_type *bdb_state,
                                   tran_type *input_trans, const char *schema,
@@ -1734,9 +1734,9 @@ int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
 unsigned long long get_id(bdb_state_type *bdb_state);
 int bdb_access_tbl_write_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
-                                     char *table, int hostnum, int *bdberr);
+                                     const char *table, int hostnum, int *bdberr);
 int bdb_access_tbl_read_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
-                                    char *table, int hostnum, int *bdberr);
+                                    const char *table, int hostnum, int *bdberr);
 int bdb_flush_up_to_lsn(bdb_state_type *bdb_state, unsigned file,
                         unsigned offset);
 int bdb_set_parallel_recovery_threads(bdb_state_type *bdb_state, int nthreads);
@@ -1998,7 +1998,7 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);
 int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
                           int *fnd_queues, int *bdberr);
 /* get info for a queue */
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
+int bdb_llmeta_get_queue(const char *qname, char **config, int *ndests, char ***dests,
                          int *bdberr);
 
 /* manipulate queues */
@@ -2009,7 +2009,7 @@ int bdb_llmeta_alter_queue(bdb_state_type *bdb_state, tran_type *tran,
                            char *queue, char *config, int ndests, char **dests,
                            int *bdberr);
 int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
-                          char *queue, int *bdberr);
+                          const char *queue, int *bdberr);
 
 #include "bdb_queuedb.h"
 
@@ -2053,7 +2053,7 @@ int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
-                              char *table, int access_type, int *bdberr);
+                              const char *table, int access_type, int *bdberr);
 int bdb_first_user_get(bdb_state_type *bdb_state, tran_type *tran,
                        char *key_out, char *user_out, int *isop, int *bdberr);
 int bdb_next_user_get(bdb_state_type *bdb_state, tran_type *tran, char *key,

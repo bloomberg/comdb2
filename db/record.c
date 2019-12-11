@@ -153,7 +153,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
@@ -229,7 +229,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
     if (rc != 0) {
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
                   "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
@@ -246,7 +246,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     /* Tweak blob-descriptors for static tags. */
     if (gbl_disallow_null_blobs && !dynschema &&
         (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) {
-        static_tag_blob_conversion(iq->usedb->tablename, tag, record, blobs,
+        static_tag_blob_conversion(iq->usedb->tablename_ip, tag, record, blobs,
                                    maxblobs);
     }
 
@@ -255,11 +255,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         prefixes++;
     }
 
-    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename_ip, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
             reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                      iq->usedb->tablename);
+                      iq->usedb->tablename_ip);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -283,7 +283,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (iq->debug)
                 reqprintf(iq, "BAD DTA LEN %zu TAG %s EXPECTS DTALEN %u\n",
                           reclen, tag, expected_dat_len);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
                       "bad data length %zu tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
@@ -296,9 +296,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     reclen = expected_dat_len;
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
-        (rc = check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
+        (rc = check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename_ip, tag,
                                  dbname_schema, record, fldnullmap)) != 0) {
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
@@ -331,7 +331,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (od_len_int <= 0) {
             if (iq->debug)
                 reqprintf(iq, "BAD ONDISK SIZE");
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA, "bad ondisk size");
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -343,7 +343,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (!allocced_memory) {
             logmsg(LOGMSG_ERROR,
                    "add_record: malloc %u failed! (table %s tag %s)\n",
-                   (unsigned)od_len, iq->usedb->tablename, tag);
+                   (unsigned)od_len, iq->usedb->tablename_ip, tag);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
             ERR;
@@ -355,18 +355,18 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             conv_flags |= CONVERT_LITTLE_ENDIAN_CLIENT;
         }
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename_ip, tag, record,
                                    WHOLE_BUFFER, fldnullmap, ondisktag, od_dta,
                                    conv_flags, &reason /*fail reason*/, blobs,
                                    maxblobs, iq->tzname);
         if (rc == -1) {
             char str[128];
-            convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
+            convert_failure_reason_str(&reason, iq->usedb->tablename_ip, tag,
                                        ondisktag, str, sizeof(str));
             if (iq->debug) {
                 reqprintf(iq, "ERR CONVERT DTA %s->%s '%s'", tag, ondisktag, str);
             }
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
                       "error convert data %s->.ONDISK '%s'", tag, str);
             *opfailcode = OP_FAILED_CONVERSION;
@@ -374,7 +374,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             ERR;
         }
 
-        ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
+        ondisktagsc = find_tag_schema(iq->usedb->tablename_ip, ondisktag);
     }
 
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
@@ -484,9 +484,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         bool reorder =
             osql_is_index_reorder_on(iq->osql_flags) && !is_event_from_sc(flags) &&
             rec_flags == 0 && iq->usedb->sc_from != iq->usedb &&
-            strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
-            strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
-            strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
+            strcasecmp(iq->usedb->tablename_ip, "comdb2_oplog") != 0 &&
+            strcasecmp(iq->usedb->tablename_ip, "comdb2_commit_log") != 0 &&
+            strncasecmp(iq->usedb->tablename_ip, "sqlite_stat", 11) != 0;
 
         if (reorder)
             rec_flags |= OSQL_ITEM_REORDERED;
@@ -536,7 +536,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (!(flags & RECFLAGS_NO_TRIGGERS) &&
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_ADD)) {
         struct javasp_rec *jrec;
-        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename_ip);
         if (!jrec) {
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
@@ -559,7 +559,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
         retrc =
             javasp_trans_tagged_trigger(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_ADD,
-                                        NULL, jrec, iq->usedb->tablename);
+                                        NULL, jrec, iq->usedb->tablename_ip);
         javasp_dealloc_rec(jrec);
         if (iq->debug)
             reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", retrc);
@@ -571,9 +571,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     /* Save the op to replay later locally */
     if (gbl_replicate_local &&
-        (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
-         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
+        (strcasecmp(iq->usedb->tablename_ip, "comdb2_oplog") != 0 &&
+         (strcasecmp(iq->usedb->tablename_ip, "comdb2_commit_log")) != 0 &&
+         strncasecmp(iq->usedb->tablename_ip, "sqlite_stat", 11) != 0) &&
         !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add(iq, trans, od_dta, blobs, opfailcode);
         if (retrc)
@@ -613,7 +613,7 @@ err:
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
     if (dynschema)
-        free_dynamic_schema(iq->usedb->tablename, dynschema);
+        free_dynamic_schema(iq->usedb->tablename_ip, dynschema);
     if (using_myblobs)
         free_blob_buffers(myblobs, MAXBLOBS);
     if (iq->is_block2positionmode) {
@@ -752,7 +752,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
@@ -798,16 +798,16 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     /* Tweak blob-descriptors for static tags. */
     if (gbl_disallow_null_blobs && !dynschema &&
         (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) {
-        static_tag_blob_conversion(iq->usedb->tablename, tag, record, blobs,
+        static_tag_blob_conversion(iq->usedb->tablename_ip, tag, record, blobs,
                                    maxblobs);
     }
 
-    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename_ip, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
             if (iq->debug)
                 reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+                          iq->usedb->tablename_ip);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -841,7 +841,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     reclen = expected_dat_len;
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
-        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
+        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename_ip, tag,
                            dbname_schema, record, fldnullmap) != 0) {
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
@@ -877,7 +877,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (!allocced_memory) {
         logmsg(LOGMSG_ERROR,
                "upd_record: malloc %u failed! (table %s tag %s)\n",
-               (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
+               (unsigned)mallocced_bytes, iq->usedb->tablename_ip, tag);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
         goto err;
@@ -899,7 +899,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
      */
     if (vrecord && !primkey) {
         static unsigned char nullnulls[32] = {0};
-        rc = ctag_to_stag_buf_tz(iq->usedb->tablename, tag, vrecord, reclen,
+        rc = ctag_to_stag_buf_tz(iq->usedb->tablename_ip, tag, vrecord, reclen,
                                  nullnulls, ".ONDISK_IX_0", lclprimkey,
                                  conv_flags, NULL, iq->tzname);
         if (rc < 0) {
@@ -1006,11 +1006,11 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (strncasecmp(tag, ".ONDISK", 7) == 0) {
             /* the input record is .ONDISK or a .ONDISK_IX_ (which would be the
              * case for a cascaded update) */
-            rc = stag_to_stag_buf_update_tz(iq->usedb->tablename, tag, vrecord,
+            rc = stag_to_stag_buf_update_tz(iq->usedb->tablename_ip, tag, vrecord,
                                             ".ONDISK", odv_dta, NULL,
                                             iq->tzname);
         } else {
-            rc = ctag_to_stag_buf_tz(iq->usedb->tablename, tag, vrecord,
+            rc = ctag_to_stag_buf_tz(iq->usedb->tablename_ip, tag, vrecord,
                                      WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                      odv_dta, (conv_flags | CONVERT_UPDATE),
                                      NULL, iq->tzname);
@@ -1054,11 +1054,11 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (strncasecmp(tag, ".ONDISK", 7) == 0) {
             /* the input record is .ONDISK or a .ONDISK_IX_ (which would be the
              * case for a cascaded update) */
-            rc = stag_to_stag_buf_update_tz(iq->usedb->tablename, tag, record,
+            rc = stag_to_stag_buf_update_tz(iq->usedb->tablename_ip, tag, record,
                                             ".ONDISK", od_dta, &reason,
                                             iq->tzname);
         } else {
-            rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+            rc = ctag_to_stag_blobs_tz(iq->usedb->tablename_ip, tag, record,
                                        WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                        od_dta, (conv_flags | CONVERT_UPDATE),
                                        &reason, blobs, maxblobs, iq->tzname);
@@ -1066,7 +1066,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         /* used for schema-change */
         if (record != NULL && (NULL == updCols) &&
-            (0 == describe_update_columns(iq->usedb->tablename, tag,
+            (0 == describe_update_columns(iq->usedb->tablename_ip, tag,
                                           myupdatecols))) {
             using_myupdatecols = 1;
             updCols = myupdatecols;
@@ -1074,7 +1074,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         if (rc < 0) {
             char str[128];
-            convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
+            convert_failure_reason_str(&reason, iq->usedb->tablename_ip, tag,
                                        ".ONDISK", str, sizeof(str));
             if (iq->debug) {
                 reqprintf(iq, "ERR CONVERT DTA %s->.ONDISK '%s'", tag, str);
@@ -1092,7 +1092,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                     iq,
                     "Null constraint violation for column '%s' on table '%s'. ",
                     reason.target_schema->member[reason.target_field_idx].name,
-                    iq->usedb->tablename);
+                    iq->usedb->tablename_ip);
             } else {
                 *opfailcode = OP_FAILED_CONVERSION;
                 retrc = ERR_CONVERT_DTA;
@@ -1127,7 +1127,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 int idx;
                 int ncols;
 
-                idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
+                idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
                                                 ".ONDISK", blobno);
                 ncols = updCols[0];
 
@@ -1184,9 +1184,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (gbl_replicate_local &&
-        (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
-         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
+        (strcasecmp(iq->usedb->tablename_ip, "comdb2_oplog") != 0 &&
+         (strcasecmp(iq->usedb->tablename_ip, "comdb2_commit_log")) != 0 &&
+         strncasecmp(iq->usedb->tablename_ip, "sqlite_stat", 11) != 0) &&
         !is_event_from_sc(flags)) {
 
         retrc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
@@ -1282,7 +1282,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             int idx;
             int ncols;
 
-            idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
+            idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
                                             ".ONDISK", blobno);
             ncols = updCols[0];
 
@@ -1414,9 +1414,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     /* TODO: largely copy and paste from the add case, with some complexities.
      * functionalize the bastard */
     if (gbl_replicate_local &&
-        (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
-         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
+        (strcasecmp(iq->usedb->tablename_ip, "comdb2_oplog") != 0 &&
+         (strcasecmp(iq->usedb->tablename_ip, "comdb2_commit_log")) != 0 &&
+         strncasecmp(iq->usedb->tablename_ip, "sqlite_stat", 11) != 0) &&
         !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
                                                    opfailcode);
@@ -1434,12 +1434,12 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         blob_status_t new_rec_blobs = {0};
 
         /* old record no longer exists - don't set trans or rrn */
-        joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb->tablename);
+        joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb->tablename_ip);
         javasp_rec_set_blobs(joldrec, &oldblobs);
         javasp_rec_set_trans(joldrec, iq->jsph, rrn, vgenid);
 
         /* new record now exists on disk */
-        jnewrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jnewrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename_ip);
 
         /* we also need to pass down blobs.  not all of them are necessarily
            specified in the 'blobs' variable (eg: static tag that omits a blob)
@@ -1450,7 +1450,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         javasp_rec_set_trans(jnewrec, iq->jsph, rrn, vgenid);
         rc =
             javasp_trans_tagged_trigger(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_UPD,
-                                        joldrec, jnewrec, iq->usedb->tablename);
+                                        joldrec, jnewrec, iq->usedb->tablename_ip);
         javasp_dealloc_rec(joldrec);
         javasp_dealloc_rec(jnewrec);
         free_blob_status_data(&new_rec_blobs);
@@ -1499,7 +1499,7 @@ err:
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
     if (dynschema)
-        free_dynamic_schema(iq->usedb->tablename, dynschema);
+        free_dynamic_schema(iq->usedb->tablename_ip, dynschema);
     if (using_myblobs)
         free_blob_buffers(myblobs, MAXBLOBS);
     if (iq->is_block2positionmode) {
@@ -1554,7 +1554,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
@@ -1562,7 +1562,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (od_len_int <= 0) {
         if (iq->debug)
             reqprintf(iq, "BAD ONDISK SIZE");
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_DEL_RC_INVL_DTA, "bad ondisk size");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
@@ -1640,7 +1640,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (iq->debug)
             reqprintf(iq, "FIND OLD RECORD FAILED od_len %zu fndlen %u RC %d",
                       od_len, fndlen, rc);
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_DEL_RC_UNKN_REC, "find old record failed");
         *opfailcode = OP_FAILED_VERIFY;
         if (rc == RC_INTERNAL_RETRY)
@@ -1684,7 +1684,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (rc != 0) {
             if (iq->debug)
                 reqprintf(iq, "FAILED TO VERIFY CONSTRAINTS");
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_DEL_RC_VFY_CSTRT,
                       "failed to verify constraints");
             retrc = *opfailcode;
@@ -1693,9 +1693,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (gbl_replicate_local &&
-        (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
-         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
+        (strcasecmp(iq->usedb->tablename_ip, "comdb2_oplog") != 0 &&
+         (strcasecmp(iq->usedb->tablename_ip, "comdb2_commit_log")) != 0 &&
+         strncasecmp(iq->usedb->tablename_ip, "sqlite_stat", 11) != 0) &&
         !is_event_from_sc(flags)) {
         retrc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
         if (retrc)
@@ -1744,12 +1744,12 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (!(flags & RECFLAGS_NO_TRIGGERS) &&
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_DEL)) {
         struct javasp_rec *jrec;
-        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename_ip);
         javasp_rec_set_trans(jrec, iq->jsph, rrn, genid);
         javasp_rec_set_blobs(jrec, &oldblobs);
         rc =
             javasp_trans_tagged_trigger(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_DEL,
-                                        jrec, NULL, iq->usedb->tablename);
+                                        jrec, NULL, iq->usedb->tablename_ip);
         javasp_dealloc_rec(jrec);
         if (iq->debug)
             reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_DEL %d", rc);
@@ -1837,7 +1837,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
@@ -1868,7 +1868,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     }
 
     /* Remap the incoming updCols to new schema's updCols */
-    rc = remap_update_columns(iq->usedb->tablename, ".ONDISK", updCols,
+    rc = remap_update_columns(iq->usedb->tablename_ip, ".ONDISK", updCols,
                               ".NEW..ONDISK", myupdatecols);
     if (iq->debug) {
         reqprintf(iq, "upd_new_record returns %d", rc);
@@ -1883,7 +1883,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         goto err;
     }
 
-    struct schema *fromsch = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    struct schema *fromsch = find_tag_schema(iq->usedb->tablename_ip, ".ONDISK");
 
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
         if (!verify_retry) {
@@ -1906,7 +1906,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
 
-        rc = stag_to_stag_buf_tz(fromsch, iq->usedb->tablename, ".ONDISK",
+        rc = stag_to_stag_buf_tz(fromsch, iq->usedb->tablename_ip, ".ONDISK",
                                  (char *)new_dta, ".NEW..ONDISK",
                                  (char *)sc_new, NULL, iq->tzname);
 
@@ -1916,7 +1916,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                     newgenid);
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM NEW UPDATE RECORD\n");
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_UPD_RC_INVL_DTA, "cannot form new record");
             retrc = rc;
             goto err;
@@ -1972,7 +1972,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
         /* convert old_dta and oldblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", old_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb->tablename_ip, ".ONDISK", old_dta,
                                     ".NEW..ONDISK", sc_old, NULL, del_idx_blobs,
                                     del_idx_blobs ? MAXBLOBS : 0, 1);
         if (rc) {
@@ -1988,7 +1988,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
         /* convert new_dta and newblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", new_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb->tablename_ip, ".ONDISK", new_dta,
                                     ".NEW..ONDISK", sc_new, NULL, add_idx_blobs,
                                     add_idx_blobs ? MAXBLOBS : 0, 1);
 
@@ -2029,7 +2029,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             blob_buffer_t *blob;
             int oldcol, oldblobidx, idx;
 
-            idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
+            idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
                                             ".NEW..ONDISK", blobn);
             if (iq->debug) {
                 reqprintf(iq,
@@ -2081,7 +2081,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
             /* Use the column of the old blob to map to an old blob index */
             oldcol = myupdatecols[idx + 1];
-            oldblobidx = get_schema_field_blob_idx((char *)iq->usedb->tablename,
+            oldblobidx = get_schema_field_blob_idx(iq->usedb->tablename_ip,
                                                    ".ONDISK", oldcol);
             if (iq->debug) {
                 reqprintf(iq, "get_schema_field_blob_idx returns %d for blobno "
@@ -2170,7 +2170,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
@@ -2215,7 +2215,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
             goto err;
         }
         /* convert old_dta and oldblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", old_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb->tablename_ip, ".ONDISK", old_dta,
                                     ".NEW..ONDISK", sc_old, NULL, del_idx_blobs,
                                     del_idx_blobs ? MAXBLOBS : 0, 1);
         if (rc) {
@@ -2453,7 +2453,7 @@ int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *re
 
     /* make sure the blobs are consistent with the record; if they're not then
      * we have a database corruption situation. */
-    rc = check_blob_consistency(iq, iq->usedb->tablename, tag, blobs, record);
+    rc = check_blob_consistency(iq, iq->usedb->tablename_ip, tag, blobs, record);
     if (iq->debug)
         reqprintf(iq, "CHECK OLD BLOB CONSISTENCY RRN %d GENID 0x%llx RC %d",
                   rrn, genid, rc);
@@ -2536,13 +2536,13 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
         prefixes++;
     }
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
     if (rc != 0) {
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
                   "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
@@ -2559,7 +2559,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     /* Tweak blob-descriptors for static tags. */
     if (gbl_disallow_null_blobs && !dynschema &&
         (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) {
-        static_tag_blob_conversion(iq->usedb->tablename, tag, record, blobs,
+        static_tag_blob_conversion(iq->usedb->tablename_ip, tag, record, blobs,
                                    maxblobs);
     }
 
@@ -2567,12 +2567,12 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         reqpushprefixf(iq, "TAG %s ", tag);
         prefixes++;
     }
-    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+    struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename_ip, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
             if (iq->debug)
                 reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+                          iq->usedb->tablename_ip);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -2583,7 +2583,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->debug)
             reqprintf(iq, "BAD DTA LEN %zu TAG %s EXPECTS DTALEN %u\n", reclen,
                       tag, expected_dat_len);
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
                   "bad data length %zu tag '%s' expects data length %u\n",
                   reclen, tag, expected_dat_len);
@@ -2595,9 +2595,9 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     reclen = expected_dat_len;
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
-        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
+        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename_ip, tag,
                            dbname_schema, record, fldnullmap) != 0) {
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
@@ -2605,13 +2605,13 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ERR;
     }
 
-    rc = getidxnumbyname(iq->usedb->tablename, keyname, &ixnum);
+    rc = getidxnumbyname(iq->usedb->tablename_ip, keyname, &ixnum);
     if (rc != 0) {
         if (iq->debug) {
             reqprintf(iq, "BAD KEY %s", keyname);
         }
 
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
@@ -2634,23 +2634,23 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (keysz < 0) {
             logmsg(LOGMSG_ERROR, "cannot get key size"
                                  " tbl %s. idx %d\n",
-                   iq->usedb->tablename, ixnum);
+                   iq->usedb->tablename_ip, ixnum);
             /* XXX is this an error? */
         }
         snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename_ip, tag, record,
                                    WHOLE_BUFFER, fldnullmap, keytag, key,
                                    conv_flags, &reason /*fail reason*/, blobs,
                                    maxblobs, iq->tzname);
         if (rc == -1) {
             char str[128];
-            convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
+            convert_failure_reason_str(&reason, iq->usedb->tablename_ip, tag,
                                        ".ONDISK", str, sizeof(str));
             if (iq->debug) {
                 reqprintf(iq, "ERR CONVERT DTA %s->.ONDISK '%s'", tag, str);
             }
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
                       "error convert data %s->.ONDISK '%s'", tag, str);
             *opfailcode = OP_FAILED_CONVERSION;
@@ -2671,7 +2671,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqprintf(iq, "IX FIND FAILED ON IDX: %d", ixnum);
         }
 
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB, "failed to find on idx: %d",
                   ixnum);
 
@@ -2694,7 +2694,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqprintf(iq, "FAILED TO UPD %s", keyname);
         }
 
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "failed to update record using idx: %d", ixnum);
 
@@ -2712,7 +2712,7 @@ err:
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
     if (dynschema)
-        free_dynamic_schema(iq->usedb->tablename, dynschema);
+        free_dynamic_schema(iq->usedb->tablename_ip, dynschema);
     if (using_myblobs)
         free_blob_buffers(myblobs, MAXBLOBS);
     return retrc;

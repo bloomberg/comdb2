@@ -52,7 +52,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
             rc = ERR_CONSTR;
             goto done;
         }
-        rc = stag_to_stag_buf(db->tablename, from, old_dta, ".NEW..ONDISK",
+        rc = stag_to_stag_buf(db->tablename_ip, from, old_dta, ".NEW..ONDISK",
                               new_dta, &reason);
         if (rc) {
             rc = ERR_CONSTR;
@@ -76,7 +76,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
 
         /* Name: .NEW.COLUMNNAME -> .NEW..ONDISK_IX_nn */
         snprintf(lcl_tag, sizeof lcl_tag, ".NEW.%s", ct->lclkeyname);
-        rc = getidxnumbyname(db->tablename, lcl_tag, &lcl_idx);
+        rc = getidxnumbyname(db->tablename_ip, lcl_tag, &lcl_idx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "could not get index for %s\n", lcl_tag);
             rc = ERR_CONSTR;
@@ -92,7 +92,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         if (iq->idxInsert && !convert)
             memcpy(lcl_key, iq->idxInsert[lcl_idx], db->ix_keylen[lcl_idx]);
         else
-            rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
+            rc = stag_to_stag_buf_blobs(db->tablename_ip, from, od_dta, lcl_tag,
                                         lcl_key, NULL, blobs, maxblobs, 0);
         if (rc) {
             rc = ERR_CONSTR;
@@ -107,12 +107,12 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
 
         int ri;
         rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key,
-                                         db->tablename, trans, &ri);
+                                         db->tablename_ip, trans, &ri);
         if (rc == RC_INTERNAL_RETRY) {
             break;
         } else if (rc && rc != ERR_CONSTR) {
             logmsg(LOGMSG_ERROR, "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
-                   ct->lclkeyname, db->tablename, ct->keynm[ri], ct->table[ri],
+                   ct->lclkeyname, db->tablename_ip, ct->keynm[ri], ct->table[ri],
                    rc);
             fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
             logmsg(LOGMSG_ERROR, "\n");
@@ -151,11 +151,11 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             char lkey[MAXKEYLEN];
             int fndrrn;
             unsigned long long genid;
-            if (strcasecmp(cnstrt->table[j], to_db->tablename)) {
+            if (strcasecmp(cnstrt->table[j], to_db->tablename_ip)) {
                 continue;
             }
             ldb = get_dbtable_by_name(cnstrt->table[j]);
-            if (strcasecmp(ldb->tablename, newdb->tablename)) {
+            if (strcasecmp(ldb->tablename_ip, newdb->tablename_ip)) {
                 logmsg(LOGMSG_FATAL, "%s: failed to find table\n", __func__);
                 abort();
                 return ERR_INTERNAL;
@@ -179,7 +179,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW..ONDISK_IX_%d",
                      ixnum);
             /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
-            rc = stag_to_stag_buf(newdb->tablename, from, od_dta, ondisk_tag,
+            rc = stag_to_stag_buf(newdb->tablename_ip, from, od_dta, ondisk_tag,
                                   lkey, NULL);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to convert to '%s'\n",
@@ -187,7 +187,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                 return ERR_CONVERT_IX;
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+            rc = getidxnumbyname(cnstrt->lcltable->tablename_ip,
                                  cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: unknown keytag '%s'\n", __func__,
@@ -200,7 +200,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             int nulls = 0;
 
             rixlen = rc = stag_to_stag_buf_ckey(
-                ldb->tablename, ondisk_tag, lkey, cnstrt->lcltable->tablename,
+                ldb->tablename_ip, ondisk_tag, lkey, cnstrt->lcltable->tablename_ip,
                 rondisk_tag, rkey, &nulls, PK2FK);
             if (rc == -1) {
                 /* I followed the logic in check_update_constraints */
@@ -268,7 +268,7 @@ static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable
                    that changed...otherwise, need to re-verify
                 */
                 for (j = 0; j < ct->nrules; j++) {
-                    if (!strcasecmp(db->tablename, ct->table[j])) {
+                    if (!strcasecmp(db->tablename_ip, ct->table[j])) {
                         rc = has_index_changed(db, ct->keynm[j], 1, 1 /*new*/,
                                                NULL, 0);
                         if (rc == 0)
@@ -409,30 +409,30 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     char tag[MAXTAGLEN];
 
     /* For init with instant_sc, add ONDISK as version 1.  */
-    rc = get_csc2_file_tran(db->tablename, -1, &ondisk_text, NULL, tran);
+    rc = get_csc2_file_tran(db->tablename_ip, -1, &ondisk_text, NULL, tran);
     if (rc) {
         logmsg(LOGMSG_FATAL,
                "Couldn't get latest csc2 from llmeta for %s! PANIC!!\n",
-               db->tablename);
+               db->tablename_ip);
         exit(1);
     }
 
     /* db's version has been reset */
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename_ip, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return SC_BDB_ERROR;
 
     /* Add latest csc2 as version 1 */
-    rc = bdb_new_csc2(tran, db->tablename, 1, ondisk_text, &bdberr);
+    rc = bdb_new_csc2(tran, db->tablename_ip, 1, ondisk_text, &bdberr);
     free(ondisk_text);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "Couldn't save in llmeta! PANIC!!");
         exit(1);
     }
 
-    ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
+    ondisk_schema = find_tag_schema(db->tablename_ip, ".ONDISK");
     if (NULL == ondisk_schema) {
         logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
-               db->tablename);
+               db->tablename_ip);
         exit(1);
     }
     ver_one = clone_schema(ondisk_schema);
@@ -608,7 +608,7 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
     }
 
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename_ip, ".ONDISK", od_dta,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
@@ -738,8 +738,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     memset(plan, 0, sizeof(struct scplan));
 
-    oldsc = find_tag_schema(olddb->tablename, ".ONDISK");
-    newsc = find_tag_schema(olddb->tablename, ".NEW..ONDISK");
+    oldsc = find_tag_schema(olddb->tablename_ip, ".ONDISK");
+    newsc = find_tag_schema(olddb->tablename_ip, ".NEW..ONDISK");
     if (!oldsc || !newsc) {
         sc_errf(s, "%s: can't find both schemas! oldsc=%p newsc=%p\n", __func__,
                 oldsc, newsc);
@@ -815,8 +815,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     for (blobn = 0; blobn < newdb->numblobs; blobn++) {
         int map;
-        map = tbl_blob_no_to_tbl_blob_no(newdb->tablename, ".NEW..ONDISK",
-                                         blobn, olddb->tablename, ".ONDISK");
+        map = tbl_blob_no_to_tbl_blob_no(newdb->tablename_ip, ".NEW..ONDISK",
+                                         blobn, olddb->tablename_ip, ".ONDISK");
         /* Sanity check, although I don't see how this can possibly
          * happen - make sure we haven't already decided to use this
          * blob file for anything. */
@@ -840,8 +840,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
             plan->blob_plan[blobn] = -1;
         } else if (map >= 0 && map < olddb->numblobs) {
             int oldidx =
-                get_schema_blob_field_idx(olddb->tablename, ".ONDISK", map);
-            int newidx = get_schema_blob_field_idx(newdb->tablename,
+                get_schema_blob_field_idx(olddb->tablename_ip, ".ONDISK", map);
+            int newidx = get_schema_blob_field_idx(newdb->tablename_ip,
                                                    ".NEW..ONDISK", blobn);
 
             /* rebuild if the blob length changed (should only happen for vutf8
@@ -1039,7 +1039,7 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
     get_db_compress_tran(db, &compr, tran);
     get_db_compress_blobs_tran(db, &blob_compr, tran);
-    db->schema_version = get_csc2_version_tran(db->tablename, tran);
+    db->schema_version = get_csc2_version_tran(db->tablename_ip, tran);
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->schema_version, compr,
@@ -1089,12 +1089,12 @@ int compare_constraints(const char *table, struct dbtable *newdb)
          * would've been picked up in forward check */
 
         /*fprintf(stderr, "%s\n", ct->lcltable->tablename);*/
-        if (!strcasecmp(ct->lcltable->tablename, db->tablename))
+        if (!strcasecmp(ct->lcltable->tablename_ip, db->tablename_ip))
             continue;
 
         for (j = 0; j < ct->nrules; j++) {
             /* skip references to other tables*/
-            if (strcasecmp(ct->table[j], db->tablename))
+            if (strcasecmp(ct->table[j], db->tablename_ip))
                 continue;
             /* fprintf(stderr, "  rule %s:%s\n", ct->table[j], ct->keynm[j]);*/
             rc = has_index_changed(db, ct->keynm[j], 1, 0 /*old table key */,
@@ -1103,7 +1103,7 @@ int compare_constraints(const char *table, struct dbtable *newdb)
                 logmsg(LOGMSG_ERROR,
                        "error in checking reverse constraint table %s "
                        "key %s\n",
-                       ct->lcltable->tablename, ct->lclkeyname);
+                       ct->lcltable->tablename_ip, ct->lclkeyname);
                 free(verifylist);
                 return -2;
             } else if (rc == 0) {
@@ -1121,7 +1121,7 @@ int compare_constraints(const char *table, struct dbtable *newdb)
                     logmsg(LOGMSG_ERROR,
                            "error! constraints reference more tables "
                            "than available %d! last tbl '%s' key '%s'\n",
-                           nvlist, ct->lcltable->tablename, ct->lclkeyname);
+                           nvlist, ct->lcltable->tablename_ip, ct->lclkeyname);
                     free(verifylist);
                     return -2;
                 }
@@ -1163,13 +1163,13 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
      * reverse constraint array updated to get all reverse ct *'s removed */
     for (i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
-        if (!strcasecmp(rdb->tablename, newdb->tablename)) {
+        if (!strcasecmp(rdb->tablename_ip, newdb->tablename_ip)) {
             rdb = newdb;
         }
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
-            if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            if (!strcasecmp(ct->lcltable->tablename_ip, db->tablename_ip)) {
                 if ((j + 1) < rdb->n_rev_constraints) {
                     memmove(&rdb->rev_constraints[j],
                             &rdb->rev_constraints[j + 1],
@@ -1187,7 +1187,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                 int ridx = 0;
                 int dupadd = 0;
 
-                if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename))
+                if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename_ip))
                     continue;
                 for (ridx = 0; ridx < rdb->n_rev_constraints; ridx++) {
                     if (rdb->rev_constraints[ridx] == &newdb->constraints[j]) {
@@ -1200,7 +1200,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                     logmsg(LOGMSG_ERROR,
                            "not enough space to store reverse constraints! "
                            "table %s\n",
-                           rdb->tablename);
+                           rdb->tablename_ip);
                     return -1;
                 }
                 rdb->rev_constraints[rdb->n_rev_constraints++] =
@@ -1226,7 +1226,7 @@ int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type *s)
 {
     int i;
-    struct dbtable *olddb = get_dbtable_by_name(newdb->tablename);
+    struct dbtable *olddb = get_dbtable_by_name(newdb->tablename_ip);
     for (i = 0; i < newdb->nix; ++i) {
         struct schema *index = newdb->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
@@ -1268,7 +1268,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     wanted = (diff * (uint64_t)(100 + headroom)) / 100ULL;
 
     sc_printf(
-        s, "Table %s, old %s, new %s, reqd. %s, avail %s\n", olddb->tablename,
+        s, "Table %s, old %s, new %s, reqd. %s, avail %s\n", olddb->tablename_ip,
         fmt_size(b1, sizeof(b1), oldsize), fmt_size(b2, sizeof(b2), newsize),
         fmt_size(b3, sizeof(b3), wanted), fmt_size(b4, sizeof(b4), avail));
 
@@ -1296,7 +1296,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 /* compatible change if type unchanged but get larger in size */
 int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
-    struct schema *s1 = find_tag_schema(olddb->tablename, ixname);
+    struct schema *s1 = find_tag_schema(olddb->tablename_ip, ixname);
     if (s1->nmembers != s2->nmembers) return 1;
     int i;
     for (i = 0; i < s1->nmembers; ++i) {
@@ -1314,11 +1314,11 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                                  struct schema *newsc, const char *key,
                                  FILE *out, struct schema_change_type *s)
 {
-    const char *dbname = newdb->tablename;
+    const char *dbname = newdb->tablename_ip;
     int i, j, k;
     for (i = 0; i < thedb->num_dbs; ++i) {
         struct dbtable *db = thedb->dbs[i];
-        if (strcmp(db->tablename, dbname) == 0)
+        if (strcmp(db->tablename_ip, dbname) == 0)
             continue;
         for (j = 0; j < db->n_constraints; ++j) {
             constraint_t *ct = &db->constraints[j];
@@ -1328,10 +1328,10 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                     if (compat_chg(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {
-                        sbuf2printf(s->sb, info, db->tablename, ct->lclkeyname,
+                        sbuf2printf(s->sb, info, db->tablename_ip, ct->lclkeyname,
                                     dbname, ct->keynm[k]);
                     } else if (out) {
-                        logmsgf(LOGMSG_USER, out, info + 1, db->tablename,
+                        logmsgf(LOGMSG_USER, out, info + 1, db->tablename_ip,
                                 ct->lclkeyname, dbname, ct->keynm[k]);
                     }
                     return 1;
@@ -1350,7 +1350,7 @@ int remove_constraint_pointers(struct dbtable *db)
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
-            if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            if (!strcasecmp(ct->lcltable->tablename_ip, db->tablename_ip)) {
                 if ((j + 1) < rdb->n_rev_constraints) {
                     memmove(&rdb->rev_constraints[j],
                             &rdb->rev_constraints[j + 1],
@@ -1375,8 +1375,8 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
-            if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
-                strcpy(ct->lcltable->tablename, newname);
+            if (!strcasecmp(ct->lcltable->tablename_ip, db->tablename_ip)) {
+                ct->lcltable->tablename_ip = intern(newname);
             }
         }
     }
@@ -1427,7 +1427,7 @@ int self_referenced_only(struct dbtable *db)
     rc = 1;
     for (i = 0; i < db->n_rev_constraints; i++) {
         constraint_t *ct = db->rev_constraints[i];
-        if (strcasecmp(ct->lcltable->tablename, db->tablename)) {
+        if (strcasecmp(ct->lcltable->tablename_ip, db->tablename_ip)) {
             rc = 0;
             break;
         }
@@ -1435,7 +1435,7 @@ int self_referenced_only(struct dbtable *db)
     return rc;
 }
 
-void change_schemas_recover(char *table)
+void change_schemas_recover(const char *table)
 {
     struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {

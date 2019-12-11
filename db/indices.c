@@ -186,7 +186,7 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     if (ixkeylen < 0) {
         if (iq->debug)
             reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum, ixkeylen);
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY, "bad index %d or keylength %d",
                   ixnum, ixkeylen);
         *ixfailnum = ixnum;
@@ -208,7 +208,7 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     if (rc == -1) {
         if (iq->debug)
             reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d", ixnum);
         *ixfailnum = ixnum;
         *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
@@ -354,7 +354,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         if (ixkeylen < 0) {
             if (iq->debug)
                 reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum, ixkeylen);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
                       "bad index %d or keylength %d", ixnum, ixkeylen);
             *ixfailnum = ixnum;
@@ -377,7 +377,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
                       ixnum);
             *ixfailnum = ixnum;
@@ -864,13 +864,13 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         else {
             char keytag[MAXTAGLEN];
             snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
-            rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ondisktag, od_dta,
+            rc = stag_to_stag_buf_blobs(iq->usedb->tablename_ip, ondisktag, od_dta,
                                         keytag, key, NULL, del_idx_blobs,
                                         del_idx_blobs ? MAXBLOBS : 0, 0);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
                 reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
                           ixnum);
                 *ixfailnum = ixnum;
@@ -924,7 +924,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             }
             if (rc != 0) {
                 if (rc == IX_NOTFND) {
-                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                    reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
                     reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
                               "key not found on index %d", ixnum);
                 }
@@ -1127,7 +1127,7 @@ int upd_new_record_indices(
                    oldgenid, ixnum);
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM OLD INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form old index %d",
                       ixnum);
             return rc;
@@ -1218,7 +1218,7 @@ int del_new_record_indices(struct ireq *iq, void *trans,
                    ngenid, ixnum);
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename_ip);
             reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
                       ixnum);
             return rc;
@@ -1350,7 +1350,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
-                          ditk->usedb->tablename, ditk->ixnum, addrrn);
+                          ditk->usedb->tablename_ip, ditk->ixnum, addrrn);
                 int ixkeylen = getkeysize(ditk->usedb, ditk->ixnum);
                 reqdumphex(iq, ditk->ixkey, ixkeylen);
                 reqmoref(iq, " RC %d", rc);
@@ -1362,7 +1362,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
                           "duplicate key '%s' on "
                           "table '%s' index %d",
                           get_keynm_from_db_idx(ditk->usedb, ditk->ixnum),
-                          ditk->usedb->tablename, ditk->ixnum);
+                          ditk->usedb->tablename_ip, ditk->ixnum);
 
                 //*blkpos = curop->blkpos;
                 *errout = OP_FAILED_UNIQ;
@@ -1392,7 +1392,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
         } else if (ditk->type == DIT_DEL) {
             int delrrn = 0;
 #ifndef NDEBUG
-            char *tblname = iq->usedb->tablename;
+            const char *tblname = iq->usedb->tablename_ip;
             struct dbtable *tbl = get_dbtable_by_name(tblname);
             assert(tbl == iq->usedb);
 #endif
@@ -1407,7 +1407,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
             if (rc != 0) {
                 if (rc == IX_NOTFND) {
-                    reqerrstrhdr(iq, "Table '%s' ", ditk->usedb->tablename);
+                    reqerrstrhdr(iq, "Table '%s' ", ditk->usedb->tablename_ip);
                     reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
                               "key not found on index %d", ditk->ixnum);
                 }

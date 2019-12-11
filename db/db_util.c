@@ -345,7 +345,7 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 /* Create a new lrl file with the table defs added back in (the reverse of
  * llmeta'ing an lrl file */
 int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
-                          const char *p_lrl_fname_out, char *p_table_names[],
+                          const char *p_lrl_fname_out, const char *p_table_names[],
                           char *p_csc2_paths[], int table_nums[],
                           size_t num_tables, char *out_lrl_dir, int has_sp,
                           int has_timepartitions)

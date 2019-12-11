@@ -34,7 +34,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
         return -1;
     }
 
-    char *table = db->tablename;
+    const char *table = db->tablename_ip;
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
@@ -87,7 +87,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename_ip, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
@@ -118,7 +118,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     live_sc_off(db);
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename_ip,
                db->tableversion);
     }
 

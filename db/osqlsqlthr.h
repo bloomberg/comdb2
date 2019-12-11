@@ -81,7 +81,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
  * issues.
  *
  */
-int osql_cleartable(struct sql_thread *thd, char *dbname);
+int osql_cleartable(struct sql_thread *thd, const char *dbname);
 
 /**
  * Set maximum osql transaction size

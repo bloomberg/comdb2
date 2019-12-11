@@ -204,7 +204,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
         }
 
         logmsg(LOGMSG_ERROR, "difficulty consuming key from queue '%s' consumer %d\n",
-                iq->usedb->tablename, consumern);
+                iq->usedb->tablename_ip, consumern);
         if (db_is_stopped() || thedb->master != gbl_mynode)
             return -1;
         sleep(sleeptime);

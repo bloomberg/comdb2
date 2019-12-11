@@ -846,14 +846,14 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
 
     old_bdb_handle = db->handle;
 
-    logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
+    logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename_ip,
            bdb_isopen(db->handle));
 
     /* the master doesn't tell the replicants to close the db
      * ahead of time */
     rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
+        logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename_ip);
         return 1;
     }
 
@@ -942,7 +942,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         old_bdb_handle = db->handle;
         rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename_ip);
             return 1;
         }
 
@@ -977,7 +977,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     if (bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->tablename, bthashsz);
+               db->tablename_ip, bthashsz);
         bdb_handle_dbp_add_hash(db->handle, bthashsz);
     }
 

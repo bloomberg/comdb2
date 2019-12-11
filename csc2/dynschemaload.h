@@ -34,8 +34,8 @@ enum dyns_cnst {
 char *dyns_field_option_text(int option);
 void dyns_init_globals();
 void dyns_cleanup_globals();
-int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename);
-int dyns_load_schema(char *filename, char *dbname, char *tblname);
+int dyns_load_schema_string(char *schematxt, const char *dbname, const char *tablename);
+int dyns_load_schema(const char *filename, const char *dbname, const char *tblname);
 int dyns_form_key(int index, char *record, int recsz, char *key, int keysize);
 int dyns_is_idx_dup(int index);
 int dyns_is_idx_recnum(int index);

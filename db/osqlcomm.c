@@ -2868,7 +2868,7 @@ static osql_comm_t *get_thecomm(void)
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp);
 static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
-                             int usertype, void *dtap, int dtalen, void *tail,
+                             int usertype, void *dtap, int dtalen, const void *tail,
                              int tailen);
 
 static void net_sosql_req(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -2902,11 +2902,11 @@ static int check_master(const char *tohost);
 static int offload_net_send(const char *tohost, int usertype, void *data,
                             int datalen, int nodelay);
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
-                                 int datalen, int nodelay, void *tail,
+                                 int datalen, int nodelay, const void *tail,
                                  int tailen);
 static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
-                                  void **tails, int *tailens);
+                                  const void **tails, int *tailens);
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype);
 static int netrpl2req(int netrpltype);
@@ -3507,7 +3507,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb,
+                    const char *tablename, int type, SBUF2 *logsb,
                     unsigned long long tableversion)
 {
     unsigned short tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
@@ -5559,7 +5559,7 @@ static int net_local_route_packet(int usertype, void *data, int datalen)
    include in this function only "usertype"-s that can have a tail
  */
 static int net_local_route_packet_tails(int usertype, void *data, int datalen,
-                                        int numtails, void **tails,
+                                        int numtails, const void **tails,
                                         int *taillens)
 {
     switch (usertype) {
@@ -5734,7 +5734,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
    loosing packets
    due to queue being full */
 static int offload_net_send_tail(const char *host, int usertype, void *data,
-                                 int datalen, int nodelay, void *tail,
+                                 int datalen, int nodelay, const void *tail,
                                  int tailen)
 {
     return offload_net_send_tails(host, usertype, data, datalen, nodelay, 1,
@@ -5743,7 +5743,7 @@ static int offload_net_send_tail(const char *host, int usertype, void *data,
 
 static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
-                                  void **tails, int *tailens)
+                                  const void **tails, int *tailens)
 {
     osql_comm_t *comm = get_thecomm();
     if (!comm)
@@ -5901,7 +5901,7 @@ static int check_master(const char *tohost)
    this is needed only when routing local packets
    we need to "serialize" the tail as well, therefore the need for duplicate */
 static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
-                             int usertype, void *dtap, int dtalen, void *tail,
+                             int usertype, void *dtap, int dtalen, const void *tail,
                              int tailen)
 {
     void *dup;
@@ -6771,7 +6771,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                        "duplicate key '%s' on "
                                                        "table '%s' index %d",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                              iq->usedb->tablename, err->ixnum);
+                              iq->usedb->tablename_ip, err->ixnum);
                 }
             } else if (rc != RC_INTERNAL_RETRY) {
                 errstat_cat_strf(&iq->errstat, " unable to add record rc = %d",
@@ -6888,7 +6888,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (int ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->tablename,
+                    int idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
                                                         ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);
@@ -8540,17 +8540,17 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
                                      " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
+                       iq.usedb->tablename_ip, ixnum);
                 break;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename_ip, ".ONDISK",
                                   (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
                        " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
+                       ixnum, iq.usedb->tablename_ip);
                 break;
             }
 
@@ -8574,17 +8574,17 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
                                      " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
+                       iq.usedb->tablename_ip, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename_ip, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
                        " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
+                       ixnum, iq.usedb->tablename_ip);
                 continue;
             }
 
@@ -8637,17 +8637,17 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
                                      " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
+                       iq.usedb->tablename_ip, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename_ip, ".ONDISK",
                                   (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
                        " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
+                       ixnum, iq.usedb->tablename_ip);
                 continue;
             }
 
@@ -8666,17 +8666,17 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
                                      " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
+                       iq.usedb->tablename_ip, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename_ip, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
                        " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
+                       ixnum, iq.usedb->tablename_ip);
                 continue;
             }
 
@@ -8915,11 +8915,11 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     p_buf_op_hdr_end = p_buf;
 
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename_ip) + 1 /*NUL byte*/;
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, p_buf_end)))
         return NULL;
     if (!(p_buf =
-              buf_no_net_put(db->tablename, usekl.taglen, p_buf, p_buf_end)))
+              buf_no_net_put(db->tablename_ip, usekl.taglen, p_buf, p_buf_end)))
         return NULL;
 
     op_hdr.opcode = BLOCK2_USE;

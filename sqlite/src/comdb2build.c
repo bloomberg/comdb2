@@ -38,7 +38,7 @@ extern int gbl_legacy_schema;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
-extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
+extern int comdb2_save_ddl_context(const char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
 
 /******************* Utility ****************************/
@@ -206,7 +206,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 
         if (db) {
             /* use original tablename */
-            strncpy0(dst, db->tablename, MAXTABLELEN);
+            strncpy0(dst, db->tablename_ip, MAXTABLELEN);
         }
     }
     else
@@ -2610,7 +2610,7 @@ struct comdb2_constraint {
 
 struct comdb2_schema {
     /* Name of the table */
-    char *name;
+    const char *name;
     /* Table options */
     uint32_t table_options;
     /* Staging list of new/existing columns */
@@ -3965,7 +3965,7 @@ static int retrieve_fk_constraint(Parse *pParse, struct comdb2_ddl_context *ctx,
 
         /* Parent table name. */
         constraint->parent_table =
-            comdb2_strdup(ctx->mem, parent_table->tablename);
+            comdb2_strdup(ctx->mem, parent_table->tablename_ip);
         if (constraint->parent_table == 0)
             goto oom;
 
@@ -4483,7 +4483,7 @@ void comdb2CreateTableLikeEnd(
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-    char *newTab;
+    const char *newTab;
     char *otherTab;
 
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
@@ -6026,15 +6026,15 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto cleanup;
         }
 
-        if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
-                             strlen(table->tablename), 1, 1, 0)))
+        if ((chkAndCopyTable(pParse, sc->tablename, table->tablename_ip,
+                             strlen(table->tablename_ip), 1, 1, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
             goto cleanup;
     }
 
-    ctx->schema->name = table->tablename;
+    ctx->schema->name = table->tablename_ip;
 
     /*
       Add all the columns, indexes and constraints in the table to the
