@@ -41,7 +41,6 @@ struct osql_sess {
 
     struct ireq *iq; /* iq owning this session -- set to NULL once dispatched */
     struct ireq *iqcopy; /* iq owning this session */
-    char *offhost;   /* where is the sql peer of this session, 0 for local */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
@@ -63,10 +62,6 @@ struct osql_sess {
         xerr;        /* error info(zeroed if ok), meaningful if completed=1 */
     time_t last_row; /* mark the last received row, used for poking */
 
-    osql_req_t *req; /* request, i.e osql_req_t */
-    osql_uuid_req_t *req_uuid;
-
-    int reqlen;      /* length of request */
     const char *sql; /* if set, pointer to sql string (part of req) */
 
     /* this are set for each session retry */
@@ -105,12 +100,6 @@ enum { REQ_OPTION_QUERY_LIMITS = 1 };
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
 int osql_close_session(struct ireq *iq, osql_sess_t **sess, int is_linked, const char *func, const char *callfunc, int line);
-
-/**
- * Get the cached sql request
- *
- */
-osql_req_t *osql_sess_getreq(osql_sess_t *sess);
 
 /**
  * Get the request id, aka rqid
@@ -212,11 +201,8 @@ int osql_session_testterminate(void *obj, void *arg);
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
-                                   uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced, bool is_reorder_on);
-
-void osql_sess_set_reqlen(osql_sess_t *sess, int len);
-int osql_sess_reqlen(osql_sess_t *sess);
+                                   uuid_t uuid, struct ireq *iq, int *replaced,
+                                   bool is_reorder_on);
 
 /**
  * Returns
