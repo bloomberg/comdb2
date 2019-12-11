@@ -12,11 +12,7 @@ set -e
 # Populate data
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t0 (i TEXT)"
 sleep 1
-cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null <<EOF
-begin
-`yes 'INSERT INTO t0 VALUES ("It is only with the heart that one can see rightly; what is essential is invisible to the eye.")' | head -9999`
-commit
-EOF
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t0 SELECT 'It is only with the heart that one can see rightly; what is essential is invisible to the eye.' from generate_series limit 9999" >/dev/null
 
 for i in `seq 1 4`; do
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t$i (i TEXT)"
