@@ -22,6 +22,7 @@
  *********************************************************************/
 #ifdef HAVE_MUTEX_PTHREADS
 #include <pthread.h>
+#include "time_accounting.h"
 
 #define	MUTEX_FIELDS							\
 	pthread_mutex_t mutex;		/* Mutex. */			\
@@ -878,7 +879,14 @@ struct __mutex_t {
     defined(HAVE_MUTEX_SOLARIS_LWP) ||					\
     defined(HAVE_MUTEX_UI_THREADS)
 #define	__db_mutex_init_int(a, b, c, d)	__db_pthread_mutex_init(a, b, d)
-#define	__db_mutex_lock(a, b)		__db_pthread_mutex_lock(a, b)
+#define STRINGIFY(x) #x
+#define	__db_mutex_lock(a, b)		\
+    do { \
+      ACCUMULATE_TIMING(STRINGIFY(b),\
+        __db_pthread_mutex_lock(a, b); \
+      ); \
+    } while(0);
+
 #define	__db_mutex_unlock(a, b)		__db_pthread_mutex_unlock(a, b)
 #define	__db_mutex_destroy(a)		__db_pthread_mutex_destroy(a)
 #elif defined(HAVE_MUTEX_WIN32) || defined(HAVE_MUTEX_WIN32_GCC)
@@ -942,7 +950,7 @@ struct __mutex_t {
 #ifdef DEBUG_MUTEX
 #define	MUTEX_LOCK(dbenv, mp)						\
 	if (!F_ISSET((mp), MUTEX_IGNORE)){				\
-		(void)__db_mutex_lock(dbenv, mp);           \
+		__db_mutex_lock(dbenv, mp);           \
 		(mp)->file = __FILE__;					  \
 		(mp)->func = __func__;					  \
 		(mp)->line = __LINE__;					  \
@@ -960,7 +968,7 @@ struct __mutex_t {
 #else
 #define	MUTEX_LOCK(dbenv, mp)						\
 	if (!F_ISSET((mp), MUTEX_IGNORE))				\
-		(void)__db_mutex_lock(dbenv, mp);
+		__db_mutex_lock(dbenv, mp);
 #define	MUTEX_UNLOCK(dbenv, mp)						\
 	if (!F_ISSET((mp), MUTEX_IGNORE))				\
 		(void)__db_mutex_unlock(dbenv, mp);

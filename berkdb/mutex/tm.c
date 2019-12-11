@@ -330,11 +330,7 @@ run_lthread(arg)
 			printf("%03lu: lock %d @ %#lx\n",
 			    id, lock, (u_long)&mp->mutex);
 
-		if (__db_mutex_lock(&dbenv, &mp->mutex)) {
-			fprintf(stderr, "%03lu: never got lock %d: %s\n",
-			    id, lock, strerror(errno));
-			return ((void *)EXIT_FAILURE);
-		}
+		__db_mutex_lock(&dbenv, &mp->mutex);
 		if (mp->id != 0) {
 			fprintf(stderr,
 			    "RACE! (%03lu granted lock %d held by %03lu)\n",
@@ -367,11 +363,7 @@ run_lthread(arg)
 		 *
 		 * The wakeup thread will wake us up.
 		 */
-		if (__db_mutex_lock(&dbenv, &gp->mutex)) {
-			fprintf(stderr,
-			    "%03lu: global lock: %s\n", id, strerror(errno));
-			return ((void *)EXIT_FAILURE);
-		}
+		__db_mutex_lock(&dbenv, &gp->mutex);
 		if (tp->id != 0 && tp->id != id) {
 			fprintf(stderr,
 		    "%03lu: per-thread mutex isn't mine, owned by %03lu\n",
@@ -392,11 +384,7 @@ run_lthread(arg)
 			    "%03lu: global unlock: %s\n", id, strerror(errno));
 			return ((void *)EXIT_FAILURE);
 		}
-		if (__db_mutex_lock(&dbenv, &tp->mutex)) {
-			fprintf(stderr, "%03lu: per-thread lock: %s\n",
-			    id, strerror(errno));
-			return ((void *)EXIT_FAILURE);
-		}
+		__db_mutex_lock(&dbenv, &tp->mutex);
 		/* Time passes... */
 		if (F_ISSET(tp, MUTEX_WAKEME)) {
 			fprintf(stderr, "%03lu: wakeup flag not cleared\n", id);
@@ -531,11 +519,7 @@ run_wthread(arg)
 		}
 
 		F_CLR(tp, MUTEX_WAKEME);
-		if (__db_mutex_unlock(&dbenv, &tp->mutex)) {
-			fprintf(stderr,
-			    "wakeup: unlock: %s\n", strerror(errno));
-			return ((void *)EXIT_FAILURE);
-		}
+		__db_mutex_unlock(&dbenv, &tp->mutex);
 
 		if (__db_mutex_unlock(&dbenv, &gp->mutex)) {
 			fprintf(stderr,

@@ -227,7 +227,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 			break;
 
 	if (nspins == 0) { 
-        Pthread_mutex_lock(&mutexp->mutex); 
+        pthread_mutex_lock(&mutexp->mutex); 
     }
 #else
 	/*
@@ -241,7 +241,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 		++mutexp->mutex_set_wait;
 	else
 		++mutexp->mutex_set_nowait;
-	Pthread_mutex_lock(&mutexp->mutex);
+	pthread_mutex_lock(&mutexp->mutex);
 #endif
 
 	if (F_ISSET(mutexp, MUTEX_SELF_BLOCK)) {
@@ -259,7 +259,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 #else
 		mutexp->locked = 1;
 #endif
-        Pthread_mutex_unlock(&mutexp->mutex);
+        pthread_mutex_unlock(&mutexp->mutex);
 	} else {
 #ifdef COMDB2_MTX_SPIN
 		if (nspins == dbenv->tas_spins)
