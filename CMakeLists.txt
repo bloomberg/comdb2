@@ -141,6 +141,8 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   endif()
 endif()
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_C_FLAGS}")
+
 add_subdirectory(util)
 add_subdirectory(bdb)
 add_subdirectory(berkdb)
