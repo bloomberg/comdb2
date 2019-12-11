@@ -286,7 +286,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
 {
     *tottm = sess->end - sess->initstart;
     *rtt = sess->end - sess->start;
-    *rtrs = sess->retries;
+    *rtrs = sess->iq?sess->iq->retries:0;
 }
 
 /**
