@@ -51,7 +51,6 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <inttypes.h>
-#include <build/db.h>
 #include "endian_core.h"
 #include "bdb_cursor.h"
 #include "bdb_int.h"
