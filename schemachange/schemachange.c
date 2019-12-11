@@ -188,7 +188,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                                               packed_sc_data_len)) {
                     logmsg(LOGMSG_ERROR, "%s: failed to unpack sc\n", __func__);
                     free(packed_sc_data);
-                    free(stored_sc);
+                    free_schema_change_type(stored_sc);
                     free_schema_change_type(s);
                     return -1;
                 }
@@ -1072,7 +1072,7 @@ int add_schema_change_tables()
                 sc_errf(s, "could not unpack the schema change data retrieved "
                            "from the low level meta table\n");
                 free(packed_sc_data);
-                free(s);
+                free_schema_change_type(s);
                 return -1;
             }
 
@@ -1095,20 +1095,22 @@ int add_schema_change_tables()
             free(packed_sc_data);
 
             if (scabort) {
+                free_schema_change_type(s);
                 return 0;
             }
 
             MEMORY_SYNC;
 
             if (s->fastinit || s->type != DBTYPE_TAGGED_TABLE) {
-                free(s);
+                free_schema_change_type(s);
                 return 0;
             }
 
             iq.sc = s;
             rc = add_table_for_recovery(&iq, s);
+            iq.sc = NULL;
 
-            free(s);
+            free_schema_change_type(s);
             return rc;
         }
     }
