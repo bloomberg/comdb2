@@ -332,7 +332,7 @@ int handle_ireq(struct ireq *iq)
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
                           iq->sorese.host, iq->sorese.type, iq->sorese.nops,
-                          iq->sorese.rcout, iq->sorese.osql_retry, rc,
+                          iq->sorese.rcout, iq->sorese.verify_retries, rc,
                           iq->errstat.errval);
             }
 
