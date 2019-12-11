@@ -4750,7 +4750,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->osql_step_ix = NULL;
         }
 
-        delayed = iq->sorese.is_delayed?1:0;
+        delayed = iq->sorese.is_delayed ? 1 : 0;
 
         /* FOR DEADLOCK ON THE SERVER,
          * WE'RE NOT REPEATING THE SQL PROCESSING PART
