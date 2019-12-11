@@ -732,8 +732,8 @@ static void osql_genid48_commit_callback(struct ireq *iq)
 }
 
 extern int gbl_readonly_sc;
-int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
-        const char *host, time_t time, int fromnet, const char *func, int line);
+int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
+        time_t time, int fromnet, const char *func, int line);
 
 /* Must reset running before distributed commit */
 static void osql_reset_running(struct ireq *iq)

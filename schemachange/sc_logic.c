@@ -219,7 +219,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(iq, s->tablename, 0, s->iq->sc_seed, NULL, 0, 0, __func__,
+    sc_set_running(iq, s->tablename, 0, NULL, 0, 0, __func__,
             __LINE__);
     if (do_free) {
         free_sc(s);
@@ -658,8 +658,7 @@ downgraded:
         reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
-        sc_set_running(iq, s->tablename, 0, iq->sc_seed, NULL, 0, 0, __func__,
-                __LINE__);
+        sc_set_running(iq, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
         free_sc(s);
     } else {
         stop_and_free_sc(iq, rc, s, 1 /*do_free*/);
@@ -1020,7 +1019,10 @@ int resume_schema_change(void)
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to resume schema change for table '%s'\n",
                        __func__, s->tablename);
+                /* start_schema_change will free if this fails */
+                /*
                 free_schema_change_type(s);
+                */
                 continue;
             } else if (is_shard) {
                 struct timepart_sc_resuming *tpt_sc = NULL;
@@ -1497,8 +1499,10 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    sc_set_running(iq, s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL), 0,
-            __func__, __LINE__);
+/*
+    sc_set_running(iq, s->tablename, 0, gbl_mynode, time(NULL), 0, __func__,
+            __LINE__);
+*/
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

@@ -257,8 +257,8 @@ static int freesc(void *obj, void *arg)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
-        const char *host, time_t time, int replicant, const char *func, int line)
+int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
+        time_t time, int replicant, const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -298,50 +298,13 @@ int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
     }
     assert(sc_tables);
 
-    /*
-    if (thedb->master != gbl_mynode && !replicant) {
-        logmsg(LOGMSG_ERROR, "%s replicant ignoring master req for %s seed "
-                "%"PRIx64"\n", __func__, table, seed);
-        rc = -1;
-        goto done;
-    }
-
-    if (thedb->master == gbl_mynode && replicant) {
-        logmsg(LOGMSG_ERROR, "%s master ignoring replicant req for %s seed "
-                "%"PRIx64"\n", __func__, table, seed);
-        rc = -1;
-        goto done;
-    }
-    */
-
-    //if (thedb->master == gbl_mynode) {
-    if (1) {
-        if (running &&
+    if (running &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
-            if (sctbl->seed != seed) {
-                logmsg(LOGMSG_ERROR,
-                        "%s sc seed 0x%" PRIx64 " already running against "
-                        "table %s, ignoring new-seed 0x%" PRIx64 "\n", __func__,
-                        sctbl->seed, table, seed);
-                rc = -1;
-                goto done;
-            } else {
-                logmsg(LOGMSG_ERROR,
-                        "%s sc seed 0x%" PRIx64 " already running against "
-                        "table %s\n", __func__, sctbl->seed, table);
-                rc = -1;
-                goto done;
-            }
-        } else if (!running &&
-                   (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
-                   seed && sctbl->seed != seed) {
-            logmsg(LOGMSG_ERROR,
-                   "cannot stop schema change for table %s: wrong seed given\n",
-                   table);
-            rc = -1;
-            goto done;
-        }
-    }
+        logmsg(LOGMSG_ERROR,
+                "%s sc already running against table %s\n", __func__, table);
+        rc = -1;
+        goto done;
+    } 
     if (running) {
         /* We are master and already found it. */
         assert(!sctbl);
@@ -358,7 +321,6 @@ int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
         strcpy(sctbl->mem, table);
         sctbl->tablename = sctbl->mem;
 
-        sctbl->seed = seed;
         sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
         sctbl->time = time;
         hash_add(sc_tables, sctbl);
@@ -378,16 +340,15 @@ int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
     rc = 0;
 
 done:
-    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
+    ctrace("sc_set_running(table=%s running=%d): "
            "gbl_schema_change_in_progress %d from %s:%d rc=%d\n",
-           table, running, (unsigned long long)seed,
-           get_schema_change_in_progress(__func__, __LINE__), func, line, rc);
+           table, running, get_schema_change_in_progress(__func__, __LINE__),
+           func, line, rc);
 
     /* I think there's a place that decrements this without waiting for 
      * the async sc thread to complete (which is wrong) */
-    logmsg(LOGMSG_INFO, "sc_set_running(table=%s running=%d seed=0x%llx): from "
-            "%s:%d rc=%d\n", table, running, (unsigned long long)seed, func,
-            line, rc);
+    logmsg(LOGMSG_INFO, "sc_set_running(table=%s running=%d): from "
+            "%s:%d rc=%d\n", table, running, func, line, rc);
 
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     if (got_lock)

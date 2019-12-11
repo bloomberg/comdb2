@@ -6222,7 +6222,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
  * Handles each packet and start schema change
  *
  */
-int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
+int osql_prepare_schemachange(struct ireq *iq, unsigned long long rqid,
                               uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
@@ -6306,7 +6306,22 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     }
     sc->tran = NULL;
 
-    /* Increment counter here- don't care about mastership in that routine.
+    comdb2uuidstr(sc->uuid, us);
+    assert(!s->resume);
+
+    if ((rc = sc_set_running(iq, sc->tablename, 1, gbl_mynode, time(NULL), 0,
+            __func__, __LINE__)) == 0) {
+        sc->set_running = 1;
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    } else {
+        free_schema_change_type(sc);
+    }
+
+   return rc ? ERR_SC : 0;
+
+    /* Increment counter for each here- don't care about mastership in this routine.
      * We will create a pending list & do this part in a separate loop. */
     /*
     if (sc->db)
@@ -6330,13 +6345,15 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         rc = timepart_foreach_shard(sc->tablename,
                                     start_schema_change_tran_wrapper, &arg, 0);
     }
-    */
     iq->usedb = NULL;
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
         return 0;
+    */
 
+    /*
     return ERR_SC;
+    */
 }
 
 /* get the table name part of the rpl request

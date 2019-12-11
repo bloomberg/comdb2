@@ -64,8 +64,8 @@ int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
 void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run();
-int sc_set_running(struct ireq *iq, char *table, int running, uint64_t seed,
-        const char *host, time_t time, int replicant, const char *func, int line);
+int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
+        time_t time, int replicant, const char *func, int line);
 void sc_clear_running(const char *func, int line);
 void sc_assert_clear(const char *func, int line);
 void sc_status(struct dbenv *dbenv);
