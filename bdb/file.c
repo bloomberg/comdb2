@@ -6511,9 +6511,10 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
              * NOTE: For queuedb, all files after the first one are optional
              *       and may not actually exist.
              */
+            char new[PATH_MAX];
             struct stat sb; /* NOT USED */
-            if ((dtanum > 0) && (stat(name, &sb) != 0)) {
-                print(bdb_state, "stopping at %s, it does not exist\n", name);
+            if ((dtanum > 0) && (stat(bdb_trans(name, new), &sb) != 0)) {
+                print(bdb_state, "stopping at %s, it does not exist\n", new);
                 break;
             }
             rc = bdb_del_file(bdb_state, tid, name, bdberr);
