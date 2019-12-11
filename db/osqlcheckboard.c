@@ -297,8 +297,7 @@ bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
     if (!checkboard)
         return 0;
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
-    return entry != NULL;
+    return (osql_chkboard_fetch_entry(rqid, uuid, true) != NULL);
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
