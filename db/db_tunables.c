@@ -114,7 +114,6 @@ extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;
-extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;

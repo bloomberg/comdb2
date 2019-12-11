@@ -3355,7 +3355,7 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
         break;
     default:
         if (iq)
-            osql_set_delayed(iq);
+            iq->sorese.is_delayed = true;
         break;
     }
     return rc;
@@ -6765,11 +6765,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL;
-        if (osql_get_delayed(iq) == 0 && iq->usedb->n_constraints == 0 &&
+        if (!iq->sorese.is_delayed && iq->usedb->n_constraints == 0 &&
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
         } else {
-            osql_set_delayed(iq);
+            iq->sorese.is_delayed = true;
         }
 
         rc = add_record(iq, trans, tag_name_ondisk,

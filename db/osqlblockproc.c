@@ -68,7 +68,6 @@
 #include <ctrace.h>
 #include "intern_strings.h"
 
-int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
@@ -86,7 +85,6 @@ struct blocksql_tran {
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
     pthread_cond_t cond;
-    int dowait; /* mark this when session completes to avoid loosing signal */
     int delayed;
     int rows;
     bool iscomplete;
@@ -237,8 +235,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
             bdb_temp_table_set_cmp_func(tran->db_ins,
                                         osql_bplog_instbl_key_cmp);
     }
-
-    tran->dowait = 1;
 
     iq->timings.req_received = osql_log_time();
     iq->tranddl = 0;
@@ -1116,12 +1112,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     return 0;
 }
 
-/**
- * Set parallelism threshold
- *
- */
-void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
-
 /************************* INTERNALS
  * ***************************************************/
 
@@ -1557,25 +1547,6 @@ void osql_bplog_time_done(struct ireq *iq)
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
-}
-
-void osql_set_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            t->delayed = 1;
-    }
-}
-
-int osql_get_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            return t->delayed;
-    }
-    return 1;
 }
 
 /**

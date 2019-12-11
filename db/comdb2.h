@@ -1061,7 +1061,7 @@ typedef struct sorese_info {
                           finished successful, we set this to one
                           to avoid repeating it if the transaction is reexecuted
                        */
-
+    bool is_delayed;
 } sorese_info_t;
 
 /* Query cost stats as they go down to the client */
