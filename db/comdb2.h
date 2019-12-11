@@ -1057,10 +1057,6 @@ typedef struct sorese_info {
     int rcout;  /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool osql_retry;    /* if this is osql transaction, once sql part
-                          finished successful, we set this to one
-                          to avoid repeating it if the transaction is reexecuted
-                       */
     bool is_delayed;
 } sorese_info_t;
 

@@ -822,7 +822,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
             send_error_to_replicant(
-                rqid, sess->offhost, RC_INTERNAL_RETRY,
+                rqid, iq->sorese.host, RC_INTERNAL_RETRY,
                 "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR,

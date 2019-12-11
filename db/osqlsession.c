@@ -123,9 +123,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
 
     switch (phase) {
     case 0:
-        if (rq->req)
-            free(rq->req);
-
         if (rq->selectv_writelock_on_update) {
             hash_for(rq->selectv_genids, free_selectv_genids, NULL);
             hash_clear(rq->selectv_genids);
@@ -142,16 +139,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     }
 
     *prq = NULL;
-}
-
-/**
- * Get the cached sql request
- *
- */
-osql_req_t *osql_session_getreq(osql_sess_t *sess)
-{
-
-    return (osql_req_t *)sess->req;
 }
 
 /**
@@ -216,11 +203,11 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
 {
 
     osql_sess_t *sess = (osql_sess_t *)obj;
+    const char *host = (sess->iq) ? sess->iq->sorese.host : NULL;
     uuidstr_t us;
 
     printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
-           (sess->offhost) ? "REMOTE" : "LOCAL",
-           sess->offhost ? sess->offhost : "localhost");
+           host ? "REMOTE" : "LOCAL", host ? host : "localhost");
 
     return 0;
 }
@@ -298,7 +285,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
 {
     *tottm = sess->end - sess->initstart;
     *rtt = sess->end - sess->start;
-    *rtrs = sess->retries;
+    *rtrs = sess->iq ? sess->iq->retries : 0;
 }
 
 /**
@@ -306,6 +293,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
+    const char *host = sess->iq ? sess->iq->sorese.host : NULL;
     uuidstr_t us;
     char rqid[25];
     if (sess->rqid == OSQL_RQID_USE_UUID) {
@@ -316,10 +304,9 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     reqlog_logf(
         reqlog, REQL_INFO,
         "rqid %s node %s sec %ld rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
-        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid,
-        (sess->offhost ? sess->offhost : ""), (sess->end - sess->initstart),
-        reqlog_get_retries(reqlog), reqlog_get_queue_time(reqlog) / 1000,
-        sess->sql ? sess->sql : "()");
+        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
+        (sess->end - sess->initstart), reqlog_get_retries(reqlog),
+        reqlog_get_queue_time(reqlog) / 1000, sess->sql ? sess->sql : "()");481gg
 }
 
 /**
@@ -493,7 +480,8 @@ int osql_session_testterminate(void *obj, void *arg)
     int need_clean = 0;
     int completed = 0;
 
-    if (!node || sess->offhost == node) {
+    if (!node || (sess->iq && sess->iq->sorese.host == node) ||
+        (sess->iqcopy && sess->iqcopy->sorese.host == node)) {
 
         Pthread_mutex_lock(&sess->mtx);
 
@@ -556,12 +544,6 @@ int osql_session_testterminate(void *obj, void *arg)
     return 0;
 }
 
-/**
- * Get the cached sql request
- *
- */
-osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
-
 typedef struct {
     char *tablename;
     unsigned long long genid;
@@ -579,8 +561,8 @@ int gbl_selectv_writelock_on_update = 1;
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
-                                   uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced, bool is_reorder_on)
+                                   uuid_t uuid, struct ireq *iq, int *replaced,
+                                   bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
     int rc = 0;
@@ -612,11 +594,8 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
-    sess->req = NULL;
-    sess->reqlen = 0;
     save_sql(iq, sess, sql, sqlen);
     sess->type = type;
-    sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
     sess->is_reorder_on = is_reorder_on;
     sess->selectv_writelock_on_update = gbl_selectv_writelock_on_update;
@@ -724,16 +703,6 @@ int osql_process_selectv(osql_sess_t *sess,
     if (!sess->selectv_writelock_on_update)
         return 0;
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);
-}
-
-void osql_sess_set_reqlen(osql_sess_t *sess, int len)
-{
-    sess->reqlen = len;
-}
-
-int osql_sess_reqlen(osql_sess_t *sess)
-{
-    return sess->reqlen;
 }
 
 int osql_sess_type(osql_sess_t *sess)
