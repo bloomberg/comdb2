@@ -547,7 +547,8 @@ struct writable_range {
 static struct thdpool *trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
-
+int gbl_ref_sync_pollms = 250;
+int gbl_ref_sync_iterations = 4;
 
 static void
 trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
@@ -721,18 +722,16 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		 */
 		MUTEX_UNLOCK(dbenv, mutexp);
 
-#ifdef REF_SYNC_TEST
-		while (bhp->ref_sync != 0) {
-			fprintf(stderr,
-		    "... bhp->ref_sync is %d (waiting for it to go to 0)\n",
-			    bhp->ref_sync);
-			(void)__os_sleep(dbenv, 1, 0);
-		}
-#else
-		for (wait_cnt = 1;
-		    bhp->ref_sync != 0 && wait_cnt < 4; ++wait_cnt)
-			(void)__os_sleep(dbenv, 1, 0);
-#endif
+		int rs_iters = gbl_ref_sync_iterations;
+		int rs_pollms = gbl_ref_sync_pollms;
+
+		rs_iters = (rs_iters > 0 ? rs_iters : 4);
+		rs_pollms = (rs_pollms > 0 ? rs_pollms : 250);
+
+		for (wait_cnt = 0; bhp->ref_sync != 0 && wait_cnt < rs_iters;
+				++wait_cnt) {
+			poll(NULL, 0, rs_pollms);
+ 		}
 
 		MUTEX_LOCK(dbenv, mutexp);
 		hb_lock = 1;

@@ -33,9 +33,7 @@
 #include <uuid/uuid.h>
 #include "str0.h"
 
-static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
-static int clear_messages(osql_sess_t *sess);
 
 /**
  * Saves the current sql in a buffer for our use. Reusing the buffer
@@ -122,27 +120,12 @@ static int free_selectv_genids(void *obj, void *arg)
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
     osql_sess_t *rq = *prq;
-    uuidstr_t us;
 
-    free_blob_buffers(rq->blobs, MAXBLOBS);
     switch (phase) {
     case 0:
-#ifdef TEST_OSQL
-        fprintf(stderr, "[%llu %s] FREEING QUEUE\n", rq->rqid,
-                comdb2uuidstr(rq->uuid, us));
-#endif
         if (rq->req)
             free(rq->req);
 
-        /* queue might not be empty; be nice and free its objects */
-        {
-            int cleared = clear_messages(rq);
-            if (cleared && debug_switch_osql_verbose_clear())
-                fprintf(stderr, "%llu %s cleared %d messages\n", rq->rqid,
-                        comdb2uuidstr(rq->uuid, us), cleared);
-        }
-
-        queue_free(rq->que);
         if (rq->selectv_writelock_on_update) {
             hash_for(rq->selectv_genids, free_selectv_genids, NULL);
             hash_clear(rq->selectv_genids);
@@ -159,20 +142,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     }
 
     *prq = NULL;
-}
-
-static int clear_messages(osql_sess_t *sess)
-{
-
-    char *tmp = NULL;
-    int cnt = 0;
-
-    while ((tmp = queue_next(sess->que)) != NULL) {
-        free(tmp);
-        cnt++;
-    }
-
-    return cnt;
 }
 
 /**
@@ -256,11 +225,6 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
     return 0;
 }
 
-/**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_bindreq(osql_sess_t *sess, char *host) { sess->offhost = host; }
 
 /**
  * Mark session duration and reported result.
@@ -320,92 +284,6 @@ static inline int is_session_repeatable(int code)
    if(code == OSQL_NOOSQLTHR)
       return 1;
 #endif
-    return 0;
-}
-
-/**
- * Checks if a session is complete;
- * Returns:
- * - SESS_DONE_OK, if the session completed successfully
- * - SESS_DONE_ERROR_REPEATABLE, if the session is completed
- *   but finished with an error that allows repeating the request
- * - SESS_DONE_ERROR, if the session completed with an unrecoverable error
- * - SESS_PENDING, otherwise
- *
- * xerr is set to point to session errstat so that blockproc can retrieve
- * individual session error, if any.
- *
- *
- */
-int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
-{
-    int rc = SESS_PENDING;
-
-    Pthread_mutex_lock(&sess->completed_lock);
-
-    if (sess->completed) {
-
-        /* Lost the race against the retry code.  Just retry again. */
-        if (sess->completed != sess->rqid ||
-            comdb2uuidcmp(sess->completed_uuid, sess->uuid) != 0) {
-            rc = SESS_DONE_ERROR_REPEATABLE;
-        }
-
-        else if (sess->xerr.errval) {
-            int errval;
-            *xerr = &sess->xerr;
-
-            errval = sess->xerr.errval;
-
-            rc = is_session_repeatable(errval) ? SESS_DONE_ERROR_REPEATABLE
-                                               : SESS_DONE_ERROR;
-        } else {
-#if 0
-         uuidstr_t us;
-         printf("Recv DONE rqid=%llu %s tmp=%llu\n", sess->rqid, comdb2uuidstr(sess->uuid, us), osql_log_time());
-#endif
-            *xerr = NULL;
-            rc = SESS_DONE_OK;
-        }
-    } else {
-        if (sess->terminate)
-            rc = SESS_DONE_ERROR_REPEATABLE;
-    }
-
-    Pthread_mutex_unlock(&sess->completed_lock);
-
-    return rc;
-}
-
-/**
- * Check if there was a delay in receiving rows from
- * replicant, and if so, poke the sql session to detect
- * if this is still in progress
- *
- */
-int osql_sess_test_slow(osql_sess_t *sess)
-{
-    int rc = 0;
-    time_t crttime = time(NULL);
-
-    /* check if too much time has passed and poke the request otherwise */
-    if (crttime - sess->last_row > gbl_osql_blockproc_timeout_sec) {
-        rc = osql_poke_replicant(sess);
-        if (rc) {
-            uuidstr_t us;
-            fprintf(stderr,
-                    "%s: session %llx %s lost its offloading node on %s\n",
-                    __func__, (unsigned long long)sess->rqid,
-                    comdb2uuidstr(sess->uuid, us), sess->offhost);
-            sess->terminate = OSQL_TERMINATE;
-
-            if (bdb_lock_desired(thedb->bdb_env))
-                return ERR_NOMASTER;
-
-            return rc;
-        }
-    }
-
     return 0;
 }
 
@@ -678,42 +556,6 @@ int osql_session_testterminate(void *obj, void *arg)
     return 0;
 }
 
-static int osql_poke_replicant(osql_sess_t *sess)
-{
-    uuidstr_t us;
-
-    ctrace("Poking %s from %s for rqid %llx %s\n", sess->offhost, gbl_mynode,
-           sess->rqid, comdb2uuidstr(sess->uuid, us));
-
-    if (sess->offhost) {
-
-        int rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
-                                     NET_OSQL_POKE);
-        return rc;
-    }
-
-    /* checkup local listings */
-    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid);
-
-    if (found || sess->xerr.errval)
-        return 0;
-
-    /* ideally this should never happen, i.e.  a local request should be
-     * either dispatch successfully or reported as failure, not disappear
-     * JIC, here we mark it MIA */
-    sess->xerr.errval = OSQL_NOOSQLTHR;
-    snprintf(sess->xerr.errstr, sizeof(sess->xerr.errstr),
-             "Missing sql session %llx %s in local mode", sess->rqid,
-             comdb2uuidstr(sess->uuid, us));
-    return -1;
-}
-
-/**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_setnode(osql_sess_t *sess, char *host) { sess->offhost = host; }
-
 /**
  * Get the cached sql request
  *
@@ -767,13 +609,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     Pthread_mutex_init(&sess->completed_lock, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
     Pthread_cond_init(&sess->cond, NULL);
-
-    /* init queue of messages */
-    sess->que = queue_new();
-    if (!sess->que) {
-        _destroy_session(&sess, 1);
-        return NULL;
-    }
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
@@ -891,31 +726,9 @@ int osql_process_selectv(osql_sess_t *sess,
     return hash_for(sess->selectv_genids, process_selectv, &hf_args);
 }
 
-char *osql_sess_tag(osql_sess_t *sess)
-{
-    return sess->tag;
-}
-
-void *osql_sess_tagbuf(osql_sess_t *sess)
-{
-    return sess->tagbuf;
-}
-
-int osql_sess_tagbuf_len(osql_sess_t *sess)
-{
-    return sess->tagbuflen;
-}
-
 void osql_sess_set_reqlen(osql_sess_t *sess, int len)
 {
     sess->reqlen = len;
-}
-
-void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
-                             int *nblobs)
-{
-    *blobs = sess->blobs;
-    *nblobs = sess->numblobs;
 }
 
 int osql_sess_reqlen(osql_sess_t *sess)

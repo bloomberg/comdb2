@@ -292,7 +292,7 @@ enum BLOCK_OPS {
     BLOCK2_QADD = 808,
     BLOCK2_QCONSUME = 809,
     BLOCK2_TZ = 810,
-    BLOCK2_SQL = 811,
+    BLOCK2_SQL = 811, /* obsolete */
     BLOCK2_DELOLDER = 812,
     BLOCK2_TRAN = 813,
     BLOCK2_MODNUM = 814,
@@ -301,7 +301,7 @@ enum BLOCK_OPS {
     BLOCK2_RECOM = 817,
     BLOCK2_UPDBYKEY = 818,
     BLOCK2_SERIAL = 819,
-    BLOCK2_SQL_PARAMS = 820,
+    BLOCK2_SQL_PARAMS = 820, /* obsolete */
     BLOCK2_DBGLOG_COOKIE = 821,
     BLOCK2_PRAGMA = 822,
     BLOCK2_SNAPISOL = 823,
@@ -1320,11 +1320,7 @@ struct ireq {
     /* copy of blkseq */
     uint8_t seq[MAX_SEQ_LEN];
 
-    /* for blocksql purposely we want to have the list of sql
-       queries submitted;
-       the field is not null if we have any BLOCK2_SQL requests
-       THIS IS USED IN BLOCKSQL, WOULD BE NICE TO UNIFY -later-
-     */
+    /* bplog pointer */
     void *blocksql_tran;
 
     /* socksql/recom storage */
@@ -3531,7 +3527,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
-int getdbidxbyname(const char *p_name);
+int getdbidxbyname_ll(const char *p_name);
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran);

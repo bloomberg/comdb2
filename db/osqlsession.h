@@ -35,8 +35,6 @@ struct osql_sess {
     /* request part */
     unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
-    queue_type *que; /* queue of received messages */
-    int maxquesz;    /* the maximum entries in the queue  */
 
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
@@ -70,14 +68,6 @@ struct osql_sess {
 
     int reqlen;      /* length of request */
     const char *sql; /* if set, pointer to sql string (part of req) */
-    int sql_allocd;  /* if set, we need to free sql when destroying */
-    char *tag; /* dynamic tag header describing query parameter bindings */
-    void *
-        tagbuf; /* buffer containing query bind parameter values (described by
-                   tag) */
-    int tagbuflen; /* size of tagbuf */
-    blob_buffer_t blobs[MAXBLOBS];
-    int numblobs;
 
     /* this are set for each session retry */
     time_t initstart; /* when this was first started */
@@ -102,12 +92,6 @@ struct osql_sess {
     bool selectv_writelock_on_update : 1;
 };
 
-enum {
-    SESS_PENDING,
-    SESS_DONE_OK,
-    SESS_DONE_ERROR_REPEATABLE,
-    SESS_DONE_ERROR
-};
 
 enum { REQ_OPTION_QUERY_LIMITS = 1 };
 
@@ -148,25 +132,11 @@ int osql_sess_addclient(osql_sess_t *sess);
 int osql_sess_remclient(osql_sess_t *sess);
 
 /**
- * Registers the destination for osql session "sess"
- *
- */
-void osql_sess_setnode(osql_sess_t *sess, char *host);
-
-/**
  * Mark session duration and reported result.
  *
  */
 int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
                            osql_sess_t *sess, struct errstat *xerr);
-
-/**
- * Check if there was a delay in receiving rows from
- * replicant, and if so, poke the sql session to detect
- * if this is still in progress
- *
- */
-int osql_sess_test_slow(osql_sess_t *sess);
 
 /**
  * Returns
@@ -181,22 +151,6 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs);
  * Log query to the reqlog
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
-
-/**
- * Checks if a session is complete;
- * Returns:
- * - SESS_DONE_OK, if the session completed successfully
- * - SESS_DONE_ERROR_REPEATABLE, if the session is completed
- *   but finished with an error that allows repeating the request
- * - SESS_DONE_ERROR, if the session completed with an unrecoverable error
- * - SESS_PENDING, otherwise
- *
- * xerr is set to point to session errstat so that blockproc can retrieve
- * individual session error, if any.
- *
- *
- */
-int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr);
 
 /**
  * Print summary session
@@ -261,12 +215,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
                                    int *replaced, bool is_reorder_on);
 
-char *osql_sess_tag(osql_sess_t *sess);
-void *osql_sess_tagbuf(osql_sess_t *sess);
-int osql_sess_tagbuf_len(osql_sess_t *sess);
 void osql_sess_set_reqlen(osql_sess_t *sess, int len);
-void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
-                             int *nblobs);
 int osql_sess_reqlen(osql_sess_t *sess);
 
 /**

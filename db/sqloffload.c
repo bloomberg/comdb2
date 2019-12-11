@@ -556,9 +556,6 @@ int selectv_range_commit(struct sqlclntstate *clnt)
 int req2netreq(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return NET_OSQL_BLOCK_REQ;
-
     case OSQL_SOCK_REQ:
         return NET_OSQL_SOCK_REQ;
 
@@ -587,9 +584,6 @@ int req2netreq(int reqtype)
 int req2netrpl(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return NET_OSQL_BLOCK_RPL;
-
     case OSQL_SOCK_REQ:
         return NET_OSQL_SOCK_RPL;
 

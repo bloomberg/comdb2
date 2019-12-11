@@ -492,7 +492,6 @@ long n_missed;
 
 int n_commits;
 long long n_commit_time; /* in micro seconds.*/
-pthread_mutex_t commit_stat_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int n_retries_transaction_active = 0;
 int n_retries_transaction_done = 0;
@@ -815,16 +814,15 @@ dbtable *getdbbynum(int num)
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
-            Pthread_rwlock_unlock(&thedb_lock);
-            return p_db;
+            break;
         }
     }
     Pthread_rwlock_unlock(&thedb_lock);
-    return 0;
+    return p_db;
 }
 
 /* lockless -- thedb_lock should be gotten from caller */
-int getdbidxbyname(const char *p_name)
+int getdbidxbyname_ll(const char *p_name)
 {
     dbtable *tbl;
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
@@ -839,7 +837,7 @@ int getdbidxbyname(const char *p_name)
 int get_dbtable_idx_by_name(const char *tablename)
 {
     Pthread_rwlock_rdlock(&thedb_lock);
-    int idx = getdbidxbyname(tablename);
+    int idx = getdbidxbyname_ll(tablename);
     Pthread_rwlock_unlock(&thedb_lock);
     return idx;
 }
@@ -5570,7 +5568,7 @@ void delete_db(char *db_name)
     int idx;
 
     Pthread_rwlock_wrlock(&thedb_lock);
-    if ((idx = getdbidxbyname(db_name)) < 0) {
+    if ((idx = getdbidxbyname_ll(db_name)) < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find tbl for deletion: %s\n", __func__,
                 db_name);
         exit(1);

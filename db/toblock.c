@@ -74,6 +74,7 @@
 #include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 #if 0
 #define TEST_OSQL
@@ -90,7 +91,6 @@ extern int verbose_deadlocks;
 extern int gbl_goslow;
 extern int n_commits;
 extern int n_commit_time;
-extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
@@ -1196,6 +1196,7 @@ static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
     return RC_OK;
 }
 
+/* this is used in bb-plugins */
 int tolongblock(struct ireq *iq)
 {
     unsigned long long tranid = 0LL;
@@ -4670,15 +4671,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         int tmpnops = 0;
         int needbackout = 0;
 
-        rc = osql_bplog_finish_sql(iq, &err);
-        if (rc) {
-            /* this is hacky but I don't wanna mess around with toblock return
-               code path
-               create a transaction and backout */
-            numerrs = 1;
-            needbackout = 1;
-        }
-
         if (iq->tranddl) {
             int iirc;
             if (trans) {
@@ -4763,7 +4755,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /* FOR DEADLOCK ON THE SERVER,
          * WE'RE NOT REPEATING THE SQL PROCESSING PART
          * INSTEAD WE JUST REPLAY THE BPLOG
-         * we set osql_retry so that we ignore BLOCK2_SQL, BLOCK2_SOSQL,
+         * we set osql_retry so that we ignore  BLOCK2_SOSQL,
          * BLOCK2_RECOM, BLOCK2_SNAPISOL, BLOCK2_SERIAL if we retry
          *
          * we don't retry successful sql session; we do this here
@@ -5866,10 +5858,8 @@ add_blkseq:
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
-    Pthread_mutex_lock(&commit_stat_lk);
-    n_commit_time += diff_time_micros;
-    n_commits++;
-    Pthread_mutex_unlock(&commit_stat_lk);
+    ATOMIC_ADD64(n_commit_time, diff_time_micros);
+    ATOMIC_ADD32(n_commits, 1);
 
     if (outrc == 0) {
         if (iq->__limits.maxcost_warn &&

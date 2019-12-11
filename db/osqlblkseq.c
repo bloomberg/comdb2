@@ -71,10 +71,12 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
         rc = OSQL_BLOCKSEQ_FIRST;
     }
     Pthread_mutex_unlock(&hmtx);
+#ifndef NDEBUG
     if (!iq_src) {
         logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n", iq->snap_info.keylen - 3,
                iq->snap_info.key);
     }
+#endif
 
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
@@ -184,16 +186,21 @@ int osql_blkseq_unregister(struct ireq *iq)
         return 0;
 
     assert(hiqs != NULL);
-    int rc = 0;
 
     Pthread_mutex_lock(&hmtx);
 
     hash_del(hiqs, iq);
-    rc = osql_blkseq_unregister_cnonce(iq);
+#ifndef NDEBUG
+    int rc = osql_blkseq_unregister_cnonce(iq);
+#else
+    osql_blkseq_unregister_cnonce(iq);
+#endif
 
     Pthread_mutex_unlock(&hmtx);
+#ifndef NDEBUG
     if (iq->have_snap_info)
         logmsg(LOGMSG_DEBUG, "Removed from blkseq %*s, rc=%d\n",
                iq->snap_info.keylen - 3, iq->snap_info.key, rc);
+#endif
     return 0;
 }
