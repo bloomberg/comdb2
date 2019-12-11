@@ -306,7 +306,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
         "rqid %s node %s sec %ld rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
         sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
         (sess->end - sess->initstart), reqlog_get_retries(reqlog),
-        reqlog_get_queue_time(reqlog) / 1000, sess->sql ? sess->sql : "()");481gg
+        reqlog_get_queue_time(reqlog) / 1000, sess->sql ? sess->sql : "()");
 }
 
 /**
