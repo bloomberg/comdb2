@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+set -ex
+
+db=repopulatequeues
+
+rm -rf $DBDIR
+mkdir -p $DBDIR
+
+$COMDB2_EXE $db --create --dir $DBDIR/$db >/dev/null 2>&1
+$COMDB2_EXE $db -lrl $DBDIR/$db/$db.lrl >/dev/null 2>&1 &
+sleep 10
+
+# Create a table
+cdb2sql $db "create table t (i int)" >/dev/null
+# Create 2 consumers
+cdb2sql $db "create procedure p { local function main (e) local c = db:consumer() local e = c:get() end }" >/dev/null
+cdb2sql $db "create lua consumer p on (table t for insert)" >/dev/null
+cdb2sql $db "create procedure q { local function main (e) local c = db:consumer() local e = c:get() end }" >/dev/null
+cdb2sql $db "create lua consumer q on (table t for insert)" >/dev/null
+
+cdb2sql $db 'exec procedure sys.cmd.send("exit")' >/dev/null
+sleep 5
+
+for i in `seq 1 5`; do
+    rm -rf $DBDIR/$db.repop
+    mkdir -p $DBDIR/$db.repop
+    $COMDB2_EXE $db --repopnewlrl $DBDIR/$db.repop/$db.lrl --lrl $DBDIR/$db/$db.lrl
+    $COMDB2_EXE $db --create --lrl $DBDIR/$db.repop/$db.lrl
+    $COMDB2_EXE $db -lrl $DBDIR/$db.repop/$db.lrl &
+    sleep 10
+    cdb2sql $db 'exec procedure sys.cmd.send("exit")'
+    sleep 5
+done
+
+echo "Passed."
+exit 0

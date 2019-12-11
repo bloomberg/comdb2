@@ -988,18 +988,6 @@ clipper_usage:
         }
     }
 
-    else if (tokcmp(tok, ltok, "blocksqlthrottle") == 0) {
-        int num;
-
-        tok = segtok(line, lline, &st, &ltok);
-        num = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "setting blocksql maximmum concurrent in-transaction "
-                        "sessions to %d\n",
-                num);
-
-        osql_bplog_setlimit(num);
-    }
-
     else if (tokcmp(tok, ltok, "purge") == 0) {
         /* maintenance command: purge records/ index items/ blobs by genid
            These will typically be reported by e.g. the verify feature. */
@@ -4994,7 +4982,7 @@ void fastcount(char *tablename)
         return;
     }
 
-    calc_table_size(p_db);
+    calc_table_size(p_db, 0);
     dtasize = p_db->totalsize / 3;
     recsize = p_db->lrl;
     numrecs = dtasize / recsize;
@@ -5019,14 +5007,14 @@ static void dump_table_sizes(struct dbenv *dbenv)
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
-        total += calc_table_size(db);
+        total += calc_table_size(db, 0);
         len = strlen(db->tablename);
         if (len > maxtblname)
             maxtblname = len;
     }
     for (ndb = 0; ndb < dbenv->num_qdbs; ndb++) {
         db = dbenv->qdbs[ndb];
-        total += calc_table_size(db);
+        total += calc_table_size(db, 0);
         len = strlen(db->tablename);
         if (len > maxtblname)
             maxtblname = len;

@@ -642,18 +642,6 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
 }
 
 /**
- * Called when all rows are retrieved
- * Informs block process that the sql processing is over
- * and it can start processing bloplog
- *
- */
-int osql_block_commit(struct sql_thread *thd)
-{
-
-    return osql_send_commit_logic(thd->clnt, 0, NET_OSQL_BLOCK_RPL);
-}
-
-/**
  * This is called on the replicant node and starts a sosql session,
  * which creates a blockprocessor peer on the master node
  * Returns ok if the packet is sent successful to the master
@@ -1844,7 +1832,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     sc->usedbtablevers = comdb2_table_version(sc->tablename);
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb && getdbidxbyname(sc->tablename) < 0) { // view
+        if (usedb && getdbidxbyname_ll(sc->tablename) < 0) { // view
             unsigned long long version = 0;
             char *viewname = timepart_newest_shard(sc->tablename, &version);
             sc->usedbtablevers = version;

@@ -107,13 +107,33 @@ extern pthread_mutex_t delay_lock;
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_print_deadlock_cycles;
 
+static void adjust_maxwthreadpenalty(int *totpen_p,
+                                     double lcl_penaltyincpercent_d,
+                                     int retries)
+{
+    Pthread_mutex_lock(&delay_lock);
+
+    int penaltyinc;
+    penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
+                 (lcl_penaltyincpercent_d / retries);
+
+    if (penaltyinc <= 0) {
+        /* at least one less writer */
+        penaltyinc = 1;
+    }
+
+    if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
+        penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
+
+    gbl_maxwthreadpenalty += penaltyinc;
+    *totpen_p += penaltyinc;
+
+    Pthread_mutex_unlock(&delay_lock);
+}
+
 static int handle_op_block(struct ireq *iq)
 {
     int rc;
-    int retries;
-    int totpen;
-    int penaltyinc;
-    double gbl_penaltyincpercent_d;
 
     if (gbl_readonly || gbl_readonly_sc) {
         /* ERR_REJECTED will force a proxy retry. This is essential to make live
@@ -125,16 +145,13 @@ static int handle_op_block(struct ireq *iq)
         return rc;
     }
     if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
-        rc = ERR_READONLY;
-        return rc;
+        return ERR_READONLY;
     }
 
     iq->where = "toblock";
-
-    retries = 0;
-    totpen = 0;
-
-    gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+    int retries = 0;
+    int totpen = 0;
+    double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
 retry:
     rc = toblock(iq);
@@ -155,25 +172,9 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                Pthread_mutex_lock(&delay_lock);
-
-                penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-                             (gbl_penaltyincpercent_d / iq->retries);
-
-                if (penaltyinc <= 0) {
-                    /* at least one less writer */
-                    penaltyinc = 1;
-                }
-
-                if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-                    penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
-
-                gbl_maxwthreadpenalty += penaltyinc;
-                totpen += penaltyinc;
-
-                Pthread_mutex_unlock(&delay_lock);
+                adjust_maxwthreadpenalty(&totpen, lcl_penaltyincpercent_d,
+                                         iq->retries);
             }
-
             iq->usedb = iq->origdb;
 
             n_retries++;
@@ -181,8 +182,7 @@ retry:
             goto retry;
         }
 
-        logmsg(LOGMSG_WARN, "*ERROR* toblock too much contention count %d\n",
-               retries);
+        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
         thd_dump();
     }
 
@@ -191,13 +191,14 @@ retry:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-    osql_blkseq_unregister(iq);
+    if (rc)
+        osql_blkseq_unregister(iq);
 
-    Pthread_mutex_lock(&delay_lock);
-
-    gbl_maxwthreadpenalty -= totpen;
-
-    Pthread_mutex_unlock(&delay_lock);
+    if (totpen) {
+        Pthread_mutex_lock(&delay_lock);
+        gbl_maxwthreadpenalty -= totpen;
+        Pthread_mutex_unlock(&delay_lock);
+    }
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
@@ -331,7 +332,7 @@ int handle_ireq(struct ireq *iq)
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
                           iq->sorese.host, iq->sorese.type, iq->sorese.nops,
-                          iq->sorese.rcout, iq->sorese.osql_retry, rc,
+                          iq->sorese.rcout, iq->sorese.verify_retries, rc,
                           iq->errstat.errval);
             }
 
@@ -367,7 +368,7 @@ int handle_ireq(struct ireq *iq)
             if (iq->is_socketrequest) {
                 if (iq->sb == NULL) {
                     rc = offload_comm_send_blockreply(
-                        iq->frommach, iq->rqid, iq->p_buf_out_start,
+                        iq->frommach, iq->fwd_tag_rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                     free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {

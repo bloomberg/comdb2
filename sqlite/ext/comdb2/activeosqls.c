@@ -101,7 +101,7 @@ static int collect_bplog_session(void *obj, void *arg)
     memset(o, 0, sizeof(*o));
 
     o->type = bplogtype;
-    o->origin = sess->offhost ? strdup(sess->offhost) : NULL;
+    o->origin = (iq && iq->sorese.host)? strdup(iq->sorese.host) : NULL;
     o->where = iq && iq->where ? strdup(iq->where) : NULL;
     if (iq && iq->have_snap_info) {
         o->cnonce = malloc(iq->snap_info.keylen + 1);
@@ -118,7 +118,7 @@ static int collect_bplog_session(void *obj, void *arg)
     o->nops = sess->seq;
     o->start_time = U2M(sess->startus);
     o->commit_time = U2M(sess->endus);
-    o->nretries = sess->retries;
+    o->nretries = iq?iq->retries:0;
     return 0;
 }
 

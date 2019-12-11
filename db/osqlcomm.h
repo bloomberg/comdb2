@@ -48,15 +48,6 @@ int osql_comm_init(struct dbenv *dbenv);
  */
 void osql_comm_destroy(void);
 
-/**
- * Disable temporarily replicant "node"
- * "node" will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_comm_blkout_node(const char *host);
-
 /* Offload upgrade record request. */
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 

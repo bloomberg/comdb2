@@ -335,7 +335,6 @@ int gbl_meta_lite = 1;
 int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
-int gbl_debug_verify_tran = 0;
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
@@ -493,7 +492,6 @@ long n_missed;
 
 int n_commits;
 long long n_commit_time; /* in micro seconds.*/
-pthread_mutex_t commit_stat_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int n_retries_transaction_active = 0;
 int n_retries_transaction_done = 0;
@@ -816,16 +814,15 @@ dbtable *getdbbynum(int num)
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
-            Pthread_rwlock_unlock(&thedb_lock);
-            return p_db;
+            break;
         }
     }
     Pthread_rwlock_unlock(&thedb_lock);
-    return 0;
+    return p_db;
 }
 
 /* lockless -- thedb_lock should be gotten from caller */
-int getdbidxbyname(const char *p_name)
+int getdbidxbyname_ll(const char *p_name)
 {
     dbtable *tbl;
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
@@ -840,7 +837,7 @@ int getdbidxbyname(const char *p_name)
 int get_dbtable_idx_by_name(const char *tablename)
 {
     Pthread_rwlock_rdlock(&thedb_lock);
-    int idx = getdbidxbyname(tablename);
+    int idx = getdbidxbyname_ll(tablename);
     Pthread_rwlock_unlock(&thedb_lock);
     return idx;
 }
@@ -1643,8 +1640,10 @@ void cleanup_newdb(dbtable *tbl)
         tbl->check_constraint_query[i] = NULL;
     }
 
+    if (tbl->dbtype == DBTYPE_QUEUEDB)
+        Pthread_rwlock_destroy(&tbl->consumer_lk);
+
     free(tbl);
-    tbl = NULL;
 }
 
 dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
@@ -3136,12 +3135,12 @@ static int llmeta_set_qdb(const char *file)
     long end = ftell(f);
     fseek(f, here, SEEK_SET);
     n = end - here;
-    char config[n];
+    char config[n + 1];
     if (fread(config, n, 1, f) == 0) {
         fclose(f);
         return -1;
     }
-    config[n - 1] = 0;
+    config[n] = 0;
     // Save to LLMETA
     int rc, bdberr;
     if ((rc = bdb_llmeta_add_queue(thedb->bdb_env, NULL, name, config, ndests,
@@ -3216,11 +3215,11 @@ static int init_db_dir(char *dbname, char *dir)
 
 static int llmeta_set_qdbs(void)
 {
-    if (qdbs == NULL)
-        return 0;
     int rc = 0;
-    while (*qdbs && (rc = llmeta_set_qdb(*qdbs++)) == 0)
-        ;
+    for (int i = 0; i != thedb->num_qdbs; ++i) {
+        if ((rc = llmeta_set_qdb(qdbs[i])) != 0)
+            break;
+    }
     return rc;
 }
 
@@ -3329,7 +3328,7 @@ static int create_db(char *dbname, char *dir) {
    int rc;
 
    char *fulldir;
-   fulldir = realpath(dir, NULL);
+   fulldir = comdb2_realpath(dir, NULL);
    if (fulldir == NULL) {
       rc = mkdir(dir, 0755);
       if (rc) {
@@ -3338,7 +3337,7 @@ static int create_db(char *dbname, char *dir) {
                strerror(errno));
          return -1;
       }
-      fulldir = realpath(dir, NULL);
+      fulldir = comdb2_realpath(dir, NULL);
       if (fulldir == NULL) {
          logmsg(LOGMSG_FATAL, "Can't figure out full path for %s\n", dir);
          return -1;
@@ -3348,7 +3347,9 @@ static int create_db(char *dbname, char *dir) {
    logmsg(LOGMSG_INFO, "Creating db in %s\n", dir);
    setenv("COMDB2_DB_DIR", fulldir, 1);
 
-   if (init_db_dir(dbname, dir)) return -1;
+   rc = init_db_dir(dbname, dir);
+   free(fulldir);
+   if (rc) return -1;
 
    /* set up as a create run */
    gbl_local_mode = 1;
@@ -3506,7 +3507,7 @@ static int init(int argc, char **argv)
         }
 
         if (rc == 0 && (st.st_mode & S_IFDIR)) {
-            gbl_dbdir = realpath(".", NULL);
+            gbl_dbdir = comdb2_realpath(".", NULL);
         } else {
             /* can't access or can't find logs in current directory, assume db
              * isn't here */
@@ -5567,7 +5568,7 @@ void delete_db(char *db_name)
     int idx;
 
     Pthread_rwlock_wrlock(&thedb_lock);
-    if ((idx = getdbidxbyname(db_name)) < 0) {
+    if ((idx = getdbidxbyname_ll(db_name)) < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find tbl for deletion: %s\n", __func__,
                 db_name);
         exit(1);

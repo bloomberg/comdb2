@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+${TESTSBUILDDIR}/smartbeats $1

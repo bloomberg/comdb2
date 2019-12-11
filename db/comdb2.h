@@ -156,13 +156,6 @@ enum STMT_CACHE_FLAGS {
     STMT_CACHE_ALL = 2 /* cache all the queries */
 };
 
-enum TRAN_FLAGS {
-    TRAN_NO_SYNC =
-        1 /* don't wait for acks for this transaction (be careful...) */
-    ,
-    TRAN_VERIFY = 2 /* before commit verify all the keys */
-};
-
 enum OPCODES {
     OP_DBINFO = 0 /*rmtdb info req*/
     ,
@@ -299,7 +292,7 @@ enum BLOCK_OPS {
     BLOCK2_QADD = 808,
     BLOCK2_QCONSUME = 809,
     BLOCK2_TZ = 810,
-    BLOCK2_SQL = 811,
+    BLOCK2_SQL = 811, /* obsolete */
     BLOCK2_DELOLDER = 812,
     BLOCK2_TRAN = 813,
     BLOCK2_MODNUM = 814,
@@ -308,7 +301,7 @@ enum BLOCK_OPS {
     BLOCK2_RECOM = 817,
     BLOCK2_UPDBYKEY = 818,
     BLOCK2_SERIAL = 819,
-    BLOCK2_SQL_PARAMS = 820,
+    BLOCK2_SQL_PARAMS = 820, /* obsolete */
     BLOCK2_DBGLOG_COOKIE = 821,
     BLOCK2_PRAGMA = 822,
     BLOCK2_SNAPISOL = 823,
@@ -1064,11 +1057,7 @@ typedef struct sorese_info {
     int rcout;  /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool osql_retry;    /* if this is osql transaction, once sql part
-                          finished successful, we set this to one
-                          to avoid repeating it if the transaction is reexecuted
-                       */
-
+    bool is_delayed;
 } sorese_info_t;
 
 /* Query cost stats as they go down to the client */
@@ -1272,7 +1261,7 @@ struct ireq {
     uint8_t *p_buf_out;           /* pointer to current pos in output buf */
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
-    unsigned long long rqid;
+    unsigned long long fwd_tag_rqid;
     int frompid;
     int debug;
     int opcode;
@@ -1327,11 +1316,7 @@ struct ireq {
     /* copy of blkseq */
     uint8_t seq[MAX_SEQ_LEN];
 
-    /* for blocksql purposely we want to have the list of sql
-       queries submitted;
-       the field is not null if we have any BLOCK2_SQL requests
-       THIS IS USED IN BLOCKSQL, WOULD BE NICE TO UNIFY -later-
-     */
+    /* bplog pointer */
     void *blocksql_tran;
 
     /* socksql/recom storage */
@@ -1372,7 +1357,6 @@ struct ireq {
     /* if we replicated then these get updated */
     int reptimems;
     int timeoutms;
-    int transflags; /* per-transaction flags */
 
     /* more stats - number of retries done under this request */
     int retries;
@@ -1636,7 +1620,6 @@ extern int gbl_context_in_key; /* whether to drop find context in last
                                   key found (in dtastripe mode) */
 extern int gbl_ready;          /* gets set just before waitft is called
                                   and never gets unset */
-extern int gbl_debug_verify_tran;
 extern int gbl_queue_debug;
 extern unsigned gbl_goose_add_rate;
 extern unsigned gbl_goose_consume_rate;
@@ -2590,8 +2573,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
 void upgrade_record_by_genid(struct dbtable *db, unsigned long long genid);
 void backend_thread_event(struct dbenv *dbenv, int event);
 void backend_cmd(struct dbenv *dbenv, char *line, int lline, int st);
-uint64_t calc_table_size(struct dbtable *db);
-uint64_t calc_table_size_analyze(struct dbtable *db);
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs);
 
 enum { WHOLE_BUFFER = -1 };
 
@@ -3541,7 +3523,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
-int getdbidxbyname(const char *p_name);
+int getdbidxbyname_ll(const char *p_name);
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran);

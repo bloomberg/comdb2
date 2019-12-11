@@ -65,11 +65,7 @@ gen_series_test()
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "create table t2 (i int)"
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "insert into t2 select * from generate_series(1, $MAX) "
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select distinct i from t2" | sort -n > gen.out
-    i=1
-    while [ $i -le $MAX ] ; do 
-        echo $i >> gen.exp
-        let i=i+1
-    done
+    seq 1 $MAX > gen.exp
     if ! diff gen.out gen.exp ; then 
         failexit 'genseries content not what it is expected'
     fi

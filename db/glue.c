@@ -240,7 +240,6 @@ static struct dbenv *dbenv_from_ireq(const struct ireq *iq)
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
 {
     memset(iq, 0, sizeof(struct ireq));
-    iq->transflags = 0;
     iq->is_fake = 1;
     iq->dbenv = dbenv;
     iq->use_handle = get_bdb_handle_ireq(iq, auxdb);
@@ -4395,13 +4394,13 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
 }
 
 #define get_put_db(x, y)                                                       \
-    int put_db_##x(struct dbtable *db, tran_type *tran, int value)                  \
+    int put_db_##x(struct dbtable *db, tran_type *tran, int value)             \
     {                                                                          \
         struct metahdr hdr = {.rrn = y, .attr = 0};                            \
         int tmp = htonl(value);                                                \
         return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
     }                                                                          \
-    int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)          \
+    int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)     \
     {                                                                          \
         struct metahdr hdr = {.rrn = y, .attr = 0};                            \
         int tmp;                                                               \
@@ -4412,21 +4411,34 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
             *value = 0;                                                        \
         return rc;                                                             \
     }                                                                          \
-    int get_db_##x(struct dbtable *db, int *value)                                  \
+    int get_db_##x(struct dbtable *db, int *value)                             \
     {                                                                          \
         return get_db_##x##_tran(db, value, NULL);                             \
     }
 
-get_put_db(odh, META_ONDISK_HEADER_RRN) get_put_db(inplace_updates,
-                                                   META_INPLACE_UPDATES)
-    get_put_db(compress, META_COMPRESS_RRN)
-        get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
-            get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
-                get_put_db(datacopy_odh, META_DATACOPY_ODH)
-                    get_put_db(bthash, META_BTHASH)
+// get_db_odh, get_db_odh_tran, put_db_odh
+get_put_db(odh, META_ONDISK_HEADER_RRN)
 
-                        static int put_meta_int(const char *table, void *tran,
-                                                int rrn, int key, int value)
+// get_db_inplace_updates, get_db_inplace_updates_tran, put_db_inplace_updates
+get_put_db(inplace_updates, META_INPLACE_UPDATES)
+
+// get_db_compress, get_db_compress_tran, put_db_compress
+get_put_db(compress, META_COMPRESS_RRN)
+
+// get_db_compress_blobs, get_db_compress_blobs_tran, put_db_compress_blobs
+get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
+
+// get_db_instant_schema_change, get_db_instant_schema_change_tran, put_db_instant_schema_change
+get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
+
+// get_db_datacopy_odh, get_db_datacopy_odh_tran, put_db_datacopy_odh
+get_put_db(datacopy_odh, META_DATACOPY_ODH)
+
+// get_db_bthash, get_db_bthash_tran, put_db_bthash
+get_put_db(bthash, META_BTHASH)
+
+static int put_meta_int(const char *table, void *tran, int rrn, int key,
+                        int value)
 {
     struct metahdr hdr;
     struct dbtable *db;
@@ -5330,42 +5342,10 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size_analyze(struct dbtable *db)
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
 {
     int ii;
-    uint64_t returnsize;
-    returnsize = db->totalsize = 0;
-
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
-        for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
-            db->totalsize += db->ixsizes[ii];
-        }
-
-        returnsize = db->totalsize;
-
-        db->dtasize = bdb_data_size(db->handle, 0);
-        db->totalsize += db->dtasize;
-
-        for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
-            db->totalsize += db->blobsizes[ii];
-        }
-    } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUE) {
-        returnsize = db->totalsize =
-            bdb_queue_size(db->handle, &db->numextents);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
-                __func__, db->dbtype);
-    }
-
-    return returnsize;
-}
-
-uint64_t calc_table_size(struct dbtable *db)
-{
-    int ii;
+    uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
@@ -5377,6 +5357,7 @@ uint64_t calc_table_size(struct dbtable *db)
 
         db->dtasize = bdb_data_size(db->handle, 0);
         db->totalsize += db->dtasize;
+        size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
             db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
@@ -5389,7 +5370,10 @@ uint64_t calc_table_size(struct dbtable *db)
                 __func__, db->dbtype);
     }
 
-    return db->totalsize;
+    if (skip_blobs)
+        return size_without_blobs;
+    else
+        return db->totalsize;
 }
 
 void compr_print_stats()

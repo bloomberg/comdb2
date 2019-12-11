@@ -2640,10 +2640,6 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                 summaries[ii].dels += n;
                 break;
 
-            case BLOCK2_SQL:
-                summaries[ii].bsql += n;
-                break;
-
             case BLOCK2_RECOM:
                 summaries[ii].recom += n;
 
