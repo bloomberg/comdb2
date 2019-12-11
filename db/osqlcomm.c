@@ -2837,7 +2837,7 @@ static osql_comm_t *get_thecomm(void)
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp);
 static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
-                             int usertype, void *dtap, int dtalen, void *tail,
+                             int usertype, void *dtap, int dtalen, const void *tail,
                              int tailen);
 
 static void net_sosql_req(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3415,7 +3415,7 @@ int osql_send_startgen(osql_target_t *target, unsigned long long rqid,
  *
  */
 int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, unsigned long long tableversion)
+                    const char *tablename, int type, unsigned long long tableversion)
 {
     unsigned short tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     int msglen;
@@ -5426,7 +5426,7 @@ static int check_master(const osql_target_t *target)
    this is needed only when routing local packets
    we need to "serialize" the tail as well, therefore the need for duplicate */
 static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
-                             int usertype, void *dtap, int dtalen, void *tail,
+                             int usertype, void *dtap, int dtalen, const void *tail,
                              int tailen)
 {
     void *dup;
@@ -6298,7 +6298,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                        "duplicate key '%s' on "
                                                        "table '%s' index %d",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                              iq->usedb->tablename, err->ixnum);
+                              iq->usedb->tablename_ip, err->ixnum);
                 }
             } else if (rc != RC_INTERNAL_RETRY) {
                 errstat_cat_strf(&iq->errstat, " unable to add record rc = %d",
@@ -6413,7 +6413,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (int ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->tablename,
+                    int idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
                                                         ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);
@@ -7344,7 +7344,7 @@ int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
 
     if (gbl_enable_osql_logging) {
         logmsg(LOGMSG_DEBUG, "[%llu %s] send OSQL_SCHEMACHANGE %s\n", rqid,
-               comdb2uuidstr(uuid, us), sc->tablename);
+               comdb2uuidstr(uuid, us), sc->tablename_ip);
     }
 
     return target->send(target, type, buf, osql_rpl_size, 0, NULL, 0);

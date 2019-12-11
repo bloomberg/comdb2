@@ -22,7 +22,7 @@
  * for the
  * table passed in as an argument.  Returns a 0 otherwise.
  */
-int analyze_is_sampled(struct sqlclntstate *client, char *table, int idx);
+int analyze_is_sampled(struct sqlclntstate *client, const char *table, int idx);
 
 /**
  * Allows the user to set the sampling (compression)-threshold for the analyze
@@ -43,7 +43,7 @@ long long analyze_get_sampling_threshold(void);
  * it
  * exists, or a NULL otherwise.
  */
-sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, const char *table,
                                int idx);
 
 /**

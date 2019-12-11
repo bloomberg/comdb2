@@ -133,7 +133,7 @@ static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
                       const char *csc2cmp)
 {
     int rc =
-        dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
+        dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename_ip);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");
         return -1;
@@ -148,9 +148,9 @@ static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
         return -1;
     }
 
-    rc = compare_all_tags(db->tablename, stderr);
+    rc = compare_all_tags(db->tablename_ip, stderr);
 
-    backout_schemas(db->tablename);
+    backout_schemas(db->tablename_ip);
 
     return rc;
 }
@@ -290,7 +290,7 @@ int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
 {
     int rc;
 
-    rc = snprintf(fname, fname_len, "%s/%s.csc2", dir, db->tablename);
+    rc = snprintf(fname, fname_len, "%s/%s.csc2", dir, db->tablename_ip);
     if (rc < 0 || rc >= fname_len) return -1;
 
     return 0;
@@ -312,22 +312,22 @@ int dump_all_csc2_to_disk()
             char *meta_csc2 = NULL;
             int meta_csc2_len;
 
-            version = get_csc2_version(thedb->dbs[ii]->tablename);
+            version = get_csc2_version(thedb->dbs[ii]->tablename_ip);
             if (version < 0) {
                 logmsg(LOGMSG_ERROR,
                        "dump_all_csc2_to_disk: error getting current schema "
                        "version for table %s\n",
-                       thedb->dbs[ii]->tablename);
+                       thedb->dbs[ii]->tablename_ip);
                 return -1;
             }
 
-            rc = get_csc2_file(thedb->dbs[ii]->tablename, version, &meta_csc2,
+            rc = get_csc2_file(thedb->dbs[ii]->tablename_ip, version, &meta_csc2,
                                &meta_csc2_len);
             if (rc != 0 || !meta_csc2) {
                 logmsg(LOGMSG_ERROR,
                        "dump_all_csc2_to_disk: could not load meta schema %d "
                        "for table %s rcode %d\n",
-                       version, thedb->dbs[ii]->tablename, rc);
+                       version, thedb->dbs[ii]->tablename_ip, rc);
                 return -1;
             }
 
@@ -336,7 +336,7 @@ int dump_all_csc2_to_disk()
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR,
                        "error printing out schema for table '%s'\n",
-                       thedb->dbs[ii]->tablename);
+                       thedb->dbs[ii]->tablename_ip);
                 return -1;
             }
         }
@@ -354,19 +354,19 @@ int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname)
     char *meta_csc2 = NULL;
     int meta_csc2_len;
 
-    version = get_csc2_version(db->tablename);
+    version = get_csc2_version(db->tablename_ip);
     if (version < 0) {
         logmsg(LOGMSG_ERROR, "%s: error getting current schema "
                              "version for table %s\n",
-               __func__, db->tablename);
+               __func__, db->tablename_ip);
         return -1;
     }
 
-    rc = get_csc2_file(db->tablename, version, &meta_csc2, &meta_csc2_len);
+    rc = get_csc2_file(db->tablename_ip, version, &meta_csc2, &meta_csc2_len);
     if (rc != 0 || !meta_csc2) {
         logmsg(LOGMSG_ERROR, "%s: could not load meta schema %d "
                              "for table %s rcode %d\n",
-               __func__, version, db->tablename, rc);
+               __func__, version, db->tablename_ip, rc);
         return -1;
     }
 
@@ -374,11 +374,11 @@ int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname)
     free(meta_csc2);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n",
-               db->tablename);
+               db->tablename_ip);
         return -1;
     }
 
-    logmsg(LOGMSG_DEBUG, "rewrote csc2 file for table %s\n", db->tablename);
+    logmsg(LOGMSG_DEBUG, "rewrote csc2 file for table %s\n", db->tablename_ip);
 
     return 0;
 }
@@ -396,21 +396,21 @@ int dump_table_csc2_to_disk(const char *table)
 
     if (p_db->dbtype != DBTYPE_TAGGED_TABLE) return 1;
 
-    if ((version = get_csc2_version(p_db->tablename)) < 0) {
+    if ((version = get_csc2_version(p_db->tablename_ip)) < 0) {
         logmsg(LOGMSG_ERROR,
                "dump_all_csc2_to_disk: error getting current schema version "
                "for table %s\n",
-               p_db->tablename);
+               p_db->tablename_ip);
         return -1;
     }
 
-    if ((rc = get_csc2_file(p_db->tablename, version, &meta_csc2,
+    if ((rc = get_csc2_file(p_db->tablename_ip, version, &meta_csc2,
                             &meta_csc2_len)) ||
         !meta_csc2) {
         logmsg(LOGMSG_ERROR,
                "dump_all_csc2_to_disk: could not load meta schema %d for table "
                "%s rcode %d\n",
-               version, p_db->tablename, rc);
+               version, p_db->tablename_ip, rc);
         return -1;
     }
 
@@ -418,11 +418,11 @@ int dump_table_csc2_to_disk(const char *table)
     free(meta_csc2);
     if (rc) {
         logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n",
-               p_db->tablename);
+               p_db->tablename_ip);
         return -1;
     }
 
-    logmsg(LOGMSG_DEBUG, "rewrote csc2 file for table %s\n", p_db->tablename);
+    logmsg(LOGMSG_DEBUG, "rewrote csc2 file for table %s\n", p_db->tablename_ip);
 
     return 0;
 }

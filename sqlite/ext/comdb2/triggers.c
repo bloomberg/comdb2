@@ -120,14 +120,14 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     /* Check user access. */
     rc = bdb_check_user_tbl_access_tran(thedb->bdb_env, trans,
                                    thd->clnt->current_user.name,
-                                   thedb->qdbs[i]->tablename, ACCESS_READ,
+                                   thedb->qdbs[i]->tablename_ip, ACCESS_READ,
                                    &bdberr);
     if (rc != 0) {
         continue;
     }
 
     t = sqlite3_malloc(sizeof(trigger));
-    t->name = strdup(thedb->qdbs[i]->tablename);
+    t->name = strdup(thedb->qdbs[i]->tablename_ip);
     t->type = -1;
     bdb_state_type *bdb_state = thedb->qdbs[i]->handle;
     t->seq = (bdb_state && bdb_state->ondisk_header &&

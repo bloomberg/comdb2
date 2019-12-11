@@ -57,7 +57,7 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
     if (fix < 0) {
         logmsg(LOGMSG_ERROR,
                "%s: couldn't find '%s' field in %s's ONDISK tag\n", __func__,
-               fld, iq->usedb->tablename);
+               fld, iq->usedb->tablename_ip);
         return NULL;
     }
 
@@ -125,7 +125,7 @@ int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename_ip, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)
@@ -155,7 +155,7 @@ int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
 }
 
 /* given this tbl, ix and stat, create an ondisk record */
-int stat1_ondisk_record(struct ireq *iq, char *tbl, char *ix, char *stat,
+int stat1_ondisk_record(struct ireq *iq, const char *tbl, char *ix, char *stat,
                         void **out)
 {
     struct schema *s;
@@ -176,7 +176,7 @@ int stat1_ondisk_record(struct ireq *iq, char *tbl, char *ix, char *stat,
     /* cycle through fields & punt if we see something we don't recognize */
     for (fix = 0; fix < s->nmembers; fix++) {
         struct field *f = &s->member[fix];
-        char *cur = NULL;
+        const char *cur = NULL;
         int outdtsz = 0, null = 0;
 
         if (0 == strcmp(f->name, "tbl")) {
@@ -228,7 +228,7 @@ int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename_ip, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)

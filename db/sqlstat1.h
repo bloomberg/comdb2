@@ -33,7 +33,7 @@ int sqlstat_delete_previous(struct ireq *iq, void *trans, const void *rec);
 void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
                                      const char *fld);
 
-int stat1_ondisk_record(struct ireq *iq, char *tbl, char *ix, char *stat,
+int stat1_ondisk_record(struct ireq *iq, const char *tbl, char *ix, char *stat,
                         void **out);
 int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
                             unsigned long long *genid);

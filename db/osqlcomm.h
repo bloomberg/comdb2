@@ -60,7 +60,7 @@ int osql_comm_send_socksqlreq(osql_target_t *target, const char *sql, int sqlen,
  *
  */
 int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, unsigned long long version);
+                    const char *tablename, int type, unsigned long long version);
 
 /**
  * Send INDEX op

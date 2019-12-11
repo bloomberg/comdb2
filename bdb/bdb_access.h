@@ -27,7 +27,7 @@ typedef struct bdb_access_tag bdb_access_t;
  *
  */
 int bdb_access_tbl_write_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
-                                     char *table, int hostnum, int *bdberr);
+                                     const char *table, int hostnum, int *bdberr);
 
 /**
  * Returns 1 if the node "hostnum" is allowed to READ into table "table"
@@ -36,7 +36,7 @@ int bdb_access_tbl_write_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
  *
  */
 int bdb_access_tbl_read_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
-                                    char *table, int hostnum, int *bdberr);
+                                    const char *table, int hostnum, int *bdberr);
 
 /**
  * Sets the right to write for (table, hostname)

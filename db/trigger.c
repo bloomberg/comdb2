@@ -327,7 +327,7 @@ int trigger_stat()
             continue;
         }
         const char *type = ctype == CONSUMER_TYPE_LUA ? "trigger" : "consumer";
-        char *spname = SP4Q(qdb->tablename);
+        const char *spname = SP4Q(qdb->tablename_ip);
         trigger_info_t *info =
             trigger_hash ? hash_find(trigger_hash, spname) : NULL;
         if (info) {

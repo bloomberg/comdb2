@@ -114,7 +114,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
 
   dbqueuedb_get_name(qdb, &spname);
-  strcpy(pCur->queue_name, qdb->tablename);
+  strcpy(pCur->queue_name, qdb->tablename_ip);
   if (spname) {
       strcpy(pCur->spname, spname);
       free(spname);

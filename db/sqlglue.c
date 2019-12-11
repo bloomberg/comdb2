@@ -1400,7 +1400,7 @@ static int stat1_find(char *namebuf, struct schema *schema, struct dbtable *db,
     statschema = iq.usedb->ixschema[stat_ixnum];
 
     f = &statschema->member[0]; /* tbl */
-    set_data(key + f->offset, db->tablename, strlen(db->tablename) + 1);
+    set_data(key + f->offset, db->tablename_ip, strlen(db->tablename_ip) + 1);
     keylen += f->len;
 
     f = &statschema->member[1]; /* idx */
@@ -1421,7 +1421,7 @@ static int stat1_find(char *namebuf, struct schema *schema, struct dbtable *db,
 static int using_old_style_name(char *namebuf, int len, struct schema *schema,
                                 struct dbtable *db, int ixnum, void *trans)
 {
-    snprintf(namebuf, len, "%s_ix_%d", db->tablename, ixnum);
+    snprintf(namebuf, len, "%s_ix_%d", db->tablename_ip, ixnum);
     return stat1_find(namebuf, schema, db, ixnum, trans);
 }
 
@@ -1486,7 +1486,7 @@ int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
         return rc;
     }
 
-    form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename);
+    form_new_style_name(namebuf, len, schema, schema->csctag, db->tablename_ip);
     rc = stat1_find(namebuf, schema, db, ixnum, trans);
     if (rc > 0)
         return 2;
@@ -1640,7 +1640,7 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
         free(tbl->ixsql[i]);
         tbl->ixsql[i] = NULL;
     }
-    switch (tbl->tablename[11]) {
+    switch (tbl->tablename_ip[11]) {
     case '1':
         tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
         break;
@@ -1744,18 +1744,18 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
     struct schema *schema = tbl->schema;
     if (schema == NULL) {
-        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename_ip);
         return -1;
     }
 
-    if (is_sqlite_stat(tbl->tablename)) {
+    if (is_sqlite_stat(tbl->tablename_ip)) {
         create_sqlite_stat_sqlmaster_record(tbl);
         return 0;
     }
 
     strbuf *sql = strbuf_new();
     strbuf_clear(sql);
-    strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
+    strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename_ip);
 
     /* Fields */
     for (field = 0; field < schema->nmembers; field++) {
@@ -1763,7 +1763,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         if (type == NULL) {
             logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
                                  "table %s\n",
-                   schema->member[field].name, field, tbl->tablename);
+                   schema->member[field].name, field, tbl->tablename_ip);
             strbuf_free(sql);
             return -1;
         }
@@ -1780,7 +1780,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 logmsg(LOGMSG_ERROR,
                        "Failed to convert default value column '%s' table "
                        "%s type %d\n",
-                       schema->member[field].name, tbl->tablename,
+                       schema->member[field].name, tbl->tablename_ip,
                        schema->member[field].type);
                 strbuf_free(sql);
                 return -1;
@@ -1826,7 +1826,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         schema = tbl->schema->ix[ixnum];
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum,
-                   tbl->tablename);
+                   tbl->tablename_ip);
             strbuf_free(sql);
             return -1;
         }
@@ -1846,7 +1846,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         /* We lie to sqlite about the uniqueness of the indexes. */
         strbuf_append(sql, "create index ");
 
-        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
+        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename_ip);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");
@@ -2336,7 +2336,7 @@ static void extract_stat_record(struct dbtable *db, uint8_t *in, uint8_t *out,
                                 int *outlen)
 {
     struct schema *s = db->schema;
-    int n = is_stat2(db->tablename) ? 3 : 2;
+    int n = is_stat2(db->tablename_ip) ? 3 : 2;
     // for stat4 we have n (samplelen) = 2
 
     /* extract len */
@@ -3596,7 +3596,7 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
 
     if (pCur->range && pCur->db) {
         if (!pCur->range->tbname) {
-            pCur->range->tbname = strdup(pCur->db->tablename);
+            pCur->range->tbname = strdup(pCur->db->tablename_ip);
         }
         pCur->range->idxnum = pCur->ixnum;
         pCur->range->rflag = 1;
@@ -3653,7 +3653,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 
     /* if this is part of an analyze skip the delete - we'll do
      * the entire update part in one shot later when the analyze is done */
-    if (clnt->is_analyze && is_sqlite_stat(pCur->db->tablename)) {
+    if (clnt->is_analyze && is_sqlite_stat(pCur->db->tablename_ip)) {
         rc = SQLITE_OK;
         goto done;
     }
@@ -3727,7 +3727,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                     goto done;
             }
 
-            if (is_sqlite_stat(pCur->db->tablename)) {
+            if (is_sqlite_stat(pCur->db->tablename_ip)) {
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
             }
@@ -3876,7 +3876,7 @@ int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
 
     if (pCur->range && pCur->db) {
         if (!pCur->range->tbname) {
-            pCur->range->tbname = strdup(pCur->db->tablename);
+            pCur->range->tbname = strdup(pCur->db->tablename_ip);
         }
         pCur->range->idxnum = pCur->ixnum;
         pCur->range->lflag = 1;
@@ -5820,7 +5820,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         if (rc < 0) {
             char errs[128];
             convert_failure_reason_str(&thd->clnt->fail_reason,
-                                       pCur->db->tablename, "SQLite format",
+                                       pCur->db->tablename_ip, "SQLite format",
                                        ".ONDISK", errs, sizeof(errs));
             reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                         "Moveto: sqlite_unpacked_to_ondisk failed [%s]\n",
@@ -6269,7 +6269,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
 
     if (thd && thd->query_hash) {
         if (pCur->cursor_class == CURSORCLASS_SQLITEMASTER ||
-            (pCur->db && is_sqlite_stat(pCur->db->tablename))) {
+            (pCur->db && is_sqlite_stat(pCur->db->tablename_ip))) {
             goto skip;
         }
         struct query_path_component fnd = {{0}}, *qc = NULL;
@@ -6280,7 +6280,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             strncpy0(fnd.lcl_tbl_name, pCur->fdbc->tblname(pCur),
                      sizeof(fnd.lcl_tbl_name));
         } else if (pCur->db) {
-            strncpy0(fnd.lcl_tbl_name, pCur->db->tablename,
+            strncpy0(fnd.lcl_tbl_name, pCur->db->tablename_ip,
                      sizeof(fnd.lcl_tbl_name));
         }
         fnd.ix = pCur->ixnum;
@@ -6293,7 +6293,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
                 strncpy0(qc->lcl_tbl_name, pCur->fdbc->tblname(pCur),
                          sizeof(qc->lcl_tbl_name));
             } else if (pCur->db) {
-                strncpy0(qc->lcl_tbl_name, pCur->db->tablename,
+                strncpy0(qc->lcl_tbl_name, pCur->db->tablename_ip,
                          sizeof(qc->lcl_tbl_name));
             }
             qc->ix = pCur->ixnum;
@@ -6450,11 +6450,11 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
         }
         /* If we are in analyze, lie.  Otherwise we end up with an empty,
          * and then worse, half-filled stat table during the analyze. */
-        if (clnt->is_analyze && is_sqlite_stat(db->tablename)) {
+        if (clnt->is_analyze && is_sqlite_stat(db->tablename_ip)) {
             rc = SQLITE_OK;
             goto done;
         }
-        rc = db->n_constraints == 0 ? osql_cleartable(thd, db->tablename) : -1;
+        rc = db->n_constraints == 0 ? osql_cleartable(thd, db->tablename_ip) : -1;
         if (rc) {
             logmsg(LOGMSG_ERROR, "sqlite3BtreeClearTable: error rc = %d\n", rc);
             rc = SQLITE_INTERNAL;
@@ -6510,7 +6510,7 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     struct sql_thread *thd = pCur->thd;
 
     if (!pCur->have_blob_descriptor) {
-        gather_blob_data_byname(pCur->db->tablename, ".ONDISK",
+        gather_blob_data_byname(pCur->db->tablename_ip, ".ONDISK",
                                 &pCur->blob_descriptor);
         pCur->have_blob_descriptor = 1;
     }
@@ -6554,7 +6554,7 @@ again:
             if (nretries >= gbl_maxretries) {
                 logmsg(LOGMSG_ERROR, "too much contention fetching "
                                      "tbl %s blob %s tried %d times\n",
-                       pCur->db->tablename, f->name, nretries);
+                       pCur->db->tablename_ip, f->name, nretries);
                 return SQLITE_DEADLOCK;
             }
             goto again;
@@ -6567,7 +6567,7 @@ again:
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 
-    if (check_one_blob_consistency(&iq, iq.usedb->tablename, ".ONDISK", &blobs,
+    if (check_one_blob_consistency(&iq, iq.usedb->tablename_ip, ".ONDISK", &blobs,
                                    dta, f->blob_index, 0)) {
         free_blob_status_data(&blobs);
         nretries++;
@@ -7095,7 +7095,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     cur->cursor_move = cursor_move_compressed;
 
-    cur->sampler = analyze_get_sampler(clnt, db->tablename, cur->ixnum);
+    cur->sampler = analyze_get_sampler(clnt, db->tablename_ip, cur->ixnum);
 
     cur->db = db;
     cur->tableversion = cur->db->tableversion;
@@ -7404,7 +7404,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     db = get_sqlite_db(thd, iTable, &ixnum);
     if (!db) return -1;
 
-    rc = analyze_is_sampled(clnt, db->tablename, ixnum);
+    rc = analyze_is_sampled(clnt, db->tablename_ip, ixnum);
     return rc;
 }
 
@@ -7537,7 +7537,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            rc = bdb_table_version_select_verbose(db->tablename, NULL, &version,
+            rc = bdb_table_version_select_verbose(db->tablename_ip, NULL, &version,
                                                   &bdberr, 0);
             if (rc || bdberr) {
                 logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n",
@@ -7548,7 +7548,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
                                      "checking against %u\n",
-                       __func__, db->tablename, version, short_version,
+                       __func__, db->tablename_ip, version, short_version,
                        clnt->fdb_state.version);
             }
 
@@ -7586,7 +7586,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                    rc, bdberr);*/
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
-                                 db->tablename);
+                                 db->tablename_ip);
                 sqlite3VdbeTransferError(p);
                 sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
@@ -7605,7 +7605,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(
                     p, "table \"%s\" was schema changed during recovery",
-                    db->tablename);
+                    db->tablename_ip);
                 sqlite3VdbeTransferError(p);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
@@ -7616,7 +7616,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             db->nsql++; /* per table nsql stats */
         }
 
-        reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->tablename);
+        reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->tablename_ip);
     }
 
     if (!after_recovery)
@@ -7930,7 +7930,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
 
     if (cur->ixnum == -1) {
-        if (is_stat2(cur->db->tablename) || is_stat4(cur->db->tablename)) {
+        if (is_stat2(cur->db->tablename_ip) || is_stat4(cur->db->tablename_ip)) {
             cur->cursor_class = CURSORCLASS_STAT24;
         } else
             cur->cursor_class = CURSORCLASS_TABLE;
@@ -7943,12 +7943,12 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         cur->nCookFields = -1;
     }
 
-    reqlog_usetable(pBt->reqlogger, cur->db->tablename);
+    reqlog_usetable(pBt->reqlogger, cur->db->tablename_ip);
 
     /* check one time if we have blobs when we open the cursor,
      * so we dont need to run this code for every row if we dont even
      * have them */
-    rc = gather_blob_data_byname(cur->db->tablename, ".ONDISK", &cur->blobs);
+    rc = gather_blob_data_byname(cur->db->tablename_ip, ".ONDISK", &cur->blobs);
     if (rc) {
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: gather_blob_data error rc=%d\n", rc);
         return SQLITE_INTERNAL;
@@ -8254,7 +8254,7 @@ int sqlite3BtreeCursor(
                                        sqlite3VdbeCompareRecordPacked, pKeyInfo,
                                        cur, thd);
         /* treat sqlite_stat1 as free */
-        if (is_sqlite_stat(cur->db->tablename)) {
+        if (is_sqlite_stat(cur->db->tablename_ip)) {
             cur->find_cost = cur->move_cost = cur->write_cost = CDB2_SQLITE_STAT_COST;
         } else {
             cur->blob_cost = CDB2_BLOB_FETCH_COST;
@@ -8293,7 +8293,7 @@ int sqlite3BtreeCursor(
                 (cur->is_recording && gbl_selectv_rangechk))) {
         cur->range = currange_new();
         if (cur->db) {
-            cur->range->tbname = strdup(cur->db->tablename);
+            cur->range->tbname = strdup(cur->db->tablename_ip);
             cur->range->idxnum = cur->ixnum;
         }
     }
@@ -8308,8 +8308,8 @@ static int make_stat_record(struct sql_thread *thd, BtCursor *pCur,
                             const void *pData, int nData,
                             blob_buffer_t blobs[MAXBLOBS])
 {
-    int n = is_stat2(pCur->db->tablename) ? 3 : 2;
-    struct schema *sc = find_tag_schema(pCur->db->tablename, ".ONDISK_IX_0");
+    int n = is_stat2(pCur->db->tablename_ip) ? 3 : 2;
+    struct schema *sc = find_tag_schema(pCur->db->tablename_ip, ".ONDISK_IX_0");
 
     /* extract first n fields from packed record */
     if (sqlite_to_ondisk(sc, pData, nData, pCur->ondisk_buf, pCur->clnt->tzname,
@@ -8506,7 +8506,7 @@ int sqlite3BtreeInsert(
         if (rc) {
             char errs[128];
             convert_failure_reason_str(&thd->clnt->fail_reason,
-                                       pCur->db->tablename, "SQLite format",
+                                       pCur->db->tablename_ip, "SQLite format",
                                        ".ONDISK_IX_0", errs, sizeof(errs));
             fprintf(stderr, "%s: sqlite -> ondisk conversion failed!\n   %s\n",
                     __func__, errs);
@@ -8515,7 +8515,7 @@ int sqlite3BtreeInsert(
     }
 
     /* send opcode to reload stats at commit */
-    if (clnt->is_analyze && pCur->db && is_stat1(pCur->db->tablename))
+    if (clnt->is_analyze && pCur->db && is_stat1(pCur->db->tablename_ip))
         rc = osql_updstat(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), 0);
 
     if (pCur->bt->is_temporary) {
@@ -8639,7 +8639,7 @@ int sqlite3BtreeInsert(
                 if (rc != getkeysize(pCur->db, pCur->ixnum)) {
                     char errs[128];
                     convert_failure_reason_str(
-                        &thd->clnt->fail_reason, pCur->db->tablename,
+                        &thd->clnt->fail_reason, pCur->db->tablename_ip,
                         "SQLite format", ".ONDISK_ix", errs, sizeof(errs));
                     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                                 "Moveto: sqlite_to_ondisk failed [%s]\n", errs);
@@ -8690,7 +8690,7 @@ int sqlite3BtreeInsert(
             if (rc < 0) {
                 char errs[128];
                 convert_failure_reason_str(&thd->clnt->fail_reason,
-                                           pCur->db->tablename, "SQLite format",
+                                           pCur->db->tablename_ip, "SQLite format",
                                            ".ONDISK", errs, sizeof(errs));
                 reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                             "Moveto: sqlite_to_ondisk failed [%s]\n", errs);
@@ -8721,7 +8721,7 @@ int sqlite3BtreeInsert(
             is_update = 1;
 
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
-            if (is_sqlite_stat(pCur->db->tablename)) {
+            if (is_sqlite_stat(pCur->db->tablename_ip)) {
                 clnt->ins_keys = -1ULL;
                 clnt->del_keys = -1ULL;
             }
@@ -9072,14 +9072,14 @@ i64 sqlite3BtreeNewRowid(BtCursor *pCur)
     return bdb_recno_to_genid(++thd->clnt->recno);
 }
 
-char *sqlite3BtreeGetTblName(BtCursor *pCur)
+const char *sqlite3BtreeGetTblName(BtCursor *pCur)
 {
-    return pCur->db->tablename;
+    return pCur->db->tablename_ip;
 }
 
-char *get_dbtable_name(struct dbtable *tbl)
+const char *get_dbtable_name(struct dbtable *tbl)
 {
-    return tbl->tablename;
+    return tbl->tablename_ip;
 }
 
 void cancel_sql_statement(int id)
@@ -9168,10 +9168,10 @@ void sql_dump_running_statements(void)
                     if (cur->db == NULL)
                         logmsg(LOGMSG_USER, " schema table");
                     else if (cur->ixnum == -1)
-                        logmsg(LOGMSG_USER, " table %s", cur->db->tablename);
+                        logmsg(LOGMSG_USER, " table %s", cur->db->tablename_ip);
                     else
                         logmsg(LOGMSG_USER, " table %s index %d",
-                               cur->db->tablename, cur->ixnum);
+                               cur->db->tablename_ip, cur->ixnum);
                     logmsg(LOGMSG_USER, " nmove %d nfind %d nwrite %d\n", cur->nmove,
                            cur->nfind, cur->nwrite);
                 }
@@ -9636,12 +9636,12 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                     Pthread_mutex_unlock(&thd->lk);
                     logmsg(LOGMSG_ERROR,
                            "%s: table version for %s changed from %d to %lld\n",
-                           __func__, cur->db->tablename, cur->tableversion,
+                           __func__, cur->db->tablename_ip, cur->tableversion,
                            cur->db->tableversion);
                     sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
                     sqlite3VdbeError(cur->vdbe,
                                      "table \"%s\" was schema changed",
-                                     cur->db->tablename);
+                                     cur->db->tablename_ip);
                     sqlite3VdbeTransferError(cur->vdbe);
                     sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
                     sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
@@ -9769,7 +9769,7 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
 
     if (pCur->range && pCur->db) {
         if (!pCur->range->tbname) {
-            pCur->range->tbname = strdup(pCur->db->tablename);
+            pCur->range->tbname = strdup(pCur->db->tablename_ip);
         }
         pCur->range->idxnum = pCur->ixnum;
         pCur->range->lkey = malloc(keylen);
@@ -9969,7 +9969,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
 
     if (pCur->range && pCur->db) {
         if (!pCur->range->tbname) {
-            pCur->range->tbname = strdup(pCur->db->tablename);
+            pCur->range->tbname = strdup(pCur->db->tablename_ip);
         }
         pCur->range->idxnum = pCur->ixnum;
         pCur->range->rkey = malloc(keylen);
@@ -10279,7 +10279,7 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
         if (gbl_selectv_rangechk) {
             pCur->range = currange_new();
             if (pCur->db) {
-                pCur->range->tbname = strdup(pCur->db->tablename);
+                pCur->range->tbname = strdup(pCur->db->tablename_ip);
                 pCur->range->idxnum = pCur->ixnum;
             }
         }
@@ -10411,7 +10411,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
     int rc;
     i64 count;
     if (pCur->is_sampled_idx) {
-        count = analyze_get_sampled_nrecs(pCur->db->tablename, pCur->ixnum);
+        count = analyze_get_sampled_nrecs(pCur->db->tablename_ip, pCur->ixnum);
         rc = SQLITE_OK;
     } else if (pCur->cursor_count) {
         rc = pCur->cursor_count(pCur, &count);
@@ -11477,7 +11477,7 @@ void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)
     }
 }
 
-int bt_hash_table(char *table, int szkb)
+int bt_hash_table(const char *table, int szkb)
 {
     struct dbtable *db;
     bdb_state_type *bdb_state;
@@ -11515,7 +11515,7 @@ int bt_hash_table(char *table, int szkb)
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
     logmsg(LOGMSG_WARN, "Building bthash for table %s, size %dkb per stripe\n",
-           db->tablename, szkb);
+           db->tablename_ip, szkb);
     bdb_handle_dbp_add_hash(bdb_state, szkb);
     trans_commit(&iq, tran, gbl_myhostname);
 
@@ -11532,7 +11532,7 @@ int bt_hash_table(char *table, int szkb)
     return 0;
 }
 
-int del_bt_hash_table(char *table)
+int del_bt_hash_table(const char *table)
 {
     struct dbtable *db;
     bdb_state_type *bdb_state;
@@ -11568,7 +11568,7 @@ int del_bt_hash_table(char *table)
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
-    logmsg(LOGMSG_WARN, "Deleting bthash for table %s\n", db->tablename);
+    logmsg(LOGMSG_WARN, "Deleting bthash for table %s\n", db->tablename_ip);
     bdb_handle_dbp_drop_hash(bdb_state);
     trans_commit(&iq, tran, gbl_myhostname);
 
@@ -12258,7 +12258,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
     sql = strbuf_new();
 
     if (sc == NULL) {
-        logmsg(LOGMSG_FATAL, "No .ONDISK tag for table %s.\n", db->tablename);
+        logmsg(LOGMSG_FATAL, "No .ONDISK tag for table %s.\n", db->tablename_ip);
         abort();
     }
 
@@ -12279,8 +12279,8 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
         }
     }
 
-    len = strlen(db->tablename);
-    len = crc32c((uint8_t *)db->tablename, len);
+    len = strlen(db->tablename_ip);
+    len = crc32c((uint8_t *)db->tablename_ip, len);
     snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
 
     for (ixnum = 0; ixnum < db->nix; ixnum++) {
@@ -12290,7 +12290,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
             int exist = 0;
             strbuf_clear(sql);
             strbuf_appendf(sql, "WITH \"%s\"(\"%s\"",
-                           is_alter ? temp_newdb_name : db->tablename,
+                           is_alter ? temp_newdb_name : db->tablename_ip,
                            sc->member[0].name);
             for (i = 1; i < sc->nmembers; i++) {
                 strbuf_appendf(sql, ", \"%s\"", sc->member[i].name);
@@ -12300,7 +12300,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                 strbuf_appendf(sql, ", @%s", sc->member[i].name);
             }
             strbuf_appendf(sql, ") SELECT 1 FROM \"%s\" %s",
-                           is_alter ? temp_newdb_name : db->tablename,
+                           is_alter ? temp_newdb_name : db->tablename_ip,
                            db->ixschema[ixnum]->where);
             rc = run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, NULL,
                                           &exist);
@@ -12471,7 +12471,7 @@ uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
     return v->numTables;
 }
 
-int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem)
+int comdb2_save_ddl_context(const char *name, void *ctx, comdb2ma mem)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
@@ -12660,7 +12660,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
     sc = table->schema;
     if (sc == NULL) {
         logmsg(LOGMSG_FATAL, "No .ONDISK tag for table %s.\n",
-               table->tablename);
+               table->tablename_ip);
         abort();
     }
 

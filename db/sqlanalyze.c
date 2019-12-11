@@ -232,7 +232,7 @@ void cleanup_stats(SBUF2 *sb)
 
 /* returns the index or NULL */
 static sampled_idx_t *find_sampled_index(struct sqlclntstate *client,
-                                         char *table, int ix)
+                                         const char *table, int ix)
 {
     int i;
 
@@ -265,7 +265,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
     sampler_t *sampler = NULL;
 
     /* cache the tablename for sqlglue */
-    strncpy0(s_ix->name, tbl->tablename, sizeof(s_ix->name));
+    strncpy0(s_ix->name, tbl->tablename_ip, sizeof(s_ix->name));
 
     /* ask bdb to put a summary of this into a temp-table */
     rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &sampler,
@@ -274,7 +274,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
     /* failed */
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to sample table '%s' idx %d\n",
-               __func__, tbl->tablename, ix);
+               __func__, tbl->tablename_ip, ix);
         return -1;
     }
 
@@ -372,11 +372,10 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
 {
     int i;
     int err = 0;
-    char *table;
     index_descriptor_t *ix_des;
 
     /* find table to backout */
-    table = tbl->tablename;
+    const char *table = tbl->tablename_ip;
 
     /* allocate cmp_idx */
     client->sampled_idx_tbl = calloc(tbl->nix, sizeof(sampled_idx_t));
@@ -438,7 +437,7 @@ static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable 
 }
 
 /* Return the requested sampler */
-sampler_t *analyze_get_sampler(struct sqlclntstate *client, char *table,
+sampler_t *analyze_get_sampler(struct sqlclntstate *client, const char *table,
                                int idx)
 {
     sampled_idx_t *s_ix;
@@ -469,7 +468,7 @@ int64_t analyze_get_nrecs(int iTable)
     assert(db);
 
     /* grab sampled table descriptor */
-    s_ix = find_sampled_index(client, db->tablename, ixnum);
+    s_ix = find_sampled_index(client, db->tablename_ip, ixnum);
 
     /* return -1 if not sampled.  Sqlite will use the value it calculated. */
     if (!s_ix) {
@@ -517,7 +516,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
 }
 
 /* Return 1 if we have this sampled index, 0 otherwise */
-int analyze_is_sampled(struct sqlclntstate *client, char *table, int idx)
+int analyze_is_sampled(struct sqlclntstate *client, const char *table, int idx)
 {
     sampled_idx_t *s_ix;
 
@@ -1116,7 +1115,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
     /* start analyzing each table */
     for (i = 0; i < thedb->num_dbs; i++) {
         /* skip sqlite_stat */
-        if (is_sqlite_stat(thedb->dbs[i]->tablename)) {
+        if (is_sqlite_stat(thedb->dbs[i]->tablename_ip)) {
             continue;
         }
 
@@ -1125,7 +1124,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        strncpy0(td[idx].table, thedb->dbs[i]->tablename,
+        strncpy0(td[idx].table, thedb->dbs[i]->tablename_ip,
                  sizeof(td[idx].table));
 
         /* dispatch analyze table thread */
@@ -1294,7 +1293,7 @@ void *message_trap_td(void *args)
 }
 
 /* Backout to previous analyze stats */
-static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
+static inline int analyze_backout_table(struct sqlclntstate *clnt, const char *table)
 {
     if (is_sqlite_stat(table))
         return 0;
@@ -1342,7 +1341,7 @@ void handle_backout(SBUF2 *sb, char *table)
     } else {
         int i = 0;
         while (i < thedb->num_dbs && rc == 0) {
-            rc = analyze_backout_table(&clnt, thedb->dbs[i]->tablename);
+            rc = analyze_backout_table(&clnt, thedb->dbs[i]->tablename_ip);
             i++;
         }
     }

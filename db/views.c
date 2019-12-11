@@ -2678,7 +2678,7 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
 
 /* Returns time partition name if the specified 'table_name' is a shard,
   'table_name' otherwise. */
-char *resolve_table_name(char *table_name, char *buf, size_t buf_len)
+const char *resolve_table_name(const char *table_name, char *buf, size_t buf_len)
 {
     char *tp_name;
 

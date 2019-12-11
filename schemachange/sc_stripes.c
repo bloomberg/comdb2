@@ -99,7 +99,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
                 logmsg(LOGMSG_ERROR,
                        "morestripe: couldn't rename blob 1 for table "
                        "'%s' bdberr %d\n",
-                       db->tablename, bdberr);
+                       db->tablename_ip, bdberr);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 unlock_schema_lk();
                 return SC_BDB_ERROR;
@@ -111,7 +111,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR,
                        "morestripe: couldn't record genid for table '%s'\n",
-                       db->tablename);
+                       db->tablename_ip);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 unlock_schema_lk();
                 resume_threads(thedb);
@@ -124,7 +124,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
             logmsg(LOGMSG_INFO,
                    "Converted table '%s' to blobstripe with genid 0x%llx\n",
-                   db->tablename, genid);
+                   db->tablename_ip, genid);
         }
     }
 
@@ -138,7 +138,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             logmsg(
                 LOGMSG_ERROR,
                 "morestripe: failed making extra stripes for table '%s': %d\n",
-                db->tablename, bdberr);
+                db->tablename_ip, bdberr);
             unlock_schema_lk();
             return SC_BDB_ERROR;
         }
