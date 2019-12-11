@@ -171,11 +171,10 @@ int osql_sess_test_slow(osql_sess_t *sess);
 /**
  * Returns
  * - total time (tottm)
- * - last roundtrip time (rtt)
  * - retries (rtrs)
  *
  */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs);
+void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs);
 
 /**
  * Log query to the reqlog
@@ -268,15 +267,6 @@ void osql_sess_set_reqlen(osql_sess_t *sess, int len);
 void osql_sess_get_blob_info(osql_sess_t *sess, blob_buffer_t **blobs,
                              int *nblobs);
 int osql_sess_reqlen(osql_sess_t *sess);
-
-/**
- * Returns
- * - total time (tottm)
- * - last roundtrip time (rtt)
- * - retries (rtrs)
- *
- */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs);
 
 int osql_sess_type(osql_sess_t *sess);
 int osql_sess_queryid(osql_sess_t *sess);

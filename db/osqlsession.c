@@ -428,10 +428,9 @@ int osql_sess_test_slow(osql_sess_t *sess)
  * - retries (rtrs)
  *
  */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
+void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
 {
     *tottm = U2M(sess->endus - sess->startus);
-    *rtt = *tottm;
     *rtrs = sess->retries;
 }
 
