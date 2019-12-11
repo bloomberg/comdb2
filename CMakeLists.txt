@@ -2,11 +2,7 @@ cmake_minimum_required (VERSION 3.1)
 project (Comdb2)
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED TRUE)
-
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
@@ -166,11 +162,12 @@ add_subdirectory(sqlite)
 if(WITH_TCL AND NOT COMDB2_BUILD_STATIC)
   add_subdirectory(tcl)
 endif()
-add_subdirectory(tools)
+if(NOT COMDB2_SKIP_TOOLS)
+  add_subdirectory(tools)
+  add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
+endif()
 add_subdirectory(plugins)
 add_subdirectory(db)
-add_subdirectory(contrib/comdb2makecluster)
-add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
 enable_testing()
 add_test(NAME tests-tools COMMAND make test-tools )
