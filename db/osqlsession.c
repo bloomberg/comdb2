@@ -203,12 +203,11 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
 {
 
     osql_sess_t *sess = (osql_sess_t *)obj;
-    const char *host = (sess->iq)?sess->iq->sorese.host:NULL;
+    const char *host = (sess->iq) ? sess->iq->sorese.host : NULL;
     uuidstr_t us;
 
     printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
-           host ? "REMOTE" : "LOCAL",
-           host ? host : "localhost");
+           host ? "REMOTE" : "LOCAL", host ? host : "localhost");
 
     return 0;
 }
@@ -286,7 +285,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
 {
     *tottm = sess->end - sess->initstart;
     *rtt = sess->end - sess->start;
-    *rtrs = sess->iq?sess->iq->retries:0;
+    *rtrs = sess->iq ? sess->iq->retries : 0;
 }
 
 /**
@@ -294,7 +293,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    const char *host = sess->iq?sess->iq->sorese.host:NULL;
+    const char *host = sess->iq ? sess->iq->sorese.host : NULL;
     uuidstr_t us;
     char rqid[25];
     if (sess->rqid == OSQL_RQID_USE_UUID) {
@@ -305,10 +304,9 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     reqlog_logf(
         reqlog, REQL_INFO,
         "rqid %s node %s sec %ld rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
-        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid,
-        host ? host : "", (sess->end - sess->initstart),
-        reqlog_get_retries(reqlog), reqlog_get_queue_time(reqlog) / 1000,
-        sess->sql ? sess->sql : "()");
+        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
+        (sess->end - sess->initstart), reqlog_get_retries(reqlog),
+        reqlog_get_queue_time(reqlog) / 1000, sess->sql ? sess->sql : "()");481gg
 }
 
 /**
@@ -483,7 +481,7 @@ int osql_session_testterminate(void *obj, void *arg)
     int completed = 0;
 
     if (!node || (sess->iq && sess->iq->sorese.host == node) ||
-            (sess->iqcopy && sess->iqcopy->sorese.host == node)) {
+        (sess->iqcopy && sess->iqcopy->sorese.host == node)) {
 
         Pthread_mutex_lock(&sess->mtx);
 
