@@ -52,6 +52,11 @@
 extern struct timeval logical_undo_time;
 #endif
 
+unsigned int bdb_osql_trn_total_count = 0;
+
+extern int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
+        uint32_t *durable_file, uint32_t *durable_offset, uint32_t *durable_gen);
+
 /**
  * Each snapshot/serializable transaction registers one bdb_osql_trn
  *
@@ -233,12 +238,13 @@ int bdb_is_timestamp_recoverable(bdb_state_type *bdb_state, int32_t timestamp)
     return 1;
 }
 
-unsigned int bdb_osql_trn_total_count = 0;
-
-int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
-        uint32_t *durable_file, uint32_t *durable_offset, uint32_t *durable_gen);
 
 
+static inline void cleanup_trn(bdb_osql_trn_t *trn)
+{
+    Pthread_mutex_destroy(&trn->log_mtx);
+    free(trn);
+}
 
 /**
  *  Register a shadow transaction with the repository
@@ -262,6 +268,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                "is_retry=%d\n",
                __func__, __LINE__, epoch, file, offset, is_ha_retry);
     }
+
+    if (!trn_repo) // pre-check
+        return NULL;
 
     if (!is_ha_retry)
         file = 0;
@@ -328,9 +337,6 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         }
     }
 
-    if (!trn_repo)
-        goto done;
-
     trn = (bdb_osql_trn_t *)calloc(1, sizeof(bdb_osql_trn_t));
     if (!trn) {
         *bdberr = BDBERR_MALLOC;
@@ -338,11 +344,17 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     }
 
     Pthread_mutex_init(&trn->log_mtx, NULL);
-
     trn->shadow_tran = shadow_tran;
-    trn->trak = (trak & SQL_DBG_BDBTRN) || (trn_repo->trak);
-
     listc_init(&trn->bkfill_list, offsetof(bdb_osql_log_t, lnk));
+
+    Pthread_mutex_lock(&trn_repo_mtx);
+    if (!trn_repo) {
+        cleanup_trn(trn);
+        trn = NULL;
+        goto done;
+    }
+
+    trn->trak = (trak & SQL_DBG_BDBTRN) || (trn_repo->trak);
 
     /* Set while holding the trn_repo lock */
     shadow_tran->startgenid = bdb_get_commit_genid_generation(
@@ -374,28 +386,14 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to create backfill active trans, rc %d\n",
                     __func__, __LINE__, rc);
-            Pthread_mutex_destroy(&trn->log_mtx);
-            free(trn);
+            cleanup_trn(trn);
             trn = NULL;
             goto done;
         }
     }
 
-    Pthread_mutex_lock(&trn_repo_mtx);
-
-    if (!trn_repo) {
-        // cleanup the above
-        Pthread_mutex_destroy(&trn->log_mtx);
-        free(trn);
-        trn = NULL;
-        Pthread_mutex_unlock(&trn_repo_mtx);
-        goto done;
-    }
-
     listc_abl(&trn_repo->trns, trn);
     ++bdb_osql_trn_total_count;
-
-    Pthread_mutex_unlock(&trn_repo_mtx);
 
     if (trn->trak)
         logmsg(LOGMSG_USER, "TRK_TRN: registered %p rc=%d for shadow=%p genid=%llx "
@@ -404,6 +402,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                 shadow_tran->birth_lsn.file, shadow_tran->birth_lsn.offset);
 
 done:
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     if (gbl_new_snapisol) {
         shadow_tran->pglogs_queue_hash =
@@ -528,10 +527,9 @@ done:
             Pthread_mutex_lock(&trn_repo_mtx);
             if (trn_repo)
                 listc_rfl(&trn_repo->trns, trn);
-            Pthread_mutex_destroy(&trn->log_mtx);
-            free(trn);
             Pthread_mutex_unlock(&trn_repo_mtx);
-            return NULL;
+            cleanup_trn(trn);
+            trn = NULL;
         }
     }
 
