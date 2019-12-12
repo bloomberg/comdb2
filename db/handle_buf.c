@@ -95,7 +95,7 @@ static int is_req_write(int opcode);
 int handle_buf_main(
     struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-    char *fromtask, sorese_info_t *sorese, int qtype,
+    char *fromtask, osql_sess_t *sorese, int qtype,
     void *data_hndl, // handle to data that can be used according to request
                      // type
     int luxref, unsigned long long rqid);
@@ -542,9 +542,9 @@ static void *thd_req(void *vthd)
                 pool_free(thd->iq->vfy_genid_pool);
                 thd->iq->vfy_genid_pool = NULL;
             }
-            if (thd->iq->sorese.osqllog) {
-                sbuf2close(thd->iq->sorese.osqllog);
-                thd->iq->sorese.osqllog = NULL;
+            if (thd->iq->sorese->osqllog) {
+                sbuf2close(thd->iq->sorese->osqllog);
+                thd->iq->sorese->osqllog = NULL;
             }
             thd->iq->vfy_genid_track = 0;
 #if 0
@@ -679,9 +679,9 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         iq->sb = NULL;
                     }
                 } else if (iq->is_sorese) {
-                    if (iq->sorese.osqllog) {
-                        sbuf2close(iq->sorese.osqllog);
-                        iq->sorese.osqllog = NULL;
+                    if (iq->sorese->osqllog) {
+                        sbuf2close(iq->sorese->osqllog);
+                        iq->sorese->osqllog = NULL;
                     }
                 }
                 pool_relablk(p_reqs, iq);
@@ -702,7 +702,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 
 static int reterr_withfree(struct ireq *iq, int rc)
 {
-    if (iq->is_fromsocket || iq->sorese.type) {
+    if (iq->is_fromsocket || iq->sorese->type) {
         if (iq->is_fromsocket) {
             /* process socket end request */
             if (iq->is_socketrequest) {
@@ -878,7 +878,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->__limits.temptables_warn = gbl_querylimits_temptables_warn;
 
     iq->cost = 0;
-    iq->sorese.osqllog = NULL;
+    iq->sorese->osqllog = NULL;
     iq->luxref = luxref;
 
     if (iq->is_fromsocket) {
@@ -912,7 +912,7 @@ int gbl_handle_buf_add_latency_ms = 0;
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask,
-                     sorese_info_t *sorese, int qtype, void *data_hndl,
+                     osql_sess_t *sorese, int qtype, void *data_hndl,
                      int luxref, unsigned long long rqid, void *p_sinfo,
                      intptr_t curswap)
 {
@@ -1179,16 +1179,16 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                     char *frommach, int frompid, char *fromtask,
-                    sorese_info_t *sorese, int qtype, void *data_hndl,
+                    osql_sess_t *sorese, int qtype, void *data_hndl,
                     int luxref, unsigned long long rqid)
 {
     return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
                             rqid, 0, 0);
 }
-struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
+struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
-                                char *frommach, sorese_info_t *sorese)
+                                char *frommach, osql_sess_t *sorese)
 {
     int rc;
     struct ireq *iq;
@@ -1208,14 +1208,14 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         return NULL;
     }
 
-    rc = init_ireq_legacy(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0,
+    rc = init_ireq_legacy(dbenv, iq, NULL, p_buf, p_buf_end, debug, frommach, 0,
                           NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
     if (rc) {
         reterr(0, /*thd*/ 0, iq, rc);
         return NULL;
     }
 
-    iq->sorese = *sorese;
+    iq->sorese = sorese;
     iq->is_sorese = 1;
     iq->use_handle = thedb->bdb_env;
 
@@ -1224,8 +1224,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
 #endif
     /* this creates the socksql/recom/serial local log (temp table) */
     snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
-             iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
-             iq->sorese.rqid);
+             iq->sorese->host, osql_sorese_type_to_str(iq->sorese->type),
+             iq->sorese->rqid);
 
     /* enable logging, if any */
     if (gbl_enable_osql_logging) {
@@ -1239,8 +1239,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         if (ffile == -1) {
             logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
         } else {
-            iq->sorese.osqllog = sbuf2open(ffile, 0);
-            if (!iq->sorese.osqllog) {
+            iq->sorese->osqllog = sbuf2open(ffile, 0);
+            if (!iq->sorese->osqllog) {
                 close(ffile);
             }
         }

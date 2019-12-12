@@ -76,7 +76,7 @@ static void save_sql(struct ireq *iq, osql_sess_t *sess, const char *sql,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, const char *func, const char *callfunc, int line)
+int osql_close_session(osql_sess_t **psess, int is_linked, const char *func, const char *callfunc, int line)
 {
 
     osql_sess_t *sess = *psess;
@@ -203,7 +203,7 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
 {
 
     osql_sess_t *sess = (osql_sess_t *)obj;
-    const char *host = (sess->iq) ? sess->iq->sorese.host : NULL;
+    const char *host = (sess->iq) ? sess->iq->sorese->host : NULL;
     uuidstr_t us;
 
     printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
@@ -292,7 +292,7 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    const char *host = sess->iq ? sess->iq->sorese.host : NULL;
+    const char *host = sess->iq ? sess->iq->sorese->host : NULL;
     uuidstr_t us;
     char rqid[25];
     if (sess->rqid == OSQL_RQID_USE_UUID) {
@@ -480,8 +480,8 @@ int osql_session_testterminate(void *obj, void *arg)
     int need_clean = 0;
     int completed = 0;
 
-    if (!node || (sess->iq && sess->iq->sorese.host == node) ||
-        (sess->iqcopy && sess->iqcopy->sorese.host == node)) {
+    if (!node || (sess->iq && sess->iq->sorese->host == node) ||
+        (sess->iqcopy && sess->iqcopy->sorese->host == node)) {
 
         Pthread_mutex_lock(&sess->mtx);
 
@@ -554,18 +554,16 @@ typedef struct {
 int gbl_selectv_writelock_on_update = 1;
 
 /**
- * Creates an sock osql session and add it to the repository
+ * Creates an sock osql session
  * Runs on master node when an initial sorese message is received
  * Returns created object if success, NULL otherwise
  *
  */
-osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
-                                   int type, unsigned long long rqid,
-                                   uuid_t uuid, struct ireq *iq, int *replaced,
-                                   bool is_reorder_on)
+osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
+                              int type, unsigned long long rqid,
+                              uuid_t uuid, bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
-    int rc = 0;
 
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
@@ -594,7 +592,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
-    save_sql(iq, sess, sql, sqlen);
+    /*save_sql(iq, sess, sql, sqlen);*/
     sess->type = type;
     sess->startus = comdb2_time_epochus();
     sess->is_reorder_on = is_reorder_on;
@@ -605,28 +603,9 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
-    sess->iq = iq;
-    sess->iqcopy = iq;
     sess->clients = 1;
 
-    /* how about we start the bplog before making this available to the world?
-     */
-    rc = osql_bplog_start(iq, sess);
-    if (rc)
-        goto late_error;
-
-    rc = osql_repository_add(sess, replaced);
-    if (rc || *replaced)
-        goto late_error;
-
-    sess->last_row = time(NULL);
-
     return sess;
-
-late_error:
-    /* notification of failure to sql thread is handled by caller */
-    _destroy_session(&sess, 0);
-    return NULL;
 }
 
 int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long rqid,
@@ -720,43 +699,6 @@ void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
 {
     comdb2uuidcpy(uuid, sess->uuid);
 }
-
-#if 0
-/**
- * Needed for socksql and bro-s, which creates sessions before
- * iq->bplogs.
- * If we fail to dispatch to a blockprocession thread, we need this function
- * to clear the session from repository and free that leaked memory
- *
- * NOTE: this is basically called from net:reader_thread callback
- * so if there are any rows coming for the session, they will not
- * be read from the socket buffers until this ends 
- *
- */
-void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid, uuid_t uuid) {
-
-   osql_sess_t    *sess = NULL;
-   int            rc = 0;
-   
-   /* get the session */
-   sess = osql_repository_get(rqid, uuid, 0);
-
-   if(sess)
-   {
-      if(rc=osql_repository_put(sess, 0))
-      {
-         fprintf(stderr, "%s: rc =%d\n", 
-               __func__, rc);
-      }
-
-      if(rc=osql_close_session(iq, &sess, 1))
-      {
-         fprintf(stderr, "%s: rc =%d\n", 
-               __func__, rc);
-      }
-   }
-}
-#endif
 
 inline int osql_session_is_sorese(osql_sess_t *sess)
 {

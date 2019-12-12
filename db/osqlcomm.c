@@ -3355,7 +3355,7 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
         break;
     default:
         if (iq)
-            iq->sorese.is_delayed = true;
+            iq->sorese->is_delayed = true;
         break;
     }
     return rc;
@@ -5100,7 +5100,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
+int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
                                int rc)
 {
 
@@ -6765,11 +6765,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL;
-        if (!iq->sorese.is_delayed && iq->usedb->n_constraints == 0 &&
+        if (!iq->sorese->is_delayed && iq->usedb->n_constraints == 0 &&
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
         } else {
-            iq->sorese.is_delayed = true;
+            iq->sorese->is_delayed = true;
         }
 
         rc = add_record(iq, trans, tag_name_ondisk,
@@ -7308,24 +7308,25 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
-
     osql_sess_t *sess = NULL;
+    uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
+    struct ireq *iq = NULL;
     osql_req_t req;
     bool is_reorder_on = false;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     int rc = 0;
-    uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
     uint8_t *p_buf = malcd;
     const uint8_t *p_buf_end = p_buf + OSQL_BP_MAXLEN;
-    sorese_info_t sorese_info = {0};
     char *sql;
     char *sqlret = NULL;
     int sqllenret = 0;
     int debug = 0;
-    struct ireq *iq;
     uuid_t uuid;
     int replaced = 0;
+
+    if (!malcd)
+        goto done;
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
@@ -7341,7 +7342,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         req.flags = uuid_req.flags; // NB: we will loose the 0x80 and up flags
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
-        comdb2uuidcpy(sorese_info.uuid, uuid_req.uuid);
         is_reorder_on = ((uuid_req.flags & OSQL_FLAGS_REORDER_ON) != 0);
 
 #if DEBUG_REORDER
@@ -7350,17 +7350,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     } else {
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
         comdb2uuid_clear(uuid);
-        comdb2uuid_clear(sorese_info.uuid);
     }
-
-    /* the req_type_get has already unpacked the rqid .. */
-    sorese_info.rqid = req.rqid;
-    sorese_info.host = fromhost;
-    sorese_info.type = type;
-
-#if 0   
-   stats[type].rcv++;
-#endif
 
     if (!p_buf) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %d bytes\n", __func__,
@@ -7373,7 +7363,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         logmsg(LOGMSG_ERROR, 
                "sorese request cancelled (schema change or exiting database)\n");
         rc = -2;
-        free(malcd);
         goto done;
     }
 #if 0
@@ -7386,42 +7375,46 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                                     req.rqid, uuid)) {
         logmsg(LOGMSG_ERROR, "%s: bug bug bug\n", __func__);
         rc = -3;
-        free(malcd);
-        goto done;
-    }
-
-#if 0
-   printf( "Creating request %llu\n", osql_log_time());
-#endif
-
-    /* start a block processor */
-    iq = create_sorese_ireq(thedb, NULL, p_buf, p_buf_end, debug, fromhost,
-                            &sorese_info);
-    if (iq == NULL) {
-        free(malcd);
-        rc = -5;
         goto done;
     }
 
     /* create the request */
-    /* NOTE: this adds the session to the repository; we make sure that freshly
-       added session have sess->iq set
-       to avoid racing against signal_rtoff code */
-    sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, iq, &replaced, is_reorder_on);
-    if (replaced) {
-        assert(sess == NULL);
-        destroy_ireq(thedb, iq);
-        free(malcd);
-        return 0;
-    }
+    sess = osql_sess_create(sqlret, sqllenret, req.tzname, type, req.rqid,
+                            uuid, is_reorder_on);
     if (!sess) {
-        logmsg(LOGMSG_ERROR, "%s Unable to create new request\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s Unable to create new session\n", __func__);
         rc = -4;
-        destroy_ireq(thedb, iq);
-        free(malcd);
         goto done;
     }
+
+
+    /* start a block processor */
+    iq = create_sorese_ireq(thedb, p_buf, p_buf_end, debug, fromhost, sess);
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s Unable to create new ireq\n", __func__);
+        rc = -5;
+        goto done;
+    }
+
+    /* make this visible to the world */
+    sess->iq = sess->iqcopy = iq;
+    /* how about we start the bplog before making this available to the world?
+     */
+    rc = osql_bplog_start(iq, sess);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
+        rc = -6;
+        goto done;
+    }
+
+    rc = osql_repository_add(sess, &replaced);
+    if (rc || replaced) {
+        free(malcd);
+        rc = -7;
+        goto done;
+    }
+    sess->last_row = time(NULL);
+
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG,
            "REORDER: created sess %p, with sess->is_reorder_on %d\n", sess,
@@ -7451,13 +7444,19 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         (req.flags & OSQL_FLAGS_CHECK_SELFLOCK)) {
         /* just make sure we are above the threshold */
-        iq->sorese.verify_retries += gbl_osql_verify_ext_chk;
+        iq->sorese->verify_retries += gbl_osql_verify_ext_chk;
     }
 
 done:
-
+    
     if (rc) {
         int rc2;
+
+        if (malcd)
+            free(malcd);
+            
+        if (iq)
+            destroy_ireq(thedb, iq);
 
         /* notify the sql thread there will be no response! */
         struct errstat generr = {0};
@@ -7471,7 +7470,18 @@ done:
                      sizeof(generr.errstr));
         }
 
-        rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+
+        int onstack = 0;
+        if (!sess) {
+            onstack = 1; /* used to avoid debugging confusion */
+            sess = alloca(sizeof(osql_sess_t));
+            sess->host = fromhost;
+            sess->rqid = req.rqid;
+            comdb2uuidcpy(sess->uuid, uuid);
+            sess->nops = 0;
+        }
+
+        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr,
                                          RC_INTERNAL_RETRY);
         if (rc2) {
             uuidstr_t us;
@@ -7480,6 +7490,11 @@ done:
                             "error to create bplog\n",
                     __func__, req.rqid, us, fromhost);
         }
+        if (onstack)
+            sess = NULL; 
+        else
+            osql_close_session(&sess, 0, __func__, NULL, __LINE__);
+
     } else {
         int rc2;
 

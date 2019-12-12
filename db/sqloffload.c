@@ -256,10 +256,10 @@ void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
     struct thr_handle *thr_self = thrman_self();
 
     if (iq->debug)
-        reqprintf(iq, "%s received from node %s", __func__, iq->sorese.host);
+        reqprintf(iq, "%s received from node %s", __func__, iq->sorese->host);
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese.host, iq->sorese.rqid);
+                  breq2a(block2_type), iq->sorese->host, iq->sorese->rqid);
 }
 
 extern int gbl_early_verify;

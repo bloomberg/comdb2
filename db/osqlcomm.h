@@ -260,7 +260,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
+int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
                                int rc);
 
 /**

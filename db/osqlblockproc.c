@@ -266,7 +266,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     iq->sc_locked = 0;
     iq->sc_should_abort = 0;
 
-    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
+    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese->osqllog,
                        osql_process_schemachange);
 
     if (rc)
@@ -406,7 +406,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     }
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
+    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese->osqllog,
                        osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
@@ -468,7 +468,7 @@ char *osql_get_tran_summary(struct ireq *iq)
             osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         }
 
-        nametype = osql_sorese_type_to_str(iq->sorese.type);
+        nametype = osql_sorese_type_to_str(iq->sorese->type);
 
         snprintf(ret, sz, "%s tot=%ums rtrs=%u", nametype, tottm, rtrs);
         ret[sz - 1] = '\0';
@@ -504,7 +504,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
      */
 
     /* remove the sessions from repository and free them */
-    osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc,
+    osql_close_session(&tran->sess, are_sessions_linked, func, callfunc,
                        line);
 
     /* destroy transaction */
@@ -664,23 +664,18 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     }
 }
 
-static void send_error_to_replicant(int rqid, const char *host, int errval,
+static void send_error_to_replicant(osql_sess_t *sess, int errval,
                                     const char *errstr)
 {
-    sorese_info_t sorese_info = {0};
     struct errstat generr = {0};
 
     logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, errstr);
-
-    sorese_info.rqid = rqid;
-    sorese_info.host = host;
-    sorese_info.type = -1; /* I don't need it */
 
     generr.errval = errval;
     strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
     int rc =
-        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
+        osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
@@ -819,8 +814,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
-            send_error_to_replicant(
-                rqid, iq->sorese.host, RC_INTERNAL_RETRY,
+            send_error_to_replicant(sess, RC_INTERNAL_RETRY,
                 "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR,
@@ -1415,7 +1409,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     /* if we've already had a few verify-failures, add extended checking now */
     if (!iq->vfy_genid_track &&
-        iq->sorese.verify_retries >= gbl_osql_verify_ext_chk) {
+        iq->sorese->verify_retries >= gbl_osql_verify_ext_chk) {
         iq->vfy_genid_track = 1;
         iq->vfy_genid_hash = hash_init(sizeof(unsigned long long));
         iq->vfy_genid_pool =
