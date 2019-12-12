@@ -194,7 +194,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
 /**
  * Returns
- * - total time (tottm)
+ * - total time in ms (tottm)
  * - retries (rtrs)
  *
  */

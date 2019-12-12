@@ -470,8 +470,7 @@ char *osql_get_tran_summary(struct ireq *iq)
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=%u rtrs=%u", nametype, tottm,
-                 rtrs);
+        snprintf(ret, sz, "%s tot=%ums rtrs=%u", nametype, tottm, rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -1539,7 +1538,7 @@ void osql_bplog_time_done(struct ireq *iq)
         /* these are failed */
         osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         snprintf0(msg + len, sizeof(msg) - len,
-                  " %s(rqid=%llu time=%u retries=%u)",
+                  " %s(rqid=%llu time=%ums retries=%u)",
                   (tran->iscomplete ? "C" : "F"), osql_sess_getrqid(tran->sess),
                   tottm, rtrs);
         len = strlen(msg);
