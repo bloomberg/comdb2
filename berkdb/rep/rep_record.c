@@ -1307,6 +1307,7 @@ skip:				/*
 						__FILE__, __LINE__, lsn.file,
 						lsn.offset);
 #endif
+                    assert (lsn.file > 0);
 
 					(void)__rep_send_message(dbenv, *eidp,
 						REP_VERIFY_REQ,
@@ -2009,6 +2010,7 @@ more:
 				verify_req_print = now;
 			}
 
+            assert(lsn.file > 0);
 			(void)__rep_send_message(dbenv,
 				*eidp, REP_VERIFY_REQ, &lsn, NULL, 0, NULL);
 
@@ -2044,6 +2046,7 @@ notfound:
 						verify_req_print = now;
 					}
 
+                    assert(lsn.file > 0);
 					(void)__rep_send_message(dbenv,
 						*eidp, REP_VERIFY_REQ, &lsn, NULL,
 						0, NULL);
@@ -2134,8 +2137,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 */
 		if (ret == DB_NOTFOUND &&
 			__log_is_outdated(dbenv, rp->lsn.file, &old) == 0 &&
-			old != 0)
+			old != 0) {
+            logmsg(LOGMSG_INFO, "%s rep_verify_req returning REP_VERIFY_FAIL "
+                    "for [%d:%d]\n", __func__, rp->lsn.file, rp->lsn.offset);
 			type = REP_VERIFY_FAIL;
+        }
 
 		if (ret != 0)
 			d = NULL;
