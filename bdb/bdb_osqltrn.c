@@ -340,7 +340,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     trn = (bdb_osql_trn_t *)calloc(1, sizeof(bdb_osql_trn_t));
     if (!trn) {
         *bdberr = BDBERR_MALLOC;
-        goto done;
+        return NULL;
     }
 
     Pthread_mutex_init(&trn->log_mtx, NULL);
