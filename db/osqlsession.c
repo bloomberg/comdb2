@@ -233,7 +233,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
         return 0;
     }
 
-    sess->end = time(NULL);
+    sess->endus = comdb2_time_epochus();
 
     if (xerr) {
         uint8_t *p_buf = (uint8_t *)xerr;
@@ -281,10 +281,9 @@ static inline int is_session_repeatable(int code)
  * - retries (rtrs)
  *
  */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtt, int *rtrs)
+void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
 {
-    *tottm = sess->end - sess->initstart;
-    *rtt = sess->end - sess->start;
+    *tottm = U2M(sess->endus - sess->startus);
     *rtrs = sess->iq ? sess->iq->retries : 0;
 }
 
@@ -301,12 +300,13 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     } else
         snprintf(rqid, sizeof(rqid), "%llx", sess->rqid);
 
-    reqlog_logf(
-        reqlog, REQL_INFO,
-        "rqid %s node %s sec %ld rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
-        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
-        (sess->end - sess->initstart), reqlog_get_retries(reqlog),
-        reqlog_get_queue_time(reqlog) / 1000, sess->sql ? sess->sql : "()");
+    reqlog_logf(reqlog, REQL_INFO,
+                "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64
+                "ms \"%s\"\n",
+                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
+                U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
+                U2M(reqlog_get_queue_time(reqlog)),
+                sess->sql ? sess->sql : "()");
 }
 
 /**
@@ -596,7 +596,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     comdb2uuidcpy(sess->uuid, uuid);
     save_sql(iq, sess, sql, sqlen);
     sess->type = type;
-    sess->start = sess->initstart = time(NULL);
+    sess->startus = comdb2_time_epochus();
     sess->is_reorder_on = is_reorder_on;
     sess->selectv_writelock_on_update = gbl_selectv_writelock_on_update;
     if (sess->selectv_writelock_on_update)

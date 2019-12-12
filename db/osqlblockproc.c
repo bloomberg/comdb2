@@ -455,7 +455,6 @@ char *osql_get_tran_summary(struct ireq *iq)
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
         int sz = 128;
-        int rtt = 0;
         int tottm = 0;
         int rtrs = 0;
 
@@ -466,13 +465,12 @@ char *osql_get_tran_summary(struct ireq *iq)
         }
 
         if (tran->iscomplete) {
-            osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
+            osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         }
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype, tottm, rtt,
-                 rtrs);
+        snprintf(ret, sz, "%s tot=%ums rtrs=%u", nametype, tottm, rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -1512,7 +1510,6 @@ void osql_bplog_time_done(struct ireq *iq)
     osql_bp_timings_t *tms = &iq->timings;
     char msg[4096];
     int tottm = 0;
-    int rtt = 0;
     int rtrs = 0;
     int len;
 
@@ -1539,11 +1536,11 @@ void osql_bplog_time_done(struct ireq *iq)
         len = strlen(msg);
 
         /* these are failed */
-        osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
+        osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         snprintf0(msg + len, sizeof(msg) - len,
-                  " %s(rqid=%llu time=%u lastrtt=%u retries=%u)",
+                  " %s(rqid=%llu time=%ums retries=%u)",
                   (tran->iscomplete ? "C" : "F"), osql_sess_getrqid(tran->sess),
-                  tottm, rtt, rtrs);
+                  tottm, rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
