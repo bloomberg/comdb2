@@ -95,6 +95,12 @@ if(STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DSTACK_AT_DB_OPEN_CLOSE)
 endif()
 
+option(DEBUG_SC "Enable schema-change debug trace" OFF)
+mark_as_advanced(DEBUG_SC)
+if(DEBUG_SC)
+    add_definitions(-DDEBUG_SC)
+endif()
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)

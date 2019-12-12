@@ -749,7 +749,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
 
-    if (!s->nothrevent)
+    if (!s->is_osql)
         stop_and_free_sc(iq, rc, s, 0 /*free_sc*/);
     return rc;
 }
@@ -1499,10 +1499,8 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-/*
     sc_set_running(iq, s->tablename, 0, gbl_mynode, time(NULL), 0, __func__,
             __LINE__);
-*/
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

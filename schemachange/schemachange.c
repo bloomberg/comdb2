@@ -46,13 +46,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     int maxcancelretry = 10;
     int rc;
     
-    /* This function requires the bdb-lock */
-    if (bdb_lockref() <= 0) {
-        logmsg(LOGMSG_FATAL, "%s requires the bdb-lock\n",
-                __func__);
-        abort();
-    }
-
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
         free_schema_change_type(s);

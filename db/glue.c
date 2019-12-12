@@ -2943,7 +2943,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     if (host == gbl_mynode) {
 
         trigger_clear_hash();
-        sc_clear_running(__func__, __LINE__);
 
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
@@ -2971,7 +2970,6 @@ static int new_master_callback(void *bdb_handle, char *host,
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
 
-        sc_clear_running(__func__, __LINE__);
         osql_repository_cancelall();
     }
 

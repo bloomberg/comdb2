@@ -1692,6 +1692,9 @@ more:
 								"for LSN %d:%d\n", __func__, __LINE__, 
 								lsn.file, lsn.offset);
 					}
+                    logmsg(LOGMSG_INFO, "%s:%d log_c_get failed to find [%d:%d]"
+                            " and [%d:%d]: REP_VERIFY_FAIL\n", __func__, __LINE__,
+                            lsn.file, lsn.offset,endlsn.file, endlsn.offset);
 					if ((resp_rc = __rep_time_send_message(dbenv, *eidp,
 								REP_VERIFY_FAIL, &lsn, NULL, 0,
 								NULL, &sendtime)) != 0 && gbl_verbose_fills) {

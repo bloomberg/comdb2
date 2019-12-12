@@ -4159,7 +4159,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             logmsg(LOGMSG_FATAL, 
                     "this database needs to be hot copied with copycomdb2\n");
             logmsg(LOGMSG_FATAL, "exiting now\n");
-            exit(1);
+            abort();
         } else {
             logmsg(LOGMSG_ERROR, "got outdated log request from %s\n", host);
         }

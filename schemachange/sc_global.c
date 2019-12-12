@@ -261,34 +261,20 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
         time_t time, int replicant, const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
-    bdb_state_type *bdb_state = thedb->bdb_env;
 #ifdef DEBUG_SC
-    printf("%s: %d\n", __func__, running);
+    printf("%s: table %s : %d from %s:%d\n", __func__, table, running, func, line);
     comdb2_linux_cheap_stack_trace();
 #endif
-    int ref = bdb_lockref();
-    int got_lock = 0;
     int rc = 0;
 
     assert(running >= 0);
     assert(table);
 
-    if (!iq) {
+    if (!iq)
         return 0;
-    }
 
-    if (iq) {
+    if (iq)
         assert(!replicant);
-    }
-
-    /* We don't have the bdblock in abort- get it now, and run only if we are
-     * still master */
-    if (!replicant && !running && !ref) {
-        BDB_READLOCK("sc_set_running");
-        ref = got_lock = 1;
-    }
-
-    assert(ref > 0);
 
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
@@ -351,8 +337,6 @@ done:
             "%s:%d rc=%d\n", table, running, func, line, rc);
 
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-    if (got_lock)
-        BDB_RELLOCK();
     return rc;
 }
 
@@ -363,27 +347,6 @@ void sc_assert_clear(const char *func, int line)
         logmsg(LOGMSG_FATAL, "%s:%d downgrading with outstanding sc\n",
                 func, line);
         abort();
-    }
-    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-}
-
-/* We are upgrading to master: clear old schema-changes. */
-void sc_clear_running(const char *func, int line)
-{
-#ifdef DEBUG_SC
-    printf("%s: %d\n", __func__, running);
-    comdb2_linux_cheap_stack_trace();
-#endif
-    Pthread_mutex_lock(&schema_change_in_progress_mutex);
-
-    logmsg(LOGMSG_INFO, "%s:%d clear running sc %d to 0\n", func, line,
-            gbl_schema_change_in_progress);
-    gbl_schema_change_in_progress = 0;
-
-    /* This is called holding the bdb-lock in write mode */
-    if (sc_tables) {
-        hash_for(sc_tables, freesc, NULL);
-        hash_clear(sc_tables);
     }
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
 }

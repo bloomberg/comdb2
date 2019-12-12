@@ -6418,6 +6418,9 @@ int gbl_selectv_writelock = 0;
  * to apply to received row updates
  *
  */
+
+#include <schemachange/sc_global.h>
+
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
@@ -6525,6 +6528,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 local_replicant_write_clear(iq, trans, iq->sc->db);
             iq->sc = iq->sc->sc_next;
         }
+        
+        /* Success: reset the table counters */
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            sc_set_running(iq, iq->sc->tablename, 0, NULL, 0, 0, __func__,
+                    __LINE__);
+            iq->sc = iq->sc->sc_next;
+        }
+
 
         if (iq->sc_pending) {
             create_sqlmaster_records(iq->sc_tran);
