@@ -38,6 +38,8 @@
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
 extern int gbl_test_sc_resume_race;
+
+/* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -53,20 +55,14 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
-        if (s->is_osql)
-            s->sc_rc = SC_MASTER_DOWNGRADE;
-        else
-            free_schema_change_type(s);
+        free_schema_change_type(s);
         return SC_NOT_MASTER;
     }
 
     /* if we're not the master node then we can't do schema change! */
     if (thedb->master != gbl_mynode) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
-        if (s->is_osql)
-            s->sc_rc = SC_MASTER_DOWNGRADE;
-        else
-            free_schema_change_type(s);
+        free_schema_change_type(s);
         return SC_NOT_MASTER;
     }
 
@@ -109,6 +105,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         s->finalize = 0;
     }
 
+    /* This section looks for resumed / resuming schema changes:
+     * if there is one, then we attach to it here */
     if (!s->resume &&
         (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
         struct schema_change_type *last_sc = NULL;
@@ -116,10 +114,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
         Pthread_mutex_lock(&sc_resuming_mtx);
         stored_sc = sc_resuming;
-        /* 
-         * This is trying to connect a resumed sc with a block processor
-         * I think it will get nixed
-         */
+        /* Reconnect a resuming sc with a block processor. */
         while (stored_sc) {
             if (strcasecmp(stored_sc->tablename, s->tablename) == 0) {
                 uuidstr_t us;
@@ -133,9 +128,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 if (stored_sc->rqid == iq->sorese->rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
-                        last_sc = stored_sc->sc_next;
+                        last_sc->sc_next = stored_sc->sc_next;
                     else
-                        sc_resuming = NULL;
+                        sc_resuming = sc_resuming->sc_next;
                     stored_sc->sc_next = NULL;
                 } else {
                     /* TODO: found an ongoing sc with different rqid
@@ -269,10 +264,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     rc = 0;
-    if (!s->is_osql) {
-        rc = sc_set_running(iq, s->tablename, s->preempted ? 2 : 1, node,
+    rc = sc_set_running(iq, s->tablename, s->preempted ? 2 : 1, node,
                 time(NULL), 0, __func__, __LINE__);
-    }
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
@@ -298,13 +291,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
             if (s->db && s->db->doing_upgrade) {
                 sc_errf(s, "failed to cancel table upgrade threads\n");
-                free_schema_change_type(s);
-                return SC_CANT_SET_RUNNING;
-            } else if (sc_set_running(iq, s->tablename, 1, gbl_mynode,
-                        time(NULL), 0, __func__, __LINE__) != 0) {
-                free_schema_change_type(s);
-                return SC_CANT_SET_RUNNING;
-            }
+            } 
+
+            free_schema_change_type(s);
+            return SC_CANT_SET_RUNNING;
         }
     }
 

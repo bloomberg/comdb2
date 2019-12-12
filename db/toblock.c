@@ -4712,9 +4712,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
-            bdb_get_readlock(thedb->bdb_env, "tranddl", __func__, __LINE__);
+            /* Don't get the bdb-lock here: if this is "inline", then you end
+             * up holding it for the duration of schema-change */
             iirc = osql_bplog_schemachange(iq);
-            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;
@@ -4723,19 +4723,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* recreate a transaction here */
         if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-            bdb_get_readlock(thedb->bdb_env, "tranddl", __func__, __LINE__);
-
-            /* Grab bdb lock and check for mastership before creating
-             * a transaction: logical begins will write a log-message. */
-            if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
-                numerrs = 1;
-                logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                        __LINE__);
-                rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
-                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
-                GOTOBACKOUT;
-            }
-
             int iirc = osql_create_transaction(
                 javasp_trans_handle, iq, &trans,
                 have_blkseq ? &parent_trans : NULL, &osql_needtransaction,
@@ -4744,11 +4731,17 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (!rc)
                     rc = iirc;
                 numerrs = 1;
-                bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 GOTOBACKOUT;
             }
-            /* we have a txn: this decrements the readlocks refcount */
-            bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+
+            /* at this point we have a transaction, which would prevent a
+            downgrade;
+            make sure I am still the master */
+            if (thedb->master != gbl_mynode) {
+                numerrs = 1;
+                rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
+                GOTOBACKOUT;
+            }
         }
 
         if (iq->tranddl) {

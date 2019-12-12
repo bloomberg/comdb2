@@ -227,7 +227,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
  * Handles each packet and start schema change
  *
  */
-int osql_prepare_schemachange(struct ireq *iq, unsigned long long rqid,
+int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,

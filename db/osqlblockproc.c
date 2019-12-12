@@ -271,19 +271,6 @@ int osql_bplog_schemachange(struct ireq *iq)
 
     if (rc) {
         logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
-        /* Haven't started anything, bail out */
-        goto done;
-    }
-
-    /* start all schema changes */
-    iq->sc = sc = iq->sc_pending;
-    while (sc != NULL) {
-        if (sc->db)
-            iq->usedb = sc->db;
-        if (!timepart_is_timepart(sc->tablename, 1)) {
-            rc = start_schema_change_tran(iq, NULL);
-        } else {
-        }
     }
 
 
@@ -299,11 +286,7 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            /*
-            sc_set_running(iq, sc->tablename, 0, NULL, 0, 0, __func__,
-                    __LINE__);
-            free_schema_change_type(sc);
-            */
+            /* Backout code should reset and free */
             logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
                     __LINE__);
             rc = ERR_NOMASTER;
@@ -317,11 +300,6 @@ int osql_bplog_schemachange(struct ireq *iq)
             Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
-            /*
-            sc_set_running(iq, sc->tablename, 0, NULL, 0, 0, __func__,
-                    __LINE__);
-            free_schema_change_type(sc);
-            */
             if (sc->sc_rc)
                 rc = ERR_SC;
         }
@@ -352,7 +330,6 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
         iq->sc_pending = NULL;
     }
-done:
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
 }
