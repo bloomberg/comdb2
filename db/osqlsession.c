@@ -300,12 +300,13 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     } else
         snprintf(rqid, sizeof(rqid), "%llx", sess->rqid);
 
-    reqlog_logf(
-        reqlog, REQL_INFO,
-        "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64 "ms \"%s\"\n",
-        sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
-        U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
-        U2M(reqlog_get_queue_time(reqlog)), sess->sql ? sess->sql : "()");
+    reqlog_logf(reqlog, REQL_INFO,
+                "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64
+                "ms \"%s\"\n",
+                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
+                U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
+                U2M(reqlog_get_queue_time(reqlog)),
+                sess->sql ? sess->sql : "()");
 }
 
 /**
