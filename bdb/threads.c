@@ -18,7 +18,6 @@
 
 #include <sys/poll.h>
 #include <unistd.h>
-#include <stdbool.h>
 
 #include "ctrace.h"
 #include "bdb_int.h"
@@ -77,17 +76,24 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     return NULL;
 }
 
+/* try to atomically set thread_running to 1
+ * returns 1 on success and 0 on failure
+ */
+static inline int try_set(int *thread_running) 
+{
+    int zero = 0;
+    return CAS32(*thread_running, zero, 1);
+}
+
 void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
-    static int have_memp_trickle_thread = 0;
+    static int memp_trickle_thread_running = 0;
     int nwrote;
     int rc;
 
-    int zero = 0;
-    bool res = CAS32(have_memp_trickle_thread, zero, 1);
-    if (!res)
+    if (try_set(&memp_trickle_thread_running) == 0)
         return NULL;
 
     bdb_state = (bdb_state_type *)arg;
@@ -197,16 +203,13 @@ void *deadlockdetect_thread(void *arg)
 void *master_lease_thread(void *arg)
 {
     int pollms, renew, lease_time;
-    static int have_master_lease_thread = 0;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
+    static int master_lease_thread_running = 0;
 
-    int zero = 0;
-    bool res = CAS32(have_master_lease_thread, zero, 1);
-    if (!res)
+    if (try_set(&master_lease_thread_running) == 0)
         return NULL;
 
-    have_master_lease_thread = 1;
     bdb_state->master_lease_thread = pthread_self();
 
     assert(!bdb_state->parent);
@@ -231,22 +234,20 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
 
     bdb_state->master_lease_thread = 0;
-    XCHANGE32(have_master_lease_thread, 0);
+    master_lease_thread_running = 0;
     return NULL;
 }
 
 void *coherency_lease_thread(void *arg)
 {
     int pollms, renew, lease_time, inc_wait, add_interval;
-    static int have_coherency_thread = 0;
     static time_t last_add_record = 0;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
+    static int coherency_thread_running = 0;
 
-    int zero = 0;
-    bool res = CAS32(have_coherency_thread, zero, 1);
-    if (!res)
+    if (try_set(&coherency_thread_running) == 0)
         return NULL;
 
     bdb_state->coherency_lease_thread = pthread_self();
@@ -304,7 +305,7 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
 
     bdb_state->coherency_lease_thread = 0;
-    XCHANGE32(have_coherency_thread, 0);
+    coherency_thread_running = 0;
     return NULL;
 }
 
@@ -363,11 +364,9 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
-    static int have_checkpoint_thd = 0;
+    static int checkpoint_thd_running = 0;
 
-    int zero = 0;
-    bool res = CAS32(have_checkpoint_thd, zero, 1);
-    if (!res)
+    if (try_set(&checkpoint_thd_running) == 0)
         return NULL;
 
     thread_started("bdb checkpoint");
