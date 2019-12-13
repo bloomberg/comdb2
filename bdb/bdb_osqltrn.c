@@ -54,8 +54,10 @@ extern struct timeval logical_undo_time;
 
 unsigned int bdb_osql_trn_total_count = 0;
 
-extern int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
-        uint32_t *durable_file, uint32_t *durable_offset, uint32_t *durable_gen);
+extern int request_durable_lsn_from_master(bdb_state_type *bdb_state,
+                                           uint32_t *durable_file,
+                                           uint32_t *durable_offset,
+                                           uint32_t *durable_gen);
 
 /**
  * Each snapshot/serializable transaction registers one bdb_osql_trn
@@ -237,8 +239,6 @@ int bdb_is_timestamp_recoverable(bdb_state_type *bdb_state, int32_t timestamp)
 
     return 1;
 }
-
-
 
 static inline void cleanup_trn(bdb_osql_trn_t *trn)
 {
