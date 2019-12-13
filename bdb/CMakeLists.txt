@@ -93,8 +93,13 @@ include_directories(
   ${PROJECT_BINARY_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/crc32c
+  ${PROJECT_SOURCE_DIR}/csc2
   ${PROJECT_SOURCE_DIR}/cson
+  ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/db
+  ${PROJECT_BINARY_DIR}/db
+  ${PROJECT_SOURCE_DIR}/dfp/decNumber
+  ${PROJECT_SOURCE_DIR}/dfp/dfpal
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem

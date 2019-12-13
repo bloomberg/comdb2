@@ -636,6 +636,7 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
 
 int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
+int gbl_queuedb_file_interval = 60000;
 
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
                              int file_num, int create, char *name, size_t len,

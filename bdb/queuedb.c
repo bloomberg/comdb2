@@ -48,8 +48,6 @@ static cron_sched_t *gbl_queuedb_cron = NULL;
 #define BDB_IS_CONSUME_QUEUEDB(a,b)  ((b) == BDB_QUEUEDB_GET_DBP_ZERO(a))
 #define BDB_IS_ADD_QUEUEDB(a,b)      ((b) == BDB_QUEUEDB_GET_DBP_ONE(a))
 
-extern void fsnapf(FILE *, void *, int);
-
 struct bdb_queue_priv {
     uint64_t genid;
     struct bdb_queue_stats stats;
