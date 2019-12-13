@@ -142,8 +142,8 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
-        while((entry->master = clnt->osql.host = thedb->master) == 0 && retry < 60)
-        {
+        while ((entry->master = clnt->osql.host = thedb->master) == 0 &&
+               retry < 60) {
             poll(NULL, 0, 500);
             retry++;
         }
@@ -249,16 +249,15 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
         rc = hash_del(checkboard->rqsuuid, entry);
         if (rc)
-            logmsg(LOGMSG_ERROR,
-                   "%s: unable to delete record %llx, rc=%d\n", __func__,
-                   entry->rqid, rc);
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
+                   __func__, entry->rqid, rc);
     } else {
         rc = hash_del(checkboard->rqs, entry);
         if (rc) {
             uuidstr_t us;
-            logmsg(LOGMSG_ERROR,
-                   "%s: unable to delete record %llx %s, rc=%d\n", __func__,
-                   entry->rqid, comdb2uuidstr(clnt->osql.uuid, us), rc);
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
+                   __func__, entry->rqid, comdb2uuidstr(clnt->osql.uuid, us),
+                   rc);
         }
     }
 
@@ -271,8 +270,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         logmsg(LOGMSG_USER, "UNRegistered %llx %s %s %d\n", entry->rqid,
-               comdb2uuidstr(clnt->osql.uuid, us), entry->master,
-               entry->type);
+               comdb2uuidstr(clnt->osql.uuid, us), entry->master, entry->type);
     }
 #endif
 
