@@ -16,40 +16,17 @@
 
 /* the helper threads that work behind the scenes */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
 #include <sys/poll.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/socketvar.h>
-#include <sys/uio.h>
 #include <unistd.h>
-#include <stddef.h>
-#include <str0.h>
+#include <stdbool.h>
 
-#include <build/db.h>
-#include <epochlib.h>
-
-#include <ctrace.h>
-
-#include <net.h>
+#include "ctrace.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include <locks_wrap.h>
-
-#include <memory_sync.h>
-#include <autoanalyze.h>
-#include <logmsg.h>
+#include "comdb2_atomic.h"
+#include "memory_sync.h"
+#include "autoanalyze.h"
+#include "logmsg.h"
 
 extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
@@ -105,17 +82,13 @@ void *memp_trickle_thread(void *arg)
     unsigned int time;
     bdb_state_type *bdb_state;
     static int have_memp_trickle_thread = 0;
-    static pthread_mutex_t mtt_lk = PTHREAD_MUTEX_INITIALIZER;
     int nwrote;
     int rc;
 
-    Pthread_mutex_lock(&mtt_lk);
-    if (have_memp_trickle_thread) {
-        Pthread_mutex_unlock(&mtt_lk);
+    int zero = 0;
+    bool res = CAS32(have_memp_trickle_thread, zero, 1);
+    if (!res)
         return NULL;
-    }
-    have_memp_trickle_thread = 1;
-    Pthread_mutex_unlock(&mtt_lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -224,19 +197,17 @@ void *deadlockdetect_thread(void *arg)
 void *master_lease_thread(void *arg)
 {
     int pollms, renew, lease_time;
-    static pthread_mutex_t mlt_lk = PTHREAD_MUTEX_INITIALIZER;
     static int have_master_lease_thread = 0;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
 
-    Pthread_mutex_lock(&mlt_lk);
-    if (have_master_lease_thread) {
-        Pthread_mutex_unlock(&mlt_lk);
+    int zero = 0;
+    bool res = CAS32(have_master_lease_thread, zero, 1);
+    if (!res)
         return NULL;
-    }
+
     have_master_lease_thread = 1;
     bdb_state->master_lease_thread = pthread_self();
-    Pthread_mutex_unlock(&mlt_lk);
 
     assert(!bdb_state->parent);
     thread_started("bdb master lease");
@@ -259,31 +230,26 @@ void *master_lease_thread(void *arg)
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
 
-    Pthread_mutex_lock(&mlt_lk);
-    have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
-    Pthread_mutex_unlock(&mlt_lk);
+    XCHANGE32(have_master_lease_thread, 0);
     return NULL;
 }
 
 void *coherency_lease_thread(void *arg)
 {
     int pollms, renew, lease_time, inc_wait, add_interval;
-    static pthread_mutex_t clt_lk = PTHREAD_MUTEX_INITIALIZER;
     static int have_coherency_thread = 0;
     static time_t last_add_record = 0;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
 
-    Pthread_mutex_lock(&clt_lk);
-    if (have_coherency_thread) {
-        Pthread_mutex_unlock(&clt_lk);
+    int zero = 0;
+    bool res = CAS32(have_coherency_thread, zero, 1);
+    if (!res)
         return NULL;
-    } 
-    have_coherency_thread = 1;
+
     bdb_state->coherency_lease_thread = pthread_self();
-    Pthread_mutex_unlock(&clt_lk);
     
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
@@ -337,10 +303,8 @@ void *coherency_lease_thread(void *arg)
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
 
-    Pthread_mutex_lock(&clt_lk);
-    have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
-    Pthread_mutex_unlock(&clt_lk);
+    XCHANGE32(have_coherency_thread, 0);
     return NULL;
 }
 
@@ -400,15 +364,11 @@ void *checkpoint_thread(void *arg)
     DB_LSN crtlogfile;
     int broken;
     static int have_checkpoint_thd = 0;
-    static pthread_mutex_t ct_lk = PTHREAD_MUTEX_INITIALIZER;
 
-    Pthread_mutex_lock(&ct_lk);
-    if (have_checkpoint_thd) {
-        Pthread_mutex_unlock(&ct_lk);
+    int zero = 0;
+    bool res = CAS32(have_checkpoint_thd, zero, 1);
+    if (!res)
         return NULL;
-    }
-    have_checkpoint_thd = 1;
-    Pthread_mutex_unlock(&ct_lk);
 
     thread_started("bdb checkpoint");
 
