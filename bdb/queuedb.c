@@ -22,8 +22,10 @@
 #include "bdb_queuedb.h"
 #include "plbitlib.h"
 #include "logmsg.h"
+#include "cron.h"
 
 extern int gbl_queuedb_file_threshold;
+extern int gbl_queuedb_file_interval;
 
 /* Another implementation of queues.  Don't really "trust" berkeley queues.
  * We've had some issues with
@@ -35,6 +37,8 @@ extern int gbl_queuedb_file_threshold;
 
 /* These are the public APIs exposed by bdb/queue.c - implement the same
  * interface. */
+
+static cron_sched_t *gbl_queuedb_cron = NULL;
 
 /* TODO: this is in db-land, not bdb.... */
 #define MAXCONSUMERS 32
@@ -87,6 +91,86 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     p_buf = buf_no_net_put(&p_queuedb_key->genid, sizeof(p_queuedb_key->genid),
                            p_buf, p_buf_end);
     return p_buf;
+}
+
+static void *queuedb_cron_event(struct cron_event *_, struct errstat *err)
+{
+    if (gbl_queuedb_file_interval > 0) {
+        int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
+        void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
+                            (FCRON)queuedb_cron_event, NULL,
+                            NULL, NULL, NULL, err, NULL);
+        if (rc == NULL) {
+            logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
+                            "rc = %d, errstr = %s\n",
+                    err->errval, err->errstr);
+        }
+    }
+    return NULL;
+}
+
+static void *queuedb_cron_kickoff(struct cron_event *_, struct errstat *err)
+{
+    logmsg(LOGMSG_INFO, "Starting queuedb cron job. "
+                    "Will check queuedb usage every %d seconds.\n",
+            gbl_queuedb_file_interval / 1000);
+
+    int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
+    void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
+                              (FCRON)queuedb_cron_event, NULL,
+                              NULL, NULL, NULL, err, NULL);
+    if (rc == NULL)
+        logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
+                        "rc = %d, errstr = %s\n",
+                err->errval, err->errstr);
+
+    return NULL;
+}
+
+static char *queuedb_cron_describe(sched_if_t *impl)
+{
+    return strdup("QueueDB cron scheduler");
+}
+
+static char *queuedb_cron_event_describe(sched_if_t *impl, cron_event_t *event)
+{
+    const char *name;
+    if (event->func == (FCRON)queuedb_cron_event)
+        name = "QueueDB usage update";
+    else if (event->func == (FCRON)queuedb_cron_kickoff)
+        name = "QueueDB usage kickoff";
+    else
+        name = "Unknown";
+
+    return strdup(name);
+}
+
+int bdb_queuedb_create_cron(void)
+{
+    struct errstat xerr = {0};
+
+    if (gbl_queuedb_file_interval > 0) {
+        if (!gbl_queuedb_cron) {
+            sched_if_t impl = {0};
+            time_cron_create(
+                &impl, queuedb_cron_describe, queuedb_cron_event_describe
+            );
+            gbl_queuedb_cron = cron_add_event(NULL, "QueueDB Job Scheduler",
+                                      INT_MIN, (FCRON)queuedb_cron_kickoff,
+                                      NULL, NULL, NULL, NULL, &xerr, &impl);
+
+        } else {
+            gbl_queuedb_cron = cron_add_event(gbl_queuedb_cron, NULL, INT_MIN,
+                                      (FCRON)queuedb_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, NULL);
+        }
+        if (gbl_queuedb_cron == NULL) {
+            logmsg(LOGMSG_ERROR, "Failed to schedule queuedb cron job. "
+                            "rc = %d, errstr = %s\n",
+                    xerr.errval, xerr.errstr);
+        }
+    }
+    return xerr.errval;
 }
 
 static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)

@@ -1492,8 +1492,11 @@ REGISTER_TUNABLE("queuedb_genid_filename",
 REGISTER_TUNABLE("queuedb_file_threshold",
                  "Maximum queuedb file size (in MB) before enqueueing to the "
                  "alternate file.  (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_queuedb_file_threshold, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_queuedb_file_threshold, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queuedb_file_interval",
+                 "Check on this interval each queuedb against its configured "
+                 "maximum file size. (Default: 60000ms)", TUNABLE_INTEGER,
+                 &gbl_queuedb_file_interval, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_election_timeout",
                  "Use a random timeout in election.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
