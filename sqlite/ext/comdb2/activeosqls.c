@@ -82,7 +82,7 @@ static int collect_osql_session(void *obj, void *arg)
 static int collect_bplog_session(void *obj, void *arg)
 {
     osql_sess_t *sess = obj;
-    struct ireq *iq = sess->iqcopy;
+    struct ireq *iq = sess->iq;
 
     getosqlsessions_t *osqls = arg;
     osqls->count++;

@@ -337,15 +337,6 @@ int osql_sess_unlock(osql_sess_t *sess)
     return 0;
 }
 
-int osql_sess_is_terminated(osql_sess_t *sess) { return sess->terminate; }
-
-void osql_sess_set_dispatched(osql_sess_t *sess, int dispatched)
-{
-    sess->dispatched = dispatched;
-}
-
-int osql_sess_dispatched(osql_sess_t *sess) { return sess->dispatched; }
-
 int osql_sess_lock_complete(osql_sess_t *sess)
 {
     Pthread_mutex_lock(&sess->completed_lock);
@@ -776,3 +767,21 @@ int osql_sess_try_terminate(osql_sess_t *sess)
     }
     return 0;
 }
+
+
+int handle_buf_sorese(struct dbenv *dbenv, osql_sess_t *sess, int debug)
+{
+    int rc = 0;
+
+
+    if (sess->dispatched || sess->terminate)
+        return 0;
+
+    sess->dispatched = 1;
+
+    rc = handle_buf_main(dbenv, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
+                         REQ_OFFLOAD, NULL, 0, 0);
+
+    return rc;
+}
+

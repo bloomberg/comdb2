@@ -89,15 +89,6 @@ int osql_sess_lock(osql_sess_t *sess);
 /* Unlock the session */
 int osql_sess_unlock(osql_sess_t *sess);
 
-/* Return terminated flag */
-int osql_sess_is_terminated(osql_sess_t *sess);
-
-/* Set dispatched flag */
-void osql_sess_set_dispatched(osql_sess_t *sess, int dispatched);
-
-/* Get dispatched flag */
-int osql_sess_dispatched(osql_sess_t *sess);
-
 /* Lock complete lock */
 int osql_sess_lock_complete(osql_sess_t *sess);
 

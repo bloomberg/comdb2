@@ -1239,8 +1239,7 @@ struct osql_sess {
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
 
-    struct ireq *iq; /* iq owning this session -- set to NULL once dispatched */
-    struct ireq *iqcopy; /* iq owning this session */
+    struct ireq *iq; /* iq used by block processor thread */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
@@ -1901,9 +1900,16 @@ enum comdb2_queue_types {
     REQ_PQREQUEST
 };
 
+int handle_buf_main(
+    struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
+    const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
+    char *fromtask, osql_sess_t *sorese, int qtype,
+    void *data_hndl, // handle to data that can be used according to request
+                     // type
+    int luxref, unsigned long long rqid);
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
-int handle_buf_sorese(struct dbenv *dbenv, struct ireq *iq, int debug);
+int handle_buf_sorese(struct dbenv *dbenv, osql_sess_t *sess, int debug);
 int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                                    uint8_t *p_buf, const uint8_t *p_buf_end,
                                    int debug, char *frommach, int frompid,

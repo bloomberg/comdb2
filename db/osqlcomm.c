@@ -7396,7 +7396,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     /* make this visible to the world */
-    sess->iq = sess->iqcopy = iq;
+    sess->iq = iq;
     /* how about we start the bplog before making this available to the world?
      */
     rc = osql_bplog_start(iq, sess);
