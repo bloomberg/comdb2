@@ -83,18 +83,6 @@ int osql_sess_getcrtinfo(void *obj, void *arg);
  */
 void *osql_sess_getbptran(osql_sess_t *sess);
 
-/* Lock the session */
-int osql_sess_lock(osql_sess_t *sess);
-
-/* Unlock the session */
-int osql_sess_unlock(osql_sess_t *sess);
-
-/* Lock complete lock */
-int osql_sess_lock_complete(osql_sess_t *sess);
-
-/* Unlock complete lock */
-int osql_sess_unlock_complete(osql_sess_t *sess);
-
 /**
  * Handles a new op received for session "rqid"
  * It saves the packet in the local bplog

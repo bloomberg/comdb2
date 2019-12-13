@@ -325,30 +325,6 @@ void *osql_sess_getbptran(osql_sess_t *sess)
     return bsql;
 }
 
-int osql_sess_lock(osql_sess_t *sess)
-{
-    Pthread_mutex_lock(&sess->mtx);
-    return 0;
-}
-
-int osql_sess_unlock(osql_sess_t *sess)
-{
-    Pthread_mutex_unlock(&sess->mtx);
-    return 0;
-}
-
-int osql_sess_lock_complete(osql_sess_t *sess)
-{
-    Pthread_mutex_lock(&sess->completed_lock);
-    return 0;
-}
-
-int osql_sess_unlock_complete(osql_sess_t *sess)
-{
-    Pthread_mutex_unlock(&sess->completed_lock);
-    return 0;
-}
-
 /**
  * Handles a new op received for session "rqid"
  * It saves the packet in the local bplog
@@ -732,55 +708,51 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 int osql_sess_try_terminate(osql_sess_t *sess)
 {
     int rc;
-    int completed = 0;
-    if ((rc = osql_sess_lock(sess))) {
-        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock rc %d\n", __func__, __LINE__,
-               rc);
-        return -1;
-    }
-    if ((rc = osql_sess_lock_complete(sess))) {
-        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock_complete rc %d\n", __func__,
-               __LINE__, rc);
-        osql_sess_unlock(sess);
-        return -1;
-    }
-    completed = sess->completed | sess->dispatched;
-    if ((rc = osql_sess_unlock_complete(sess))) {
-        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock_complete rc %d\n",
-               __func__, __LINE__, rc);
-        osql_sess_unlock(sess);
-        return -1;
-    }
-    if ((rc = osql_sess_unlock(sess))) {
-        logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock rc %d\n", __func__,
-               __LINE__, rc);
-        return -1;
-    }
-    if (completed) {
-        /* request is being processed and this is a replay */
+
+    Pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->completed_lock);
+
+    if ( sess->completed | sess->dispatched) {
+        Pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->mtx);
         return 1;
-    } else {
-        rc = osql_sess_set_terminate(sess);
-        if (rc) {
-            abort();
-        }
     }
+
+    rc = osql_sess_set_terminate(sess);
+    if (rc) {
+        abort();
+    }
+
     return 0;
 }
 
 
-int handle_buf_sorese(struct dbenv *dbenv, osql_sess_t *sess, int debug)
+int handle_buf_sorese(osql_sess_t *sess)
 {
+    int debug;
     int rc = 0;
 
+    debug = debug_this_request(gbl_debug_until);
+    if (gbl_who > 0 && gbl_debug) {
+        debug = 1;
+    }
 
-    if (sess->dispatched || sess->terminate)
+    Pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->completed_lock);
+
+    if (sess->dispatched || sess->terminate) {
+        Pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->mtx);
         return 0;
+    }
 
     sess->dispatched = 1;
 
-    rc = handle_buf_main(dbenv, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
+    rc = handle_buf_main(thedb, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
                          REQ_OFFLOAD, NULL, 0, 0);
+
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
 }

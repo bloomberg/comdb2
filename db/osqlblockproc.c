@@ -720,10 +720,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     struct ireq *iq = osql_session_get_ireq(sess);
-    int rc = 0, rc_op = 0;
+    int rc = 0;
     oplog_key_t key = {0};
     int bdberr;
-    int debug = 0;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
@@ -771,13 +770,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     DEBUG_PRINT_TMPBL_SAVING();
 
     ACCUMULATE_TIMING(CHR_TMPSVOP,
-                      rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
+                      rc = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
                                                  sizeof(key), rpl, rplen, NULL,
                                                  &bdberr););
 
-    if (rc_op) {
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
-               __func__, sess->seq, rc_op, bdberr);
+               __func__, sess->seq, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -788,8 +787,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
-    if (rc_op)
-        return rc_op;
+    if (rc)
+        return rc;
 
     struct errstat *xerr;
     /* check if type is done */
@@ -832,20 +831,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    debug = debug_this_request(gbl_debug_until);
-    if (gbl_who > 0 && gbl_debug) {
-        debug = 1;
-    }
-
-    rc = 0;
-    osql_sess_lock(sess);
-    osql_sess_lock_complete(sess);
     tran->iscomplete = (type != OSQL_XERR);
-    rc = handle_buf_sorese(thedb, sess, debug);
-    osql_sess_unlock_complete(sess);
-    osql_sess_unlock(sess);
-
-    return rc;
+    return handle_buf_sorese(sess);
 }
 
 
