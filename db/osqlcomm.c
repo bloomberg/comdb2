@@ -3311,8 +3311,8 @@ int gbl_disable_cnonce_blkseq;
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen, int hasuuid,
-                      struct errstat **xerr)
+int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
+                      int hasuuid, struct errstat **xerr)
 {
     int rc = 0;
     switch (type) {
@@ -7536,7 +7536,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     }
     osqlcomm_done_type_get(&done, p_buf, p_buf_end);
 
-    if (osql_comm_is_done(NULL, type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID, 
+    if (osql_comm_is_done(NULL, type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID,
                           &xerr) == 1) {
 
 #if 0
@@ -9348,4 +9348,3 @@ void osql_extract_snap_info(struct ireq *iq, void *rpl, int rpllen, int hasuuid)
 
     iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
 }
-

@@ -767,8 +767,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     ACCUMULATE_TIMING(CHR_TMPSVOP,
                       rc = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key,
-                                                 sizeof(key), rpl, rplen, NULL,
-                                                 &bdberr););
+                                              sizeof(key), rpl, rplen, NULL,
+                                              &bdberr););
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
@@ -788,7 +788,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct errstat *xerr;
     /* check if type is done */
-    rc = osql_comm_is_done(sess, type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr);
+    rc = osql_comm_is_done(sess, type, rpl, rplen, rqid == OSQL_RQID_USE_UUID,
+                           &xerr);
     if (rc == 0)
         return 0;
 

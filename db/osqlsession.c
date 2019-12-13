@@ -404,7 +404,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     if (type == OSQL_SCHEMACHANGE)
         sess->iq->tranddl++;
     if (type == OSQL_DONE_SNAP) {
-        osql_extract_snap_info(sess->iq, data, datalen, rqid == OSQL_RQID_USE_UUID);
+        osql_extract_snap_info(sess->iq, data, datalen,
+                               rqid == OSQL_RQID_USE_UUID);
     }
 
     /* save op */
@@ -718,7 +719,7 @@ int osql_sess_try_terminate(osql_sess_t *sess)
     Pthread_mutex_lock(&sess->mtx);
     Pthread_mutex_lock(&sess->completed_lock);
 
-    if ( sess->completed | sess->dispatched) {
+    if (sess->completed | sess->dispatched) {
         Pthread_mutex_unlock(&sess->completed_lock);
         Pthread_mutex_unlock(&sess->mtx);
         return 1;
@@ -731,7 +732,6 @@ int osql_sess_try_terminate(osql_sess_t *sess)
 
     return 0;
 }
-
 
 int handle_buf_sorese(osql_sess_t *sess)
 {
@@ -754,12 +754,11 @@ int handle_buf_sorese(osql_sess_t *sess)
 
     sess->dispatched = 1;
 
-    rc = handle_buf_main(thedb, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
-                         REQ_OFFLOAD, NULL, 0, 0);
+    rc = handle_buf_main(thedb, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
+                         NULL, REQ_OFFLOAD, NULL, 0, 0);
 
     Pthread_mutex_unlock(&sess->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
 }
-
