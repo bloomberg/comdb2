@@ -342,8 +342,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
        This prevents the race against signal_rtoff forcefully cleanup */
-    is_msg_done = osql_comm_is_done(type, data, datalen,
-                                    rqid == OSQL_RQID_USE_UUID, &perr, NULL);
+    is_msg_done = osql_comm_is_done(NULL, type, data, datalen,
+                                    rqid == OSQL_RQID_USE_UUID, &perr);
 
     /* get the session */
     osql_sess_t *sess = osql_repository_get(rqid, uuid, is_msg_done);
@@ -400,6 +400,12 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         return 0;
     }
     Pthread_mutex_unlock(&sess->completed_lock);
+
+    if (type == OSQL_SCHEMACHANGE)
+        sess->iq->tranddl++;
+    if (type == OSQL_DONE_SNAP) {
+        osql_extract_snap_info(sess->iq, data, datalen, rqid == OSQL_RQID_USE_UUID);
+    }
 
     /* save op */
     int rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);

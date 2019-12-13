@@ -3311,8 +3311,8 @@ int gbl_disable_cnonce_blkseq;
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
-                      struct errstat **xerr, struct ireq *iq)
+int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen, int hasuuid,
+                      struct errstat **xerr)
 {
     int rc = 0;
     switch (type) {
@@ -3325,18 +3325,6 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
     case OSQL_STARTGEN:
         break;
     case OSQL_DONE_SNAP:
-        /* iq is passed in from osql_bplog_saveop */
-        if (iq) {
-            const uint8_t *p_buf =
-                (uint8_t *)rpl + sizeof(osql_done_t) +
-                (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
-
-            const uint8_t *p_buf_end = (const uint8_t *)rpl + rpllen;
-            if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
-                abort();
-
-            iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
-        } /* fall through */
     case OSQL_DONE:
     case OSQL_DONE_STATS:
         if (xerr)
@@ -3354,8 +3342,8 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
         rc = 1;
         break;
     default:
-        if (iq)
-            iq->sorese->is_delayed = true;
+        if (sess)
+            sess->is_delayed = true;
         break;
     }
     return rc;
@@ -7548,8 +7536,8 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     }
     osqlcomm_done_type_get(&done, p_buf, p_buf_end);
 
-    if (osql_comm_is_done(type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                          NULL) == 1) {
+    if (osql_comm_is_done(NULL, type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID, 
+                          &xerr) == 1) {
 
 #if 0
       printf("Done rqid=%llu tmp=%llu\n", hdr->sid, osql_log_time());
@@ -9347,3 +9335,17 @@ int osql_send_test(SBUF2 *sb)
                                   NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }
+
+void osql_extract_snap_info(struct ireq *iq, void *rpl, int rpllen, int hasuuid)
+{
+    const uint8_t *p_buf =
+        (uint8_t *)rpl + sizeof(osql_done_t) +
+        (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+
+    const uint8_t *p_buf_end = (const uint8_t *)rpl + rpllen;
+    if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
+        abort();
+
+    iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
+}
+

@@ -574,7 +574,7 @@ const char *osql_reqtype_str(int type)
 }
 
 void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
-                       struct ireq *iq, char *rpl, oplog_key_t *key)
+                       char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
@@ -719,13 +719,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return 0;
     }
 
-    struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0;
     oplog_key_t key = {0};
     int bdberr;
-
-    if (type == OSQL_SCHEMACHANGE)
-        iq->tranddl++;
 
     assert(sess->rqid == rqid);
     key.seq = sess->seq;
@@ -761,7 +757,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, rqid, iq, rpl, &key);
+        setup_reorder_key(type, sess, rqid, rpl, &key);
         if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }
@@ -792,8 +788,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct errstat *xerr;
     /* check if type is done */
-    rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                           osql_session_get_ireq(sess));
+    rc = osql_comm_is_done(sess, type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr);
     if (rc == 0)
         return 0;
 
