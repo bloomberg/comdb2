@@ -203,11 +203,10 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
 {
 
     osql_sess_t *sess = (osql_sess_t *)obj;
-    const char *host = (sess->iq) ? sess->iq->sorese->host : NULL;
     uuidstr_t us;
 
     printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
-           host ? "REMOTE" : "LOCAL", host ? host : "localhost");
+           sess->host ? "REMOTE" : "LOCAL", sess->host ? sess->host : "localhost");
 
     return 0;
 }
@@ -292,7 +291,6 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    const char *host = sess->iq ? sess->iq->sorese->host : NULL;
     uuidstr_t us;
     char rqid[25];
     if (sess->rqid == OSQL_RQID_USE_UUID) {
@@ -303,7 +301,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     reqlog_logf(reqlog, REQL_INFO,
                 "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64
                 "ms \"%s\"\n",
-                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, host ? host : "",
+                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid, sess->host ? sess->host : "",
                 U2M(sess->endus - sess->startus), reqlog_get_retries(reqlog),
                 U2M(reqlog_get_queue_time(reqlog)),
                 sess->sql ? sess->sql : "()");
@@ -455,7 +453,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
     }
 
-    if (rc_out && osql_session_is_sorese(sess))
+    if (rc_out)
         return rc_out;
 
     if (rc || rc_out) { /* something is wrong with the session, terminate it*/
@@ -473,74 +471,73 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
  */
 int osql_session_testterminate(void *obj, void *arg)
 {
-
-    char *node = arg;
     osql_sess_t *sess = (osql_sess_t *)obj;
-    int rc = 0;
+    char *node = arg;
     int need_clean = 0;
-    int completed = 0;
 
-    if (!node || (sess->iq && sess->iq->sorese->host == node) ||
-        (sess->iqcopy && sess->iqcopy->sorese->host == node)) {
+    if (node && sess->host != node) {
+        /* if this is for a different node, ignore */
+        return 0;
+    }
 
-        Pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->completed_lock);
 
-        Pthread_mutex_lock(&sess->completed_lock);
-        sess->terminate = OSQL_TERMINATE;
-        if (!sess->completed) {
-            /* NOTE: here we have to do a bit more;
-               if this is a sorese transaction, transaction
-               has not received done yet, chances are
-               transaction will never finish, so we need
-               to abort it here otherwise we leak it (including
-               the temp table*/
-            need_clean = osql_session_is_sorese(sess);
-        }
+    sess->terminate = OSQL_TERMINATE;
+    need_clean =  sess->dispatched;
+        
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
+
+    if (!need_clean) {
+        /* there is a block processor thread working on this */
+        return 0;
+    }
+
+    /* step 1) make sure no reader thread finds the session again */
+    int rc = osql_repository_rem(sess, 0, __func__, NULL, 0); /* already have exclusive lock */
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to remove session from repository rc=%d\n",
+               __func__, rc);
+    }
+
+    Pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->completed_lock);
+
+    /* step 2) wait for current reader threads to go away */
+    while (ATOMIC_LOAD32(sess->clients) > 0 && need_clean) {
         Pthread_mutex_unlock(&sess->completed_lock);
-
-        /* wake up the block processor waiting for this request */
-
         Pthread_mutex_unlock(&sess->mtx);
-    }
 
-    if (need_clean) {
-        /* step 1) make sure no reader thread finds the session again */
-        rc = osql_repository_rem(sess, 0, __func__, NULL, 0); /* already have exclusive lock */
-        if (rc) {
-            fprintf(stderr,
-                    "%s: failed to remove session from repository rc=%d\n",
-                    __func__, rc);
-        }
+        poll(NULL, 0, 10);
 
-        /* step 2) wait for current reader threads to go away */
-        while (ATOMIC_LOAD32(sess->clients) > 0) {
-            poll(NULL, 0, 10);
-        }
-        /* NOTE: at this point there will be no other bplog updates coming from
-           this
-           sorese session; the session might still be worked on; if that is the
-           case
-           the session is marked already complete, since this is done by reader
-           thread
-           which bumps up clients! */
-
-        /* step 3) check if this is complete; if it is, it will/is being
-           dispatched
-                   if not complete, we need to clear it right now */
+        /* the reader thread might just dispatch this!
+           need to check again the condition */
+        Pthread_mutex_lock(&sess->mtx);
         Pthread_mutex_lock(&sess->completed_lock);
-        completed = sess->completed | sess->dispatched;
-        Pthread_mutex_unlock(&sess->completed_lock);
 
-        if (!completed) {
-#if 0
-         fprintf(stderr, "%s: calling bplog_free to release rqid=%llx sess=%p iq=%p\n",
-            __func__, sess->rqid, sess, sess->iq);
-#endif
+        need_clean = sess->dispatched;
 
-            /* no one will work on this; need to clear it */
-            osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
-        }
     }
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
+
+    /* reader thread dispatched the session before returning control */
+    if (!need_clean)
+        return 0;
+
+    /* NOTE: at this point there will be no other bplog updates coming from
+       this sorese session; the session might still be worked on; if that is the
+       case the session is marked already complete, since this is done by reader
+       thread which bumps up clients! */
+
+        
+    /* step 3) check if this is complete; if it is, it will/is being
+       dispatched if not complete, we need to clear it right now */
+
+    osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
+
     return 0;
 }
 
@@ -698,13 +695,6 @@ int osql_sess_queryid(osql_sess_t *sess)
 void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
 {
     comdb2uuidcpy(uuid, sess->uuid);
-}
-
-inline int osql_session_is_sorese(osql_sess_t *sess)
-{
-    return (sess->type == OSQL_RECOM_REQ || sess->type == OSQL_SOCK_REQ_COST ||
-            sess->type == OSQL_SOCK_REQ || sess->type == OSQL_SNAPISOL_REQ ||
-            sess->type == OSQL_SERIAL_REQ);
 }
 
 inline int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)

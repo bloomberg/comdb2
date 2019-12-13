@@ -838,22 +838,19 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         debug = 1;
     }
 
-    if (osql_session_is_sorese(sess)) {
-        osql_sess_lock(sess);
-        osql_sess_lock_complete(sess);
-        if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-            osql_session_set_ireq(sess, NULL);
-            osql_sess_set_dispatched(sess, 1);
-            tran->iscomplete = (type != OSQL_XERR);
-            rc = handle_buf_sorese(thedb, iq, debug);
-        }
-        osql_sess_unlock_complete(sess);
-        osql_sess_unlock(sess);
-
-        return rc;
+    rc = 0;
+    osql_sess_lock(sess);
+    osql_sess_lock_complete(sess);
+    if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
+        osql_session_set_ireq(sess, NULL);
+        osql_sess_set_dispatched(sess, 1);
+        tran->iscomplete = (type != OSQL_XERR);
+        rc = handle_buf_sorese(thedb, iq, debug);
     }
+    osql_sess_unlock_complete(sess);
+    osql_sess_unlock(sess);
 
-    return 0;
+    return rc;
 }
 
 

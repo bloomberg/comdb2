@@ -152,7 +152,6 @@ void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid);
 void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid,
                               uuid_t uuid);
 
-int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long,
