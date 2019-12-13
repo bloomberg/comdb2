@@ -7379,14 +7379,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     /* create the request */
-    sess = osql_sess_create(sqlret, sqllenret, req.tzname, type, req.rqid,
-                            uuid, is_reorder_on);
+    sess = osql_sess_create(sqlret, sqllenret, req.tzname, type, req.rqid, uuid,
+                            is_reorder_on);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new session\n", __func__);
         rc = -4;
         goto done;
     }
-
 
     /* start a block processor */
     iq = create_sorese_ireq(thedb, p_buf, p_buf_end, debug, fromhost, sess);
@@ -7448,13 +7447,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-    
+
     if (rc) {
         int rc2;
 
         if (malcd)
             free(malcd);
-            
+
         if (iq)
             destroy_ireq(thedb, iq);
 
@@ -7470,7 +7469,6 @@ done:
                      sizeof(generr.errstr));
         }
 
-
         int onstack = 0;
         if (!sess) {
             onstack = 1; /* used to avoid debugging confusion */
@@ -7481,8 +7479,7 @@ done:
             sess->nops = 0;
         }
 
-        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr,
-                                         RC_INTERNAL_RETRY);
+        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
         if (rc2) {
             uuidstr_t us;
             comdb2uuidstr(uuid, us);
@@ -7491,7 +7488,7 @@ done:
                     __func__, req.rqid, us, fromhost);
         }
         if (onstack)
-            sess = NULL; 
+            sess = NULL;
         else
             osql_close_session(&sess, 0, __func__, NULL, __LINE__);
 

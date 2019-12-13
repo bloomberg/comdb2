@@ -504,8 +504,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
      */
 
     /* remove the sessions from repository and free them */
-    osql_close_session(&tran->sess, are_sessions_linked, func, callfunc,
-                       line);
+    osql_close_session(&tran->sess, are_sessions_linked, func, callfunc, line);
 
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
@@ -674,8 +673,7 @@ static void send_error_to_replicant(osql_sess_t *sess, int errval,
     generr.errval = errval;
     strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
-    int rc =
-        osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
+    int rc = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
@@ -814,7 +812,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
-            send_error_to_replicant(sess, RC_INTERNAL_RETRY,
+            send_error_to_replicant(
+                sess, RC_INTERNAL_RETRY,
                 "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR,

@@ -1244,10 +1244,10 @@ struct osql_sess {
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
-    int clients;                 /* number of clients;
-                                    prevents freeing rq while reader_thread gets a new reply for
-                                    it
-                                  */
+    int clients;   /* number of clients;
+                      prevents freeing rq while reader_thread gets a new reply for
+                      it
+                    */
     int terminate; /* gets set if anything goes wrong w/ the session and we need
                       to abort */
     int dispatched; /* Set when session is dispatched to handle_buf */
@@ -1286,9 +1286,9 @@ struct osql_sess {
 
     /* from sorese */
     const char *host; /* sql machine, 0 is local */
-    SBUF2 *osqllog; /* used to track sorese requests */
-    int nops;   /* if no error, how many updated rows were performed */
-    int rcout;  /* store here the block proc main error */
+    SBUF2 *osqllog;   /* used to track sorese requests */
+    int nops;         /* if no error, how many updated rows were performed */
+    int rcout;        /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
     bool is_delayed;

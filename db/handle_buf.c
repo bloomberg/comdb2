@@ -1179,8 +1179,8 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                     char *frommach, int frompid, char *fromtask,
-                    osql_sess_t *sorese, int qtype, void *data_hndl,
-                    int luxref, unsigned long long rqid)
+                    osql_sess_t *sorese, int qtype, void *data_hndl, int luxref,
+                    unsigned long long rqid)
 {
     return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,

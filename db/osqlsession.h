@@ -37,7 +37,8 @@ enum { REQ_OPTION_QUERY_LIMITS = 1 };
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_close_session(osql_sess_t **sess, int is_linked, const char *func, const char *callfunc, int line);
+int osql_close_session(osql_sess_t **sess, int is_linked, const char *func,
+                       const char *callfunc, int line);
 
 /**
  * Get the request id, aka rqid
@@ -127,8 +128,8 @@ int osql_session_testterminate(void *obj, void *arg);
  *
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid,
-                              uuid_t uuid, bool is_reorder_on);
+                              int type, unsigned long long rqid, uuid_t uuid,
+                              bool is_reorder_on);
 
 /**
  * Returns

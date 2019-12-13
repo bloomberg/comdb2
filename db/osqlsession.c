@@ -76,7 +76,8 @@ static void save_sql(struct ireq *iq, osql_sess_t *sess, const char *sql,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_close_session(osql_sess_t **psess, int is_linked, const char *func, const char *callfunc, int line)
+int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
+                       const char *callfunc, int line)
 {
 
     osql_sess_t *sess = *psess;
@@ -206,7 +207,8 @@ int osql_sess_getcrtinfo(void *obj, void *arg)
     uuidstr_t us;
 
     printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
-           sess->host ? "REMOTE" : "LOCAL", sess->host ? sess->host : "localhost");
+           sess->host ? "REMOTE" : "LOCAL",
+           sess->host ? sess->host : "localhost");
 
     return 0;
 }
@@ -484,8 +486,8 @@ int osql_session_testterminate(void *obj, void *arg)
     Pthread_mutex_lock(&sess->completed_lock);
 
     sess->terminate = OSQL_TERMINATE;
-    need_clean =  sess->dispatched;
-        
+    need_clean = sess->dispatched;
+
     Pthread_mutex_unlock(&sess->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
 
@@ -495,11 +497,12 @@ int osql_session_testterminate(void *obj, void *arg)
     }
 
     /* step 1) make sure no reader thread finds the session again */
-    int rc = osql_repository_rem(sess, 0, __func__, NULL, 0); /* already have exclusive lock */
+    int rc = osql_repository_rem(sess, 0, __func__, NULL,
+                                 0); /* already have exclusive lock */
     if (rc) {
         logmsg(LOGMSG_ERROR,
-               "%s: failed to remove session from repository rc=%d\n",
-               __func__, rc);
+               "%s: failed to remove session from repository rc=%d\n", __func__,
+               rc);
     }
 
     Pthread_mutex_lock(&sess->mtx);
@@ -518,7 +521,6 @@ int osql_session_testterminate(void *obj, void *arg)
         Pthread_mutex_lock(&sess->completed_lock);
 
         need_clean = sess->dispatched;
-
     }
     Pthread_mutex_unlock(&sess->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
@@ -532,7 +534,6 @@ int osql_session_testterminate(void *obj, void *arg)
        case the session is marked already complete, since this is done by reader
        thread which bumps up clients! */
 
-        
     /* step 3) check if this is complete; if it is, it will/is being
        dispatched if not complete, we need to clear it right now */
 
@@ -557,8 +558,8 @@ int gbl_selectv_writelock_on_update = 1;
  *
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid,
-                              uuid_t uuid, bool is_reorder_on)
+                              int type, unsigned long long rqid, uuid_t uuid,
+                              bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
 
