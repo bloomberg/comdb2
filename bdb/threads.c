@@ -76,10 +76,11 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     return NULL;
 }
 
-/* try to atomically set thread_running to 1
- * returns 1 on success and 0 on failure
+/* try to with atomic compare-and-exchange to set thread_running to 1
+ * if CAS is successful, we are the only (first) such thread and returns 1
+ * if CAS is UNsuccessful, another thread is already running and we return 0
  */
-static inline int try_set(int *thread_running) 
+static inline int try_set(int *thread_running)
 {
     int zero = 0;
     return CAS32(*thread_running, zero, 1);
@@ -251,7 +252,7 @@ void *coherency_lease_thread(void *arg)
         return NULL;
 
     bdb_state->coherency_lease_thread = pthread_self();
-    
+
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
