@@ -95,6 +95,18 @@ if(STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DSTACK_AT_DB_OPEN_CLOSE)
 endif()
 
+option(STACK_AT_DBREG_LOG "Print a cheapstack at dbreg log operations" OFF)
+mark_as_advanced(STACK_AT_DBREG_LOG)
+if(STACK_AT_DBREG_LOG)
+    add_definitions(-DSTACK_AT_DBREG_LOG)
+endif()
+
+option(ABORT_ON_RECINTRO_FAILURE "Abort if recintro fails" OFF)
+mark_as_advanced(ABORT_ON_RECINTRO_FAILURE)
+if(ABORT_ON_RECINTRO_FAILURE)
+    add_definitions(-DABORT_ON_RECINTRO_FAILURE)
+endif()
+
 option(DEBUG_SC "Enable schema-change debug trace" OFF)
 mark_as_advanced(DEBUG_SC)
 if(DEBUG_SC)

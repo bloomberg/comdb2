@@ -25,6 +25,16 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "logmsg.h"
 #include "locks_wrap.h"
 
+#if defined (STACK_AT_DBREG_LOG)
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+char **backtrace_symbols(void *const *, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols(A, B)
+#endif
+#endif
+
 /*
  * The dbreg subsystem, as its name implies, registers database handles so
  * that we can associate log messages with them without logging a filename
@@ -297,6 +307,24 @@ __dbreg_get_id(dbp, txn, idp)
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
 
+#if defined (STACK_AT_DBREG_LOG)
+    int frames;
+    void *buf[MAX_BERK_STACK_FRAMES];
+    char **strings;
+	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
+    strings = backtrace_symbols(buf, frames);
+    logmsg(LOGMSG_USER, "%ld op %s: ", pthread_self(), "open");
+
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            logmsg(LOGMSG_USER, " %s", &p[1]);
+        }
+    }
+    logmsg(LOGMSG_USER, "\n");
+#endif
+
 	if ((ret = __dbreg_register_log(dbenv, txn, &unused,
 					F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
                     DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
@@ -521,6 +549,23 @@ __dbreg_close_id(dbp, txn)
 	fid_dbt.size = DB_FILE_ID_LEN;
 
 	Pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
+#if defined (STACK_AT_DBREG_LOG)
+    int frames;
+    void *buf[MAX_BERK_STACK_FRAMES];
+    char **strings;
+	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
+    strings = backtrace_symbols(buf, frames);
+    logmsg(LOGMSG_USER, "%ld op %s: ", pthread_self(), "close");
+
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            logmsg(LOGMSG_USER, " %s", &p[1]);
+        }
+    }
+    logmsg(LOGMSG_USER, "\n");
+#endif
 	ret = __dbreg_register_log(dbenv, txn, &r_unused,
 		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
 		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,

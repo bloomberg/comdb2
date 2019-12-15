@@ -29,6 +29,16 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+#if defined (STACK_AT_DBREG_LOG)
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+char **backtrace_symbols(void *const *, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols(A, B)
+#endif
+#endif
+
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
 /*
@@ -187,6 +197,24 @@ __dbreg_open_files_int(dbenv, flags)
 		 * For this we output DBREG_RCLOSE records so the files will be
 		 * closed on the forward pass.
 		 */
+#if defined (STACK_AT_DBREG_LOG)
+        int frames;
+        void *buf[MAX_BERK_STACK_FRAMES];
+        char **strings;
+        frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
+        strings = backtrace_symbols(buf, frames);
+        char *op = (F_ISSET(dblp, DBLOG_RECOVER)) ? "rclose" : "ckpt";
+        logmsg(LOGMSG_USER, "%ld op %s: ", pthread_self(), op);
+
+        for (int j = 0; j < frames; j++) {
+            char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+            if (p && q) {
+                (*p) = (*q) = '\0';
+                logmsg(LOGMSG_USER, " %s", &p[1]);
+            }
+        }
+        logmsg(LOGMSG_USER, "\n");
+#endif
 		if ((ret = __dbreg_register_log(dbenv,
 			    NULL, &r_unused, oflags,
 			    F_ISSET(dblp,
