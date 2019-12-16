@@ -111,7 +111,6 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs);
 
 int osql_sess_type(osql_sess_t *sess);
 int osql_sess_queryid(osql_sess_t *sess);
-void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid);
 
 /**
  * Needed for socksql and bro-s, which creates sessions before
@@ -123,8 +122,6 @@ void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid);
 void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid,
                               uuid_t uuid);
 
-int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
-struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long,
                        char *rpl);
 int osql_process_selectv(osql_sess_t *sess,

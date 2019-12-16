@@ -621,22 +621,6 @@ int osql_sess_queryid(osql_sess_t *sess)
     return sess->queryid;
 }
 
-// get sess->uuid into uuid as destination
-void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
-{
-    comdb2uuidcpy(uuid, sess->uuid);
-}
-
-inline int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)
-{
-    sess->iq = iq;
-    return 0;
-}
-
-inline struct ireq *osql_session_get_ireq(osql_sess_t *sess)
-{
-    return sess->iq;
-}
 
 /**
  * Force a session to end
