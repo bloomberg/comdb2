@@ -1376,6 +1376,11 @@ static int close_dbs(bdb_state_type *bdb_state)
     return close_dbs_int(bdb_state, NULL, DB_NOSYNC);
 }
 
+static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *txn)
+{
+    return close_dbs_int(bdb_state, txn, DB_NOSYNC);
+}
+
 static int close_dbs_flush(bdb_state_type *bdb_state)
 {
     return close_dbs_int(bdb_state, NULL, 0);
@@ -1679,14 +1684,17 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     return 0;
 }
 
-int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
+int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans, tran_type *cltrans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = close_dbs(bdb_state);
+    DB_TXN *cltid = cltrans ? cltrans->tid : NULL;
+    int rc = close_dbs_txn(bdb_state, cltid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
     }
+
+    /* !!!!! Might have to COMMIT cltid before reopening !!!!! */
 
     int iammaster;
     if (bdb_state->read_write)
@@ -1705,7 +1713,7 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 }
 int bdb_handle_reset(bdb_state_type *bdb_state)
 {
-    return bdb_handle_reset_tran(bdb_state, NULL);
+    return bdb_handle_reset_tran(bdb_state, NULL, NULL);
 }
 
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb)

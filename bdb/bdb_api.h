@@ -518,7 +518,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
 int bdb_handle_reset(bdb_state_type *);
-int bdb_handle_reset_tran(bdb_state_type *, tran_type *);
+int bdb_handle_reset_tran(bdb_state_type *, tran_type *, tran_type *);
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb);
 int bdb_handle_dbp_drop_hash(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);

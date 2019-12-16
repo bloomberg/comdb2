@@ -864,7 +864,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     sc_printf(s, "Close old db ok\n");
 
-    bdb_handle_reset_tran(new_bdb_handle, transac);
+    bdb_handle_reset_tran(new_bdb_handle, transac, iq->sc_close_tran);
 
     if (!s->same_schema ||
         (!s->fastinit &&
