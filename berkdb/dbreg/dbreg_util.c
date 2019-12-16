@@ -152,7 +152,7 @@ __dbreg_open_files_int(dbenv, flags)
 	u_int32_t flags;
 {
 	DB_LOG *dblp;
-	DB_LSN r_unused;
+	DB_LSN rlsn;
 	DBT *dbtp, fid_dbt, t;
 	FNAME *fnp;
 	LOG *lp;
@@ -197,6 +197,13 @@ __dbreg_open_files_int(dbenv, flags)
 		 * For this we output DBREG_RCLOSE records so the files will be
 		 * closed on the forward pass.
 		 */
+		if ((ret = __dbreg_register_log(dbenv,
+			    NULL, &rlsn, oflags,
+			    F_ISSET(dblp,
+				DBLOG_RECOVER) ? DBREG_RCLOSE : DBREG_CHKPNT,
+			    dbtp, &fid_dbt, fnp->id, fnp->s_type,
+			    fnp->meta_pgno, TXN_INVALID)) != 0)
+			 break;
 #if defined (STACK_AT_DBREG_LOG)
         int frames;
         void *buf[MAX_BERK_STACK_FRAMES];
@@ -204,7 +211,8 @@ __dbreg_open_files_int(dbenv, flags)
         frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
         strings = backtrace_symbols(buf, frames);
         char *op = (F_ISSET(dblp, DBLOG_RECOVER)) ? "rclose" : "ckpt";
-        logmsg(LOGMSG_USER, "%ld op %s: ", pthread_self(), op);
+        logmsg(LOGMSG_USER, "%ld op %s ix %d [%d:%d]: ", pthread_self(), op,
+                fnp->id, rlsn.file, rlsn.offset);
 
         for (int j = 0; j < frames; j++) {
             char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
@@ -215,13 +223,6 @@ __dbreg_open_files_int(dbenv, flags)
         }
         logmsg(LOGMSG_USER, "\n");
 #endif
-		if ((ret = __dbreg_register_log(dbenv,
-			    NULL, &r_unused, oflags,
-			    F_ISSET(dblp,
-				DBLOG_RECOVER) ? DBREG_RCLOSE : DBREG_CHKPNT,
-			    dbtp, &fid_dbt, fnp->id, fnp->s_type,
-			    fnp->meta_pgno, TXN_INVALID)) != 0)
-			 break;
 	}
 
 	if (!LF_ISSET(DB_REG_HAVE_FQLOCK))
