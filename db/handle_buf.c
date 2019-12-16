@@ -803,7 +803,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->corigin[0] = '\0';
     iq->debug_buf[0] = '\0';
     iq->tzname[0] = '\0';
-    iq->sqlhistory[0] = '\0';
 
     iq->where = "setup";
     iq->frommach = frommach ? intern(frommach) : NULL;

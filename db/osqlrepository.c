@@ -337,13 +337,13 @@ int osql_repository_put(osql_sess_t *sess, int release_repository_lock)
     if (theosql == NULL) {
         return -1;
     }
-    int ret = osql_sess_remclient(sess);
+    osql_sess_remclient(sess);
 
     if (release_repository_lock) {
         Pthread_mutex_unlock(&theosql->hshlck);
     }
 
-    return ret;
+    return 0;
 }
 
 /**

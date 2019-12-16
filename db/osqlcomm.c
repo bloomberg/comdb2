@@ -7400,7 +7400,51 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-    if (rc == 0) {
+    if (rc) {
+        int rc2;
+
+        if (malcd)
+            free(malcd);
+
+        if (iq)
+            destroy_ireq(thedb, iq);
+
+        /* notify the sql thread there will be no response! */
+        struct errstat generr = {0};
+
+        generr.errval = ERR_TRAN_FAILED;
+        if (rc == -4) {
+            strncpy0(generr.errstr, "fail to create block processor log",
+                     sizeof(generr.errstr));
+        } else {
+            strncpy0(generr.errstr, "failed to create transaction",
+                     sizeof(generr.errstr));
+        }
+
+        int onstack = 0;
+        if (!sess) {
+            onstack = 1; /* used to avoid debugging confusion */
+            sess = alloca(sizeof(osql_sess_t));
+            sess->host = fromhost;
+            sess->rqid = req.rqid;
+            comdb2uuidcpy(sess->uuid, uuid);
+            sess->nops = 0;
+        }
+
+        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
+        if (rc2) {
+            uuidstr_t us;
+            comdb2uuidstr(uuid, us);
+            logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
+                            "error to create bplog\n",
+                    __func__, req.rqid, us, fromhost);
+        }
+        if (onstack)
+            sess = NULL;
+        else
+            osql_close_session(&sess, 0, __func__, NULL, __LINE__);
+
+    } else {
         /*
            successful, let the session loose
            It is possible that we are clearing sessions due to
@@ -7408,14 +7452,7 @@ done:
            clients to disappear before it will wipe out the session
          */
 
-        int rc2 = osql_sess_remclient(sess);
-        if (rc2) {
-            uuidstr_t us;
-            comdb2uuidstr(uuid, us);
-            logmsg(LOGMSG_ERROR, "%s: failed to release session rqid=[%llx %s] node=%s\n",
-                    __func__, req.rqid, us, fromhost);
-        }
-        return 0;
+        osql_sess_remclient(sess);
     }
 
     if (malcd)

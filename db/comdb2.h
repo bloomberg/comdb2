@@ -1230,12 +1230,15 @@ enum OSQL_REQ_TYPE {
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 typedef struct blocksql_tran blocksql_tran_t;
+typedef struct sess_impl sess_impl_t;
 
 struct osql_sess {
 
     /* request part */
     unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
+
+    sess_impl_t *impl;
 
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
@@ -1250,13 +1253,9 @@ struct osql_sess {
                     */
     int terminate; /* gets set if anything goes wrong w/ the session and we need
                       to abort */
-    int dispatched; /* Set when session is dispatched to handle_buf */
 
     enum OSQL_REQ_TYPE type; /* session version */
 
-    unsigned long long completed; /* set to rqid of the completed rqid */
-    uuid_t completed_uuid;
-    pthread_mutex_t completed_lock;
 
     struct errstat
         xerr;        /* error info(zeroed if ok), meaningful if completed=1 */
@@ -1346,7 +1345,6 @@ struct ireq {
     char corigin[80];
     char debug_buf[256];
     char tzname[DB_MAX_TZNAMEDB];
-    char sqlhistory[1024];
     snap_uid_t snap_info;
 
     /************/
@@ -1398,7 +1396,6 @@ struct ireq {
     /* Support for //DBSTATS. */
     SBUF2 *dbglog_file;
     int *nwrites;
-    char *sqlhistory_ptr;
     /* List of genids that we've written to detect uncommitable txn's */
     hash_t *vfy_genid_hash;
     pool_t *vfy_genid_pool;
@@ -1446,7 +1443,6 @@ struct ireq {
     int queryid;
     int osql_flags;
     int priority;
-    int sqlhistory_len;
     int tranddl;
 
     /* Client endian flags. */

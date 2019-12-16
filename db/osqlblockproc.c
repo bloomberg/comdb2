@@ -535,13 +535,6 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     }
 
     free(tran);
-
-    /* free the space for sql strings */
-    if (iq->sqlhistory_ptr && iq->sqlhistory_ptr != &iq->sqlhistory[0]) {
-        free(iq->sqlhistory_ptr);
-        iq->sqlhistory_ptr = NULL;
-    }
-    iq->sqlhistory_len = 0;
 }
 
 

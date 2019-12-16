@@ -42,13 +42,13 @@ int osql_close_session(osql_sess_t **sess, int is_linked, const char *func,
  * Prevent temporary the session destruction
  *
  */
-int osql_sess_addclient(osql_sess_t *sess);
+void osql_sess_addclient(osql_sess_t *sess);
 
 /**
  * Unregister client
  *
  */
-int osql_sess_remclient(osql_sess_t *sess);
+void osql_sess_remclient(osql_sess_t *sess);
 
 /**
  * Mark session duration and reported result.
