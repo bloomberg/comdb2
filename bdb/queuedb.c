@@ -149,7 +149,6 @@ int bdb_queuedb_create_cron(void)
             gbl_queuedb_cron = cron_add_event(NULL, "QueueDB Job Scheduler",
                                       INT_MIN, (FCRON)queuedb_cron_kickoff,
                                       NULL, NULL, NULL, NULL, &xerr, &impl);
-
         } else {
             gbl_queuedb_cron = cron_add_event(gbl_queuedb_cron, NULL, INT_MIN,
                                       (FCRON)queuedb_cron_kickoff, NULL, NULL,

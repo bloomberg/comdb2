@@ -592,3 +592,9 @@ int finalize_trigger(struct schema_change_type *s)
 {
     return 0;
 }
+
+// TBD: Make sure the queuedb DBPs are setup correctly now?
+int reopen_queue_dbs(const char *queue_name)
+{
+    return 0;
+}

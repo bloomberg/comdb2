@@ -1,6 +1,8 @@
 #ifndef INCLUDED_QUEUEDB_H
 #define INCLUDED_QUEUEDB_H
 
+int bdb_queuedb_create_cron(void);
+
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state);
 void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid);
 
