@@ -241,6 +241,17 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
+#if defined (STACK_AT_DBREG_LOG)
+static inline void fileid_str(u_int8_t *fileid, char *str)
+{
+	char *p = str;
+	u_int8_t *f = fileid;
+	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
+		sprintf(p, "%2.2x", (u_int)*f);
+	}
+}
+#endif
+
 pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 /*
@@ -317,10 +328,12 @@ __dbreg_get_id(dbp, txn, idp)
     int frames;
     void *buf[MAX_BERK_STACK_FRAMES];
     char **strings;
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
 	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
     strings = backtrace_symbols(buf, frames);
-    logmsg(LOGMSG_USER, "%ld op %s ix %d [%d:%d]: ", pthread_self(), "open",
-            id, retlsn.file, retlsn.offset);
+    fileid_str(dbp->fileid, fid_str);
+    logmsg(LOGMSG_USER, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "open",
+            id, fid_str, retlsn.file, retlsn.offset);
 
     for (int j = 0; j < frames; j++) {
         char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
@@ -560,10 +573,12 @@ __dbreg_close_id(dbp, txn)
     int frames;
     void *buf[MAX_BERK_STACK_FRAMES];
     char **strings;
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
 	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
     strings = backtrace_symbols(buf, frames);
-    logmsg(LOGMSG_USER, "%ld op %s ix %d [%d:%d]: ", pthread_self(), "close",
-            fnp->id, rlsn.file, rlsn.offset);
+    fileid_str(fnp->ufid, fid_str);
+    logmsg(LOGMSG_USER, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "close",
+            fnp->id, fid_str, rlsn.file, rlsn.offset);
 
     for (int j = 0; j < frames; j++) {
         char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
