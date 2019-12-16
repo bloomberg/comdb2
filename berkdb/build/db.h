@@ -1529,6 +1529,7 @@ struct __db {
 		const DBT *, DBT *), u_int32_t));
     int  (*get_fileid) __P((DB *, u_int8_t *fileid));
 	int  (*close) __P((DB *, u_int32_t));
+	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	/* comdb2 addition */
 	int  (*cursor_ser) __P((DB *, DB_TXN *, DBCS *, DBC **, u_int32_t));

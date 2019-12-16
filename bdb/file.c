@@ -1300,6 +1300,7 @@ static inline void fileid_str(u_int8_t *fileid, char *str)
  */
 static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
+
 {
     int rc;
     int i;
@@ -1328,8 +1329,8 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                 fileid_str(fileid, fid_str);
                 logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__,
                         __LINE__, fid_str);
-                rc = bdb_state->dbp_data[dtanum][strnum]->close(
-                    bdb_state->dbp_data[dtanum][strnum], flags);
+                rc = bdb_state->dbp_data[dtanum][strnum]->closetxn(
+                    bdb_state->dbp_data[dtanum][strnum], tid, flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: error closing %s[%d][%d]: %d %s\n", __func__,
@@ -1352,7 +1353,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
             fileid_str(fileid, fid_str);
             logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
                     __LINE__, fid_str);
-            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
+            rc = bdb_state->dbp_ix[i]->closetxn(bdb_state->dbp_ix[i], tid, flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
                        __func__, bdb_state->name, i, rc, db_strerror(rc));

@@ -201,6 +201,7 @@ __db_init(dbp, flags)
 
 	dbp->associate = __db_associate_pp;
 	dbp->close = __db_close_pp;
+	dbp->closetxn = __db_closetxn_pp;
 	dbp->cursor = __db_cursor_pp;
 
 	dbp->paired_cursor = __db_cursor_pp_paired;
