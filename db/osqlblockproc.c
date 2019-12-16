@@ -505,6 +505,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
 
     /* remove the sessions from repository and free them */
     osql_close_session(&tran->sess, are_sessions_linked, func, callfunc, line);
+    iq->sorese = NULL;
 
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
