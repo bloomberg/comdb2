@@ -1247,15 +1247,12 @@ struct osql_sess {
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
-    int clients;   /* number of clients;
-                      prevents freeing rq while reader_thread gets a new reply for
-                      it
-                    */
-    int terminate; /* gets set if anything goes wrong w/ the session and we need
-                      to abort */
+    int clients; /* number of clients;
+                    prevents freeing rq while reader_thread gets a new reply for
+                    it
+                  */
 
     enum OSQL_REQ_TYPE type; /* session version */
-
 
     struct errstat
         xerr;        /* error info(zeroed if ok), meaningful if completed=1 */

@@ -777,8 +777,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                __func__, sess->seq, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
-                           &sess->iq->osql_step_ix, rqid,
-                           uuid, sess->seq);
+                           &sess->iq->osql_step_ix, rqid, uuid, sess->seq);
     }
 
     tran->rows++;
@@ -795,41 +794,35 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc == 0)
         return 0;
 
-    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
-    // are processed beyond this point
-
-    if (type != OSQL_XERR) { // if tran not aborted
-        int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
-#if DEBUG_REORDER
-        uuidstr_t us;
-        comdb2uuidstr(uuid, us);
-        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
-                 osql_reqtype_str(type), numops, sess->seq,
-                 (numops != sess->seq + 1 ? "NO match" : ""));
-#endif
-
-        if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
-            send_error_to_replicant(
-                sess, RC_INTERNAL_RETRY,
-                "Master received inconsistent number of opcodes");
-
-            logmsg(LOGMSG_ERROR,
-                   "%s: Replicant sent %d opcodes, master received %lld\n",
-                   __func__, numops, sess->seq + 1);
-
-            // TODO: terminate session so replicant can retry
-            // or mark session bad so don't process this session from toblock
-            // osql_sess_try_terminate(sess);
-            // return 0;
-            abort(); // for now abort to catch failure cases
-        }
+    /* if error from sqlite, just cancel the transaction */
+    if (type == OSQL_XERR) {
+        rc = sql_cancelled_transaction(sess->iq);
+        return rc;
     }
 
-    /* TODO: check the generation and fail early if it does not match */
+    /* only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS here */
+    int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+#ifndef NDEBUG
+    uuidstr_t us;
+    comdb2uuidstr(uuid, us);
+    DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
+             osql_reqtype_str(type), numops, sess->seq,
+             (numops != sess->seq + 1 ? "NO match" : ""));
+#endif
 
-    osql_sess_set_complete(rqid, uuid, sess, xerr);
+    if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
+        send_error_to_replicant(
+            sess, RC_INTERNAL_RETRY,
+            "Master received inconsistent number of opcodes");
 
-    tran->iscomplete = (type != OSQL_XERR);
+        logmsg(LOGMSG_ERROR,
+               "%s: Replicant sent %d opcodes, master received %lld\n",
+               __func__, numops, sess->seq + 1);
+
+        rc = sql_cancelled_transaction(sess->iq);
+        return rc;
+    }
+
     return handle_buf_sorese(sess);
 }
 

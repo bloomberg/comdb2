@@ -51,13 +51,6 @@ void osql_sess_addclient(osql_sess_t *sess);
 void osql_sess_remclient(osql_sess_t *sess);
 
 /**
- * Mark session duration and reported result.
- *
- */
-int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
-                           osql_sess_t *sess, struct errstat *xerr);
-
-/**
  * Log query to the reqlog
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
@@ -109,7 +102,6 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
  */
 void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs);
 
-int osql_sess_type(osql_sess_t *sess);
 int osql_sess_queryid(osql_sess_t *sess);
 
 /**
