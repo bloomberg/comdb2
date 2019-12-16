@@ -1949,10 +1949,10 @@ int toblock(struct ireq *iq)
         char *mstr = iq->dbenv->master;
 
         if (mstr != gbl_mynode) {
-            if (iq->is_sorese) {
+            if (iq->sorese) {
 
                 /* Ask the replicant to retry against the new master. */
-                if (iq->is_sorese) {
+                if (iq->sorese) {
                     iq->sorese->rcout = ERR_NOMASTER;
                 }
                 return ERR_REJECTED;
@@ -2652,7 +2652,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     /* If this is a sorese transaction, don't recreate transaction objects */
-    if (iq->is_sorese)
+    if (iq->sorese)
         osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
     int lrc = check_for_node_up(iq, p_blkstate);
@@ -5716,9 +5716,9 @@ add_blkseq:
         thrman_wheref(thr_self, "%s [commit and replicate]", req2a(iq->opcode));
 
         /*
-        if (iq->is_sorese)
+        if (iq->sorese)
         {
-            fprintf(stderr, "i don't have a blkseq & is_sorese is set? from %s\n", iq->frommach);
+            fprintf(stderr, "i don't have a blkseq & sorese is set? from %s\n", iq->frommach);
         }
         */
 

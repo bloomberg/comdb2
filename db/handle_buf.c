@@ -670,7 +670,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                         iq->sb = NULL;
                     }
-                } else if (iq->is_sorese) {
+                } else if (iq->sorese) {
                     if (iq->sorese->osqllog) {
                         sbuf2close(iq->sorese->osqllog);
                         iq->sorese->osqllog = NULL;
@@ -1197,7 +1197,6 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
     }
 
     iq->sorese = sorese;
-    iq->is_sorese = 1;
     iq->use_handle = thedb->bdb_env;
 
 #if 0

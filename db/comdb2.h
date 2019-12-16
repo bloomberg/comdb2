@@ -1460,7 +1460,6 @@ struct ireq {
 
     bool errstrused : 1;
     bool vfy_genid_track : 1;
-    bool is_sorese : 1;
     bool have_blkseq : 1;
 
     bool sc_locked : 1;
